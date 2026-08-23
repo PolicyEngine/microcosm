@@ -1,0 +1,32 @@
+phase: legacy
+status: >-
+  Compatibility projection of the declared clone-and-assign commune spine;
+  the shared executable commune operator has not landed. The CountrySpec seam
+  attests the stage, level, code column, vintage, refusal, and observed-region
+  constraint facts represented on both sides. Generation-0 method, clone-count,
+  collision, and detailed assignment-source facts remain read-only compatibility
+  fields in geography_spine.json until a later schema migration.
+assignment:
+  anchor: commune
+  order: before_gap_fill
+  kernels:
+    assign: kernel:clone_assign_communes
+    validate: kernel:be_commune_geography_gate
+  draw:
+    commune:
+      universe: commune_within_nuts1
+      weight: statbel_population
+  derive:
+  - commune_nis
+  assertions:
+  - source_nuts1_preserved
+  - geography_vintage_exact
+  ladder_source: source:be_commune_spine_contract
+  seed: stream:geography_legacy
+  default_seed: 0
+  layer_vintages:
+    commune: vintage:be_nis_2025
+    nuts1: vintage:be_nuts1_2025
+  validation:
+  - commune_assignment_support
+  - vintage_refusal

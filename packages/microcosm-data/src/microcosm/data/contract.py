@@ -125,10 +125,11 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
 )
 
 # Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 5 = the #492 past_cap_census block). microcosm-data cannot import
+# (schema 6 = final per-target loss attribution plus warning-only degradation).
+# microcosm-data cannot import
 # microcosm-calibrate (dependency direction), so the builder test suite pins the
 # two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 5
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -201,14 +202,24 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-# Independent publication pin for the reviewed reference source. The data
+# Spec-armed weighted-integrity thresholds (uk/gates.json parameters,
+# microcosm#630): passing reports must carry exactly the committed values,
+# so a re-signed report cannot loosen a fence the spec armed. Held in
+# lockstep with the committed spec by the build-shard sync tests.
+_UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
+_UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
+_UK_QRF_TAIL_TOP_K = 100
+_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9970712395200448
+_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 274
+# Independent publication pin for the active reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
-# microcosm.build.uk_runtime.parity_reference.load_efrs_parity_reference().source.
+# uk/gates.json reference_registry["efrs-post-calibration"].identity.
+_UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
 _UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2023_24.h5",
-    "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-    "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-    "vintage": "2023_24",
+    "filename": "enhanced_frs_2024_25.h5",
+    "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+    "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+    "vintage": "2024_25",
 }
 # Independent publication pin for the canonical
 # {"reference": {"identity": ..., "totals": ...}} evidence emitted from the
@@ -216,7 +227,7 @@ _UK_INPUT_MASS_REFERENCE_IDENTITY = {
 # under the UKDS EUL; keep this in lockstep with
 # UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 in the build shard.
 _UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+    "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659"
 )
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
@@ -293,6 +304,7 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "failing_targets",
         }
     ),
+    "aggregate_vs_admin": frozenset({"anchors_checked"}),
     "input_mass_parity": frozenset(
         {
             "candidate_name",
@@ -310,6 +322,8 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "expired_exclusions",
             "premature_exclusions",
             "exclusions_evaluated_on",
+            "reference",
+            "reference_scope_note",
             "reference_identity",
         }
     ),
@@ -331,9 +345,130 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "surface",
         }
     ),
+    "support": frozenset({"columns_checked"}),
 }
 _UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
     {"national", "region", "country", "local_authority", "constituency"}
+)
+
+# ---------------------------------------------------------------------------
+# Schema-4 gate-battery verification. Every constant here mirrors the shared
+# executor (microcosm.build.gate_battery) or the committed UK spec by name;
+# the data shard deliberately does not import the build shard, and the
+# build-shard sync tests hold each mirror in lockstep.
+# ---------------------------------------------------------------------------
+_UK_GATE_BATTERY_SCHEMA_VERSION = 4
+_UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION = 6
+_UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
+# gate_signing_key_env("uk") in the build shard; the legacy POPULACE variable
+# stays with the schema-3 path above.
+_UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
+_UK_GATE_BATTERY_PHASES = ("preflight", "terminal")
+_UK_GATE_BATTERY_STATUSES = frozenset(
+    {"passed", "failed", "not_applicable", "evidence_absent", "unreached"}
+)
+_UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
+# Vintage pins over the committed uk/gates.json: the manifest digest covers
+# phase order and notes, the policy digest the reviewed thresholds, and the
+# fingerprint derives from the manifest digest. Editing the spec moves all
+# three here in the same reviewed change.
+_UK_GATE_BATTERY_POLICY_SHA256 = (
+    "5cb072a019617ba57e392fa19578e8c1b33fcb3af0144bcf33ff82b8874357d8"
+)
+_UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
+    "c5123517586a8a4eed27606cb26c6e4ccfcbe45fd657e0d95162e15d49c83c85"
+)
+_UK_GATE_BATTERY_SPEC_FINGERPRINT = (
+    "23cf63b64cdf06e186d12956043056ab8cc0f49cb44e984a5b0e25f1487cd731"
+)
+#: Spec entry id -> the legacy gate name whose observable detail checks
+#: apply unchanged (the battery re-keys the report by entry id; the gate
+#: implementations and their detail schemas are the same code).
+_UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
+    "uk_release_input_coverage": "uk_release_input_coverage",
+    "uk_degenerate_release_surface": "degenerate_release_surface",
+    "uk_zero_weight_strata": "zero_weight_strata",
+    "uk_weight_ess": "weight_ess",
+    "uk_weight_ratio": "weight_ratio",
+    "uk_weights_audit": "weights_audit",
+    "uk_nonnegative_columns": "nonnegative_columns",
+    "uk_support": "support",
+    "uk_aggregate_admin": "aggregate_vs_admin",
+    "uk_export_surface": "export_surface",
+    "uk_take_up_signal": "take_up_signal",
+    "uk_brma_enum_domain": "enum_domain",
+    "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_target_surface": "target_surface",
+    "uk_target_fit": "target_fit",
+    "uk_input_mass_parity": "input_mass_parity",
+    "uk_qrf_tail_concentration": "qrf_tail_concentration",
+}
+#: Spec entry id -> (gate, phase), mirrored per entry so a report cannot
+#: relabel an entry's identity. Every entry in this vintage is
+#: release_blocking with no declared excuse, so criticality and
+#: not_applicable are enforced globally rather than per entry.
+_UK_GATE_BATTERY_ENTRY_GATES = {
+    "uk_release_input_coverage_manifest_current": (
+        "release_input_coverage",
+        "preflight",
+    ),
+    "uk_release_family_build_stages": ("source_coverage", "preflight"),
+    "uk_ledger_compile_parity_production_2023": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
+    "uk_ledger_compile_parity_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
+    "uk_release_input_coverage": ("release_input_coverage", "terminal"),
+    "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
+    "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
+    "uk_weight_ess": ("weight_ess", "terminal"),
+    "uk_weight_ratio": ("weight_ratio", "terminal"),
+    "uk_weights_audit": ("weights_audit", "terminal"),
+    "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
+    "uk_support": ("support", "terminal"),
+    "uk_aggregate_admin": ("aggregate_admin", "terminal"),
+    "uk_export_surface": ("export_surface", "terminal"),
+    "uk_take_up_signal": ("take_up_signal", "terminal"),
+    "uk_brma_enum_domain": ("enum_domain", "terminal"),
+    "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_calibration_reference_coverage": (
+        "calibration_reference_coverage",
+        "terminal",
+    ),
+    "uk_target_surface": ("target_surface", "terminal"),
+    "uk_target_fit": ("target_fit", "terminal"),
+    "uk_input_mass_parity": ("input_mass_parity", "terminal"),
+    "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
+}
+_UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
+#: The entries whose bindings contribute an evidence digest; their keys are
+#: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
+#: exactly when its entry evaluated.
+_UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
+    {
+        "uk_release_family_build_stages",
+        "uk_ledger_compile_parity_production_2023",
+        "uk_ledger_compile_parity_incumbent_2025",
+        "uk_degenerate_release_surface",
+        "uk_input_mass_parity",
+    }
+)
+# The input-mass binding's evidence payload wraps the reviewed reference
+# digest as {"reference_evidence_sha256": ...} before the executor's
+# canonical hash; this pins the wrapped digest so the entry's evidence line
+# still binds the enhanced-FRS incumbent totals.
+_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
+    "806f46de90a0bf08c70c977ab63dad1ed644088c89e40df1869ce07b97f63c0c"
+)
+# The degenerate binding's evidence payload digests the resolved exclusion
+# records; for a release that must be the committed register, so its digest
+# is a vintage pin that moves with every reviewed register edit (the same
+# tripwire as the policy digest).
+_UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
+    "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 
 
@@ -403,31 +538,42 @@ def _canonical_json_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def _uk_terminal_verification_key(failures: list[str]) -> bytes | None:
-    """Load the out-of-band trust root used to authenticate UK reports."""
+def _uk_release_key_from_env(env_var: str, failures: list[str]) -> bytes | None:
+    """Load an out-of-band trust root used to authenticate UK reports."""
 
-    encoded = os.environ.get(_UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+    encoded = os.environ.get(env_var)
     if not encoded:
         failures.append(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} verification requires "
-            f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV} to contain the release key."
+            f"{env_var} to contain the release key."
         )
         return None
     try:
         key = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError):
         failures.append(
-            f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV} must be valid base64 to verify "
-            f"{_UK_TERMINAL_GATE_REPORT_FILE}."
+            f"{env_var} must be valid base64 to verify {_UK_TERMINAL_GATE_REPORT_FILE}."
         )
         return None
     if len(key) != 32:
         failures.append(
-            f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV} must decode to exactly 32 bytes "
+            f"{env_var} must decode to exactly 32 bytes "
             f"to verify {_UK_TERMINAL_GATE_REPORT_FILE}."
         )
         return None
     return key
+
+
+def _uk_terminal_verification_key(failures: list[str]) -> bytes | None:
+    """The legacy aggregator's trust root (schema-3 reports)."""
+
+    return _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+
+
+def _uk_gate_battery_verification_key(failures: list[str]) -> bytes | None:
+    """The shared executor's trust root (schema-4 reports)."""
+
+    return _uk_release_key_from_env(_UK_GATE_BATTERY_SIGNING_KEY_ENV, failures)
 
 
 def _reject_json_constant(token: str) -> None:
@@ -606,21 +752,40 @@ def _check_uk_terminal_build_manifest(
             "'terminal_gate_evidence' object."
         )
     else:
-        stages = set(evidence)
-        missing = sorted({"release_dataset"} - stages)
-        unexpected = sorted(
-            str(stage) for stage in stages - _UK_TERMINAL_EVIDENCE_STAGES
-        )
-        if missing:
-            failures.append(
-                "build_manifest.json terminal_gate_evidence is missing "
-                f"always-applicable stage(s): {missing}."
+        # Two evidence vocabularies, never mixed: the legacy aggregator keys
+        # by evidence stage (release_dataset always present); the gate
+        # battery keys by evidence-bearing spec entry id. The report checker
+        # for the matching schema holds the manifest and the report equal.
+        stages = set(map(str, evidence))
+        if stages and stages <= _UK_GATE_BATTERY_EVIDENCE_IDS:
+            pass  # battery vocabulary; membership is entry-conditional
+        else:
+            missing = sorted({"release_dataset"} - stages)
+            unexpected = sorted(
+                str(stage)
+                for stage in stages
+                - _UK_TERMINAL_EVIDENCE_STAGES
+                - _UK_GATE_BATTERY_EVIDENCE_IDS
             )
-        if unexpected:
-            failures.append(
-                "build_manifest.json terminal_gate_evidence has unknown "
-                f"stage(s): {unexpected}."
-            )
+            mixed = sorted(stages & _UK_GATE_BATTERY_EVIDENCE_IDS)
+            if missing:
+                failures.append(
+                    "build_manifest.json terminal_gate_evidence is missing "
+                    f"always-applicable stage(s): {missing}."
+                )
+            if unexpected:
+                failures.append(
+                    "build_manifest.json terminal_gate_evidence has unknown "
+                    f"stage(s): {unexpected}."
+                )
+            if mixed:
+                legacy_seen = sorted(stages & _UK_TERMINAL_EVIDENCE_STAGES)
+                failures.append(
+                    "build_manifest.json terminal_gate_evidence mixes the "
+                    f"legacy stage vocabulary {legacy_seen} with battery "
+                    f"entry ids {mixed}; one build produces one report under "
+                    "one schema, so a manifest never straddles the two."
+                )
         for stage, digest in evidence.items():
             _check_sha256_field(
                 filename="build_manifest.json",
@@ -994,9 +1159,7 @@ def _check_release_manifest_package(
     )
     if expected_names is not None and name not in expected_names:
         rendered = " or ".join(repr(n) for n in expected_names)
-        failures.append(
-            f"release_manifest.json '{field}.name' must be {rendered}."
-        )
+        failures.append(f"release_manifest.json '{field}.name' must be {rendered}.")
     elif not name:
         failures.append(f"release_manifest.json '{field}.name' is required.")
     version = package.get("version")
@@ -1401,12 +1564,41 @@ def _check_uk_terminal_gate_observables(
 
     input_mass = _uk_terminal_gate_details(gates, "input_mass_parity")
     if input_mass is not None:
+        if input_mass.get("reference") != _UK_INPUT_MASS_ACTIVE_REFERENCE:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                f"reference must equal {_UK_INPUT_MASS_ACTIVE_REFERENCE!r}."
+            )
+        scope_note = input_mass.get("reference_scope_note")
+        if not isinstance(scope_note, str) or not scope_note.strip():
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "reference_scope_note must be a non-empty string."
+            )
         identity = input_mass.get("reference_identity")
         if identity != _UK_INPUT_MASS_REFERENCE_IDENTITY:
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
-                "reference_identity must match the reviewed enhanced-FRS "
-                f"incumbent {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
+                "reference_identity must match the active reviewed "
+                f"efrs-post-calibration reference {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
+            )
+        if not _uk_terminal_observable_matches(
+            input_mass.get("relative_tolerance"),
+            _UK_INPUT_MASS_RELATIVE_TOLERANCE,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "relative_tolerance must equal the committed spec value "
+                f"{_UK_INPUT_MASS_RELATIVE_TOLERANCE}."
+            )
+        if not _uk_terminal_observable_matches(
+            input_mass.get("minimum_reference_total"),
+            _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "minimum_reference_total must equal the committed spec value "
+                f"{_UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL}."
             )
         if input_mass.get("stale_exclusions") != []:
             failures.append(
@@ -1445,6 +1637,12 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.top_k to be a positive non-boolean integer."
             )
+        elif top_k != _UK_QRF_TAIL_TOP_K:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                f"requires details.top_k to equal the committed spec value "
+                f"{_UK_QRF_TAIL_TOP_K}."
+            )
         max_top_share = qrf_tail.get("max_top_share")
         valid_max_top_share = (
             not isinstance(max_top_share, bool)
@@ -1457,6 +1655,14 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.max_top_share to be a finite non-boolean "
                 "number in (0, 1)."
+            )
+        elif not _uk_terminal_observable_matches(
+            max_top_share, _UK_QRF_TAIL_MAX_TOP_SHARE
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                f"requires details.max_top_share to equal the committed spec "
+                f"value {_UK_QRF_TAIL_MAX_TOP_SHARE}."
             )
         min_nonzero_records = qrf_tail.get("min_nonzero_records")
         valid_min_nonzero_records_type = not isinstance(
@@ -1472,6 +1678,12 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.min_nonzero_records to be a non-boolean integer "
                 "greater than details.top_k."
+            )
+        elif min_nonzero_records != _UK_QRF_TAIL_MIN_NONZERO_RECORDS:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                f"requires details.min_nonzero_records to equal the committed "
+                f"spec value {_UK_QRF_TAIL_MIN_NONZERO_RECORDS}."
             )
         top_share = qrf_tail.get("top_share")
         carrier_counts = qrf_tail.get("carrier_counts")
@@ -1966,6 +2178,433 @@ def _check_uk_terminal_gate_report(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.signature does "
                 "not authenticate the complete report with the trusted release key."
+            )
+
+
+def _check_uk_gate_battery_report(
+    report: Mapping,
+    *,
+    release_id: str,
+    calibration_diagnostics_sha256: str | None,
+    build_manifest: Mapping | None,
+    calibration_diagnostics: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Independently verify an exact-k schema-4 gate-battery report.
+
+    The battery producer is not imported into microcosm-data. This verifier
+    pins the producer and the reviewed spec identities (policy digest,
+    manifest digest, fingerprint, entry membership), recomputes shippability
+    from the recorded outcomes instead of trusting the ``shippable`` flag,
+    re-applies the legacy observable detail checks through a projection onto
+    the shared gate implementations' names, and authenticates the complete
+    report with the executor's out-of-band release key.
+    """
+
+    file = _UK_TERMINAL_GATE_REPORT_FILE
+    required_report_fields = {
+        "schema_version",
+        "country",
+        "release_id",
+        "release_candidate",
+        "spec_fingerprint",
+        "gates_manifest_sha256",
+        "phases",
+        "phases_evaluated",
+        "blocked_at_phase",
+        "shippable",
+        "gates",
+        "policy_sha256",
+        "release_evidence",
+        "evidence_sha256",
+        "attestation",
+    }
+    if set(report) != required_report_fields:
+        failures.append(
+            f"{file} (schema 4) must contain exactly "
+            f"{sorted(required_report_fields)}, got {sorted(map(str, report))}."
+        )
+    schema_version = report.get("schema_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != _UK_GATE_BATTERY_SCHEMA_VERSION
+    ):
+        failures.append(
+            f"{file} schema_version must be the integer "
+            f"{_UK_GATE_BATTERY_SCHEMA_VERSION}."
+        )
+    if report.get("country") != "uk":
+        failures.append(f"{file} country must be 'uk'.")
+    if report.get("release_id") != release_id:
+        failures.append(
+            f"{file} release_id must match the release being validated; "
+            f"expected {release_id!r}, got {report.get('release_id')!r}."
+        )
+    if report.get("release_candidate") is not True:
+        failures.append(
+            f"{file} release_candidate must be true: a report produced off "
+            "the candidate posture excused absent evidence and cannot be "
+            "promoted into a release."
+        )
+    if report.get("blocked_at_phase") is not None:
+        failures.append(f"{file} blocked_at_phase must be null for a release.")
+    if list(report.get("phases") or ()) != list(_UK_GATE_BATTERY_PHASES):
+        failures.append(f"{file} phases must be {list(_UK_GATE_BATTERY_PHASES)}.")
+    if list(report.get("phases_evaluated") or ()) != list(_UK_GATE_BATTERY_PHASES):
+        failures.append(f"{file} phases_evaluated must cover every declared phase.")
+    if report.get("shippable") is not True:
+        failures.append(f"{file} shippable must be true.")
+
+    if report.get("policy_sha256") != _UK_GATE_BATTERY_POLICY_SHA256:
+        failures.append(
+            f"{file} policy_sha256 does not match the certified UK gate "
+            "policy for this spec vintage."
+        )
+    if report.get("gates_manifest_sha256") != _UK_GATE_BATTERY_GATES_MANIFEST_SHA256:
+        failures.append(
+            f"{file} gates_manifest_sha256 does not match the committed "
+            "uk/gates.json for this spec vintage."
+        )
+    if report.get("spec_fingerprint") != _UK_GATE_BATTERY_SPEC_FINGERPRINT:
+        failures.append(
+            f"{file} spec_fingerprint does not match the committed UK spec "
+            "for this vintage."
+        )
+
+    gates = report.get("gates")
+    valid_gates: dict[str, Mapping] = {}
+    if not isinstance(gates, Mapping):
+        failures.append(f"{file} gates must be an object keyed by entry id.")
+        gates = {}
+    if set(map(str, gates)) != set(_UK_GATE_BATTERY_ENTRY_IDS):
+        failures.append(
+            f"{file} gates must contain exactly the declared UK entry ids; "
+            f"expected {sorted(_UK_GATE_BATTERY_ENTRY_IDS)}, got "
+            f"{sorted(map(str, gates))}."
+        )
+    required_entry_fields = {
+        "gate",
+        "phase",
+        "criticality",
+        "status",
+        "failures",
+        "details",
+        "reason",
+    }
+    for entry_id, outcome in gates.items():
+        owner = f"{file} gates[{entry_id!r}]"
+        if not isinstance(outcome, Mapping):
+            failures.append(f"{owner} must be an object.")
+            continue
+        if set(outcome) != required_entry_fields:
+            failures.append(
+                f"{owner} must contain exactly {sorted(required_entry_fields)}."
+            )
+            continue
+        status = outcome.get("status")
+        if status not in _UK_GATE_BATTERY_STATUSES:
+            failures.append(f"{owner}.status {status!r} is outside the taxonomy.")
+            continue
+        if status == "unreached":
+            failures.append(
+                f"{owner} is unreached, which contradicts a complete, "
+                "unblocked evaluation."
+            )
+        if status == "not_applicable":
+            failures.append(
+                f"{owner} claims not_applicable, but no entry in this spec "
+                "vintage declares an excuse."
+            )
+        pinned = _UK_GATE_BATTERY_ENTRY_GATES.get(str(entry_id))
+        if pinned is not None:
+            pinned_gate, pinned_phase = pinned
+            if outcome.get("gate") != pinned_gate:
+                failures.append(
+                    f"{owner}.gate must be {pinned_gate!r} per the committed "
+                    f"spec, got {outcome.get('gate')!r}."
+                )
+            if outcome.get("phase") != pinned_phase:
+                failures.append(
+                    f"{owner}.phase must be {pinned_phase!r} per the committed "
+                    f"spec, got {outcome.get('phase')!r}."
+                )
+        criticality = outcome.get("criticality")
+        if criticality != "release_blocking":
+            # Every entry in this vintage blocks; a relabel to diagnostic
+            # would dodge the shippability recompute below.
+            failures.append(
+                f"{owner}.criticality must be 'release_blocking' per the "
+                f"committed spec, got {criticality!r}."
+            )
+        elif status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES:
+            # Shippability is recomputed here, per entry, instead of
+            # trusting the report's own shippable flag.
+            failures.append(
+                f"{owner} is release-blocking with status {status!r}; the "
+                "release cannot ship it."
+            )
+        details = outcome.get("details")
+        failures_list = outcome.get("failures")
+        if not isinstance(details, Mapping):
+            failures.append(f"{owner}.details must be an object.")
+        if not isinstance(failures_list, list):
+            failures.append(f"{owner}.failures must be a list.")
+            continue
+        if not isinstance(details, Mapping):
+            continue
+
+        # Mirror the producer-side GateResult/GateOutcome envelope here: the
+        # data shard cannot import those build-side classes, but a signed
+        # release report must still preserve their projected invariants.
+        reason = outcome.get("reason")
+        if status == "passed":
+            if failures_list != []:
+                failures.append(f"{owner} passed entries cannot carry failure text.")
+            if reason is not None:
+                failures.append(f"{owner} passed entries cannot carry a reason.")
+        elif status == "failed":
+            if not failures_list or any(
+                not isinstance(item, str) or not item.strip() for item in failures_list
+            ):
+                failures.append(
+                    f"{owner} failed entries must carry non-empty failure text."
+                )
+            if reason is not None:
+                failures.append(f"{owner} failed entries cannot carry a reason.")
+        elif status in {"not_applicable", "evidence_absent"}:
+            if failures_list != []:
+                failures.append(f"{owner} {status} entries cannot carry failure text.")
+            if dict(details) != {}:
+                failures.append(f"{owner} {status} entries cannot carry details.")
+            if not isinstance(reason, str) or not reason.strip():
+                failures.append(
+                    f"{owner} {status} entries must carry a non-empty string reason."
+                )
+        valid_gates[str(entry_id)] = outcome
+
+    preflight_coverage = valid_gates.get("uk_release_input_coverage_manifest_current")
+    if preflight_coverage is not None:
+        if preflight_coverage.get("status") != "passed":
+            failures.append(f"{file} the manifest-currency preflight must have passed.")
+        elif dict(preflight_coverage.get("details", {})) != {
+            "check": "manifest_current"
+        }:
+            failures.append(
+                f"{file} the manifest-currency preflight details must be "
+                "exactly {'check': 'manifest_current'}."
+            )
+    roster = valid_gates.get("uk_release_family_build_stages")
+    if roster is not None and set(roster.get("details", {})) != {"stage_names"}:
+        failures.append(
+            f"{file} the build-stage roster details must carry exactly 'stage_names'."
+        )
+
+    # The observable detail schemas are the same gate implementations the
+    # legacy report carried, re-keyed by entry id; project the evaluated
+    # entries back onto the legacy names and reuse the checks verbatim.
+    projected = {
+        _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES[entry_id]: {
+            "passed": outcome.get("status") == "passed",
+            "failures": list(outcome.get("failures", ())),
+            "details": dict(outcome.get("details", {})),
+        }
+        for entry_id, outcome in valid_gates.items()
+        if entry_id in _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES
+        and outcome.get("status") in ("passed", "failed")
+    }
+    _check_uk_terminal_gate_observables(
+        projected,
+        calibration_diagnostics=calibration_diagnostics,
+        failures=failures,
+    )
+
+    release_evidence = report.get("release_evidence")
+    if not isinstance(release_evidence, Mapping) or set(release_evidence) != {
+        "calibration_diagnostics_sha256"
+    }:
+        failures.append(
+            f"{file} release_evidence must carry exactly "
+            "'calibration_diagnostics_sha256'."
+        )
+    else:
+        _check_sha256_field(
+            filename=file,
+            owner="release_evidence.calibration_diagnostics_sha256",
+            value=release_evidence.get("calibration_diagnostics_sha256"),
+            failures=failures,
+        )
+        if (
+            calibration_diagnostics_sha256 is not None
+            and release_evidence.get("calibration_diagnostics_sha256")
+            != calibration_diagnostics_sha256
+        ):
+            failures.append(
+                f"{file} release_evidence.calibration_diagnostics_sha256 "
+                "must match the local calibration_diagnostics.json bytes."
+            )
+
+    evidence = report.get("evidence_sha256")
+    if not isinstance(evidence, Mapping):
+        failures.append(f"{file} evidence_sha256 must be an object.")
+        evidence = {}
+    unexpected_evidence = sorted(
+        str(key) for key in set(evidence) - _UK_GATE_BATTERY_EVIDENCE_IDS
+    )
+    if unexpected_evidence:
+        failures.append(
+            f"{file} evidence_sha256 has keys outside the evidence-bearing "
+            f"entries: {unexpected_evidence}."
+        )
+    for entry_id in sorted(_UK_GATE_BATTERY_EVIDENCE_IDS):
+        evaluated = valid_gates.get(entry_id, {}).get("status") in (
+            "passed",
+            "failed",
+        )
+        if evaluated and entry_id not in evidence:
+            failures.append(
+                f"{file} evidence_sha256 is missing the evaluated "
+                f"evidence-bearing entry {entry_id!r}."
+            )
+        if not evaluated and entry_id in evidence:
+            failures.append(
+                f"{file} evidence_sha256 carries {entry_id!r} although the "
+                "entry did not evaluate."
+            )
+    for entry_id, digest in evidence.items():
+        _check_sha256_field(
+            filename=file,
+            owner=f"evidence_sha256[{entry_id!r}]",
+            value=digest,
+            failures=failures,
+        )
+    if (
+        "uk_input_mass_parity" in evidence
+        and evidence.get("uk_input_mass_parity")
+        != _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
+    ):
+        failures.append(
+            f"{file} uk_input_mass_parity evidence digest must bind the "
+            "reviewed enhanced-FRS incumbent totals."
+        )
+    if (
+        "uk_degenerate_release_surface" in evidence
+        and evidence.get("uk_degenerate_release_surface")
+        != _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+    ):
+        failures.append(
+            f"{file} uk_degenerate_release_surface evidence digest must bind "
+            "the committed exclusion register; an overridden register is "
+            "never releasable."
+        )
+    if build_manifest is not None:
+        build_evidence = build_manifest.get("terminal_gate_evidence")
+        if isinstance(build_evidence, Mapping) and dict(build_evidence) != dict(
+            evidence
+        ):
+            failures.append(
+                f"{file} evidence_sha256 must exactly match "
+                "build_manifest.json terminal_gate_evidence."
+            )
+
+    attestation = report.get("attestation")
+    if not isinstance(attestation, Mapping):
+        failures.append(f"{file} attestation must be an object.")
+        return
+    required_attestation_fields = {
+        "schema_version",
+        "producer",
+        "country",
+        "release_id",
+        "release_candidate",
+        "spec_fingerprint",
+        "gates_manifest_sha256",
+        "policy_sha256",
+        "phases",
+        "phases_evaluated",
+        "blocked_at_phase",
+        "release_evidence",
+        "evidence_sha256",
+        "gate_outcomes_sha256",
+        "signature_algorithm",
+        "signing_key_sha256",
+        "signature",
+    }
+    if set(attestation) != required_attestation_fields:
+        # signing_error is deliberately outside the set: an unsigned report
+        # records the hole there and can never verify as a release.
+        failures.append(
+            f"{file} attestation must contain exactly "
+            f"{sorted(required_attestation_fields)}, got "
+            f"{sorted(map(str, attestation))}."
+        )
+    attestation_schema = attestation.get("schema_version")
+    if (
+        type(attestation_schema) is not int
+        or attestation_schema != _UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION
+    ):
+        failures.append(
+            f"{file} attestation.schema_version must be the integer "
+            f"{_UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION}."
+        )
+    if attestation.get("producer") != _UK_GATE_BATTERY_PRODUCER:
+        failures.append(
+            f"{file} attestation.producer must name the shared gate-battery executor."
+        )
+    for field in (
+        "country",
+        "release_id",
+        "release_candidate",
+        "spec_fingerprint",
+        "gates_manifest_sha256",
+        "policy_sha256",
+        "phases",
+        "phases_evaluated",
+        "blocked_at_phase",
+        "release_evidence",
+        "evidence_sha256",
+    ):
+        if attestation.get(field) != report.get(field):
+            failures.append(
+                f"{file} attestation.{field} must equal the report body's {field}."
+            )
+    if attestation.get("signature_algorithm") != _UK_TERMINAL_GATE_SIGNATURE_ALGORITHM:
+        failures.append(
+            f"{file} attestation.signature_algorithm must be "
+            f"{_UK_TERMINAL_GATE_SIGNATURE_ALGORITHM!r}."
+        )
+    expected_gate_outcomes_sha = _canonical_sha256(
+        {str(entry_id): outcome for entry_id, outcome in gates.items()}
+    )
+    if attestation.get("gate_outcomes_sha256") != expected_gate_outcomes_sha:
+        failures.append(
+            f"{file} attestation.gate_outcomes_sha256 does not match gates."
+        )
+
+    verification_key = _uk_gate_battery_verification_key(failures)
+    if verification_key is not None:
+        expected_key_sha256 = hashlib.sha256(verification_key).hexdigest()
+        if attestation.get("signing_key_sha256") != expected_key_sha256:
+            failures.append(
+                f"{file} attestation.signing_key_sha256 does not identify "
+                "the trusted release key."
+            )
+        unsigned_report = dict(report)
+        unsigned_report["attestation"] = {
+            **{str(key): value for key, value in attestation.items()},
+            "signature": None,
+        }
+        expected_signature = hmac.new(
+            verification_key,
+            _canonical_json_bytes(unsigned_report),
+            hashlib.sha256,
+        ).hexdigest()
+        signature = attestation.get("signature")
+        if not isinstance(signature, str) or not hmac.compare_digest(
+            signature, expected_signature
+        ):
+            failures.append(
+                f"{file} attestation.signature does not authenticate the "
+                "complete report with the trusted release key."
             )
 
 
@@ -3327,14 +3966,38 @@ def validate_release_dir(release_dir: Path | str) -> None:
         )
         terminal_gate_report = _load_json(terminal_gate_path, failures)
         if terminal_gate_report is not None:
-            _check_uk_terminal_gate_report(
-                terminal_gate_report,
-                release_id=release_id,
-                calibration_diagnostics_sha256=calibration_diagnostics_sha256,
-                build_manifest=build_manifest,
-                calibration_diagnostics=calibration_diagnostics,
-                failures=failures,
-            )
+            # Vintage dispatch on the report's own schema: 3 is the legacy
+            # aggregator, 4 the shared gate battery. Anything else is not a
+            # UK terminal report.
+            report_schema = terminal_gate_report.get("schema_version")
+            if type(report_schema) is not int:
+                # A float 4.0 or string "4" must not route as a vintage.
+                report_schema = None
+            if report_schema == _UK_GATE_BATTERY_SCHEMA_VERSION:
+                _check_uk_gate_battery_report(
+                    terminal_gate_report,
+                    release_id=release_id,
+                    calibration_diagnostics_sha256=calibration_diagnostics_sha256,
+                    build_manifest=build_manifest,
+                    calibration_diagnostics=calibration_diagnostics,
+                    failures=failures,
+                )
+            elif report_schema == _UK_TERMINAL_GATE_SCHEMA_VERSION:
+                _check_uk_terminal_gate_report(
+                    terminal_gate_report,
+                    release_id=release_id,
+                    calibration_diagnostics_sha256=calibration_diagnostics_sha256,
+                    build_manifest=build_manifest,
+                    calibration_diagnostics=calibration_diagnostics,
+                    failures=failures,
+                )
+            else:
+                failures.append(
+                    f"{_UK_TERMINAL_GATE_REPORT_FILE} schema_version must be "
+                    f"{_UK_TERMINAL_GATE_SCHEMA_VERSION} (legacy aggregator) "
+                    f"or {_UK_GATE_BATTERY_SCHEMA_VERSION} (gate battery), "
+                    f"got {report_schema!r}."
+                )
 
     _check_cross_manifest_consistency(
         build_manifest,
@@ -3513,9 +4176,7 @@ def _check_evidence_known_failures_binding(
             match = _QUOTED_TOKEN_RE.search(recomputed)
             tokens = [match.group(1)] if match else []
         unacknowledged = [
-            token
-            for token in tokens
-            if not _token_appears_delimited(token, combined)
+            token for token in tokens if not _token_appears_delimited(token, combined)
         ]
         if not tokens or unacknowledged:
             failures.append(
@@ -3708,9 +4369,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             # list and require each breach to be acknowledged in
             # known_failures (binding check below).
             if release_id.startswith("populace-us-"):
-                _check_us_critical_target_fit(
-                    diagnostics, recomputed_critical_failures
-                )
+                _check_us_critical_target_fit(diagnostics, recomputed_critical_failures)
 
     _check_cross_manifest_consistency(
         build_manifest,

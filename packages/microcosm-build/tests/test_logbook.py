@@ -22,6 +22,9 @@ from microcosm.build.logbook import (
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "supabase/migrations/20260805000000_logbook.sql"
+CHAIN_SCOPE_MIGRATION = (
+    ROOT / "supabase/migrations/20260818000000_logbook_chain_scopes.sql"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +96,16 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "ALTER EXTENSION pgcrypto SET SCHEMA extensions" in sql
     assert "trim_scale((p_value #>> '{}')::numeric)::text" in sql
     assert "rung IN ('f001', 'f010', 'f100')" in sql
+    rung_migration = (
+        MIGRATION.parent / "20260813000000_logbook_f004_rung.sql"
+    ).read_text(encoding="utf-8")
+    assert "rung IN ('f001', 'f004', 'f010', 'f100')" in rung_migration
+    assert "builds_rung_fraction_token" in rung_migration
+    f025_migration = (
+        MIGRATION.parent / "20260815000000_logbook_f025_rung.sql"
+    ).read_text(encoding="utf-8")
+    assert "rung IN ('f001', 'f004', 'f010', 'f025', 'f100')" in f025_migration
+    assert "builds_rung_fraction_token" in f025_migration
     assert "CHECK (logbook.valid_build_phases(phases_reached))" in builds
     assert "CHECK (logbook.valid_gate_verdicts(gate_verdicts))" in builds
     assert "phases_reached jsonb NOT NULL DEFAULT" not in builds
@@ -149,6 +162,28 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "CREATE POLICY builds_exporter_select" in sql
     assert "CREATE POLICY predictions_exporter_select" not in sql
     assert "GRANT logbook_writer, logbook_exporter TO authenticator" in sql
+
+
+def test_logbook_chain_scope_migration_contract() -> None:
+    sql = CHAIN_SCOPE_MIGRATION.read_text(encoding="utf-8")
+
+    assert "CREATE OR REPLACE FUNCTION logbook.chain_scope" in sql
+    assert "SET search_path = pg_catalog" in sql
+    assert "'us-2024-release'" in sql
+    assert "'us-pool-inc2'" in sql
+    assert "'us-stacked-pool'" in sql
+    assert "builds_single_genesis_per_scope" in sql
+    assert "builds_pipeline_declares_scope" in sql
+    assert "hashtext(new_scope)" in sql
+    # The ratified vocabulary is closed-world: the allowlist function exists,
+    # carries exactly the ratified scopes, and gates both the CHECK and the
+    # trigger — opening a scope is a reviewed migration edit here.
+    assert "CREATE OR REPLACE FUNCTION logbook.scope_declared" in sql
+    assert "'us', 'uk/frs'" in sql
+    assert "scope_declared(logbook.chain_scope(pipeline))" in sql
+    assert "not in the ratified scope list" in sql
+    assert "DROP INDEX IF EXISTS logbook.builds_unique_predecessor" not in sql
+    assert "CREATE UNIQUE INDEX builds_unique_predecessor" not in sql
 
 
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
@@ -245,7 +280,7 @@ def test_published_row_requires_an_artifact_location() -> None:
         LogbookRow.create(**_row_kwargs(disposition="published"))
 
 
-@pytest.mark.parametrize("rung", ["f001", "f010", "f100"])
+@pytest.mark.parametrize("rung", ["f001", "f004", "f010", "f025", "f100"])
 def test_standard_scale_rungs_are_accepted(rung: str) -> None:
     assert LogbookRow.create(**_row_kwargs(rung=rung)).rung == rung
 

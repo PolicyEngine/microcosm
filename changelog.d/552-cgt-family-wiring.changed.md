@@ -1,0 +1,1 @@
+The UK capital gains family is wired required-at-build: the driver runs hmrc_cgt_gains after the SPI restoration with a pinned --cgt-ods input, cgt_source_stages.json declares the stage's artifacts and operations with the band-fact fence recorded in-manifest, and the release input-coverage manifest carries the family contract.

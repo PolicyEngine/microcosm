@@ -1,0 +1,1 @@
+Declare the UK input-mass comparison reference as a named entry in a reviewed `uk/gates.json` registry — identity pins, canonical totals digest, and an explicit scope note — with the armed reference name and scope note recorded in the signed report so every comparison self-describes as an apples-to-apples choice (microcosm#630 case 2).

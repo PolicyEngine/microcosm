@@ -1,0 +1,1 @@
+Declare the UK canonical `source_stages.json`, assemble UK national stages through shared `country_stage_plan`/`StagePlan`, and add `materialize_rules_engine_predictors` plus a PolicyEngine-UK rules-engine adapter.

@@ -185,6 +185,13 @@ class CalibrationResult:
             *returned* weights (after the closing mass/cap projections). Exposed
             as :attr:`final_loss`; recorded separately from the trajectory, whose
             tail is a pre-step/pre-projection value.
+        target_loss_weights: The effective non-negative target-importance vector,
+            aligned to :attr:`diagnostics`. Uniform defaults are materialized as
+            ones so diagnostics can publish the exact final loss basis.
+        target_loss_scales: The effective positive target-loss denominator vector,
+            aligned to :attr:`diagnostics` after skipped targets are removed.
+        target_loss_cap: The positive per-target scaled-error cap used by the final
+            loss evaluation.
         options: The solver configuration as passed (method, epochs,
             learning_rate, mass, max_weight_ratio, target_records, seed,
             l1_lambda, l2_lambda) plus the realized ``matrix_format``
@@ -211,6 +218,9 @@ class CalibrationResult:
     l0_lambda: float
     n_nonzero: int
     closing_loss: float
+    target_loss_weights: np.ndarray
+    target_loss_scales: np.ndarray
+    target_loss_cap: float
     options: Mapping[str, object] = field(default_factory=dict)
     gate_open_probabilities: np.ndarray | None = None
 
@@ -373,6 +383,21 @@ class L0RefitResult:
     def final_loss(self) -> float:
         """The post-L0 refit's final penalty-free target loss."""
         return self.refit.final_loss
+
+    @property
+    def target_loss_weights(self) -> np.ndarray:
+        """The final refit's aligned target-importance vector."""
+        return self.refit.target_loss_weights
+
+    @property
+    def target_loss_scales(self) -> np.ndarray:
+        """The final refit's aligned target-loss scale vector."""
+        return self.refit.target_loss_scales
+
+    @property
+    def target_loss_cap(self) -> float:
+        """The final refit's per-target scaled-error cap."""
+        return self.refit.target_loss_cap
 
     @property
     def fraction_within_10pct(self) -> float:
@@ -1745,6 +1770,11 @@ def calibrate(
         target_loss_scales=target_loss_scales_np,
         target_loss_cap=target_loss_cap,
     )
+    effective_target_loss_weights = (
+        np.ones(problem.target_vector.shape, dtype=np.float64)
+        if target_loss_weights_np is None
+        else target_loss_weights_np.copy()
+    )
 
     return CalibrationResult(
         frame=new_frame,
@@ -1758,6 +1788,9 @@ def calibrate(
         l0_lambda=effective_l0,
         n_nonzero=n_nonzero,
         closing_loss=closing_loss,
+        target_loss_weights=effective_target_loss_weights,
+        target_loss_scales=target_loss_scales_np.copy(),
+        target_loss_cap=target_loss_cap,
         options={
             "method": method,
             "epochs": epochs,

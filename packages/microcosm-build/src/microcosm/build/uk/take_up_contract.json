@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "country": "uk",
+  "build_year": 2024,
+  "policy": "UK stochastic assignment contract for the FRS 2024-25 source spine. Date-keyed values use the incumbent parameter loader semantics: choose the latest value with year less than or equal to the build year. Reported-receipt anchors use an unweighted full-population target denominator, target = int(rate * n_units), and accept anchor overshoot. Random streams are intentionally identity-keyed by seed, output variable name, and entity id; this is a signed difference from the incumbent UK pipeline sequential RNG stream. Incumbent provenance: ebf733c.",
+  "incumbent_provenance": {
+    "commit": "ebf733c",
+    "description": "incumbent UK pipeline stochastic layer",
+    "documented_seeds": {
+      "take_up": 100,
+      "brma": 0,
+      "property_purchase": 0
+    }
+  },
+  "programs": [
+    {
+      "key": "child_benefit",
+      "output": "would_claim_child_benefit",
+      "entity": "benunit",
+      "values": {
+        "2012-01-01": 0.97,
+        "2022-01-01": 0.89
+      },
+      "source": {
+        "source": "Child Benefit statistics: 2022 annual release",
+        "agency": "HMRC",
+        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022.",
+        "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "child_benefit_opts_out_rate",
+      "output": "child_benefit_opts_out",
+      "entity": "benunit",
+      "values": {
+        "2019-01-01": 0.23
+      },
+      "source": {
+        "source": "Child Benefit Statistics: Annual Release, August 2022",
+        "agency": "HMRC",
+        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS.",
+        "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
+        "status": "sourced_administrative_derived"
+      }
+    },
+    {
+      "key": "pension_credit",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2015-01-01": 0.7
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year 2019 to 2020",
+        "agency": "DWP",
+        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline.",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "universal_credit",
+      "output": "would_claim_uc",
+      "entity": "benunit",
+      "values": {
+        "2015-01-01": 0.55
+      },
+      "source": {
+        "source": "U8 adjudication and upstream issue uk-data#452",
+        "agency": "PolicyEngine",
+        "citation": "Frozen at 0.55 by adjudication for parity with the incumbent UK pipeline.",
+        "status": "frozen_by_adjudication",
+        "freeze": {
+          "decision": "U8",
+          "followup": "uk-data#452"
+        }
+      }
+    },
+    {
+      "key": "marriage_allowance",
+      "output": "would_claim_marriage_allowance",
+      "entity": "person",
+      "values": {
+        "2000-01-01": 0.5
+      },
+      "source": {
+        "source": "House of Commons Library income tax allowances for married couples briefing SN00870",
+        "agency": "House of Commons Library",
+        "citation": "HMRC outturn indicates roughly 2.1m claimants over 4.2m eligible couples.",
+        "url": "https://commonslibrary.parliament.uk/research-briefings/sn00870/",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "tax_free_childcare",
+      "output": "would_claim_tfc",
+      "entity": "benunit",
+      "values": {
+        "2015-01-01": 0.586,
+        "2024-04-06": 0.88
+      },
+      "source": {
+        "source": "FRS empirical fit and HMRC Tax-Free Childcare statistics, June 2025 release",
+        "agency": "HMRC",
+        "citation": "The 2015 value is the incumbent offline FRS fit; the 2024 value reflects HMRC 2024-25 TFC spending and annual unique children reached.",
+        "url": "https://www.gov.uk/government/statistics/tax-free-childcare-statistics-june-2025",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "source": "incumbent UK pipeline @ ebf733c",
+        "seed": 42,
+        "status": "frozen parity value"
+      }
+    },
+    {
+      "key": "extended_childcare",
+      "output": "would_claim_extended_childcare",
+      "entity": "benunit",
+      "values": {
+        "2015-01-01": 0.812
+      },
+      "source": {
+        "source": "FRS empirical fit",
+        "agency": "PolicyEngine",
+        "citation": "Incumbent offline FRS childcare take-up fit.",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "source": "incumbent UK pipeline @ ebf733c",
+        "seed": 42,
+        "status": "frozen parity value"
+      }
+    },
+    {
+      "key": "universal_childcare",
+      "output": "would_claim_universal_childcare",
+      "entity": "benunit",
+      "values": {
+        "2015-01-01": 0.563
+      },
+      "source": {
+        "source": "FRS empirical fit",
+        "agency": "PolicyEngine",
+        "citation": "Incumbent offline FRS childcare take-up fit.",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "source": "incumbent UK pipeline @ ebf733c",
+        "seed": 42,
+        "status": "frozen parity value"
+      }
+    },
+    {
+      "key": "targeted_childcare",
+      "output": "would_claim_targeted_childcare",
+      "entity": "benunit",
+      "values": {
+        "2015-01-01": 0.597
+      },
+      "source": {
+        "source": "FRS empirical fit",
+        "agency": "PolicyEngine",
+        "citation": "Incumbent offline FRS childcare take-up fit.",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "source": "incumbent UK pipeline @ ebf733c",
+        "seed": 42,
+        "status": "frozen parity value"
+      }
+    },
+    {
+      "key": "scp_under_6",
+      "output": "would_claim_scp",
+      "entity": "person",
+      "values": {
+        "2021-02-15": 0.97
+      },
+      "source": {
+        "source": "Take-up rates of Scottish benefits, November 2024",
+        "agency": "Scottish Government",
+        "citation": "Scottish Child Payment take-up rate for children under 6.",
+        "url": "https://www.gov.scot/publications/take-up-rates-scottish-benefits-2024/pages/3/",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "scp_6_plus",
+      "output": "would_claim_scp",
+      "entity": "person",
+      "values": {
+        "2021-02-15": 0.85
+      },
+      "source": {
+        "source": "Take-up rates of Scottish benefits, November 2024",
+        "agency": "Scottish Government",
+        "citation": "Scottish Child Payment take-up rate for children aged 6 or over.",
+        "url": "https://www.gov.scot/publications/take-up-rates-scottish-benefits-2024/pages/3/",
+        "status": "sourced_administrative"
+      }
+    }
+  ],
+  "stochastic": [
+    {
+      "key": "tv_ownership_rate",
+      "output": "household_owns_tv",
+      "entity": "household",
+      "values": {
+        "2015-01-01": 0.96,
+        "2020-01-01": 0.95
+      },
+      "source": {
+        "source": "Ofcom TV ownership estimate",
+        "agency": "Ofcom",
+        "citation": "95% of UK homes had at least one TV set in 2020.",
+        "status": "sourced_industry"
+      }
+    },
+    {
+      "key": "tv_licence_evasion_rate",
+      "output": "would_evade_tv_licence_fee",
+      "entity": "household",
+      "values": {
+        "2015-01-01": 0.05,
+        "2018-01-01": 0.0657,
+        "2022-01-01": 0.1058,
+        "2024-01-01": 0.1252
+      },
+      "source": {
+        "source": "TV Licensing annual evader statistics and House of Commons Library CBP-8101",
+        "agency": "BBC / House of Commons Library",
+        "citation": "Official BBC estimates as carried by the incumbent stochastic parameter.",
+        "url": "https://commonslibrary.parliament.uk/research-briefings/cbp-8101/",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "first_time_buyer_rate",
+      "output": "main_residential_property_purchased_is_first_home",
+      "entity": "household",
+      "values": {
+        "2013-01-01": 0.28,
+        "2023-01-01": 0.384
+      },
+      "source": {
+        "source": "ONS first-time buyer mortgage sales and Uswitch first-time buyer statistics",
+        "agency": "ONS",
+        "citation": "38.4% of property sales were first-time buyers in 2023.",
+        "url": "https://www.ons.gov.uk/releases/firsttimebuyermortgagesalesbylocalauthorityuk2006to2023",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "property_purchase_rate",
+      "output": "property_purchased",
+      "entity": "household",
+      "values": {
+        "2023-01-01": 0.0385
+      },
+      "source": {
+        "source": "HMRC monthly property transactions and ONS families and households, 2024",
+        "agency": "HMRC / ONS",
+        "citation": "1.1m annual transactions divided by 28.6m households gives 3.85%; incumbent verification compared SDLT revenue with 2024-25 UK stamp tax statistics.",
+        "url": "https://www.gov.uk/government/statistics/monthly-property-transactions-completed-in-the-uk-with-value-40000-or-above",
+        "status": "sourced_administrative_derived"
+      }
+    }
+  ],
+  "continuous": [
+    {
+      "key": "maximum_extended_childcare_hours_usage",
+      "output": "maximum_extended_childcare_hours_usage",
+      "entity": "benunit",
+      "distribution": "normal",
+      "mean": 15.019,
+      "sd": 4.972,
+      "lower": 0,
+      "upper": 30,
+      "source": {
+        "source": "FRS empirical fit",
+        "agency": "PolicyEngine",
+        "citation": "Incumbent offline childcare usage fit, clipped to [0, 30] hours.",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "source": "incumbent UK pipeline @ ebf733c",
+        "seed": 42,
+        "status": "frozen parity value"
+      }
+    }
+  ]
+}

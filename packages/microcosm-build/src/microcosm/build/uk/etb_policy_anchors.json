@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "PolicyEngine UK VAT parameters for 2023; incumbent fallback removed.",
+    "urls": [
+      "https://www.gov.uk/guidance/rates-and-allowances-for-vat",
+      "https://github.com/PolicyEngine/policyengine-uk/tree/main/policyengine_uk/parameters/gov/hmrc/vat"
+    ],
+    "chronicle_candidate": true
+  },
+  "vat": {
+    "standard_rate": {
+      "value": 0.2,
+      "period": 2023,
+      "parameter_path": "gov.hmrc.vat.standard_rate"
+    },
+    "reduced_rate_share": {
+      "value": 0.025,
+      "period": 2023,
+      "parameter_path": "gov.hmrc.vat.reduced_rate_share"
+    }
+  },
+  "chronicle": [
+    "E6 committed VAT anchors for ETB VAT imputation."
+  ]
+}

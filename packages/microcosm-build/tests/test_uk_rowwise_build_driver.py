@@ -8,6 +8,27 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
+
+
+@pytest.fixture(autouse=True)
+def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+
+
+def _spool_rows(output_dir: Path):
+    rows = load_spool_rows(output_dir / "logbook-spool")
+    for row in rows:
+        assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
+    return rows
+
+
+def _local_ref(path: Path) -> str:
+    return f"local://{path.resolve().as_posix().lstrip('/')}"
+
 
 def _load_builder_module():
     root = Path(__file__).resolve().parents[3]
@@ -111,7 +132,9 @@ def _crosswalk_frame() -> pd.DataFrame:
     )
 
 
-def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_path):
+def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
+    monkeypatch, tmp_path, capsys
+):
     pytest.importorskip("tables")
     builder = _load_builder_module()
     input_h5 = tmp_path / "populace_uk_2023.h5"
@@ -150,6 +173,8 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
     )
 
     assert builder.main() == 0
+    captured = capsys.readouterr()
+    assert "Wrote Logbook row:" in captured.err
 
     output_h5 = output_dir / "populace_uk_2023_rowwise.h5"
     manifest_path = output_dir / builder.MANIFEST_FILENAME
@@ -174,6 +199,24 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
         assert store["household"].shape[0] == 4
         assert store["person"].shape[0] == 6
         assert store["benunit"].shape[0] == 4
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    first_row = rows[0]
+    assert first_row.pipeline == "uk-locals-rowwise"
+    assert first_row.rung == "f100"
+    assert first_row.seed == 42
+    assert first_row.disposition == "iterating"
+    assert first_row.artifact_location == _local_ref(output_h5)
+    assert first_row.gate_verdicts == {
+        "uk_mass_conservation": {
+            "verdict": "passed",
+            "receipt": f"{_local_ref(manifest_path)}#/rowwise_dataset/weights/mass_conservation",
+        },
+        "uk_coverage": {
+            "verdict": "passed",
+            "receipt": f"{_local_ref(manifest_path)}#/rowwise_dataset/coverage",
+        },
+    }
 
     monkeypatch.setattr(
         sys,
@@ -189,6 +232,8 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
             "--n-clones",
             "1",
             "--allow-missing-country",
+            "--logbook-prev-row-digest",
+            first_row.row_digest,
         ],
     )
 
@@ -197,6 +242,14 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
     manifest = json.loads(manifest_path.read_text())
     assert manifest["coverage"] == []
     assert manifest["outputs"]["coverage_summary"] is None
+    rows = _spool_rows(output_dir)
+    assert [row.prev_row_digest for row in rows] == [None, first_row.row_digest]
+    assert rows[1].gate_verdicts == {
+        "uk_mass_conservation": {
+            "verdict": "passed",
+            "receipt": f"{_local_ref(manifest_path)}#/rowwise_dataset/weights/mass_conservation",
+        }
+    }
 
 
 def test_build_uk_rowwise_dataset_rejects_target_csv_without_code(tmp_path):
@@ -284,6 +337,137 @@ def test_build_uk_rowwise_dataset_infers_source_year_from_h5(monkeypatch, tmp_pa
         "2024:1",
         "2024:2",
     ]
+
+
+def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "populace_uk_2023.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "out"
+    _write_toy_h5(input_h5)
+    ladder_path.write_bytes(b"ladder")
+
+    def fake_clone(*_args, output_path: Path, **_kwargs):
+        output_path.write_bytes(b"rowwise")
+        household = pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "household_weight": [10.0, 20.0],
+                "oa_code": ["E0001", "W0001"],
+                "lsoa_code": ["E0101", "W0101"],
+                "msoa_code": ["E0201", "W0201"],
+                "local_authority_code": ["E06000063", "W06000001"],
+                "ward_code": ["E05000001", "W05000001"],
+                "constituency_code": ["E14000001", "W07000041"],
+                "region_code": ["E12000007", "W99999999"],
+                "itl3_code": ["TLI", "TLL"],
+                "itl2_code": ["TL", "TL"],
+                "itl1_code": ["T", "T"],
+                "country": ["England", "Wales"],
+                "rowwise_household_clone_index": [0, 0],
+            }
+        )
+        return type(
+            "Result",
+            (),
+            {
+                "person": pd.DataFrame({"person_id": [1, 2]}),
+                "benunit": pd.DataFrame({"benunit_id": [1, 2]}),
+                "household": household,
+                "household_weight_kind": type("WeightKind", (), {"value": "design"})(),
+                "mass_log": (),
+                "time_period": "2023",
+                "n_clones": 1,
+                "id_multiplier": 10,
+                "gate": type(
+                    "Gate",
+                    (),
+                    {"passed": True, "details": {"areas": 2}},
+                )(),
+            },
+        )()
+
+    monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: object())
+    monkeypatch.setattr(
+        builder,
+        "clone_uk_dataset_with_ladder_geography",
+        fake_clone,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--out",
+            str(output_dir),
+            "--ladder",
+            str(ladder_path),
+            "--n-clones",
+            "1",
+        ],
+    )
+
+    assert builder.main() == 0
+
+    manifest_path = output_dir / builder.MANIFEST_FILENAME
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    assert rows[0].gate_verdicts == {
+        "uk_geography_ladder": {
+            "verdict": "passed",
+            "receipt": f"{_local_ref(manifest_path)}#/rowwise_dataset/gate",
+        }
+    }
+
+
+def test_build_uk_rowwise_dataset_failure_records_pipeline_error(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "populace_uk_2023.h5"
+    crosswalk_path = tmp_path / "crosswalk.csv.gz"
+    output_dir = tmp_path / "out"
+    _write_toy_h5(input_h5)
+    _crosswalk_frame().to_csv(crosswalk_path, index=False)
+
+    def fail_clone(*_args, **_kwargs):
+        raise RuntimeError("rowwise clone failed")
+
+    monkeypatch.setattr(builder, "clone_uk_dataset_with_rowwise_geography", fail_clone)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--out",
+            str(output_dir),
+            "--crosswalk",
+            str(crosswalk_path),
+            "--n-clones",
+            "1",
+            "--allow-missing-country",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="rowwise clone failed"):
+        builder.main()
+
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+    assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 
 
 @pytest.mark.parametrize(

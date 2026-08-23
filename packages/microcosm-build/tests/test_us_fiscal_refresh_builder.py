@@ -1,6 +1,7 @@
 import builtins
 import hashlib
 import importlib.util
+import inspect
 import json
 import sys
 from dataclasses import replace
@@ -46,6 +47,50 @@ def _load_scorer_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> None:
+    builder = _load_builder_module()
+    scorer = _load_scorer_module()
+
+    assert set(inspect.signature(builder._main).parameters) == {"argv"}
+    assert set(inspect.signature(scorer.score_frame).parameters) == {
+        "h5",
+        "ledger_facts",
+        "age_targets",
+        "allow_unaged_dollar_targets",
+        "maximum_microsim_batch_size",
+        "allow_legacy_formula_owned_inputs",
+        "allow_legacy_cd_provenance",
+        "congressional_district_vintage_crosswalk",
+        "target_materialization_cache_dir",
+        "legacy_pe_flat_h5",
+    }
+
+
+@pytest.mark.parametrize(
+    "removed_option",
+    (
+        "--include-congressional-district-targets",
+        "--diagnostic-skip-tax-expenditure-targets",
+        "--zero-support-exclusions",
+    ),
+)
+def test_release_parser_rejects_removed_membership_options(
+    removed_option: str,
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                removed_option,
+            ]
+        )
 
 
 def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
@@ -146,7 +191,9 @@ def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     refusals = [
         n
@@ -226,7 +273,9 @@ def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     calls = [
         n
@@ -256,7 +305,9 @@ def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     manifest_calls = [
         n
@@ -323,7 +374,9 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     main_calls = [
         (node, stack)
         for node, stack in calls
-        if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
+        if any(
+            isinstance(anc, ast.FunctionDef) and anc.name == "_main" for anc in stack
+        )
     ]
     assert len(main_calls) == 1
     call_node, stack = main_calls[0]
@@ -354,7 +407,7 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     # evidence (release-dir reuse, microcosm#568 round 2) before the
     # certified dataset write.
     main_fn = next(
-        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "_main"
     )
 
     def _is_bound_cleanup_for(node):
@@ -456,9 +509,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 10 = #557 preserves the staged retirement surface through release
-    # materialization; pre-#557 QRF-refitted checkpoints (9) must not serve.
-    assert identity["materializer_version"] == 10
+    # 11 = target checkpoints preserve nullable booleans explicitly; schema 2
+    # distinguishes the new values+mask codec from schema-1 checkpoints.
+    assert identity["schema_version"] == 2
+    assert identity["materializer_version"] == 11
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -509,6 +563,160 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
     )
 
 
+def test_target_frame_checkpoint_nullable_boolean_storage_is_explicit(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["native_boolean"] = np.asarray(
+        [False, True, False, True], dtype=np.bool_
+    )
+    tables["person"]["complete_nullable_boolean"] = pd.Series(
+        [True, False, True, False], dtype="boolean"
+    )
+    tables["person"]["missing_nullable_boolean"] = pd.Series(
+        [True, pd.NA, False, pd.NA], dtype="boolean"
+    )
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    identity = {
+        "schema_version": builder.TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION,
+    }
+    path = tmp_path / "nullable-booleans.h5"
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=identity,
+        compilation={},
+    )
+    loaded = builder._read_target_frame_checkpoint(
+        path,
+        identity=identity,
+        target_specs=(),
+    )
+
+    assert loaded is not None
+    observed = loaded[0].table("person")
+    assert observed["native_boolean"].dtype == np.dtype(np.bool_)
+    assert observed["complete_nullable_boolean"].dtype == pd.BooleanDtype()
+    assert observed["missing_nullable_boolean"].dtype == pd.BooleanDtype()
+    pd.testing.assert_series_equal(
+        observed["missing_nullable_boolean"],
+        tables["person"]["missing_nullable_boolean"],
+    )
+    with h5py.File(path, mode="r") as h5:
+        person = h5["tables"]["person"]
+        columns = json.loads(str(person.attrs["columns_json"]))
+        groups = {
+            column: person["columns"][f"{columns.index(column):05d}"]
+            for column in (
+                "native_boolean",
+                "complete_nullable_boolean",
+                "missing_nullable_boolean",
+            )
+        }
+        assert bool(groups["native_boolean"].attrs["nullable"]) is False
+        assert bool(groups["complete_nullable_boolean"].attrs["nullable"]) is True
+        assert bool(groups["complete_nullable_boolean"].attrs["has_null_mask"]) is False
+        missing = groups["missing_nullable_boolean"]
+        assert bool(missing.attrs["nullable"]) is True
+        assert bool(missing.attrs["has_null_mask"]) is True
+        assert (
+            np.asarray(missing["values"]).tobytes()
+            == np.asarray([True, False, False, False], dtype=np.bool_).tobytes()
+        )
+        assert np.asarray(missing["null_mask"]).dtype == np.dtype(np.uint8)
+        np.testing.assert_array_equal(
+            np.asarray(missing["null_mask"]),
+            np.asarray([0, 1, 0, 1], dtype=np.uint8),
+        )
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    (
+        "missing_mask",
+        "noncanonical_hidden_bit",
+        "nonbinary_mask",
+        "unexpected_mask",
+        "missing_metadata",
+    ),
+)
+def test_target_frame_checkpoint_rejects_malformed_boolean_storage(
+    tmp_path,
+    small_frame,
+    corrupt,
+) -> None:
+    builder = _load_builder_module()
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["flag"] = pd.Series([True, pd.NA, False, pd.NA], dtype="boolean")
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    path = tmp_path / f"malformed-{corrupt}.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity={},
+        compilation={},
+    )
+
+    with h5py.File(path, mode="r+") as h5:
+        person = h5["tables"]["person"]
+        columns = json.loads(str(person.attrs["columns_json"]))
+        group = person["columns"][f"{columns.index('flag'):05d}"]
+        if corrupt == "missing_mask":
+            del group["null_mask"]
+        elif corrupt == "noncanonical_hidden_bit":
+            group["values"][1] = True
+        elif corrupt == "nonbinary_mask":
+            group["null_mask"][1] = 2
+        elif corrupt == "unexpected_mask":
+            group.attrs["has_null_mask"] = False
+        else:
+            del group.attrs["nullable"]
+
+    with h5py.File(path, mode="r") as h5, pytest.raises(RuntimeError):
+        builder._read_checkpoint_dataframe(h5["tables"]["person"])
+
+
+def test_target_frame_checkpoint_rejects_schema_one(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    path = tmp_path / "schema-one.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity={},
+        compilation={},
+    )
+    with h5py.File(path, mode="r+") as h5:
+        h5.attrs["schema_version"] = 1
+
+    with pytest.raises(RuntimeError, match="schema mismatch.*got 1, expected 2"):
+        builder._read_target_frame_checkpoint(path, identity={}, target_specs=())
+
+
 def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     monkeypatch,
     tmp_path,
@@ -516,10 +724,9 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    #557 changed the staged retirement-surface semantics: version-9
-    checkpoints can carry release-refitted leaves instead of the preserved
-    support-built surface. The version constant participates in the identity
-    comparison; this pins the stored-9 versus current-10 rejection directly.
+    Version 11 adds the lossless nullable-boolean checkpoint codec. The version
+    constant participates in the identity comparison; this pins stored-10
+    versus current-11 rejection directly.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -553,10 +760,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 9 = the pre-#557 release-refit world; 8 = the still-older pre-#374 blend
-    # world. Both must miss against expected version 10.
-    stale_identity = {**dict(identity), "materializer_version": 9}
-    older_identity = {**dict(identity), "materializer_version": 8}
+    # 10 = the pre-nullable-boolean-codec world; 9 = the still-older pre-#557
+    # release-refit world. Both must miss against expected version 11.
+    stale_identity = {**dict(identity), "materializer_version": 10}
+    older_identity = {**dict(identity), "materializer_version": 9}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -837,7 +1044,7 @@ def test_runtime_versions_use_local_workspace_package_version(
     assert versions["microcosm-data"] == "0.1.0"
 
 
-def test_reviewed_exclusions_do_not_report_opted_in_cd_sources() -> None:
+def test_reviewed_exclusions_do_not_report_active_cd_sources() -> None:
     builder = _load_builder_module()
     acs_cd_alias = "census-acs-s0101-congressional-district-age-2024"
     soi_cd_alias = "soi-congressional-district-2022"
@@ -1340,7 +1547,7 @@ def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
             "invented-release",
             {"publication_run_id": "fixture-publication"},
         )
-    assert "_assert_pool_release_id_value" in builder.main.__code__.co_names
+    assert "_assert_pool_release_id_value" in builder._main.__code__.co_names
 
 
 def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
@@ -1428,7 +1635,7 @@ def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
     assert "shutil.copy2(base_h5" not in source
     assert 'pool_h5.get("sha256")' not in source
 
-    main_source = inspect.getsource(builder.main)
+    main_source = inspect.getsource(builder._main)
     diagnostics_source = inspect.getsource(
         builder._write_release_calibration_diagnostics
     )
@@ -1448,7 +1655,7 @@ def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
     import inspect
 
     builder = _load_builder_module()
-    source = inspect.getsource(builder.main)
+    source = inspect.getsource(builder._main)
     count_gate = source.index("assert_exact_k_realized_count(ladder_outcome")
 
     for later_write in (
@@ -1576,8 +1783,8 @@ def test_org_wages_donor_override_parses(monkeypatch) -> None:
 def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> None:
     builder = _load_builder_module()
 
-    # CD targets with no explicit crosswalk fall back to the packaged
-    # Census-built default so the build works out of the box.
+    # Every target compilation with no explicit crosswalk falls back to the
+    # packaged Census-built default.
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1587,7 +1794,6 @@ def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> No
             "facts.jsonl",
             "--out",
             "release",
-            "--include-congressional-district-targets",
         ],
     )
     args = builder._parse_args()
@@ -1606,7 +1812,6 @@ def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> No
             "facts.jsonl",
             "--out",
             "release",
-            "--include-congressional-district-targets",
             "--congressional-district-vintage-crosswalk",
             "crosswalk.csv",
         ],
@@ -1655,7 +1860,7 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
 
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     builder = _load_builder_module()
-    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging")
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-canary")
     monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
     monkeypatch.setattr(
         sys,
@@ -1671,8 +1876,46 @@ def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
 
     args = builder._parse_args()
 
-    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == "policyengine/populace-us-canary"
     assert args.staging_prefix == "candidate-runs"
+
+
+def test_empty_staging_environment_does_not_disable_staging(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "")
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "   ")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_repo_id == builder.STAGING_REPO_ID
+    assert args.staging_prefix == builder.DEFAULT_STAGING_PREFIX
+
+
+def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.delenv("POPULACE_TEST_ENV_DEFAULT", raising=False)
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "   ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", " org/repo ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "org/repo"
 
 
 def test_soi_indicator_rows_flag_positive_component_items() -> None:
@@ -3742,10 +3985,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_sha256,
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "_assert_cd_vintage_support_matches",
+        lambda h5_path, crosswalk_metadata, **kwargs: None,
+    )
     if terminal_mode == "telemetry":
 
         class LiveTelemetry:
             run_id = "live-telemetry-test"
+            repo_id = "policyengine/populace-us-staging"
+            uploads_succeeded = 3
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
@@ -8502,7 +8752,7 @@ def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> N
     main_fn = next(
         node
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "main"
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
     )
 
     def call_name(call: ast.Call) -> str | None:
@@ -9161,7 +9411,8 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         ],
     )
     args = module._parse_args()
-    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert module.STAGING_REPO_ID == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == module.STAGING_REPO_ID
     assert not args.no_staging
 
     def namespace(no_staging: bool) -> SimpleNamespace:
@@ -9180,6 +9431,7 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
     )
     assert telemetry is not None
     assert telemetry.run_id == "rel-1"
+    assert telemetry.repo_id is None
 
     # --no-staging wins even when a staging destination is configured.
     assert (
@@ -9188,6 +9440,153 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         )
         is None
     )
+
+
+def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
+    module = _load_builder_module()
+    argv = [
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--staging-repo-id",
+        "",
+    ]
+
+    with pytest.raises(SystemExit) as excinfo:
+        module._parse_args(argv)
+
+    assert excinfo.value.code == 2
+    assert "--no-staging" in capsys.readouterr().err
+
+
+def test_blank_staging_repo_id_is_accepted_with_a_local_staging_dir(
+    tmp_path,
+) -> None:
+    module = _load_builder_module()
+    argv = [
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--staging-repo-id",
+        "",
+        "--staging-dir",
+        str(tmp_path / "stage"),
+    ]
+
+    args = module._parse_args(argv)
+
+    assert args.staging_repo_id == ""
+    assert args.staging_dir == tmp_path / "stage"
+
+
+def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        def fail(self, error):
+            recorded.append(error)
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda argv=None: (_ for _ in ()).throw(RuntimeError("build exploded")),
+    )
+
+    with pytest.raises(RuntimeError, match="build exploded"):
+        module.main()
+
+    assert [str(error) for error in recorded] == ["build exploded"]
+
+
+def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:
+    module = _load_builder_module()
+
+    class ExplodingTelemetry:
+        def fail(self, error):
+            raise RuntimeError("telemetry itself is broken")
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", ExplodingTelemetry())
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda argv=None: (_ for _ in ()).throw(ValueError("the real failure")),
+    )
+
+    with pytest.raises(ValueError, match="the real failure"):
+        module.main()
+
+    assert "could not record the staging run as failed" in capsys.readouterr().err
+
+
+def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+    module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+    assert module._ACTIVE_TELEMETRY is not None
+
+    args.no_staging = True
+    assert (
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-2")
+        is None
+    )
+    assert module._ACTIVE_TELEMETRY is None
+
+
+def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
+    module = _load_builder_module()
+
+    assert module._staging_manifest_block(None) == {
+        "enabled": False,
+        "reason": "--no-staging",
+    }
+
+    class Delivered:
+        run_id = "rel-1"
+        repo_id = "policyengine/populace-us-staging"
+        uploads_succeeded = 7
+
+    assert module._staging_manifest_block(Delivered()) == {
+        "enabled": True,
+        "run_id": "rel-1",
+        "repo_id": "policyengine/populace-us-staging",
+        "uploads_succeeded": 7,
+    }
+
+    class Undelivered:
+        run_id = "rel-2"
+        repo_id = None
+        uploads_succeeded = 0
+
+    block = module._staging_manifest_block(Undelivered())
+    assert block["enabled"] is True
+    assert block["uploads_succeeded"] == 0
+    assert block["repo_id"] is None
+
+
+def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=None,
+        staging_repo_id="",
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+
+    with pytest.raises(ValueError, match="no destination"):
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
 
 
 # ---------------------------------------------------------------------------
@@ -9798,7 +10197,7 @@ def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
     are looked up by name inside ``main``).
     """
     builder = _load_builder_module()
-    called = set(builder.main.__code__.co_names)
+    called = set(builder._main.__code__.co_names)
     for preflight in (
         "assert_release_input_coverage_manifest_current",
         "us_register_consistency_gate",
@@ -9890,7 +10289,7 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
     import inspect
 
     builder = _load_builder_module()
-    source = inspect.getsource(builder.main)
+    source = inspect.getsource(builder._main)
     tree = ast.parse(source)
 
     batched_raises: list[int] = []
@@ -11041,12 +11440,12 @@ def test_evidence_release_is_incompatible_with_exact_k(
 
 def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     """microcosm#506 control-flow guard (the #443/#568 AST pattern): in
-    main(), every terminal 'Release gates failed' raise after the #548
-    accumulator forms must be conditioned on --evidence-release (the
-    conversion sites), every one BEFORE it must be unconditional (preflight
-    and mid-build gates never convert), the all-green evidence refusal must
-    sit before the manifest write, and _build_manifests must receive the
-    owned failure record."""
+    _main() (the build body under the #563 telemetry wrapper), every
+    terminal 'Release gates failed' raise after the #548 accumulator forms
+    must be conditioned on --evidence-release (the conversion sites), every
+    one BEFORE it must be unconditional (preflight and mid-build gates never
+    convert), the all-green evidence refusal must sit before the manifest
+    write, and _build_manifests must receive the owned failure record."""
     import ast
 
     builder = _load_builder_module()
@@ -11055,7 +11454,7 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     main_fn = next(
         node
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "main"
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
     )
 
     parents: dict[ast.AST, ast.AST] = {}
@@ -11092,7 +11491,7 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
         if isinstance(node, ast.Raise)
         and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
     ]
-    assert gate_raises, "main() lost its release-gate raises"
+    assert gate_raises, "_main() lost its release-gate raises"
     for raise_node in gate_raises:
         ancestor_tests = _ancestor_if_tests(raise_node)
         guarded = any(test in certified_guard_tests for test in ancestor_tests)
@@ -11178,5 +11577,5 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
         and node.func.id == "_evidence_known_failures"
     ]
     assert len(owner_check_calls) == 5, (
-        f"expected 5 owner-resolution sites in main(), found {len(owner_check_calls)}"
+        f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
     )

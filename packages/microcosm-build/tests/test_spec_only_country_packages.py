@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+from microcosm.build.country_spec import ALLOWED_COUNTRY_RESOURCE_KINDS
+from microcosm.build.spec_engine import GENERATED_LOCK_FILENAMES, load_yaml12
 
 ROOT = Path(__file__).resolve().parents[3]
 COUNTRY_PACKAGE_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build"
-SPEC_SUFFIXES = {".json", ".jsonld"}
+SPEC_SUFFIXES = {".json", ".jsonld", ".yaml", ".yml"}
 FORBIDDEN_EXECUTABLE_TOKENS = frozenset(
     {
         "callable",
@@ -72,19 +75,38 @@ def test__given_country_package_manifests__then_resources_are_local_specs() -> N
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("country") != country:
             offenders.append(f"{country}: country mismatch")
-        resources = set(manifest.get("resources", ()))
-        expected_files = resources | {"country_package.json"}
-        actual_files = {path.name for path in root.iterdir() if path.is_file()}
+        resource_rows = _resource_rows(manifest, country, offenders)
+        resources = {path for path, _, _ in resource_rows}
+        actual_files = {
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+        generated_locks = actual_files & GENERATED_LOCK_FILENAMES
+        expected_files = resources | {"country_package.json"} | generated_locks
+        for generated_lock in sorted(resources & GENERATED_LOCK_FILENAMES):
+            offenders.append(
+                f"{country}: generated lock is an authored resource {generated_lock}"
+            )
         for extra in sorted(actual_files - expected_files):
             offenders.append(f"{country}: unlisted resource {extra}")
-        for resource in sorted(resources):
-            resource_path = root / resource
-            if resource_path.parent != root:
+        for resource, kind, schema_id in sorted(resource_rows):
+            relative = PurePosixPath(resource)
+            resource_path = root.joinpath(*relative.parts)
+            if (
+                relative.is_absolute()
+                or resource != relative.as_posix()
+                or ".." in relative.parts
+            ):
                 offenders.append(f"{country}: non-local resource {resource}")
             elif resource_path.suffix not in SPEC_SUFFIXES:
                 offenders.append(f"{country}: non-spec resource {resource}")
             elif not resource_path.exists():
                 offenders.append(f"{country}: missing resource {resource}")
+            if kind not in ALLOWED_COUNTRY_RESOURCE_KINDS:
+                offenders.append(f"{country}: unknown resource kind {kind}")
+            if not schema_id:
+                offenders.append(f"{country}: missing schema_id for {resource}")
 
     # Then
     assert offenders == []
@@ -95,9 +117,7 @@ def test__given_country_like_directories__then_each_has_a_manifest() -> None:
     roots = [
         path
         for path in COUNTRY_PACKAGE_ROOT.iterdir()
-        if path.is_dir()
-        and not path.name.startswith("__")
-        and not path.name.endswith("_runtime")
+        if path.is_dir() and re.fullmatch(r"[a-z]{2}", path.name)
     ]
 
     # When
@@ -111,24 +131,34 @@ def test__given_country_like_directories__then_each_has_a_manifest() -> None:
     assert offenders == []
 
 
-def test__given_country_json_specs__then_no_python_entrypoints_are_declared() -> None:
+def test__given_country_specs__then_no_python_entrypoints_are_declared() -> None:
     # Given
-    json_specs = [
+    specs = [
         path
         for country_root in _country_package_roots()
-        for path in country_root.rglob("*.json")
+        for path in country_root.rglob("*")
+        if path.is_file() and path.suffix in SPEC_SUFFIXES
     ]
 
     # When
     offenders: list[str] = []
-    for path in json_specs:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+    for path in specs:
+        text = path.read_text(encoding="utf-8")
+        payload = (
+            json.loads(text)
+            if path.suffix in {".json", ".jsonld"}
+            else load_yaml12(text, source=path.relative_to(ROOT).as_posix())
+        )
         _collect_executable_content(
             payload, path.relative_to(ROOT).as_posix(), offenders
         )
 
     # Then
     assert offenders == []
+
+
+def test__given_schema_kernel_reference__then_it_is_not_an_entrypoint() -> None:
+    assert not _looks_like_python_entrypoint("kernel:fit_qrf")
 
 
 def _collect_executable_content(
@@ -139,7 +169,22 @@ def _collect_executable_content(
     if isinstance(value, dict):
         for key, child in value.items():
             child_location = f"{location}.{key}"
-            if _is_executable_key(key):
+            declared_kernel_loader = (
+                key == "loader"
+                and isinstance(child, str)
+                and child.startswith("kernel:")
+                and not _looks_like_python_entrypoint(child)
+            )
+            compiler_identity_field = _is_compiler_identity_field(
+                key=key,
+                value=child,
+                location=location,
+            )
+            if (
+                _is_executable_key(key)
+                and not declared_kernel_loader
+                and not compiler_identity_field
+            ):
                 offenders.append(child_location)
             _collect_executable_content(child, child_location, offenders)
     elif isinstance(value, list):
@@ -153,6 +198,45 @@ def _country_package_roots() -> list[Path]:
     return sorted(
         path.parent for path in COUNTRY_PACKAGE_ROOT.glob("*/country_package.json")
     )
+
+
+def _resource_rows(
+    manifest: object,
+    country: str,
+    offenders: list[str],
+) -> list[tuple[str, str, str]]:
+    if not isinstance(manifest, dict):
+        offenders.append(f"{country}: manifest is not an object")
+        return []
+    raw_resources = manifest.get("resources", ())
+    if not isinstance(raw_resources, list):
+        offenders.append(f"{country}: resources is not a list")
+        return []
+
+    rows: list[tuple[str, str, str]] = []
+    for index, raw in enumerate(raw_resources):
+        if isinstance(raw, str):
+            # Generation-0 manifests are resolved to the same explicit row
+            # shape by CountrySpec; package tests retain their compatibility.
+            rows.append((raw, "legacy_json", "legacy_json"))
+            continue
+        if not isinstance(raw, dict):
+            offenders.append(f"{country}: resource row {index} is not an object")
+            continue
+        if set(raw) != {"path", "kind", "schema_id"}:
+            offenders.append(
+                f"{country}: resource row {index} does not have exactly "
+                "path/kind/schema_id"
+            )
+            continue
+        path = raw["path"]
+        kind = raw["kind"]
+        schema_id = raw["schema_id"]
+        if not all(isinstance(value, str) for value in (path, kind, schema_id)):
+            offenders.append(f"{country}: resource row {index} has non-string fields")
+            continue
+        rows.append((path, kind, schema_id))
+    return rows
 
 
 def _is_executable_key(key: str) -> bool:
@@ -172,3 +256,29 @@ def _looks_like_python_entrypoint(value: str) -> bool:
             value,
         )
     )
+
+
+def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bool:
+    """Admit inert legacy-identity fields inside the typed compiler surface.
+
+    F0 must reproduce the generation-0 resource-semantics receipt exactly, so
+    the imputation IR carries its historical ``module``/``callable`` labels.
+    They are data consumed by the constants adapter, never country entrypoints:
+    only a node's schema-bound virtual-resource record may contain them.  The
+    narrow location check preserves this test's refusal everywhere else.
+    """
+
+    virtual_resource_label = (
+        key in {"module", "callable"}
+        and isinstance(value, str)
+        and bool(value)
+        and re.search(r"\.virtual_resources(?:\.|\[)", location) is not None
+    )
+    generated_lock_count = (
+        key == "entry_count"
+        and type(value) is int
+        and location.endswith(
+            "engine_abi.lock.json.remaining_stage_input_manifest.receipt"
+        )
+    )
+    return virtual_resource_label or generated_lock_count

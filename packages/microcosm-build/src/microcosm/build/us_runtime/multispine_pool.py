@@ -13,8 +13,12 @@ agreement outputs and is not the input-only pool returned for H5 publication.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import lru_cache
+from importlib.metadata import version
 from typing import Protocol
 
 import numpy as np
@@ -22,6 +26,9 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
+)
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_NATIVE_PERSON_INPUTS,
     TargetFamilies,
@@ -48,6 +55,8 @@ from microcosm.build.us_runtime.hours_worked import (
     with_us_hours_worked_inputs,
 )
 from microcosm.build.us_runtime.housing_inputs import (
+    US_HOUSING_ASSISTANCE_PUF_MAX_TRAIN_SAMPLES,
+    US_HOUSING_ASSISTANCE_PUF_N_ESTIMATORS,
     impute_us_housing_assistance_to_puf_support,
     with_us_housing_inputs,
 )
@@ -66,6 +75,7 @@ from microcosm.build.us_runtime.prior_year_income import (
 from microcosm.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.qbi_inputs import (
+    US_QBI_RECONCILED_PERSON_COLUMNS,
     bind_us_qbi_reconciliation_transition_authority,
     us_qbi_post_reconciliation_person_columns,
     us_qbi_reconciliation_change_receipt,
@@ -92,6 +102,7 @@ from microcosm.build.us_runtime.support_provenance import (
     spine_assembly_receipt,
     spine_provenance_counts,
     support_clone_index_column,
+    support_source_id_column,
     validate_assembly_provenance,
     without_support_role_metadata,
 )
@@ -100,38 +111,63 @@ from microcosm.build.us_runtime.take_up_contract import (
     TakeUpProgram,
     load_take_up_contract,
 )
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    US_LATE_EDUCATION_NOOP_TARGETS,
+    US_LATE_RETIREMENT_SOURCE_MIRROR_TARGETS,
+    us_late_overlap_ownership_receipt,
+)
 from microcosm.build.us_runtime.weeks_unemployed import with_us_weeks_unemployed
 from microcosm.build.us_runtime.wic_claim import with_us_wic_claim_input
 from microcosm.build.us_runtime.workers_compensation import (
     with_us_workers_compensation,
 )
-from microcosm.frame import Frame
+from microcosm.frame import US_SCHEMA, Frame
+from microcosm.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+    VariableDependencyClosure,
+)
 
 __all__ = [
     "POOL_CHECKPOINT_STAGE_ORDER",
+    "POOL_ENGINE_INPUT_PROJECTION_CONTRACT",
     "POOL_HOUSEHOLD_MASS_SHARES",
+    "POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES",
+    "POOL_HOUSING_ASSISTANCE_N_ESTIMATORS",
     "POOL_DERIVE_OPERATOR_ORDER",
     "POOL_DEFERRED_TRANSFER_INPUTS",
+    "POOL_DEFERRED_TRANSFER_STATUS",
     "POOL_OPERATOR_CONTRACTS",
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
+    "POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256",
+    "POOL_SSI_DEPENDENCY_CONTRACT",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
     "POOL_POST_CLONE_SOURCE_OPERATOR_ORDER",
+    "POOL_POST_CLONE_SOURCE_PHASE",
     "POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER",
     "POOL_SOURCE_OPERATOR_CONTRACTS",
     "POOL_SOURCE_OPERATOR_ORDER",
+    "POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE",
     "POOL_SPINE_AGREEMENT_REGISTRY",
     "POOL_TIME_PERIOD",
     "MultispinePoolCheckpoint",
     "MultispinePoolResult",
     "PoolInputSurfaceEntry",
+    "PoolEngineInputProjectionContract",
+    "PoolRemainingStageInput",
+    "PoolSsiDependencyContract",
     "PoolStageOutput",
     "SourceOperatorContract",
     "complete_multispine_source_inputs",
     "derive_multispine_pool_inputs",
+    "finalize_multispine_source_inputs",
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
     "pool_input_surface",
+    "pool_engine_input_projection_receipt",
+    "pool_remaining_stage_input_manifest",
+    "pool_remaining_stage_input_manifest_receipt",
+    "pool_ssi_dependency_closure",
     "pool_post_puf_puf_producer_target_families",
     "pool_post_puf_source_producer_target_families",
     "pool_post_puf_transfer_target_families",
@@ -139,6 +175,7 @@ __all__ = [
     "pool_transfer_target_families",
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
+    "run_multispine_post_clone_source_operator",
     "run_multispine_pool_path",
     "seed_multispine_pool_inputs",
 ]
@@ -204,6 +241,13 @@ POOL_RANDOM_SEED = 0
 POOL_TIME_PERIOD = 2024
 """PolicyEngine period of the 2024 source pool."""
 
+POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE = False
+"""Source construction never reuses an unreceipted pre-existing surface."""
+
+POOL_HOUSING_ASSISTANCE_N_ESTIMATORS = US_HOUSING_ASSISTANCE_PUF_N_ESTIMATORS
+POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES = US_HOUSING_ASSISTANCE_PUF_MAX_TRAIN_SAMPLES
+"""Exact direct-QRF controls for the housing-assistance source producer."""
+
 POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE = 5_000
 """Fixed household batch size for terminal formula-output evaluation."""
 
@@ -237,6 +281,73 @@ class PoolInputSurfaceEntry:
     entity: str
     family: str
     provenance: tuple[str, ...]
+
+
+@dataclass(frozen=True, order=True)
+class PoolRemainingStageInput:
+    """One statically declared read after the transferred checkpoint.
+
+    ``provision`` names the producer or fallback doctrine that makes the read
+    valid by ``available_by``.  Pseudo-columns enclosed in angle brackets are
+    structural Frame resources rather than persisted PolicyEngine variables.
+    """
+
+    stage: str
+    consumer: str
+    entity: str
+    variable: str
+    execution_scope: str
+    provision: str
+    available_by: str
+    fallback: str | None = None
+
+
+@dataclass(frozen=True)
+class PoolSsiDependencyContract:
+    """Checked-in identity of the static PE-US SSI dependency closure."""
+
+    engine_version: str
+    root: str
+    input_leaf_count: int
+    formula_node_count: int
+    edge_count: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class PoolEngineInputProjectionContract:
+    """Pinned identity of every installed engine input scanned at simulate."""
+
+    engine_version: str
+    input_count: int
+    default_count: int
+    sha256: str
+    defaults_sha256: str
+
+
+POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
+    engine_version="1.764.6",
+    root="ssi",
+    input_leaf_count=55,
+    formula_node_count=62,
+    edge_count=186,
+    sha256="e3351cdedbe592456b637286ecd04b7079746e1c409e594fbca60a7d28666838",
+)
+"""Exact static graph consumed by the terminal SSI agreement simulation."""
+
+POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
+    engine_version="1.764.6",
+    input_count=863,
+    default_count=863,
+    sha256="67a66b018c6261a03a88852cce5c5a4cbe9f5595735d17f2f7666e19e464dfbf",
+    defaults_sha256="87f508fbb382036946aa5e225d339e1b593a464ee6cfc644d7d710540b00a9a7",
+)
+"""Exact installed input registry scanned by the disposable projection."""
+
+POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
+    "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+)
+"""Pinned content digest of all 993 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -280,6 +391,7 @@ class MultispinePoolCheckpoint:
     stage_receipts: Mapping[str, Mapping[str, object]]
     simulation_frame: Frame | None = None
     qbi_transition_authority_sha256: str | None = None
+    late_producer_transition_authority_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.stage not in POOL_CHECKPOINT_STAGE_ORDER:
@@ -323,6 +435,18 @@ class MultispinePoolCheckpoint:
                 "MultispinePoolCheckpoint.qbi_transition_authority_sha256 must "
                 "be a string when present."
             )
+        if (
+            self.late_producer_transition_authority_sha256 is not None
+            and not isinstance(
+                self.late_producer_transition_authority_sha256,
+                str,
+            )
+        ):
+            raise TypeError(
+                "MultispinePoolCheckpoint."
+                "late_producer_transition_authority_sha256 must be a string "
+                "when present."
+            )
 
 
 @dataclass(frozen=True)
@@ -360,6 +484,7 @@ class SourceOperatorContract:
 
 _PRE_CLONE_PHASE = "pre_clone"
 _POST_CLONE_PHASE = "post_clone"
+POOL_POST_CLONE_SOURCE_PHASE = _POST_CLONE_PHASE
 _CPS_SOURCE_EXECUTION_SCOPE = "cps_source"
 _WHOLE_POOL_EXECUTION_SCOPE = "whole_pool"
 
@@ -518,6 +643,20 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "household": frozenset({"tenure_type"}),
     "spm_unit": frozenset({"spm_unit_tenure_type"}),
 }
+_POOL_SIMULATION_PRESERVED_ENGINE_INPUTS: Mapping[
+    tuple[str, str], tuple[str, str | None]
+] = {
+    ("person", "is_related_to_head_or_spouse"): ("assembled", None),
+    ("household", "puma"): (
+        "assembled",
+        "ephemeral_simulation_projection_engine_default_for_null",
+    ),
+    ("person", "ssi_reported"): (
+        "transferred",
+        "ephemeral_simulation_projection_engine_default_for_null",
+    ),
+    ("household", "state_fips"): ("assembled", None),
+}
 
 _SCF_WEALTH_DEFERRAL_REASON = (
     "The increment-2 pool input contract contains no SCF 2022 or SIPP 2023 "
@@ -539,6 +678,7 @@ POOL_DEFERRED_TRANSFER_INPUTS: Mapping[str, Mapping[str, str]] = {
         "stock_assets",
     )
 }
+POOL_DEFERRED_TRANSFER_STATUS = "deferred_pending_source_donor"
 """Pool-stage-only deferrals for source inputs whose donors are out of scope.
 
 These remain hard release requirements and remain in the legacy ACS transfer
@@ -704,7 +844,38 @@ def pool_post_puf_source_producer_target_families() -> TargetFamilies:
     )
 
 
-def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
+def _resolve_take_up_program_bindings(
+    bindings: tuple[tuple[str, str, str], ...] | None,
+) -> tuple[tuple[str, str, str], ...]:
+    """Return ``(variable, entity, treatment)`` rows for static manifests."""
+
+    if bindings is None:
+        from microcosm.build.spec_engine.engine_abi import (
+            active_take_up_manifest_program_bindings,
+        )
+
+        bindings = active_take_up_manifest_program_bindings()
+    if bindings is None:
+        return tuple(
+            (program.variable, program.entity, program.populace_treatment)
+            for program in load_take_up_contract().programs
+        )
+    for index, binding in enumerate(bindings):
+        if (
+            len(binding) != 3
+            or not all(isinstance(value, str) and value for value in binding)
+        ):
+            raise ValueError(
+                "Take-up manifest program binding must contain three non-empty "
+                f"strings at index {index}."
+            )
+    return bindings
+
+
+def pool_input_surface(
+    *,
+    take_up_program_bindings: tuple[tuple[str, str, str], ...] | None = None,
+) -> tuple[PoolInputSurfaceEntry, ...]:
     """Return the complete registry-derived pool input/imputation surface.
 
     The surface is deliberately limited to transfer targets, explicit deferred
@@ -789,17 +960,712 @@ def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
             provenance="PRIMARY_QRF_TARGET_ORDER",
         )
 
-    for program in load_take_up_contract().programs:
+    for variable, entity, populace_treatment in _resolve_take_up_program_bindings(
+        take_up_program_bindings
+    ):
         register(
-            program.variable,
-            entity=program.entity,
-            family=f"take_up_{program.populace_treatment}",
+            variable,
+            entity=entity,
+            family=f"take_up_{populace_treatment}",
             provenance="load_take_up_contract",
         )
 
     return tuple(
         sorted(entries.values(), key=lambda entry: (entry.variable, entry.entity))
     )
+
+
+def pool_ssi_dependency_closure(
+    metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+) -> VariableDependencyClosure:
+    """Return SSI's static PE-US graph after checking the pinned identity."""
+
+    index = (
+        metadata_index
+        if metadata_index is not None
+        else PolicyEngineUSVariableMetadataIndex()
+    )
+    closure = index.variable_dependency_closure(POOL_SSI_DEPENDENCY_CONTRACT.root)
+    observed = {
+        "engine_version": closure.engine_version,
+        "root": closure.root,
+        "input_leaf_count": len(closure.input_leaves),
+        "formula_node_count": len(closure.formula_nodes),
+        "edge_count": len(closure.edges),
+        "sha256": closure.sha256,
+    }
+    expected = {
+        "engine_version": POOL_SSI_DEPENDENCY_CONTRACT.engine_version,
+        "root": POOL_SSI_DEPENDENCY_CONTRACT.root,
+        "input_leaf_count": POOL_SSI_DEPENDENCY_CONTRACT.input_leaf_count,
+        "formula_node_count": POOL_SSI_DEPENDENCY_CONTRACT.formula_node_count,
+        "edge_count": POOL_SSI_DEPENDENCY_CONTRACT.edge_count,
+        "sha256": POOL_SSI_DEPENDENCY_CONTRACT.sha256,
+    }
+    if observed != expected:
+        raise ValueError(
+            "PolicyEngine-US SSI dependency closure drifted; refresh the "
+            f"remaining-stage input audit. expected={expected}, observed={observed}."
+        )
+    return closure
+
+
+def _pool_engine_input_projection(
+    metadata_index: PolicyEngineUSVariableMetadataIndex,
+    *,
+    engine_version: str,
+) -> tuple[tuple[str, str], ...]:
+    """Return every installed engine input after checking its pinned digest."""
+
+    projection = tuple(
+        (metadata_index.variable_metadata(variable).entity, variable)
+        for variable in metadata_index.variables()
+    )
+    payload = [
+        {"entity": entity, "variable": variable} for entity, variable in projection
+    ]
+    digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    observed = {
+        "engine_version": engine_version,
+        "input_count": len(projection),
+        "sha256": digest,
+    }
+    expected = {
+        "engine_version": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.engine_version,
+        "input_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count,
+        "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
+    }
+    if observed != expected:
+        raise ValueError(
+            "PolicyEngine-US simulation input projection drifted; refresh the "
+            f"remaining-stage input audit. expected={expected}, observed={observed}."
+        )
+    return projection
+
+
+def pool_engine_input_projection_receipt(
+    engine: _PoolRulesEngine | None = None,
+) -> dict[str, object]:
+    """Validate every installed simulation input and its declared default."""
+
+    rules_engine = engine
+    if rules_engine is None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        rules_engine = PolicyEngineUSEngine()
+    variables = list(rules_engine.variables())
+    defaults = dict(rules_engine.default_values(variables))
+    missing_defaults = sorted(set(variables) - set(defaults))
+    extra_defaults = sorted(set(defaults) - set(variables))
+    if missing_defaults or extra_defaults:
+        raise ValueError(
+            "PolicyEngine-US simulation input default surface is not exact; "
+            f"missing={missing_defaults}, extra={extra_defaults}."
+        )
+    rows = [
+        {
+            "entity": rules_engine.variable_metadata(variable).entity,
+            "variable": variable,
+            "default": defaults[variable],
+        }
+        for variable in variables
+    ]
+    defaults_sha256 = hashlib.sha256(
+        json.dumps(
+            rows,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    observed = {
+        "engine_version": version("policyengine-us"),
+        "input_count": len(variables),
+        "default_count": len(defaults),
+        "defaults_sha256": defaults_sha256,
+    }
+    expected = {
+        "engine_version": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.engine_version,
+        "input_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count,
+        "default_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.default_count,
+        "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
+    }
+    if observed != expected:
+        raise ValueError(
+            "PolicyEngine-US simulation input defaults drifted; refresh the "
+            f"remaining-stage input audit. expected={expected}, observed={observed}."
+        )
+    return observed
+
+
+@lru_cache(maxsize=8)
+def pool_remaining_stage_input_manifest(
+    metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+    *,
+    take_up_program_bindings: tuple[tuple[str, str, str], ...] | None = None,
+) -> tuple[PoolRemainingStageInput, ...]:
+    """Enumerate and statically provision every remaining-stage data read.
+
+    The manifest starts at a validated ``transferred`` checkpoint and covers
+    tail preparation, both derive kernels, all thirteen seed-program branches,
+    and the terminal SSI simulation.  Simulation leaves come from the pinned
+    source-index graph rather than a handwritten dependency list.
+    """
+
+    entries: dict[
+        tuple[str, str, str, str],
+        PoolRemainingStageInput,
+    ] = {}
+
+    def register(
+        stage: str,
+        consumer: str,
+        entity: str,
+        variable: str,
+        *,
+        execution_scope: str,
+        provision: str,
+        available_by: str,
+        fallback: str | None = None,
+    ) -> None:
+        entry = PoolRemainingStageInput(
+            stage=stage,
+            consumer=consumer,
+            entity=entity,
+            variable=variable,
+            execution_scope=execution_scope,
+            provision=provision,
+            available_by=available_by,
+            fallback=fallback,
+        )
+        key = (stage, consumer, entity, variable)
+        previous = entries.setdefault(key, entry)
+        if previous != entry:
+            raise ValueError(
+                "Remaining-stage input has conflicting provisions: "
+                f"{previous!r} versus {entry!r}."
+            )
+
+    program_bindings = _resolve_take_up_program_bindings(take_up_program_bindings)
+    surface = {
+        entry.variable: entry
+        for entry in pool_input_surface(take_up_program_bindings=program_bindings)
+    }
+
+    def surface_provision(variable: str) -> str:
+        declaration = surface.get(variable)
+        if declaration is None:
+            raise ValueError(
+                f"Remaining-stage input {variable!r} has no pool input producer."
+            )
+        return f"pool_input_surface:{declaration.family}"
+
+    # The stacked tail step reads only clone provenance and the optional memo
+    # leaf that it deliberately clears before deterministic re-derivation.
+    register(
+        "derive",
+        "prepare_stacked_tail_derivation",
+        "person",
+        support_clone_index_column("person"),
+        execution_scope="whole_pool",
+        provision="assembly_support_provenance",
+        available_by="assembled",
+    )
+    register(
+        "derive",
+        "prepare_stacked_tail_derivation",
+        "person",
+        "schedule_d_capital_gain_distributions",
+        execution_scope="clone_2",
+        provision="optional_existing_derived_leaf",
+        available_by="transferred",
+        fallback="absent_or_cleared_then_schedule_d_derived",
+    )
+
+    for variable in (
+        "long_term_capital_gains_before_response",
+        "non_sch_d_capital_gains",
+    ):
+        register(
+            "derive",
+            "_complete_schedule_d_input",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
+    for entity, variable, provision in (
+        ("person", "person_tax_unit_id", "frame_membership"),
+        ("tax_unit", "tax_unit_id", "frame_entity_id"),
+    ):
+        register(
+            "derive",
+            "_complete_schedule_d_input",
+            entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
+    register(
+        "derive",
+        "_complete_schedule_d_input",
+        "person",
+        "schedule_d_capital_gain_distributions",
+        execution_scope="whole_pool",
+        provision="optional_transferred_or_schedule_d_derived",
+        available_by="transferred",
+        fallback="derive_from_finite_transferred_parents",
+    )
+
+    for variable in US_QBI_RECONCILED_PERSON_COLUMNS:
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
+    for variable in (
+        "partnership_income",
+        "estate_income",
+        "non_qualified_dividend_income",
+    ):
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
+    register(
+        "derive",
+        "with_us_qbi_input_reconciliation",
+        "person",
+        "s_corp_income",
+        execution_scope="whole_pool",
+        provision="primary_puf_exact_zero_universe",
+        available_by="transferred",
+    )
+    for variable, provision in (
+        ("age", "assembled_native_person_input"),
+        ("SEMP", "assembled_raw_acs_source_authority"),
+        ("person_tax_unit_id", "frame_membership"),
+        (support_clone_index_column("person"), "assembly_support_provenance"),
+    ):
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
+    universe_owner_inputs = ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS
+    for variable in set(universe_owner_inputs) - {
+        "age",
+        "person_tax_unit_id",
+        support_clone_index_column("person"),
+        support_source_id_column("person"),
+    }:
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=universe_owner_inputs[variable],
+            available_by="assembled",
+        )
+    register(
+        "derive",
+        "with_us_qbi_input_reconciliation",
+        "person",
+        support_source_id_column("person"),
+        execution_scope="whole_pool",
+        provision="assembly_support_source_identity",
+        available_by="assembled",
+        fallback="person_id_for_unstacked_lineage_digest",
+    )
+    register(
+        "derive",
+        "with_us_qbi_input_reconciliation",
+        "person",
+        "person_id",
+        execution_scope="whole_pool",
+        provision="frame_entity_id",
+        available_by="assembled",
+    )
+
+    transfer_owned = {
+        variable
+        for families in pool_transfer_target_families().values()
+        for variables in families.values()
+        for variable in variables
+    }
+    for variable, entity, populace_treatment in program_bindings:
+        if populace_treatment == "seed":
+            provision = "administrative_seed_or_preserved_input"
+            fallback = "sourced_seed_when_input_is_missing"
+        elif variable in transfer_owned:
+            provision = "transferred_or_preserved_input"
+            fallback = None
+        else:
+            provision = "preserved_input_or_disclosed_engine_default"
+            fallback = "checked_take_up_contract_engine_default"
+        register(
+            "seed",
+            "seed_multispine_pool_inputs",
+            entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by=(
+                "transferred" if variable in transfer_owned else "seeded"
+            ),
+            fallback=fallback,
+        )
+
+    # Stable Bernoulli draws consume these structural columns and resolved
+    # weights.  The source-identity triplet is optional as a unit: support or
+    # entity identity remains the declared deterministic fallback.
+    for entity in (
+        "person",
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    ):
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            entity,
+            support_source_id_column(entity),
+            execution_scope="whole_pool",
+            provision="assembly_support_source_identity",
+            available_by="assembled",
+        )
+    for entity in ("tax_unit", "spm_unit"):
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            entity,
+            f"{entity}_id",
+            execution_scope="whole_pool",
+            provision="frame_entity_id",
+            available_by="assembled",
+        )
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            "person",
+            f"person_{entity}_id",
+            execution_scope="whole_pool",
+            provision="frame_membership",
+            available_by="assembled",
+        )
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            entity,
+            "<resolved_weight>",
+            execution_scope="whole_pool",
+            provision="frame_resolve_weights_from_household_weight",
+            available_by="assembled",
+        )
+    for variable in ("source_year", "source_household_id", "source_person_id"):
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision="optional_assembled_source_identity",
+            available_by="assembled",
+            fallback="support_source_id_then_entity_id",
+        )
+    register(
+        "seed",
+        "with_us_take_up_inputs",
+        "person",
+        "age",
+        execution_scope="whole_pool",
+        provision="assembled_native_person_input",
+        available_by="assembled",
+    )
+
+    resolved_metadata_index = (
+        metadata_index
+        if metadata_index is not None
+        else PolicyEngineUSVariableMetadataIndex()
+    )
+    closure = pool_ssi_dependency_closure(resolved_metadata_index)
+    take_up_variables = {variable for variable, _entity, _treatment in program_bindings}
+    actual_surface_provenance = {
+        "pool_transfer_target_families",
+        "PRIMARY_QRF_TARGET_ORDER",
+    }
+    ssi_provisions: dict[str, int] = {}
+    for variable in closure.input_leaves:
+        metadata = resolved_metadata_index.variable_metadata(variable)
+        declaration = surface.get(variable)
+        if variable in POOL_DEFERRED_TRANSFER_INPUTS:
+            provision = "declared_deferred_null_input"
+            available_by = "transferred"
+            fallback = "ephemeral_simulation_projection_engine_default"
+        elif variable == "age":
+            provision = "assembled_native_person_input"
+            available_by = "assembled"
+            fallback = None
+        elif variable in take_up_variables:
+            provision = "seed_stage_program_contract"
+            available_by = "seeded"
+            fallback = "seed_receipted_value_or_disclosed_engine_default"
+        elif declaration is not None and actual_surface_provenance.intersection(
+            declaration.provenance
+        ):
+            provision = "materialized_pool_input_surface"
+            available_by = "transferred"
+            fallback = None
+        else:
+            provision = "declared_absent_engine_input"
+            available_by = "simulate"
+            fallback = "policyengine_default_for_absent_input"
+        ssi_provisions[provision] = ssi_provisions.get(provision, 0) + 1
+        register(
+            "simulate",
+            "ssi_static_dependency_closure",
+            metadata.entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by=available_by,
+            fallback=fallback,
+        )
+
+    expected_ssi_provisions = {
+        "assembled_native_person_input": 1,
+        "materialized_pool_input_surface": 32,
+        "seed_stage_program_contract": 1,
+        "declared_deferred_null_input": 3,
+        "declared_absent_engine_input": 18,
+    }
+    if ssi_provisions != expected_ssi_provisions:
+        raise ValueError(
+            "SSI input-leaf provisioning drifted; "
+            f"expected={expected_ssi_provisions}, observed={ssi_provisions}."
+        )
+
+    for group in US_SCHEMA.group_entities:
+        register(
+            "simulate",
+            "PolicyEngineUSEngine.materialize",
+            group,
+            US_SCHEMA.entity_id_column(group),
+            execution_scope="whole_pool",
+            provision="frame_entity_id",
+            available_by="assembled",
+        )
+        register(
+            "simulate",
+            "PolicyEngineUSEngine.materialize",
+            "person",
+            US_SCHEMA.membership_column(group),
+            execution_scope="whole_pool",
+            provision="frame_membership",
+            available_by="assembled",
+        )
+    register(
+        "simulate",
+        "PolicyEngineUSEngine.materialize",
+        "person",
+        US_SCHEMA.person_id_column,
+        execution_scope="whole_pool",
+        provision="frame_entity_id",
+        available_by="assembled",
+    )
+    register(
+        "simulate",
+        "PolicyEngineUSEngine.materialize",
+        "household",
+        "<resolved_weight>",
+        execution_scope="whole_pool",
+        provision="frame_household_weight",
+        available_by="assembled",
+    )
+    engine_structural_inputs = {
+        (group, US_SCHEMA.entity_id_column(group)) for group in US_SCHEMA.group_entities
+    } | {
+        ("person", US_SCHEMA.membership_column(group))
+        for group in US_SCHEMA.group_entities
+    }
+    native_engine_inputs = {
+        (entity, variable)
+        for entity, variables in _POOL_NATIVE_COMPLETE_OUTPUTS.items()
+        for variable in variables
+    }
+    projection_provisions: dict[str, int] = {}
+    for entity, variable in _pool_engine_input_projection(
+        resolved_metadata_index,
+        engine_version=closure.engine_version,
+    ):
+        fallback: str | None = (
+            "ephemeral_simulation_projection_engine_default_if_present_null"
+        )
+        if variable in POOL_DEFERRED_TRANSFER_INPUTS:
+            provision = "declared_deferred_null_input"
+            available_by = "transferred"
+            fallback = "ephemeral_simulation_projection_engine_default"
+        elif variable in take_up_variables:
+            provision = "seed_stage_program_contract"
+            available_by = "seeded"
+        elif variable in surface:
+            provision = "materialized_pool_input_surface"
+            available_by = "transferred"
+        elif (entity, variable) in native_engine_inputs:
+            provision = "assembled_native_engine_input"
+            available_by = "assembled"
+        elif (entity, variable) in engine_structural_inputs:
+            provision = "frame_structural_engine_input"
+            available_by = "assembled"
+        elif (entity, variable) in _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS:
+            provision = "preserved_stacked_engine_input"
+            available_by, preserved_fallback = _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS[
+                (entity, variable)
+            ]
+            if preserved_fallback is not None:
+                fallback = preserved_fallback
+        elif variable == "schedule_d_capital_gain_distributions":
+            provision = "derived_schedule_d_input"
+            available_by = "derived"
+        else:
+            provision = "declared_absent_engine_input"
+            available_by = "simulate"
+            fallback = "policyengine_default_if_absent"
+        projection_provisions[provision] = projection_provisions.get(provision, 0) + 1
+        register(
+            "simulate",
+            "_simulation_projection",
+            entity,
+            variable,
+            execution_scope="disposable_simulation_copy",
+            provision=provision,
+            available_by=available_by,
+            fallback=fallback,
+        )
+
+    expected_projection_provisions = {
+        "materialized_pool_input_surface": 123,
+        "seed_stage_program_contract": 13,
+        "declared_deferred_null_input": 3,
+        "assembled_native_engine_input": 5,
+        "frame_structural_engine_input": 10,
+        "preserved_stacked_engine_input": 4,
+        "derived_schedule_d_input": 1,
+        "declared_absent_engine_input": 704,
+    }
+    if projection_provisions != expected_projection_provisions:
+        raise ValueError(
+            "Simulation input-projection provisioning drifted; "
+            f"expected={expected_projection_provisions}, "
+            f"observed={projection_provisions}."
+        )
+
+    return tuple(sorted(entries.values()))
+
+
+def pool_remaining_stage_input_manifest_receipt(
+    metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+    *,
+    take_up_program_bindings: tuple[tuple[str, str, str], ...] | None = None,
+) -> dict[str, object]:
+    """Return a content identity for the exhaustive post-transfer manifest."""
+
+    manifest = pool_remaining_stage_input_manifest(
+        metadata_index,
+        take_up_program_bindings=take_up_program_bindings,
+    )
+    rows = [
+        {
+            "stage": entry.stage,
+            "consumer": entry.consumer,
+            "entity": entry.entity,
+            "variable": entry.variable,
+            "execution_scope": entry.execution_scope,
+            "provision": entry.provision,
+            "available_by": entry.available_by,
+            "fallback": entry.fallback,
+        }
+        for entry in manifest
+    ]
+    manifest_sha256 = hashlib.sha256(
+        json.dumps(
+            rows,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    if manifest_sha256 != POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256:
+        raise ValueError(
+            "Remaining-stage input manifest drifted; refresh its static audit. "
+            f"expected={POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256}, "
+            f"observed={manifest_sha256}."
+        )
+    stage_counts = {
+        stage: sum(entry.stage == stage for entry in manifest)
+        for stage in ("derive", "seed", "simulate")
+    }
+    consumer_names = sorted({entry.consumer for entry in manifest})
+    consumer_counts = {
+        consumer: sum(entry.consumer == consumer for entry in manifest)
+        for consumer in consumer_names
+    }
+    receipt: dict[str, object] = {
+        "schema_version": 1,
+        "entry_count": len(manifest),
+        "stage_counts": stage_counts,
+        "consumer_counts": consumer_counts,
+        "ssi_dependency_contract": {
+            "engine_version": POOL_SSI_DEPENDENCY_CONTRACT.engine_version,
+            "root": POOL_SSI_DEPENDENCY_CONTRACT.root,
+            "input_leaf_count": POOL_SSI_DEPENDENCY_CONTRACT.input_leaf_count,
+            "formula_node_count": POOL_SSI_DEPENDENCY_CONTRACT.formula_node_count,
+            "edge_count": POOL_SSI_DEPENDENCY_CONTRACT.edge_count,
+            "sha256": POOL_SSI_DEPENDENCY_CONTRACT.sha256,
+        },
+        "engine_input_projection_contract": {
+            "engine_version": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.engine_version,
+            "input_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count,
+            "default_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.default_count,
+            "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
+            "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
+        },
+        "manifest_sha256": manifest_sha256,
+    }
+    receipt["sha256"] = hashlib.sha256(
+        json.dumps(
+            receipt,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    return receipt
 
 
 def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
@@ -830,11 +1696,11 @@ def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
         tables[entity][column] = pd.Series(
             np.nan,
             index=tables[entity].index,
-            dtype=np.float64,
+            dtype=declaration["physical_dtype"],
         )
         receipts[column] = {
             **declaration,
-            "status": "deferred_pending_source_donor",
+            "status": POOL_DEFERRED_TRANSFER_STATUS,
             "rows": int(len(tables[entity])),
             "null_rows": int(len(tables[entity])),
         }
@@ -958,16 +1824,32 @@ def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
 def complete_multispine_source_inputs(
     frame: Frame,
 ) -> PoolStageOutput:
-    """Run clone-safe or clone-required source work after primary imputation.
+    """Run the legacy post-clone source chain through the narrow public API.
 
-    The function is intentionally fixed-seed/fixed-period. Each operator runs
-    over the CPS-evidenced portion of the already assembled and cloned frame;
-    its declared output family alone is merged into the whole pool. This
-    retains ACS native measurements, leaves unavailable cells null for the
-    subsequent declared transfer, and keeps assembly metadata untouched. The
-    source chain then materializes every pool-local donor deferral as a typed
-    all-null column with an explicit receipt.
+    This compatibility entrypoint retains the historical source-only order for
+    callers whose late inputs are already complete. Production late-stage
+    orchestration invokes :func:`run_multispine_post_clone_source_operator`
+    according to the declared producer DAG, then calls
+    :func:`finalize_multispine_source_inputs` once all sixteen receipts exist.
     """
+
+    current = frame
+    operator_receipts: dict[str, Mapping[str, object]] = {}
+    for operator_name in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
+        completed = run_multispine_post_clone_source_operator(
+            current,
+            operator_name,
+        )
+        current = completed.frame
+        operator_receipts[operator_name] = completed.receipt
+    return finalize_multispine_source_inputs(
+        current,
+        operator_receipts=operator_receipts,
+    )
+
+
+def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
+    """Return the fixed-seed, fixed-period post-clone kernel mapping."""
 
     operators: Mapping[str, SourceFrameOperator] = {
         "with_us_prior_year_income_inputs": lambda current: (
@@ -998,42 +1880,51 @@ def complete_multispine_source_inputs(
             impute_us_housing_assistance_to_puf_support(
                 current,
                 seed=POOL_RANDOM_SEED,
+                n_estimators=POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
+                max_train_samples=POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
             )
         ),
         "with_us_child_support_inputs": lambda current: with_us_child_support_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_disability_benefits": lambda current: with_us_disability_benefits(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_workers_compensation": lambda current: with_us_workers_compensation(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_weeks_unemployed": lambda current: with_us_weeks_unemployed(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            asec_2023_source=None,
         ),
         "with_us_childcare_inputs": lambda current: with_us_childcare_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_adult_care_inputs": lambda current: with_us_adult_care_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_energy_subsidy_input": lambda current: with_us_energy_subsidy_input(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
         ),
         "with_us_retirement_contribution_inputs": lambda current: (
             with_us_retirement_contribution_inputs(
@@ -1059,20 +1950,143 @@ def complete_multispine_source_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            asec_education_source=None,
         ),
     }
-    completed = _run_source_operator_chain(
+    return operators
+
+
+def run_multispine_post_clone_source_operator(
+    frame: Frame,
+    operator_name: str,
+) -> PoolStageOutput:
+    """Run exactly one declared post-clone source producer.
+
+    Separating kernel execution from orchestration lets the late-stage DAG
+    interleave source producers with the transfer groups that fill their
+    declared inputs. The existing phase, projection, structure, and output
+    ownership checks remain centralized in the guarded source runner.
+    """
+
+    operators = _post_clone_source_operators()
+    if operator_name not in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
+        raise ValueError(
+            f"{operator_name!r} is not a declared post-clone source operator; "
+            f"expected one of {POOL_POST_CLONE_SOURCE_OPERATOR_ORDER}."
+        )
+    if set(operators) != set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER):
+        raise RuntimeError(
+            "Post-clone source operator mapping drifted from its declaration; "
+            f"missing={sorted(set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER) - set(operators))}, "
+            f"unexpected={sorted(set(operators) - set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER))}."
+        )
+    return _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
-        operator_names=POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
-        operators=operators,
+        operator_names=(operator_name,),
+        operators={operator_name: operators[operator_name]},
     )
-    _assert_formula_owned_source_outputs_absent(completed.frame)
-    deferred = materialize_pool_deferred_transfer_inputs(completed.frame)
+
+
+def finalize_multispine_source_inputs(
+    frame: Frame,
+    *,
+    operator_receipts: Mapping[str, Mapping[str, object]],
+) -> PoolStageOutput:
+    """Validate complete source execution and finalize its persisted surface.
+
+    ``operator_receipts`` must map each of the sixteen declared post-clone
+    source producers to its single-operator receipt. Mapping insertion order is
+    retained as the actual execution order, which may be interleaved with
+    transfer producers by the late-stage DAG. Formula-owned outputs are rejected
+    before the three explicitly deferred SCF inputs are materialized exactly
+    once.
+    """
+
+    if not isinstance(operator_receipts, Mapping):
+        raise TypeError("Post-clone source operator receipts must be a mapping.")
+    receipt_items = tuple(operator_receipts.items())
+    normalized: list[dict[str, object]] = []
+    operator_order: list[str] = []
+    evidence_receipts: list[object] = []
+    for receipt_index, (receipt_operator, receipt) in enumerate(receipt_items):
+        if not isinstance(receipt_operator, str):
+            raise TypeError(
+                "Post-clone source operator receipt keys must be strings; "
+                f"receipt {receipt_index} is keyed by "
+                f"{type(receipt_operator).__name__}."
+            )
+        if not isinstance(receipt, Mapping):
+            raise TypeError(
+                "Post-clone source operator receipts must be mappings; "
+                f"receipt {receipt_index} is {type(receipt).__name__}."
+            )
+        declared_order = receipt.get("operator_order")
+        if (
+            receipt.get("phase") != _POST_CLONE_PHASE
+            or not isinstance(declared_order, (list, tuple))
+            or len(declared_order) != 1
+            or not isinstance(declared_order[0], str)
+        ):
+            raise ValueError(
+                "Each post-clone source receipt must declare phase "
+                f"{_POST_CLONE_PHASE!r} and exactly one operator; receipt "
+                f"{receipt_index} was {dict(receipt)!r}."
+            )
+        operator_name = declared_order[0]
+        if operator_name != receipt_operator:
+            raise ValueError(
+                f"Post-clone source receipt key {receipt_operator!r} is "
+                f"misbound to operator {operator_name!r}."
+            )
+        suboperators = receipt.get("suboperators")
+        if (
+            not isinstance(suboperators, (list, tuple))
+            or len(suboperators) != 1
+            or not isinstance(suboperators[0], Mapping)
+            or suboperators[0].get("operator") != operator_name
+        ):
+            raise ValueError(
+                "Each post-clone source receipt must carry the matching single "
+                f"suboperator receipt for {operator_name!r}."
+            )
+        operator_order.append(operator_name)
+        normalized_suboperator = dict(suboperators[0])
+        normalized_suboperator["order_index"] = receipt_index
+        normalized.append(normalized_suboperator)
+        evidence_receipts.append(receipt.get("cps_source_evidence"))
+
+    expected = set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)
+    observed = set(operator_order)
+    if (
+        len(receipt_items) != len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)
+        or observed != expected
+    ):
+        raise ValueError(
+            "Post-clone source finalization requires exactly "
+            f"{len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)} one-operator receipts; "
+            f"missing={sorted(expected - observed)}, "
+            f"unexpected={sorted(observed - expected)}."
+        )
+    if evidence_receipts and any(
+        evidence != evidence_receipts[0] for evidence in evidence_receipts[1:]
+    ):
+        raise ValueError(
+            "Post-clone source receipts disagree on the CPS source-evidence projection."
+        )
+
+    _assert_formula_owned_source_outputs_absent(frame)
+    deferred = materialize_pool_deferred_transfer_inputs(frame)
     return PoolStageOutput(
         deferred.frame,
         {
-            **completed.receipt,
+            "phase": _POST_CLONE_PHASE,
+            "operator_order": operator_order,
+            "cps_source_evidence": (
+                evidence_receipts[0] if evidence_receipts else None
+            ),
+            "transient_outputs_carried_through_clone": {},
+            "suboperators": normalized,
             "deferred_transfer_inputs": deferred.receipt,
         },
     )
@@ -1174,6 +2188,46 @@ def _run_source_operator_chain(
                 f"Multispine source operator {operator_name!r} changed entity row "
                 f"counts: input={available_rows}, output={output_rows}."
             )
+        overlap_ownership: Mapping[str, object] | None = None
+        overlap_targets = (
+            set(US_LATE_EDUCATION_NOOP_TARGETS)
+            if operator_name == "with_us_education_inputs"
+            else set(US_LATE_RETIREMENT_SOURCE_MIRROR_TARGETS)
+            if operator_name == "with_us_retirement_contribution_inputs"
+            else set()
+        )
+        declared_person_outputs = set(
+            declared_outputs.get(available.schema.person_entity, ())
+        )
+        available_person_columns = set(
+            available.table(available.schema.person_entity).columns
+        )
+        overlap_passthrough_required = bool(overlap_targets) and overlap_targets <= (
+            available_person_columns
+        )
+        if phase == _POST_CLONE_PHASE and (
+            overlap_targets & declared_person_outputs or overlap_passthrough_required
+        ):
+            finalized_person, overlap_ownership = _finalize_source_overlap_output(
+                available.table(available.schema.person_entity),
+                outcome.table(outcome.schema.person_entity),
+                operator_name=operator_name,
+            )
+            if overlap_ownership is not None:
+                tables = {entity: outcome.table(entity) for entity in outcome.entities}
+                tables.update({link: outcome.link(link) for link in outcome.links})
+                tables[outcome.schema.person_entity] = finalized_person
+                outcome = Frame(
+                    tables,
+                    outcome.schema,
+                    {
+                        entity: outcome.weights_for(entity)
+                        for entity in outcome.weighted_entities
+                    },
+                    outcome.strata,
+                    mass_log=outcome.mass_log,
+                    metadata=outcome.metadata,
+                )
         _assert_source_operator_structure(
             available,
             outcome,
@@ -1244,6 +2298,9 @@ def _run_source_operator_chain(
                 },
                 "formula_owned_outputs_removed": formula_owned_removed,
                 "kernel_receipt": dict(kernel_receipt),
+                "overlap_ownership": (
+                    dict(overlap_ownership) if overlap_ownership is not None else None
+                ),
             }
         )
     uses_cps_source = any(
@@ -1451,6 +2508,164 @@ def _persisted_source_outputs(
     }
 
 
+def _numeric_series_byte_receipt(
+    series: pd.Series,
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    values = np.ascontiguousarray(series.to_numpy(copy=False))
+    if values.dtype.kind not in "biufc":
+        raise TypeError(
+            f"{boundary} requires a physical numeric dtype, got {series.dtype!s}."
+        )
+    digest = hashlib.sha256()
+    digest.update(str(series.dtype).encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(len(series).to_bytes(8, byteorder="little", signed=False))
+    digest.update(values.tobytes())
+    return {
+        "dtype": str(series.dtype),
+        "rows": int(len(series)),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _finalize_source_overlap_output(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    *,
+    operator_name: str,
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Enforce the reviewed final owner for source-callback overlap cells."""
+
+    education_operator = "with_us_education_inputs"
+    retirement_operator = "with_us_retirement_contribution_inputs"
+    if operator_name not in {education_operator, retirement_operator}:
+        return after, None
+
+    person_id = "person_id"
+    required_structure = {
+        person_id,
+        support_clone_index_column("person"),
+        support_source_id_column("person"),
+    }
+    missing_structure = sorted(
+        required_structure - set(before.columns)
+        | required_structure - set(after.columns)
+    )
+    if missing_structure:
+        raise ValueError(
+            f"US late overlap ownership for {operator_name!r} requires "
+            f"person columns {missing_structure}."
+        )
+    if before[person_id].duplicated().any() or after[person_id].duplicated().any():
+        raise ValueError(
+            f"US late overlap ownership for {operator_name!r} requires unique "
+            "person_id values."
+        )
+    if set(before[person_id]) != set(after[person_id]):
+        raise ValueError(
+            f"US late overlap ownership for {operator_name!r} requires unchanged "
+            "person_id values."
+        )
+
+    result = after.copy(deep=True)
+    targets_receipt: dict[str, object] = {}
+    if operator_name == education_operator:
+        for target in US_LATE_EDUCATION_NOOP_TARGETS:
+            if target not in before or target not in result:
+                raise ValueError(
+                    f"US education overlap target person.{target} is absent."
+                )
+            before_values = before.set_index(person_id)[target]
+            after_values = result.set_index(person_id).loc[before_values.index, target]
+            before_receipt = _numeric_series_byte_receipt(
+                before_values,
+                boundary=f"US education overlap input person.{target}",
+            )
+            after_receipt = _numeric_series_byte_receipt(
+                after_values,
+                boundary=f"US education overlap output person.{target}",
+            )
+            if before_receipt != after_receipt:
+                raise ValueError(
+                    f"US education overlap target person.{target} violated byte "
+                    "identity; its callback is consume-only."
+                )
+            targets_receipt[f"person.{target}"] = {
+                "action": "consume_only_byte_exact_noop",
+                "verified_rows": int(len(after_values)),
+                "byte_identity": after_receipt,
+            }
+    else:
+        clone_column = support_clone_index_column("person")
+        source_id = support_source_id_column("person")
+        clone_index = pd.to_numeric(result[clone_column], errors="raise")
+        clone_values = clone_index.to_numpy(dtype=np.float64)
+        if not np.equal(clone_values, np.floor(clone_values)).all():
+            raise ValueError(
+                "US retirement overlap ownership requires integral clone roles."
+            )
+        clone_one = clone_index.eq(1)
+        clone_two = clone_index.eq(2)
+        parents = result.loc[clone_one]
+        tails = result.loc[clone_two]
+        if parents[source_id].duplicated().any() or tails[source_id].duplicated().any():
+            raise ValueError(
+                "US retirement overlap ownership requires unique source IDs "
+                "within clone roles 1 and 2."
+            )
+        missing_parents = sorted(set(tails[source_id]) - set(parents[source_id]))
+        if missing_parents:
+            raise ValueError(
+                "US retirement overlap ownership found clone-2 rows without "
+                f"clone-1 parents: {missing_parents}."
+            )
+        parent_by_source = parents.set_index(source_id)
+        tail_source_ids = tails[source_id]
+        clone_one_before = result.loc[clone_one].copy(deep=True)
+        for target in US_LATE_RETIREMENT_SOURCE_MIRROR_TARGETS:
+            if target not in result:
+                raise ValueError(
+                    f"US retirement overlap target person.{target} is absent."
+                )
+            expected = parent_by_source.loc[tail_source_ids, target]
+            expected.index = tails.index
+            result.loc[clone_two, target] = expected.to_numpy(copy=True)
+            actual = result.loc[clone_two, target]
+            expected_receipt = _numeric_series_byte_receipt(
+                expected,
+                boundary=f"US retirement overlap parent person.{target}",
+            )
+            actual_receipt = _numeric_series_byte_receipt(
+                actual,
+                boundary=f"US retirement overlap tail person.{target}",
+            )
+            if expected_receipt != actual_receipt:
+                raise ValueError(
+                    f"US retirement overlap target person.{target} failed its "
+                    "byte-exact clone-1 mirror."
+                )
+            targets_receipt[f"person.{target}"] = {
+                "action": "byte_exact_clone_1_mirror",
+                "mirrored_clone_2_rows": int(clone_two.sum()),
+                "byte_identity": actual_receipt,
+            }
+        if not result.loc[clone_one].equals(clone_one_before):
+            raise ValueError(
+                "US retirement overlap finalization changed source-owned clone-1 "
+                "rows while mirroring clone 2."
+            )
+
+    ownership_receipt = us_late_overlap_ownership_receipt()
+    return result, {
+        "passed": True,
+        "operator": operator_name,
+        "ownership_sha256": ownership_receipt["sha256"],
+        "targets": targets_receipt,
+    }
+
+
 def _assert_source_operator_structure(
     before: Frame,
     after: Frame,
@@ -1553,7 +2768,50 @@ def _merge_source_operator_outputs(
                 f"align one-to-one with the {entity!r} pool."
             )
         for column in sorted(columns):
-            aligned = source_by_id[column].reindex(target_ids)
+            source_values = source_by_id[column]
+            aligned = source_values.reindex(target_ids)
+            source_is_boolean = _is_physical_boolean_series(source_values)
+            if source_is_boolean:
+                positions = np.flatnonzero(eligible.to_numpy())
+                aligned_boolean = pd.Series(
+                    pd.array(aligned, dtype="boolean"),
+                    index=target.index,
+                    name=column,
+                )
+                if column not in target:
+                    target[column] = aligned_boolean
+                    continue
+                incumbent = target[column]
+                invalid_incumbent = incumbent.dropna().map(
+                    lambda value: not isinstance(value, (bool, np.bool_))
+                )
+                if invalid_incumbent.any():
+                    offending_types = sorted(
+                        {
+                            f"{type(value).__module__}.{type(value).__qualname__}"
+                            for value in incumbent.dropna().loc[invalid_incumbent]
+                        }
+                    )
+                    raise TypeError(
+                        f"Multispine source operator {operator_name!r} emitted "
+                        f"physical booleans for {entity}.{column}, but the pool "
+                        "materialized observed non-boolean values with "
+                        f"dtype {incumbent.dtype!s}: {offending_types}."
+                    )
+                merged_boolean = pd.Series(
+                    pd.array(incumbent, dtype="boolean"),
+                    index=target.index,
+                    name=column,
+                )
+                merged_boolean.iloc[positions] = aligned_boolean.iloc[positions].array
+                target[column] = merged_boolean
+                continue
+            if column in target and pd.api.types.is_bool_dtype(target[column].dtype):
+                raise TypeError(
+                    f"Multispine source operator {operator_name!r} emitted "
+                    f"non-boolean values for boolean-materialized "
+                    f"{entity}.{column}; source dtype={source_values.dtype!s}."
+                )
             if column not in target:
                 target[column] = aligned.to_numpy()
             else:
@@ -1574,6 +2832,18 @@ def _merge_source_operator_outputs(
     return merged, merged_rows
 
 
+def _is_physical_boolean_series(values: pd.Series) -> bool:
+    """Recognize boolean values without treating numeric 0/1 as booleans."""
+
+    if pd.api.types.is_bool_dtype(values.dtype):
+        return True
+    observed = values.dropna()
+    return bool(
+        len(observed)
+        and observed.map(lambda value: isinstance(value, (bool, np.bool_))).all()
+    )
+
+
 def _frame_row_counts(frame: Frame) -> dict[str, int]:
     return {entity: int(len(frame.table(entity))) for entity in frame.entities}
 
@@ -1587,6 +2857,8 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     rewritten. The shared QBI reconciliation then restores its documented
     all-or-nothing identities on the imputed PUF-detail surface.
     """
+
+    remaining_stage_manifest_receipt = pool_remaining_stage_input_manifest_receipt()
 
     def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
         reconciled = with_us_qbi_input_reconciliation(input_frame)
@@ -1628,6 +2900,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
         {
             "phase": _POST_CLONE_PHASE,
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "remaining_stage_input_manifest": remaining_stage_manifest_receipt,
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": dict(qbi_receipt),
         },
@@ -1884,6 +3157,11 @@ def materialize_multispine_agreement_outputs(
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         rules_engine = PolicyEngineUSEngine()
+        projection_contract_receipt: Mapping[str, object] = (
+            pool_engine_input_projection_receipt(rules_engine)
+        )
+    else:
+        projection_contract_receipt = {"status": "injected_test_engine"}
 
     simulation_frame, default_fills = _simulation_projection(frame, rules_engine)
     household_ids = simulation_frame.table("household")["household_id"].to_numpy()
@@ -1947,6 +3225,7 @@ def materialize_multispine_agreement_outputs(
             },
             "household_batch_size": POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,
             "batches": batch_count,
+            "engine_input_projection_contract": dict(projection_contract_receipt),
             "simulation_projection_default_fills": default_fills,
             "persisted_to_pool": False,
         },

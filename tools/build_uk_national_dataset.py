@@ -6,23 +6,51 @@ import argparse
 import hashlib
 import json
 import re
+import sys
+import time
 import uuid
+from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
 
-import pandas as pd
-
+from microcosm.build.country_spec import country_stage_plan, load_country_spec
+from microcosm.build.gate_battery import GateBatteryBlockedError
+from microcosm.build.ledger_artifact import (
+    add_ledger_artifact_args,
+    resolve_ledger_artifact,
+)
+from microcosm.build.logbook import canonical_json_bytes
+from microcosm.build.logbook_adoption import (
+    AttemptState,
+    append_phase,
+    apply_error_verdict,
+    error_receipt_path,
+    git_code_pin,
+    local_artifact_reference,
+    preflight_digest,
+    record_terminal_attempt,
+    resolve_predecessor,
+    role_pins_digest,
+    sha256_argument,
+    write_error_receipt,
+)
+from microcosm.build.plan import Stage as PlanStage
+from microcosm.build.uk_runtime.cgt_imputation import (
+    uk_capital_gains_imputation_stage,
+)
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
+from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
 )
-from microcosm.build.uk_runtime.national_build import (
-    UKNationalStage,
-    build_uk_national_dataset,
+from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
+from microcosm.build.uk_runtime.national_build import build_uk_national_dataset
+from microcosm.build.uk_runtime.national_calibration import (
+    UKNationalCalibrationStage,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -33,6 +61,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
+from microcosm.build.uk_runtime.source_runtime import uk_stage_implementations
 from microcosm.build.uk_runtime.terminal_gates import (
     uk_default_degenerate_reviewed_exclusions,
 )
@@ -40,18 +69,20 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
-    UKInputMassParityPolicy,
-    UKQRFTailConcentrationPolicy,
     load_uk_input_mass_reference,
+    load_uk_reference_scoped_exclusion_register,
     load_uk_reviewed_exclusion_register,
+    uk_default_input_mass_reviewed_exclusions,
+    uk_default_qrf_tail_reviewed_exclusions,
 )
 
 #: Canonical UK release ids (and the grandfathered June id) name shippable
 #: artifacts; a sampled rung build must never carry one. Mirrors the
 #: microcosm-data contract's release-identity check without importing the
 #: data shard into the build tool. The durable coupling is the gate
-#: battery's ``release_candidate`` flag; this fence holds until the #611
-#: consumer half wires it.
+#: battery's ``release_candidate`` flag (wired below: ``--release-candidate``
+#: is refused on a rung); this fence stays as defense in depth over the id
+#: namespace itself.
 # Year and count widths mirror the microcosm-data contract's release-identity
 # regex ([1-9][0-9]*), and the tier alternation is built from the build
 # shard's ratified UK_RELEASE_TIERS so a newly ratified tier is fenced
@@ -72,6 +103,8 @@ _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 #: loudly, so the receipt path can never absorb a real defect.
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
+_UK_NATIONAL_PIPELINE = "uk-frs-staging"
+_REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 def _rung_sample_fraction(value: str) -> float:
@@ -90,7 +123,7 @@ def _rung_sample_fraction(value: str) -> float:
     return fraction
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--input-h5",
@@ -118,11 +151,16 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--national-calibration-diagnostics-json",
+        type=Path,
+        help="Per-target diagnostics emitted by the national calibration stage.",
+    )
+    parser.add_argument(
         "--frs-raw-dir",
         type=Path,
         required=True,
         help=(
-            "Raw FRS 2023-24 directory containing adult.tab and benefits.tab "
+            "Raw FRS 2024-25 directory containing adult.tab and benefits.tab "
             "for source-faithful retained HMRC leaves."
         ),
     )
@@ -137,6 +175,15 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help="Official HMRC Personal Incomes 2023-24 collated ODS.",
+    )
+    parser.add_argument(
+        "--cgt-ods",
+        type=Path,
+        required=True,
+        help=(
+            "Official HMRC Capital Gains Tax statistics table 3 ODS (size of "
+            "gain by taxable income); fingerprint-verified before it is read."
+        ),
     )
     gate_output = parser.add_mutually_exclusive_group()
     gate_output.add_argument(
@@ -220,26 +267,9 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Frozen weighted per-column reference totals (schema_version 1: "
             "identity + totals) emitted by the #609 measurement tooling. "
-            "Supplying it arms the input_mass_parity terminal gate; both "
-            "--input-mass-* thresholds are then required."
-        ),
-    )
-    parser.add_argument(
-        "--input-mass-relative-tolerance",
-        type=float,
-        help=(
-            "Maximum |candidate - reference| / |reference| per column before "
-            "input_mass_parity fails. No default: the boundary comes from the "
-            "#609 measurement pass, not from the US 0.5."
-        ),
-    )
-    parser.add_argument(
-        "--input-mass-minimum-reference-total",
-        type=float,
-        help=(
-            "Reference-mass floor (GBP-scale) below which a column is not "
-            "checked. No default: the US 1e9 is a USD figure against a "
-            "different pool and must not be inherited (#609)."
+            "Supplying it provides the licensed evidence for the spec-armed "
+            "input_mass_parity gate; absent, the gate records evidence_absent "
+            "and blocks release candidates."
         ),
     )
     parser.add_argument(
@@ -247,33 +277,9 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Reviewed input-mass exclusion register overriding the committed "
-            f"{UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE}. Stale entries fail "
-            "the gate; dormant entries are reported."
-        ),
-    )
-    parser.add_argument(
-        "--qrf-tail-top-k",
-        type=int,
-        help=(
-            "Tail size for the qrf_tail_concentration terminal gate. "
-            "Supplying the three --qrf-tail-* thresholds together arms the "
-            "gate; no defaults are inherited from the US #462 calibration."
-        ),
-    )
-    parser.add_argument(
-        "--qrf-tail-max-top-share",
-        type=float,
-        help=(
-            "Blocking share of weighted |mass| the top-k records may carry "
-            "per declared QRF output, in (0, 1). Measured per #609."
-        ),
-    )
-    parser.add_argument(
-        "--qrf-tail-min-nonzero-records",
-        type=int,
-        help=(
-            "Columns with fewer weighted carriers are reported as thin and "
-            "not checked; must exceed --qrf-tail-top-k. Measured per #609."
+            f"{UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE}. The override is "
+            "schema-3 and scoped per named reference. Stale entries fail the "
+            "gate; dormant entries are reported."
         ),
     )
     parser.add_argument(
@@ -292,11 +298,43 @@ def _parse_args() -> argparse.Namespace:
             "Reviewed degenerate-release-surface exclusion register "
             f"overriding the committed {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE} "
             "(#630). Stale entries fail the gate; dormant entries are "
-            "reported. The gate is always armed; the override changes the "
-            "run's policy digest away from the certified pin."
+            "reported. The gate is always armed; the override is digested "
+            "into the report's evidence_sha256, so an overridden run "
+            "self-describes against the committed register."
         ),
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Arm the battery's release-candidate posture: every "
+            "evidence_absent gap blocks instead of being recorded. Refused "
+            "on a sampled rung — a rung is structurally non-releasable "
+            "(#627). Default off: the staging build records its gaps "
+            "honestly and continues."
+        ),
+    )
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        type=sha256_argument,
+        help=(
+            "Optional current Logbook chain head. If omitted, "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
+        ),
+    )
+    add_ledger_artifact_args(parser)
+    args = parser.parse_args(argv)
+    if args.release_candidate and args.sample_fraction != 1.0:
+        parser.error(
+            "--release-candidate is refused on a sampled rung; a rung build "
+            "is structurally non-releasable (#627)."
+        )
+    if args.release_candidate and args.input_coverage_json is not None:
+        parser.error(
+            "--release-candidate is refused with --input-coverage-json; the "
+            "schema-1 alias is last-written over the report path and a "
+            "candidate must keep its signed schema-4 report."
+        )
     if args.sample_seed < 0:
         parser.error("sample seed must be a non-negative integer.")
     if args.sample_fraction != 1.0 and (
@@ -312,74 +350,357 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]:
-    """Assemble the increment-4 gate arguments, requiring complete arming."""
+    """Assemble weighted-integrity evidence and optional review overrides."""
 
     def parser_error(message: str) -> None:
         raise SystemExit(f"error: {message}")
 
     arguments: dict[str, object] = {}
-    input_mass_thresholds = (
-        args.input_mass_relative_tolerance,
-        args.input_mass_minimum_reference_total,
-    )
-    input_mass_requested = args.input_mass_reference_json is not None or any(
-        value is not None for value in input_mass_thresholds
-    )
-    if input_mass_requested:
-        if args.input_mass_reference_json is None or any(
-            value is None for value in input_mass_thresholds
-        ):
-            parser_error(
-                "arming input_mass_parity requires --input-mass-reference-json, "
-                "--input-mass-relative-tolerance, and "
-                "--input-mass-minimum-reference-total together."
-            )
+    if args.input_mass_reference_json is not None:
         arguments["input_mass_reference"] = load_uk_input_mass_reference(
             args.input_mass_reference_json
         )
-        arguments["input_mass_policy"] = UKInputMassParityPolicy(
-            relative_tolerance=args.input_mass_relative_tolerance,
-            minimum_reference_total=args.input_mass_minimum_reference_total,
-            reviewed_exclusions=load_uk_reviewed_exclusion_register(
-                args.input_mass_exclusions,
-                resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
-            ),
-        )
-    elif args.input_mass_exclusions is not None:
-        parser_error(
-            "--input-mass-exclusions requires the input_mass_parity gate to be armed."
-        )
-    qrf_thresholds = (
-        args.qrf_tail_top_k,
-        args.qrf_tail_max_top_share,
-        args.qrf_tail_min_nonzero_records,
-    )
-    if any(value is not None for value in qrf_thresholds):
-        if any(value is None for value in qrf_thresholds):
-            parser_error(
-                "arming qrf_tail_concentration requires --qrf-tail-top-k, "
-                "--qrf-tail-max-top-share, and --qrf-tail-min-nonzero-records "
-                "together."
+        if args.input_mass_exclusions is not None:
+            arguments["reviewed_input_mass_exclusions"] = (
+                load_uk_reference_scoped_exclusion_register(
+                    args.input_mass_exclusions,
+                    resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+                )
             )
-        arguments["qrf_tail_policy"] = UKQRFTailConcentrationPolicy(
-            top_k=args.qrf_tail_top_k,
-            max_top_share=args.qrf_tail_max_top_share,
-            min_nonzero_records=args.qrf_tail_min_nonzero_records,
-            reviewed_exclusions=load_uk_reviewed_exclusion_register(
-                args.qrf_tail_exclusions,
-                resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
-            ),
+        else:
+            uk_default_input_mass_reviewed_exclusions()
+    elif args.input_mass_exclusions is not None:
+        parser_error("--input-mass-exclusions requires --input-mass-reference-json.")
+    else:
+        uk_default_input_mass_reviewed_exclusions()
+    if args.qrf_tail_exclusions is not None:
+        arguments["reviewed_qrf_tail_exclusions"] = load_uk_reviewed_exclusion_register(
+            args.qrf_tail_exclusions,
+            resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
         )
-    elif args.qrf_tail_exclusions is not None:
-        parser_error(
-            "--qrf-tail-exclusions requires the qrf_tail_concentration gate "
-            "to be armed."
-        )
+    else:
+        uk_default_qrf_tail_reviewed_exclusions()
     return arguments
 
 
-def main() -> int:
-    args = _parse_args()
+def _new_national_attempt_id(*, timestamp: datetime) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        "uk-national-attempt-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _new_national_build_id(
+    *,
+    rung: str,
+    sample_seed: int,
+    seed: int,
+    timestamp: datetime,
+) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"uk-national-{rung}-ss{sample_seed}-s{seed}-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _artifact_pin(path: str | Path) -> dict[str, object]:
+    info = _artifact_info(path)
+    return {"sha256": info["sha256"], "size_bytes": info["size_bytes"]}
+
+
+def _source_pins(
+    *,
+    candidate: object,
+    retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
+    hmrc_transform: UKHMRCIncomeStageTransform,
+    cgt_ods_path: Path,
+    ledger_artifact: object | None = None,
+) -> dict[str, dict[str, object]]:
+    pins = {
+        "certified_candidate": {
+            "sha256": str(candidate.sha256),
+            "size_bytes": int(candidate.size_bytes),
+        },
+        "adult_tab": _artifact_pin(retained_leaves_transform.adult_tab_path),
+        "benefits_tab": _artifact_pin(retained_leaves_transform.benefits_tab_path),
+        "spi_tab": _artifact_pin(hmrc_transform.spi_tab_path),
+        "hmrc_ods": _artifact_pin(hmrc_transform.hmrc_ods_path),
+        "cgt_ods": _artifact_pin(cgt_ods_path),
+    }
+    if ledger_artifact is not None:
+        pins["ledger_facts"] = dict(ledger_artifact.provenance())
+    return pins
+
+
+def _gate_verdicts_from_report(
+    report: dict[str, object],
+    *,
+    gate_output_path: Path,
+) -> dict[str, dict[str, object]]:
+    gates = report.get("gates")
+    if not isinstance(gates, dict):
+        raise ValueError("terminal gate report must contain a gates object.")
+    reference = local_artifact_reference(gate_output_path, repository_hint=_REPOSITORY)
+    return {
+        str(entry_id): {
+            "verdict": str(entry["status"]),
+            "receipt": f"{reference}#/gates/{entry_id}",
+        }
+        for entry_id, entry in gates.items()
+        if isinstance(entry, dict) and "status" in entry
+    }
+
+
+def _record_national_attempt(
+    *,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    rung: str,
+    seed: int | None,
+    code_pin: str,
+    disposition: str,
+    predecessor: str | None,
+    spool_dir: Path,
+) -> Path:
+    return record_terminal_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        pipeline=_UK_NATIONAL_PIPELINE,
+        rung=rung,
+        seed=seed,
+        code_pin=code_pin,
+        disposition=disposition,
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _record_failed_exception(
+    *,
+    error: BaseException,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    rung: str,
+    seed: int | None,
+    code_pin: str,
+    predecessor: str | None,
+    receipt_base_dir: Path,
+    spool_dir: Path,
+) -> None:
+    error_path = write_error_receipt(
+        error_receipt_path(receipt_base_dir, build_id=state.build_id),
+        state=state,
+        pipeline=_UK_NATIONAL_PIPELINE,
+        error=error,
+    )
+    apply_error_verdict(
+        state,
+        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}#/error_type",
+    )
+    _record_national_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        rung=rung,
+        seed=seed,
+        code_pin=code_pin,
+        disposition="failed",
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _rung_abort_receipt(
+    args: argparse.Namespace,
+    *,
+    rung: str,
+    error: BaseException,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "artifact_kind": "uk_rung_abort_receipt",
+        "build_kind": "uk_national_staging_dataset",
+        "release_id": str(args.release_id),
+        "sampling": {
+            "sample_fraction": float(args.sample_fraction),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": rung,
+        },
+        "seed": int(args.seed),
+        "named_edge": "spi_split_singleton_class",
+        "stage": "hmrc_spi_income",
+        "error": str(error),
+        "disposition": "aborted_with_receipt",
+        "remedy": (
+            "Re-roll --seed; accepted dev-scale statistical edge "
+            "(microcosm#657, closed). The computation is never altered to avoid it."
+        ),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
+    code_pin = "unresolved-local-git-code-pin"
+    # Logbook chain configuration is validated before any side effect: a
+    # malformed or conflicting predecessor refuses the run here, before the
+    # build can unlink the prior attempt's sidecars (#666 adversarial-review
+    # finding). Config refusals record no row, like argparse refusals.
+    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+    attempt_context: dict[str, object] = {
+        "code_pin": code_pin,
+        "predecessor": predecessor,
+    }
+    stage_context: dict[str, object] = {}
+    logbook_seed: int | None = args.sample_seed
+    receipt_base_dir = args.staging_h5.parent
+    spool_dir = args.staging_h5.parent / "logbook-spool"
+    digest = preflight_digest(_UK_NATIONAL_PIPELINE)
+    state = AttemptState(
+        build_id=_new_national_attempt_id(timestamp=started_ts),
+        identity_digest=digest,
+        input_pins_digest=digest,
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "pipeline": {
+                "verdict": "running",
+                "receipt": "pending-build-scoped-terminal-receipt",
+            }
+        },
+    )
+    try:
+        return _main_recording(
+            args=args,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            logbook_seed=logbook_seed,
+            attempt_context=attempt_context,
+            stage_context=stage_context,
+            spool_dir=spool_dir,
+        )
+    except ValueError as error:
+        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
+            rung_abort_path = args.staging_h5.with_suffix(".rung_abort.json")
+            receipt = _rung_abort_receipt(
+                args,
+                rung=rung,
+                error=error,
+            )
+            _write_json(rung_abort_path, receipt)
+            state.gate_verdicts = {
+                "uk_rung_abort": {
+                    "verdict": "aborted",
+                    "receipt": (
+                        f"{local_artifact_reference(rung_abort_path, repository_hint=_REPOSITORY)}"
+                        "#/named_edge"
+                    ),
+                }
+            }
+            append_phase(state, "rung_aborted")
+            _record_national_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                rung=rung,
+                seed=logbook_seed,
+                code_pin=str(attempt_context["code_pin"]),
+                disposition="discarded",
+                predecessor=attempt_context["predecessor"],
+                spool_dir=spool_dir,
+            )
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+            return _RUNG_ABORT_EXIT_CODE
+        _record_failed_exception(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            seed=logbook_seed,
+            code_pin=str(attempt_context["code_pin"]),
+            predecessor=attempt_context["predecessor"],
+            receipt_base_dir=receipt_base_dir,
+            spool_dir=spool_dir,
+        )
+        raise
+    except GateBatteryBlockedError as error:
+        retained_leaves_transform = stage_context.get("retained_leaves_transform")
+        hmrc_transform = stage_context.get("hmrc_transform")
+        candidate = stage_context.get("candidate")
+        evidence_path = stage_context.get("evidence_path")
+        replay_path = stage_context.get("replay_path")
+        if (
+            error.phase == "terminal"
+            and retained_leaves_transform is not None
+            and hmrc_transform is not None
+            and candidate is not None
+            and evidence_path is not None
+            and replay_path is not None
+            and retained_leaves_transform.last_result is not None
+            and hmrc_transform.last_result is not None
+        ):
+            _write_stage_reports(
+                evidence_path=evidence_path,
+                replay_path=replay_path,
+                candidate=candidate,
+                retained_leaves_transform=retained_leaves_transform,
+                hmrc_transform=hmrc_transform,
+            )
+        gate_report = json.loads(error.report_path.read_text(encoding="utf-8"))
+        state.gate_verdicts = _gate_verdicts_from_report(
+            gate_report,
+            gate_output_path=error.report_path,
+        )
+        append_phase(state, "gate_battery_blocked")
+        _record_national_attempt(
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            seed=logbook_seed,
+            code_pin=str(attempt_context["code_pin"]),
+            disposition="failed",
+            predecessor=attempt_context["predecessor"],
+            spool_dir=spool_dir,
+        )
+        raise
+    except Exception as error:
+        _record_failed_exception(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            seed=logbook_seed,
+            code_pin=str(attempt_context["code_pin"]),
+            predecessor=attempt_context["predecessor"],
+            receipt_base_dir=receipt_base_dir,
+            spool_dir=spool_dir,
+        )
+        raise
+
+
+def _main_recording(
+    *,
+    args: argparse.Namespace,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    rung: str,
+    logbook_seed: int | None,
+    attempt_context: dict[str, object],
+    stage_context: dict[str, object],
+    spool_dir: Path,
+) -> int:
     legacy_input_coverage_path = args.input_coverage_json
     terminal_gate_path = (
         None
@@ -400,6 +721,12 @@ def main() -> int:
     build_record_path = args.build_record_json or args.staging_h5.with_suffix(
         ".build.json"
     )
+    stage_context.update(
+        {
+            "evidence_path": evidence_path,
+            "replay_path": replay_path,
+        }
+    )
     rung_abort_path = args.staging_h5.with_suffix(".rung_abort.json")
     retained_leaves_transform = (
         UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(
@@ -418,6 +745,7 @@ def main() -> int:
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
         hmrc_ods=args.hmrc_ods,
+        cgt_ods=args.cgt_ods,
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
         build_record_path=build_record_path,
@@ -434,13 +762,29 @@ def main() -> int:
     # corrupted committed register must not surface hours later at
     # terminal-gate time.
     weighted_integrity_arguments = _weighted_integrity_arguments(args)
-    reviewed_degenerate_exclusions = (
+    if args.degenerate_exclusions is None:
+        # Preflight the committed register without passing it: a corrupted
+        # register dies here, while the absent artifact leaves the binding
+        # resolving the same policy of record itself — the artifact stays
+        # the review-time override channel, so a default run never
+        # self-describes as an override.
         uk_default_degenerate_reviewed_exclusions()
-        if args.degenerate_exclusions is None
-        else load_uk_reviewed_exclusion_register(
+        reviewed_degenerate_exclusions = None
+    else:
+        reviewed_degenerate_exclusions = load_uk_reviewed_exclusion_register(
             args.degenerate_exclusions,
             resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
         )
+    ledger_artifact = resolve_ledger_artifact(args)
+    ledger_compilations = (
+        None
+        if ledger_artifact is None
+        else {
+            period: compile_uk_target_registry(
+                ledger_artifact.facts, target_period=period
+            )
+            for period in (2023, 2025)
+        }
     )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
@@ -459,92 +803,124 @@ def main() -> int:
         qrf_estimators=args.qrf_estimators,
         sampled_rung=args.sample_fraction != 1.0,
     )
-    try:
-        # This staging path performs no calibration and therefore has no real
-        # target-surface or target-fit evidence. Leave parity_evidence absent;
-        # the terminal report omits that trio instead of inventing passes.
-        # The weighted-integrity pair (#609) follows the same rule: it joins
-        # the battery only when the caller arms it with a frozen reference
-        # and measured thresholds.
-        gate_path_argument = (
-            {"input_coverage_path": legacy_input_coverage_path}
-            if legacy_input_coverage_path is not None
-            else {"terminal_gate_path": terminal_gate_path}
+    stage_context.update(
+        {
+            "retained_leaves_transform": retained_leaves_transform,
+            "hmrc_transform": hmrc_transform,
+            "candidate": candidate,
+        }
+    )
+    source_pins = _source_pins(
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
+        cgt_ods_path=args.cgt_ods,
+        ledger_artifact=ledger_artifact,
+    )
+    run_config = _staging_run_config(
+        args,
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
+        source_pins=source_pins,
+    )
+    attempt_context["code_pin"] = git_code_pin(_REPOSITORY)
+    state.build_id = _new_national_build_id(
+        rung=rung,
+        sample_seed=args.sample_seed,
+        seed=args.seed,
+        timestamp=started_ts,
+    )
+    state.input_pins_digest = role_pins_digest(source_pins)
+    state.identity_digest = hashlib.sha256(canonical_json_bytes(run_config)).hexdigest()
+    append_phase(state, "configured")
+    append_phase(state, "candidate_verified")
+    append_phase(state, "inputs_pinned")
+    # This staging path performs no calibration and therefore has no real
+    # target-surface or target-fit evidence; the schema-4 battery records
+    # the missing evidence explicitly. Input-mass evidence joins only when
+    # the caller supplies the licensed frozen reference sidecar; QRF-tail is
+    # spec-armed and runs whenever the frame evidence is present.
+    gate_path_argument = (
+        {"input_coverage_path": legacy_input_coverage_path}
+        if legacy_input_coverage_path is not None
+        else {"terminal_gate_path": terminal_gate_path}
+    )
+    checkpoint_arguments: dict[str, object] = {}
+    if args.checkpoint_dir is not None:
+        checkpoint_arguments = {
+            "checkpoint_dir": args.checkpoint_dir,
+            "run_config": run_config,
+        }
+    if (args.ledger_facts is None) != (
+        args.national_calibration_diagnostics_json is None
+    ):
+        raise ValueError(
+            "--ledger-facts and --national-calibration-diagnostics-json must "
+            "be supplied together."
         )
-        checkpoint_arguments: dict[str, object] = {}
-        if args.checkpoint_dir is not None:
-            checkpoint_arguments = {
-                "checkpoint_dir": args.checkpoint_dir,
-                "run_config": _staging_run_config(
-                    args,
-                    candidate=candidate,
-                    retained_leaves_transform=retained_leaves_transform,
-                    hmrc_transform=hmrc_transform,
-                ),
-            }
-        result = build_uk_national_dataset(
-            input_h5=args.input_h5,
-            staging_h5=args.staging_h5,
-            release_id=args.release_id,
-            calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
-            reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
-            stages=(
-                UKNationalStage(
-                    name="frs_hmrc_retained_leaves",
-                    transform=retained_leaves_transform,
-                ),
-                UKNationalStage(
-                    name="hmrc_spi_income",
-                    transform=hmrc_transform,
-                ),
+    if args.release_candidate and args.ledger_facts is None:
+        raise ValueError("a release candidate requires the national calibration stage.")
+    calibration_transform = None
+    calibration_stages: tuple[PlanStage, ...] = ()
+    if args.ledger_facts is not None:
+        assert ledger_artifact is not None  # resolved and pin-checked above
+        calibration_transform = UKNationalCalibrationStage(ledger_artifact.facts)
+        calibration_stages = (
+            PlanStage(
+                name="national_calibration",
+                transform=calibration_transform,
             ),
-            **gate_path_argument,
-            **weighted_integrity_arguments,
-            **checkpoint_arguments,
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
         )
-    except ValueError as error:
-        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
-            receipt = {
-                "schema_version": 1,
-                "artifact_kind": "uk_rung_abort_receipt",
-                "build_kind": "uk_national_staging_dataset",
-                "release_id": str(args.release_id),
-                "sampling": {
-                    "sample_fraction": float(args.sample_fraction),
-                    "sample_seed": int(args.sample_seed),
-                    "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
-                },
-                "seed": int(args.seed),
-                "named_edge": "spi_split_singleton_class",
-                "stage": "hmrc_spi_income",
-                "error": str(error),
-                "disposition": "aborted_with_receipt",
-                "remedy": (
-                    "Re-roll --seed; accepted dev-scale statistical edge "
-                    "(microcosm#657, closed). The computation is never "
-                    "altered to avoid it."
+    result = build_uk_national_dataset(
+        input_h5=args.input_h5,
+        staging_h5=args.staging_h5,
+        release_id=args.release_id,
+        calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
+        reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
+        stages=(
+            *country_stage_plan(
+                load_country_spec("uk"),
+                uk_stage_implementations(
+                    retained_leaves_transform=retained_leaves_transform,
+                    hmrc_income_transform=hmrc_transform,
                 ),
+                # The manifest also declares the frs_spine pipeline root;
+                # the national staging pipeline selects its own stages.
+                stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
+            ).stages,
+            # Runs after the SPI restoration so the taxable-income proxy
+            # sees the restored income surface. Declared today in the
+            # bespoke uk/cgt_source_stages.json; absorbing it into the
+            # canonical source_stages.json is WS-E follow-up work.
+            uk_capital_gains_imputation_stage(args.cgt_ods),
+            *calibration_stages,
+        ),
+        **gate_path_argument,
+        **weighted_integrity_arguments,
+        **checkpoint_arguments,
+        sample_fraction=args.sample_fraction,
+        sample_seed=args.sample_seed,
+        release_candidate=args.release_candidate,
+        ledger_target_registry=(
+            None
+            if ledger_compilations is None
+            else {
+                period: compilation.registry
+                for period, compilation in ledger_compilations.items()
             }
-            _write_json(rung_abort_path, receipt)
-            print(json.dumps(receipt, indent=2, sort_keys=True))
-            return _RUNG_ABORT_EXIT_CODE
-        raise
-    except RuntimeError as error:
-        if (
-            _is_final_release_gate_failure(error)
-            and retained_leaves_transform.last_result is not None
-            and hmrc_transform.last_result is not None
-        ):
-            _write_stage_reports(
-                evidence_path=evidence_path,
-                replay_path=replay_path,
-                candidate=candidate,
-                retained_leaves_transform=retained_leaves_transform,
-                hmrc_transform=hmrc_transform,
-            )
-        raise
+        ),
+    )
+    if calibration_transform is not None:
+        _write_json(
+            args.national_calibration_diagnostics_json,
+            {
+                "schema_version": 1,
+                "targets": list(calibration_transform.diagnostics),
+                "calibration": calibration_transform.manifest,
+            },
+        )
+    append_phase(state, "build_completed")
     _write_stage_reports(
         evidence_path=evidence_path,
         replay_path=replay_path,
@@ -552,6 +928,7 @@ def main() -> int:
         retained_leaves_transform=retained_leaves_transform,
         hmrc_transform=hmrc_transform,
     )
+    append_phase(state, "stage_reports_written")
     assert hmrc_transform.last_result is not None  # guarded by report writer
     hmrc_evidence = {
         "passed": True,
@@ -579,10 +956,14 @@ def main() -> int:
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
         degenerate_exclusions_override=args.degenerate_exclusions is not None,
+        ledger_artifact_provenance=(
+            None if ledger_artifact is None else ledger_artifact.provenance()
+        ),
     )
     _write_json(build_record_path, build_record)
+    append_phase(state, "build_record_written")
     payload = {
-        "schema_version": 4,
+        "schema_version": 5,
         "build_kind": "uk_national_staging_dataset",
         "sampling": {
             "sample_fraction": float(args.sample_fraction),
@@ -590,7 +971,7 @@ def main() -> int:
             "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         },
         "stages": list(result.stage_names),
-        "terminal_gates": result.terminal_gates.to_manifest(),
+        "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": result.input_coverage.passed,
             "failures": list(result.input_coverage.failures),
@@ -602,7 +983,27 @@ def main() -> int:
         },
         "hmrc_replay": hmrc_evidence,
     }
+    state.gate_verdicts = _gate_verdicts_from_report(
+        dict(result.gate_report),
+        gate_output_path=gate_output_path,
+    )
+    state.artifact_location = local_artifact_reference(
+        result.staging_h5,
+        repository_hint=_REPOSITORY,
+    )
+    spool_path = _record_national_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        rung=rung,
+        seed=logbook_seed,
+        code_pin=str(attempt_context["code_pin"]),
+        disposition="iterating",
+        predecessor=attempt_context["predecessor"],
+        spool_dir=spool_dir,
+    )
     print(json.dumps(payload, indent=2, sort_keys=True))
+    print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
     return 0
 
 
@@ -612,6 +1013,7 @@ def _staging_run_config(
     candidate: object,
     retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
     hmrc_transform: UKHMRCIncomeStageTransform,
+    source_pins: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """The content-addressed identity of a checkpointed staging run.
 
@@ -628,9 +1030,12 @@ def _staging_run_config(
 
     from microcosm.build.code_identity import builder_code_identity
 
-    def _digest(path: str | Path) -> dict[str, object]:
-        info = _artifact_info(path)
-        return {"sha256": info["sha256"], "size_bytes": info["size_bytes"]}
+    pins = source_pins or _source_pins(
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
+        cgt_ods_path=args.cgt_ods,
+    )
 
     return {
         "build_kind": "uk_national_staging_dataset",
@@ -647,15 +1052,13 @@ def _staging_run_config(
             "sample_seed": int(args.sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         },
-        "certified_candidate": {
-            "sha256": str(candidate.sha256),
-            "size_bytes": int(candidate.size_bytes),
-        },
+        "certified_candidate": dict(pins["certified_candidate"]),
         "sources": {
-            "adult_tab": _digest(retained_leaves_transform.adult_tab_path),
-            "benefits_tab": _digest(retained_leaves_transform.benefits_tab_path),
-            "spi_tab": _digest(hmrc_transform.spi_tab_path),
-            "hmrc_ods": _digest(hmrc_transform.hmrc_ods_path),
+            "adult_tab": dict(pins["adult_tab"]),
+            "benefits_tab": dict(pins["benefits_tab"]),
+            "spi_tab": dict(pins["spi_tab"]),
+            "hmrc_ods": dict(pins["hmrc_ods"]),
+            "cgt_ods": dict(pins["cgt_ods"]),
         },
         "code_identity": builder_code_identity(
             Path(__file__).resolve().parents[1],
@@ -696,6 +1099,7 @@ def _aggregate_build_record(
     sample_fraction: float = 1.0,
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
     degenerate_exclusions_override: bool = False,
+    ledger_artifact_provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -708,6 +1112,8 @@ def _aggregate_build_record(
         for role, info in artifacts.items()
     }
     safe_artifacts["staging_h5"]["retention"] = "local_untracked"
+    if ledger_artifact_provenance is not None:
+        safe_artifacts["ledger_facts"] = ledger_artifact_provenance
     retained_sources = dict(retained_evidence.get("sources", {}))
     family_sources = dict(family_evidence.get("sources", {}))
     mass_changes = [
@@ -724,13 +1130,18 @@ def _aggregate_build_record(
         }
         for record in result.frame.mass_log
     ]
-    household_weights = pd.to_numeric(
-        result.frame.table("household")["household_weight"], errors="raise"
-    )
+    release_evidence = dict(result.gate_report["release_evidence"])
+    source_vintages = dict(family_evidence.get("source_vintages", {}))
+    if ledger_artifact_provenance is not None:
+        source_vintages["ledger_facts"] = ledger_artifact_provenance
+    source_vintages["frs"] = load_uk_frs_release().vintage
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",
         "status": "passed",
+        "calibration_diagnostics_sha256": release_evidence[
+            "calibration_diagnostics_sha256"
+        ],
         "stages": list(result.stage_names),
         "parameters": {
             "seed": int(seed),
@@ -738,13 +1149,13 @@ def _aggregate_build_record(
             "sample_fraction": float(sample_fraction),
             "sample_seed": int(sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
-            # The attested policy digest is content-addressed, so a
-            # content-identical --degenerate-exclusions override would be
-            # invisible there; the record keeps the provenance honest
-            # without a path (this record is path-free by contract).
-            "degenerate_exclusions_register": (
-                "override" if degenerate_exclusions_override else "committed"
-            ),
+            # Answers "did the operator invoke the override path" — the
+            # operator-action record, kept path-free by contract. The signed
+            # report's evidence answers the different question "which
+            # register content governed" (``exclusions_policy``); a review
+            # file byte-identical to the committed register makes the two
+            # honestly disagree, which is why they carry distinct names.
+            "degenerate_exclusions_override_supplied": (degenerate_exclusions_override),
         },
         "sampling": (
             None if result.sampling_receipt is None else dict(result.sampling_receipt)
@@ -757,7 +1168,9 @@ def _aggregate_build_record(
                 "household": len(result.frame.table("household")),
             },
             "household_weight_kind": uk_household_weight_kind(result.frame).value,
-            "household_weight_total": float(household_weights.sum()),
+            "household_weight_total": float(
+                result.frame.weights_for("household").total
+            ),
             "mass_changes": mass_changes,
         },
         "source_rows": {
@@ -769,8 +1182,8 @@ def _aggregate_build_record(
                 dict(family_sources.get("spi_donor", {})).get("rows_used", 0)
             ),
         },
-        "source_vintages": dict(family_evidence.get("source_vintages", {})),
-        "terminal_gates": result.terminal_gates.to_manifest(),
+        "source_vintages": source_vintages,
+        "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": bool(result.input_coverage.passed),
             "failures": list(result.input_coverage.failures),
@@ -873,12 +1286,6 @@ def _replay_summary(hmrc_result: object) -> dict[str, object]:
     return dict(summary)
 
 
-def _is_final_release_gate_failure(error: RuntimeError) -> bool:
-    """Match only the national seam's post-stage, pre-staging hard gate."""
-
-    return str(error).startswith("Release gates failed:")
-
-
 def _validate_distinct_paths(
     *,
     evidence_path: Path,
@@ -888,6 +1295,7 @@ def _validate_distinct_paths(
     staging_h5: Path,
     spi_tab: Path,
     hmrc_ods: Path,
+    cgt_ods: Path,
     adult_tab: Path,
     benefits_tab: Path,
     build_record_path: Path,
@@ -902,6 +1310,7 @@ def _validate_distinct_paths(
         "--staging-h5": staging_h5.resolve(),
         "--spi-tab": spi_tab.resolve(),
         "--hmrc-ods": hmrc_ods.resolve(),
+        "--cgt-ods": cgt_ods.resolve(),
         "--frs-raw-dir/adult.tab": adult_tab.resolve(),
         "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
         "--build-record-json": build_record_path.resolve(),

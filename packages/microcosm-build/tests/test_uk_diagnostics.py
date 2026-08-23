@@ -108,8 +108,20 @@ def _diagnostics_case(*, with_skipped: bool = False):
         registry.to_target_set(),
         weights=final_weights,
     )
-    shipped = household.assign(household_weight=final_weights)
-    return result, shipped, registry, geography
+    diagnostic_frame = Frame(
+        {
+            "person": frame.table("person"),
+            "household": household,
+        },
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(
+                final_weights,
+                WeightKind.DESIGN,
+            )
+        },
+    )
+    return result, diagnostic_frame, registry, geography
 
 
 def test_uk_weight_summary_reports_kish_ess_and_concentration() -> None:
@@ -242,11 +254,11 @@ def test_zero_weight_strata_validates_alignment_and_columns() -> None:
 
 
 def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> None:
-    result, household, registry, geography = _diagnostics_case()
+    result, frame, registry, geography = _diagnostics_case()
 
     payload = uk_calibration_diagnostics_payload(
         result,
-        household,
+        frame,
         target_geography_levels=geography,
         target_registry=registry,
         build={"release_id": "fixture"},
@@ -285,7 +297,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
     assert uk["weights"]["top_1pct_weight_share"] == payload["top_1pct_weight_share"]
     assert uk["weights"]["zero_weight_records"] == 1
     assert uk["weights"]["ess_fraction"] == pytest.approx(
-        payload["effective_sample_size"] / len(household)
+        payload["effective_sample_size"] / frame.n("household")
     )
     assert uk["target_pass_rates_by_geography_level"] == [
         {
@@ -333,7 +345,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
 
 
 def test_payload_requires_exact_explicit_geography_mapping() -> None:
-    result, household, registry, geography = _diagnostics_case()
+    result, frame, registry, geography = _diagnostics_case()
     missing = dict(geography)
     missing.pop("national_target@2023")
     extra = {**geography, "not_a_target@2023": "national"}
@@ -343,32 +355,32 @@ def test_payload_requires_exact_explicit_geography_mapping() -> None:
         with pytest.raises(ValueError, match="must exactly cover"):
             uk_calibration_diagnostics_payload(
                 result,
-                household,
+                frame,
                 target_geography_levels=invalid,
                 target_registry=registry,
             )
     with pytest.raises(ValueError, match="Unknown UK target geography level"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=unknown,
             target_registry=registry,
         )
     with pytest.raises(TypeError, match="must map declared target names"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=list(geography),
             target_registry=registry,
         )
 
 
 def test_skipped_target_counts_as_a_geography_non_pass() -> None:
-    result, household, registry, geography = _diagnostics_case(with_skipped=True)
+    result, frame, registry, geography = _diagnostics_case(with_skipped=True)
 
     payload = uk_calibration_diagnostics_payload(
         result,
-        household,
+        frame,
         target_geography_levels=geography,
         target_registry=registry,
     )
@@ -395,64 +407,78 @@ def test_skipped_target_counts_as_a_geography_non_pass() -> None:
     with pytest.raises(ValueError, match="must exactly cover"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=missing_skipped,
             target_registry=registry,
         )
 
 
 def test_payload_requires_a_valid_matching_uk_registry() -> None:
-    result, household, registry, geography = _diagnostics_case()
+    result, frame, registry, geography = _diagnostics_case()
 
     with pytest.raises(TypeError, match="require a TargetRegistry"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=object(),
         )
     with pytest.raises(ValueError, match="country == 'uk'"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=TargetRegistry(registry.specs, country="us"),
         )
     with pytest.raises(ValueError, match="non-empty registry"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=TargetRegistry((), country="uk"),
         )
     with pytest.raises(ValueError, match="exactly partition"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=TargetRegistry(registry.specs[:-1], country="uk"),
         )
 
 
 def test_payload_requires_the_exact_shipped_weight_vector() -> None:
-    result, household, registry, geography = _diagnostics_case()
-    household.loc[0, "household_weight"] += 1.0
+    result, frame, registry, geography = _diagnostics_case()
+    bad_weights = frame.weights_for("household").values.copy()
+    bad_weights[0] += 1.0
+    mismatched = Frame(
+        {
+            "person": frame.table("person"),
+            "household": frame.table("household"),
+        },
+        frame.schema,
+        {
+            "household": Weights(
+                bad_weights,
+                frame.weights_for("household").kind,
+            )
+        },
+    )
 
     with pytest.raises(ValueError, match="must exactly match"):
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            mismatched,
             target_geography_levels=geography,
             target_registry=registry,
         )
 
 
 def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
-    result, household, registry, geography = _diagnostics_case()
+    result, frame, registry, geography = _diagnostics_case()
     path = write_uk_calibration_diagnostics(
         result,
         tmp_path / "calibration_diagnostics.json",
-        household,
+        frame,
         target_geography_levels=geography,
         target_registry=registry,
     )
@@ -460,7 +486,7 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8")) == (
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=registry,
         )
@@ -470,7 +496,7 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
         write_uk_calibration_diagnostics(
             result,
             path,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=registry,
             build={"not_json": float("nan")},
@@ -483,7 +509,7 @@ def test_writer_preserves_prior_bytes_when_atomic_replace_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    result, household, registry, geography = _diagnostics_case()
+    result, frame, registry, geography = _diagnostics_case()
     path = tmp_path / "calibration_diagnostics.json"
     prior = b'{"prior":true}\n'
     path.write_bytes(prior)
@@ -496,7 +522,7 @@ def test_writer_preserves_prior_bytes_when_atomic_replace_fails(
         write_uk_calibration_diagnostics(
             result,
             path,
-            household,
+            frame,
             target_geography_levels=geography,
             target_registry=registry,
         )

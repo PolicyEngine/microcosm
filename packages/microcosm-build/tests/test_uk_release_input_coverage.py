@@ -601,7 +601,22 @@ class TestUKManifest:
         )
         assert manifest.reviewed_exclusions == {}
         assert load_efrs_parity_known_gaps() == ()
-        assert manifest.required_build_stages == frozenset({"hmrc_spi_income"})
+        assert manifest.required_build_stages == frozenset(
+            {
+                "hmrc_spi_income",
+                "hmrc_cgt_gains",
+                "cgt_incidence_clone",
+                "cgt_band_donors",
+                "hmrc_cgt_gains_spine",
+                "salary_sacrifice",
+                "student_loans",
+                "was_wealth",
+                "regional_property_uprating",
+                "lcfs_consumption",
+                "etb_vat",
+                "etb_services",
+            }
+        )
         assert RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS == frozenset(
             {"charitable_investment_gifts", "gift_aid"}
         )

@@ -77,6 +77,7 @@ __all__ = [
     "impute_us_puf_tax_detail_support",
     "puf_tax_detail_clone_mask",
     "puf_recipient_predictor_universe_receipt",
+    "puf_tax_detail_tail_bound_quantiles_identity",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
@@ -308,6 +309,13 @@ _PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES: dict[str, float] = {
     "non_sch_d_capital_gains": 0.999
 }
 
+
+def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
+    """Return the exact canonical QRF-finalization tail-bound map."""
+
+    return dict(sorted(_PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES.items()))
+
+
 # ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
 # only the cloned PUF half for this leaf; pruning the ASEC half would discard
 # reported source observations. Expense has no ASEC analogue, so its zero ASEC
@@ -482,6 +490,14 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "estate_income",
     ),
 }
+_PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES = frozenset(
+    {
+        ("qualified_tuition_expenses", "is_full_time_college_student"),
+        ("sstb_self_employment_income_before_lsr", "business_is_sstb"),
+        ("sstb_unadjusted_basis_qualified_property", "business_is_sstb"),
+        ("sstb_w2_wages_from_qualified_business", "business_is_sstb"),
+    }
+)
 _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS = frozenset(
     {
         *ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
@@ -1565,6 +1581,7 @@ def impute_us_puf_tax_detail_support(
     fit_records: list[FitWeightRecord] | None = None,
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    tail_bound_quantiles: Mapping[str, float] | None = None,
     predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
@@ -1692,6 +1709,7 @@ def impute_us_puf_tax_detail_support(
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
         tail_bound_diagnostics=tail_bound_diagnostics,
+        tail_bound_quantiles=tail_bound_quantiles,
         absent_cells=absent_cells,
     )
 
@@ -1983,11 +2001,14 @@ def finalize_us_puf_tax_detail_predictions(
             person_puf_mask=person_puf_mask,
         )
     for column in person_outputs:
-        _ensure_float_output_column(
-            tables["person"],
-            column,
-            preserve_nulls=preserve_nulls,
-        )
+        if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS and preserve_nulls:
+            _ensure_boolean_output_column(tables["person"], column)
+        else:
+            _ensure_float_output_column(
+                tables["person"],
+                column,
+                preserve_nulls=preserve_nulls,
+            )
         allocation_mask = person_puf_mask
         if column in _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS:
             if earnings_eligible_mask is None:  # pragma: no cover - loop invariant
@@ -2007,6 +2028,7 @@ def finalize_us_puf_tax_detail_predictions(
                 mask=allocation_mask,
                 column=column,
                 totals=totals,
+                preserve_boolean_dtype=preserve_nulls,
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
                     column, ()
                 ),
@@ -2018,6 +2040,7 @@ def finalize_us_puf_tax_detail_predictions(
                 column=column,
                 totals=totals,
                 nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+                allow_legacy_numeric_boolean_basis=not preserve_nulls,
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
                     column, ()
                 ),
@@ -3237,6 +3260,39 @@ def _ensure_float_output_column(
     )
 
 
+def _ensure_boolean_output_column(table: pd.DataFrame, column: str) -> None:
+    """Materialize one null-preserving logical boolean without numeric coercion."""
+
+    if column not in table.columns:
+        table[column] = pd.Series(
+            pd.array([pd.NA] * len(table), dtype="boolean"),
+            index=table.index,
+        )
+        return
+
+    values = table[column]
+    observed = values.dropna()
+    invalid = observed.map(lambda value: not isinstance(value, (bool, np.bool_)))
+    if invalid.any():
+        offending_types = sorted(
+            {
+                f"{type(value).__module__}.{type(value).__qualname__}"
+                for value in observed.loc[invalid]
+            }
+        )
+        raise TypeError(
+            f"PUF boolean output {column!r} must contain only physical boolean "
+            "values before null-preserving materialization; got "
+            f"dtype {values.dtype!s} with offending value types "
+            f"{offending_types}."
+        )
+    table[column] = pd.Series(
+        pd.array(values, dtype="boolean"),
+        index=table.index,
+        name=column,
+    )
+
+
 def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
@@ -3303,12 +3359,118 @@ def _puf_earnings_allocation_mask(
     return person_puf_mask & age.ge(ACS_PUMS_EARNINGS_MINIMUM_AGE)
 
 
+def _nonnegative_allocation_basis_values(
+    values: pd.Series,
+    *,
+    output_column: str,
+    basis_column: str,
+    allow_legacy_numeric_boolean: bool = False,
+) -> np.ndarray:
+    """Return temporary numeric weights without changing a basis column's dtype.
+
+    PUF person outputs can be distributed using canonical boolean incidence,
+    including ``is_full_time_college_student`` for tuition and
+    ``business_is_sstb`` for QBI amounts. Nullable booleans cannot accept a
+    floating fill value, so map that declared incidence semantics to 0/1 only
+    in the transient allocation vector. The stored column remains a physical
+    boolean and is still checked as such by the late-output guard.
+    """
+
+    observed = values.dropna()
+    observed_boolean = observed.map(lambda value: isinstance(value, (bool, np.bool_)))
+    physical_boolean = bool(
+        pd.api.types.is_bool_dtype(values.dtype)
+        or (len(observed) and observed_boolean.all())
+    )
+    contains_physical_boolean = bool(
+        pd.api.types.is_bool_dtype(values.dtype) or observed_boolean.any()
+    )
+    expects_boolean_incidence = (
+        output_column,
+        basis_column,
+    ) in _PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES
+    if expects_boolean_incidence and physical_boolean:
+        numeric = pd.Series(
+            pd.array(values, dtype="boolean").astype("Float64"),
+            index=values.index,
+        )
+    else:
+        if expects_boolean_incidence and not allow_legacy_numeric_boolean:
+            offending_types = sorted(
+                {
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                    for value in observed
+                }
+            )
+            raise TypeError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} declares boolean_incidence and must "
+                "contain only physical booleans; got "
+                f"dtype {values.dtype!s} with observed value types "
+                f"{offending_types}."
+            )
+        if not expects_boolean_incidence and contains_physical_boolean:
+            raise TypeError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} declares monetary_sign_separated and "
+                "cannot contain physical booleans."
+            )
+        invalid = observed.map(
+            lambda value: (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(
+                    value,
+                    (int, float, np.integer, np.floating),
+                )
+            )
+        )
+        if invalid.any():
+            offending_types = sorted(
+                {
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                    for value in observed.loc[invalid]
+                }
+            )
+            raise TypeError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} declares monetary_sign_separated and must "
+                f"contain only real numeric values; got dtype {values.dtype!s} with "
+                f"offending value types {offending_types}."
+            )
+        nonfinite = observed.map(lambda value: not np.isfinite(float(value)))
+        if nonfinite.any():
+            raise ValueError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} contains {int(nonfinite.sum())} "
+                "nonfinite observed value(s)."
+            )
+        numeric = pd.Series(
+            pd.array(values, dtype="Float64"),
+            index=values.index,
+        )
+        if expects_boolean_incidence:
+            outside_boolean_support = ~numeric.dropna().isin([0.0, 1.0])
+            if outside_boolean_support.any():
+                raise ValueError(
+                    f"PUF output {output_column!r} legacy allocation basis "
+                    f"{basis_column!r} declares boolean_incidence but contains "
+                    f"{int(outside_boolean_support.sum())} numeric value(s) "
+                    "outside exact {0, 1} support."
+                )
+    return np.clip(
+        numeric.to_numpy(dtype=np.float64, na_value=0.0),
+        0.0,
+        None,
+    )
+
+
 def _write_person_tax_unit_boolean_counts(
     person: pd.DataFrame,
     *,
     mask: pd.Series,
     column: str,
     totals: pd.Series,
+    preserve_boolean_dtype: bool = False,
     fallback_basis_columns: tuple[str, ...] = (),
 ) -> None:
     """Place a predicted number of true people within each tax unit.
@@ -3328,11 +3490,10 @@ def _write_person_tax_unit_boolean_counts(
     for basis_column in fallback_basis_columns:
         if basis_column not in person.columns:
             continue
-        score += (
-            pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
-            .fillna(0.0)
-            .clip(lower=0.0)
-            .to_numpy(dtype=np.float64)
+        score += _nonnegative_allocation_basis_values(
+            person.loc[mask, basis_column],
+            output_column=column,
+            basis_column=basis_column,
         )
 
     placement = pd.DataFrame(
@@ -3365,7 +3526,10 @@ def _write_person_tax_unit_boolean_counts(
     )
     placement["selected"] = placement["rank"].to_numpy() < desired
     selected = placement["selected"].reindex(row_ids.index).fillna(False)
-    person.loc[mask, column] = selected.to_numpy(dtype=np.float64)
+    selected_values = selected.to_numpy(dtype=bool)
+    if not preserve_boolean_dtype:
+        selected_values = selected_values.astype(np.float64)
+    person.loc[mask, column] = selected_values
 
 
 def _write_person_tax_unit_totals(
@@ -3375,6 +3539,7 @@ def _write_person_tax_unit_totals(
     column: str,
     totals: pd.Series,
     nonnegative: bool,
+    allow_legacy_numeric_boolean_basis: bool = False,
     fallback_basis_columns: tuple[str, ...] = (),
 ) -> None:
     row_ids = person.loc[mask, "person_tax_unit_id"]
@@ -3397,11 +3562,11 @@ def _write_person_tax_unit_totals(
         for basis_column in fallback_basis_columns:
             if basis_column not in person.columns:
                 continue
-            fallback += (
-                pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
-                .fillna(0.0)
-                .clip(lower=0.0)
-                .to_numpy(dtype=np.float64)
+            fallback += _nonnegative_allocation_basis_values(
+                person.loc[mask, basis_column],
+                output_column=column,
+                basis_column=basis_column,
+                allow_legacy_numeric_boolean=allow_legacy_numeric_boolean_basis,
             )
         fallback_sum = (
             pd.Series(fallback, index=row_ids.index)

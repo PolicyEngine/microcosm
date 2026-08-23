@@ -155,7 +155,7 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     assert record.old_total == pytest.approx(float(np.sum(base)))
     assert record.new_total == pytest.approx(float(np.sum(result.weights)))
     np.testing.assert_allclose(
-        result.frame.table("household")["household_weight"].to_numpy(),
+        result.frame.weights_for("household").values,
         result.weights,
     )
 

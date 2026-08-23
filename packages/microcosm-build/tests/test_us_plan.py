@@ -983,7 +983,14 @@ class TestUsSources:
             # name only the immutable, sha-verified enhanced-FRS reference and
             # never import or execute the retired data package.
             "packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json",
+            "packages/microcosm-build/src/microcosm/build/uk/frs_release.json",
             "packages/microcosm-build/src/microcosm/build/uk/hmrc_income_source_stages.json",
+            # The UK national contract's registry-parity accounting names the
+            # retired data package by necessity: 651 rows at pinned ref ebf733c
+            # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.
+            # A sha-locked historical reference — nothing imported or executed.
+            "packages/microcosm-build/src/microcosm/build/uk/uk_national_targets.json",
+            "packages/microcosm-build/src/microcosm/build/uk/target_reference_membership.json",
             "packages/microcosm-build/src/microcosm/build/uk_runtime/parity_reference.py",
             # The HMRC source contract pins the licensed SPI/ODS input
             # identities, whose reviewed provenance names the archived data
@@ -1018,6 +1025,7 @@ class TestUsSources:
                 ".git" in path.parts
                 or ".venv" in path.parts
                 or ".claude" in path.parts
+                or ".codex-work" in path.parts
                 or "out" in path.parts
                 # Run scaffolding and staged run outputs (launchers, base-rebuild
                 # summaries) are not shipped source and may record the incumbent

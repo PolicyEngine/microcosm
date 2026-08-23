@@ -26,7 +26,6 @@ import pandas as pd
 
 from microcosm.build.uk_runtime.fiscal_targets import (
     UK_CGT_REQUIRED_COLUMNS,
-    UK_CGT_TARGET_SPECS,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -99,6 +98,7 @@ def uk_cgt_annual_exempt_amount(time_period: int | str) -> float:
 def materialize_uk_cgt_calibration_frame(
     national_frame: Frame,
     *,
+    registry: TargetRegistry,
     annual_exempt_amount: float | None = None,
 ) -> UKCGTTargetMaterialization:
     """Prepare the CGT measure columns and assemble the constraint frame.
@@ -106,6 +106,7 @@ def materialize_uk_cgt_calibration_frame(
     Args:
         national_frame: UK national frame carrying the persisted person-level
             ``capital_gains`` input and strictly positive household weights.
+        registry: CGT targets compiled from Ledger references.
         annual_exempt_amount: Override for the CGT threshold. Defaults to the
             reviewed AEA for the frame's time period.
 
@@ -146,9 +147,11 @@ def materialize_uk_cgt_calibration_frame(
             f"UK CGT person {UK_CGT_SOURCE_COLUMN!r} values must be finite."
         )
 
-    mapped_mass = person["person_household_id"].map(
-        household.set_index("household_id")["household_weight"]
+    household_weight_by_id = pd.Series(
+        national_frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(),
     )
+    mapped_mass = person["person_household_id"].map(household_weight_by_id)
     if mapped_mass.isna().any() or not mapped_mass.gt(0.0).all():
         raise ValueError(
             "UK CGT calibration requires strictly positive prior household "
@@ -166,6 +169,7 @@ def materialize_uk_cgt_calibration_frame(
             "UK CGT prepared columns diverged from the declared measures: "
             f"{sorted(measure_values)} != {sorted(UK_CGT_REQUIRED_COLUMNS)}."
         )
+    registry_measure_values = _registry_measure_values(registry, measure_values)
 
     n_positive = int((support & positive_mass).sum())
     if n_positive == 0:
@@ -179,7 +183,10 @@ def materialize_uk_cgt_calibration_frame(
     calibration_person = person[["person_id", "person_household_id"]].reset_index(
         drop=True
     )
-    calibration_person = calibration_person.assign(**measure_values)
+    calibration_person = calibration_person.assign(
+        **measure_values,
+        **registry_measure_values,
+    )
     frame = Frame(
         {
             "person": calibration_person,
@@ -188,7 +195,7 @@ def materialize_uk_cgt_calibration_frame(
         EntitySchema(group_entities=("household",)),
         {
             "household": Weights(
-                household["household_weight"].to_numpy(dtype=float),
+                national_frame.weights_for("household").values,
                 uk_household_weight_kind(national_frame),
             )
         },
@@ -196,8 +203,27 @@ def materialize_uk_cgt_calibration_frame(
     )
     return UKCGTTargetMaterialization(
         frame=frame,
-        registry=TargetRegistry(UK_CGT_TARGET_SPECS, country="uk"),
+        registry=registry,
         annual_exempt_amount=float(annual_exempt_amount),
         taxpayer_rows=int(support.sum()),
         minimum_positive_support_rows=n_positive,
     )
+
+
+def _registry_measure_values(
+    registry: TargetRegistry,
+    prepared_values: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """Expose Ledger-compiled measure names as aliases to stable CGT columns."""
+
+    aliases = {
+        "hmrc.cgt.gains_total": UK_CGT_GAINS_AMOUNT_COLUMN,
+        "hmrc.cgt.taxpayers_total": UK_CGT_TAXPAYER_COUNT_COLUMN,
+    }
+    values: dict[str, np.ndarray] = {}
+    for spec in registry:
+        prepared_name = aliases.get(spec.name)
+        if prepared_name is None or spec.measure in prepared_values:
+            continue
+        values[spec.measure] = prepared_values[prepared_name]
+    return values

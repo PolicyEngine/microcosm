@@ -29,6 +29,7 @@ def _row(
     *,
     predecessor: str | None,
     minute: int,
+    pipeline: str = "uk-frs-staging",
     rung: str = "f010",
     disposition: str = "failed",
 ) -> LogbookRow:
@@ -40,7 +41,7 @@ def _row(
     return LogbookRow.create(
         build_id=build_id,
         ts=f"2026-08-05T12:{minute:02d}:00Z",
-        pipeline="fixture-pipeline",
+        pipeline=pipeline,
         rung=rung,
         seed=628,
         code_pin="1c1fc717",
@@ -62,12 +63,21 @@ def _row(
     )
 
 
-def _chain() -> tuple[LogbookRow, LogbookRow, LogbookRow]:
-    first = _row("fixture-build-1", predecessor=None, minute=1)
+def _chain(
+    *,
+    pipeline: str = "uk-frs-staging",
+) -> tuple[LogbookRow, LogbookRow, LogbookRow]:
+    first = _row(
+        "fixture-build-1",
+        predecessor=None,
+        minute=1,
+        pipeline=pipeline,
+    )
     second = _row(
         "fixture-build-2",
         predecessor=first.row_digest,
         minute=2,
+        pipeline=pipeline,
         rung="f100",
         disposition="published",
     )
@@ -75,6 +85,7 @@ def _chain() -> tuple[LogbookRow, LogbookRow, LogbookRow]:
         "fixture-build-3",
         predecessor=second.row_digest,
         minute=3,
+        pipeline=pipeline,
         rung="f100",
         disposition="certified",
     )
@@ -96,8 +107,78 @@ def _load_cli() -> ModuleType:
 def test_cli_defaults_to_the_ratified_root_paths() -> None:
     cli = _load_cli()
 
-    assert cli.DEFAULT_ARCHIVE == ROOT / "logbook.jsonl"
-    assert cli.DEFAULT_SOURCE == ROOT / "logbook-spool"
+    assert cli.DEFAULT_ARCHIVE_ROOT == ROOT / "logbook"
+    assert cli.DEFAULT_SPOOL_ROOT == ROOT / "logbook-spool"
+
+
+def test_committed_archives_are_scoped_by_country() -> None:
+    # One chain per country: the US pool lineage and the UK migration
+    # chain never share an archive (microcosm#665).
+    archives = sorted(
+        path.relative_to(ROOT / "logbook").as_posix()
+        for path in (ROOT / "logbook").rglob("*.jsonl")
+    )
+    assert archives == ["us.jsonl"]
+    assert (ROOT / "logbook" / "README.md").is_file()
+
+
+def test_render_sections_each_scope_separately(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Independent chains render as separate sections; merging them into one
+    # table would imply an ordering across scopes the archives never assert.
+    us = tmp_path / "us.jsonl"
+    uk = tmp_path / "uk.jsonl"
+    _write_jsonl(us, _chain())
+    _write_jsonl(uk, _chain())
+    cli = _load_cli()
+
+    assert cli.main(["render", "--archive", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "## us" in out
+    assert "## uk" in out
+
+
+def test_validate_walks_every_scope_chain(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    us = tmp_path / "us.jsonl"
+    uk = tmp_path / "uk.jsonl"
+    _write_jsonl(us, _chain())
+    _write_jsonl(uk, _chain())
+    cli = _load_cli()
+
+    assert cli.main(["validate", "--archive", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "validated 3 Logbook rows in us;" in out
+    assert "validated 3 Logbook rows in uk;" in out
+
+
+def test_export_refuses_a_directory_archive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # An export extends exactly one chain, so the scope must be named.
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    cli = _load_cli()
+
+    assert (
+        cli.main(["export", "--archive", str(tmp_path), "--source", str(spool)]) == 1
+    )
+    assert "extends exactly one scope chain" in capsys.readouterr().err
+
+
+def test_export_requires_a_named_source(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+
+    assert cli.main(["export", "--archive", str(tmp_path / "uk.jsonl")]) == 1
+    assert "needs --source" in capsys.readouterr().err
 
 
 def test_cli_validate_and_filtered_render(
@@ -137,7 +218,8 @@ def test_cli_export_appends_jsonl_source_suffix_idempotently(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     first, second, third = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
     source = tmp_path / "source.jsonl"
     _write_jsonl(archive, (first,))
     _write_jsonl(source, (first, second, third))
@@ -159,6 +241,54 @@ def test_cli_export_appends_jsonl_source_suffix_idempotently(
     assert load_logbook_file(archive) == (first, second, third)
 
 
+def test_cli_local_export_refuses_wrong_scope_rows(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The adversarial finding on this PR: the chain verifier authenticates
+    # payloads, never filenames, so without this gate a uk-locals spool
+    # exported into the uk/frs archive would chain validly and
+    # permanently mis-scope lineage. Local exports get the same scope
+    # discipline as the remote branch.
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
+    source = tmp_path / "source.jsonl"
+    _write_jsonl(source, _chain(pipeline="uk-locals-rowwise"))
+    cli = _load_cli()
+
+    exit_code = cli.main(
+        ["export", "--archive", str(archive), "--source", str(source)]
+    )
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "outside scope uk/frs" in err
+    assert "uk-locals-rowwise" in err
+    assert not archive.exists()
+
+
+def test_cli_export_refuses_an_unratified_scope_archive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # uk/firms derives cleanly but is not in the ratified vocabulary yet:
+    # opening a scope is a reviewed diff (migration + CLI mirror + README),
+    # never a side effect of a well-formed archive path.
+    archive = tmp_path / "logbook" / "uk" / "firms.jsonl"
+    archive.parent.mkdir(parents=True)
+    source = tmp_path / "source.jsonl"
+    _write_jsonl(source, _chain(pipeline="uk-firms-staging"))
+    cli = _load_cli()
+
+    exit_code = cli.main(
+        ["export", "--archive", str(archive), "--source", str(source)]
+    )
+
+    assert exit_code == 1
+    assert "not in the ratified scope list" in capsys.readouterr().err
+    assert not archive.exists()
+
+
 def test_cli_export_chain_orders_a_spool_directory(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -171,7 +301,8 @@ def test_cli_export_chain_orders_a_spool_directory(
             row.to_json_line(),
             encoding="utf-8",
         )
-    archive = tmp_path / "logbook.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
     cli = _load_cli()
 
     assert (
@@ -196,7 +327,8 @@ def test_cli_export_divergence_fails_closed_without_modifying_archive(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     first, _, _ = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
     _write_jsonl(archive, (first,))
     before = archive.read_bytes()
     divergent = _row(
@@ -254,8 +386,8 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rows = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    rows = _chain(pipeline="us-stacked-pool")
+    archive = tmp_path / "logbook" / "us.jsonl"
     cli = _load_cli()
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
     monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt-must-not-be-used")
@@ -282,6 +414,35 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     assert query["order"] == ["ts.asc,build_id.asc"]
     assert query["limit"] == [str(cli.REMOTE_PAGE_SIZE)]
     assert query["offset"] == ["0"]
+    assert query["pipeline"] == [
+        'in.("us-2024-release","us-pool-inc2","us-stacked-pool")'
+    ]
+
+
+def test_cli_remote_export_filters_nested_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    rows = _chain(pipeline="uk-frs-staging")
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    requests: list[object] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _RemoteResponse:
+        del timeout
+        requests.append(request)
+        return _RemoteResponse(rows)
+
+    monkeypatch.setattr(cli, "urlopen", fake_urlopen)
+
+    assert cli.main(["export", "--remote", "--archive", str(archive)]) == 0
+
+    assert load_logbook_file(archive) == rows
+    query = parse_qs(urlparse(requests[0].full_url).query)
+    assert query["pipeline"] == ["like.uk-frs-*"]
 
 
 def test_cli_remote_export_refuses_the_writer_key(
@@ -295,7 +456,12 @@ def test_cli_remote_export_refuses_the_writer_key(
     monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
 
     result = cli.main(
-        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
+        [
+            "export",
+            "--remote",
+            "--archive",
+            str(tmp_path / "logbook" / "us.jsonl"),
+        ]
     )
 
     assert result == 1
@@ -306,8 +472,8 @@ def test_cli_remote_export_paginates_before_chain_ordering(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    rows = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    rows = _chain(pipeline="us-stacked-pool")
+    archive = tmp_path / "logbook" / "us.jsonl"
     cli = _load_cli()
     monkeypatch.setattr(cli, "REMOTE_PAGE_SIZE", 2)
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
@@ -351,8 +517,82 @@ def test_cli_remote_export_rejects_insecure_origin(
     monkeypatch.setattr(cli, "urlopen", unexpected_request)
 
     result = cli.main(
-        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
+        [
+            "export",
+            "--remote",
+            "--archive",
+            str(tmp_path / "logbook" / "us.jsonl"),
+        ]
     )
 
     assert result == 1
     assert "must use HTTPS" in capsys.readouterr().err
+
+
+def test_cli_remote_export_refuses_unscoped_archive_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+
+    def unexpected_request(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unscoped archive must fail before a request")
+
+    monkeypatch.setattr(cli, "urlopen", unexpected_request)
+
+    result = cli.main(
+        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
+    )
+
+    assert result == 1
+    assert "must be logbook/us.jsonl" in capsys.readouterr().err
+
+
+def test_cli_remote_export_refuses_wrong_scope_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = _chain(pipeline="uk-locals-rowwise")
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    monkeypatch.setattr(
+        cli,
+        "urlopen",
+        lambda *_args, **_kwargs: _RemoteResponse(rows),
+    )
+
+    result = cli.main(["export", "--remote", "--archive", str(archive)])
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "outside scope uk/frs" in err
+    assert "uk-locals-rowwise" in err
+
+
+@pytest.mark.parametrize(
+    ("pipeline", "scope"),
+    [
+        ("us-2024-release", "us"),
+        ("us-pool-inc2", "us"),
+        ("us-stacked-pool", "us"),
+        ("uk-frs-staging", "uk/frs"),
+        ("uk-locals-rowwise", "uk/locals"),
+        ("us-pool-inc3", "us/pool"),
+        ("mystery-pipeline", None),
+    ],
+)
+def test_chain_scope_matches_sql_contract(
+    pipeline: str,
+    scope: str | None,
+) -> None:
+    cli = _load_cli()
+
+    assert cli._chain_scope(pipeline) == scope

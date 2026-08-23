@@ -43,10 +43,26 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "aggregate_person_to_household",
         "aggregate_person_to_tax_unit",
         "assign_by_plan_type",
+        "assign_binary_from_banded_rates",
         "assign_binary_from_rate",
+        "assign_binary_with_anchored_residual",
+        "assign_clipped_normal",
+        "assign_student_loan_plan_cohorts",
+        "assign_uniform_draw",
+        "aggregate_person_to_benunit",
+        "allocate_per_capita_from_cell_table",
+        "allocate_within_group_waterfall",
+        "allocate_zero_weight_prior_mass",
+        "annualize_periodic_amounts",
+        "assemble_group_entities",
         "attribute_self_employed_health_premiums",
+        "bridge_donor_column_via_qrf",
         "calibrate_binary_assignment",
         "calibrate_binary_assignment_joint_targets",
+        "classify_cgt_band_facts_with_reviewed_fence",
+        "classify_hmrc_income_facts_with_reviewed_fences",
+        "clone_records",
+        "convert_donors_to_target_stock",
         "convert_interest_to_structural_mortgage_inputs",
         "compute_ratio",
         "declare_income_reference_offset",
@@ -76,13 +92,19 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_weeks_unemployed",
         "derive_wic_claim",
         "disaggregate_aggregate_records",
+        "draw_capital_gains_prior_from_banded_quantiles",
         "fit_labor_market_models",
         "fit_tip_income_model",
         "fit_weighted_acs_rent_qrf",
         "fit_vehicle_model",
         "fit_weighted_imputer",
         "fit_weighted_qrf",
+        "fit_weighted_qrf_chain",
+        "fit_weighted_qrf_stage1",
+        "fit_weighted_qrf_stage2",
         "fold_into",
+        "gate_distributional_effective_mass",
+        "gate_zero_weight_strata",
         "head_carry",
         "join",
         "impute_retirement_contributions_to_puf_support",
@@ -90,20 +112,42 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "impute_child_support_to_puf_support",
         "impute_disability_benefits_to_puf_support",
         "impute_energy_subsidy_to_puf_support",
+        "impute_cell_means",
         "impute_housing_assistance_to_puf_support",
         "impute_other_health_insurance_premiums_to_puf_support",
         "impute_prior_year_income_to_puf_support",
         "impute_retirement_distributions_to_puf_support",
         "impute_workers_compensation_to_puf_support",
         "impute_weeks_unemployed_to_puf_support",
+        "iterative_proportional_fit",
         "map_columns",
+        "map_coded_amounts",
+        "materialize_hmrc_income_bands_fail_closed",
+        "materialize_rules_engine_predictors",
+        "rank_preserving_allocation",
         "read_table",
         "read_tables",
         "read_acs_rent_donor",
+        "redraw_columns_from_fitted_qrf",
+        "record_mass_conservation_receipt",
+        "replace_zero_weight_spi_support",
+        "retain_adjudicated_frs_hmrc_leaves",
+        "sample_categorical_from_count_table",
         "replace_sentinels",
         "split_component_by_share",
+        "stack_band_donor_households",
+        "stack_zero_weight_donors",
+        "strict_read_private_table",
         "support_clip",
+        "sub_aea_remainder",
+        "taxable_income_proxy",
+        "top_up_to_stock",
         "uprate",
+        "uprate_to_regional_reference",
+        "verify_certified_candidate",
+        "verify_pinned_cgt_ods",
+        "verify_pinned_hmrc_source_pair",
+        "within_band_draws",
         "zero_when_false",
     }
 )
@@ -178,6 +222,7 @@ class SourceStageSpec:
     operations: tuple[SourceOperationSpec, ...]
     outputs: tuple[str, ...]
     nonnegative_outputs: tuple[str, ...] = ()
+    rewrites: tuple[str, ...] = ()
     notes: str = ""
 
     @classmethod
@@ -203,6 +248,9 @@ class SourceStageSpec:
                 key="nonnegative_outputs",
             )
         )
+        rewrites = tuple(
+            _require_string_sequence(raw.get("rewrites", ()), key="rewrites")
+        )
         unknown_nonnegative = sorted(set(nonnegative_outputs) - set(outputs))
         if unknown_nonnegative:
             raise ValueError(
@@ -223,6 +271,7 @@ class SourceStageSpec:
             operations=operations,
             outputs=outputs,
             nonnegative_outputs=nonnegative_outputs,
+            rewrites=rewrites,
             notes=notes,
         )
 

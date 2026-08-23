@@ -12,6 +12,7 @@ from microcosm.build.outer_stage_runtime import (
     OUTER_STAGE_CONTEXT_SCHEMA_VERSION,
     frame_identity,
 )
+from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime import (
     ASEC_RAW_STAGE_ARTIFACT_KIND,
     ASEC_RAW_STAGE_OPERATOR_STATUS,
@@ -236,6 +237,13 @@ def test_loads_operator_untouched_raw_stage_checkpoint(tmp_path: Path) -> None:
     assert loaded_metadata["artifact_kind"] == ASEC_RAW_STAGE_ARTIFACT_KIND
     assert loaded_metadata["stage"] == ASEC_RAW_STAGE_STAGE
     assert loaded_metadata["operator_status"] == ASEC_RAW_STAGE_OPERATOR_STATUS
+    # The load is a declared string-storage canonicalization boundary: no
+    # entity may leak a non-canonical pandas string dtype downstream,
+    # whatever storage the checkpoint was written under.
+    for entity in frame.entities:
+        for column, dtype in frame.table(entity).dtypes.items():
+            if isinstance(dtype, pd.StringDtype):
+                assert dtype == CANONICAL_STRING_DTYPE, (entity, column)
 
 
 @pytest.mark.parametrize(

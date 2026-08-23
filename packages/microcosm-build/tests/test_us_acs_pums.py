@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     AcsPumsSource,
@@ -138,7 +139,12 @@ def _asec_shaped_frame() -> Frame:
             "person_marital_unit_id": np.asarray([601], dtype=np.int64),
             "source_year": np.asarray([2024], dtype=np.int64),
             "source_household_id": np.asarray([7], dtype=np.int64),
-            "source_person_id": pd.Series(["7-1"]).astype(str),
+            # Pinned to the canonical storage, exactly as checkpoint restore
+            # delivers the real ASEC channel. A bare astype(str) would follow
+            # the environment's storage default and mask the cross-channel
+            # divergence this fixture exists to model (pyarrow environments
+            # resolve fresh 'str' casts to pyarrow storage).
+            "source_person_id": pd.Series(["7-1"]).astype(CANONICAL_STRING_DTYPE),
             "source_row_id": np.asarray([0], dtype=np.int64),
             "A_AGE": np.asarray([55], dtype=np.int64),
         }
@@ -285,6 +291,31 @@ def test_built_acs_lineage_assembles_with_asec_without_measured_coercion(
         raw_serials.reset_index(drop=True),
         check_dtype=False,
     )
+
+
+def test_build_acs_pums_unit_frame_canonicalizes_string_storage(
+    tmp_path: Path,
+) -> None:
+    """The parse boundary must not leak environment-resolved string storage.
+
+    With pyarrow installed, pandas resolves fresh ``astype(str)`` casts to
+    pyarrow-backed storage while checkpoint-restored channels carry the
+    canonical python-backed dtype — the exact split that failed the first
+    full-scale spine assembly (both sides printed as 'str').
+    """
+
+    pytest.importorskip("microunit")
+    frame, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=1)
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        offending = {
+            column: dtype
+            for column, dtype in table.dtypes.items()
+            if isinstance(dtype, pd.StringDtype) and dtype != CANONICAL_STRING_DTYPE
+        }
+        assert not offending, f"{entity} carries non-canonical string storage"
+    assert frame.table("person")["source_person_id"].dtype == CANONICAL_STRING_DTYPE
 
 
 def test_load_acs_pums_tables_rejects_duplicate_household_serialno(

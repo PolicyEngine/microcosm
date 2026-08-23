@@ -18,11 +18,17 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
+import pandas as pd
 
 from microcosm.frame.bundle import Frame
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
-__all__ = ["RulesEngine", "ExportContract"]
+__all__ = [
+    "RulesEngine",
+    "ExportContract",
+    "assert_rules_engine_country",
+    "materialize_rules_engine_predictors",
+]
 
 
 @runtime_checkable
@@ -158,6 +164,87 @@ class ExportContract:
             ),
             closed=bool(sections.get("closed", False)),
         )
+
+
+def assert_rules_engine_country(engine: RulesEngine, country: str) -> None:
+    """Require a rules adapter to declare the dataset country it serves."""
+
+    engine_country = getattr(engine, "country", None)
+    if not isinstance(engine_country, str) or not engine_country:
+        raise ValueError("Rules engine adapter must declare a non-empty country.")
+    if engine_country != country:
+        raise ValueError(
+            f"Rules engine country {engine_country!r} does not match dataset "
+            f"country {country!r}."
+        )
+
+
+def materialize_rules_engine_predictors(
+    bundle: Frame,
+    *,
+    variables: Sequence[str],
+    period: int | str,
+    engine: RulesEngine,
+    country: str | None = None,
+) -> Frame:
+    """Return ``bundle`` with rules-engine predictors materialized as columns."""
+
+    if country is not None:
+        assert_rules_engine_country(engine, country)
+    requested = tuple(variables)
+    if not requested:
+        raise ValueError("materialize_rules_engine_predictors requires variables.")
+    existing: list[str] = []
+    for variable in requested:
+        try:
+            bundle.column_entity(variable)
+        except ValueError:
+            continue
+        existing.append(variable)
+    if existing:
+        raise ValueError(
+            "Cannot materialize rules-engine predictor(s) already present on "
+            f"the frame: {existing}."
+        )
+
+    materialized = engine.materialize(bundle, requested, period)
+    tables = {entity: bundle.table(entity).copy() for entity in bundle.entities}
+    for variable in requested:
+        if variable not in materialized:
+            raise ValueError(
+                f"Rules engine did not return materialized predictor {variable!r}."
+            )
+        metadata = engine.variable_metadata(variable)
+        if metadata.entity not in tables:
+            raise ValueError(
+                f"Materialized predictor {variable!r} belongs to entity "
+                f"{metadata.entity!r}, which is not in the frame."
+            )
+        values = np.asarray(materialized[variable])
+        expected = bundle.n(metadata.entity)
+        if values.shape != (expected,):
+            raise ValueError(
+                f"Materialized predictor {variable!r} has shape {values.shape} "
+                f"but entity {metadata.entity!r} has {expected} row(s)."
+            )
+        tables[metadata.entity][variable] = pd.Series(
+            values,
+            index=tables[metadata.entity].index,
+        )
+
+    for link in bundle.links:
+        tables[link] = bundle.link(link).copy()
+    weights = {
+        entity: bundle.weights_for(entity) for entity in bundle.weighted_entities
+    }
+    return Frame(
+        tables,
+        bundle.schema,
+        weights,
+        strata=bundle.strata.copy(),
+        mass_log=bundle.mass_log,
+        metadata=bundle.metadata,
+    )
 
 
 def _as_str_tuple(values: Any) -> tuple[str, ...]:

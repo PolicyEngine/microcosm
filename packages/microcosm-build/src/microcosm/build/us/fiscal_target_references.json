@@ -10,9 +10,6 @@
       {
         "id": "congressional_district_children_scale_to_state_parent",
         "method": "scale_children_to_parent",
-        "enabled_when": {
-          "include_congressional_district_targets": true
-        },
         "child_geography_level": "congressional_district",
         "parent_geography_level": "state",
         "parent_geography_id": {

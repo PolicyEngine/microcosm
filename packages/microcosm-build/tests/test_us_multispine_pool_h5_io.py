@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.h5_io as h5_io
+import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
+import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -21,9 +23,12 @@ from microcosm.build.serialization_dtypes import (
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    US_STACKED_POOL_OPERATOR_ORDER,
     AuthenticatedPoolH5MismatchError,
+    load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
 )
@@ -272,6 +277,26 @@ def test_pool_export_rejects_ambiguous_object_strings_before_replacement(
     assert output.read_bytes() == b"previous-good-pool"
 
 
+@pytest.mark.parametrize("materializer_version", (True, 0, -1, 1.5, "2"))
+def test_pool_export_rejects_invalid_materializer_versions_before_replacement(
+    tmp_path: Path,
+    materializer_version: object,
+) -> None:
+    output = tmp_path / "existing.pool.h5"
+    output.write_bytes(b"previous-good-pool")
+
+    with pytest.raises(ValueError, match="positive integer"):
+        write_nullable_us_h5(
+            _pool_frame(),
+            output,
+            period=2024,
+            artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+            materializer_version=materializer_version,  # type: ignore[arg-type]
+        )
+
+    assert output.read_bytes() == b"previous-good-pool"
+
+
 def test_pool_export_rejects_untyped_all_missing_objects_before_replacement(
     tmp_path: Path,
 ) -> None:
@@ -377,16 +402,20 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
             }
         },
     }
+    schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 4
     write_nullable_us_h5(
         _pool_frame_with_object_strings_on_every_entity(),
         pool_path,
         period=2024,
         artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
         publication_run_id=run_id,
+        materializer_version=(
+            US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION if stacked else None
+        ),
     )
     diagnostics = {
         "artifact_kind": (US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND),
-        "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "simulation_ready": True,
         "publication_run_id": run_id,
         "agreement_gate": agreement_gate,
@@ -395,23 +424,41 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         diagnostics.update(
             {
                 "pipeline": "us-stacked-pool",
+                "semantic_kind": "stacked_terminal_gates",
                 "terminal_gates": agreement_gate,
             }
         )
     diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
     manifest = {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
-        "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "status": "simulation_ready",
         "simulation_ready": True,
         "publication_run_id": run_id,
         "period": 2024,
+        "operator_order": [
+            "assemble",
+            "clone",
+            "impute",
+            "derive",
+            "seed",
+            "simulate",
+            "agreement",
+        ],
+        "stage_receipts": {
+            stage: {"operator": stage}
+            for stage in ("impute", "derive", "seed", "simulate")
+        },
         "stage_checkpoints": {
+            "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
+            "schema_version": 1,
+            "materializer_version": 3 if not stacked else 5,
+            "enabled": False,
             "agreement": {
                 "source": "always_fresh",
                 "cached": False,
                 "terminal_verdict_persisted": False,
-            }
+            },
         },
         "agreement_gate": agreement_gate,
         "provenance_counts": {"household": {"rows": 3}},
@@ -429,17 +476,444 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         },
     }
     if stacked:
+        dag = _canonical_stacked_late_dag_receipt()
+        transition_authority = (
+            stacked_spine_module._late_producer_transition_authority_receipt(dag)
+        )
         manifest.update(
             {
                 "pipeline": "us-stacked-pool",
+                "late_producer_transition_authority_sha256": (
+                    transition_authority["sha256"]
+                ),
                 "terminal_gates": agreement_gate,
+                "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
+                "stage_receipts": {
+                    "impute": {
+                        "source_operator_chain": {
+                            "late_dag_completion": dag["source_completion"],
+                        },
+                        "stacked_late_producer_dag": dag,
+                        "stacked_post_puf_transfer": dag["post_puf_transfer"],
+                    }
+                },
             }
+        )
+        manifest["pool_h5"]["materializer_version"] = (
+            US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
         )
     manifest_path.write_text(
         json.dumps(manifest),
         encoding="utf-8",
     )
     return manifest_path
+
+
+def _canonical_late_calibration_owner_receipt(
+    spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
+) -> dict[str, object]:
+    values = np.asarray(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+    )
+    weights = np.asarray([2.0, 3.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+    entity_ids = np.arange(1, len(values) + 1)
+    reference = np.asarray([True] * 5 + [False] * 5)
+    recipient = ~reference
+    constrained = spec.special_constraint != "none"
+    result = post_transfer_calibration_runtime.calibrate_post_transfer_values(
+        values,
+        weights,
+        entity_ids,
+        spec=spec,
+        reference_rows=reference,
+        recipient_rows=recipient,
+        mutable_rows=recipient,
+        allowed_carrier_rows=recipient if constrained else None,
+        addition_candidate_rows=recipient if constrained else None,
+    )
+    calibration = result.receipt
+    scope = calibration["scope"]
+    constraint: dict[str, object] = {"constraint": spec.special_constraint}
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        constraint.update(
+            {
+                "qualifying_mutable_rows": scope["allowed_carrier_rows"],
+                "one_per_empty_tax_unit_addition_candidates": scope[
+                    "addition_candidate_rows"
+                ],
+            }
+        )
+    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
+        constraint["positive_unemployment_mutable_rows"] = scope["allowed_carrier_rows"]
+    owner: dict[str, object] = {
+        "stage": "late_transfer",
+        "reference_selection": "asec_origin_clone_0",
+        "recipient_selection": "acs_origin_clone_0",
+        "mutable_selection": "recipient_null_before_nonnull_after",
+        "reference_rows": scope["reference_rows"],
+        "recipient_rows": scope["recipient_rows"],
+        "mutable_rows": scope["mutable_rows"],
+        "constraint": constraint,
+        "context_binding": {
+            "scope": dict(scope),
+            "weights_sha256": calibration["weights"]["sha256"],
+            "live_output": {
+                "reference_rows": int(reference.sum()),
+                "recipient_rows": int(recipient.sum()),
+                "reference_entity_ids_sha256": (
+                    stacked_spine_module._post_transfer_entity_ids_sha256(
+                        entity_ids[reference]
+                    )
+                ),
+                "recipient_entity_ids_sha256": (
+                    stacked_spine_module._post_transfer_entity_ids_sha256(
+                        entity_ids[recipient]
+                    )
+                ),
+                "reference_output_values_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        result.values[reference],
+                        boundary="synthetic reference calibration output",
+                    )
+                ),
+                "recipient_output_values_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        result.values[recipient],
+                        boundary="synthetic recipient calibration output",
+                    )
+                ),
+                "reference_weights_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        weights[reference],
+                        boundary="synthetic reference calibration weights",
+                    )
+                ),
+                "recipient_weights_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        weights[recipient],
+                        boundary="synthetic recipient calibration weights",
+                    )
+                ),
+            },
+        },
+        "calibration": calibration,
+    }
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        owner["post_reconciliation"] = {"status": "verified_no_op"}
+    return owner
+
+
+def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
+    """Build a signed fixture receipt over the live canonical contracts."""
+
+    schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
+    schedule_receipt = stacked_spine_module._json_ready(
+        stacked_spine_module.us_late_producer_schedule_receipt()
+    )
+    source_order = [
+        producer.removeprefix("source:")
+        for producer in schedule.order
+        if producer.startswith("source:")
+    ]
+    source_receipts = {
+        operator: {
+            "phase": "post_clone",
+            "operator_order": [operator],
+            "cps_source_evidence": None,
+            "suboperators": [{"operator": operator}],
+        }
+        for operator in source_order
+    }
+    source_completion = {
+        "phase": "post_clone",
+        "operator_order": source_order,
+        "cps_source_evidence": None,
+        "suboperators": [
+            {"operator": operator, "order_index": index}
+            for index, operator in enumerate(source_order)
+        ],
+        "deferred_transfer_inputs": {
+            "inputs": {
+                column: {}
+                for column in (
+                    "bank_account_assets",
+                    "bond_assets",
+                    "stock_assets",
+                )
+            }
+        },
+    }
+    late_specs = {
+        spec.key: spec
+        for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        if spec.stage == "late_transfer"
+    }
+    policy_sha256 = (
+        post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()[
+            "sha256"
+        ]
+    )
+    group_receipts: dict[str, object] = {}
+    for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
+        group_targets = {
+            f"{group.entity}/{group.family}/{target}": {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            }
+            for target in group.targets
+        }
+        calibrated_keys = sorted(set(group_targets) & set(late_specs))
+        for key in calibrated_keys:
+            group_targets[key]["post_transfer_calibration"] = (
+                _canonical_late_calibration_owner_receipt(late_specs[key])
+            )
+        group_receipts[group.name] = {
+            "producer": group.name,
+            "entity": group.entity,
+            "family": group.family,
+            "ordered_targets": list(group.targets),
+            "targets": group_targets,
+            "post_transfer_calibration": {
+                "policy_sha256": policy_sha256,
+                "target_count": len(calibrated_keys),
+                "targets": calibrated_keys,
+            },
+        }
+    group_by_name = {
+        group.name: group
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+    }
+    canonical_family = {
+        (entity, target): family
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    aggregate_targets = {
+        f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}": (
+            group_receipts[group.name]["targets"][
+                f"{group.entity}/{group.family}/{target}"
+            ]
+        )
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        for target in group.targets
+    }
+    transfer = {
+        "authority": dict(stacked_spine_module.stacked_spine_authority_receipt()),
+        "producer_schedule": schedule_receipt,
+        "producer_execution_order": [
+            producer
+            for producer in schedule.order
+            if producer != stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+        ],
+        "groups": group_receipts,
+        "targets": aggregate_targets,
+        "completion": {
+            "status": "complete",
+            "group_count": 19,
+            "target_count": 70,
+            "residual_null_rows": 0,
+        },
+    }
+    input_frame_sha256 = "1" * 64
+    previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=schedule_receipt["payload_sha256"],
+        input_frame_sha256=input_frame_sha256,
+    )
+    execution = []
+    for index, producer_name in enumerate(schedule.order):
+        contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            producer_name
+        ]
+        if contract.kind == "acs_earnings_universe":
+            available = (
+                stacked_spine_module._late_acs_earnings_universe_resource_receipts()
+            )
+        elif contract.kind == "primary_puf":
+            available = stacked_spine_module.stacked_late_primary_resource_receipts(
+                pd.DataFrame({"fixture_donor": [1.0]}),
+                primary_qrf_checkpoint_identity_sha256="5" * 64,
+                clone_attachment_fraction=1.0,
+                clone_attachment_seed=578,
+                seed=0,
+                n_estimators=100,
+                fit_records_enabled=True,
+                tail_bound_diagnostics_enabled=True,
+            )
+        elif contract.kind == "post_clone_source":
+            available = stacked_spine_module._late_source_resource_receipts(
+                producer_name=producer_name,
+            )
+        elif contract.kind == "source_finalizer":
+            available = {
+                f"person.@source_receipt:{operator}": (
+                    stacked_spine_module._late_available_input_receipt(
+                        producer=producer_name,
+                        entity="person",
+                        column=f"@source_receipt:{operator}",
+                        rows=1,
+                        binding={
+                            "resource_kind": "source_operator_receipt",
+                            "schema_version": 1,
+                            "source_operator": operator,
+                            "source_receipt_sha256": (
+                                stacked_spine_module._canonical_sha256(source_receipt)
+                            ),
+                        },
+                    )
+                )
+                for operator, source_receipt in source_receipts.items()
+            }
+            available.update(
+                stacked_spine_module._late_source_finalizer_resource_receipts()
+            )
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            available = stacked_spine_module._late_transfer_resource_receipts(
+                group_name=group.name,
+                entity=group.entity,
+                family=group.family,
+                targets=group.targets,
+                seed=0,
+                n_estimators=100,
+                max_targets_per_fit=(
+                    stacked_spine_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+                ),
+                target_bank=None,
+            )
+        else:
+            available = {}
+        declared_inputs = []
+        for requirement in contract.inputs:
+            alternatives = []
+            for alternative in requirement.alternatives:
+                physical_evidence = []
+                for column in alternative:
+                    is_virtual = (
+                        column.column.startswith("@")
+                        and column.column != "@resolved_weight"
+                        and column.entity != "frame"
+                    )
+                    key = f"{column.entity}.{column.column}"
+                    resource_receipt = available.get(key) if is_virtual else None
+                    present = not is_virtual or resource_receipt is not None
+                    physical_evidence.append(
+                        {
+                            "entity": column.entity,
+                            "column": column.column,
+                            "value_kind": column.value_kind,
+                            "required_scope": requirement.required_scope,
+                            "scope_rows": 1,
+                            "missing_rows": 0 if present else 1,
+                            "invalid_rows": 0,
+                            "status": "present" if present else "absent",
+                            "content_sha256": (
+                                stacked_spine_module._canonical_sha256(resource_receipt)
+                                if resource_receipt is not None
+                                else "2" * 64
+                            ),
+                            **(
+                                {"weight_kind": "household_weight"}
+                                if column.column == "@resolved_weight"
+                                else {}
+                            ),
+                        }
+                    )
+                alternatives.append(physical_evidence)
+            evidence = {"alternatives": alternatives}
+            evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
+            declared_inputs.append(
+                {
+                    "entity": requirement.entity,
+                    "column": requirement.column,
+                    "required_scope": requirement.required_scope,
+                    "producing_stage": requirement.producing_stage,
+                    "unfilled_rows": 0,
+                    "invalid_rows": 0,
+                    "evidence": evidence,
+                }
+            )
+        output_surface = [
+            {
+                "entity": output.entity,
+                "column": output.column,
+                "coverage_scope": output.coverage_scope,
+                "status": "present",
+                "content_sha256": "3" * 64,
+                **({} if output.entity == "frame" else {"scope_rows": 1}),
+                **(
+                    {"weight_kind": "household_weight"}
+                    if output.column == "@resolved_weight"
+                    else {}
+                ),
+            }
+            for output in contract.outputs
+        ]
+        if contract.kind == "acs_earnings_universe":
+            producer_receipt = {"fixture": "acs_earnings_universe"}
+        elif contract.kind == "primary_puf":
+            producer_receipt = {
+                "primary_resource_receipts_sha256": (
+                    stacked_spine_module._canonical_sha256(available)
+                )
+            }
+        elif contract.kind == "post_clone_source":
+            producer_receipt = source_receipts[producer_name.removeprefix("source:")]
+        elif contract.kind == "source_finalizer":
+            producer_receipt = source_completion
+        elif contract.kind == "late_transfer":
+            producer_receipt = group_receipts[group_by_name[producer_name].name]
+        else:
+            producer_receipt = {}
+        for output in output_surface:
+            if output["column"].startswith("@source_receipt:"):
+                output["content_sha256"] = stacked_spine_module._canonical_sha256(
+                    producer_receipt
+                )
+        row = {
+            "execution_index": index,
+            "producer": producer_name,
+            "kind": contract.kind,
+            "declared_inputs": declared_inputs,
+            "declared_absence_receipts": {},
+            "available_input_receipts": available,
+            "input_surface_sha256": stacked_spine_module._canonical_sha256(
+                declared_inputs
+            ),
+            "output_surface": output_surface,
+            "output_surface_sha256": stacked_spine_module._canonical_sha256(
+                output_surface
+            ),
+            "producer_receipt": producer_receipt,
+            "producer_receipt_sha256": stacked_spine_module._canonical_sha256(
+                producer_receipt
+            ),
+            "previous_execution_sha256": previous_sha256,
+            "status": "complete",
+        }
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous_sha256 = row["sha256"]
+        execution.append(row)
+    receipt = {
+        "version": stacked_spine_module.US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+        "producer_schedule": schedule_receipt,
+        "input_frame_sha256": input_frame_sha256,
+        "output_frame_sha256": "4" * 64,
+        "execution_chain_sha256": previous_sha256,
+        "execution": execution,
+        "source_completion": source_completion,
+        "post_puf_transfer": transfer,
+    }
+    receipt["sha256"] = stacked_spine_module._canonical_sha256(receipt)
+    stacked_spine_module.validate_stacked_late_producer_receipt(
+        receipt,
+        boundary="canonical stacked H5 fixture",
+    )
+    return receipt
 
 
 def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
@@ -492,6 +966,47 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     assert json.loads(manifest_path.read_text())["publication_run_id"] == (
         "replacement-publication"
     )
+
+
+def test_ready_legacy_pool_loader_accepts_pre_653_schema_four_envelope(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    written_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(written_manifest["agreement_diagnostics"]["path"])
+    written_diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+
+    frame, loaded_manifest, _authenticated_h5 = (
+        load_simulation_ready_us_multispine_pool(manifest_path)
+    )
+
+    assert written_manifest["schema_version"] == 4
+    assert written_diagnostics["schema_version"] == 4
+    assert loaded_manifest["schema_version"] == 4
+    assert "materializer_version" not in written_manifest["pool_h5"]
+    assert "materializer_version" not in h5_io.read_nullable_us_h5_metadata(
+        written_manifest["pool_h5"]["path"]
+    )
+    assert frame.n("household") == 3
+
+
+def test_ready_legacy_pool_loader_rejects_current_stacked_envelope(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    diagnostics["schema_version"] = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ambiguous stacked envelope"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 def test_ready_pool_loader_rejects_a_false_h5_size_receipt(tmp_path: Path) -> None:
@@ -594,9 +1109,250 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     pytest.importorskip("tables")
     manifest_path = _write_ready_pool(tmp_path, stacked=True)
 
-    _, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
+    frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
+    assert manifest["schema_version"] == 8
+    assert (
+        manifest["pool_h5"]["materializer_version"]
+        == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+    )
+    assert (
+        h5_io.read_nullable_us_h5_metadata(manifest["pool_h5"]["path"])[
+            "materializer_version"
+        ]
+        == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+    )
+    transition_authority = frame.metadata[
+        stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
+    ]
+    assert (
+        transition_authority["sha256"]
+        == manifest["late_producer_transition_authority_sha256"]
+    )
+
+
+def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    failed_gate = {
+        "passed": False,
+        "gates": {
+            "us_spine_agreement": {
+                "passed": False,
+                "failures": ["fixture terminal failure"],
+                "details": {"fixture": False},
+            }
+        },
+    }
+    manifest.update(
+        {
+            "status": "gate_failed",
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics.update(
+        {
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+    frame, loaded_manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+    )
+
+    assert frame.n("household") == 3
+    assert loaded_manifest["status"] == "gate_failed"
+    assert loaded_manifest["simulation_ready"] is False
+    assert loaded_manifest["terminal_gates"]["passed"] is False
+    assert authenticated_h5.sha256 == loaded_manifest["pool_h5"]["sha256"]
+
+
+@pytest.mark.parametrize(
+    ("status", "simulation_ready"),
+    (("simulation_ready", False), ("gate_failed", True), ("unknown", False)),
+)
+def test_scoring_pool_loader_rejects_incoherent_publication_status(
+    tmp_path: Path,
+    status: str,
+    simulation_ready: bool,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["status"] = status
+    manifest["simulation_ready"] = simulation_ready
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+
+
+@pytest.mark.parametrize("location", ("manifest", "h5"))
+@pytest.mark.parametrize("value", (None, 1, True))
+def test_ready_stacked_pool_loader_requires_exact_h5_materializer_binding(
+    tmp_path: Path,
+    location: str,
+    value: object,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if location == "manifest":
+        if value is None:
+            del manifest["pool_h5"]["materializer_version"]
+        else:
+            manifest["pool_h5"]["materializer_version"] = value
+    else:
+        pool_path = Path(manifest["pool_h5"]["path"])
+        with pd.HDFStore(pool_path, mode="a") as store:
+            metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
+            if value is None:
+                del metadata["materializer_version"]
+            else:
+                metadata["materializer_version"] = value
+            store.put(
+                "_populace_staging_metadata",
+                pd.Series([json.dumps(metadata, sort_keys=True)]),
+                format="table",
+            )
+        manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+        manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="current H5 materializer version"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_requires_current_late_dag_proof(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="has no late-producer DAG receipt"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_rejects_schema_four_envelope(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 4
+    diagnostics["schema_version"] = 4
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="legacy envelope carries stacked-only"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_cannot_be_downgraded_to_legacy(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 4
+    manifest.pop("pipeline")
+    manifest.pop("terminal_gates")
+    diagnostics["schema_version"] = 4
+    diagnostics.pop("pipeline")
+    diagnostics.pop("semantic_kind")
+    diagnostics.pop("terminal_gates")
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="legacy envelope carries stacked-only"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_cannot_be_stripped_into_legacy_shape(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 4
+    for field in (
+        "pipeline",
+        "release_id",
+        "sampling",
+        "clone_attachment",
+        "input_pins_digest",
+        "late_producer_transition_authority_sha256",
+        "stack_manifest",
+        "terminal_gates",
+        "operator_order",
+        "stage_receipts",
+    ):
+        manifest.pop(field, None)
+    diagnostics["schema_version"] = 4
+    for field in ("pipeline", "semantic_kind", "release_id", "terminal_gates"):
+        diagnostics.pop(field, None)
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    # A lazy strip that misses the pool_h5 receipt's materializer_version is
+    # caught earliest, by the stacked-only-marker refusal.
+    with pytest.raises(ValueError, match="stacked-only field"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+    # Even a complete strip must still refuse at the canonical-envelope check.
+    manifest["pool_h5"].pop("materializer_version", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="canonical legacy envelope"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize("authority", [None, "0" * 64])
+def test_ready_stacked_pool_loader_rejects_late_authority_mismatch(
+    tmp_path: Path,
+    authority: str | None,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if authority is None:
+        del manifest["late_producer_transition_authority_sha256"]
+    else:
+        manifest["late_producer_transition_authority_sha256"] = authority
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="independently carried late-producer transition authority",
+    ):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 @pytest.mark.parametrize("document", ["manifest", "diagnostics"])

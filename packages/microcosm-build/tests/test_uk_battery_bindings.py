@@ -1,21 +1,14 @@
 """The UK consumer half of the gate battery (microcosm#611 increment 1).
 
-The behaviour-preservation contract: ``evaluate_phase`` over ``uk/gates.json``
-with ``UK_GATE_REGISTRY`` must reproduce the legacy ``uk_terminal_gate_report``
-verdicts gate for gate over identical synthetic evidence — same ``passed``,
-same failure lines, same details — with exactly two result names re-minted
-onto the shared vocabulary. Where the two paths deliberately differ (the
-legacy report *omits* unevidenced gates; the battery records them as
-``evidence_absent`` and blocks release candidates only), the difference is
-asserted here as a positive statement, not papered over.
-
-Fixtures are synthetic throughout: no UKDS unit records, same discipline as
-the legacy battery tests.
+Fixtures are synthetic throughout: no UKDS unit records. The schema-3
+aggregator retired in #654; these tests pin the battery-side behavior that
+survived the differential receipt.
 """
 
 from __future__ import annotations
 
 import base64
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -40,10 +33,13 @@ from microcosm.build.gates import FitWeightRecord, GateResult
 from microcosm.build.uk_runtime.battery_bindings import (
     UK_GATE_REGISTRY,
     UKGateBinding,
-    _uk_gate_surface,
+    _ledger_compile_parity_registry,
 )
-from microcosm.build.uk_runtime.national_build import _uk_gate_evidence
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    _uk_gate_surface,
+    uk_household_weight_kind,
+    uk_national_frame,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     UKReleaseInputColumn,
     UKReleaseInputCoverageManifest,
@@ -51,25 +47,20 @@ from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
 from microcosm.build.uk_runtime.terminal_gates import (
-    UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
-    UKReleaseParityEvidence,
-    uk_terminal_gate_report,
 )
+from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
-RELEASE_ID = "populace-uk-2023-frs-k535080"
-DIAGNOSTICS_SHA256 = "c" * 64
-
-#: Neutral declared name -> the legacy result name the bindings re-mint.
-LEGACY_NAMES = {
-    "release_input_coverage": "uk_release_input_coverage",
-    "tail_concentration": "qrf_tail_concentration",
-}
+#: The shared exclusion-expiry clock, fixed inside the committed register's
+#: validity window (approved 2026-08-10, expires 2027-02-10) so the suite
+#: never drifts across an expiry boundary.
+CLOCK = date(2026, 9, 1)
 
 VALIDATE_REFERENCE = (
-    "microcosm.build.uk_runtime.weighted_integrity._validate_input_mass_reference"
+    "microcosm.build.uk_runtime.weighted_integrity."
+    "_validate_input_mass_reference_for_descriptor"
 )
 
 
@@ -115,7 +106,7 @@ def _coverage() -> GateResult:
     )
 
 
-def _parity(**overrides) -> UKReleaseParityEvidence:
+def _parity(**overrides) -> SimpleNamespace:
     fields = {
         "candidate_columns": {"person.age"},
         "reference_columns": {"person.age"},
@@ -124,12 +115,12 @@ def _parity(**overrides) -> UKReleaseParityEvidence:
         "target_relative_errors": {"ons/population": 0.01},
     }
     fields.update(overrides)
-    return UKReleaseParityEvidence(**fields)
+    return SimpleNamespace(**fields)
 
 
 def _reference() -> UKInputMassReference:
     return UKInputMassReference(
-        totals={"person.employment_income": 10.0},
+        totals={"employment_income": 10.0},
         filename="enhanced_frs_2023_24.h5",
         revision="655dd07e4bb9c777b00dac044949611f1feb824f",
         sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
@@ -137,21 +128,11 @@ def _reference() -> UKInputMassReference:
     )
 
 
-def _input_mass_policy() -> UKInputMassParityPolicy:
-    return UKInputMassParityPolicy(relative_tolerance=0.5, minimum_reference_total=0.0)
-
-
-def _qrf_policy() -> UKQRFTailConcentrationPolicy:
-    return UKQRFTailConcentrationPolicy(
-        top_k=1, max_top_share=0.5, min_nonzero_records=2
-    )
-
-
 def _fixture_coverage_registry():
     """The UK registry with the coverage gate fed by the same fixture the
-    legacy tests inject, so both differential sides see identical coverage
-    evidence (the real coverage gate has its own dedicated tests). The
-    fixture mints the legacy name, so the re-minting path stays exercised."""
+    differential harness used before retiring schema 3. The real coverage
+    gate has its own dedicated tests. The fixture mints the legacy name, so
+    the re-minting path stays exercised."""
 
     return {
         **UK_GATE_REGISTRY,
@@ -162,98 +143,258 @@ def _fixture_coverage_registry():
             legacy_name="uk_release_input_coverage",
             needs_frame=False,
         ),
+        "take_up_signal": UKGateBinding(
+            name="take_up_signal",
+            evaluator=lambda context, parameters: GateResult(
+                name="take_up_signal", passed=True
+            ),
+            parameter_keys=frozenset({"maximum_share_deviation"}),
+        ),
+        "enum_domain": UKGateBinding(
+            name="enum_domain",
+            evaluator=lambda context, parameters: GateResult(
+                name="enum_domain", passed=True
+            ),
+            parameter_keys=frozenset({"columns"}),
+        ),
     }
 
 
-def _run_both(tables, *, parity=None, fit_records=None, armed=True):
-    """Run the legacy battery and the declared battery over one evidence set.
-
-    Both sides are built from the same tables and the same evidence objects
-    in one place — evidence asymmetry between the sides would read as a
-    false differential failure.
-    """
-
+def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK):
     person, benunit, household = tables
-    dataset = SimpleNamespace(person=person, benunit=benunit, household=household)
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
     )
-    artifacts: dict[str, object] = {"coverage_engine": object()}
-    legacy_kwargs: dict[str, object] = {}
+    artifacts: dict[str, object] = {
+        "coverage_engine": object(),
+        "exclusions_evaluated_on": clock,
+        # The staging pipeline's two scheduled stages declare no nonnegative
+        # outputs, so the nonnegative gate passes with zero required columns.
+        "build_stage_names": ("frs_hmrc_retained_leaves", "hmrc_spi_income"),
+    }
     if fit_records is not None:
         artifacts["fit_weight_records"] = fit_records
-        legacy_kwargs["fit_weight_records"] = fit_records
     if parity is not None:
         artifacts["parity_evidence"] = parity
-        legacy_kwargs["parity_evidence"] = parity
     if armed:
-        reference = _reference()
-        input_mass_policy = _input_mass_policy()
-        qrf_policy = _qrf_policy()
-        artifacts["input_mass_reference"] = reference
-        artifacts["input_mass_policy"] = input_mass_policy
-        artifacts["qrf_tail_policy"] = qrf_policy
-        legacy_kwargs["input_mass_reference"] = reference
-        legacy_kwargs["input_mass_policy"] = input_mass_policy
-        legacy_kwargs["qrf_tail_policy"] = qrf_policy
+        artifacts["input_mass_reference"] = _reference()
+        artifacts["aggregate_admin"] = {
+            "need_electricity_mean_spending": 882.91463,
+            "need_gas_mean_spending": 700.3661,
+            "nhs_spending_total": 202_000_000_000,
+        }
     # Small synthetic totals exercise battery behavior without disclosing
     # the licensed 131-column reference (same patch as the legacy tests);
     # the binding's declared-pin check compares spec to runtime constant and
     # needs no patching.
     with patch(VALIDATE_REFERENCE, return_value=None):
-        legacy = uk_terminal_gate_report(
-            dataset,
-            object(),
-            release_id=RELEASE_ID,
-            calibration_diagnostics_sha256=DIAGNOSTICS_SHA256,
-            input_coverage_evaluator=_coverage,
-            **legacy_kwargs,
-        )
-        battery = evaluate_phase(
+        return evaluate_phase(
             load_country_spec("uk").gates,
             "terminal",
             EvidenceContext(frame=frame, artifacts=artifacts),
             registry=_fixture_coverage_registry(),
         )
-    return legacy, battery
-
-
-def _assert_identical_verdicts(legacy, battery) -> None:
-    legacy_by_name = {result.name: result for result in legacy.results}
-    evaluated = [
-        outcome
-        for outcome in battery.outcomes
-        if outcome.status in (GateStatus.PASSED, GateStatus.FAILED)
-    ]
-    assert [LEGACY_NAMES.get(o.entry.gate, o.entry.gate) for o in evaluated] == [
-        result.name for result in legacy.results
-    ]
-    for outcome in evaluated:
-        legacy_result = legacy_by_name[
-            LEGACY_NAMES.get(outcome.entry.gate, outcome.entry.gate)
-        ]
-        result = outcome.result
-        assert result.name == outcome.entry.gate
-        assert result.passed == legacy_result.passed, outcome.entry.id
-        assert result.failures == legacy_result.failures, outcome.entry.id
-        assert dict(result.details) == dict(legacy_result.details), outcome.entry.id
 
 
 class TestUKSurfaceAdapter:
-    def test_surface_matches_the_national_build_evidence_adapter(self) -> None:
+    def test_surface_materializes_the_frame_not_fallbacks(self) -> None:
+        # The one surviving copy of the legacy duck-attr evidence surface
+        # (the national build's adapter consolidated into it at the
+        # orchestration swap). Every attr must resolve to the frame's real
+        # values — a gate reading household_weight_kind or time_period must
+        # never see a fallback.
         person, benunit, household = _tables()
         frame = uk_national_frame(
             person=person, benunit=benunit, household=household, time_period="2023"
         )
         surface = _uk_gate_surface(frame)
-        legacy = _uk_gate_evidence(frame)
+        tables = engine_tables(frame)
 
-        pd.testing.assert_frame_equal(surface.person, legacy.person)
-        pd.testing.assert_frame_equal(surface.benunit, legacy.benunit)
-        pd.testing.assert_frame_equal(surface.household, legacy.household)
-        assert surface.time_period == legacy.time_period
-        assert surface.household_weight_kind == legacy.household_weight_kind
-        assert surface.mass_log == legacy.mass_log
+        pd.testing.assert_frame_equal(surface.person, tables["person"])
+        pd.testing.assert_frame_equal(surface.benunit, tables["benunit"])
+        pd.testing.assert_frame_equal(surface.household, tables["household"])
+        assert surface.time_period == "2023"
+        assert surface.household_weight_kind is uk_household_weight_kind(frame)
+        assert surface.mass_log == frame.mass_log
+
+    def _nonnegative_frame(self, *, sic: list[float] | None):
+        person, benunit, household = _tables()
+        if sic is not None:
+            person["sic_industry_division"] = sic
+        return uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+
+    def test_nonnegative_binding_requires_scheduled_stage_columns(self) -> None:
+        # frs_employment declares sic_industry_division nonnegative; a build
+        # that scheduled the stage but lost the column must fail — the
+        # missing-column path is the reason the required set is never
+        # pre-filtered to present columns.
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=None),
+            artifacts={"build_stage_names": ("frs_employment",)},
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.passed is False
+        assert "sic_industry_division" in result.failures[0]
+
+    def test_nonnegative_binding_fails_on_negative_values(self) -> None:
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=[1.0, -2.0, 3.0, 4.0]),
+            artifacts={"build_stage_names": ("frs_employment",)},
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.name == "nonnegative_columns"
+        assert result.passed is False
+        assert (
+            "sic_industry_division: 1 finite value(s) below zero" in result.failures[0]
+        )
+
+    def test_nonnegative_binding_passes_clean_scheduled_columns(self) -> None:
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=[1.0, 0.0, 3.0, 4.0]),
+            artifacts={"build_stage_names": ("frs_employment",)},
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.passed is True
+
+    def test_nonnegative_binding_does_not_demand_unscheduled_stages(self) -> None:
+        # The national staging build schedules only the two HMRC stages,
+        # which declare no nonnegative outputs — the gate passes honestly
+        # with zero required columns rather than by silent pre-filtering.
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=None),
+            artifacts={
+                "build_stage_names": (
+                    "frs_hmrc_retained_leaves",
+                    "hmrc_spi_income",
+                )
+            },
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.passed is True
+
+    def test_support_binding_passes_in_range_was_outputs(self) -> None:
+        person, benunit, household = _tables(n=2)
+        household["owned_land"] = [0.0, 100.0]
+        household["cash_isa"] = [0.0, 1000.0]
+        person["student_loan_balance"] = [0.0, 100.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["support"]
+
+        result = binding.evaluate(
+            EvidenceContext(frame=frame, artifacts={}),
+            {
+                "support_bounds_resources": [
+                    "was_wealth_support_bounds.json",
+                    "lcfs_consumption_support_bounds.json",
+                    "etb_vat_support_bounds.json",
+                    "etb_services_support_bounds.json",
+                ]
+            },
+        )
+
+        assert result.passed is True
+        assert result.details["columns_checked"] == 3
+
+    def test_support_binding_fails_out_of_range_was_outputs(self) -> None:
+        person, benunit, household = _tables(n=1)
+        household["cash_isa"] = [99_999_999.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["support"]
+
+        result = binding.evaluate(
+            EvidenceContext(frame=frame, artifacts={}),
+            {"support_bounds_resource": "was_wealth_support_bounds.json"},
+        )
+
+        assert result.passed is False
+        assert "cash_isa" in result.failures[0]
+
+    def test_support_binding_checks_e6_support_resources(self) -> None:
+        person, benunit, household = _tables(n=1)
+        household["full_rate_vat_expenditure_rate"] = [999_999.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["support"]
+
+        result = binding.evaluate(
+            EvidenceContext(frame=frame, artifacts={}),
+            {"support_bounds_resources": ["etb_vat_support_bounds.json"]},
+        )
+
+        assert result.passed is False
+        assert "full_rate_vat_expenditure_rate" in result.failures[0]
+
+    def test_aggregate_admin_binding_checks_declared_anchors(self) -> None:
+        binding = UK_GATE_REGISTRY["aggregate_admin"]
+
+        result = binding.evaluate(
+            EvidenceContext(
+                frame=None,
+                artifacts={
+                    "aggregate_admin": {
+                        "need_electricity_mean_spending": 882.91463,
+                        "nhs_spending_total": 202_000_000_000,
+                    }
+                },
+            ),
+            {
+                "default_rtol": 0.15,
+                "anchors": [
+                    {
+                        "name": "need_electricity_mean_spending",
+                        "entity": "household",
+                        "measure": "electricity_consumption",
+                        "value": 882.91463,
+                        "period": "2023",
+                        "source": "test",
+                        "family": "need_energy",
+                    },
+                    {
+                        "name": "nhs_spending_total",
+                        "entity": "person",
+                        "measure": "nhs_spending",
+                        "value": 202_000_000_000,
+                        "period": "2025_26",
+                        "source": "test",
+                        "family": "nhs",
+                    },
+                ],
+            },
+        )
+
+        assert result.passed is True
+        assert result.details["anchors_checked"] == 2
 
 
 class TestUKCompatibility:
@@ -289,58 +430,55 @@ class TestUKCompatibility:
         reasons = {o.entry.id: o.reason for o in phase.outcomes}
         assert reasons["uk_weights_audit"] == ("missing evidence: fit_weight_records")
         assert reasons["uk_input_mass_parity"] == (
-            "missing evidence: frame, input_mass_policy, input_mass_reference"
+            "missing evidence: frame, exclusions_evaluated_on, input_mass_reference"
+        )
+        assert reasons["uk_degenerate_release_surface"] == (
+            "missing evidence: frame, exclusions_evaluated_on"
         )
 
 
-class TestDifferentialAgainstLegacyBattery:
-    def test_fully_armed_battery_matches_gate_for_gate(self) -> None:
-        legacy, battery = _run_both(
+class TestBatteryRegressions:
+    def test_fully_armed_battery_evaluates_gate_for_gate(self) -> None:
+        battery = _run_battery(
             _tables(),
             parity=_parity(),
             fit_records=(FitWeightRecord("spi_qrf", "importance"),),
         )
 
-        _assert_identical_verdicts(legacy, battery)
         by_id = {o.entry.id: o for o in battery.outcomes}
         passed = [
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
-        assert len(passed) == 10
-        # The armed QRF gate fails identically on both sides: the tiny
-        # synthetic frame carries none of the declared QRF output columns.
-        # Failure-text parity over a real failure, for free.
+        # 11 as on main (uk_nonnegative_columns passes with zero required
+        # columns — the scheduled stages declare none), the two E4 stochastic
+        # gates, the E5 support gate, the E6 aggregate-admin gate, and the E8
+        # student-loan enum gate; their evaluators have direct tests.
+        assert len(passed) == 16
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
-        assert qrf.result.failures == (
-            legacy.results[-1].failures  # qrf is the last legacy gate
-        )
+        assert "declared QRF output is absent" in qrf.result.failures[0]
 
-    def test_empty_fit_records_fail_identically(self) -> None:
+    def test_empty_fit_records_fail_closed(self) -> None:
         # Present-but-empty is not absent: a fit stage that ran and emitted
-        # nothing is a failed audit on both sides, never a vacuous pass
-        # (the shared binding alone would pass it; the UK override keeps
-        # the legacy guard).
-        legacy, battery = _run_both(_tables(), fit_records=())
+        # nothing is a failed audit, never a vacuous pass.
+        battery = _run_battery(_tables(), fit_records=())
 
-        _assert_identical_verdicts(legacy, battery)
         audit = {o.entry.id: o for o in battery.outcomes}["uk_weights_audit"]
         assert audit.status is GateStatus.FAILED
         assert "an absent audit is not a passing audit" in (audit.result.failures[0])
 
-    def test_seeded_defects_fail_identically(self) -> None:
+    def test_seeded_defects_fail_the_expected_gates(self) -> None:
         blown = _tables(weights=[1.0, 1.0, 1.0, 1.0e9])
         seeded_parity = _parity(
             candidate_columns={"person.age", "person.unreviewed_extra"},
             target_relative_errors={"ons/population": -0.40},
         )
-        legacy, battery = _run_both(
+        battery = _run_battery(
             blown,
             parity=seeded_parity,
             fit_records=(FitWeightRecord("spi_qrf", "none"),),
         )
 
-        _assert_identical_verdicts(legacy, battery)
         failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
         assert {
             "uk_weight_ratio",
@@ -351,28 +489,14 @@ class TestDifferentialAgainstLegacyBattery:
 
 
 class TestUnevidencedArms:
-    """The chartered semantic difference, stated as a positive assertion.
+    """Missing evidence is explicit; it blocks release candidates, plus any
+    entry whose manifest declares absence non-excusable in every posture
+    (``uk_weights_audit`` — "an absent audit is not a passing audit", the
+    legacy strictness ported during the #654 retirement)."""
 
-    The legacy report *omits* gates whose evidence is absent (sealed by its
-    membership contract); the battery lists every declared entry and records
-    the gap as ``evidence_absent`` with the missing keys named — blocking
-    release candidates only. The A2 orchestration swap inherits exactly this
-    delta."""
+    def test_battery_records_evidence_absent(self, uk_gates) -> None:
+        battery = _run_battery(_tables(), armed=False)
 
-    def test_legacy_omits_where_the_battery_records_evidence_absent(
-        self, uk_gates
-    ) -> None:
-        legacy, battery = _run_both(_tables(), armed=False)
-
-        legacy_names = {result.name for result in legacy.results}
-        assert legacy_names == {
-            "uk_release_input_coverage",
-            "degenerate_release_surface",
-            "zero_weight_strata",
-            "weight_ess",
-            "weight_ratio",
-        }
-        _assert_identical_verdicts(legacy, battery)
         absent = {
             o.entry.id: o.reason
             for o in battery.outcomes
@@ -381,38 +505,31 @@ class TestUnevidencedArms:
         assert set(absent) == {
             "uk_weights_audit",
             "uk_export_surface",
+            "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
             "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
+            "uk_aggregate_admin",
         }
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")
 
-        assert battery.blocking_outcomes(release_candidate=False) == ()
+        # The audit's absence blocks even the default posture — its status
+        # stays honestly evidence_absent; only the enforcement is strict.
+        default_blocked = {
+            o.entry.id for o in battery.blocking_outcomes(release_candidate=False)
+        }
+        assert default_blocked == {
+            "uk_qrf_tail_concentration",
+            "uk_weights_audit",
+        }
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
-        assert blocked == set(absent)
+        assert blocked == {*absent, "uk_qrf_tail_concentration"}
 
-    def test_absent_but_required_fit_evidence_is_the_named_delta(self) -> None:
-        # Legacy: a production fit stage without records is an explicit
-        # failure. Battery: the absent artifact is a named evidence gap that
-        # blocks release candidates. Same shipping decision, different
-        # taxonomy — asserted so the A2 review can lean on it.
+    def test_absent_fit_evidence_is_named(self) -> None:
         person, benunit, household = _tables()
-        dataset = SimpleNamespace(person=person, benunit=benunit, household=household)
-        legacy = uk_terminal_gate_report(
-            dataset,
-            object(),
-            release_id=RELEASE_ID,
-            calibration_diagnostics_sha256=DIAGNOSTICS_SHA256,
-            input_coverage_evaluator=_coverage,
-            require_fit_weight_records=True,
-        )
-        legacy_audit = {r.name: r for r in legacy.results}["weights_audit"]
-        assert legacy_audit.passed is False
-
         frame = uk_national_frame(
             person=person, benunit=benunit, household=household, time_period="2023"
         )
@@ -425,6 +542,111 @@ class TestUnevidencedArms:
         audit = {o.entry.id: o for o in battery.outcomes}["uk_weights_audit"]
         assert audit.status is GateStatus.EVIDENCE_ABSENT
         assert audit.reason == "missing evidence: fit_weight_records"
+
+
+class TestExclusionDiscipline:
+    """One expiry clock, a committed register of record, a loud override."""
+
+    EXCLUSION_GATES = (
+        "uk_degenerate_release_surface",
+        "uk_input_mass_parity",
+        "uk_qrf_tail_concentration",
+    )
+
+    def test_every_exclusion_gate_shares_the_injected_clock(self) -> None:
+        battery = _run_battery(
+            _tables(),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+        )
+        by_id = {o.entry.id: o for o in battery.outcomes}
+        stamps = {
+            entry_id: by_id[entry_id].result.details["exclusions_evaluated_on"]
+            for entry_id in self.EXCLUSION_GATES
+        }
+        assert set(stamps.values()) == {CLOCK.isoformat()}, stamps
+
+    def test_an_expired_register_fails_closed(self) -> None:
+        battery = _run_battery(
+            _tables(),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            clock=date(2027, 3, 1),
+        )
+        failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
+        assert {
+            "uk_degenerate_release_surface",
+            "uk_input_mass_parity",
+            "uk_qrf_tail_concentration",
+        } <= failed
+
+    def test_review_override_is_loud_in_the_evidence_payload(self) -> None:
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        committed = binding.evidence_payload(
+            EvidenceContext(artifacts={"exclusions_evaluated_on": CLOCK}), {}
+        )
+        assert committed["exclusions_policy"] == "committed"
+        assert "household.source_year" in committed["reviewed_exclusions"]
+
+        overridden = binding.evidence_payload(
+            EvidenceContext(
+                artifacts={
+                    "exclusions_evaluated_on": CLOCK,
+                    "reviewed_degenerate_exclusions": {},
+                }
+            ),
+            {},
+        )
+        assert overridden["exclusions_policy"] == "override"
+        assert overridden["reviewed_exclusions"] == {}
+        assert overridden != committed, "an override must move the evidence digest"
+
+    def test_resupplying_the_committed_register_is_not_an_override(self) -> None:
+        # The label follows content, not the artifact's presence: a caller
+        # routing the committed register through the artifact (as a driver
+        # preflight might) runs the committed policy and must say so — and
+        # a review file byte-identical to the register is no deviation.
+        from microcosm.build.uk_runtime.terminal_gates import (
+            uk_default_degenerate_reviewed_exclusions,
+        )
+
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        committed = binding.evidence_payload(
+            EvidenceContext(artifacts={"exclusions_evaluated_on": CLOCK}), {}
+        )
+        resupplied = binding.evidence_payload(
+            EvidenceContext(
+                artifacts={
+                    "exclusions_evaluated_on": CLOCK,
+                    "reviewed_degenerate_exclusions": dict(
+                        uk_default_degenerate_reviewed_exclusions()
+                    ),
+                }
+            ),
+            {},
+        )
+        assert resupplied == committed
+        assert resupplied["exclusions_policy"] == "committed"
+
+    def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = {e.id: e for e in uk_gates.gates}["uk_degenerate_release_surface"]
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        result = _evaluate_gate(
+            "degenerate_release_surface",
+            lambda: binding.evaluate(
+                EvidenceContext(
+                    frame=frame,
+                    artifacts={"exclusions_evaluated_on": datetime(2026, 9, 1, 12, 0)},
+                ),
+                entry.parameters,
+            ),
+        )
+        assert result.passed is False
+        assert "shared clock" in result.details["evaluation_error"]["message"]
 
 
 class _TerminalCoverageEngine:
@@ -499,7 +721,48 @@ class TestPreflightBindings:
         assert statuses == {
             "uk_release_input_coverage_manifest_current": GateStatus.PASSED,
             "uk_release_family_build_stages": GateStatus.PASSED,
+            "uk_ledger_compile_parity_production_2023": (GateStatus.EVIDENCE_ABSENT),
+            "uk_ledger_compile_parity_incumbent_2025": GateStatus.EVIDENCE_ABSENT,
         }
+
+    def test_ledger_compile_parity_selects_the_declared_period_registry(self) -> None:
+        registry_2023 = TargetRegistry(
+            (
+                TargetSpec(
+                    name="target",
+                    entity="household",
+                    measure="measure",
+                    value=1.0,
+                    period=2023,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        registry_2025 = TargetRegistry(
+            (
+                TargetSpec(
+                    name="target",
+                    entity="household",
+                    measure="measure",
+                    value=2.0,
+                    period=2025,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        context = EvidenceContext(
+            artifacts={
+                "uk_ledger_compiled_registries": {
+                    2023: registry_2023,
+                    2025: registry_2025,
+                }
+            }
+        )
+
+        assert _ledger_compile_parity_registry(context, 2023) is registry_2023
+        assert _ledger_compile_parity_registry(context, 2025) is registry_2025
 
     def test_missing_required_stage_fails_with_the_assertion_text(
         self, uk_gates
@@ -644,7 +907,17 @@ class TestBindingUnits:
         )
         entry = {e.id: e for e in uk_gates.gates}["uk_input_mass_parity"]
         drifted = dict(entry.parameters)
-        drifted["reference_sha256"] = "0" * 64
+        drifted["reference_registry"] = {
+            name: (
+                {
+                    **payload,
+                    "totals_sha256": "0" * 64,
+                }
+                if name == "efrs-post-calibration"
+                else payload
+            )
+            for name, payload in drifted["reference_registry"].items()
+        }
         binding = UK_GATE_REGISTRY["input_mass_parity"]
         result = _evaluate_gate(
             "input_mass_parity",
@@ -653,11 +926,11 @@ class TestBindingUnits:
                     frame=frame,
                     artifacts={
                         "input_mass_reference": _reference(),
-                        "input_mass_policy": _input_mass_policy(),
+                        "exclusions_evaluated_on": CLOCK,
                     },
                 ),
                 drifted,
             ),
         )
         assert result.passed is False
-        assert "declared pin" in result.failures[0]
+        assert "reference_registry" in result.failures[0]

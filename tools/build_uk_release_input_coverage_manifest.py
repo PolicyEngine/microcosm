@@ -44,6 +44,8 @@ REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
 MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
 HMRC_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "hmrc_income_source_stages.json"
+CGT_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "cgt_source_stages.json"
+SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "source_stages.json"
 
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
 CANDIDATE_REPO_TYPE = "dataset"
@@ -788,8 +790,50 @@ def build_manifest(
         },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "family_coverage": {
+            "cgt_incidence_clone": _source_stage_family_coverage_contract(
+                stage_name="cgt_incidence_clone",
+                candidate_source=candidate_source,
+            ),
+            "cgt_band_donors": _source_stage_family_coverage_contract(
+                stage_name="cgt_band_donors",
+                candidate_source=candidate_source,
+            ),
+            "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
+                candidate_source=candidate_source,
+            ),
+            "salary_sacrifice": _source_stage_family_coverage_contract(
+                stage_name="salary_sacrifice",
+                candidate_source=candidate_source,
+            ),
+            "student_loans": _source_stage_family_coverage_contract(
+                stage_name="student_loans",
+                candidate_source=candidate_source,
+            ),
+            "hmrc_cgt_gains": _cgt_family_coverage_contract(
+                candidate_source=candidate_source,
+            ),
             "hmrc_spi_income": _hmrc_family_coverage_contract(
                 candidate_source=candidate_source
+            ),
+            "was_wealth": _source_stage_family_coverage_contract(
+                stage_name="was_wealth",
+                candidate_source=candidate_source,
+            ),
+            "regional_property_uprating": _source_stage_family_coverage_contract(
+                stage_name="regional_property_uprating",
+                candidate_source=candidate_source,
+            ),
+            "lcfs_consumption": _source_stage_family_coverage_contract(
+                stage_name="lcfs_consumption",
+                candidate_source=candidate_source,
+            ),
+            "etb_vat": _source_stage_family_coverage_contract(
+                stage_name="etb_vat",
+                candidate_source=candidate_source,
+            ),
+            "etb_services": _source_stage_family_coverage_contract(
+                stage_name="etb_services",
+                candidate_source=candidate_source,
             ),
         },
         "derivation": (
@@ -813,6 +857,256 @@ def build_manifest(
     }
 
 
+def _cgt_family_coverage_contract(
+    *,
+    candidate_source: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate the CGT source manifest and emit its family contract.
+
+    The stage redraws capital gains amounts only, so unlike the SPI family it
+    moves no mass and declares no distributional effective-mass requirement:
+    ``capital_gains`` already carries hard release status from the candidate,
+    and the stage replaces its values in place.
+    """
+
+    payload = _load(CGT_SOURCE_STAGES_PATH)
+    stages = payload.get("stages")
+    if not isinstance(stages, list) or len(stages) != 1:
+        raise ValueError(
+            f"{CGT_SOURCE_STAGES_PATH}: expected exactly one source stage."
+        )
+    stage = stages[0]
+    if not isinstance(stage, dict) or stage.get("stage") != "hmrc_cgt_gains":
+        raise ValueError(f"{CGT_SOURCE_STAGES_PATH}: expected hmrc_cgt_gains stage.")
+    base_candidate = stage.get("base_candidate")
+    if not isinstance(base_candidate, dict):
+        raise ValueError(f"{CGT_SOURCE_STAGES_PATH}: base_candidate must be an object.")
+    source_tier = validate_uk_release_tier(candidate_source.get("tier"))
+    base_candidate_tier = validate_uk_release_tier(base_candidate.get("tier"))
+    if base_candidate_tier != source_tier:
+        raise ValueError(
+            "CGT source-stage base candidate tier disagrees with the certified "
+            f"candidate evidence: {base_candidate_tier!r} != {source_tier!r}."
+        )
+    artifacts = {
+        artifact["role"]: artifact
+        for artifact in stage.get("artifacts", [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
+    }
+    operations = {
+        operation["kind"]: operation
+        for operation in stage.get("operations", [])
+        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
+    }
+    required_artifacts = {"published_fact_surface", "policy_parameters"}
+    missing_artifacts = sorted(required_artifacts - set(artifacts))
+    required_operations = {
+        "verify_certified_candidate",
+        "verify_pinned_cgt_ods",
+        "taxable_income_proxy",
+        "rank_preserving_allocation",
+        "within_band_draws",
+        "sub_aea_remainder",
+        "record_mass_conservation_receipt",
+        "classify_cgt_band_facts_with_reviewed_fence",
+    }
+    missing_operations = sorted(required_operations - set(operations))
+    if missing_artifacts or missing_operations:
+        raise ValueError(
+            f"{CGT_SOURCE_STAGES_PATH}: incomplete CGT family contract; "
+            f"missing_artifacts={missing_artifacts}, "
+            f"missing_operations={missing_operations}."
+        )
+    surface = artifacts["published_fact_surface"]
+    verify = operations["verify_pinned_cgt_ods"]
+    fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
+    if not bool(verify.get("require_before_source_read")):
+        raise ValueError(
+            f"{CGT_SOURCE_STAGES_PATH}: the pinned ODS must be verified before "
+            "it is read."
+        )
+    if bool(fence.get("calibration_permitted", True)):
+        raise ValueError(
+            f"{CGT_SOURCE_STAGES_PATH}: the band-fact fence must keep "
+            "calibration_permitted false; promotion goes through a separately "
+            "reviewed target profile."
+        )
+    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
+        raise ValueError(
+            f"{CGT_SOURCE_STAGES_PATH}: published_fact_surface must pin sha256 "
+            "and size_bytes."
+        )
+    return {
+        "status": "required_at_build",
+        "stage": "hmrc_cgt_gains",
+        "source_manifest": CGT_SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(CGT_SOURCE_STAGES_PATH),
+        "base_candidate_sha256": str(base_candidate["sha256"]),
+        "base_candidate_tier": base_candidate_tier,
+        "source_vintages": {
+            "hmrc_surface": str(surface["vintage"]),
+            "mapped_build_period": str(surface["mapped_build_period"]),
+        },
+        "output_weight_kind": str(stage["output_weight_kind"]),
+        "required_mass_change_reason": str(
+            operations["record_mass_conservation_receipt"]["reason"]
+        ),
+        "calibration_permitted": bool(fence["calibration_permitted"]),
+        "fact_fence_id": str(fence["fact_fence_id"]),
+        "fenced_fact_count": int(fence["fenced_fact_count"]),
+        "outputs": list(stage.get("outputs", [])),
+        "effective_mass_requirements": {},
+    }
+
+
+def _source_stage_family_coverage_contract(
+    *,
+    stage_name: str,
+    candidate_source: dict[str, Any],
+) -> dict[str, Any]:
+    payload = _load(SOURCE_STAGES_PATH)
+    stages = payload.get("stages")
+    if not isinstance(stages, list):
+        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
+    matches = [
+        stage
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("stage") == stage_name
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: expected exactly one {stage_name!r} stage."
+        )
+    stage = matches[0]
+    operations = [
+        operation
+        for operation in stage.get("operations", [])
+        if isinstance(operation, dict)
+    ]
+    declared_reasons = [
+        str(operation["reason"])
+        for operation in operations
+        if isinstance(operation.get("reason"), str) and operation.get("reason")
+    ]
+    required_mass_change_reason = (
+        declared_reasons[-1]
+        if declared_reasons
+        else (
+            "E5 source-stage transform preserves household rows and typed "
+            "household weights; total household mass is conserved."
+        )
+    )
+    mass_change_semantics = (
+        "mass_increasing_support"
+        if any(
+            operation.get("kind") == "stack_band_donor_households"
+            for operation in operations
+        )
+        else "mass_conserving"
+    )
+    return {
+        "status": "required_at_build",
+        "stage": stage_name,
+        "source_manifest": SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "base_candidate_sha256": str(candidate_source["sha256"]),
+        "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
+        "source_vintages": {
+            "survey": str(stage.get("survey", "")),
+            "source": str(stage.get("source", "")),
+        },
+        "output_weight_kind": "importance",
+        "required_mass_change_reason": required_mass_change_reason,
+        "mass_change_semantics": mass_change_semantics,
+        "outputs": list(stage.get("outputs", [])),
+        "rewrites": list(stage.get("rewrites", [])),
+        "effective_mass_requirements": {},
+    }
+
+
+def _cgt_spine_family_coverage_contract(
+    *,
+    candidate_source: dict[str, Any],
+) -> dict[str, Any]:
+    """Emit the canonical spine-side CGT family without touching the frozen path."""
+
+    payload = _load(SOURCE_STAGES_PATH)
+    stages = payload.get("stages")
+    if not isinstance(stages, list):
+        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
+    matches = [
+        stage
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("stage") == "hmrc_cgt_gains_spine"
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: expected exactly one hmrc_cgt_gains_spine stage."
+        )
+    stage = matches[0]
+    artifacts = {
+        artifact["role"]: artifact
+        for artifact in stage.get("artifacts", [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
+    }
+    operations = {
+        operation["kind"]: operation
+        for operation in stage.get("operations", [])
+        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
+    }
+    required_artifacts = {"cgt_published_fact_surface", "policy_parameters"}
+    required_operations = {
+        "verify_pinned_cgt_ods",
+        "taxable_income_proxy",
+        "rank_preserving_allocation",
+        "within_band_draws",
+        "sub_aea_remainder",
+        "record_mass_conservation_receipt",
+        "classify_cgt_band_facts_with_reviewed_fence",
+    }
+    missing_artifacts = sorted(required_artifacts - set(artifacts))
+    missing_operations = sorted(required_operations - set(operations))
+    if missing_artifacts or missing_operations:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: incomplete spine CGT family contract; "
+            f"missing_artifacts={missing_artifacts}, "
+            f"missing_operations={missing_operations}."
+        )
+    surface = artifacts["cgt_published_fact_surface"]
+    verify = operations["verify_pinned_cgt_ods"]
+    fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
+    if verify.get("artifact_role") != "cgt_published_fact_surface":
+        raise ValueError("Spine CGT verification must bind its distinct ODS role.")
+    if not bool(verify.get("require_before_source_read")):
+        raise ValueError("Spine CGT ODS must be verified before source read.")
+    if bool(fence.get("calibration_permitted", True)):
+        raise ValueError("Spine CGT band facts must remain fenced from calibration.")
+    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
+        raise ValueError("Spine CGT surface must pin sha256 and size_bytes.")
+    return {
+        "status": "required_at_build",
+        "stage": "hmrc_cgt_gains_spine",
+        "source_manifest": SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "base_candidate_sha256": str(candidate_source["sha256"]),
+        "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
+        "source_vintages": {
+            "hmrc_surface": str(surface["vintage"]),
+            "mapped_build_period": str(surface["mapped_build_period"]),
+        },
+        "output_weight_kind": "importance",
+        "required_mass_change_reason": str(
+            operations["record_mass_conservation_receipt"]["reason"]
+        ),
+        "calibration_permitted": bool(fence["calibration_permitted"]),
+        "fact_fence_id": str(fence["fact_fence_id"]),
+        "fenced_fact_count": int(fence["fenced_fact_count"]),
+        "outputs": list(stage.get("outputs", [])),
+        "rewrites": list(stage.get("rewrites", [])),
+        "effective_mass_requirements": {},
+    }
+
+
 def _hmrc_family_coverage_contract(
     *,
     candidate_source: dict[str, Any],
@@ -826,6 +1120,20 @@ def _hmrc_family_coverage_contract(
     stage = stages[0]
     if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
         raise ValueError(f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage.")
+    canonical_payload = _load(SOURCE_STAGES_PATH)
+    canonical_stages = canonical_payload.get("stages")
+    if not isinstance(canonical_stages, list):
+        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
+    canonical_matches = [
+        candidate
+        for candidate in canonical_stages
+        if isinstance(candidate, dict) and candidate.get("stage") == "hmrc_spi_income"
+    ]
+    if len(canonical_matches) != 1:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: expected exactly one hmrc_spi_income stage."
+        )
+    canonical_stage = canonical_matches[0]
     base_candidate = stage.get("base_candidate")
     if not isinstance(base_candidate, dict):
         raise ValueError(
@@ -843,6 +1151,11 @@ def _hmrc_family_coverage_contract(
         for artifact in stage.get("artifacts", [])
         if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
     }
+    canonical_artifacts = {
+        artifact["role"]: artifact
+        for artifact in canonical_stage.get("artifacts", [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
+    }
     operations = {
         operation["kind"]: operation
         for operation in stage.get("operations", [])
@@ -850,6 +1163,7 @@ def _hmrc_family_coverage_contract(
     }
     required_artifacts = {"qrf_donor", "published_fact_surface"}
     missing_artifacts = sorted(required_artifacts - set(artifacts))
+    missing_canonical_artifacts = sorted(required_artifacts - set(canonical_artifacts))
     required_operations = {
         "retain_adjudicated_frs_hmrc_leaves",
         "verify_pinned_hmrc_source_pair",
@@ -858,10 +1172,11 @@ def _hmrc_family_coverage_contract(
         "gate_distributional_effective_mass",
     }
     missing_operations = sorted(required_operations - set(operations))
-    if missing_artifacts or missing_operations:
+    if missing_artifacts or missing_canonical_artifacts or missing_operations:
         raise ValueError(
             f"{HMRC_SOURCE_STAGES_PATH}: incomplete HMRC family contract; "
             f"missing_artifacts={missing_artifacts}, "
+            f"missing_canonical_artifacts={missing_canonical_artifacts}, "
             f"missing_operations={missing_operations}."
         )
     classification = operations["classify_hmrc_income_facts_with_reviewed_fences"]
@@ -908,13 +1223,23 @@ def _hmrc_family_coverage_contract(
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
         "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
+        # The two re-mapped period fields below come from the CANONICAL
+        # manifest (the #723 signed re-map lives there; the frozen mirror
+        # keeps its June bytes), so the bytes they derive from are pinned
+        # separately - evidence fields and their hash must name the same
+        # source (adversarial-review finding, 2026-08-20).
+        "canonical_source_manifest": SOURCE_STAGES_PATH.name,
+        "canonical_source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
         "base_candidate_sha256": str(base_candidate["sha256"]),
         "base_candidate_tier": base_candidate_tier,
         "source_vintages": {
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
             "hmrc_surface": str(artifacts["published_fact_surface"]["vintage"]),
             "mapped_build_period": str(
-                artifacts["published_fact_surface"]["mapped_build_period"]
+                canonical_artifacts["published_fact_surface"]["mapped_build_period"]
+            ),
+            "period_mapping": str(
+                canonical_artifacts["published_fact_surface"]["period_mapping"]
             ),
         },
         "spi_prior_national_household_mass_share": float(
@@ -975,6 +1300,25 @@ def main() -> int:
     else:
         known_gaps = _load(KNOWN_GAPS_PATH)
     manifest = build_manifest(reference=reference, known_gaps_payload=known_gaps)
+    generic_fallback_reason = (
+        "E5 source-stage transform preserves household rows and typed "
+        "household weights; total household mass is conserved."
+    )
+    declared_reasons: dict[str, str] = {}
+    for family_name, family in manifest.get("family_coverage", {}).items():
+        reason = str(family.get("required_mass_change_reason", "")).strip()
+        if not reason or reason == generic_fallback_reason:
+            # The pre-E8 families share the generic fallback (standing
+            # follow-up); every stage-declared reason must be unique so a
+            # receipt identifies exactly one family.
+            continue
+        if reason in declared_reasons:
+            raise ValueError(
+                f"family_coverage reasons must be unique receipt identities: "
+                f"{family_name!r} and {declared_reasons[reason]!r} share "
+                f"{reason!r}."
+            )
+        declared_reasons[reason] = family_name
     _write_or_check(MANIFEST_PATH, manifest, check=args.check)
     action = "current" if args.check else "wrote"
     print(

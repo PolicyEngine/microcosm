@@ -86,9 +86,10 @@ Three digests pin the declaration, all carried in every report:
   editing rationale does not move gate policy.
 - `gates_manifest_sha256` — over the full manifest including `notes` and
   the phase order.
-- `spec_fingerprint` — the composition fingerprint of the whole country
-  package. Adding or editing `gates.json` moves `CountrySpec.fingerprint`;
-  anything pinning it must be regenerated in the same change.
+- `spec_fingerprint` — the composition fingerprint of `gates.json` only.
+  Adding or editing a gate entry moves this value; unrelated country-package
+  resources do not. Anything pinning it must be regenerated in the same
+  change.
 
 ## Supplying evidence: `EvidenceContext` and bindings
 
@@ -125,8 +126,9 @@ Canonical artifact keys:
 | `coverage_engine`, `coverage_manifest` (optional override) | the UK national build | `release_input_coverage`, both phases |
 | `build_stage_names` | the UK national build preflight | `source_coverage` |
 | `parity_evidence` | the UK national build | `export_surface`, `target_surface`, `target_fit` |
-| `input_mass_reference`, `input_mass_policy` | the UK national build | `input_mass_parity` (UK override) |
-| `qrf_tail_policy` | the UK national build | `tail_concentration` (UK override) |
+| `input_mass_reference` | the UK national build, when the licensed sidecar is supplied | `input_mass_parity` (UK override) |
+| `reviewed_input_mass_exclusions` (optional override) | the UK national build | `input_mass_parity` (UK override) |
+| `reviewed_qrf_tail_exclusions` (optional override) | the UK national build | `tail_concentration` (UK override) |
 
 The UK registry
 (`microcosm.build.uk_runtime.battery_bindings.UK_GATE_REGISTRY`) is the
@@ -161,11 +163,15 @@ Blocking is a two-axis decision at each phase boundary:
 
 - Only `release_blocking` entries can block; `diagnostic` entries never
   do.
-- `failed` always blocks. `evidence_absent` blocks **release candidates
-  only**: a dev build without, say, an incumbent parity snapshot gets an
-  honest non-shippable report instead of a crash, while a release build
-  cannot excuse missing evidence — a missing frozen reference is not a
-  passing gate.
+- `failed` always blocks. By default, `evidence_absent` blocks **release
+  candidates only**: a dev build without, say, an incumbent parity snapshot
+  gets an honest non-shippable report instead of a crash, while a release
+  build cannot excuse missing evidence. Entries may opt into
+  `evidence_absent_blocks: true` when absence is itself a failed audit in
+  every posture; the UK `weights_audit` entry does this. The UK
+  `input_mass_parity` entry deliberately does not: missing licensed
+  reference totals record `evidence_absent`, and that gap blocks release
+  candidates through the normal posture rule.
 
 The battery run (`GateBatteryRun`) executes phases in declared order:
 `run_phase` evaluates the batch and persists the full report atomically
@@ -224,7 +230,11 @@ stretches on declaration alone:
 | criticality mix | 8 blocking + 1 diagnostic | all blocking |
 
 The differences are entirely in the two country inputs — the spec file
-and the registry — which is the point.
+and the registry — which is the point. The UK national build is the
+executor's production consumer: it constructs one `GateBatteryRun` per
+build and runs both phases under `BLOCKS_ARTIFACT` (preflight before the
+frame loads, terminal immediately before the staging writer), while BE
+remains spec-only.
 
 ## The reference rule
 
@@ -236,18 +246,12 @@ inputs — never implicit module state.** A country picks its reference on
 purpose and cannot silently inherit a mis-referenced comparison.
 
 The UK input-mass entry is the worked case. Its `parameters` declare the
-frozen reference by identity and canonical digest —
-
-- `reference_sha256` — the reviewed digest of the frozen reference
-  totals (the totals themselves stay uncommitted under the data licence;
-  the digest binds them without disclosing them);
-- `reference_identity` — filename, revision, artifact sha256, and vintage
-  of the pinned incumbent artifact the totals were measured from;
-- `reviewed_exclusions_resource` — the committed register resource in the
-  UK package, named rather than duplicated
-
-— and the UK binding holds the runtime-supplied reference to the declared
-pin, failing closed on drift. The export-surface entry declares its
+active `reference`, the closed `reference_registry` of named identities plus
+`totals_sha256` pins, the numeric thresholds, and the
+`reviewed_exclusions_resource` for the schema-3 per-reference register. The
+UK binding holds the runtime-supplied reference sidecar to the active named
+descriptor, failing closed on identity or totals-digest drift; an exclusion
+suppresses only for the active reference block. The export-surface entry declares its
 reviewed comparison registers the same way (the allowed-extra column list
 and the reviewed reference-side exclusions), with the hard-required,
 never-waivable columns remaining a code-level guard noted in the entry.

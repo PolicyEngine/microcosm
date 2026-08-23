@@ -64,7 +64,7 @@ from microcosm.build.gates import (
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import StagingTelemetry
+from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -296,6 +296,7 @@ from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
+STAGING_REPO_ID = "policyengine/populace-us-staging"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
@@ -396,7 +397,7 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # so pre-#557 release-refitted surfaces cannot mix with preserved surfaces.
     "target_frame_materializer_identity_sha256",
 )
-TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
+TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 2: the medicaid_take_up stage (microcosm #331) changed base_frame's
 # takes_up_medicaid_if_eligible before target-frame materialization, so
 # medicaid_enrolled target columns differ from version-1 checkpoints; the
@@ -427,7 +428,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 10: #557 preserves the staged retirement-distribution surface through
 # release materialization; pre-#557 checkpoints can carry QRF-refitted leaves
 # and must not serve the preserved-surface baseline.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 10
+# 11: target-frame checkpoint columns now preserve nullable booleans as
+# canonical bool values plus an explicit uint8 null mask. Older checkpoints
+# cannot attest this lossless physical representation.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 11
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -732,6 +736,19 @@ US_DOCUMENTED_ABSENT_INPUTS = {
         "hours; defaults False (PolicyEngine/microcosm#249)."
     ),
 }
+
+
+def _env_default(name: str, default: str) -> str:
+    """Return a trimmed environment override, treating blank as unset.
+
+    ``os.environ.get(name, default)`` falls back only when the variable is
+    absent. An exported empty string otherwise silently defeats the staging
+    default. For staging, only ``--no-staging`` should turn telemetry off.
+    """
+
+    return os.environ.get(name, "").strip() or default
+
+
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
 US_ACA_SOURCE_OUTPUT_COLUMNS = US_HEALTH_INPUT_NONCONSTANT_COLUMNS
 US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
@@ -892,20 +909,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "carries period_contract_waiver metadata in diagnostics. Without "
             "this flag such targets fail the build unless --age-targets "
             "transforms them."
-        ),
-    )
-    parser.add_argument(
-        "--zero-support-exclusions",
-        type=Path,
-        help=(
-            "Optional JSON mapping source_record_id -> reason of per-run, "
-            "per-artifact support-expressibility exclusions that augment the "
-            "standing US_FISCAL_TARGET_SUPPORT_EXCLUSIONS registry for THIS "
-            "build only (PolicyEngine/microcosm#299 Build G). A sparse "
-            "artifact's frozen support cannot populate narrow state/tail cells "
-            "the dense parent can; declare those cells here so they do not "
-            "fail the zero-support gate, with each reason recorded in the "
-            "release manifest. The module registry is never mutated."
         ),
     )
     parser.add_argument(
@@ -1415,23 +1418,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--diagnostic-skip-tax-expenditure-targets",
-        action="store_true",
-        help=(
-            "Diagnostic only: drop JCT tax-expenditure calibration targets so "
-            "local target materialization can skip reform simulations. Do not "
-            "use for publishable releases."
-        ),
-    )
-    parser.add_argument(
-        "--include-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Opt into SOI congressional-district target rows. Requires the "
-            "support frame to contain household congressional_district_geoid."
-        ),
-    )
-    parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
         help=(
@@ -1439,9 +1425,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "artifact with source_geography_id, target_geography_id, and "
             "weight columns. Defaults to the packaged Census-built crosswalk "
             "(microcosm.build.us_runtime.data; see "
-            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) when "
-            "congressional-district targets are requested; pass a path to "
-            "override it."
+            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md); pass a path to "
+            "override the default."
         ),
     )
     parser.add_argument(
@@ -1469,14 +1454,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-repo-id",
-        default=os.environ.get(
-            "POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging"
-        ),
+        default=_env_default("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
             "Hugging Face dataset repo to upload staging telemetry to while "
             "the build runs. On by default (uploads are best-effort and never "
             "fail the build); override with POPULACE_STAGING_REPO_ID or "
-            "disable with --no-staging."
+            "disable with --no-staging. An empty POPULACE_STAGING_REPO_ID is "
+            "ignored rather than read as off."
         ),
     )
     parser.add_argument(
@@ -1505,7 +1489,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-prefix",
-        default=os.environ.get("POPULACE_STAGING_PREFIX", "runs"),
+        default=_env_default("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
         help=(
             "Repo prefix for staging run artifacts. Defaults to "
             "POPULACE_STAGING_PREFIX or runs."
@@ -1522,12 +1506,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args(argv)
-    if (
-        args.include_congressional_district_targets
-        and args.congressional_district_vintage_crosswalk is None
-    ):
-        # Fall back to the packaged Census-built crosswalk so CD-target builds
-        # work out of the box; an explicit path still overrides it.
+    if args.congressional_district_vintage_crosswalk is None:
+        # Every build compiles the same national + state + CD target surface,
+        # translated through the canonical packaged vintage crosswalk unless
+        # the caller supplies an explicit replacement.
         args.congressional_district_vintage_crosswalk = (
             default_congressional_district_vintage_crosswalk_path()
         )
@@ -1542,6 +1524,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
+        )
+    if not args.no_staging and not args.staging_dir and not args.staging_repo_id:
+        # Staging with nowhere to write is a configuration error, not a quiet
+        # skip. Turning staging off is an explicit decision, never a side
+        # effect of a blank repo id.
+        parser.error(
+            "--staging-repo-id is empty and no --staging-dir is set, so staging "
+            "telemetry would silently do nothing. Pass --no-staging to skip "
+            "staging deliberately, or --staging-dir for a local-only run."
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
         parser.error("--evidence-failure-owners requires --evidence-release.")
@@ -2308,11 +2299,26 @@ def _read_checkpoint_series(group) -> pd.Series:
 def _write_checkpoint_column(group, series: pd.Series) -> None:
     import h5py
 
+    from microcosm.frame import nullable_boolean_values_and_mask
+
     dtype = series.dtype
     group.attrs["pandas_dtype"] = str(dtype)
     if pd.api.types.is_bool_dtype(dtype):
         group.attrs["storage_kind"] = "bool"
-        values = series.to_numpy(dtype=np.bool_)
+        if isinstance(dtype, pd.BooleanDtype):
+            values, null_mask = nullable_boolean_values_and_mask(series)
+            group.attrs["nullable"] = True
+            group.attrs["has_null_mask"] = bool(null_mask.any())
+            if null_mask.any():
+                group.create_dataset(
+                    "null_mask",
+                    data=null_mask.astype(np.uint8, copy=False),
+                    compression="gzip",
+                )
+        else:
+            values = series.to_numpy(dtype=np.bool_, copy=False)
+            group.attrs["nullable"] = False
+            group.attrs["has_null_mask"] = False
         group.create_dataset("values", data=values, compression="gzip")
     elif pd.api.types.is_integer_dtype(dtype):
         if bool(series.isna().any()):
@@ -2348,7 +2354,60 @@ def _read_checkpoint_column(group) -> np.ndarray:
     if storage_kind == "string":
         return np.asarray(dataset.asstr()[()], dtype=object)
     if storage_kind == "bool":
-        return np.asarray(dataset[()], dtype=np.bool_)
+        values = np.asarray(dataset[()])
+        if values.ndim != 1 or values.dtype != np.dtype(np.bool_):
+            raise RuntimeError(
+                "Target-frame checkpoint boolean values must be a "
+                "one-dimensional bool array."
+            )
+        nullable = group.attrs.get("nullable")
+        has_null_mask = group.attrs.get("has_null_mask")
+        if not isinstance(nullable, (bool, np.bool_)) or not isinstance(
+            has_null_mask, (bool, np.bool_)
+        ):
+            raise RuntimeError(
+                "Target-frame checkpoint boolean metadata must declare "
+                "nullable and has_null_mask booleans."
+            )
+        nullable = bool(nullable)
+        has_null_mask = bool(has_null_mask)
+        if not nullable and has_null_mask:
+            raise RuntimeError(
+                "Native target-frame checkpoint boolean cannot carry a null mask."
+            )
+        if has_null_mask:
+            if "null_mask" not in group:
+                raise RuntimeError(
+                    "Nullable target-frame checkpoint boolean is missing its "
+                    "declared null mask."
+                )
+            null_mask = np.asarray(group["null_mask"])
+            if (
+                null_mask.ndim != 1
+                or null_mask.dtype != np.dtype(np.uint8)
+                or len(null_mask) != len(values)
+                or ((null_mask != 0) & (null_mask != 1)).any()
+                or not null_mask.any()
+            ):
+                raise RuntimeError(
+                    "Target-frame checkpoint nullable boolean null mask must "
+                    "be an aligned, nonempty uint8 0/1 array."
+                )
+            mask = null_mask.astype(np.bool_, copy=False)
+            if values[mask].any():
+                raise RuntimeError(
+                    "Target-frame checkpoint nullable boolean null mask covers "
+                    "noncanonical true value bits."
+                )
+        else:
+            if "null_mask" in group:
+                raise RuntimeError(
+                    "Target-frame checkpoint boolean has an unexpected null mask."
+                )
+            mask = np.zeros(len(values), dtype=np.bool_)
+        if nullable:
+            return pd.arrays.BooleanArray(values, mask, copy=False)
+        return values
     if storage_kind == "int64":
         return np.asarray(dataset[()], dtype=np.int64)
     if storage_kind == "float64":
@@ -7782,35 +7841,6 @@ def _build_manifests(
     )
 
 
-def _load_zero_support_exclusions(path: Path | None) -> dict[str, str]:
-    """Load a per-run, per-artifact zero-support exclusion mapping.
-
-    The file is a JSON object of ``source_record_id -> reason``. Each reason
-    must be a non-empty string documenting why the sparse artifact's frozen
-    support cannot express that cell (PolicyEngine/microcosm#299 Build G). These
-    augment the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` for a single
-    build; the module constant is never mutated. Returns an empty mapping when
-    no path is given.
-    """
-    if path is None:
-        return {}
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(
-            f"Zero-support exclusions file {path} must be a JSON object of "
-            "source_record_id -> reason."
-        )
-    exclusions: dict[str, str] = {}
-    for source_record_id, reason in payload.items():
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError(
-                "Every zero-support exclusion needs a non-empty reason; "
-                f"{source_record_id!r} in {path} has {reason!r}."
-            )
-        exclusions[str(source_record_id)] = reason
-    return exclusions
-
-
 def _load_qrf_tail_concentration_exclusions(path: Path | None) -> dict[str, str]:
     """Load a per-run QRF tail-concentration exclusion mapping.
 
@@ -8212,19 +8242,54 @@ def _assert_exact_k_original_pool_alignment(
         )
 
 
+#: The staging run for the build in flight, so the entry point can mark it
+#: failed on the way out. The build body hands its telemetry object down a
+#: large call stack; a module-level handle avoids threading a second copy back
+#: up purely for the failure path.
+_ACTIVE_TELEMETRY: StagingTelemetry | None = None
+
+
+def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
+    """Record what staging did and distinguish an opt-out from non-delivery.
+
+    Uploads are best-effort and self-disable after repeated failures, so a
+    configured destination is not evidence that anything reached it.
+    """
+
+    if telemetry is None:
+        return {"enabled": False, "reason": "--no-staging"}
+    return {
+        "enabled": True,
+        "run_id": telemetry.run_id,
+        "repo_id": telemetry.repo_id,
+        "uploads_succeeded": telemetry.uploads_succeeded,
+    }
+
+
 def _staging_telemetry(
     args: argparse.Namespace,
     *,
     release_root: Path,
     release_id: str,
 ) -> StagingTelemetry | None:
+    global _ACTIVE_TELEMETRY
+    # Each call establishes the current run, so a handle from a previous one
+    # can never be marked failed in place of this build's.
+    _ACTIVE_TELEMETRY = None
     if args.no_staging:
         return None
     if not args.staging_dir and not args.staging_repo_id:
-        return None
+        # The parser rejects this combination, so reaching it means a caller
+        # built the namespace directly. Returning None here would reinstate
+        # the silent skip the parser guard exists to prevent.
+        raise ValueError(
+            "staging is enabled but has no destination: staging_repo_id is "
+            "empty and staging_dir is unset. Set no_staging to skip staging, "
+            "or give a staging_dir for a local-only run."
+        )
     run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    return StagingTelemetry(
+    _ACTIVE_TELEMETRY = StagingTelemetry(
         run_id=run_id,
         candidate_release_id=release_id,
         run_dir=run_dir,
@@ -8232,6 +8297,7 @@ def _staging_telemetry(
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
+    return _ACTIVE_TELEMETRY
 
 
 class _TerminalBatchTelemetry:
@@ -8304,6 +8370,30 @@ def _print_build_result(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Run the build and mark its staging run failed if it does not finish.
+
+    An uncaught build error previously left the dashboard status at ``running``
+    forever. SIGKILL remains outside the reach of an in-process handler; this
+    closes the ordinary exception and termination half of the gap.
+    """
+
+    try:
+        _main(argv)
+    except BaseException as error:
+        if _ACTIVE_TELEMETRY is not None:
+            try:
+                _ACTIVE_TELEMETRY.fail(error)
+            except Exception as telemetry_error:  # pragma: no cover - defensive
+                # A failing failure-report must not replace the real traceback.
+                print(
+                    "warning: could not record the staging run as failed: "
+                    f"{type(telemetry_error).__name__}: {telemetry_error}",
+                    file=sys.stderr,
+                )
+        raise
+
+
+def _main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
@@ -8479,21 +8569,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
-    extra_support_exclusions = _load_zero_support_exclusions(
-        args.zero_support_exclusions
-    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
-        include_congressional_district_targets=(
-            args.include_congressional_district_targets
-        ),
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
-        extra_support_exclusions=extra_support_exclusions,
     )
     # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
@@ -8525,15 +8608,6 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         )
     target_specs = target_registry.specs
-    if args.diagnostic_skip_tax_expenditure_targets:
-        tax_expenditure_measures = {
-            reform_spec.measure for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS
-        }
-        target_specs = tuple(
-            spec
-            for spec in target_specs
-            if spec.measure not in tax_expenditure_measures
-        )
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
     # microcosm#507/#508): the band targets come from the same ledger-fed
@@ -8549,10 +8623,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         target_specs,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
-    if (
-        not target_profile_gate.passed
-        and not args.diagnostic_skip_tax_expenditure_targets
-    ):
+    if not target_profile_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
@@ -11359,12 +11430,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             "source_coverage", message="Writing source coverage diagnostics."
         )
     active_aliases = DIRECT_ACTIVE_ALIASES + (
-        (
-            "census-acs-s0101-congressional-district-age-2024",
-            "soi-congressional-district-2022",
-        )
-        if args.include_congressional_district_targets
-        else ()
+        "census-acs-s0101-congressional-district-age-2024",
+        "soi-congressional-district-2022",
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
@@ -11381,25 +11448,6 @@ def main(argv: Sequence[str] | None = None) -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
-    # Per-run, per-artifact support-expressibility exclusions (microcosm#299
-    # Build G): recorded separately from the standing global registry so the
-    # manifest documents exactly which cells this artifact declared un-
-    # expressible on its support, without mutating the module constant.
-    coverage["fiscal_target_support_exclusions_per_run"] = {
-        "source": (
-            str(args.zero_support_exclusions)
-            if args.zero_support_exclusions is not None
-            else None
-        ),
-        "reason": (
-            "Sparse frozen-support cells the artifact's support cannot express; "
-            "augments US_FISCAL_TARGET_SUPPORT_EXCLUSIONS for this build only."
-        ),
-        "exclusions": [
-            {"source_record_id": source_record_id, "reason": reason}
-            for source_record_id, reason in sorted(extra_support_exclusions.items())
-        ],
-    }
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
@@ -11529,11 +11577,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=(
-            {"run_id": telemetry.run_id, "repo_id": args.staging_repo_id}
-            if telemetry is not None
-            else None
-        ),
+        staging=_staging_manifest_block(telemetry),
         dataset_key=dataset_key,
         dataset_filename=dataset_filename,
         calibration_key=calibration_key,

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the eleven-gate terminal battery, thresholds carried as entry parameters at their exact certified values with no discretionary headroom. The input-mass and QRF-tail entries stay runtime-armed pending the microcosm#630 adjudication, whose receipted values land here as parameter edits. A delivered-take-up gate is deferred until the shared gate vocabulary grows a take-up name; every gate the UK runs today is declared below.",
+  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below.",
   "phases": [
     "preflight",
     "terminal"
@@ -24,6 +24,30 @@
       "criticality": "release_blocking",
       "parameters": {},
       "notes": "Frameless preflight over the materialized stage names: every family the coverage manifest marks required_at_build must have its build stage scheduled before any stage runs."
+    },
+    {
+      "id": "uk_ledger_compile_parity_production_2023",
+      "gate": "ledger_compile_parity",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "fixture_resource": "parity_fixture_production_2023.json",
+        "signed_differences_resource": "ledger_compile_parity_production_2023_signed_differences.json",
+        "target_period": 2023
+      },
+      "notes": "Ledger-compiled UK targets at period 2023 compared with the certified production 2023 calibration surface fixture. Signed differences are committed for adjudication rather than hidden."
+    },
+    {
+      "id": "uk_ledger_compile_parity_incumbent_2025",
+      "gate": "ledger_compile_parity",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "fixture_resource": "registry_parity_fixture_2025.json",
+        "signed_differences_resource": "ledger_compile_parity_incumbent_2025_signed_differences.json",
+        "target_period": 2025
+      },
+      "notes": "Ledger-compiled UK targets at the 2025 calibration period compared with the frozen incumbent registry surface. The signed list enumerates TCL additions, exclusions, unsupported rows, and vintage drift for review."
     },
     {
       "id": "uk_release_input_coverage",
@@ -90,7 +114,7 @@
       "parameters": {
         "maximum_max_to_median_ratio": 1151.2542195939373
       },
-      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 receipted full-scale re-baseline replaces this number as a reviewed parameter edit, never a loosen-to-pass."
+      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 finding-2 breach (1590.53) was adjudicated NOT a re-baseline case: adversarial decomposition showed 11-12 SPI-synthetic clone rows from two donor lineages carried pathological inherited weights, fixed upstream by the per-stratum allocation in microcosm#710 (post-fix full-scale ratio well inside this fence). The fence held and stays at the June bound; raising it requires an explicit future adjudication with a receipted measurement, never loosen-to-pass."
     },
     {
       "id": "uk_weights_audit",
@@ -98,7 +122,73 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
-      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit."
+      "evidence_absent_blocks": true,
+      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit \u2014 and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
+    },
+    {
+      "id": "uk_nonnegative_columns",
+      "gate": "nonnegative_columns",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every UK source-stage column declared in source_stages.json nonnegative_outputs must be finite and non-negative on the terminal frame; this makes the shared nonnegative column gate live for UK."
+    },
+    {
+      "id": "uk_support",
+      "gate": "support",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "support_bounds_resources": [
+          "was_wealth_support_bounds.json",
+          "lcfs_consumption_support_bounds.json",
+          "etb_vat_support_bounds.json",
+          "etb_services_support_bounds.json"
+        ]
+      },
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed."
+    },
+    {
+      "id": "uk_aggregate_admin",
+      "gate": "aggregate_admin",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "default_rtol": 0.15,
+        "anchors": [
+          {
+            "name": "need_electricity_mean_spending",
+            "entity": "household",
+            "measure": "electricity_consumption",
+            "value": 882.91463,
+            "period": "2023",
+            "source": "Unweighted mean of NEED 2023 income-band electricity kWh anchors converted with Ofgem Q2 2026 unit rates.",
+            "family": "need_energy",
+            "tolerance": 132.4371945
+          },
+          {
+            "name": "need_gas_mean_spending",
+            "entity": "household",
+            "measure": "gas_consumption",
+            "value": 700.3661,
+            "period": "2023",
+            "source": "Unweighted mean of NEED 2023 income-band gas kWh anchors converted with Ofgem Q2 2026 unit rates.",
+            "family": "need_energy",
+            "tolerance": 105.054915
+          },
+          {
+            "name": "nhs_spending_total",
+            "entity": "person",
+            "measure": "nhs_spending",
+            "value": 202000000000,
+            "period": "2025_26",
+            "source": "NHS 2025/26 budget anchor in etb_services_anchors.json.",
+            "family": "nhs",
+            "tolerance": 30300000000
+          }
+        ]
+      },
+      "notes": "Release-blocking aggregate-admin gate for E6 NEED energy anchors and the NHS budget. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
     },
     {
       "id": "uk_export_surface",
@@ -110,6 +200,7 @@
           "benunit.child_benefit_opts_out",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
+          "household.cash_isa",
           "household.clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",
@@ -117,6 +208,7 @@
           "household.gas_consumption",
           "household.has_fuel_consumption",
           "household.household_is_capital_gains_clone",
+          "household.household_is_cgt_band_donor",
           "household.household_is_spi_synthetic",
           "household.la_code_oa",
           "household.lsoa_code",
@@ -127,7 +219,10 @@
           "household.property_purchased",
           "household.rail_usage",
           "household.region_code_oa",
+          "household.stocks_and_shares_isa",
           "person.aa_category",
+          "person.a_and_e_visits",
+          "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
           "person.charitable_investment_gifts",
@@ -137,12 +232,12 @@
           "person.esa_support_group_proxy",
           "person.employment_sector",
           "person.gift_aid",
-          "person.higher_earner_tie_break",
           "person.highest_education",
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
           "person.is_in_non_advanced_education",
           "person.is_parent",
           "person.legacy_jobseeker_proxy",
+          "person.outpatient_visits",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
           "person.pip_m_category",
@@ -160,6 +255,48 @@
         }
       },
       "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+    },
+    {
+      "id": "uk_take_up_signal",
+      "gate": "take_up_signal",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "maximum_share_deviation": 0.05
+      },
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target."
+    },
+    {
+      "id": "uk_brma_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "brma"
+        ]
+      },
+      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
+    },
+    {
+      "id": "uk_student_loan_plan_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "student_loan_plan"
+        ]
+      },
+      "notes": "The person student-loan plan assignment must remain inside the PolicyEngine-UK StudentLoanPlan enum domain."
+    },
+    {
+      "id": "uk_calibration_reference_coverage",
+      "gate": "calibration_reference_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every activated UK national target reference must resolve and enter the calibration matrix; count mismatch blocks release."
     },
     {
       "id": "uk_target_surface",
@@ -185,16 +322,24 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "reference_sha256": "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914",
-        "reference_identity": {
-          "filename": "enhanced_frs_2023_24.h5",
-          "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-          "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-          "vintage": "2023_24"
+        "reference": "efrs-post-calibration",
+        "reference_registry": {
+          "efrs-post-calibration": {
+            "identity": {
+              "filename": "enhanced_frs_2024_25.h5",
+              "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+              "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+              "vintage": "2024_25"
+            },
+            "totals_sha256": "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659",
+            "scope_note": "Channel-blind post-calibration enhanced-FRS production incumbent, pinned to the 2024-25 line; its artifact carries the SPI-synthetic rows structurally but no admin-restored mass in the SPI-channel-exclusive columns, so those columns are comparable only through per-reference reviewed exclusions."
+          }
         },
+        "relative_tolerance": 4.521811483823806,
+        "minimum_reference_total": 0.0,
         "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
       },
-      "notes": "Weighted input-mass parity against the frozen 131-column enhanced-FRS reference. The reference is a declared input pinned by identity and canonical digest (the totals stay uncommitted under the UKDS licence); numeric tolerances stay runtime-armed pending microcosm#630 and land here when adjudicated. Reviewed exclusions live in the named register resource of this package."
+      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the sole breach, charitable_investment_gifts at +15,168.8% on the post-#710 surface, is the per-reference exclusion. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector \u2014 the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
     },
     {
       "id": "uk_qrf_tail_concentration",
@@ -202,9 +347,12 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json"
+        "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
+        "top_k": 100,
+        "max_top_share": 0.9970712395200448,
+        "min_nonzero_records": 274
       },
-      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Thresholds stay runtime-armed pending microcosm#630 and land here when adjudicated. Reviewed exclusions live in the named register resource of this package."
+      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Thresholds sit at the measured edges from the microcosm#630 measurement pass: top_k 100 as the grid anchor, max_top_share at the exact measured maximum, and min_nonzero_records at the thinnest measured column, with no headroom. A future thinner column goes thin visibly in the signed details, never a silent pass. Reviewed exclusions live in the named register resource of this package."
     }
   ]
 }

@@ -21,6 +21,7 @@ from microcosm.build.us_runtime.take_up_contract import (
     assert_take_up_contract_current,
     assert_take_up_treatments_consistent,
     count_calibrated_take_up_programs,
+    load_legacy_take_up_contract_evidence,
     load_take_up_contract,
     seeded_take_up_programs,
     take_up_contract_identity,
@@ -31,6 +32,43 @@ pytest.importorskip("policyengine_us")
 
 
 class TestContractLoads:
+    def test_runtime_view_is_compiled_through_country_spec(self) -> None:
+        from microcosm.build.country_spec import (
+            load_country_take_up_contract_projection,
+        )
+
+        projection = load_country_take_up_contract_projection("us")
+        assert projection is not None
+        contract = load_take_up_contract()
+        evidence = load_legacy_take_up_contract_evidence()
+
+        assert [dict(program.raw) for program in contract.programs] == list(
+            projection["programs"]
+        )
+        assert take_up_contract_identity(contract) == take_up_contract_identity(
+            evidence
+        )
+
+    def test_narrow_country_projection_refuses_a_stale_engine_lock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from microcosm.build.country_spec import (
+            load_country_take_up_contract_projection,
+        )
+        from microcosm.build.spec_engine import engine_abi as engine_abi_module
+        from microcosm.build.spec_engine.errors import SpecValidationError
+
+        monkeypatch.setattr(
+            engine_abi_module,
+            "_installed_engine_version",
+            lambda package: "0.0.0-stale-test",
+        )
+        with pytest.raises(
+            SpecValidationError,
+            match="engine version differs from the exact generated engine pin",
+        ):
+            load_country_take_up_contract_projection("us")
+
     def test_loads_every_engine_take_up_variable(self) -> None:
         contract = load_take_up_contract()
         engine_names = set(PolicyEngineUSEngine().take_up_variables())
@@ -173,6 +211,7 @@ class TestAssertionCanFail:
 
     def _reload_with(self, monkeypatch, mutated: dict) -> None:
         load_take_up_contract.cache_clear()
+        load_legacy_take_up_contract_evidence.cache_clear()
         payload = json.dumps(mutated)
 
         class _FakePath:
@@ -194,6 +233,7 @@ class TestAssertionCanFail:
         )
         yield raw
         load_take_up_contract.cache_clear()
+        load_legacy_take_up_contract_evidence.cache_clear()
 
     def test_dropping_a_program_fails(self, monkeypatch, base_table) -> None:
         mutated = copy.deepcopy(base_table)
@@ -204,7 +244,9 @@ class TestAssertionCanFail:
         ]
         self._reload_with(monkeypatch, mutated)
         with pytest.raises(AssertionError, match="takes_up_snap_if_eligible"):
-            assert_take_up_contract_current()
+            assert_take_up_contract_current(
+                contract=load_legacy_take_up_contract_evidence()
+            )
 
     @pytest.mark.parametrize(
         "resource_path",
@@ -228,7 +270,10 @@ class TestAssertionCanFail:
         resource_path: tuple[str, ...],
     ) -> None:
         load_take_up_contract.cache_clear()
-        baseline_identity = take_up_contract_identity(load_take_up_contract())
+        load_legacy_take_up_contract_evidence.cache_clear()
+        baseline_identity = take_up_contract_identity(
+            load_legacy_take_up_contract_evidence()
+        )
         mutated = copy.deepcopy(base_table)
         parent = mutated
         for key in resource_path[:-1]:
@@ -237,7 +282,9 @@ class TestAssertionCanFail:
         parent[field] = f"{parent[field]}-identity-mutation"
         self._reload_with(monkeypatch, mutated)
 
-        changed_identity = take_up_contract_identity(load_take_up_contract())
+        changed_identity = take_up_contract_identity(
+            load_legacy_take_up_contract_evidence()
+        )
 
         assert (
             changed_identity["resource_sha256"] != baseline_identity["resource_sha256"]
@@ -259,7 +306,9 @@ class TestAssertionCanFail:
                 program["engine_class"] = "model_simulated"
         self._reload_with(monkeypatch, mutated)
         with pytest.raises(AssertionError, match="engine_class"):
-            assert_take_up_contract_current()
+            assert_take_up_contract_current(
+                contract=load_legacy_take_up_contract_evidence()
+            )
 
     def test_wrong_default_fails(self, monkeypatch, base_table) -> None:
         mutated = copy.deepcopy(base_table)
@@ -268,7 +317,9 @@ class TestAssertionCanFail:
                 program["default"] = False
         self._reload_with(monkeypatch, mutated)
         with pytest.raises(AssertionError, match="default"):
-            assert_take_up_contract_current()
+            assert_take_up_contract_current(
+                contract=load_legacy_take_up_contract_evidence()
+            )
 
     def test_phantom_program_fails(self, monkeypatch, base_table) -> None:
         mutated = copy.deepcopy(base_table)
@@ -284,7 +335,9 @@ class TestAssertionCanFail:
         )
         self._reload_with(monkeypatch, mutated)
         with pytest.raises(AssertionError, match="takes_up_nonexistent_if_eligible"):
-            assert_take_up_contract_current()
+            assert_take_up_contract_current(
+                contract=load_legacy_take_up_contract_evidence()
+            )
 
     def test_seeding_a_model_simulated_flag_is_rejected_at_load(
         self, monkeypatch, base_table
@@ -297,7 +350,9 @@ class TestAssertionCanFail:
                 program["populace_treatment"] = "seed"
         self._reload_with(monkeypatch, mutated)
         with pytest.raises(AssertionError, match="model_simulated"):
-            assert_take_up_treatments_consistent()
+            assert_take_up_treatments_consistent(
+                contract=load_legacy_take_up_contract_evidence()
+            )
 
 
 class TestSeedProvenanceIsEnforced:
@@ -305,6 +360,7 @@ class TestSeedProvenanceIsEnforced:
 
     def _load_mutated(self, monkeypatch, mutated: dict):
         load_take_up_contract.cache_clear()
+        load_legacy_take_up_contract_evidence.cache_clear()
         payload = json.dumps(mutated)
 
         class _FakePath:
@@ -326,6 +382,7 @@ class TestSeedProvenanceIsEnforced:
         )
         yield raw
         load_take_up_contract.cache_clear()
+        load_legacy_take_up_contract_evidence.cache_clear()
 
     def test_seed_without_rate_source_is_refused(self, monkeypatch, base_table) -> None:
         mutated = copy.deepcopy(base_table)
@@ -334,7 +391,7 @@ class TestSeedProvenanceIsEnforced:
                 program["rate"] = {"value": 0.219}  # no source
         self._load_mutated(monkeypatch, mutated)
         with pytest.raises(ValueError, match="source"):
-            load_take_up_contract()
+            load_legacy_take_up_contract_evidence()
 
     def test_seed_with_unsourced_status_is_refused(
         self, monkeypatch, base_table
@@ -349,7 +406,7 @@ class TestSeedProvenanceIsEnforced:
                 }
         self._load_mutated(monkeypatch, mutated)
         with pytest.raises(ValueError, match="administrative-grade"):
-            load_take_up_contract()
+            load_legacy_take_up_contract_evidence()
 
     def test_seeded_programs_all_have_administrative_provenance(self) -> None:
         # The real table: every seeded program carries a sourced rate.

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from argparse import ArgumentParser, Namespace
 
 import pytest
 
 from microcosm.build.ledger_artifact import (
     CONSUMER_ARTIFACT_SCHEMA_VERSION,
     LedgerConsumerArtifact,
+    add_ledger_artifact_args,
     load_ledger_consumer_artifact,
+    resolve_ledger_artifact,
 )
 
 
@@ -31,9 +34,7 @@ def _fact_row(**overrides):
 
 
 def _write_facts(path, rows):
-    path.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
-    )
+    path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows))
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
@@ -169,3 +170,31 @@ def test_rejects_missing_and_empty_feeds(tmp_path):
     empty_facts.write_text("\n")
     with pytest.raises(ValueError, match="empty"):
         load_ledger_consumer_artifact(empty_facts)
+
+
+def test_shared_cli_args_load_optional_ledger_artifact(tmp_path):
+    facts_path = tmp_path / "consumer_facts.jsonl"
+    facts_sha = _write_facts(facts_path, [_fact_row()])
+    parser = ArgumentParser()
+    add_ledger_artifact_args(parser)
+    args = parser.parse_args(
+        ["--ledger-facts", str(facts_path), "--ledger-facts-sha256", facts_sha]
+    )
+
+    artifact = resolve_ledger_artifact(args)
+
+    assert artifact is not None
+    assert artifact.facts_sha256 == facts_sha
+
+
+def test_shared_cli_resolver_allows_absent_artifact_but_not_orphan_pins():
+    assert resolve_ledger_artifact(Namespace(ledger_facts=None)) is None
+
+    with pytest.raises(ValueError, match="requires --ledger-facts"):
+        resolve_ledger_artifact(
+            Namespace(
+                ledger_facts=None,
+                ledger_facts_sha256="0" * 64,
+                ledger_manifest_sha256=None,
+            )
+        )

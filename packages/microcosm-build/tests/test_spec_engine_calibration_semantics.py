@@ -1,0 +1,215 @@
+"""Normalized calibration authority and constants-era projection gates."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import importlib.util
+import json
+import sys
+import types
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.spec_engine import (
+    CALIBRATION_SUMMARY_ALIASES,
+    SpecValidationError,
+    load_schema_registry,
+    project_legacy_calibration_contract,
+    scoped_take_up_manifest_program_bindings,
+)
+from microcosm.build.spec_engine.calibration_semantics import (
+    resolve_calibration_tail_contracts,
+)
+from microcosm.build.spec_engine.canonical import canonical_json_bytes
+
+ROOT = Path(__file__).resolve().parents[3]
+US_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build/us"
+CANONICAL_LEGACY_PROJECTION_SHA256 = (
+    "05cb099ee8bd0234ae94586b76dc20ab8a5bd0735c00d4e82e67f912e0b33823"
+)
+
+
+def _load_contract_builder():
+    if "tools" not in sys.modules:
+        tools_package = types.ModuleType("tools")
+        tools_package.__path__ = [str(ROOT / "tools")]
+        sys.modules["tools"] = tools_package
+    name = "f0_us_bundle_contracts"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(
+        name,
+        ROOT / "tools/us_bundle_generation/contracts.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+build_calibration_contract = _load_contract_builder().build_calibration_contract
+resolve_calibration_tail_contracts_oracle = (
+    _load_contract_builder().resolve_calibration_tail_contracts
+)
+
+
+def _bootstrap_bindings() -> Iterator[tuple[str, str, str]]:
+    frozen = json.loads((US_ROOT / "take_up_contract.json").read_text())
+    return (
+        (row["variable"], row["entity"], row["populace_treatment"])
+        for row in frozen["programs"]
+    )
+
+
+@pytest.fixture(scope="module")
+def calibration() -> dict[str, object]:
+    # Constants extraction is deliberately scoped to frozen generation-0
+    # bindings so this test remains runnable before the typed YAML is rewritten.
+    with scoped_take_up_manifest_program_bindings(tuple(_bootstrap_bindings())):
+        return build_calibration_contract()
+
+
+def test_normalized_calibration_is_closed_and_has_no_summary_aliases(
+    calibration: dict[str, object],
+) -> None:
+    load_schema_registry().validate(calibration, "calibration.schema.json")
+    solver = calibration["solver"]
+    assert not CALIBRATION_SUMMARY_ALIASES.intersection(solver)
+
+
+def test_normalized_contract_has_the_canonical_legacy_projection(
+    calibration: dict[str, object],
+) -> None:
+    projected = project_legacy_calibration_contract(calibration)
+
+    assert hashlib.sha256(canonical_json_bytes(projected)).hexdigest() == (
+        CANONICAL_LEGACY_PROJECTION_SHA256
+    )
+    assert CALIBRATION_SUMMARY_ALIASES <= projected["solver"].keys()
+
+
+def test_projection_is_pure(calibration: dict[str, object]) -> None:
+    before = copy.deepcopy(calibration)
+    project_legacy_calibration_contract(calibration)
+    assert calibration == before
+
+
+@pytest.mark.parametrize(
+    ("path", "legacy_field", "replacement"),
+    [
+        (
+            ("solver", "hard_constraints", "max_weight_ratio"),
+            "max_weight_ratio",
+            7.5,
+        ),
+        (
+            ("solver", "initialization_contract", "policy_id"),
+            "initialization",
+            "reviewed_mutation",
+        ),
+        (
+            ("solver", "stopping_contract", "max_epochs"),
+            "stopping",
+            12,
+        ),
+        (
+            ("solver", "infeasibility_contract", "soft_target_miss"),
+            "infeasibility_policy",
+            "reviewed_mutation",
+        ),
+        (
+            ("solver", "target_priority_contract", "policy_id"),
+            "target_priority",
+            "reviewed_mutation",
+        ),
+    ],
+)
+def test_normalized_mutations_change_the_named_legacy_alias(
+    calibration: dict[str, object],
+    path: tuple[str, ...],
+    legacy_field: str,
+    replacement: object,
+) -> None:
+    mutated = copy.deepcopy(calibration)
+    cursor = mutated
+    for part in path[:-1]:
+        cursor = cursor[part]
+    cursor[path[-1]] = replacement
+
+    before = project_legacy_calibration_contract(calibration)["solver"][legacy_field]
+    after = project_legacy_calibration_contract(mutated)["solver"][legacy_field]
+    assert after != before
+
+
+def test_unsupported_target_policy_mutation_is_refused(
+    calibration: dict[str, object],
+) -> None:
+    mutated = copy.deepcopy(calibration)
+    mutated["targets"]["zero_target_policy"] = "drop"
+
+    with pytest.raises(
+        SpecValidationError,
+        match="calibration/targets: zero/negative policies",
+    ):
+        project_legacy_calibration_contract(mutated)
+
+
+def test_retired_summary_alias_cannot_be_reintroduced(
+    calibration: dict[str, object],
+) -> None:
+    mutated = copy.deepcopy(calibration)
+    mutated["solver"]["max_weight_ratio"] = 5.0
+
+    with pytest.raises(SpecValidationError, match="retired derived aliases"):
+        project_legacy_calibration_contract(mutated)
+    with pytest.raises(SpecValidationError, match="max_weight_ratio"):
+        load_schema_registry().validate(mutated, "calibration.schema.json")
+
+
+def test_tail_references_compile_to_the_constants_era_object() -> None:
+    resolved = load_country_spec("us").resolved_spec
+    assert resolved is not None
+    calibration_document = resolved.domain("calibration").to_wire()
+    spine_document = resolved.domain("spine").to_wire()
+    imputation_document = resolved.domain("imputation").to_wire()
+    before = copy.deepcopy(calibration_document)
+
+    actual = resolve_calibration_tail_contracts(
+        calibration_document,
+        spine_document=spine_document,
+        imputation_document=imputation_document,
+    )
+    expected = resolve_calibration_tail_contracts_oracle(
+        calibration_document,
+        spine_document=spine_document,
+        imputation_document=imputation_document,
+    )
+
+    assert actual == expected
+    assert calibration_document == before
+    puf = actual["puf_capital_gains_tail"]
+    assert "support_contract_ref" not in puf
+    assert "execution_binding_ref" not in puf
+    assert puf["support_contract"]["version"] == 1
+    assert puf["soi_e19200_agi_bands"]["runtime_sha256"]
+
+
+def test_tail_reference_mutation_is_refused() -> None:
+    resolved = load_country_spec("us").resolved_spec
+    assert resolved is not None
+    calibration_document = resolved.domain("calibration").to_wire()
+    calibration_document["tail_contracts"]["puf_capital_gains_tail"][
+        "support_contract_ref"
+    ]["support_role"] = "invented"
+
+    with pytest.raises(SpecValidationError, match="expected reviewed typed reference"):
+        resolve_calibration_tail_contracts(
+            calibration_document,
+            spine_document=resolved.domain("spine").to_wire(),
+            imputation_document=resolved.domain("imputation").to_wire(),
+        )

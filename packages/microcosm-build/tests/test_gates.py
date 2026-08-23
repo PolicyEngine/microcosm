@@ -22,6 +22,8 @@ from microcosm.build import (
     export_surface_gate,
     formula_owned_export_gate,
     input_mass_parity_gate,
+    ledger_compile_parity_gate,
+    ledger_compile_parity_signed_differences,
     macro_realism_gate,
     nonconstant_columns_gate,
     nonnegative_columns_gate,
@@ -37,7 +39,7 @@ from microcosm.build import (
     target_surface_gate,
     weights_audit_gate,
 )
-from microcosm.calibrate import TargetSpec
+from microcosm.calibrate import TargetRegistry, TargetSpec
 
 
 class TestGateResultInvariants:
@@ -83,6 +85,309 @@ class TestGateResultInvariants:
         assert result.details["targets"][0]["receipts"] == [
             "canonical",
             "source-tampered",
+        ]
+
+
+class TestLedgerCompileParityGate:
+    def _registry(self, value: float = 10.0) -> TargetRegistry:
+        return TargetRegistry(
+            (
+                TargetSpec(
+                    name="hmrc.tax",
+                    entity="person",
+                    measure="hmrc/tax",
+                    value=value,
+                    period=2025,
+                    source="fixture",
+                    family="hmrc",
+                ),
+            ),
+            country="uk",
+        )
+
+    def test_matching_registries_pass(self) -> None:
+        result = ledger_compile_parity_gate(self._registry(), self._registry())
+
+        assert result.passed
+        assert result.details["expected_count"] == 1
+        assert result.details["actual_count"] == 1
+
+    def test_unsigned_gap_fails(self) -> None:
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(),
+        )
+
+        assert not result.passed
+        assert any("target count differs" in failure for failure in result.failures)
+
+    def test_signed_difference_exact_reproduction_passes(self) -> None:
+        result = ledger_compile_parity_gate(
+            self._registry(11.0),
+            self._registry(10.0),
+            signed_differences=(
+                {
+                    "fixture_value": 10.0,
+                    "kind": "calibration_drift",
+                    "ledger_value": 11.0,
+                    "name": "hmrc.tax",
+                    "period": 2025,
+                    "reason": "reviewed fixture-vintage drift",
+                },
+            ),
+        )
+
+        assert result.passed
+        assert result.details["signed_difference_count"] == 1
+        assert result.details["signed_differences"] == [
+            {
+                "live_fixture_value": 10.0,
+                "live_kind": "calibration_drift",
+                "live_ledger_value": 11.0,
+                "name": "hmrc.tax",
+                "period": 2025,
+                "reason": "reviewed fixture-vintage drift",
+                "signed_fixture_value": 10.0,
+                "signed_kind": "calibration_drift",
+                "signed_ledger_value": 11.0,
+            }
+        ]
+
+    def test_signed_difference_generator_matches_list_behavior(self) -> None:
+        signed_rows = [
+            {
+                "fixture_value": 10.0,
+                "kind": "calibration_drift",
+                "ledger_value": 11.0,
+                "name": "hmrc.tax",
+                "period": 2025,
+                "reason": "reviewed fixture-vintage drift",
+            }
+        ]
+
+        list_result = ledger_compile_parity_gate(
+            self._registry(11.0),
+            self._registry(10.0),
+            signed_differences=signed_rows,
+        )
+        generator_result = ledger_compile_parity_gate(
+            self._registry(11.0),
+            self._registry(10.0),
+            signed_differences=(row for row in signed_rows),
+        )
+
+        assert generator_result.passed == list_result.passed
+        assert generator_result.failures == list_result.failures
+        assert (
+            generator_result.details["signed_difference_count"]
+            == (list_result.details["signed_difference_count"])
+        )
+        assert (
+            generator_result.details["signed_differences"]
+            == (list_result.details["signed_differences"])
+        )
+
+    def test_signed_difference_new_value_at_signed_key_fails(self) -> None:
+        result = ledger_compile_parity_gate(
+            self._registry(99.0),
+            self._registry(10.0),
+            signed_differences=(
+                {
+                    "fixture_value": 10.0,
+                    "kind": "calibration_drift",
+                    "ledger_value": 11.0,
+                    "name": "hmrc.tax",
+                    "period": 2025,
+                    "reason": "reviewed fixture-vintage drift",
+                },
+            ),
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] changed "
+            "ledger_value: signed=11.0, live=99.0.",
+        )
+
+    def test_signed_difference_fixture_value_at_signed_key_fails(self) -> None:
+        result = ledger_compile_parity_gate(
+            self._registry(11.0),
+            self._registry(12.0),
+            signed_differences=(
+                {
+                    "fixture_value": 10.0,
+                    "kind": "calibration_drift",
+                    "ledger_value": 11.0,
+                    "name": "hmrc.tax",
+                    "period": 2025,
+                    "reason": "reviewed fixture-vintage drift",
+                },
+            ),
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] changed "
+            "fixture_value: signed=10.0, live=12.0.",
+        )
+
+    def test_signed_difference_stale_signature_fails(self) -> None:
+        result = ledger_compile_parity_gate(
+            self._registry(10.0),
+            self._registry(10.0),
+            signed_differences=(
+                {
+                    "fixture_value": 10.0,
+                    "kind": "calibration_drift",
+                    "ledger_value": 11.0,
+                    "name": "hmrc.tax",
+                    "period": 2025,
+                    "reason": "reviewed fixture-vintage drift",
+                },
+            ),
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] is stale: no live "
+            "difference remains.",
+        )
+
+    def test_signed_difference_classifier_ignores_equal_value_namespace_drift(
+        self,
+    ) -> None:
+        expected = TargetRegistry(
+            (
+                TargetSpec(
+                    name="dwp.benefit_cap.capped_households",
+                    entity="household",
+                    measure="incumbent_measure",
+                    value=110_637.0,
+                    period=2025,
+                    source="fixture",
+                    family="incumbent",
+                ),
+            ),
+            country="uk",
+        )
+        actual = TargetRegistry(
+            (
+                TargetSpec(
+                    name="dwp.benefit_cap.capped_households",
+                    entity="benunit",
+                    measure="ledger_measure",
+                    value=110_637.0,
+                    period=2025,
+                    source="ledger",
+                    family="dwp",
+                ),
+            ),
+            country="uk",
+        )
+
+        report = ledger_compile_parity_signed_differences(actual, expected)
+
+        assert report["difference_count"] == 0
+        assert report["counts_by_kind"] == {}
+
+    def test_gate_ignores_equal_value_namespace_drift(self) -> None:
+        expected = TargetRegistry(
+            (
+                TargetSpec(
+                    name="dwp.benefit_cap.capped_households",
+                    entity="household",
+                    measure="incumbent_measure",
+                    value=110_637.0,
+                    period=2025,
+                    source="fixture",
+                    family="incumbent",
+                ),
+            ),
+            country="uk",
+        )
+        actual = TargetRegistry(
+            (
+                TargetSpec(
+                    name="dwp.benefit_cap.capped_households",
+                    entity="benunit",
+                    measure="ledger_measure",
+                    value=110_637.0,
+                    period=2025,
+                    source="ledger",
+                    family="dwp",
+                ),
+            ),
+            country="uk",
+        )
+
+        result = ledger_compile_parity_gate(actual, expected)
+
+        assert result.passed
+
+    def test_signed_difference_classifier_reports_only_value_drift(self) -> None:
+        report = ledger_compile_parity_signed_differences(
+            self._registry(11.0),
+            self._registry(10.0),
+        )
+
+        assert report["counts_by_kind"] == {"calibration_drift": 1}
+        assert report["differences"] == [
+            {
+                "fixture_value": 10.0,
+                "kind": "calibration_drift",
+                "ledger_value": 11.0,
+                "name": "hmrc.tax",
+                "period": 2025,
+                "reason": (
+                    "Ledger-compiled value differs from the fixture value at "
+                    "this comparison period."
+                ),
+            }
+        ]
+
+    def test_signed_difference_classifier_ignores_unfixture_absences(
+        self,
+    ) -> None:
+        report = ledger_compile_parity_signed_differences(
+            TargetRegistry((), country="uk"),
+            TargetRegistry((), country="uk"),
+            unsupported=(
+                {
+                    "name": "dwp.uc.households",
+                    "period": 2025,
+                    "reason": "no_fact_at_or_before_period",
+                },
+            ),
+        )
+
+        assert report["difference_count"] == 0
+        assert report["counts_by_kind"] == {}
+
+    def test_signed_difference_classifier_reports_fixture_absences(self) -> None:
+        report = ledger_compile_parity_signed_differences(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            unsupported=(
+                {
+                    "name": "hmrc.tax",
+                    "period": 2025,
+                    "reason": "no_fact_at_or_before_period",
+                },
+            ),
+        )
+
+        assert report["counts_by_kind"] == {"ledger_absent": 1}
+        assert report["differences"] == [
+            {
+                "fixture_value": 10.0,
+                "kind": "ledger_absent",
+                "name": "hmrc.tax",
+                "period": 2025,
+                "reason": (
+                    "Packaged Ledger reference did not resolve for this "
+                    "comparison period."
+                ),
+            }
         ]
 
 

@@ -33,6 +33,9 @@ from microcosm.build.us_runtime import (
     us_education_inputs_summary,
     with_us_education_inputs,
 )
+from microcosm.build.us_runtime.education_inputs import (
+    US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -47,6 +50,10 @@ _EXPECTED_AOTC_COLUMNS = (
 )
 _EXPECTED_OUTPUT_COLUMNS = (
     "qualified_tuition_expenses",
+    "educational_assistance",
+    *_EXPECTED_AOTC_COLUMNS,
+)
+_EXPECTED_OWNED_OUTPUT_COLUMNS = (
     "educational_assistance",
     *_EXPECTED_AOTC_COLUMNS,
 )
@@ -136,8 +143,10 @@ class TestManifestDeclaration:
         assert US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS == _EXPECTED_AOTC_COLUMNS
         assert US_EDUCATION_INPUTS_OUTPUT_COLUMNS == _EXPECTED_OUTPUT_COLUMNS
         assert (
-            US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS
-            == _EXPECTED_OUTPUT_COLUMNS
+            US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS == _EXPECTED_OWNED_OUTPUT_COLUMNS
+        )
+        assert (
+            US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS == _EXPECTED_OUTPUT_COLUMNS
         )
         assert tuple(spec.outputs) == _EXPECTED_OUTPUT_COLUMNS
         assert US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS == (
@@ -187,25 +196,69 @@ class TestDerivation:
         for column in _EXPECTED_AOTC_COLUMNS:
             assert result[column].tolist() == expected
 
+    def test_preserves_upstream_tuition_bytes_and_dtype(self) -> None:
+        tuition = np.asarray([0.0, 1_250.25, 4_000.5], dtype=np.float32)
+        table = pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "ED_VAL": [0.0, 0.0, 0.0],
+                "qualified_tuition_expenses": tuition,
+            }
+        )
+        expected_bytes = table["qualified_tuition_expenses"].to_numpy().tobytes()
+
+        result = self._derive(table)
+
+        assert result["qualified_tuition_expenses"].dtype == np.dtype("float32")
+        assert (
+            result["qualified_tuition_expenses"].to_numpy().tobytes() == expected_bytes
+        )
+
     def test_maps_ed_val_to_educational_assistance(self) -> None:
         result = self._derive(_person_table([{"ED_VAL": 750.0}, {"ED_VAL": 0.0}]))
         assert result["educational_assistance"].tolist() == [750.0, 0.0]
 
-    def test_amounts_are_numeric_finite_and_clipped_nonnegative(self) -> None:
+    def test_numeric_strings_are_validated_without_rewriting_tuition(self) -> None:
         result = self._derive(
             _person_table(
                 [
-                    {"ED_VAL": -10.0, "qualified_tuition_expenses": -20.0},
-                    {"ED_VAL": np.nan, "qualified_tuition_expenses": np.nan},
                     {"ED_VAL": "300", "qualified_tuition_expenses": "1200"},
                 ]
             )
         )
 
-        assert result["educational_assistance"].tolist() == [0.0, 0.0, 300.0]
-        assert result["qualified_tuition_expenses"].tolist() == [0.0, 0.0, 1_200.0]
+        assert result["educational_assistance"].tolist() == [300.0]
+        assert result["qualified_tuition_expenses"].tolist() == ["1200"]
         for column in _EXPECTED_AOTC_COLUMNS:
-            assert result[column].tolist() == [False, False, True]
+            assert result[column].tolist() == [True]
+
+    @pytest.mark.parametrize(
+        ("column", "value"),
+        [
+            ("ED_VAL", np.nan),
+            ("ED_VAL", np.inf),
+            ("ED_VAL", "not-a-number"),
+            ("qualified_tuition_expenses", np.nan),
+            ("qualified_tuition_expenses", np.inf),
+            ("qualified_tuition_expenses", "not-a-number"),
+        ],
+    )
+    def test_nonnumeric_or_nonfinite_amount_is_refused(
+        self, column: str, value: object
+    ) -> None:
+        with pytest.raises(
+            SourceRuntimeError,
+            match=rf"{column!r} contains 1 nonnumeric or nonfinite value",
+        ):
+            self._derive(_person_table([{column: value}]))
+
+    @pytest.mark.parametrize("column", ["ED_VAL", "qualified_tuition_expenses"])
+    def test_negative_amount_is_refused(self, column: str) -> None:
+        with pytest.raises(
+            SourceRuntimeError,
+            match=rf"{column!r} contains 1 negative value",
+        ):
+            self._derive(_person_table([{column: -1.0}]))
 
     @pytest.mark.parametrize("missing", US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS)
     def test_missing_source_column_is_named(self, missing: str) -> None:
@@ -255,6 +308,29 @@ class TestFrameIntegration:
         assert person["educational_assistance"].tolist() == [600.0, 0.0]
         for column in _EXPECTED_AOTC_COLUMNS:
             assert person[column].tolist() == [False, True]
+
+    def test_with_inputs_does_not_rewrite_upstream_tuition(self) -> None:
+        frame = _us_frame(
+            [
+                {"ED_VAL": 600.0, "qualified_tuition_expenses": 0.0},
+                {"ED_VAL": 0.0, "qualified_tuition_expenses": 2_000.25},
+            ]
+        )
+        frame.table("person")["qualified_tuition_expenses"] = frame.table("person")[
+            "qualified_tuition_expenses"
+        ].astype(np.float32)
+        expected = frame.table("person")["qualified_tuition_expenses"]
+        expected_bytes = expected.to_numpy().tobytes()
+
+        result = with_us_education_inputs(
+            frame,
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        actual = result.table("person")["qualified_tuition_expenses"]
+
+        assert actual.dtype == expected.dtype == np.dtype("float32")
+        assert actual.to_numpy().tobytes() == expected_bytes
 
     def test_frame_with_coherent_signal_passes_through_untouched(self) -> None:
         derived = with_us_education_inputs(
@@ -332,10 +408,14 @@ class TestFrameIntegration:
             channel == BASE_ASEC_SUPPORT_CHANNEL,
             "qualified_tuition_expenses",
         ].any()
-        assert person.loc[
-            channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
-            "qualified_tuition_expenses",
-        ].gt(0).any()
+        assert (
+            person.loc[
+                channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                "qualified_tuition_expenses",
+            ]
+            .gt(0)
+            .any()
+        )
 
         result = with_us_education_inputs(
             imputed,

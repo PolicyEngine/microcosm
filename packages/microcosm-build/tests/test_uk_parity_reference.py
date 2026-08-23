@@ -88,15 +88,31 @@ class TestEfrsParityReference:
         source = load_efrs_parity_reference().source
         assert source.repo_id == "policyengine/policyengine-uk-data-private"
         assert source.repo_type == "model"
-        assert source.filename == "enhanced_frs_2023_24.h5"
-        assert source.revision == "655dd07e4bb9c777b00dac044949611f1feb824f"
+        assert source.filename == "enhanced_frs_2024_25.h5"
+        assert source.revision == "a2039519d3b92aecc06c66dfd175cb46ac24cada"
         assert source.sha256 == (
-            "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"
+            "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
         )
-        assert source.size_bytes == 125_434_652
+        assert source.size_bytes == 126_579_434
         assert source.url.endswith(f"/{source.revision}/{source.filename}")
-        assert source.period == "2023"
-        assert source.vintage == "2023_24"
+        assert source.period == "2024"
+        assert source.vintage == "2024_25"
+
+    def test_entity_record_counts_match_reviewed_2024_25_surface(self) -> None:
+        raw = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
+        stats = raw["entity_stats"]
+
+        # 52846 households = (16288 raw FRS + 10000 SPI) * 2 + 270 CGT band
+        # donors (30 * 9 bands; 181 FRS-side + 89 SPI-side). Unlike 2023-24,
+        # no raw household is dropped at 2024-25.
+        assert {entity: values["records"] for entity, values in stats.items()} == {
+            "person": 113_617,
+            "benunit": 61_223,
+            "household": 52_846,
+        }
+        assert set(stats) == {"person", "benunit", "household"}
+        for values in stats.values():
+            assert {"records", "export_columns"} <= set(values)
 
     def test_recorded_sha256_is_lowercase_hex(self) -> None:
         sha = load_efrs_parity_reference().source.sha256
@@ -146,9 +162,7 @@ class TestEfrsParityReference:
 
     def test_formula_owned_persisted_overrides_are_hard_covered(self) -> None:
         raw = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
-        included = set(
-            raw["engine"]["formula_owned_persisted_overrides_included"]
-        )
+        included = set(raw["engine"]["formula_owned_persisted_overrides_included"])
         assert included == _FORMULA_OWNED_PERSISTED_OVERRIDES
         assert included <= set(raw["nonzero_shares"])
         assert "formula_owned_export_columns_excluded" not in raw["engine"]

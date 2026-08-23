@@ -224,7 +224,7 @@ def _hierarchy_profile() -> dict[str, object]:
             {
                 "id": "test_cd_to_state",
                 "method": "scale_children_to_parent",
-                "enabled_when": {"include_congressional_district_targets": True},
+                "enabled_when": {"apply_hierarchy": True},
                 "child_geography_level": "congressional_district",
                 "parent_geography_level": "state",
                 "parent_geography_id": {"template": "0400000US{state_fips}"},
@@ -252,7 +252,9 @@ def _hierarchy_profile() -> dict[str, object]:
     }
 
 
-def test__given_supported_ledger_fact__then_microcosm_target_preserves_lineage() -> None:
+def test__given_supported_ledger_fact__then_microcosm_target_preserves_lineage() -> (
+    None
+):
     # Given
     mapping = LedgerTargetMapping(
         measure_by_concept={
@@ -284,7 +286,9 @@ def test__given_supported_ledger_fact__then_microcosm_target_preserves_lineage()
     assert spec.metadata["ledger_layout_record_set_id"] == "irs_soi.ty2023.table_1_1"
 
 
-def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage() -> None:
+def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage() -> (
+    None
+):
     # Given
     mapping = LedgerTargetMapping(
         measure_by_concept={
@@ -582,6 +586,68 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
     )
 
 
+def test__given_period_bearing_groupby_value__then_latest_source_period_is_used() -> (
+    None
+):
+    reference = LedgerTargetReference(
+        name="latest CGT total",
+        ledger_selector={
+            "source_name": "hmrc",
+            "source_measure_id": "total_gains",
+            "source_concept": "hmrc.cgt_gains_total",
+            "geography_level": "country",
+            "geography_id": "K02000001",
+        },
+        entity="person",
+        measure="capital_gains",
+        period=2025,
+        family="hmrc_cgt",
+    )
+    older = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:cgt-2022",
+        legacy_fact_key="ledger.fact.v1:cgt-2022",
+        value=60_000_000_000,
+        source={"source_name": "hmrc"},
+        observed_measure={
+            "source_name": "hmrc",
+            "source_measure_id": "total_gains",
+            "source_concept": "hmrc.cgt_gains_total",
+            "unit": "gbp",
+        },
+        period={"type": "tax_year", "value": 2022},
+        geography={"level": "country", "id": "K02000001"},
+        entity={"name": "person"},
+        dimensions={},
+        layout={
+            "record_set_id": "hmrc.cgt_statistics_2025.table1.ty2022",
+            "groupby_dimension": "hmrc.cgt_table1_line",
+            "groupby_value_id": "ty2022",
+            "measure_id": "total_gains",
+        },
+    )
+    newer = _consumer_fact_row(
+        **{
+            **older,
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:cgt-2023",
+            "legacy_fact_key": "ledger.fact.v1:cgt-2023",
+            "value": 65_900_000_000,
+            "period": {"type": "tax_year", "value": 2023},
+            "layout": {
+                "record_set_id": "hmrc.cgt_statistics_2025.table1.ty2023",
+                "groupby_dimension": "hmrc.cgt_table1_line",
+                "groupby_value_id": "ty2023",
+                "measure_id": "total_gains",
+            },
+        }
+    )
+
+    registry = compile_ledger_target_references(
+        [older, newer], [reference], country="uk"
+    )
+
+    assert registry.specs[0].value == 65_900_000_000
+
+
 def test__given_selector_matches_future_year__then_latest_eligible_period_is_used() -> (
     None
 ):
@@ -699,6 +765,313 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
     )
 
 
+class TestLedgerSelectorExtensions:
+    def test_dimension_values_use_strict_typed_equality(self) -> None:
+        reference = LedgerTargetReference(
+            name="typed dimension selector",
+            ledger_selector={"dimension_values": {"band": "5"}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"band": 5})],
+                [reference],
+                country="us",
+            )
+
+    def test_dimension_values_accept_list_membership(self) -> None:
+        reference = LedgerTargetReference(
+            name="list dimension selector",
+            ledger_selector={"dimension_values": {"band": ["A", "B"]}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row(dimensions={"band": "B"})],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "list dimension selector"
+
+    def test_dimension_values_require_present_dimension(self) -> None:
+        reference = LedgerTargetReference(
+            name="missing dimension selector",
+            ledger_selector={"dimension_values": {"band": "A"}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"income_range": "all"})],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_membership_list_raises_instead_of_matching_nothing(self) -> None:
+        reference = LedgerTargetReference(
+            name="empty membership selector",
+            ledger_selector={"source_measure_id": []},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="empty list"):
+            compile_ledger_target_references(
+                [_consumer_fact_row()],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_dimension_values_pin_list_raises(self) -> None:
+        reference = LedgerTargetReference(
+            name="empty pin list selector",
+            ledger_selector={"dimension_values": {"band": []}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="empty pin"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"band": "A"})],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_dimensions_list_matches_dimensionless_fact(self) -> None:
+        reference = LedgerTargetReference(
+            name="dimensionless selector",
+            ledger_selector={"dimensions": []},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row(dimensions={})],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "dimensionless selector"
+
+    def test_dimensions_list_matches_exact_name_set_order_insensitively(self) -> None:
+        fact = _consumer_fact_row(dimensions={"band": "A", "sex": "all"})
+        reference = LedgerTargetReference(
+            name="dimension-name selector",
+            ledger_selector={"dimensions": ["sex", "band"]},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+        missing_name = LedgerTargetReference(
+            name="partial dimension-name selector",
+            ledger_selector={"dimensions": ["band"]},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references([fact], [reference], country="us")
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references([fact], [missing_name], country="us")
+
+        assert registry.specs[0].name == "dimension-name selector"
+
+    def test_chronicle_layout_aliases_match_fact_layout(self) -> None:
+        reference = LedgerTargetReference(
+            name="layout alias selector",
+            ledger_selector={
+                "record_set_id": "irs_soi.ty2023.table_1_1",
+                "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
+            },
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row()],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "layout alias selector"
+
+    def test_scalar_selector_accepts_list_expected_values(self) -> None:
+        reference = LedgerTargetReference(
+            name="list source measure selector",
+            ledger_selector={
+                "source_measure_id": ["total_tax", "adjusted_gross_income"],
+            },
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row()],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "list source measure selector"
+
+    def test_us_mapping_dimensions_keep_subset_semantics(self) -> None:
+        reference = LedgerTargetReference(
+            name="mapping dimensions selector",
+            ledger_selector={"dimensions": {"income_range": "all"}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row()],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "mapping dimensions selector"
+
+    @pytest.mark.parametrize(
+        ("older_record_set_id", "newer_record_set_id", "older_period", "newer_period"),
+        [
+            (
+                "obr.fy2024_25.tax_receipts",
+                "obr.fy2025_26.tax_receipts",
+                "2024-25",
+                "2025-26",
+            ),
+            (
+                "obr.ty2024_25.tax_receipts",
+                "obr.ty2025_26.tax_receipts",
+                "2024-25",
+                "2025-26",
+            ),
+            (
+                "obr.cy2024_25.tax_receipts",
+                "obr.cy2025_26.tax_receipts",
+                "2024-25",
+                "2025-26",
+            ),
+            (
+                "ons.2024_2025.population",
+                "ons.2025_2026.population",
+                "2024_2025",
+                "2025_2026",
+            ),
+            ("isc.census_2023.pupils", "isc.census_2024.pupils", 2023, 2024),
+            ("ons.dec2023.population", "ons.dec2024.population", "2023-12", "2024-12"),
+            (
+                "dfe.pse_march2025.pupils",
+                "dfe.pse_march2026.pupils",
+                "2025-03",
+                "2026-03",
+            ),
+            (
+                "ons.families_households_2024.table7",
+                "ons.families_households_2025.table7",
+                2024,
+                2025,
+            ),
+            (
+                "voa.apr2023_mar2024.stock",
+                "voa.apr2024_mar2025.stock",
+                "2023-04",
+                "2024-04",
+            ),
+        ],
+    )
+    def test_period_tokens_collapse_across_uk_record_set_spellings(
+        self,
+        older_record_set_id: str,
+        newer_record_set_id: str,
+        older_period: int | str,
+        newer_period: int | str,
+    ) -> None:
+        older = _consumer_fact_row(
+            aggregate_fact_key="ledger.aggregate_fact.v2:older",
+            legacy_fact_key="ledger.fact.v1:older",
+            lineage={"source_record_id": f"{older_record_set_id}.all.population"},
+            period={"type": "year", "value": older_period},
+            value=1.0,
+            source={"source_name": "ons"},
+            observed_measure={
+                "source_name": "ons",
+                "source_measure_id": "population",
+                "source_concept": "ons.population",
+                "unit": "people",
+            },
+            geography={"level": "country", "id": "K02000001"},
+            entity={"name": "person"},
+            layout={
+                "record_set_id": older_record_set_id,
+                "groupby_dimension": "population",
+                "groupby_value_id": "all",
+                "measure_id": "population",
+            },
+        )
+        newer = _consumer_fact_row(
+            **{
+                **older,
+                "aggregate_fact_key": "ledger.aggregate_fact.v2:newer",
+                "legacy_fact_key": "ledger.fact.v1:newer",
+                "lineage": {
+                    "source_record_id": f"{newer_record_set_id}.all.population"
+                },
+                "period": {"type": "year", "value": newer_period},
+                "value": 2.0,
+                "layout": {
+                    "record_set_id": newer_record_set_id,
+                    "groupby_dimension": "population",
+                    "groupby_value_id": "all",
+                    "measure_id": "population",
+                },
+            }
+        )
+        reference = LedgerTargetReference(
+            name="latest UK population",
+            ledger_selector={
+                "source_name": "ons",
+                "source_measure_id": "population",
+                "geography_id": "K02000001",
+                "entity_name": "person",
+                "layout_groupby_value_id": "all",
+            },
+            entity="person",
+            measure="population",
+            period=2026,
+            family="ons",
+        )
+
+        registry = compile_ledger_target_references(
+            [older, newer], [reference], country="uk"
+        )
+
+        assert registry.specs[0].value == 2.0
+
+
 def test__given_selector_matches_only_future_year__then_compilation_fails() -> None:
     # Given
     reference = LedgerTargetReference(
@@ -721,6 +1094,38 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
     with pytest.raises(ValueError, match="at or before target period"):
         compile_ledger_target_references(
             [_consumer_fact_row_for_period(2025, value=17_000_000_000_000)],
+            [reference],
+            country="us",
+        )
+
+
+def test__given_selector_matches_only_unparseable_period__then_compilation_fails() -> (
+    None
+):
+    reference = LedgerTargetReference(
+        name="unparseable SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    with pytest.raises(ValueError, match="at or before target period"):
+        compile_ledger_target_references(
+            [
+                _consumer_fact_row(
+                    aggregate_fact_key="ledger.aggregate_fact.v2:unknown-period",
+                    period={"type": "source", "value": "current"},
+                )
+            ],
             [reference],
             country="us",
         )
@@ -786,6 +1191,239 @@ def test__given_reference_identifiers_match_different_facts__then_compilation_fa
 
     # When / Then
     with pytest.raises(ValueError, match="resolve to different Ledger facts"):
+        compile_ledger_target_references([first, second], [reference], country="us")
+
+
+def test__given_sum_reference_matches_same_vintage_facts__then_values_sum() -> None:
+    first = _consumer_fact_row_for_period(2023, value=100.0)
+    first["aggregate_fact_key"] = "ledger.aggregate_fact.v2:first"
+    first["layout"]["groupby_value_id"] = "first"
+    first["dimensions"] = {"band": "first"}
+    second = _consumer_fact_row_for_period(2023, value=250.0)
+    second["aggregate_fact_key"] = "ledger.aggregate_fact.v2:second"
+    second["layout"]["groupby_value_id"] = "second"
+    second["dimensions"] = {"band": "second"}
+    reference = LedgerTargetReference(
+        name="summed bands",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+        },
+        value_operation="sum",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(
+        [first, second], [reference], country="us"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 350.0
+    assert spec.metadata["ledger_member_fact_count"] == "2"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:first",
+        "ledger.aggregate_fact.v2:second",
+    ]
+    assert spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:second"
+    assert spec.metadata["ledger_fact_period"] == "2023"
+    assert spec.metadata["ledger_value_operation"] == "sum"
+
+
+def test__given_sum_reference_matches_two_vintages__then_latest_partition_wins() -> (
+    None
+):
+    old_first = _consumer_fact_row_for_period(2022, value=10.0)
+    old_first["aggregate_fact_key"] = "ledger.aggregate_fact.v2:old-first"
+    old_first["layout"]["groupby_value_id"] = "first"
+    old_first["dimensions"] = {"band": "first"}
+    old_second = _consumer_fact_row_for_period(2022, value=20.0)
+    old_second["aggregate_fact_key"] = "ledger.aggregate_fact.v2:old-second"
+    old_second["layout"]["groupby_value_id"] = "second"
+    old_second["dimensions"] = {"band": "second"}
+    new_first = _consumer_fact_row_for_period(2023, value=100.0)
+    new_first["aggregate_fact_key"] = "ledger.aggregate_fact.v2:new-first"
+    new_first["layout"]["groupby_value_id"] = "first"
+    new_first["dimensions"] = {"band": "first"}
+    new_second = _consumer_fact_row_for_period(2023, value=200.0)
+    new_second["aggregate_fact_key"] = "ledger.aggregate_fact.v2:new-second"
+    new_second["layout"]["groupby_value_id"] = "second"
+    new_second["dimensions"] = {"band": "second"}
+    reference = LedgerTargetReference(
+        name="latest summed bands",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+        },
+        value_operation="sum",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(
+        [old_first, old_second, new_first, new_second],
+        [reference],
+        country="us",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 300.0
+    assert spec.metadata["ledger_member_fact_count"] == "2"
+    assert "old-first" not in spec.metadata["ledger_member_fact_keys"]
+    assert "new-first" in spec.metadata["ledger_member_fact_keys"]
+
+
+def test__given_calendar_year_average_reference__then_monthly_mean_compiles() -> None:
+    rows = [
+        _monthly_consumer_fact_row("2025-04", value=6_380_000.0),
+        *(
+            _monthly_consumer_fact_row(f"2025-{month:02d}", value=6_600_000.0)
+            for month in range(5, 9)
+        ),
+        *(
+            _monthly_consumer_fact_row(f"2025-{month:02d}", value=6_960_000.0)
+            for month in range(9, 12)
+        ),
+        _monthly_consumer_fact_row("2025-12", value=7_170_000.0),
+    ]
+    reference = LedgerTargetReference(
+        name="calendar average enrollment",
+        ledger_selector={
+            "source_name": "cms_medicaid",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "person",
+        },
+        value_operation="calendar_year_average",
+        entity="person",
+        measure="total_medicaid_chip_enrollment",
+        period=2025,
+        family="cms_medicaid",
+    )
+
+    registry = compile_ledger_target_references(rows, [reference], country="us")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(
+        (6_380_000.0 + 4 * 6_600_000.0 + 3 * 6_960_000.0 + 7_170_000.0) / 9
+    )
+    assert spec.metadata["ledger_member_fact_count"] == "9"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"])[-1] == (
+        "ledger.aggregate_fact.v2:medicaid-2025_12"
+    )
+    assert spec.metadata["ledger_fact_key"] == (
+        "ledger.aggregate_fact.v2:medicaid-2025_12"
+    )
+    assert spec.metadata["ledger_fact_period"] == "2025-12"
+    assert spec.metadata["ledger_value_operation"] == "calendar_year_average"
+
+
+def test__given_latest_plateau_reference__then_latest_equal_month_run_wins() -> None:
+    rows = [
+        _monthly_consumer_fact_row("2025-04", value=6_380_000.0),
+        *(
+            _monthly_consumer_fact_row(f"2025-{month:02d}", value=6_600_000.0)
+            for month in range(5, 9)
+        ),
+        *(
+            _monthly_consumer_fact_row(f"2025-{month:02d}", value=6_960_000.0)
+            for month in range(9, 12)
+        ),
+        _monthly_consumer_fact_row("2025-12", value=7_170_000.0),
+        _monthly_consumer_fact_row("2026-01", value=7_170_000.0),
+        _monthly_consumer_fact_row("2026-02", value=7_170_000.0),
+    ]
+    reference = LedgerTargetReference(
+        name="latest plateau enrollment",
+        ledger_selector={
+            "source_name": "cms_medicaid",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "person",
+        },
+        value_operation="latest_plateau",
+        entity="person",
+        measure="total_medicaid_chip_enrollment",
+        period=2026,
+        family="cms_medicaid",
+    )
+
+    registry = compile_ledger_target_references(rows, [reference], country="us")
+
+    spec = registry.specs[0]
+    assert spec.value == 7_170_000.0
+    assert spec.metadata["ledger_member_fact_count"] == "3"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:medicaid-2025_12",
+        "ledger.aggregate_fact.v2:medicaid-2026_01",
+        "ledger.aggregate_fact.v2:medicaid-2026_02",
+    ]
+    assert spec.metadata["ledger_fact_key"] == (
+        "ledger.aggregate_fact.v2:medicaid-2026_02"
+    )
+    assert spec.metadata["ledger_fact_period"] == "2026-02"
+    assert spec.metadata["ledger_value_operation"] == "latest_plateau"
+
+
+def test__given_month_operation_matches_non_month_fact__then_refuses_mixing() -> None:
+    monthly = _monthly_consumer_fact_row("2025-04", value=6_380_000.0)
+    annual = _monthly_consumer_fact_row("2025-05", value=6_600_000.0)
+    annual["period"] = {"type": "tax_year", "value": 2025}
+    reference = LedgerTargetReference(
+        name="invalid calendar average enrollment",
+        ledger_selector={
+            "source_name": "cms_medicaid",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "person",
+        },
+        value_operation="calendar_year_average",
+        entity="person",
+        measure="total_medicaid_chip_enrollment",
+        period=2025,
+        family="cms_medicaid",
+    )
+
+    with pytest.raises(ValueError, match="requires monthly Ledger facts"):
+        compile_ledger_target_references([monthly, annual], [reference], country="us")
+
+
+def test__given_identity_reference_matches_multiple_facts__then_still_fails() -> None:
+    first = _consumer_fact_row_for_period(2023, value=100.0)
+    first["aggregate_fact_key"] = "ledger.aggregate_fact.v2:first"
+    first["layout"]["groupby_value_id"] = "first"
+    second = _consumer_fact_row_for_period(2023, value=250.0)
+    second["aggregate_fact_key"] = "ledger.aggregate_fact.v2:second"
+    second["layout"]["groupby_value_id"] = "second"
+    reference = LedgerTargetReference(
+        name="ambiguous bands",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    with pytest.raises(ValueError, match="matched multiple Ledger facts"):
         compile_ledger_target_references([first, second], [reference], country="us")
 
 
@@ -1039,7 +1677,7 @@ def test__given_hierarchy_profile__then_children_scale_to_parent() -> None:
     reconciled = apply_ledger_target_profile(
         registry,
         _hierarchy_profile(),
-        context={"include_congressional_district_targets": True},
+        context={"apply_hierarchy": True},
     )
 
     # Then
@@ -1086,7 +1724,7 @@ def test__given_disabled_hierarchy_profile__then_children_are_unchanged() -> Non
     reconciled = apply_ledger_target_profile(
         registry,
         _hierarchy_profile(),
-        context={"include_congressional_district_targets": False},
+        context={"apply_hierarchy": False},
     )
 
     # Then
@@ -1128,7 +1766,7 @@ def test__given_nonzero_parent_and_zero_children__then_hierarchy_fails() -> None
         apply_ledger_target_profile(
             registry,
             _hierarchy_profile(),
-            context={"include_congressional_district_targets": True},
+            context={"apply_hierarchy": True},
         )
 
 
@@ -1159,7 +1797,7 @@ def test__given_incomplete_hierarchy_children__then_reconciliation_fails() -> No
         apply_ledger_target_profile(
             registry,
             _hierarchy_profile(),
-            context={"include_congressional_district_targets": True},
+            context={"apply_hierarchy": True},
         )
 
 
@@ -1197,7 +1835,7 @@ def test__given_duplicate_hierarchy_child_ids__then_reconciliation_fails() -> No
         apply_ledger_target_profile(
             registry,
             _hierarchy_profile(),
-            context={"include_congressional_district_targets": True},
+            context={"apply_hierarchy": True},
         )
 
 
@@ -1356,26 +1994,7 @@ def test_ledger_metadata_records_assertion_and_fact_period():
     assert projection.metadata["ledger_assertion"] == "source_projection"
 
 
-def test_ledger_reference_selector_matches_on_assertion():
-    from microcosm.build.ledger_targets import (
-        LedgerTargetReference,
-        compile_ledger_target_references,
-    )
-
-    rows = [
-        _consumer_fact_row(),
-        _consumer_fact_row(
-            aggregate_fact_key="ledger.aggregate_fact.v2:proj123",
-            legacy_fact_key="ledger.fact.v1:proj123",
-            assertion="source_projection",
-            value=16_000_000_000_000,
-            lineage={
-                "source_record_id": "cbo.ty2023.projection.agi",
-                "source_cell_keys": ["ledger.source_cell.v1:proj"],
-                "source_row_keys": [],
-            },
-        ),
-    ]
+def test_ledger_reference_selector_matches_assertion_key():
     reference = LedgerTargetReference(
         name="cbo_projected_agi",
         ledger_selector={
@@ -1385,9 +2004,145 @@ def test_ledger_reference_selector_matches_on_assertion():
         entity="household",
         measure="adjusted_gross_income",
         family="cbo",
+        assertion_policy="allow_source_projection",
     )
 
-    registry = compile_ledger_target_references(rows, [reference], country="us")
+    registry = compile_ledger_target_references(
+        [_consumer_fact_row(assertion="source_projection")],
+        [reference],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+
+
+def test_ledger_reference_selector_treats_absent_assertion_as_observation():
+    reference = LedgerTargetReference(
+        name="observed_agi",
+        ledger_selector={
+            "source_measure_id": "adjusted_gross_income",
+            "assertion": "observation",
+        },
+        entity="household",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references(
+        [_consumer_fact_row(value=15_000_000_000_000)],
+        [reference],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert "ledger_assertion" not in spec.metadata
+    assert spec.metadata["ledger_resolved_assertion"] == "observation"
+
+
+def test_ledger_reference_projection_fact_excluded_by_default():
+    reference = LedgerTargetReference(
+        name="cbo_projected_agi",
+        ledger_selector={"source_measure_id": "adjusted_gross_income"},
+        entity="household",
+        measure="adjusted_gross_income",
+        family="cbo",
+        period=2024,
+    )
+
+    with pytest.raises(ValueError, match="at or before target period"):
+        compile_ledger_target_references(
+            [
+                _consumer_fact_row(
+                    aggregate_fact_key="ledger.aggregate_fact.v2:proj123",
+                    legacy_fact_key="ledger.fact.v1:proj123",
+                    assertion="source_projection",
+                    value=16_000_000_000_000,
+                )
+            ],
+            [reference],
+            country="us",
+        )
+
+
+def test_ledger_reference_projection_fact_allowed_by_policy():
+    reference = LedgerTargetReference(
+        name="cbo_projected_agi",
+        ledger_selector={"source_measure_id": "adjusted_gross_income"},
+        entity="household",
+        measure="adjusted_gross_income",
+        family="cbo",
+        period=2024,
+        assertion_policy="allow_source_projection",
+    )
+
+    registry = compile_ledger_target_references(
+        [
+            _consumer_fact_row(
+                aggregate_fact_key="ledger.aggregate_fact.v2:proj123",
+                legacy_fact_key="ledger.fact.v1:proj123",
+                assertion="source_projection",
+                value=16_000_000_000_000,
+            )
+        ],
+        [reference],
+        country="us",
+    )
+
     (spec,) = registry.specs
     assert spec.value == 16_000_000_000_000
     assert spec.metadata["ledger_assertion"] == "source_projection"
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+    assert spec.metadata["ledger_assertion_policy"] == "allow_source_projection"
+
+
+def test_ledger_reference_absent_assertion_fact_is_observation_by_default():
+    reference = LedgerTargetReference(
+        name="observed_agi",
+        ledger_selector={"source_measure_id": "adjusted_gross_income"},
+        entity="household",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references(
+        [_consumer_fact_row(value=15_000_000_000_000)],
+        [reference],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert "ledger_assertion" not in spec.metadata
+    assert spec.metadata["ledger_resolved_assertion"] == "observation"
+    assert spec.metadata["ledger_assertion_policy"] == "observed_only"
+
+
+def test_ledger_reference_latest_selection_uses_policy_eligible_facts():
+    observed = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    projection = _consumer_fact_row_for_period(2024, value=16_000_000_000_000)
+    projection["assertion"] = "source_projection"
+    reference = LedgerTargetReference(
+        name="latest observed agi",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(
+        [observed, projection], [reference], country="us"
+    )
+
+    assert registry.specs[0].value == 15_000_000_000_000

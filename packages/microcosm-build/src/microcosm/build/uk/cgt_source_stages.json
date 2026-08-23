@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "The UK capital gains family is source-manifest-defined. The published joint distribution must be SHA-256 verified before it is read, the stage redraws amounts only (incidence and household weights pass through unchanged), policy amounts come from the policyengine-uk parameter tree through the uk extra's deferred import, and the published band facts are fenced from calibration as policy-endogenous and proxy-conditioned.",
+  "stages": [
+    {
+      "stage": "hmrc_cgt_gains",
+      "survey": "HMRC Capital Gains Tax statistics table 3 (size of gain by taxable income), 2020-21 to 2023-24",
+      "source": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
+      "grain": "person",
+      "base_candidate": {
+        "filename": "populace_uk_2023.h5",
+        "tier": "frs",
+        "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+        "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+        "size_bytes": 1315880118,
+        "runtime_sha256_required": true
+      },
+      "artifacts": [
+        {
+          "role": "published_fact_surface",
+          "kind": "administrative_table",
+          "format": "ods",
+          "survey": "HMRC Capital Gains Tax statistics table 3",
+          "publication": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+          "vintage": "2023-24",
+          "tax_year_start": 2023,
+          "locator": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
+          "sha256": "8e75c00bab949348a7238fea6d995f626c85e5d02813b46606dd7fea85e9d0c3",
+          "size_bytes": 11996,
+          "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+          "sheets": [
+            "3_1_2023-24",
+            "3_2_2022-23",
+            "3_3_2021-22",
+            "3_4_2020-21"
+          ],
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
+          "basis": "Individuals with a CGT liability only; gains after losses and attributed gains but before the annual exempt amount; taxable income after reliefs and the Personal Allowance; trusts excluded; counts publish in thousands and amounts in GBP millions.",
+          "runtime_sha256_required": true
+        },
+        {
+          "role": "policy_parameters",
+          "kind": "versioned_parameter_tree",
+          "dependency": "policyengine-uk>=2.88 via microcosm-build[uk]",
+          "parameters": [
+            "gov.hmrc.income_tax.allowances.personal_allowance.amount",
+            "gov.hmrc.income_tax.allowances.personal_allowance.maximum_ANI",
+            "gov.hmrc.income_tax.allowances.personal_allowance.reduction_rate",
+            "gov.hmrc.cgt.annual_exempt_amount"
+          ],
+          "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+          "runtime_sha256_required": false,
+          "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "verify_certified_candidate",
+          "artifact": "base_candidate",
+          "runtime_sha256_required": true,
+          "fail_on_mismatch": true
+        },
+        {
+          "kind": "verify_pinned_cgt_ods",
+          "artifact_role": "published_fact_surface",
+          "require_before_source_read": true,
+          "runtime_sha256_required": true,
+          "fail_on_mismatch": true
+        },
+        {
+          "kind": "taxable_income_proxy",
+          "components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension_reported",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "miscellaneous_income"
+          ],
+          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted.",
+          "allowance": "tapered Personal Allowance from the policy_parameters artifact",
+          "fail_on_missing_component": true
+        },
+        {
+          "kind": "rank_preserving_allocation",
+          "within": "income band",
+          "ordering": "existing gains descending, person_id ascending on ties",
+          "band_order": "highest gain band first",
+          "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
+          "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
+          "shortfall_policy": "proportional scale-down when the population holds less gainer mass than published taxpayers",
+          "minimum_allocation_people": 1,
+          "weights": "household_weight mapped to persons; no person splits across bands"
+        },
+        {
+          "kind": "within_band_draws",
+          "bounded_band_family": "truncated exponential matched to the cell's published mean",
+          "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
+          "mean_repair_margin": 0.02,
+          "mean_repair_reason": "Published counts round to the nearest thousand and amounts to the nearest million; four cells of the 2023-24 table imply a mean outside their own band, and repaired means clamp just inside the violated boundary.",
+          "bottom_band_floor": "annual exempt amount plus one pound, since every allocated person is a taxpayer with a liability",
+          "seed_base": 552,
+          "seed_mixing": "seed combined with the build period; draws ordered by allocation rank",
+          "deterministic": true
+        },
+        {
+          "kind": "sub_aea_remainder",
+          "policy": "gainers beyond the published taxpayer mass keep their existing amounts capped at the annual exempt amount",
+          "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
+        },
+        {
+          "kind": "record_mass_conservation_receipt",
+          "entity": "household",
+          "reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
+          "declared_factor": 1,
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this reason."
+        },
+        {
+          "kind": "classify_cgt_band_facts_with_reviewed_fence",
+          "calibration_permitted": false,
+          "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+          "fenced_fact_count": 76,
+          "fenced_fact_composition": "60 joint cells, 10 gain-band row totals, 6 income-column totals",
+          "classification_rationale": "The taxpayer count is endogenous to policy (liability requires gains above the annual exempt amount computed by the model under simulation), the income conditioning is an arithmetic proxy that can move a person one band, and the published surface needs rounding and suppression reconciliation before any per-band fact is exact. The SPI 208-fact fence is the precedent.",
+          "calibrated_facts_unchanged": "The two aggregate facts in UK_CGT_TARGET_SPECS (total gains, taxpayer count; table 1 basis including trusts) remain the only calibrated CGT facts.",
+          "promotion_path": "A separately reviewed target profile may lift specific band facts out of the fence after the rounding/suppression reconciliation and the taxable-income-proxy adequacy are adjudicated on their own evidence.",
+          "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552"
+        }
+      ],
+      "outputs": [
+        "capital_gains"
+      ],
+      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, the weight kind carries through, and the stage appends the mass-conservation receipt the terminal family gate requires. Only persons with positive existing gains are redrawn; the candidate's net losses (negative amounts) and zeros pass through byte-identical, since Table 3 covers only individuals with a liability and says nothing about losses. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact.",
+      "output_weight_kind": "importance",
+      "output_weight_kind_rationale": "The stage preserves whatever kind it receives; it runs after hmrc_spi_income, whose prior allocation establishes importance-kind household weights, so the final frame carries importance."
+    }
+  ]
+}

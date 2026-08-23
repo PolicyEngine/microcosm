@@ -1,0 +1,1 @@
+Block the build in every posture when the UK fit-weight audit evidence is absent: `uk_weights_audit` declares the new `evidence_absent_blocks` manifest flag and the battery honors it, porting the retired schema-3 path's strictness — an absent audit is not a passing audit.

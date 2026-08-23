@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from microcosm.calibrate import Target, TargetSet, build_constraint_matrix
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
 def test_matrix_has_one_row_per_target_one_column_per_weight(feasible_frame) -> None:
@@ -187,6 +189,105 @@ def test_person_sum_target_collapses_onto_multi_person_households(
     # The weighted estimate recovers the true weighted person-age total.
     true_total = float((age * weights[person_household]).sum())
     np.testing.assert_allclose(problem.estimates(weights)[0], true_total, rtol=1e-9)
+
+
+def test_group_sum_target_collapses_onto_weighted_parent_group() -> None:
+    """A benunit-grain row compiles onto household weights on a real nested frame."""
+
+    weights = np.array([10.0, 20.0, 30.0])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(6, dtype="int64"),
+                    "person_benunit_id": [0, 0, 1, 2, 3, 3],
+                    "person_household_id": [0, 0, 0, 1, 2, 2],
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(4, dtype="int64"),
+                    "uc_receipt": [1.0, 0.0, 1.0, 1.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": np.arange(3, dtype="int64")}),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="uc_benunits",
+                entity="benunit",
+                value=60.0,
+                measure="uc_receipt",
+                period=2025,
+            ),
+        )
+    )
+
+    problem = build_constraint_matrix(frame, targets, "household")
+
+    assert problem.skipped == ()
+    np.testing.assert_allclose(problem.matrix.toarray()[0], [1.0, 1.0, 1.0])
+    np.testing.assert_allclose(problem.estimates(weights), [60.0])
+
+
+def test_group_sum_target_collapses_with_unsorted_weight_entity_ids() -> None:
+    """Collapse uses id lookup, not sorted-position assumptions."""
+
+    weights = np.array([11.0, 3.0, 13.0])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(3, dtype="int64"),
+                    "person_benunit_id": [100, 101, 102],
+                    "person_household_id": [10, 20, 30],
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": [100, 101, 102],
+                    "uc_receipt": [2.0, 5.0, 7.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [10, 20, 30]}),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    frame.table("household").sort_values(
+        "household_id",
+        ascending=False,
+        inplace=True,
+        ignore_index=True,
+    )
+    frame._weights["household"] = Weights(
+        np.array([13.0, 3.0, 11.0]),
+        WeightKind.DESIGN,
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="uc_benunits",
+                entity="benunit",
+                value=128.0,
+                measure="uc_receipt",
+                period=2025,
+            ),
+        )
+    )
+
+    problem = build_constraint_matrix(frame, targets, "household")
+
+    assert problem.skipped == ()
+    np.testing.assert_allclose(problem.matrix.toarray()[0], [7.0, 5.0, 2.0])
+    np.testing.assert_allclose(
+        problem.estimates(frame.resolve_weights("household").values),
+        [128.0],
+    )
 
 
 def test_uncompilable_target_is_skipped_and_reported(feasible_frame) -> None:

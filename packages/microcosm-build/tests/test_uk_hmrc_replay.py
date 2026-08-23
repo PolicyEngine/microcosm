@@ -98,7 +98,7 @@ def _evidence() -> dict[str, dict[str, object]]:
             "hmrc_surface": {"sha256": "d" * 64, "size_bytes": 166_693},
         },
         "build_evidence": {
-            "period": "2023",
+            "period": HMRC_SPI_BUILD_PERIOD,
             "seed": 42,
             "spi_prior_mass_share": 0.5,
         },
@@ -255,7 +255,7 @@ def test_future_exact_and_directional_fact_invariants() -> None:
         component="employment_income",
         measure="amount",
         unit="GBP",
-        period="2023",
+        period=HMRC_SPI_BUILD_PERIOD,
         total_income_lower_bound=12_570,
         total_income_upper_bound=15_000,
         published_value=100.0,
@@ -365,6 +365,14 @@ def test_atomic_writer_uses_exact_caller_json_path(tmp_path) -> None:
     assert first == report.to_payload()
     assert json.loads(written.read_text(encoding="utf-8")) == first
     assert not list(output.parent.glob(f".{output.name}.*.tmp"))
+
+
+def test_conservative_report_accepts_spine_mode_report_kind(tmp_path) -> None:
+    report = _report(tmp_path, report_kind="uk_hmrc_spi_income_spine_208_fact_replay")
+
+    assert report.to_payload()["report_kind"] == (
+        "uk_hmrc_spi_income_spine_208_fact_replay"
+    )
 
 
 def test_writer_rejects_non_json_and_symbolic_link_paths(tmp_path) -> None:

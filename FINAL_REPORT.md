@@ -1,111 +1,162 @@
-# Final report: microcosm #462 register alignment
+# Final report: US release replacement scorecard
 
 ## Outcome
 
-Completed the split-PR remediation on `loss-contract-alignment`, based on
-`origin/main` at `7b6e10b`. The change is now register alignment only: one
-shared critical-target register, one shared congressional-district classifier,
-two consumers, builder contract-row gating, and behavioral containment of the
-publish contract.
+The replacement yardstick is complete and the live US incumbent is scored.
+`tools/score_us_release_head_to_head.py` accepts the incumbent H5 and an
+optional candidate H5 or authenticated pool, normalizes each through one
+role-neutral loader API, and sends both through the same scoring function
+(`tools/score_us_release_head_to_head.py:495-515,1398-1536,1670-1721`). Its
+deterministic JSON contains every compiled fiscal target and every nominal
+terminal-battery scalar leg; its Markdown twin is the readable scorecard.
 
-The critical-row loss multiplier was removed entirely per
-[microcosm#492](https://github.com/PolicyEngine/microcosm/issues/492). There is no
-constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
-provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
-source-identical to `origin/main`, and its output therefore preserves main's
-bit-level behavior for the same registry and family multipliers.
+The scorer compiles the sole US fiscal registry once, then materializes and
+scores fixed registry chunks across fixed household slices
+(`tools/score_us_release_head_to_head.py:518-579,675-852`). Every slice must
+match the target, scale, diagnostic-name, and scored-column contracts; the two
+artifacts must also have identical final scored-column contracts, so a missing
+candidate measure cannot disappear silently
+(`tools/score_us_release_head_to_head.py:858-938,1539-1553`).
 
-## Sol round-1 findings
+No gate, threshold, tolerance, or band decides the replacement. When a
+candidate is present, the output reports its weighted-loss delta, the exact
+per-target balance of lower/equal/higher absolute relative errors, and each
+side's battery evidence, then leaves the flip to the owner
+(`tools/score_us_release_head_to_head.py:1571-1667`).
 
-1. **Table 1.4 selector parity:** removed the builder-only
-   `accepted_name_prefixes=("irs_soi.",)` constraint. The adapter now has
-   exactly the shared requirement's substring and suffix selectors. The
-   outside-prefix reproduction is builder-rejected.
-2. **Congressional-district parity:** added exported, stdlib-only
-   `is_congressional_district_target(name, metadata)` and made the publisher
-   and builder classifiers thin wrappers. It ORs layout dimension, source-id
-   token, geography level, geography scope, truthy CD GEOID, and name token.
-   The builder's exact/semantic, Table 1.4, and zero-support paths now see the
-   same registry metadata.
-3. **Recorded relative-error shape:** a matched row with missing/`None`
-   `relative_error` now fails with the publish-contract message instead of
-   silently passing after recomputation. Existing non-numeric and stale-value
-   checks remain.
-4. **Behavioral anti-drift:** the load-bearing test now runs adversarial rows
-   through both consumers for exact-name, family+role, Table pattern,
-   missing/non-finite values, and a disallowed incumbent escape at the 0.25
-   hard stop. A production Ledger compile supplies six separate CD evidence
-   rows; builder and publisher exclude identical six-name sets and counts.
-   Field comparisons remain as fast checks, and any added conjunctive prefix
-   is proven to trip the guard.
+## Frozen incumbent and yardstick
 
-The [#490](https://github.com/PolicyEngine/microcosm/issues/490) medical 0.25
-adjudication tolerance and its adjacent comment in `us_critical_targets.py`
-remain byte-for-byte unchanged, as required.
+The current PolicyEngine.py `5.0.3` bundle resolves the US default dataset as:
 
-## Reproduction receipts
+- repository: `policyengine/populace-us` (Hugging Face dataset);
+- revision/build:
+  `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`;
+- filename: `populace_us_2024.h5`;
+- resolved Hugging Face commit:
+  `26dcad66867687f15735dc4926523e3741920836`;
+- artifact SHA-256:
+  `48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e`;
+- PolicyEngine.py source commit:
+  `cfdd128fc316e07ef54c182f2149fac217e8706f`, certified for
+  `policyengine-us==1.764.6`.
 
-The Table 1.4 prefix reproduction now returns:
+That identity comes from PolicyEngine.py `5.0.3`'s bundle manifest
+(`src/policyengine/data/bundle/manifest.json:113-140,156-160,181-189`), with
+resolution at
+`src/policyengine/provenance/manifest.py:180-187,270-299,301-318,540-560`,
+Hugging Face handling at
+`src/policyengine/provenance/dataset_sources.py:57-74,77-117`, and the US model
+selection at `src/policyengine/tax_benefit_models/us/model.py:423-462`. The
+charter's enhanced-CPS assumption is historical; it is not the dataset the
+current package resolves. The scorer independently hash-matched the cached
+bytes before attaching this identity
+(`tools/score_us_release_head_to_head.py:120-138,399-405,448-492`).
 
-```text
-SOI Table 1.4 national dollar fit failed: other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 for SOI Pub 1304 Table 1.4 national dollar rows (soi_table_1_4_national_dollar_rows); target=100.0, final_estimate=200.0.
-```
+The frozen yardstick is registry `c4ac617743f2`: 32,842 targets compiled from
+Ledger facts SHA-256
+`b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
+The production loss weights use square-root target magnitude, semantic-concept
+budgets, equal amount/count budgets, and final mean normalization; the
+aggregate is the weighted mean of capped target-scaled absolute errors, with
+no family multipliers
+(`tools/build_us_fiscal_refresh_release.py:344-348,481-516,5781-5814,6214-6290`;
+`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537,576-600`).
 
-The missing-relative-error reproduction now returns:
+## Incumbent evidence
 
-```text
-SOI Table 1.4 national dollar fit failed: irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: missing recorded relative_error; the publish contract requires a numeric value.
-```
+The committed results are:
 
-The CD reproduction has the owner-mandated exclusion result:
+- `experiments/replacement_scorecard/incumbent_48b9d479.json` — complete
+  32,842-row machine-readable evidence, SHA-256
+  `b2ad1a07f9668bc5d796cc9de99ef12da781b1ee8163ea65781871a20da441c8`;
+- `experiments/replacement_scorecard/incumbent_48b9d479.md` — human scorecard,
+  SHA-256
+  `3f9171b8f63fcef61518a4af1c18a8555c4f449ac62e9283e41ac2fe9c779021`.
 
-```text
-builder_excluded=True
-publisher_excluded=True
-builder_failures=[]
-```
+The incumbent weighted loss is `0.11462448275649702`; its fraction of targets
+within 10% is `0.2669143170330674`; all 57,240 household weights are nonzero.
+The Markdown summary records these values and the exact identity at
+`experiments/replacement_scorecard/incumbent_48b9d479.md:5-18`.
 
-Calling that row "rejected" would contradict the required OR-union exclusion
-semantics. The two malformed critical rows are rejected; the CD row is
-symmetrically excluded by both consumers.
+The terminal battery is entirely by-origin: its canonical surface is 131
+single-column comparisons plus one joint comparison, normalized to 369 scalar
+legs (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3011-3025,11644-11709,11824-11832,11948-12154`). The incumbent has 120,261
+positive-weight clone-0 ASEC rows and zero ACS rows, so all 132 comparisons and
+all 369 scalar legs are explicitly **inapplicable**. No zero, pass, or failure
+was synthesized for the absent side; the human receipt is at
+`experiments/replacement_scorecard/incumbent_48b9d479.md:97-104`.
+
+A finished candidate H5 with both origins computes the same canonical formulas
+while explicitly marking the production assembly/tail receipt unauthenticated
+(`tools/score_us_release_head_to_head.py:1077-1358`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11474-11492,11530-11898`). A pool candidate instead consumes its authenticated
+terminal receipt. The scoring-only pool loader may authenticate the exact
+current `gate_failed`/`simulation_ready=false` publication pair without
+weakening or reusing the separate production-ready loader
+(`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:371-588,691-869`;
+`tools/score_us_release_head_to_head.py:1361-1395`).
+
+## Owner handoff
+
+`_LANE-NOTES.md`, under “Owner command when the 25% candidate exists,” contains
+the exact dense-pool and sparse-57k commands, including the required host-side
+builder-process check and manifest hash pin. “Better than the incumbent” means
+comparing each candidate view against the exact incumbent weighted loss and
+the target-by-target lower/equal/higher error balance, while separately
+inspecting every candidate battery leg that is computable. There is no invented
+threshold or automatic conjunction; the owner decides whether the dense and
+sparse evidence warrants the flip.
+
+The candidate does not yet exist, so the incumbent-only JSON correctly leaves
+`artifacts.candidate` and `comparison` null. This is the only external work
+remaining.
 
 ## Verification
 
-The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
-environment in the network-restricted sandbox:
+- Environment sync completed with
+  `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv sync --all-packages --extra us`.
+- Full workspace suite:
+  `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv run python -m pytest` —
+  **7,028 passed, 76 skipped, 0 failed** in 1:39:56. The `python -m` form avoids
+  a copied virtualenv console-script shebang that pointed at a sibling
+  worktree.
+- Repository-wide `ruff check .`: green. All six Python files changed by this
+  branch pass `ruff format --check`; the whole-tree format audit names 69
+  pre-existing mainline files and was not used to rewrite unrelated code.
+- `py_compile` for the scorer and `git diff --check`: green.
+- Contract and loader-symmetry tests are at
+  `packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py:415-499`;
+  deterministic fixture end-to-end coverage at `:502-569`; chunked/one-shot
+  equivalence at `:575-678`; scalar-leg completeness at `:285-378`; failed-pool
+  authentication at
+  `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1017-1085`;
+  and finished-H5 canonical battery equivalence at
+  `packages/microcosm-build/tests/test_us_stacked_spine.py:6929-6966`.
+- The real incumbent run exited zero at 18.666 GiB peak RSS, below the binding
+  20 GiB limit. Its five registry chunks used twelve household slices apiece;
+  the scorer enforces the RSS ceiling after loading, after every chunk, and
+  after releasing each side
+  (`tools/score_us_release_head_to_head.py:332-352,653-852,1398-1463,1670-1715`).
 
-```text
-uv run --package microcosm-build --extra us --group dev python -m pytest packages/microcosm-data/tests packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py packages/microcosm-build/tests/test_us_state_files_scorer.py -q
-264 passed, 3 skipped (267 collected)
-```
+The sandbox denied `ps`, `pgrep`, and `top`. Before scoring, the permitted
+`lsof` process and open-file audits found no build-runtime process or open pool,
+checkpoint, manifest, or build file. This lane started no pool build. It also
+made no push and changed no gate, threshold, tolerance, or band.
 
-Additional receipts:
+## Commits
 
-- Complete `test_gates.py`: passed.
-- Required multiplier grep: zero Python hits.
-- Ruff check: clean on all ten touched Python files.
-- Ruff format check: clean on the eight non-exempt touched Python files; the
-  two historical experiment files were not reformatted, as instructed.
-- `git diff --check`: clean.
-- The medical adjudication block compares byte-for-byte equal to pre-fix
-  commit `068854d`.
-- Pytest emitted non-failing macOS temporary-directory cleanup warnings; no
-  test failed.
+- `fd7d5515` — start the replacement-scorecard lane and committed progress log.
+- `de5ca6aa` — document the yardstick audit.
+- `256165e2` — correct the live incumbent identity.
+- `90fe2364` — add the common head-to-head scorer.
+- `758aa0c4` — preserve H5 snapshot identity across cache symlinks.
+- `eebd1d6f` — make scoring chunked and memory-bounded.
+- `8226f376` — complete artifact battery evidence and pool authentication.
+- `34d93846` — merge the current `origin/main` before scoring.
+- `e834baad` — record the merge and pre-score queue audit.
+- `d876c971` — commit the live incumbent scorecard.
+- `8d2ba34c` — document the exact candidate handoff.
+- `6847d245` — keep the journal within the source-hygiene contract.
+- Final progress, validation, and this report — the commit containing this file.
 
-## Remediation commits
-
-- `5077f95` — start microcosm#462 Sol remediation progress.
-- `c48ba37` — remove the microcosm#462 loss multiplier per microcosm#492.
-- `afa910a` — fix Sol finding 1 selector parity.
-- `89f74f4` — fix Sol finding 2 CD classifier parity.
-- `77040fb` — fix Sol finding 3 relative-error shape.
-- `bad7145` — fix Sol finding 4 behavioral containment.
-- `3c96514` — apply the finding-2 classifier's required Ruff formatting.
-
-Nothing was pushed at the time of this report; the branch was subsequently
-pushed and merged as #491 (2026-07-22).
-
-The sandbox rejected writing
-`/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
-permitted`; the full completion report is therefore committed here and will be
-printed to stdout as the requested fallback.
+Nothing was pushed, and no pool build or publication was performed.

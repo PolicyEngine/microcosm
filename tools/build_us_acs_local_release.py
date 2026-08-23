@@ -54,7 +54,6 @@ import subprocess
 import sys
 import threading
 import time
-import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -147,6 +146,10 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
     """
 
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
     from microcosm.build.us_runtime.fiscal_targets import (
         compile_us_fiscal_target_registry,
     )
@@ -159,7 +162,11 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
     registry = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=PERIOD,
-        include_congressional_district_targets=False,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
         age_targets=True,
     )
     registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
@@ -629,6 +636,8 @@ def write_lean_checkpoint(
 ):
     """Assemble the lean target-frame H5 + targets.json (memory-bounded)."""
 
+    from microcosm.frame import put_frame_table
+
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     if isinstance(admin_matrix, np.memmap):
         admin_matrix = np.array(admin_matrix)
@@ -646,13 +655,26 @@ def write_lean_checkpoint(
     lean_households["household_weight"] = struct["weights"]
     checkpoint_h5 = checkpoint_dir / "target_frame_lean.h5"
     with pd.HDFStore(checkpoint_h5, mode="w") as store:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
-            store.put("household", lean_households, format="fixed")
-            store.put("person", struct["person"], format="fixed")
-            for group, table in struct["groups"].items():
-                store.put(group, table, format="fixed")
-            store.put("_time_period", pd.Series([PERIOD]), format="table")
+        put_frame_table(
+            store,
+            "household",
+            lean_households,
+            preferred_format="fixed",
+        )
+        put_frame_table(
+            store,
+            "person",
+            struct["person"],
+            preferred_format="fixed",
+        )
+        for group, table in struct["groups"].items():
+            put_frame_table(
+                store,
+                group,
+                table,
+                preferred_format="fixed",
+            )
+        store.put("_time_period", pd.Series([PERIOD]), format="table")
     targets = [
         dict(
             name=target["name"],
@@ -685,13 +707,13 @@ def write_lean_checkpoint(
 
 
 def load_lean_frame(checkpoint_h5: Path):
-    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.frame import Frame, WeightKind, Weights, read_frame_table
     from microcosm.frame.units import US_SCHEMA
 
     tables = {}
     with pd.HDFStore(checkpoint_h5, mode="r") as store:
         for key in ["household", "person"] + list(GROUP_IDS):
-            tables[key] = store[key]
+            tables[key] = read_frame_table(store, key)
     design_weights = tables["household"].pop("household_weight").to_numpy(np.float64)
     return (
         Frame(

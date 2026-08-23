@@ -212,35 +212,11 @@ def test_sampled_frame_is_normalized_refreshed_and_valid() -> None:
     validate_uk_national_frame(sampled)
     weights = sampled.weights_for("household")
     assert float(weights.total) == pytest.approx(full_mass)
-    np.testing.assert_array_equal(
-        sampled.table("household")["household_weight"].to_numpy(dtype="float64"),
-        weights.values,
-    )
+    assert "household_weight" not in sampled.table("household")
     record = sampled.mass_log[-1]
     assert record.entity == "household"
     assert "composition-preserving" in record.reason
     assert receipt["normalized_household_mass"] == pytest.approx(full_mass)
-
-
-@pytest.mark.filterwarnings("ignore::pandas.errors.ChainedAssignmentError")
-def test_weight_column_refresh_verifies_the_live_reference() -> None:
-    """If Frame.table ever returns copies, the in-place household_weight
-    refresh silently no-ops and the staging payload would export
-    pre-normalization weights; the sampler must catch that locally instead
-    of relying on validate_uk_national_frame two calls later.  (The pandas
-    chained-assignment warning is this exact failure mode firing on the
-    injected copy, so the test suppresses it.)"""
-
-    frame = _source_family_frame()
-    stored_table = Frame.table
-
-    def copying_table(self: Frame, name: str) -> pd.DataFrame:
-        return stored_table(self, name).copy()
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(Frame, "table", copying_table)
-        with pytest.raises(ValueError, match="refresh did not persist"):
-            sample_uk_national_frame(frame, fraction=0.5, seed=3)
 
 
 def test_numeric_region_codes_are_refused() -> None:
@@ -256,6 +232,7 @@ def test_numeric_region_codes_are_refused() -> None:
         benunit=frame.table("benunit"),
         household=household,
         time_period="2023",
+        household_weights=frame.weights_for("household").values,
     )
     with pytest.raises(ValueError, match="must contain non-empty strings"):
         sample_uk_national_frame(numeric, fraction=0.5, seed=1)
@@ -295,6 +272,7 @@ def test_missing_lineage_columns_fail_closed() -> None:
         benunit=frame.table("benunit"),
         household=household,
         time_period="2023",
+        household_weights=frame.weights_for("household").values,
     )
     with pytest.raises(ValueError, match="missing \\['clone_index'\\]"):
         sample_uk_national_frame(stripped, fraction=0.5, seed=1)

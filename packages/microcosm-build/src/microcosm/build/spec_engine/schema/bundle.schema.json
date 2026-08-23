@@ -1,0 +1,48 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "bundle.schema.json",
+ "title": "Bundle-level settings (no file inventory - that is country_package.json)",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "country",
+  "identity_generation",
+  "seed_protocol"
+ ],
+ "properties": {
+  "country": {
+   "$ref": "defs.schema.json#/$defs/identifier"
+  },
+  "identity_generation": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "seed_protocol": {
+   "enum": [
+    "legacy-v1",
+    "derived-v2"
+    ]
+  },
+  "dataset_run": {
+   "type": "object",
+   "description": "Normative dataset-line contract. This is the generation-0 target period, not a realized run-request override.",
+   "additionalProperties": false,
+   "required": [
+    "target_period"
+   ],
+   "properties": {
+    "target_period": {
+     "type": [
+      "string",
+      "integer"
+     ]
+    }
+   }
+  },
+  "status": {
+   "x-spec-surface": "documentation",
+   "type": "string"
+  }
+ }
+}
