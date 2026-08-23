@@ -1,4 +1,28 @@
-# Replacement-scorecard lane notes
+# Candidate 25% host-runbook lane notes
+
+## 2026-08-23 — lane start and binding boundary
+
+- Branch `candidate-25pct-runbook` starts at `d69131a3`, identical to
+  `origin/main` after #748.
+- Owner ruling recorded: the publication basis is the 25% sample (15–20% only
+  as an explicit fallback); dense means that candidate's calibrated 25% pool
+  artifact, sparse means its sparse-57k weight artifact, and the only decision
+  bar is the head-to-head against committed incumbent evidence
+  `experiments/replacement_scorecard/incumbent_48b9d479.md`.
+- This lane produces and dry-runs a host script only. It will not launch
+  `build_us_multispine_pool.py` or `build_us_fiscal_refresh_release.py`, publish,
+  promote, push, tune, write `logbook-pending-chain.txt`, or pass a prior-row
+  digest. The eventual host commands must run with
+  `POPULACE_LOGBOOK_PREV_ROW_DIGEST` unset.
+- The prescribed `uv sync --all-packages --extra us` was attempted before code
+  work. The default cache is sandbox-denied; the writable-cache retry was
+  blocked by disabled DNS while fetching the locked
+  `policyengine-core==3.26.11`. Offline environment recovery remains pending.
+- The GitNexus exploration skill is being used for the release-flow trace; if
+  this session exposes no index resources or query tools, direct source
+  inspection is the documented fallback.
+
+## Historical replacement-scorecard journal (merged in #748)
 
 ## 2026-08-22 — lane start and environment
 
