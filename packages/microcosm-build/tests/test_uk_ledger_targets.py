@@ -21,8 +21,10 @@ class StubUKAdapter:
                 "capital_gains": np.array([0.0, 5_000.0, 20_000.0]),
             },
             "household": {
-                "uc_is_child_limit_affected": np.array([1.0, 0.0, 1.0]),
-                "children_count": np.array([3.0, 2.0, 4.0]),
+                # Mapped to household, uc_is_child_limit_affected sums to the
+                # number of flagged children, so it is both the affected flag
+                # and the affected-children count.
+                "uc_is_child_limit_affected": np.array([3.0, 0.0, 4.0]),
             },
         }
 
