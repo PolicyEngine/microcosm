@@ -1,3 +1,178 @@
+# Final report: F1 certification comparator closure (2026-08-23)
+
+## Outcome
+
+Committed the honest comparator closure on `spec-engine-f1-cert` as
+`8ae7c0de` (`Close exact final H5 certification coverage`), on top of sibling
+brokered-QRF commit `15ebddad`. Exact final-H5 member closure is implemented
+and locally green. Node reuse and calibration scope require owner rulings and
+remain deliberately fail-closed; this report does not claim an F1 PASS.
+
+The four-receipt verdict requires complete vector coverage, cold-build
+evidence, both within-mode comparisons, and all cross-mode comparisons
+(`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1349-1444`).
+For a well-formed false verdict the runner writes both reports and returns
+status 1; malformed evidence is status 2
+(`tools/f1_certification_run.py:227-249`,
+`tools/f1_certification_run.py:448-459`). No four-build comparator run occurred
+in this lane because the owner-host serial queue owns those builds.
+
+## The three fail-closed items
+
+### 1. Node reuse — owner ruling required; STOP
+
+The exact coverage check requires the node inventory to be complete and equal
+to compiler `producer_order`; within- and cross-mode checks require complete,
+exactly equal key maps
+(`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1574-1631`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/artifact_comparison.py:548-569`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/artifact_comparison.py:1839-1862`).
+It fails at this head because production emits `node_reuse_ids=()`, marks the
+inventory incomplete, and emits an empty key map
+(`tools/build_us_multispine_pool.py:6017-6022`,
+`tools/build_us_multispine_pool.py:6042-6050`).
+
+This is not a plan-lock canonicalization-vector defect. Static compiler node
+keys bind compiler slices, kernel identities, and the seed protocol, while the
+runtime semantic-reuse API additionally needs behavior-relevant run inputs,
+transitive content, implementation dependencies, materializer/backend ABIs,
+and broker-issued RNG/source behavior identities
+(`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2063-2087`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/executor.py:1523-1681`).
+The production late DAG still invokes legacy callbacks instead of dispatching
+the compiled nodes through that seam
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:9990-10003`,
+`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:10166-10229`).
+
+The costed memo offers NR-A, a high-scope sealed semantic contract plus real
+production dispatch, or NR-B, explicit deferral with the certificate remaining
+red. Static keys, an operational journal, or a shadow dispatcher are forbidden
+substitutes.
+
+### 2. Final H5 — code/spec fix complete
+
+The exact check binds the physical H5 to the compiler inventory, derives exact
+missing and extra members, reconstructs the observed set, and independently
+checks its count, digest, status, artifact IDs, selectors, and single locator
+(`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:467-530`,
+`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:897-946`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2333-2456`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2742-2782`).
+At the opening head no declared, compiler-issued complete member inventory
+existed, so the production receipt could not prove final-H5 closure.
+
+The fix adds a reviewed 398-member contract: six entity tables, 391 ordinary
+columns (320 person, 23 household, 24 tax unit, 14 SPM unit, five family, five
+marital unit), and one household weight. `_time_period` and
+`_populace_staging_metadata` remain separately required bounded headers rather
+than being misclassified as members. The generator requires canonical
+declaration bytes, six exact source identities, typed-catalog containment, and
+the fixed cardinality
+(`tools/us_bundle_generation/identity_contracts.py:50-208`). The generic
+validator seals and rechecks order, relationships, member count, member digest,
+and inventory digest
+(`packages/microcosm-build/src/microcosm/build/spec_engine/final_h5_inventory.py:210-468`).
+
+The current pins are declaration
+`8275121f869291172404f068cf645911d95aa6e5606fb1704f4214c0cbfffa25`,
+member set
+`150a07a9f9ca0687d70fed3d582dbe9669647868f9a694fee24a8870b6659e08`,
+inventory
+`5809ef3544723296c2dd5543caaed67a69f38849e692f876352af7154d077db8`,
+compiler ABI v6, execution ABI v3, and US spec
+`e8543c545aea4ccca71605c1504e0c6c843c8eee6c8fefaf858cb888a73dbcec`
+(`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:42-45`,
+`packages/microcosm-build/src/microcosm/build/us/spec/spine.yaml:78-110`,
+`packages/microcosm-build/src/microcosm/build/us/spec/spine.yaml:509-512`).
+
+Collection and scanning fence one absolute path/device/inode/size/mtime/ctime
+identity, reject symlinks and replacements, recheck the actual pandas
+descriptor, bound metadata axes, and never load entity values
+(`packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:186-304`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1661-1789`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1834-1980`,
+`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:973-1295`,
+`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:1336-1377`).
+The production publisher supplies the same captured identity to both logical
+collection and physical closure
+(`tools/build_us_multispine_pool.py:5993-6008`). Host-built artifacts remain
+the final production proof; none was built here.
+
+### 3. Calibration scope — owner ruling required; STOP
+
+The exact production validator only accepts the sealed incomplete calibration
+receipt with reason `normative_artifact_vector_omits_calibration_weights`; the
+normalizer refuses a completion claim because there is no sealed inventory
+contract
+(`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1962-2016`,
+`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2593-2638`).
+Production emits that false receipt
+(`tools/build_us_multispine_pool.py:6025-6032`), while overall coverage requires
+calibration completion
+(`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`).
+
+This is a scope mismatch: the four-role runner stops after the pre-calibration
+pool, while the downstream release tool emits calibration weights
+(`tools/f1_certification_run.py:139-207`,
+`tools/build_us_fiscal_refresh_release.py:5727-5746`,
+`tools/build_us_fiscal_refresh_release.py:11221-11224`). D4 classifies those
+weights as normative raw bytes, so normalization or exclusion cannot make an
+absent artifact present (`_F1-CHARTER.md:156-179`).
+
+The memo offers CAL-A, a high-scope owner-selected composite pool-plus-release
+contract with four additional heavy children, or CAL-B, explicit deferral with
+the certificate remaining red. Flipping the boolean, comparing summaries, or
+excluding calibration weights is forbidden.
+
+## Host handoff
+
+The journal's “F1 certification comparator closure host handoff” block is
+updated for `spec-engine-f1-cert`. It pins the branch HEAD and six input/gate
+identities, refuses placeholders and reused roots, runs constants A/B then
+bundle A/B strictly serially, retains baseline/pkg3 gate diffs as diagnostics,
+and accepts only a typed comparator result whose JSON agrees with status 0/1
+(`_F1-LANE-NOTES.md:3328-3657`,
+`tools/f1_certification_run.py:227-249`). It preserves failed roots and never
+turns a gate diff into a certification override. With the two owner-stopped
+items unresolved, a well-formed status 1 remains the expected honest result.
+
+## Verification
+
+- Focused post-integration batches: final-H5/comparator 104 passed and one
+  deselected; real production-writer regression 1 passed; ABI hardening 3
+  passed; full comparator/domain batch 42 passed; deterministic source census
+  1 passed with 218 sources, 283 callsites, 120 bindings, 163 exemptions, 162
+  classifications, and unchanged 72 seed sites.
+- Build package: 265 sorted modules in 23 fresh serial groups, exactly 6,496
+  passed and 37 skipped; peak RSS 8,335,998,976 bytes. A monolithic diagnostic
+  reached 17,315,348,480 bytes and is expressly not counted.
+- Calibrate: 201 passed, peak RSS 478,822,400 bytes.
+- Data: 275 passed, 1 skipped, peak RSS 12,082,708,480 bytes.
+- Fit: 98 passed, peak RSS 729,939,968 bytes.
+- Frame: 294 passed, 36 skipped, peak RSS 6,970,884,096 bytes.
+- Repo-wide Ruff, generated bundle `--check`, coverage `--check` at
+  42,335/42,335 fields and 40/40 inventories, `git diff --check`, and extracted
+  host-handoff `zsh -n`: all pass.
+
+No compliant child exceeded 15 GiB. No pool/release build, push, publication,
+gate/band/ceiling/fold/seed tuning, or owner-only exclusion occurred. Normative
+artifact byte identity and the 72-site seed-ledger binding were not weakened.
+
+## Commits and next authority
+
+- `15ebddad` — integrated sibling brokered-QRF repair; its draw path is
+  unchanged by this lane.
+- `8ae7c0de` — exact final-H5 closure, ABI-domain hardening, regressions,
+  decision memo, owner-host handoff, and committed progress/journal state.
+
+Next action belongs to the owner: select NR-A or NR-B and independently CAL-A
+or CAL-B in `_F1-CERTIFICATION-DECISION-MEMO.md`. This lane stops on those two
+items and makes no F1 PASS claim.
+
+---
+
 # Final report: microcosm #462 register alignment
 
 ## Outcome

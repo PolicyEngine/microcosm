@@ -3850,3 +3850,18 @@ child above the worst observed peak plus host margin.
   and STOP boundaries remain in `_F1-CERTIFICATION-DECISION-MEMO.md`.
 - No pool or release build, push, publication, gate comparison, threshold
   change, or owner-host command ran in this lane.
+
+### Implementation commit and closeout (2026-08-23)
+
+- Committed the coherent green implementation as `8ae7c0de` (`Close exact
+  final H5 certification coverage`) on `spec-engine-f1-cert`. The committed
+  tree includes the exact final-H5 contract/scanner/comparator, ABI-domain
+  hardening, generated attestations, regressions, owner decision memo, host
+  handoff, `PROGRESS.md`, and this journal.
+- Wrote the requested final report at the top of `FINAL_REPORT.md` and updated
+  `PROGRESS.md` to the terminal owner-ruling state. These closeout edits change
+  documentation only; production code and the green suite tree remain exactly
+  commit `8ae7c0de`.
+- STOP remains in force for node reuse and calibration scope pending the two
+  owner choices. Nothing was pushed, and no owner-host build or comparator
+  command was run from this lane.

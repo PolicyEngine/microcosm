@@ -4,7 +4,8 @@
 
 - Work is local on `spec-engine-f1-cert`; the sibling brokered-QRF repair is
   integrated exactly at `15ebddad792b12726de1369c1c712d3a38fced28` on top
-  of opening comparator parent `7d4a60dc`. Nothing has been pushed.
+  of opening comparator parent `7d4a60dc`, and the coherent comparator/final-H5
+  implementation is committed at `8ae7c0de`. Nothing has been pushed.
 - This lane owns only the certification runner and its three deliberately
   fail-closed production-evidence items: node reuse, exact final-H5 member
   closure, and calibration scope. The brokered-QRF draw path remains excluded
@@ -26,7 +27,8 @@
   selections in `_F1-CERTIFICATION-DECISION-MEMO.md`. Exact final-H5 member
   closure is implemented. Every package suite, repo-wide Ruff, generated-bundle
   check, generated-coverage check, whitespace check, and host-handoff syntax
-  check is green on the final implementation tree under the 15 GiB RSS cap.
+  check is green on commit `8ae7c0de` under the 15 GiB RSS cap. The requested
+  closeout is written at the top of `FINAL_REPORT.md`.
 
 ## Done
 
@@ -143,15 +145,19 @@
   42,335/42,335 plus 40/40, and host-handoff zsh parsing all pass. A single
   monolithic build-suite run was functionally green at 6,496/37 but peaked at
   17,315,348,480 bytes and is explicitly not counted as the compliant receipt.
+- Committed the coherent implementation, regressions, generated artifacts,
+  costed decision memo, owner-host handoff, progress state, and lane journal as
+  `8ae7c0de`. No production code changed after its full green verification.
 
 ## Next
 
-1. Commit this coherent green implementation on `spec-engine-f1-cert`.
-2. Write the final report to `FINAL_REPORT.md`, update this state with the
-   implementation commit, and commit the documentation closeout.
-3. Stop on node reuse and calibration pending the two owner rulings. Do not run
-   any pool/release build, push, publication, or owner-host command from this
-   lane.
+1. Owner selects NR-A or NR-B and, independently, CAL-A or CAL-B in
+   `_F1-CERTIFICATION-DECISION-MEMO.md`.
+2. If the owner selects either implementation option, perform that authorized
+   work and reverify before using the branch-pinned host handoff. A deferral
+   option retains the honest status-1 certificate.
+3. Do not run any pool/release build, push, publication, or owner-host command
+   from this lane.
 
 ---
 
