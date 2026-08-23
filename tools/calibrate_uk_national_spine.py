@@ -758,6 +758,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--diagnostics-json", required=True, type=Path)
     parser.add_argument("--build-record-json", required=True, type=Path)
     parser.add_argument("--logbook-prev-row-digest", default=None)
+    parser.add_argument(
+        "--assessment-fences",
+        type=Path,
+        help="JSON of {fences: [{prefix, reason}]} removing references from "
+        "the calibration and scoring registers, each with a receipted "
+        "reason. Measure-level acts on defective or unsupported measures — "
+        "never threshold edits. Recorded in the build record.",
+    )
     args = parser.parse_args(argv)
 
     started_at = time.perf_counter()
@@ -857,11 +865,34 @@ def main(argv: list[str] | None = None) -> int:
     # --- 4. simulated-measure materialization ------------------------------
     from policyengine_uk import Microsimulation
 
+    fenced: dict[str, str] = {}
+    fence_registry = compilation.registry
+    if args.assessment_fences:
+        fence_config = json.loads(
+            args.assessment_fences.read_text(encoding="utf-8")
+        )
+        rules = [(f["prefix"], f["reason"]) for f in fence_config["fences"]]
+        kept = []
+        for spec in compilation.registry.specs:
+            reason = next(
+                (why for prefix, why in rules if spec.name.startswith(prefix)),
+                None,
+            )
+            if reason is None:
+                kept.append(spec)
+            else:
+                fenced[spec.name] = reason
+        fence_registry = TargetRegistry(kept, country="uk")
+        print(
+            f"assessment fences removed {len(fenced)} references "
+            f"({len(kept)} remain)"
+        )
+
     print("materializing simulated measures on the candidate spine...")
     candidate_sim = Microsimulation(dataset=str(prepared_input))
     effective_registry, candidate_inputs, candidate_measures = (
         _resolve_simulated_measures(
-            frame, candidate_sim, compilation.registry, calibration_year,
+            frame, candidate_sim, fence_registry, calibration_year,
             side="candidate",
         )
     )
@@ -989,9 +1020,11 @@ def main(argv: list[str] | None = None) -> int:
         "register": {
             "compiled_sha256": register_sha,
             "compiled_n_specs": len(compilation.registry.specs),
+            "fenced_n_specs": len(fenced),
             "calibrated_n_specs": len(effective_registry.specs),
             "scored_n_specs": len(score_registry.specs),
         },
+        "assessment_fences": fenced,
         "calibration": stage.manifest,
         "assessment_gates": gate_receipt,
         "score_vs_enhanced_frs": score,
