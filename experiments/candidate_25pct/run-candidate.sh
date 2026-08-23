@@ -289,10 +289,10 @@ reclaimable_gib() {
 }
 
 builders_busy() {
-  if /usr/bin/pgrep -f '[b]uild_us_multispine_pool[.]py' >/dev/null 2>&1; then
+  if /usr/bin/pgrep -f '[.]venv/bin/python[0-9.]* tools/build_us_multispine_pool[.]py' >/dev/null 2>&1; then
     return 0
   fi
-  if /usr/bin/pgrep -f '[b]uild_us_fiscal_refresh_release[.]py' >/dev/null 2>&1; then
+  if /usr/bin/pgrep -f '[.]venv/bin/python[0-9.]* tools/build_us_fiscal_refresh_release[.]py' >/dev/null 2>&1; then
     return 0
   fi
   return 1
