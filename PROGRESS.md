@@ -1,17 +1,18 @@
 # Battery residual-fixes progress
 
-## Residual FIX packages — 2026-08-22 22:32Z
+## Residual FIX packages — 2026-08-22 22:45Z
 
 ### State
 
-Implementation and complete five-shard verification are complete on branch
+Complete. Implementation and complete five-shard verification are committed on branch
 `battery-residual-fixes`, stacked on `battery-pkg3-two-part`. The only new
 generating change removes a PUF-only unemployment-compensation condition from
 the late ASEC-to-ACS `weeks_unemployed` carrier calibration. The other named
 checks were either already green under pkg3, outside their adjudicated
-criterion, or traced to an upstream owner rather than changed locally. The
-green executable commit remains, followed by the documentation-only final
-report commit. No pool build,
+criterion, or traced to an upstream owner rather than changed locally.
+`FINAL_REPORT.md` contains the per-check disposition and exact serial-host
+handoff. The same five package suites, repository-wide Ruff, and whitespace
+checks pass on this documentation-only closeout tree. No pool build,
 gate/band/ceiling/fold/seed tuning, exclusion change, push, certification, or
 publication has occurred. Earlier sections of this journal are historical.
 
@@ -74,16 +75,21 @@ publication has occurred. Earlier sections of this journal are historical.
   identity and the CLI has no safe stage-import override. `_LANE-NOTES.md`
   therefore records an exact cold 1% command in a fresh residual namespace;
   copying or rebinding the pkg3 manifest is explicitly forbidden.
+- Committed the generating repair, regressions, pinned replay, adjudication,
+  handoff, and green executable verification as `eaba1eab`.
+- Replaced the stale pkg3 report with the residual lane's complete per-check
+  `FINAL_REPORT.md` and preserved the live-tree-safe split host path variables.
+- Reran all five package test roots, repository-wide Ruff, the live-tree
+  retired-data-package guard, and whitespace checks on the final documentation
+  tree; every command exited zero with only established skips and warnings.
 
 ### Next
 
-1. Rerun the documentation-policy guard after recording the green verification
-   result.
-2. Commit the weeks generating fix, regressions, pinned replay, adjudication,
-   and verification record as one coherent green step.
-3. Replace `FINAL_REPORT.md`, close this current progress section, and commit
-   the documentation-only handoff. The serial host owner then queues the
-   recorded guarded 1% rerun; this lane does not run it.
+1. The serial host owner queues the exact guarded 1% rerun recorded in
+   `FINAL_REPORT.md` and `_LANE-NOTES.md`; this lane does not run it.
+2. The owner recomputes the mirror-deduplicated residual gates and adjudicates
+   that new host evidence. Certification and publication remain outside this
+   lane.
 
 ## Main/F0 calibration-policy merge — 2026-08-22 02:09Z
 

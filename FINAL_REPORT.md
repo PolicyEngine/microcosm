@@ -1,255 +1,295 @@
-# Final report: pkg3 post-transfer receipt validation failure #2
+# Final report: battery residual FIX packages
 
 ## Outcome
 
-Fixed at executable commit `a932974f`.
+The only new generating repair is committed at `eaba1eab`: late
+ASEC-to-ACS `weeks_unemployed` calibration no longer treats positive
+unemployment compensation as a carrier prerequisite. That relationship is
+specific to the PUF QRF leg, not the direct ASEC `LKWEEKS` source leg
+(`weeks_unemployed.py:791-830,833-840,959-983,1266-1276`).
 
-The supplied weeks-unemployed failure was a receipt-generation bug, not an
-invalid carrier model and not a count-target exception. Candidate capacity and
-prefix selection reduced the same ordered weights through different float64
-paths, so the prefix exceeded its declared candidate mass by one ULP. The
-required cross-target audit then exposed the same class of bug one level up:
-the first repair composed maximum capacity from independently rounded
-partition endpoints, putting both child-support maxima 42 ULP above the whole
-recipient mass.
+The SHA-pinned no-build replay predicts that this repair changes the weeks
+incidence ratio from `0.031371146` to `1.0006685424`, while retaining integer
+positive donor support, QED `0`, and immutable bytes. The serial host owner's
+guarded 1% rerun remains required to observe the new pool result.
 
-The complete fix changes both generating relationships:
+The other owned checks did not justify another local change:
 
-- one immutable `_PrefixSchedule` now supplies each candidate endpoint and all
-  prefix-selection evidence (`post_transfer_calibration.py:282-287,471-515,844-872,891-928`);
-- maximum capacity is generated from the row union
-  `fixed_positive | allowed_positive | zero_candidates`, zero-masked onto the
-  recipient-weight vector with identical length, order, and reduction topology
-  to `recipient_total` (`post_transfer_calibration.py:823-885`).
+- both assigned adult-care expense mechanisms ran under pkg3 and its incidence
+  check is green;
+- unemployment-compensation positive-amount QED is already exactly `0`;
+- Schedule D's assigned joint-parent incidence is green; and
+- SSI was traced past take-up and eligibility to upstream countable-income
+  distributions, for which this lane owns no calibrated surface.
 
-The exact validator inequalities are unchanged: maximum must not exceed its
-recipient superset, and a reported prefix must not exceed its candidate set
-(`post_transfer_calibration.py:1457-1475,1499-1529`). No tolerance, threshold,
-band, gate, comparator, seed, fold, target, or carrier constraint changed.
+No pool build, push, gate/band/ceiling/fold/seed tuning, exclusion change,
+certification, publication, or release mutation occurred in this lane.
 
-Both SHA-pinned no-build harnesses now validate. All five package test roots,
-repository-wide Ruff, touched-file formatting, and whitespace checks are
-green. This lane ran no host build and made no push. The serial host owner owns
-the next 1% rerun against `a932974f`.
+## Frozen evidence and residual universe
 
-## No-build checkpoint reproduction
+- Baseline gate SHA-256:
+  `1d6059868680f872fe04d452a536bcc3c215bafabb4c50d7740a469fe6a8b56a`.
+- Pkg3 gate SHA-256:
+  `3ace0af0fd9e2ed6cb37cb110280f0c5cade182118c62737635c7ad177050ac3`.
+- Mirror-deduplicated physical failures: `127 -> 114`.
+- Pkg3's terminal and agreement gate objects are JSON-equivalent, so the 114
+  count uses one canonical failure array rather than double-counting mirrors.
 
-The read-only stage root was:
+The 114-check list was recomputed before choosing a change. The named residual
+slice, exact artifact values, and ownership decisions are recorded in
+`_LANE-NOTES.md`; neither gate artifact was modified.
 
-```text
-/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/pkg3/pool.checkpoints/stacked/8f5077d6a1d5440b241f22fe4d20ad1d889924a27d094cb669e1035f9306546b
+## Per-check disposition
+
+### Adult-care post-reconciliation: both assigned mechanisms resolved
+
+Mechanism: person-grain transfer output can create an expense on a
+nonqualifying person or multiple carriers in a tax unit. The section-21 mask
+distinguishes qualifying dependents and married heads/spouses; reconciliation
+clears only mutable invalid/duplicate carriers, and an immutable positive
+blocks additions within its unit (`acs_transfer.py:660-739`).
+
+Existing pkg3 fix: before reconciliation, the late owner limits mutable
+carriers to qualifying rows and additions to one stable candidate per empty
+tax unit (`stacked_spine.py:8698-8716,8930-8987`). The shared amount owner
+maps only mutable positive recipients from positive ASEC donor support and
+leaves immutable values untouched (`post_transfer_calibration.py:573-720`). The owner
+then requires reconciliation to be byte-identical and records
+`verified_no_op` (`stacked_spine.py:9019-9041`).
+
+Regression: route/exclusivity and immutable-blocking coverage is in
+`test_us_acs_transfer.py:2263-2333,2513-2574`; donor-support mapping and
+immutable-byte coverage is in `test_us_post_transfer_calibration.py:354-436`; terminal live
+validation is in `test_us_multispine_pool_tool.py:2302-2341`.
+
+Expected and observed effect: the assigned positive-incidence ratio is green
+at `1.024210809`. The pkg3 execution receipt records 27 mapped rows and amount
+QED `1.738865343 -> 0`; the independent battery reports insufficient QED
+support because its ASEC leg has only four positive rows. No residual adult-
+care change is warranted. The separately red incapacity flag is not either of
+the two assigned expense checks.
+
+### Model-required targeted calibration: unemployment amount QED
+
+Mechanism and existing fix: unemployment compensation is declared
+`preserve_recipient`, so carrier membership is frozen while the shared amount
+owner rewrites only mutable positive values from positive ASEC donor support
+(`post_transfer_calibration.py:190-197,573-720,930-940,963-993`).
+
+Regression: the preserve-mode test requires identical carriers, all five exact
+quantile anchors, QED `0`, donor support, and the preserve-carriers invariant
+(`test_us_post_transfer_calibration.py:354-390`).
+
+Expected and observed effect: the assigned positive-amount QED is already
+`0.0`; no code change was made. Its `0.131859569` incidence ratio is a distinct,
+unassigned criterion and remains intentionally unchanged.
+
+### Schedule D joint-parent reconciliation
+
+Mechanism and existing fix: Schedule D distributions are not independently
+fitted. They are the packaged share of positive
+`long_term_capital_gains_before_response` only when the mutually exclusive
+`non_sch_d_capital_gains` route is absent
+(`acs_transfer.py:611-657`). At pool grain, both parents are first summed by
+tax unit; the derived value is placed on the first missing person and remaining
+missing members receive zero, while observed rows are preserved
+(`multispine_pool.py:2868-2946`).
+
+Regression: the derivation tests require the share identity, route
+exclusivity, and complete parents (`test_us_acs_transfer.py:2461-2510`).
+
+Expected and observed effect: the assigned positive-incidence ratio is green
+at `1.092661185`. The residual Schedule D QED `0.352941176` follows still-red
+PUF-tax parent amount shapes; independently remapping this child would break
+its deterministic parent identity and cross into the PUF-tax lane. No local
+change was made.
+
+### SSI incidence residual
+
+Mechanism: SSI take-up does not explain the difference. The pool owner fills
+unresolved take-up inputs from the installed engine default and records that
+provenance (`multispine_pool.py:2970-3091`); the contract declares the SSI
+default `true` (`take_up_contract.json:121-145`). The pkg3 receipt records all
+80,395 rows as defaulted, with no seeded or preserved rows.
+
+The installed formula floors and caps `uncapped_ssi`, then multiplies by
+take-up (`policyengine_us/variables/gov/ssa/ssi/ssi.py:13-40`). Eligibility is
+the aged/blind/disabled, resource, and immigration conjunction
+(`policyengine_us/variables/gov/ssa/ssi/is_ssi_eligible.py:10-18`). The income
+test subtracts `ssi_countable_income` from the eligible amount
+(`policyengine_us/variables/gov/ssa/ssi/uncapped_ssi.py:11-16`). Countable
+income sends earned, unearned, parentally deemed, and in-kind support through
+the exclusions, then adds spousal deemed income afterward
+(`policyengine_us/variables/gov/ssa/ssi/eligibility/income/ssi_countable_income.py:28-87`;
+`policyengine_us/variables/gov/ssa/ssi/eligibility/income/_apply_ssi_exclusions.py:21-43`).
+
+The read-only pkg3 decomposition exactly reproduces the `1.3354825449451269`
+incidence ratio. Weighted eligibility is slightly lower on ACS
+(`0.1888374135`) than ASEC (`0.1970392720`), but conditional
+`uncapped_ssi > 0` is higher on ACS (`0.1440777296` versus `0.1033936553`).
+Eligible-person countable-income q10 is correspondingly lower on ACS
+(`6,884.259765625` versus `8,880.0`). The generating divergence is therefore
+upstream income shape, not take-up, eligibility, or an SSI-local carrier
+selector.
+
+Fix/regression/effect: this repository keeps SSI formula-owned, materializes it
+only on an ephemeral gate view, and rejects persistence
+(`multispine_pool.py:3094-3111`). No frozen adjudication row grants this lane a
+mutable surface over the upstream incomes. Changing the default or formula
+would substitute an unauthorized mechanism, so no SSI code or local-fix
+regression was added; the expected local effect is exactly zero.
+
+### Weeks-unemployed incidence residual
+
+Mechanism: ASEC `LKWEEKS` is directly validated as integer `-1` or `0..52`,
+with `-1` mapped to zero; it is independent of unemployment compensation
+(`weeks_unemployed.py:791-830`). UC-based zeroing is inside the PUF-only QRF
+postprocessing (`weeks_unemployed.py:833-840,959-983`), and the signal audit
+checks that relationship only on PUF rows
+(`weeks_unemployed.py:1266-1276,1333-1337`). Pkg3 had incorrectly promoted
+that restriction into later ASEC-to-ACS calibration
+(`33bf52fe:post_transfer_calibration.py:122-180,237-244`;
+`33bf52fe:stacked_spine.py:8863-8876`). Only 32 of 34,293 mutable ACS rows had
+positive UC, so carrier capacity saturated and the ACS weeks share collapsed
+to the UC share, producing ratio `0.031371146`
+(`reproduce_us_post_transfer_weeks_checkpoint.py:28-62,132-230,278-320`).
+
+Fix: weeks is now ordinary late `match_reference` with no special constraint
+(`post_transfer_calibration.py:122-178,190-240`). The stacked owner consequently
+uses every transferred-null then nonnull ACS clone-0 row as mutable, allowed,
+and addition-candidate support (`stacked_spine.py:8930-8987`). Carrier
+selection still targets the weighted ASEC share, and positive values still map
+only from positive ASEC donors while all nonmutable bytes remain protected
+(`post_transfer_calibration.py:573-720,782-817,819-943,963-993`). Only the
+authored policy content hash changes
+(`post_transfer_calibration.py:297-344`;
+`test_imputation_lineage_spec.py:103-105`); no schema, comparator, or gate
+changes.
+
+Regression: `test_weeks_late_calibration_does_not_require_unemployment_carriers`
+sets every UC value to zero and still requires positive integer donor-supported
+ACS weeks, default mutable masks, exact reference share, no capacity limit,
+and immutable-byte preservation (`test_us_stacked_spine.py:6367-6438`). Policy
+identity coverage requires weeks' `special_constraint` to remain `none`
+(`test_us_post_transfer_calibration.py:85-104`).
+
+Expected effect from the SHA-pinned no-build replay:
+
+- allowed/addition rows: `32 -> 34,293`;
+- positive ACS rows: `32 -> 2,174`;
+- incidence ratio: `0.0313711455 -> 1.0006685424`;
+- positive support: integer ASEC donor values `1..46`, with zero violations;
+- capacity-limited: `false`;
+- QED: remains `0`; and
+- immutable bytes: preserved.
+
+The replay pins all assembled, UC, and weeks checkpoint digests and asserts
+those exact current-scope outcomes
+(`reproduce_us_post_transfer_weeks_checkpoint.py:1-6,28-62,91-129,132-320,323-378`).
+It performs no fit, late-producer execution, artifact write, or pool build.
+
+```bash
+UV_CACHE_DIR=/private/tmp/microcosm-residual-uv-cache \
+  uv run --no-sync python tools/reproduce_us_post_transfer_weeks_checkpoint.py \
+  --checkpoint-stage-root /Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/pkg3/pool.checkpoints/stacked/8f5077d6a1d5440b241f22fe4d20ad1d889924a27d094cb669e1035f9306546b \
+  --carrier-scope current-mutable \
+  --expect valid
 ```
-
-The current no-build checks are:
-
-```text
-uv run python tools/reproduce_us_post_transfer_weeks_checkpoint.py \
-  --checkpoint-stage-root <stage-root-above> --expect valid
-uv run python tools/audit_us_post_transfer_child_support_checkpoints.py \
-  --checkpoint-stage-root <stage-root-above> --expect valid
-```
-
-### Weeks-unemployed failure
-
-`tools/reproduce_us_post_transfer_weeks_checkpoint.py` validates the assembled
-Frame plus unemployment-compensation and weeks target file, identity, and raw-
-draw hashes. It reconstructs only the native clone-0 vectors and calls the live
-kernel and strict validator; it performs no fit, DAG execution, artifact write,
-or build (`reproduce_us_post_transfer_weeks_checkpoint.py:1-6,27-58,76-143,146-254`).
-
-Pinned artifacts:
-
-| Artifact | File SHA-256 | Identity SHA-256 | Raw-draw SHA-256 |
-| --- | --- | --- | --- |
-| `assembled.checkpoint.h5` | `5ce1815fc44dc43c7c24ccf27526852b8f1bddbdfe371255410a22f9b56ac015` | whole file pinned | n/a |
-| `019__unemployment_compensation.h5` | `dc6637936ed4bd0322d38eaa3a4920fd137565f314387db3b3fdc7dfd6bc3086` | `708722093ca610426175998d50bbb6663585b07ffef912899f17adc90520f51f` | `e32d1559668e10b24abad8e1d639e4dbade964a712925bfe8f56d3136b839840` |
-| `000__weeks_unemployed.h5` | `898397733aa3e5d8ec7d6679cb16a0504e826e25d23ca2c788f4397e0e061a43` | `d0d554ba05045e39a07f0f9515c83bbf754f067df12b8247f4bf3866162c4bdd` | `0214c8dcbc118676336069b906a07ee6145f2178542b6c5b4fb5899ad62d09f3` |
-
-The production owner selects ASEC clone-0 reference rows, ACS clone-0
-recipient rows, transferred nonnull mutable cells, and positive-UC mutable rows
-for both the weeks allowed and addition masks
-(`stacked_spine.py:8960-8971,8995-9032`). The pinned replay contains:
-
-- 38,604 native person rows;
-- 4,311 reference and 34,293 recipient/mutable rows;
-- 134 positive reference rows;
-- 24 initial recipient positives, all disallowed; and
-- 32 positive-UC addition candidates
-  (`reproduce_us_post_transfer_weeks_checkpoint.py:146-193`).
-
-At reproduction commit `4cc41652`, the harness with `--expect invalid` exits
-zero only for the exact supplied failure. Candidate capacity is
-`85,676.23791782455`; the ID-ordered upper prefix is
-`85,676.23791782456`; the excess is `1.4551915228366852e-11`. The sole false
-relationship is:
-
-```text
-upper_prefix_mass <= addition_candidate_mass
-```
-
-It raises exactly:
-
-```text
-ValueError: Frame post-transfer calibration person/source_operator_weeks_unemployed/weeks_unemployed: match-reference carrier capacity relationships are invalid.
-```
-
-The harness pins that predicate, both floats, and the complete error rather
-than accepting any aggregate validation failure
-(`reproduce_us_post_transfer_weeks_checkpoint.py:210-231,257-286`).
-
-Against `a932974f`, `--expect valid` reports candidate and upper prefix both
-`85,676.23791782456`, zero prefix/candidate delta, no failed relationships,
-and a valid receipt. The attainable-union maximum under the recipient
-reduction topology is `85,676.23791782453`.
-
-### Child-support cross-target reproduction
-
-`tools/audit_us_post_transfer_child_support_checkpoints.py` reconstructs the
-same native clone-0 support and half weights for both child-support targets.
-It pins each target's whole-file, identity, and raw-draw hashes, then requires
-both receipts—not merely one—to match the requested exact red or green state
-(`audit_us_post_transfer_child_support_checkpoints.py:1-80,91-207,210-302`).
-
-| Artifact | File SHA-256 | Identity SHA-256 | Raw-draw SHA-256 |
-| --- | --- | --- | --- |
-| `000__child_support_expense.h5` | `d119075e19fb767f3d8d24c7c0149d0df1ed963774a4b93d96974a72b3ac9bfe` | `41e3a6e3877fda23107b27bcd85aa6dd95e0f341d1e4b079defa6847f90b4cab` | `8b2845aff0aa0695d98ae30828523bf6bca9c5d4ed5d2d91d2d1a636bb917600` |
-| `001__child_support_received.h5` | `66120896d5793f3d737f9ffac2058e2196992e357f8d869f4b31b259d041b3aa` | `41e3a6e3877fda23107b27bcd85aa6dd95e0f341d1e4b079defa6847f90b4cab` | `ea7f2eebb430b654acc639ef6ee6ed482207ffd74d54ba3a47cb55056813a381` |
-
-Against the incomplete candidate-only repair `d7b12bab`, both receipts fail
-only:
-
-```text
-maximum_attainable_mass <= recipient_total
-```
-
-For each target, recipient total is `79,926,522.10879111`; the partition-
-composed maximum is `79,926,522.10879174`; the excess is
-`6.258487701416016e-07`, or 42 ULP. The underlying endpoints are:
-
-| Target | Allowed-positive mass | Addition-candidate mass | Old composed maximum |
-| --- | ---: | ---: | ---: |
-| `child_support_expense` | `71,696.09739141785` | `79,854,826.01140033` | `79,926,522.10879174` |
-| `child_support_received` | `180,209.75664861224` | `79,746,312.35214312` | `79,926,522.10879174` |
-
-Against `a932974f`, both strict receipts validate. Their attainable-union
-maximum equals recipient total exactly, `79,926,522.10879111`, while the
-independently rounded diagnostic partition sum remains
-`79,926,522.10879174`. This demonstrates that the generating set relationship,
-not the validator, was repaired.
-
-## Root cause and semantic decision
-
-Float64 addition is order-sensitive. The original code used a masked
-`ndarray.sum` for candidate capacity and a separately ordered `np.cumsum` for
-prefix selection. The first repair correctly unified those two values, but it
-then added independently rounded fixed, existing-positive, and zero-candidate
-endpoints to describe a different claim: the maximum mass of their row union.
-
-Both strict invariants are semantically correct:
-
-1. a prefix cannot exceed the candidate set from which it was selected; and
-2. an attainable subset cannot exceed its recipient superset.
-
-The final maximum implementation retains the recipient vector's length and
-order and replaces unattainable entries with zero. With finite nonnegative
-weights, each attainable leaf is less than or equal to its corresponding
-recipient leaf, and the identical reduction topology preserves that ordering
-through every floating-point addition (`post_transfer_calibration.py:775-783,823-885`).
-It does not use `min`, `nextafter`, a tolerance, or a post-hoc clamp.
-
-The regressions lock both numerical mechanisms for every late
-`match_reference` declaration:
-
-- the exact 32 production weeks weights distinguish masked sum from ordered
-  prefix by one ULP;
-- a four-weight case makes independently rounded capacity partitions exceed
-  their whole set by one ULP; and
-- a constrained proper-subset case makes a compressed subset sum
-  `0x1.433526fbe1946p+48`, or `0.0625`, greater than its superset
-  `0x1.433526fbe1945p+48`; the same-topology union validates exactly
-  (`test_us_post_transfer_calibration.py:544-753`).
-
-Weeks remains a valid positive-carrier calibration target. Its source accepts
-only integer `-1` or `0..52` and maps `-1` to zero; its QRF path rounds, clips,
-positive-UC-gates, and revalidates `0..52`; its carrier event is `weeks > 0`
-(`weeks_unemployed.py:791-800,911-983,1218-1222`). Post-transfer amount mapping
-uses only positive reference-donor support (`post_transfer_calibration.py:577-626,690-705`).
-Count-valued support therefore does not invalidate weighted carrier capacity.
-
-The ACS runtime's explicit discrete-numeric set contains only two mortgage-year
-targets; other numeric targets use the ordinary numeric encoding
-(`acs_transfer.py:129-138,3035-3117`). QRF's at-most-32-value “near-discrete”
-branch is a leaf-storage optimization, not a carrier semantic type
-(`microcosm-fit/qrf.py:388-401,482-503`). Annual child-support and disability
-amounts also entered that optimization in the host log, which independently
-rules out treating it as a weeks-specific count exception.
-
-## Seven-target late-transfer audit
-
-The immutable registry declares seven late targets. Six use
-`match_reference`; disability benefits uses `preserve_recipient` and never
-emits capacity or prefix evidence
-(`post_transfer_calibration.py:208-258,840-932,1319-1335`).
-
-| Late target | Evidence and verdict |
-| --- | --- |
-| `child_support_expense` | Covered. Nonnegative annual `CHSP_VAL`, not a count (`child_support.py:166-201,369-383`). Its pinned checkpoint fails the old whole-capacity relationship and validates the final union mechanism. |
-| `child_support_received` | Covered. Nonnegative annual `CSP_VAL`, not a count (`child_support.py:166-201,369-383`). Its pinned checkpoint has the same red/green proof. |
-| `disability_benefits` | Inapplicable to this capacity bug. It is a nonnegative annual two-slot amount excluding workers' compensation (`disability_benefits.py:184-220,382-395`) and uses `preserve_recipient`; its inspected checkpoint keeps before/after carrier mass at `42,658.57948297383` with `capacity=None` and `selection=None`, as required by the preserve-mode receipt branch (`post_transfer_calibration.py:1319-1335`). |
-| `weeks_unemployed` | Covered. Sole semantic count target, integer `0..52`, with carrier additions constrained to positive-UC mutable rows (`weeks_unemployed.py:791-800,911-983,1218-1222`; `stacked_spine.py:8995-9008`). Exact pinned red/green replay proves reducer order caused the failure. |
-| `workers_compensation` | Covered. Nonnegative annual `WC_VAL`, not a count (`workers_compensation.py:143-184,337-355`). It uses the default mutable carrier/addition masks (`post_transfer_calibration.py:786-812`) and the shared six-spec regressions. |
-| `spm_unit_energy_subsidy` | Covered. Nonnegative measured `SPM_ENGVAL`, checked within unit and reduced to SPM-unit float64 (`energy_subsidy.py:157-233,537-557`). Its entity grain changes the weights, not the set/reduction mechanism; the shared regressions cover its declaration. |
-| `pre_subsidy_care_expenses` | Covered. Nonnegative monetary care expense. ACS reconciliation restricts carriers to qualifying people and at most one per tax unit; the late owner admits one stable zero candidate per empty unit (`acs_transfer.py:660-739,1277-1299`; `stacked_spine.py:8728-8746,8977-8986`). The proper-subset six-spec regression covers this constrained structure. |
-
-Current zero-based late-DAG positions are child support 24, disability 25,
-weeks 30, workers' compensation 31, energy subsidy 32, and adult care 34.
-Registry scheduling and stacked execution are deterministic, and each group
-calibrates before returning (`us_late_producer_registry.py:1338-1396,2013-2019`;
-`stacked_spine.py:10054-10095,10927-10931`). The failed host run produced child,
-disability, and weeks checkpoints but stopped before workers, energy, and adult
-care. Verdicts for those later targets are therefore source/mask proofs plus
-shared-kernel regressions, not claims of nonexistent checkpoint replay.
 
 ## Verification
 
-On the exact tree committed as `a932974f`, these commands ran serially under
-the owner-provided memory guard and exited zero:
+The required `uv sync --all-packages --extra us` was attempted first. The
+sandbox blocks the default cache and network resolution, so verification used
+the complete lock-compatible pkg3 environment with its five editable package
+links repointed to this worktree.
+
+On the exact implementation tree committed as `eaba1eab`, each package root
+exited zero:
 
 ```text
-uv run pytest packages/microcosm-fit/tests -q
-uv run pytest packages/microcosm-calibrate/tests -q
-uv run pytest packages/microcosm-data/tests -q
-uv run pytest packages/microcosm-frame/tests -q
-uv run pytest packages/microcosm-build/tests -q
-uv run ruff check .
-uv run ruff format --check <four touched Python files>
+uv run --no-sync pytest -q packages/microcosm-frame/tests
+uv run --no-sync pytest -q packages/microcosm-fit/tests
+uv run --no-sync pytest -q packages/microcosm-calibrate/tests
+uv run --no-sync pytest -q packages/microcosm-data/tests
+uv run --no-sync pytest -q packages/microcosm-build/tests
+uv run --no-sync ruff check .
 git diff --check
 ```
 
-The focused post-transfer file passed all 47 cases. The complete build root
-also covered stacked-spine, late-DAG, multispine pool, H5, pool-tool, terminal
-receipt, and owner-mask paths. Only established skips and warnings appeared.
+The complete build shard reached 100% with one expected skip and only the
+established warning set. The current-scope checkpoint replay also exited zero
+and matched every pinned value above. The final documentation-only tree was
+rerun through the same five package roots, Ruff, and whitespace checks before
+its commit.
 
-Both current checkpoint commands exited zero with `--expect valid`. Detached
-temporary worktrees proved the hardened red side: weeks against `4cc41652` and
-both child receipts against `d7b12bab`. The temporary worktrees were removed.
+## Serial-host 1% rerun handoff
 
-No host build ran from this lane. The read-only host log and checkpoint tree
-were not modified. The owner-provided untracked `.codex-memory-guard.py` and
-`_BUILD-FAILURE-1PCT.txt` remain unchanged. Nothing was pushed.
+Pkg3's `assembled` stage is semantically before late calibration and the
+`transferred` checkpoint is after it
+(`multispine_pool.py:200-201`; `stacked_spine.py:10009-10037`;
+`tools/build_us_multispine_pool.py:3121-3175`). That assembled stage is not
+mechanically reusable through the current CLI. The complete post-transfer
+policy is content-hashed into stacked authority and configured checkpoint
+identity (`post_transfer_calibration.py:297-344`;
+`stacked_spine.py:2463-2492`;
+`tools/build_us_multispine_pool.py:1150-1178,4198-4227`). The parser exposes no
+audited stage-import override, and loading requires current manifest identity
+before selecting a valid stage (`tools/build_us_multispine_pool.py:406-532,1181-1250,1407-1428,1716-1937`).
 
-## Commit lineage and handoff
+The serial host owner should therefore queue this exact cold 1% build in a
+fresh namespace under the existing one-build-at-a-time and `<15 GiB RSS`
+guard. Do not copy, edit, rebind, or reuse pkg3 manifests. Unsetting the
+predecessor variable prevents ambient logbook state from entering the build
+(`tools/build_us_multispine_pool.py:3971-3979`). This lane did not run this
+command.
 
-- `b533bc61` — open and commit the progress journal;
-- `4cc41652` — add the SHA-pinned weeks reproduction and red regression;
-- `d7b12bab` — bind candidate capacity to its ordered selection schedule;
-- `47742720` — record the cross-target child-support escalation;
-- `a932974f` — generate maximum capacity from the attainable row union, add
-  the child red/green harness and exact proper-subset regressions, complete the
-  seven-target audit, and record the green suite; and
-- the following documentation-only commit — close `PROGRESS.md` and publish
-  this report without changing the tested executable tree.
+```bash
+WT=/Users/maxghenis/PolicyEngine/_worktrees/microcosm-residual-fixes
+OUT=/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/residual-fixes
+DATA_REPO=/Users/maxghenis/PolicyEngine/policyengine-"us"-data
+DATA_PACKAGE=policyengine_"us"_data
 
-The next authorized action is the serial host owner's 1% rerun at executable
-commit `a932974f`. Certification, publication, and release-chain mutation stay
-outside this lane.
+mkdir -p "$OUT"
+cd "$WT" || exit 1
+
+env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST \
+  PATH="/Users/maxghenis/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  HOME=/Users/maxghenis \
+  PYTHONUNBUFFERED=1 \
+  "$WT/.venv/bin/python" tools/build_us_multispine_pool.py \
+  --sample-fraction 0.01 \
+  --sample-seed 578 \
+  --clone-attachment-fraction 1.0 \
+  --clone-attachment-seed 578 \
+  --asec-raw-stage-h5 /Users/maxghenis/PolicyEngine/_buildo-runtime/out/591-pawtyp-pool/asec-producer-checkpoints/asec_raw_stage.checkpoint.h5 \
+  --asec-raw-stage-h5-sha256 51e9fafcd6f16140018fa90c7afbeb6d79008bfc8c122e437d23a399b30553fe \
+  --acs-household-zip /Users/maxghenis/PolicyEngine/_worktrees/populace-acs-clone/inputs/acs_2024_1yr/8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0/csv_hus.zip \
+  --acs-household-zip-sha256 8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0 \
+  --acs-person-zip /Users/maxghenis/PolicyEngine/_worktrees/populace-acs-clone/inputs/acs_2024_1yr/afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894/csv_pus.zip \
+  --acs-person-zip-sha256 afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894 \
+  --acs-rent-h5 "$DATA_REPO/$DATA_PACKAGE/storage/acs_2022.h5" \
+  --acs-rent-h5-sha256 0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4 \
+  --puf-h5 "$DATA_REPO/$DATA_PACKAGE/storage/puf_2024.h5" \
+  --puf-h5-sha256 7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df \
+  --puf-source-year-csv "$DATA_REPO/$DATA_PACKAGE/storage/puf_2015.csv" \
+  --puf-source-year-csv-sha256 0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df \
+  --checkpoint-root "$OUT/pool.checkpoints" \
+  --out "$OUT/pool.h5" >>"$OUT/build.log" 2>&1
+
+rc=$?
+echo "residual-fixes exit: $rc" >>"$OUT/build.log"
+exit "$rc"
+```
+
+## Commit lineage
+
+- `f150b6da` — opened and committed the residual lane journal;
+- `eaba1eab` — committed the weeks generating repair, regressions, SHA-pinned
+  replay, complete scoped adjudication, exact host handoff, and green suite
+  record; and
+- this documentation-only closeout commit — publishes this final report and
+  closes `PROGRESS.md` without changing the tested executable tree.
+
+The next authorized action is the serial host owner's guarded 1% rerun above.
+Certification, publication, pushing, and release-chain mutation remain outside
+this lane.

@@ -63,13 +63,13 @@
   selection to qualifying mutable rows and at most one addition candidate per
   empty tax unit; the shared amount map writes only mutable positive recipient
   rows from positive ASEC donor support, including the frozen five quantile
-  anchors (`stacked_spine.py:8930-8987`;
+  anchors (`stacked_spine.py:8698-8716,8930-8987`;
   `post_transfer_calibration.py:573-720`). It then requires reconciliation to
   be a byte-identical no-op (`stacked_spine.py:9019-9041`). The pkg3 execution
   receipt records 27 mapped rows, QED `1.738865343 -> 0`, preserved immutable
   bytes, and `verified_no_op` reconciliation.
 - Regression: route qualification/reconciliation tests cover exclusivity and
-  immutable blocking (`test_us_acs_transfer.py:2513-2574`); the kernel tests
+  immutable blocking (`test_us_acs_transfer.py:2263-2333,2513-2574`); the kernel tests
   cover donor-support amount mapping and immutable bytes
   (`test_us_post_transfer_calibration.py:354-436`); terminal validation
   recomputes the live adult-care constraint
@@ -86,7 +86,8 @@
 - Mechanism and existing fix: unemployment compensation is deliberately
   `preserve_recipient`, so its carrier membership stays frozen while the common
   positive-amount map rewrites only mutable positive amounts from ASEC positive
-  donor support (`post_transfer_calibration.py:190-197,573-720`).
+  donor support
+  (`post_transfer_calibration.py:190-197,573-720,930-940,963-993`).
 - Regression: the preserve-mode test requires identical carrier membership,
   all five exact quantile anchors, QED `0`, donor support, and the preserve-
   carriers receipt invariant
@@ -133,8 +134,8 @@
   (`policyengine_us/variables/gov/ssa/ssi/is_ssi_eligible.py:10-18`), while
   `uncapped_ssi` subtracts countable income from the eligible amount
   (`policyengine_us/variables/gov/ssa/ssi/uncapped_ssi.py:11-16`). Countable
-  income combines earned, unearned, parental/spousal deemed income, and
-  in-kind support before exclusions
+  income sends earned, unearned, parentally deemed, and in-kind support through
+  the exclusions, then adds spousal deemed income afterward
   (`policyengine_us/variables/gov/ssa/ssi/eligibility/income/ssi_countable_income.py:28-87`;
   `policyengine_us/variables/gov/ssa/ssi/eligibility/income/_apply_ssi_exclusions.py:21-43`).
 - Read-only formula decomposition on pkg3 reproduces the exact
@@ -148,12 +149,14 @@
   reproduced the gate's SSI shares, identifying broad upstream earned/
   unearned/deemed-income shape rather than SSI take-up, an SSI-local carrier
   selector, or a battery band.
-- Fix/regression verdict: no SSI row exists in the frozen adjudication and no
-  SSI-local mutable surface owns those upstream income distributions. Changing
-  the take-up default or formula to force the output ratio would be an
-  unauthorized scope/gate substitution. This lane records the diagnosis and
-  leaves the generating inputs to their owning packages; expected local effect
-  is exactly none.
+- Fix/regression verdict: SSI is formula-owned, is materialized only on an
+  ephemeral gate view, and cannot be persisted
+  (`multispine_pool.py:3094-3111`). No SSI row exists in the frozen
+  adjudication authorizing a mutable surface over those upstream income
+  distributions. Changing the take-up default or formula to force the output
+  ratio would be an unauthorized scope/gate substitution. This lane records
+  the diagnosis, adds no local-fix regression, and leaves the generating inputs
+  to their owning packages; expected local effect is exactly none.
 
 ### Weeks-unemployed residual: implemented generating fix
 
@@ -163,10 +166,13 @@
   the PUF QRF path (`weeks_unemployed.py:955-980`), and the signal audit checks
   that relationship only on `puf_mask` rows (`weeks_unemployed.py:1266-1276,1333-1337`).
   Pkg3 commit `33bf52fe` incorrectly promoted that PUF-only relationship into
-  the later ASEC-to-ACS calibration: only 32 of 34,293 mutable ACS rows had
-  positive unemployment compensation, so capacity saturation forced the ACS
-  weeks share to the identical `0.0010719375` unemployment share and left the
-  incidence ratio at `0.031371146`.
+  the later ASEC-to-ACS calibration
+  (`33bf52fe:post_transfer_calibration.py:122-180,237-244`;
+  `33bf52fe:stacked_spine.py:8863-8876`). Only 32 of 34,293 mutable ACS rows
+  had positive unemployment compensation, so capacity saturation forced the
+  ACS weeks share to the identical `0.0010719375` unemployment share and left
+  the incidence ratio at `0.031371146`
+  (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:28-62,132-230,278-320`).
 - Fix: the immutable policy now declares weeks as ordinary late
   `match_reference` with no special constraint
   (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:122-178,234-240`).
@@ -175,8 +181,11 @@
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8930-8987`).
   Carrier selection still targets the weighted ASEC share and the amount map
   still uses only positive ASEC donor support while preserving all nonmutable
-  bytes (`post_transfer_calibration.py:782-939`). Policy content hashing updates
-  the authored lineage SHA; no schema/version or gate changes are involved.
+  bytes (`post_transfer_calibration.py:573-720,782-817,819-943,963-993`). Policy
+  content hashing updates the authored lineage SHA
+  (`post_transfer_calibration.py:297-344`;
+  `test_imputation_lineage_spec.py:103-105`); no schema/version or gate changes
+  are involved.
 - Regression: `test_weeks_late_calibration_does_not_require_unemployment_carriers`
   supplies only zero-UC rows, requires positive integer donor-supported ACS
   weeks, default mutable masks, exact reference share, no capacity limit, and
@@ -193,7 +202,7 @@
   donor-support violations are zero, immutable bytes validate, and QED remains
   `0`. The harness pins the assembled, UC, and weeks artifacts and exposes both
   `legacy-positive-unemployment` and `current-mutable` scopes
-  (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:76-84,129-255,273-365`).
+  (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:76-84,91-129,132-320,323-378`).
 
 The exact read-only replay command is:
 
@@ -222,18 +231,26 @@ UV_CACHE_DIR=/private/tmp/microcosm-residual-uv-cache \
 - Repository-wide `uv run --no-sync ruff check .` and `git diff --check` pass.
   No pool build, gate change, exclusion change, certification, push, or host
   publication was performed.
+- After writing `FINAL_REPORT.md` and closing `PROGRESS.md`, reran all five
+  package roots, repository-wide Ruff, the live-tree retired-data-package
+  guard, and whitespace checks. Every command exited zero with only the
+  established skips and warnings; the closeout commit changes documentation
+  only relative to executable commit `eaba1eab`.
 
 ### Serial-host 1% rerun handoff
 
 - `assembled` is the only semantically pre-change pkg3 cut: late calibration
-  produces `transferred`. It cannot be mechanically warm-reused by the current
-  CLI. The complete post-transfer policy is content-hashed
-  (`post_transfer_calibration.py:286-315`) into stacked authority
-  (`stacked_spine.py:2334-2347`), and configured identity routes checkpoints
-  into a digest namespace (`tools/build_us_multispine_pool.py:1150-1178`). The
-  loader accepts only manifests matching current code/authority and exposes
-  only `--checkpoint-root`, then loads the deepest valid stage
-  (`tools/build_us_multispine_pool.py:481-493,1181-1195,1407-1417`).
+  produces `transferred` (`multispine_pool.py:200-201`;
+  `stacked_spine.py:10009-10037`;
+  `tools/build_us_multispine_pool.py:3121-3175`). It cannot be mechanically
+  warm-reused by the current CLI. The complete post-transfer policy is
+  content-hashed (`post_transfer_calibration.py:297-344`) into stacked
+  authority (`stacked_spine.py:2463-2492`), and configured identity routes
+  checkpoints into a digest namespace
+  (`tools/build_us_multispine_pool.py:1150-1178,4198-4227`). The parser exposes
+  no audited stage-import override; the loader requires current manifest
+  identity before choosing a valid stage
+  (`tools/build_us_multispine_pool.py:406-532,1181-1250,1407-1428,1716-1937`).
 - Therefore, do not copy, edit, rebind, or reuse pkg3's assembled/transferred/
   simulated manifests. A safe warm reuse would require a new audited
   stage-scoped import mechanism. The serial host owner should instead queue
