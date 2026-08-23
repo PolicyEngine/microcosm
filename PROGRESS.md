@@ -7,8 +7,8 @@ path for the live US incumbent and either a finished-H5 or authenticated-pool
 candidate. Fiscal scoring streams fixed registry chunks across fixed household
 slices, and a gate-failed current stacked publication remains authenticated
 scorecard evidence without being promoted to simulation-ready. The incumbent
-scoring run, result artifacts, owner handoff, final suite, and final report
-remain.
+side is now scored and committed evidence is being prepared; the owner handoff,
+final suite, and final report remain.
 
 No pool build, push, gate change, threshold change, or band change has
 occurred. `ps ax | grep build_us_multispine_pool` is checked before every
@@ -61,13 +61,17 @@ scoring step.
 - Merged the six newer `origin/main` commits cleanly at merge commit
   `34d93846`. Post-merge, all 13 scorer tests and all 8 mainline US
   fiscal-memory tests pass (21/21).
+- Completed the incumbent-only score against the exact Build P artifact and
+  all 32,842 registry rows. Results: weighted loss
+  `0.11462448275649702`, fraction within 10% `0.2669143170330674`, 57,240
+  nonzero household weights, and all 132 battery comparisons / 369 scalar
+  legs explicitly inapplicable because observed clone-0 ACS support is empty.
+  The run peaked at 18.666 GiB and wrote
+  `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
 
 ## Next
 
-- Run incumbent scoring under 20 GiB after the queue check: `ps`/`pgrep`/`top`
-  are sandbox-denied, while the permitted `lsof` process/file scan found no
-  build-runtime working directory and no open pool/checkpoint/manifest files.
-  Commit `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
-- Record the exact candidate command and comparison doctrine in
+- Commit the incumbent result and its run receipt. Record the exact candidate
+  command and comparison doctrine in
   `_LANE-NOTES.md`, run the full workspace suite, and replace the stale
   `FINAL_REPORT.md` with this lane's final evidence.

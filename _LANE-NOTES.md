@@ -225,6 +225,47 @@
   checkpoint, or pool-manifest path. The incumbent score may therefore start;
   no pool build was launched by this lane.
 
+## 2026-08-23 — incumbent yardstick established
+
+- Exact command run from this worktree after the empty queue scan:
+
+  ```bash
+  .venv/bin/python tools/score_us_release_head_to_head.py \
+    --incumbent /Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/26dcad66867687f15735dc4926523e3741920836/populace_us_2024.h5 \
+    --ledger-facts /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl \
+    --out-prefix experiments/replacement_scorecard/incumbent_48b9d479 \
+    --maximum-microsim-batch-size 5000
+  ```
+
+- The scorer completed with exit 0 and peak RSS 18.666 GiB. It used registry
+  `c4ac617743f2` (32,842 unique target rows), Ledger facts SHA-256
+  `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`,
+  and CD crosswalk SHA-256
+  `c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec`.
+  The fixed streaming plan used five registry chunks and twelve household
+  slices per chunk, with a conservative live target-column payload bound of
+  983,040,000 bytes (`tools/score_us_release_head_to_head.py:654-852,1399-1477`).
+- Incumbent fiscal evidence: weighted loss
+  `0.11462448275649702`; fraction within 10% `0.2669143170330674`; 57,240
+  households and 57,240 nonzero shipped weights. The 32,842 per-target
+  contributions sum to `0.11462448275649767`, agreeing with the canonical
+  aggregate to floating-point summation tolerance. The production weighting
+  and aggregate formulas are code-cited in the result
+  (`tools/build_us_fiscal_refresh_release.py:344-348,481-516,5781-5814,6214-6290`;
+  `packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537,576-600`).
+- Incumbent battery evidence: 132/132 comparisons and all 369 nominal scalar
+  legs are explicitly `inapplicable`; the artifact has 120,261 positive-weight
+  clone-0 ASEC rows across the three battery entities and zero ACS rows. No
+  zero, pass, or failure was synthesized for those by-origin-only legs
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11644-11709,11824-11832,11948-12154`).
+- Result identities: JSON SHA-256
+  `b2ad1a07f9668bc5d796cc9de99ef12da781b1ee8163ea65781871a20da441c8`;
+  Markdown SHA-256
+  `3f9171b8f63fcef61518a4af1c18a8555c4f449ac62e9283e41ac2fe9c779021`.
+  Both record the incumbent artifact SHA-256 `48b9d479...`, exact HF repo,
+  revision, resolved commit, filename, PolicyEngine.py bundle version/source
+  commit, and certified policyengine-us version.
+
 ---
 
 # Historical: one-target-surface lane notes
