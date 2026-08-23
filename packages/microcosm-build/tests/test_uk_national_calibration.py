@@ -185,8 +185,10 @@ def _materialization_binding_frame(
             "household_id": np.arange(3, dtype="int64"),
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
-            "uc_is_child_limit_affected": [1.0, 0.0, 1.0],
-            "children_count": [2.0, 1.0, 3.0],
+            # Mapped to household, uc_is_child_limit_affected sums to the
+            # number of flagged children: both the affected flag and the
+            # affected-children count.
+            "uc_is_child_limit_affected": [2.0, 0.0, 3.0],
         }
     )
     salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
