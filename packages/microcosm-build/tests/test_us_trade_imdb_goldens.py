@@ -85,6 +85,26 @@ def _manifest() -> dict:
     return json.loads((GOLDEN_DIR / "golden_manifest.json").read_text())
 
 
+def _selected_member_lines(
+    bundle: zipfile.ZipFile,
+    member_entry: dict,
+) -> dict[int, str]:
+    """Stream one archive member and retain only its golden line numbers."""
+
+    selected = {int(line) for line in member_entry["selected_lines"]}
+    matched: dict[int, str] = {}
+    line_count = 0
+    with bundle.open(member_entry["member"]) as source:
+        for line_count, raw_line in enumerate(source, start=1):
+            if line_count in selected:
+                # Mirror ``str.split("\r\n")`` from the original fidelity
+                # check without retaining the multi-gigabyte decoded member.
+                matched[line_count] = raw_line.decode("latin-1").removesuffix("\r\n")
+    assert line_count == member_entry["line_count"]
+    assert set(matched) == selected
+    return matched
+
+
 @pytest.mark.parametrize("stem", ARCHIVE_STEMS)
 @pytest.mark.parametrize("kind", sorted(_PRODUCTION_FIELDS))
 def test_production_layouts_match_official_lay_files(stem, kind):
@@ -197,19 +217,20 @@ def test_goldens_match_source_archives_when_present(stem):
     if not archive_path.is_file():
         pytest.skip(f"source archive {archive_path} not cached locally")
     manifest = _manifest()["archives"][stem]
-    raw_zip = archive_path.read_bytes()
-    assert hashlib.sha256(raw_zip).hexdigest() == manifest["sha256"]
+    assert archive_path.stat().st_size == manifest["size_bytes"]
+    with archive_path.open("rb") as source:
+        assert hashlib.file_digest(source, "sha256").hexdigest() == manifest["sha256"]
     raw_records = [
         json.loads(line)
         for line in (GOLDEN_DIR / stem / "raw_records.jsonl").read_text().splitlines()
     ]
-    with zipfile.ZipFile(io.BytesIO(raw_zip)) as bundle:
+    with zipfile.ZipFile(archive_path) as bundle:
         for kind, member_entry in manifest["members"].items():
-            lines = bundle.read(member_entry["member"]).decode("latin-1").split("\r\n")
+            lines = _selected_member_lines(bundle, member_entry)
             for record in raw_records:
                 if record["member_kind"] != kind:
                     continue
-                assert lines[record["line"] - 1] == record["raw"], (
+                assert lines[record["line"]] == record["raw"], (
                     f"{stem}/{kind} line {record['line']} drifted from archive"
                 )
         for kind, lay_entry in manifest["lay_members"].items():

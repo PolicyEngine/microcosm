@@ -33,7 +33,7 @@ import itertools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 import pandas as pd
@@ -51,6 +51,9 @@ from microcosm.build.us_runtime.support_provenance import (
     validate_assembly_provenance,
 )
 from microcosm.build.us_runtime.take_up_contract import load_take_up_contract
+
+if TYPE_CHECKING:
+    US_SPINE_AGREEMENT_REGISTRY: tuple[SpineAgreementSpec, ...]
 
 __all__ = [
     "DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE",
@@ -322,7 +325,7 @@ def spine_agreement_gate(
     """
 
     specs = (
-        US_SPINE_AGREEMENT_REGISTRY
+        _canonical_spine_agreement_registry()
         if registry is None
         else validate_spine_agreement_registry(registry)
     )
@@ -950,5 +953,31 @@ def _quantile_envelope_distance(
     return float(np.max(distances))
 
 
-US_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry()
-"""Canonical chartered distributions checked before calibration."""
+def _canonical_spine_agreement_registry() -> tuple[SpineAgreementSpec, ...]:
+    """Return and cache the typed registry without an eager module cycle."""
+
+    cached = globals().get("US_SPINE_AGREEMENT_REGISTRY")
+    if cached is None:
+        cached = default_spine_agreement_registry()
+        globals()["US_SPINE_AGREEMENT_REGISTRY"] = cached
+    return cached
+
+
+def __getattr__(name: str) -> object:
+    """Build the canonical registry only when a consumer requests it.
+
+    ``multispine_pool`` imports the agreement functions while the typed engine
+    ABI may, in turn, inspect that pool module.  Deferring the module constant
+    keeps that import graph acyclic without weakening the typed contract used
+    to construct the registry.
+    """
+
+    if name != "US_SPINE_AGREEMENT_REGISTRY":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return _canonical_spine_agreement_registry()
+
+
+def __dir__() -> list[str]:
+    """Expose the unresolved registry through normal module discovery."""
+
+    return sorted({*globals(), "US_SPINE_AGREEMENT_REGISTRY"})

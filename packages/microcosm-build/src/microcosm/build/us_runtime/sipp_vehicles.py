@@ -370,7 +370,7 @@ def load_sipp_2023_vehicle_donor(
     *,
     expected_sha256: str | None = None,
     expected_size_bytes: int | None = SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+    chunksize: int = 25_000,
 ) -> pd.DataFrame:
     """Load and transform the pinned person-month file to household donors."""
 
@@ -395,26 +395,39 @@ def load_sipp_2023_vehicle_donor(
     if missing:
         raise ValueError(f"SIPP 2023 vehicle donor missing column(s): {missing}.")
 
+    # PNUM belongs to the pinned source contract but is not used by the
+    # household transform.  MONTHCODE is needed only for the December filter;
+    # neither column should remain live while the 3.73 GB source is parsed.
+    loaded_columns = tuple(
+        column for column in SIPP_VEHICLE_SOURCE_COLUMNS if column != "PNUM"
+    )
+    person_columns = tuple(
+        column for column in loaded_columns if column != "MONTHCODE"
+    )
     december_parts: list[pd.DataFrame] = []
-    reader = pd.read_csv(
+    with pd.read_csv(
         path,
         delimiter="|",
-        usecols=list(SIPP_VEHICLE_SOURCE_COLUMNS),
+        usecols=list(loaded_columns),
         chunksize=int(chunksize),
-        low_memory=False,
-    )
-    for chunk in reader:
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            december_parts.append(december)
+        low_memory=True,
+    ) as reader:
+        for chunk in reader:
+            month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
+            december = chunk.loc[month.eq(12), person_columns].copy()
+            if not december.empty:
+                for column in person_columns:
+                    if column != "SSUID":
+                        december[column] = pd.to_numeric(
+                            december[column], errors="coerce"
+                        )
+                december_parts.append(december)
     if not december_parts:
         raise ValueError("SIPP 2023 vehicle donor has no December person records.")
     person = pd.concat(december_parts, ignore_index=True)
-
-    for column in SIPP_VEHICLE_SOURCE_COLUMNS:
-        if column != "SSUID":
-            person[column] = pd.to_numeric(person[column], errors="coerce")
+    # The downstream derivations allocate several groupby surfaces.  Do not
+    # retain the source slices or the final raw chunk alongside those copies.
+    del chunk, december, december_parts, header, month, reader
 
     person["employment_income"] = person["TPTOTINC"].fillna(0.0) * 12.0
     person["interest_income"] = (

@@ -352,7 +352,7 @@ def load_sipp_2023_voluntary_filing_donor(
     *,
     expected_sha256: str | None = None,
     expected_size_bytes: int | None = SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+    chunksize: int = 25_000,
 ) -> pd.DataFrame:
     """Transform the pinned SIPP person file to measured filing tax units."""
 
@@ -379,25 +379,31 @@ def load_sipp_2023_voluntary_filing_donor(
             f"SIPP 2023 voluntary-filing donor missing column(s): {missing}."
         )
 
+    person_columns = tuple(
+        column
+        for column in SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS
+        if column != "MONTHCODE"
+    )
     parts: list[pd.DataFrame] = []
-    reader = pd.read_csv(
+    with pd.read_csv(
         path,
         delimiter="|",
         usecols=list(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS),
         chunksize=int(chunksize),
-        low_memory=False,
-    )
-    for chunk in reader:
-        month = _numeric(chunk["MONTHCODE"])
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            parts.append(december)
+        low_memory=True,
+    ) as reader:
+        for chunk in reader:
+            month = _numeric(chunk["MONTHCODE"])
+            december = chunk.loc[month.eq(12), person_columns].copy()
+            if not december.empty:
+                parts.append(december)
     if not parts:
         raise ValueError("SIPP 2023 voluntary-filing donor has no December rows.")
     december = pd.concat(parts, ignore_index=True)
+    del chunk, header, month, parts, reader
 
     numeric_columns = [
-        column for column in SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS if column != "SSUID"
+        column for column in person_columns if column != "SSUID"
     ]
     for column in numeric_columns:
         original = december[column]

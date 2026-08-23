@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import urllib.request
 from pathlib import Path
 
@@ -392,6 +393,35 @@ def test_loader_applies_exact_december_household_transform_and_masks(tmp_path) -
     assert donor.loc[10, "household_employment_income"] < 100_000
 
 
+def test_loader_is_exactly_chunk_size_invariant(tmp_path) -> None:
+    path = _write_sipp_source(tmp_path)
+    source = pd.read_csv(path, delimiter="|", dtype=str, keep_default_na=False)
+    # Force mixed integer, decimal, and blank numeric tokens across one-row
+    # chunk boundaries.  The retained frame must still be parser-batch invariant.
+    source.loc[1, "TPTOTINC"] = "1000"
+    source.loc[2, "TPTOTINC"] = "100.25"
+    source.loc[1, "TINC_BANK"] = "10.5"
+    source.loc[2, "TINC_BANK"] = ""
+    source.to_csv(path, sep="|", index=False)
+    one_row_chunks = load_sipp_2023_vehicle_donor(
+        path,
+        expected_size_bytes=None,
+        chunksize=1,
+    )
+    default_chunks = load_sipp_2023_vehicle_donor(
+        path,
+        expected_size_bytes=None,
+    )
+    ten_row_chunks = load_sipp_2023_vehicle_donor(
+        path,
+        expected_size_bytes=None,
+        chunksize=10,
+    )
+
+    pd.testing.assert_frame_equal(default_chunks, one_row_chunks, check_exact=True)
+    pd.testing.assert_frame_equal(ten_row_chunks, one_row_chunks, check_exact=True)
+
+
 def test_loader_rejects_missing_columns_and_bad_hash(tmp_path) -> None:
     path = _write_sipp_source(tmp_path)
     with pytest.raises(ValueError, match="sha-256 verification"):
@@ -401,11 +431,13 @@ def test_loader_rejects_missing_columns_and_bad_hash(tmp_path) -> None:
             expected_size_bytes=None,
         )
 
-    missing_path = tmp_path / "missing.csv"
-    pd.DataFrame({"SSUID": [1], "MONTHCODE": [12]}).to_csv(
-        missing_path, sep="|", index=False
-    )
-    with pytest.raises(ValueError, match="missing column"):
+    missing_path = tmp_path / "missing_pnum.csv"
+    source = pd.read_csv(path, delimiter="|").drop(columns=["PNUM"])
+    source.to_csv(missing_path, sep="|", index=False)
+    with pytest.raises(
+        ValueError,
+        match=r"missing column\(s\): \['PNUM'\]",
+    ):
         load_sipp_2023_vehicle_donor(missing_path, expected_size_bytes=None)
 
 
@@ -425,6 +457,25 @@ def test_cached_full_donor_matches_pinned_household_support() -> None:
         snapshot,
         expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
         expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
+    )
+    metadata = json.dumps(
+        {
+            "columns": list(donor.columns),
+            "dtypes": [str(dtype) for dtype in donor.dtypes],
+            "shape": list(donor.shape),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256()
+    digest.update(metadata.encode())
+    digest.update(
+        pd.util.hash_pandas_object(donor, index=True, categorize=True)
+        .to_numpy(dtype=np.uint64)
+        .tobytes()
+    )
+    assert digest.hexdigest() == (
+        "12388b83a9d8f5fbd59bb1f7bedf21a00faca389a6518f36dd398fc3e544cd6c"
     )
     owned_observed = donor[_OWNED_OBSERVED_COLUMN].astype(bool)
     value_observed = donor[_VALUE_OBSERVED_COLUMN].astype(bool)

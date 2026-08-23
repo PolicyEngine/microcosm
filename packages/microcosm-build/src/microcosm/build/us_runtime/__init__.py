@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from importlib import import_module
 from importlib.resources import files
 
 from microcosm.build.plan import DonorSpec, Stage, StagePlan
@@ -895,18 +896,6 @@ from microcosm.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
-from microcosm.build.us_runtime.spine_agreement import (
-    DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE,
-    DEFAULT_INCIDENCE_RATIO_BOUNDS,
-    DEFAULT_QUANTILE_ENVELOPE_TOLERANCE,
-    DEFAULT_SPINE_AGREEMENT_QUANTILES,
-    US_SPINE_AGREEMENT_REGISTRY,
-    SpineAgreementSpec,
-    default_spine_agreement_registry,
-    normalize_transfer_family_name,
-    spine_agreement_gate,
-    validate_spine_agreement_registry,
-)
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_REVISION,
@@ -1079,6 +1068,21 @@ from microcosm.build.us_runtime.workers_compensation import (
     with_us_workers_compensation,
 )
 from microcosm.frame import Frame
+
+_SPINE_AGREEMENT_EXPORTS = frozenset(
+    {
+        "DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE",
+        "DEFAULT_INCIDENCE_RATIO_BOUNDS",
+        "DEFAULT_QUANTILE_ENVELOPE_TOLERANCE",
+        "DEFAULT_SPINE_AGREEMENT_QUANTILES",
+        "US_SPINE_AGREEMENT_REGISTRY",
+        "SpineAgreementSpec",
+        "default_spine_agreement_registry",
+        "normalize_transfer_family_name",
+        "spine_agreement_gate",
+        "validate_spine_agreement_registry",
+    }
+)
 
 __all__ = [
     "ASEC_RAW_STAGE_ARTIFACT_KIND",
@@ -1980,6 +1984,21 @@ __all__ = [
     "us_puma_ladder_gate",
     "with_household_us_puma_ladder",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Resolve exports without loading the authority-heavy module eagerly."""
+    if name not in _SPINE_AGREEMENT_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(f"{__name__}.spine_agreement")
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    """Include unresolved lazy exports in module discovery."""
+    return sorted(set(globals()) | _SPINE_AGREEMENT_EXPORTS)
 
 
 @dataclass(frozen=True)

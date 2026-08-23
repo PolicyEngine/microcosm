@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
 import urllib.request
 from importlib.metadata import version
 from pathlib import Path
@@ -342,6 +343,40 @@ def test_loader_uses_reported_answers_drops_dependents_and_pairs_spouses(
     assert donor["employment_income"].max() < 100_000.0
 
 
+def test_loader_is_exactly_chunk_size_invariant_with_mixed_numeric_tokens(
+    tmp_path: Path,
+) -> None:
+    path = _write_source(tmp_path, _synthetic_source_rows())
+    source = pd.read_csv(path, delimiter="|", dtype=str, keep_default_na=False)
+    source.loc[1, "TJB1_MSUM"] = "1000"
+    source.loc[2, "TJB1_MSUM"] = "500.25"
+    source.loc[3, "TJB1_MSUM"] = ""
+    source.to_csv(path, sep="|", index=False)
+
+    one_row_chunks = load_sipp_2023_voluntary_filing_donor(
+        path,
+        expected_size_bytes=None,
+        chunksize=1,
+    )
+    default_chunks = load_sipp_2023_voluntary_filing_donor(
+        path,
+        expected_size_bytes=None,
+    )
+    hundred_row_chunks = load_sipp_2023_voluntary_filing_donor(
+        path,
+        expected_size_bytes=None,
+        chunksize=100,
+    )
+
+    pd.testing.assert_frame_equal(default_chunks, one_row_chunks, check_exact=True)
+    pd.testing.assert_frame_equal(
+        hundred_row_chunks,
+        one_row_chunks,
+        check_exact=True,
+    )
+    assert default_chunks.attrs == one_row_chunks.attrs == hundred_row_chunks.attrs
+
+
 def test_loader_rejects_reciprocal_spouse_target_disagreement(tmp_path: Path) -> None:
     rows = [
         _source_row(1, 101, spouse=102, filing=1),
@@ -448,6 +483,26 @@ def test_cached_full_donor_matches_locked_response_and_weight_facts() -> None:
         snapshot,
         expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
         expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+    )
+    metadata = json.dumps(
+        {
+            "attrs": donor.attrs,
+            "columns": list(donor.columns),
+            "dtypes": [str(dtype) for dtype in donor.dtypes],
+            "shape": list(donor.shape),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256()
+    digest.update(metadata.encode())
+    digest.update(
+        pd.util.hash_pandas_object(donor, index=True, categorize=True)
+        .to_numpy(dtype=np.uint64)
+        .tobytes()
+    )
+    assert digest.hexdigest() == (
+        "464b1a76504481d3a6d5bc87834ea83f85b7a57602385e25634e3e598fd8f4b8"
     )
     weights = donor["tax_unit_weight"].to_numpy(dtype=np.float64)
     target = donor[_OUTPUT].to_numpy(dtype=bool)
