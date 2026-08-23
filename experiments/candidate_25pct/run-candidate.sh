@@ -145,7 +145,7 @@ check_sha256() {
   [ -f "$path" ] || die "missing input role=$role path=$path"
   actual="$(sha256_file "$path")" || die "cannot hash role=$role path=$path"
   [ "$actual" = "$expected" ] || die "sha mismatch role=$role path=$path expected=$expected actual=$actual"
-  size="$(/usr/bin/stat -f %z "$path")" || die "cannot stat role=$role path=$path"
+  size="$(/usr/bin/stat -L -f %z "$path")" || die "cannot stat role=$role path=$path"
   emit "INPUT OK role=$role size=$size sha256=$actual path=$path"
 }
 
