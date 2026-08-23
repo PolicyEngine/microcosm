@@ -63,7 +63,7 @@ millions; GB = excluding Northern Ireland.
 | GB couple with children | 0.871 | 0.686 | 0.935 | +0.250 |
 
 With FRS reporters anchored (`would_claim_uc |= universal_credit_reported > 0`):
-OLD 5.217 → NEW 6.340 (UK). The incumbent's own upper bound (counterfactual
+OLD 5.217 → NEW 6.340 (UK), NEW′ 6.345. The incumbent's own upper bound (counterfactual
 C, `corporate_wealth` → 0 on the incumbent draws) is 6.881 UK.
 
 Allocation-key check on the NEW draw (why the model keeps
@@ -86,6 +86,36 @@ that release before any national build or calibration (the UK targets
 engine's `corporate_sector_wealth` key), and re-pin the `efrs-post-calibration`
 input-mass reference only after the uk-data mirror ships (re-pinning first
 would breach the gate on `corporate_wealth`).
+
+## Per-segment child seeds (review finding, second commit)
+
+`impute_was_wealth` reused one `RegimeGatedQRF` across its three chain
+segments, and `start_chain` respawns the fit and draw streams from the model
+seed on every call — so the k-th target of every segment consumed the same
+quantile and sign-gate uniforms per recipient, coupling `owned_land` with
+the first segment-2 target and `property_wealth` with the second (now the
+share-like holdings, the countable quantity). The adversarial review measured
+it on train/hold-out halves of the donor (30 trees; companion JSON
+`452-uk-pension-wealth-split-coupling-receipt.json`):
+
+| hold-out probability | observed | stage as-is (same seed) | per-segment seeds |
+|---|---|---|---|
+| P(shares excl. ISA > 0 \| property_wealth = 0) | 0.055 | 0.011 | 0.045 |
+| P(stocks-and-shares ISA > 0 \| property_wealth = 0) | 0.031 | 0.017 | 0.028 |
+| P(private pension wealth > 0 \| property_wealth = 0) | 0.560 | 0.540 | 0.554 |
+
+The stage now derives one child seed per segment from the declared seed
+(`SeedSequence(0).spawn(3)` → 3757552657, 673228719, 3241444873); the
+declared `fit_weighted_qrf_chain.seed: 0` stays the root and the spec digest
+is unchanged (the note is documentation). Re-measured with the fix (NEW′):
+UC benefit units 6.268m UK (vs 6.266m without the fix), eligible 15.57m (vs
+16.26m), reporter records over £16k 1,742 (vs 1,757); GB elements within
+±0.05m except singles +0.13m and couples without children −0.06m. The
+caseload effect of the split is unchanged; the fix corrects who holds the
+countable assets. Seed-to-seed swings in the tail-dominated totals
+(`corporate_wealth` 2,499 → 1,794 £bn, `savings` 1,489 → 899 £bn at 2024 for
+the two draws) are the stage's known realisation variance (cf. the
+`owned_land` exclusion receipt), not an effect of either change.
 
 ## Caveats (travel with the numbers)
 

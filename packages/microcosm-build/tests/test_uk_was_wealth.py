@@ -371,11 +371,12 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     import microcosm.fit
 
     calls = []
+    seeds = []
 
     class FakeQRF:
         def __init__(self, *, n_estimators, seed):
             assert n_estimators == 7
-            assert seed == 0
+            seeds.append(seed)
 
         def start_chain(self, donor, predictors, targets, *, weights):
             assert weights == "weight"
@@ -428,6 +429,10 @@ def test_was_imputer_uses_checkpointed_chain_segments(
         f"uk_was_2018_20_wealth:{target}" for target in fitted_targets
     ]
     assert {record.weight_kind for record in result.fit_weight_records} == {"explicit"}
+    # One independent RNG root per segment, derived from the declared seed.
+    assert seeds == list(module.was_wealth_segment_seeds(0))
+    assert len(set(seeds)) == 3
+    assert result.segment_seeds == tuple(seeds)
 
 
 def test_private_pension_wealth_split_preserves_the_old_corporate_wealth_identity() -> (
@@ -455,3 +460,18 @@ def test_private_pension_wealth_split_preserves_the_old_corporate_wealth_identit
         UK_WAS_WEALTH_OUTPUT_COLUMNS.index("private_pension_wealth")
         == UK_WAS_WEALTH_OUTPUT_COLUMNS.index("corporate_wealth") + 1
     )
+
+
+def test_segment_seeds_are_distinct_and_deterministic() -> None:
+    """Each chain segment starts its own fit/draw streams (start_chain respawns
+    from the model seed on every call), so the roots must differ and derive
+    deterministically from the declared stage seed."""
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    seeds = module.was_wealth_segment_seeds(0)
+
+    assert len(seeds) == 3
+    assert len(set(seeds)) == 3
+    assert seeds == module.was_wealth_segment_seeds(0)
+    assert seeds != module.was_wealth_segment_seeds(1)
+    assert all(isinstance(seed, int) for seed in seeds)

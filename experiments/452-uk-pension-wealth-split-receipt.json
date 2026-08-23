@@ -242,6 +242,86 @@
     "over_16k_weighted_share": 0.1633,
     "weighted_mean_gbp": 27174.0
    }
+  },
+  "new_redraw_per_segment_seeds": {
+   "owned_land": {
+    "weighted_total_bn": 110.987,
+    "nonzero_weighted_share": 0.0154,
+    "over_16k_weighted_share": 0.0134,
+    "weighted_mean_gbp": 3567.0
+   },
+   "property_wealth": {
+    "weighted_total_bn": 11368.05,
+    "nonzero_weighted_share": 0.6503,
+    "over_16k_weighted_share": 0.6502,
+    "weighted_mean_gbp": 365351.0
+   },
+   "corporate_wealth": {
+    "weighted_total_bn": 1794.458,
+    "nonzero_weighted_share": 0.3532,
+    "over_16k_weighted_share": 0.2306,
+    "weighted_mean_gbp": 57671.0
+   },
+   "private_pension_wealth": {
+    "weighted_total_bn": 5673.223,
+    "nonzero_weighted_share": 0.7081,
+    "over_16k_weighted_share": 0.5849,
+    "weighted_mean_gbp": 182328.0
+   },
+   "gross_financial_wealth": {
+    "weighted_total_bn": 4812.26,
+    "nonzero_weighted_share": 0.9819,
+    "over_16k_weighted_share": 0.6265,
+    "weighted_mean_gbp": 154658.0
+   },
+   "net_financial_wealth": {
+    "weighted_total_bn": 4548.989,
+    "nonzero_weighted_share": 0.9981,
+    "over_16k_weighted_share": 0.5664,
+    "weighted_mean_gbp": 146197.0
+   },
+   "main_residence_value": {
+    "weighted_total_bn": 8594.245,
+    "nonzero_weighted_share": 0.6004,
+    "over_16k_weighted_share": 0.6004,
+    "weighted_mean_gbp": 276205.0
+   },
+   "other_residential_property_value": {
+    "weighted_total_bn": 679.914,
+    "nonzero_weighted_share": 0.0563,
+    "over_16k_weighted_share": 0.055,
+    "weighted_mean_gbp": 21851.0
+   },
+   "non_residential_property_value": {
+    "weighted_total_bn": 137.889,
+    "nonzero_weighted_share": 0.0133,
+    "over_16k_weighted_share": 0.0124,
+    "weighted_mean_gbp": 4432.0
+   },
+   "savings": {
+    "weighted_total_bn": 898.63,
+    "nonzero_weighted_share": 0.6472,
+    "over_16k_weighted_share": 0.2824,
+    "weighted_mean_gbp": 28881.0
+   },
+   "num_vehicles": {
+    "weighted_total_bn": 0.036,
+    "nonzero_weighted_share": 0.7587,
+    "over_16k_weighted_share": 0.0,
+    "weighted_mean_gbp": 1.0
+   },
+   "cash_isa": {
+    "weighted_total_bn": 351.255,
+    "nonzero_weighted_share": 0.3493,
+    "over_16k_weighted_share": 0.1753,
+    "weighted_mean_gbp": 11289.0
+   },
+   "stocks_and_shares_isa": {
+    "weighted_total_bn": 747.627,
+    "nonzero_weighted_share": 0.2097,
+    "over_16k_weighted_share": 0.1722,
+    "weighted_mean_gbp": 24028.0
+   }
   }
  },
  "uc_2025": {
@@ -456,6 +536,66 @@
     "gb_couple_no_children_m": 0.333,
     "gb_couple_with_children_m": 0.9499
    }
+  },
+  "microcosm_stage_new_arithmetic_per_segment_seeds": {
+   "as_is": {
+    "uk_m": 6.2682,
+    "gb_m": 6.0898,
+    "records": 6591,
+    "spend_bn": 71.41,
+    "eligible_m": 15.5714,
+    "eligible_unweighted": 25009,
+    "reporters_unweighted": 6447,
+    "reporters_m": 5.9252,
+    "reporters_over_16k_unweighted": 1742,
+    "reporters_over_16k_m": 1.239,
+    "reporters_on_uc_m": 4.1938,
+    "reporters_not_on_uc_m": 1.7314,
+    "on_uc_not_reported_m": 2.0745,
+    "gb_housing_m": 4.586,
+    "gb_lcwra_m": 2.057,
+    "gb_carer_m": 0.6224,
+    "gb_childcare_m": 0.4007,
+    "gb_child_m": 2.817,
+    "gb_housing_spend_bn": 34.135,
+    "gb_lcwra_spend_bn": 11.201,
+    "gb_carer_spend_bn": 1.506,
+    "gb_childcare_spend_bn": 1.675,
+    "gb_child_spend_bn": 17.614,
+    "gb_single_m": 3.0129,
+    "gb_lone_parent_m": 1.8969,
+    "gb_couple_no_children_m": 0.2706,
+    "gb_couple_with_children_m": 0.9093
+   },
+   "reporters_anchored": {
+    "uk_m": 6.3449,
+    "gb_m": 6.1634,
+    "records": 6748,
+    "spend_bn": 71.915,
+    "eligible_m": 15.5714,
+    "eligible_unweighted": 25009,
+    "reporters_unweighted": 6447,
+    "reporters_m": 5.9252,
+    "reporters_over_16k_unweighted": 1742,
+    "reporters_over_16k_m": 1.239,
+    "reporters_on_uc_m": 4.2704,
+    "reporters_not_on_uc_m": 1.6547,
+    "on_uc_not_reported_m": 2.0745,
+    "gb_housing_m": 4.6242,
+    "gb_lcwra_m": 2.1099,
+    "gb_carer_m": 0.6233,
+    "gb_childcare_m": 0.4099,
+    "gb_child_m": 2.8305,
+    "gb_housing_spend_bn": 34.364,
+    "gb_lcwra_spend_bn": 11.469,
+    "gb_carer_spend_bn": 1.508,
+    "gb_childcare_spend_bn": 1.793,
+    "gb_child_spend_bn": 17.671,
+    "gb_single_m": 3.0647,
+    "gb_lone_parent_m": 1.8972,
+    "gb_couple_no_children_m": 0.2792,
+    "gb_couple_with_children_m": 0.9223
+   }
   }
  },
  "split_effect_new_minus_old": {
@@ -559,5 +699,82 @@
   "SPI-synthetic clone households are re-imputed like any household.",
   "private_pension_wealth is engine-unknown at policyengine-uk 2.91.0 and is ignored by the loader; the NEW numbers are the model-side-unchanged outcome (total_wealth and the exposure keys shrink there until the model PR lands).",
   "Aggregates only (UKDS EUL); no unit records leave the licensed environment."
- ]
+ ],
+ "segment_seeds_from_declared_seed_0": [
+  3757552657,
+  673228719,
+  3241444873
+ ],
+ "per_segment_seed_fix": {
+  "what": "impute_was_wealth now derives one child seed per chain segment from the declared stage seed (SeedSequence(seed).spawn(3)); previously one RegimeGatedQRF was reused and start_chain respawned identical fit/draw streams per segment, coupling the k-th target of every segment.",
+  "hold_out_receipt_30_trees": {
+   "P(shares_excl_isa>0 | property_wealth=0)": {
+    "truth": 0.0551,
+    "stage_as_is_same_seed": 0.0114,
+    "per_segment_seeds": 0.0448
+   },
+   "P(stocks_and_shares_isa>0 | property_wealth=0)": {
+    "truth": 0.0307,
+    "stage_as_is_same_seed": 0.0174,
+    "per_segment_seeds": 0.0278
+   },
+   "P(private_pension_wealth>0 | property_wealth=0)": {
+    "truth": 0.5601,
+    "stage_as_is_same_seed": 0.5396,
+    "per_segment_seeds": 0.5538
+   },
+   "source": "adversarial-review coupling check, train/hold-out halves of the donor, aggregates only"
+  },
+  "uc_effect_new_with_fix_minus_new_without": {
+   "uk_m": 0.0026,
+   "gb_m": 0.0261,
+   "eligible_m": -0.6837,
+   "reporters_over_16k_m": -0.0425,
+   "gb_housing_m": -0.0061,
+   "gb_lcwra_m": 0.0023,
+   "gb_carer_m": -0.0226,
+   "gb_childcare_m": -0.002,
+   "gb_child_m": -0.0517,
+   "gb_single_m": 0.1332,
+   "gb_lone_parent_m": -0.0255,
+   "gb_couple_no_children_m": -0.0557,
+   "gb_couple_with_children_m": -0.026
+  }
+ },
+ "allocation_key_concentration_new_draw_per_segment_seeds": {
+  "narrow": {
+   "mass_share_by_income_decile": [
+    0.1138,
+    0.0227,
+    0.0277,
+    0.0379,
+    0.1059,
+    0.0595,
+    0.0761,
+    0.1036,
+    0.2016,
+    0.2512
+   ],
+   "top10pct_households_share": 0.8391,
+   "top1pct_households_share": 0.2669,
+   "weighted_total_bn": 1794.458
+  },
+  "preserved": {
+   "mass_share_by_income_decile": [
+    0.0461,
+    0.0516,
+    0.0372,
+    0.0475,
+    0.0719,
+    0.0803,
+    0.0939,
+    0.1298,
+    0.2014,
+    0.2404
+   ],
+   "top10pct_households_share": 0.5432,
+   "top1pct_households_share": 0.1354,
+   "weighted_total_bn": 7467.681
+  }
+ }
 }

@@ -354,6 +354,26 @@ class UKWASWealthImputationResult:
 
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
+    #: The per-segment RNG roots derived from the declared stage seed.
+    segment_seeds: tuple[int, ...] = ()
+
+
+def was_wealth_segment_seeds(seed: int, segments: int = 3) -> tuple[int, ...]:
+    """Derive one independent RNG root per chain segment from the stage seed.
+
+    :meth:`RegimeGatedQRF.start_chain` spawns its fit and draw streams from
+    the model seed on every call, so one model reused across segments would
+    restart the same streams each time and couple the k-th target of every
+    segment (the same quantile and sign-gate uniforms per recipient). On the
+    licensed donor that coupling collapsed P(shares > 0 | property_wealth = 0)
+    to 0.011 against 0.055 observed; distinct child seeds recover 0.045. The
+    declared stage seed stays the root and the children are deterministic.
+    """
+
+    return tuple(
+        int(child.generate_state(1, dtype=np.uint32)[0])
+        for child in np.random.SeedSequence(int(seed)).spawn(int(segments))
+    )
 
 
 def impute_was_wealth(
@@ -370,11 +390,16 @@ def impute_was_wealth(
     donor_encoded, recipient_encoded, encoded_predictors = encode_qrf_predictor_pair(
         donor, recipient_predictor_frame
     )
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
+    segment_seeds = was_wealth_segment_seeds(seed)
+    segment_models = iter(
+        RegimeGatedQRF(n_estimators=n_estimators, seed=segment_seed)
+        for segment_seed in segment_seeds
+    )
     raw = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
 
     def run_segment(base_predictors: Sequence[str], targets: Sequence[str]) -> None:
+        model = next(segment_models)
         state = model.start_chain(
             donor_encoded,
             list(base_predictors),
@@ -452,6 +477,7 @@ def impute_was_wealth(
     return UKWASWealthImputationResult(
         draws=raw.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS],
         fit_weight_records=tuple(fit_records),
+        segment_seeds=segment_seeds,
     )
 
 
