@@ -483,6 +483,20 @@ def build_coverage_manifest(reference: dict[str, Any]) -> dict[str, Any]:
 
     tool = _load_module(COVERAGE_TOOL_PATH, "build_uk_release_input_coverage_manifest")
     known_gaps = _load_json(tool.KNOWN_GAPS_PATH)
+    # The checked-in candidate evidence was measured against the reference's
+    # populated-column surface; a release that moves that surface needs the
+    # candidate evidence refreshed (--candidate-h5 on the coverage tool) before
+    # the manifest can be rebuilt honestly.
+    evidence_columns = set(known_gaps["candidate_evidence"]["nonzero_shares"])
+    reference_columns = set(reference["nonzero_shares"])
+    if evidence_columns != reference_columns:
+        raise SystemExit(
+            "the new reference's populated-column surface differs from the "
+            "checked-in candidate evidence (only in reference: "
+            f"{sorted(reference_columns - evidence_columns)}; only in evidence: "
+            f"{sorted(evidence_columns - reference_columns)}); refresh "
+            f"{tool.KNOWN_GAPS_PATH.name} with the certified candidate first."
+        )
     return tool.build_manifest(reference=reference, known_gaps_payload=known_gaps)
 
 
