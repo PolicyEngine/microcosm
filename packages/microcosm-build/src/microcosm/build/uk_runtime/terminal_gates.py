@@ -175,6 +175,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.msoa_code",
     "household.num_vehicles",
     "household.oa_code",
+    "household.private_pension_wealth",
     "household.property_purchased",
     "household.rail_usage",
     "household.region_code_oa",

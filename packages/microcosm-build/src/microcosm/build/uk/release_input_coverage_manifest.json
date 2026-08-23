@@ -478,7 +478,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "31818338ef62a19d9aebad7cdcf79af7cf05c2f0657ecc5e53b5954390ffa93b",
+   "source_manifest_sha256": "1111cdf6fb6b711c923b3581ac69981197a65771277b19fde698e79b31428ca5",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.",
     "survey": "Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table"
@@ -497,7 +497,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "31818338ef62a19d9aebad7cdcf79af7cf05c2f0657ecc5e53b5954390ffa93b",
+   "source_manifest_sha256": "1111cdf6fb6b711c923b3581ac69981197a65771277b19fde698e79b31428ca5",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.",
     "survey": "Effects of Taxes and Benefits 1977-2024"
@@ -532,7 +532,7 @@
    "base_candidate_tier": "frs",
    "calibration_permitted": false,
    "canonical_source_manifest": "source_stages.json",
-   "canonical_source_manifest_sha256": "31818338ef62a19d9aebad7cdcf79af7cf05c2f0657ecc5e53b5954390ffa93b",
+   "canonical_source_manifest_sha256": "1111cdf6fb6b711c923b3581ac69981197a65771277b19fde698e79b31428ca5",
    "effective_mass_requirements": {
     "charitable_investment_gifts": {
      "mass_share_denominator": "all_person_effective_mass",
@@ -642,7 +642,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "31818338ef62a19d9aebad7cdcf79af7cf05c2f0657ecc5e53b5954390ffa93b",
+   "source_manifest_sha256": "1111cdf6fb6b711c923b3581ac69981197a65771277b19fde698e79b31428ca5",
    "source_vintages": {
     "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.",
     "survey": "Living Costs and Food Survey 2023-24"
@@ -662,7 +662,7 @@
     "property_wealth"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "31818338ef62a19d9aebad7cdcf79af7cf05c2f0657ecc5e53b5954390ffa93b",
+   "source_manifest_sha256": "1111cdf6fb6b711c923b3581ac69981197a65771277b19fde698e79b31428ca5",
    "source_vintages": {
     "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
     "survey": "Public regional property reference"
@@ -679,6 +679,7 @@
     "owned_land",
     "property_wealth",
     "corporate_wealth",
+    "private_pension_wealth",
     "gross_financial_wealth",
     "net_financial_wealth",
     "main_residence_value",
@@ -693,7 +694,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "31818338ef62a19d9aebad7cdcf79af7cf05c2f0657ecc5e53b5954390ffa93b",
+   "source_manifest_sha256": "1111cdf6fb6b711c923b3581ac69981197a65771277b19fde698e79b31428ca5",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
     "survey": "Wealth and Assets Survey round 8"
