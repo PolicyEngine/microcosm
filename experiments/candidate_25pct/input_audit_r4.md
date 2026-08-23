@@ -172,8 +172,9 @@ The launcher must therefore end dense-only with this exact question:
 > **Owner ruling required:** which rule may choose the candidate pool's
 > support: (A) current legacy fixed-penalty L0 at default 0.8, accepting its
 > non-exact realized count, or (B) a newly ratified exact-57,240 rule, including
-> its algorithm, seed, and Keogh-carrier treatment? Current main has no legacy
-> CLI that derives an exact 57,240 selection manifest from a pool.
+> its algorithm, seed, and Keogh-carrier treatment? If B uses current exact-k,
+> supply `pi_hi` and its artifact pins. Current main has no legacy CLI that
+> derives an exact 57,240 selection manifest from a pool.
 
 No selection path, pin, identity list, sparse release ID, or sparse artifact is
 invented before that ruling.
