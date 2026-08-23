@@ -6,33 +6,27 @@ re-derives the SPI and CGT surfaces in-run before calibrating. A WS-E spine
 already carries those derivations — E7/E8 ported the same instruments (pinned
 sources, QRF stages, reviewed fences, conservation receipts) into declarative
 source stages, and the spine ships post-allocation. Re-running the replay here
-would discard the spine's certified derivation and substitute an equivalent
-one, so this runner deliberately does not.
+would discard the spine's certified derivation, so this runner deliberately
+does not.
 
-What it does, in order:
+The 388-reference register also binds simulated tax-benefit outputs
+(income tax, NICs, Universal Credit, benefit caseloads, payment-band
+crosstabs). Those are model outputs, not stored columns, and the calibration
+stage's frame adapter reads stored columns only — the June release never hit
+this because its 149-target surface was demographics-only. This runner adds
+the missing materialization: a live policyengine-uk simulation over the same
+records computes each needed variable at the declared calibration year and
+attaches it to the frame, iterating on the materializer's own skip reports
+until the register binds. The same treatment is applied to the incumbent
+before scoring, so the #578 rule-1 comparison uses one yardstick. References
+that need machinery this posture does not have (the salary-sacrifice
+counterfactual deltas) are excluded with a receipt, never silently.
 
-1. sha-verifies the spine input and the Ledger consumer artifact;
-2. compiles the packaged target references against the Ledger facts at the
-   declared calibration year (FRS 2024-25 -> 2025);
-3. repairs the spine's structural NaN columns (SPI-channel concepts undefined
-   on the base-FRS channel) to zero, from a fixed allowlist, with a receipt —
-   any NaN outside the allowlist aborts;
-4. runs ``UKNationalCalibrationStage`` under the frozen national doctrine;
-5. writes the staged H5 through the shared validated writer;
-6. scores the candidate against the incumbent enhanced FRS on the same frozen
-   register (#578 rule 1), so the score rides the diagnostics in one pass;
-7. writes US-format calibration diagnostics (schema 6 + uk block) with the
-   score already merged into the ``build`` block, and shas the final bytes;
-8. evaluates the numeric gate fences that are honestly measurable in this
-   posture against the thresholds declared in ``uk/gates.json``, and lists the
-   entries that are not evaluable here and why;
-9. writes an assessment build record and spools a Logbook row.
-
-This is an assessment posture: the artifact is structurally non-releasable
-(non-certified input), the full declared battery is not enforced, and the
-build record says both things in as many words. Gate entries that encode the
-certified-input convention (in-run stage census, in-run fit-weight records)
-are reported as not-evaluated rather than silently passed.
+Assessment posture: the artifact is structurally non-releasable (non-certified
+input), the declared battery is not enforced, and the build record says both
+things. Numeric fences that are honestly measurable here are evaluated against
+the thresholds declared in ``uk/gates.json``; every non-evaluated entry is
+listed with its reason.
 """
 
 from __future__ import annotations
@@ -40,12 +34,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.logbook import canonical_json_bytes
@@ -59,18 +55,26 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
-from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
+from microcosm.build.uk_runtime.ledger_targets import (
+    UKFrameTargetAdapter,
+    compile_uk_target_registry,
+    materialize_uk_ledger_targets,
+)
 from microcosm.build.uk_runtime.national_build import (
     load_uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.build.uk_runtime.national_calibration import UKNationalCalibrationStage
-from microcosm.build.uk_runtime.national_doctrine import UK_NATIONAL_SOLVE_DOCTRINE
+from microcosm.build.uk_runtime.national_calibration import (
+    UKNationalCalibrationStage,
+    _CalibrationFrameAdapter,
+)
 from microcosm.build.uk_runtime.diagnostics import write_uk_calibration_diagnostics
-from microcosm.calibrate import effective_sample_size
+from microcosm.build.uk_runtime.national_doctrine import UK_NATIONAL_SOLVE_DOCTRINE
+from microcosm.calibrate import TargetRegistry, effective_sample_size, score_targets
 
 _REPOSITORY = Path(__file__).resolve().parent.parent
 _PIPELINE = "uk-frs-calibration"
+UK_SCORE_LOSS_CAP = 10.0
 
 # Structural NaN repair allowlist. These twelve person columns are
 # SPI-channel concepts the spine leaves undefined (NaN) on the base-FRS
@@ -90,6 +94,11 @@ _STRUCTURAL_NAN_COLUMNS = (
     "hmrc_spi_total_investment_income",
     "hmrc_spi_assessable_income",
 )
+
+_ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
+_ENTITY_ID = {"person": "person_id", "benunit": "benunit_id", "household": "household_id"}
+
+_MISSING_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
 
 
 def _sha256_file(path: Path) -> str:
@@ -120,8 +129,7 @@ def _repair_structural_nans(frame: Any) -> dict[str, Any]:
     ``Frame.table`` documents its return as read-only, but it hands back the
     live DataFrame (the calibration adapter takes defensive copies for
     exactly that reason). This repair leans on that liveness and then
-    verifies the mutation stuck — if a future Frame returns copies, the
-    post-assert aborts the run instead of calibrating on unrepaired data.
+    verifies the mutation stuck.
     """
 
     receipt: dict[str, Any] = {"repaired": {}, "policy": "structural_zero_fill"}
@@ -144,10 +152,156 @@ def _repair_structural_nans(frame: Any) -> dict[str, Any]:
     for column in receipt["repaired"]:
         if int(frame.table("person")[column].isna().sum()) != 0:
             raise RuntimeError(
-                f"structural NaN repair did not persist for person.{column}; "
-                "Frame.table returned a copy."
+                f"structural NaN repair did not persist for person.{column}."
             )
     return receipt
+
+
+def _attach_variable(
+    frame: Any, simulation: Any, entity: str, variable: str, year: int
+) -> str:
+    """Compute one simulated variable at ``entity`` grain and attach it.
+
+    Returns a short description of the path taken, for the receipt.
+    """
+
+    definition = simulation.tax_benefit_system.variables.get(variable)
+    if definition is None:
+        raise KeyError(f"policyengine-uk has no variable {variable!r}")
+    native = definition.entity.key
+    table = frame.table(entity)
+
+    if native == entity:
+        raw = simulation.calculate(variable, year)
+        values = np.asarray(raw.values if hasattr(raw, "values") else raw)
+        route = "native"
+    else:
+        raw = simulation.calculate(variable, year)
+        native_values = np.asarray(raw.values if hasattr(raw, "values") else raw)
+        if native_values.dtype.kind in {"O", "U", "S", "b"}:
+            if entity == "person" and native in ("benunit", "household"):
+                # Categorical broadcast: each member inherits its group value.
+                native_table = frame.table(native)
+                lookup = pd.Series(
+                    native_values, index=native_table[_ENTITY_ID[native]].to_numpy()
+                )
+                keys = frame.table("person")[_ENTITY_LINK[native]].to_numpy()
+                values = lookup.loc[keys].to_numpy()
+                route = f"categorical_broadcast_{native}_to_person"
+            elif native == "person" and native_values.dtype.kind == "b":
+                # Boolean any-collapse up to the group.
+                person = frame.table("person")
+                collapsed = (
+                    pd.Series(native_values.astype(bool))
+                    .groupby(person[_ENTITY_LINK[entity]].to_numpy())
+                    .max()
+                )
+                keys = table[_ENTITY_ID[entity]].to_numpy()
+                values = collapsed.loc[keys].to_numpy().astype(float)
+                route = f"bool_any_collapse_person_to_{entity}"
+            else:
+                raise KeyError(
+                    f"no categorical mapping from {native} to {entity} "
+                    f"for {variable!r}"
+                )
+        else:
+            raw = simulation.calculate(variable, year, map_to=entity)
+            values = np.asarray(raw.values if hasattr(raw, "values") else raw)
+            route = f"map_to_{entity}"
+
+    if len(values) != len(table):
+        raise ValueError(
+            f"{variable!r} produced {len(values)} values for {len(table)} "
+            f"{entity} rows."
+        )
+    if values.dtype.kind not in {"O", "U", "S"}:
+        values = values.astype(float)
+    table[variable] = values
+    if variable not in frame.table(entity).columns:
+        raise RuntimeError(f"attachment of {entity}.{variable} did not persist.")
+    return route
+
+
+def _materialize_simulated_measures(
+    frame: Any,
+    simulation: Any,
+    registry: TargetRegistry,
+    year: int,
+    *,
+    side: str,
+    max_rounds: int = 6,
+) -> tuple[TargetRegistry, dict[str, Any]]:
+    """Attach simulated measure inputs until the register binds.
+
+    Drives the materializer's own skip reports: each round attaches the
+    missing (entity, variable) pairs from a live simulation and retries.
+    References whose needs cannot be met (counterfactual deltas, unknown
+    variables) are excluded with a reason. Returns the bindable registry and
+    the receipt.
+    """
+
+    receipt: dict[str, Any] = {"side": side, "attached": {}, "excluded": {}}
+    active = list(registry.specs)
+    for round_index in range(max_rounds):
+        probe = UKFrameTargetAdapter(frame)
+        result = materialize_uk_ledger_targets(
+            probe, TargetRegistry(active, country="uk"), period=year
+        )
+        skipped = list(result.skipped)
+        if not skipped:
+            break
+        progressed = False
+        for skip in skipped:
+            info = skip.__dict__
+            name, reason = str(info["name"]), str(info["reason"])
+            if "counterfactual delta" in reason:
+                receipt["excluded"][name] = reason
+                active = [spec for spec in active if spec.name != name]
+                progressed = True
+                continue
+            match = _MISSING_COLUMN.match(reason)
+            if match is None:
+                receipt["excluded"][name] = f"unrecognized skip reason: {reason}"
+                active = [spec for spec in active if spec.name != name]
+                progressed = True
+                continue
+            entity, variable = match.group(1), match.group(2)
+            if entity is None:
+                definition = simulation.tax_benefit_system.variables.get(variable)
+                if definition is None:
+                    receipt["excluded"][name] = (
+                        f"policyengine-uk has no variable {variable!r}"
+                    )
+                    active = [spec for spec in active if spec.name != name]
+                    progressed = True
+                    continue
+                entity = definition.entity.key
+            key = f"{entity}.{variable}"
+            if key in receipt["attached"]:
+                # Attached last round and still skipped: this reference needs
+                # something else this loop cannot provide.
+                receipt["excluded"][name] = (
+                    f"still unmaterializable after attaching {key}: {reason}"
+                )
+                active = [spec for spec in active if spec.name != name]
+                progressed = True
+                continue
+            try:
+                route = _attach_variable(frame, simulation, entity, variable, year)
+            except (KeyError, ValueError) as error:
+                receipt["excluded"][name] = str(error)
+                active = [spec for spec in active if spec.name != name]
+            else:
+                receipt["attached"][key] = route
+            progressed = True
+        if not progressed:
+            raise RuntimeError(
+                f"measure materialization made no progress on round "
+                f"{round_index}: {[s.__dict__ for s in skipped][:5]}"
+            )
+    else:
+        raise RuntimeError("measure materialization did not converge.")
+    return TargetRegistry(active, country="uk"), receipt
 
 
 def _uk_target_geography_levels(registry: Any) -> dict[str, str]:
@@ -177,6 +331,92 @@ def _uk_target_geography_levels(registry: Any) -> dict[str, str]:
             )
         levels[spec.to_target().row_name] = str(geography_levels[0])
     return levels
+
+
+def _score_frame(frame: Any, registry: TargetRegistry, year: int) -> Any:
+    """Materialize measures and score one frame on the shared register."""
+
+    adapter = _CalibrationFrameAdapter(frame)
+    result = materialize_uk_ledger_targets(adapter, registry, period=year)
+    if result.skipped:
+        raise RuntimeError(
+            f"scoring register did not bind: {[s.__dict__ for s in result.skipped][:5]}"
+        )
+    return score_targets(
+        adapter.prepared_frame(),
+        registry.to_target_set(),
+        target_loss_cap=UK_SCORE_LOSS_CAP,
+    )
+
+
+def _score_block(
+    candidate_frame: Any,
+    incumbent_frame: Any,
+    registry: TargetRegistry,
+    year: int,
+    scorer: Any,
+) -> dict[str, Any]:
+    """The #578 rule-1 block, on frames instead of H5 paths.
+
+    Reuses the scorer module's own helpers so the payload shape stays
+    identical to ``score_uk_national_candidate.py``.
+    """
+
+    candidate = _score_frame(candidate_frame, registry, year)
+    incumbent = _score_frame(incumbent_frame, registry, year)
+    candidate_errors = scorer._relative_errors(candidate)
+    incumbent_errors = scorer._relative_errors(incumbent)
+    missing = sorted(set(candidate_errors) ^ set(incumbent_errors))
+    if missing:
+        raise RuntimeError(
+            f"candidate and incumbent scores produced different rows: {missing[:10]}"
+        )
+    wins = scorer._target_wins(candidate_errors, incumbent_errors)
+    return {
+        "candidate_train_loss": float(candidate.final_loss),
+        "candidate_holdout_loss": float(candidate.final_loss),
+        "candidate_full_loss": float(candidate.final_loss),
+        "incumbent_train_loss": float(incumbent.final_loss),
+        "incumbent_holdout_loss": float(incumbent.final_loss),
+        "incumbent_full_loss": float(incumbent.final_loss),
+        "candidate_target_wins": wins["candidate"],
+        "incumbent_target_wins": wins["incumbent"],
+        "holdout_basis": "none_declared",
+        "loss": {
+            "objective": "relative_error_loss",
+            "target_loss_cap": UK_SCORE_LOSS_CAP,
+            "train_equals_full": True,
+        },
+        "register": {
+            "country": registry.country,
+            "version": registry.version,
+            "n_specs": len(registry.specs),
+        },
+        "artifacts": {
+            "candidate": "populace_uk_2023",
+            "incumbent": "enhanced_frs_2024_25",
+        },
+        "signed_asymmetries": [
+            {
+                "id": "incumbent_own_registry",
+                "note": (
+                    "the incumbent was calibrated to its own registry; both "
+                    "sides are rescored on the shared frozen register here"
+                ),
+            },
+            {
+                "id": "simulated_measures_shared_yardstick",
+                "note": (
+                    "policyengine-bound measures are computed for both sides "
+                    "by the same policyengine-uk version over each dataset's "
+                    "own records"
+                ),
+            },
+        ],
+        "target_wins_by_family": scorer._target_wins_by_family(
+            registry, candidate_errors, incumbent_errors
+        ),
+    }
 
 
 def _assessment_gate_receipt(
@@ -210,7 +450,9 @@ def _assessment_gate_receipt(
 
     ratio_params = gate_parameters["uk_weight_ratio"]
     positive = weights[weights > 0]
-    max_to_median = float(positive.max() / np.median(positive)) if positive.size else 0.0
+    max_to_median = (
+        float(positive.max() / np.median(positive)) if positive.size else 0.0
+    )
     ratio_bound = float(ratio_params["maximum_max_to_median_ratio"])
     evaluated["uk_weight_ratio"] = {
         "passed": max_to_median <= ratio_bound,
@@ -319,8 +561,7 @@ def _assessment_gate_receipt(
         "uk_ledger_compile_parity_incumbent_2025": "same",
         "uk_export_surface": "deferred to T0 column-inventory evaluation",
         "uk_target_surface": (
-            "register identity is enforced by the scorer refusing mismatched "
-            "target rows"
+            "register identity is enforced by the shared-register scorer"
         ),
         "uk_support": "support-bounds resources bind to the replay stages",
         "uk_take_up_signal": "take-up draws are spine stages; deferred to T-evals",
@@ -329,6 +570,7 @@ def _assessment_gate_receipt(
         "uk_nonnegative_columns": "spine stage-local gates already enforce",
         "uk_brma_enum_domain": "deferred to T0 load check in the model venv",
         "uk_student_loan_plan_enum_domain": "same",
+        "uk_input_mass_parity": "input-mass reference binds to the replay stages",
         "uk_calibration_reference_coverage": (
             "register-coverage receipt carries the census"
         ),
@@ -443,24 +685,45 @@ def main(argv: list[str] | None = None) -> int:
         gate_verdicts={},
     )
 
-    # --- 3. load + repair -------------------------------------------------
-    frame, provenance = load_uk_national_frame(args.input_h5)
+    # --- 3. load + repair + prepared input for the simulation --------------
+    frame, _provenance = load_uk_national_frame(args.input_h5)
     append_phase(state, "input_loaded")
     nan_receipt = _repair_structural_nans(frame)
+    prepared_input = args.staging_h5.with_name("input-prepared.h5")
+    write_uk_national_frame(frame, prepared_input)
+    prepared_sha = _sha256_file(prepared_input)
     append_phase(state, "structural_nans_repaired")
 
-    # --- 4. calibrate -----------------------------------------------------
-    stage = UKNationalCalibrationStage(compilation, period=calibration_year)
+    # --- 4. simulated-measure materialization ------------------------------
+    from policyengine_uk import Microsimulation
+
+    print("materializing simulated measures on the candidate spine...")
+    candidate_sim = Microsimulation(dataset=str(prepared_input))
+    effective_registry, candidate_measures = _materialize_simulated_measures(
+        frame, candidate_sim, compilation.registry, calibration_year,
+        side="candidate",
+    )
+    del candidate_sim
+    append_phase(state, "simulated_measures_materialized")
+    print(
+        f"  bindable references: {len(effective_registry.specs)}/"
+        f"{len(compilation.registry.specs)}; "
+        f"attached {len(candidate_measures['attached'])} measure inputs; "
+        f"excluded {len(candidate_measures['excluded'])}"
+    )
+
+    # --- 5. calibrate -------------------------------------------------------
+    stage = UKNationalCalibrationStage(effective_registry, period=calibration_year)
     calibrated = stage(frame)
     append_phase(state, "national_calibration_solved")
 
-    # --- 5. write the H5 --------------------------------------------------
+    # --- 6. write the H5 ----------------------------------------------------
     args.staging_h5.parent.mkdir(parents=True, exist_ok=True)
     write_uk_national_frame(calibrated, args.staging_h5)
     staged_sha = _sha256_file(args.staging_h5)
     append_phase(state, "staging_h5_written")
 
-    # --- 6. score vs the incumbent on the same register -------------------
+    # --- 7. score vs the incumbent on the shared bindable register ---------
     import importlib.util
 
     scorer_spec = importlib.util.spec_from_file_location(
@@ -469,14 +732,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     scorer = importlib.util.module_from_spec(scorer_spec)
     scorer_spec.loader.exec_module(scorer)
-    score = scorer.score_uk_national_candidate(
-        candidate_h5=args.staging_h5,
-        incumbent_h5=args.incumbent_h5,
-        target_registry=compilation.registry,
+
+    print("materializing simulated measures on the incumbent...")
+    incumbent_frame, _ = load_uk_national_frame(args.incumbent_h5)
+    incumbent_sim = Microsimulation(dataset=str(args.incumbent_h5))
+    score_registry, incumbent_measures = _materialize_simulated_measures(
+        incumbent_frame, incumbent_sim, effective_registry, calibration_year,
+        side="incumbent",
+    )
+    del incumbent_sim
+    score = _score_block(
+        calibrated, incumbent_frame, score_registry, calibration_year, scorer
     )
     append_phase(state, "scored_vs_incumbent")
 
-    # --- 7. diagnostics with the score merged, single pass ----------------
+    # --- 8. diagnostics with the score merged, single pass ------------------
     build_block = {
         "build_id": state.build_id,
         "ledger_facts": artifact.provenance(),
@@ -489,22 +759,27 @@ def main(argv: list[str] | None = None) -> int:
             "revision": "non_certified_staging_candidate",
             "sha256": input_sha,
             "size_bytes": args.input_h5.stat().st_size,
+            "prepared_input_sha256": prepared_sha,
         },
         "structural_nan_repair": nan_receipt,
+        "simulated_measures": {
+            "candidate": candidate_measures,
+            "incumbent": incumbent_measures,
+        },
         "score_vs_enhanced_frs": score,
     }
     write_uk_calibration_diagnostics(
         stage.solve_result,
         args.diagnostics_json,
         calibrated,
-        target_geography_levels=_uk_target_geography_levels(compilation.registry),
-        target_registry=compilation.registry,
+        target_geography_levels=_uk_target_geography_levels(stage.registry),
+        target_registry=stage.registry,
         build=build_block,
     )
     diagnostics_sha = _sha256_file(args.diagnostics_json)
     append_phase(state, "diagnostics_written")
 
-    # --- 8. assessment gate fences ----------------------------------------
+    # --- 9. assessment gate fences ------------------------------------------
     gate_receipt = _assessment_gate_receipt(
         stage, calibrated, _load_gate_parameters()
     )
@@ -519,7 +794,7 @@ def main(argv: list[str] | None = None) -> int:
         }
     append_phase(state, "assessment_gates_measured")
 
-    # --- 9. build record + logbook ----------------------------------------
+    # --- 10. build record + logbook ------------------------------------------
     record = {
         "schema_version": 1,
         "build_kind": "uk_spine_calibration_assessment",
@@ -536,9 +811,12 @@ def main(argv: list[str] | None = None) -> int:
         "run_config": run_config,
         "input_posture": build_block["input_posture"],
         "structural_nan_repair": nan_receipt,
+        "simulated_measures": build_block["simulated_measures"],
         "register": {
-            "sha256": register_sha,
-            "n_specs": len(compilation.registry.specs),
+            "compiled_sha256": register_sha,
+            "compiled_n_specs": len(compilation.registry.specs),
+            "calibrated_n_specs": len(effective_registry.specs),
+            "scored_n_specs": len(score_registry.specs),
         },
         "calibration": stage.manifest,
         "assessment_gates": gate_receipt,
@@ -549,6 +827,10 @@ def main(argv: list[str] | None = None) -> int:
                 "sha256": staged_sha,
                 "size_bytes": args.staging_h5.stat().st_size,
                 "retention": "local_untracked",
+            },
+            "prepared_input_h5": {
+                "path": str(prepared_input),
+                "sha256": prepared_sha,
             },
             "calibration_diagnostics": {
                 "path": str(args.diagnostics_json),
@@ -585,7 +867,10 @@ def main(argv: list[str] | None = None) -> int:
         "build_id": state.build_id,
         "code_pin": code_pin,
         "final_loss": stage.manifest["loss"],
-        "targets": stage.manifest["matrix_target_count"],
+        "targets_calibrated": stage.manifest["matrix_target_count"],
+        "targets_scored": len(score_registry.specs),
+        "excluded_candidate": list(candidate_measures["excluded"]),
+        "excluded_incumbent": list(incumbent_measures["excluded"]),
         "score_rule_1": {
             "candidate_full_loss": score["candidate_full_loss"],
             "incumbent_full_loss": score["incumbent_full_loss"],
