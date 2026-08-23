@@ -2,17 +2,20 @@
 
 ## State
 
-The `replacement-scorecard` lane is active. The scorer now has one role-neutral
+The `replacement-scorecard` implementation and incumbent evidence are complete.
+The scorer has one role-neutral
 path for the live US incumbent and either a finished-H5 or authenticated-pool
 candidate. Fiscal scoring streams fixed registry chunks across fixed household
 slices, and a gate-failed current stacked publication remains authenticated
 scorecard evidence without being promoted to simulation-ready. The incumbent
-side is now scored and committed evidence is being prepared; the owner handoff,
-final suite, and final report remain.
+side and its identity-pinned evidence are committed. The owner handoff is
+recorded; the final workspace suite and committed final report remain.
 
 No pool build, push, gate change, threshold change, or band change has
-occurred. `ps ax | grep build_us_multispine_pool` is checked before every
-scoring step.
+occurred. The sandbox denied `ps`/`pgrep`; before scoring, the permitted `lsof`
+process and open-file audits found no live build-runtime process or open pool,
+checkpoint, manifest, or build file. The owner command retains the required
+`ps ax | grep '[b]uild_us_multispine_pool'` check for its unrestricted host.
 
 ## Done
 
@@ -68,10 +71,13 @@ scoring step.
   legs explicitly inapplicable because observed clone-0 ACS support is empty.
   The run peaked at 18.666 GiB and wrote
   `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
+- Committed the incumbent result and run receipt at `d876c971`; recorded the
+  exact future dense-pool and sparse-57k scoring commands and the comparison
+  doctrine in `_LANE-NOTES.md`.
 
 ## Next
 
-- Commit the incumbent result and its run receipt. Record the exact candidate
-  command and comparison doctrine in
-  `_LANE-NOTES.md`, run the full workspace suite, and replace the stale
-  `FINAL_REPORT.md` with this lane's final evidence.
+- Run the full workspace suite and final static checks. Replace the stale
+  `FINAL_REPORT.md` with this lane's final evidence, mark this journal complete,
+  and commit the handoff. The only external next step is the owner's scoring of
+  the not-yet-built 25% candidate followed by the owner's flip decision.

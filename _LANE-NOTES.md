@@ -266,6 +266,47 @@
   revision, resolved commit, filename, PolicyEngine.py bundle version/source
   commit, and certified policyengine-us version.
 
+## Owner command when the 25% candidate exists
+
+First confirm that the host builder has finished. On the owner host (where
+process inspection is permitted), `ps ax | grep '[b]uild_us_multispine_pool'`
+must print nothing before either scoring command. Set the two published
+candidate paths, then run the dense pool and sparse-57k views separately on
+the same frozen incumbent and Ledger yardstick:
+
+```bash
+CANDIDATE_POOL_MANIFEST=/absolute/path/to/25pct/pool.manifest.json
+CANDIDATE_SPARSE_H5=/absolute/path/to/25pct/sparse-57k.h5
+CANDIDATE_MANIFEST_SHA256="$(shasum -a 256 "$CANDIDATE_POOL_MANIFEST" | awk '{print $1}')"
+CANDIDATE_POOL_SHA8="$(jq -r '.pool_h5.sha256[0:8]' "$CANDIDATE_POOL_MANIFEST")"
+CANDIDATE_SPARSE_SHA8="$(shasum -a 256 "$CANDIDATE_SPARSE_H5" | awk '{print substr($1,1,8)}')"
+
+.venv/bin/python tools/score_us_release_head_to_head.py \
+  --incumbent /Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/26dcad66867687f15735dc4926523e3741920836/populace_us_2024.h5 \
+  --candidate "$CANDIDATE_POOL_MANIFEST" \
+  --candidate-manifest-sha256 "$CANDIDATE_MANIFEST_SHA256" \
+  --ledger-facts /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl \
+  --out-prefix "experiments/replacement_scorecard/head_to_head_dense_48b9d479_${CANDIDATE_POOL_SHA8}" \
+  --maximum-microsim-batch-size 5000
+
+.venv/bin/python tools/score_us_release_head_to_head.py \
+  --incumbent /Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/26dcad66867687f15735dc4926523e3741920836/populace_us_2024.h5 \
+  --candidate "$CANDIDATE_SPARSE_H5" \
+  --ledger-facts /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl \
+  --out-prefix "experiments/replacement_scorecard/head_to_head_sparse_48b9d479_${CANDIDATE_SPARSE_SHA8}" \
+  --maximum-microsim-batch-size 5000
+```
+
+“Better than the incumbent” on this yardstick means the owner compares each
+candidate view with the incumbent’s exact `0.11462448275649702` weighted fiscal
+loss and the reported target-by-target balance of lower, equal, and higher
+absolute relative errors, while also inspecting every battery leg that is
+computable for that candidate. There is no scorecard threshold and no automatic
+conjunction or verdict. Because the incumbent’s ASEC-vs-ACS battery is
+definitionally inapplicable, the candidate’s battery is standalone evidence—it
+is not compared with a fabricated incumbent zero, pass, or failure. The owner
+decides whether the dense and sparse evidence justifies the flip.
+
 ---
 
 # Historical: one-target-surface lane notes
