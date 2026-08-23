@@ -23,6 +23,11 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # reference anywhere declares an upper bound. A band's upper edge is
 # therefore its sibling's lower edge within the same contract target, and the
 # top band runs to infinity.
+# Entity-count indicators: a value of one per record of the owning entity.
+_COUNT_VALUE_VARIABLES = frozenset(
+    {"household_count", "person_count", "benunit_count"}
+)
+
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
 _RANGE_LABEL = re.compile(
@@ -256,7 +261,7 @@ def baseline_flag_crosstab(
     flag = _column(adapter, entity, binding["affected_flag_variable"]).astype(bool)
     value_variable = str(binding.get("value_variable") or "")
     count_of = str(binding.get("count_of") or "")
-    if value_variable and value_variable not in {"household_count", "person_count"}:
+    if value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
         values = _column(adapter, entity, value_variable)
     elif count_of and count_of not in {"household", "person", "household_count"}:
         values = _column(adapter, entity, count_of)
