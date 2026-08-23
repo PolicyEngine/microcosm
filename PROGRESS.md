@@ -7,8 +7,9 @@ Branch: `candidate-25pct-runbook`
 ## State
 
 Round 4 is in progress. The owner-supplied full Federal Reserve SCF 2022 Stata
-extract clears round 3's first mandatory-input stop, subject to local header,
-SHA-256, and loader-path verification. No pool or release builder has run.
+extract has cleared round 3's first mandatory-input stop: its release-118
+header, exact size, owner SHA-256, and current loader resolution all verify. No
+pool or release builder has run.
 
 The requested launcher must remain serial, off-chain, non-publishing, and
 guarded before every stage by process, reclaimable-space, AC-power, and go-marker
@@ -29,17 +30,21 @@ without inventing a path, pin, or owner ruling.
 - Established the round-3 constraints that continue to apply: identical
   unified target surface, 75--86 GiB measured f025 pool peaks, and separate
   dense/sparse release invocations.
+- Verified and recorded every round-4 input/parser decision in
+  `experiments/candidate_25pct/input_audit_r4.md`, including the full-SCF hash,
+  incumbent SSI basis, zero-waiver omission, and legacy pool-manifest wrapper
+  pin.
+- Determined that current main cannot select an exact new 57,240-record support:
+  its manifest tool only serializes an already-selected H5, while legacy L0 is
+  fixed-penalty rather than exact-count. Stage 2b will stop dense-only with the
+  exact owner question instead of fabricating a selection.
+- Selected evidence-backed reclaimable-memory gates: 90 GiB for pool and 110
+  GiB for dense. The latter clears the July dense pressure peak of 96.83 GiB.
 
 ## Next
 
-1. Verify the new full-SCF bytes, Stata header, and current loader resolution;
-   refresh every explicit input/hash and current parser flag.
-2. Trace whether current-main tools can derive a pool-bound sparse-57k
-   selection source and whether `keogh_distributions` remains authorized.
-3. Inspect July pressure logs and the f025 probe evidence for stage thresholds,
-   wall times, and peak-RSS annotations.
-4. Build and commit the guarded launcher in coherent steps, then run `bash -n`
+1. Build and commit the guarded launcher in coherent steps, then run `bash -n`
    and a real `--dry-run` without starting either builder.
-5. Commit the round-4 dry-run receipt, lane notes, final progress state, and
+2. Commit the round-4 dry-run receipt, lane notes, final progress state, and
    `FINAL_REPORT.md`. Do not push, publish, promote, tune, or touch pending
    logbook-chain state.
