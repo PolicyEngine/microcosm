@@ -4616,6 +4616,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "us_reported_coverage_vintage_signal_gate",
+        lambda frame: builder.GateResult(
+            name="reported_coverage_vintage_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "us_wic_claim_signal_gate",
         lambda frame: builder.GateResult(
             name="wic_claim_signal",
