@@ -3619,10 +3619,9 @@
           "metric_name": "dwp/uc/two_child_limit/households_affected",
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/households_affected",
@@ -3653,10 +3652,9 @@
           "metric_name": "dwp/uc/two_child_limit/children_affected",
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_children",
-          "value_variable": "children_count",
+          "value_variable": "uc_is_child_limit_affected",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/children_affected",
@@ -3687,10 +3685,9 @@
           "metric_name": "dwp/uc/two_child_limit/children_in_affected_households",
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "children_in_affected_households",
-          "value_variable": "children_count",
+          "value_variable": "is_child",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: children_in_affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/children_in_affected_households",
@@ -3730,10 +3727,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/3_children_households",
@@ -3773,10 +3769,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "children_in_affected_households",
-          "value_variable": "children_count",
+          "value_variable": "is_child",
           "map_to": "household",
-          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161)."
+          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/3_children_households_total_children",
@@ -3816,10 +3811,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/4_children_households",
@@ -3859,10 +3853,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "children_in_affected_households",
-          "value_variable": "children_count",
+          "value_variable": "is_child",
           "map_to": "household",
-          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161)."
+          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/4_children_households_total_children",
@@ -3902,10 +3895,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/5_children_households",
@@ -3945,10 +3937,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "children_in_affected_households",
-          "value_variable": "children_count",
+          "value_variable": "is_child",
           "map_to": "household",
-          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161)."
+          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/5_children_households_total_children",
@@ -3988,10 +3979,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Publisher's top band is 6-or-more children."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Publisher's top band is 6-or-more children. Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/6_children_households",
@@ -4031,10 +4021,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "children_in_affected_households",
-          "value_variable": "children_count",
+          "value_variable": "is_child",
           "map_to": "household",
-          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161)."
+          "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/6_children_households_total_children",
@@ -4074,10 +4063,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/adult_pip_households",
@@ -4117,10 +4105,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_children",
-          "value_variable": "children_count",
+          "value_variable": "uc_is_child_limit_affected",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/adult_pip_children",
@@ -4160,10 +4147,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_households",
           "value_variable": "household_count",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_households."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/disabled_child_element_households",
@@ -4203,10 +4189,9 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "count_of": "affected_children",
-          "value_variable": "children_count",
+          "value_variable": "uc_is_child_limit_affected",
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148)."
+          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/disabled_child_element_children",

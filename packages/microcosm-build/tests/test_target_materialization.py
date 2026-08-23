@@ -380,3 +380,78 @@ def test_unreadable_band_is_skipped_not_silently_unsliced():
     assert [skip.name for skip in result.skipped] == ["mystery_band"]
     assert "no readable band edge" in result.skipped[0].reason
     assert "mystery_band" not in adapter.tables["person"]
+
+
+def test_entity_count_binding_yields_the_unit_indicator():
+    # An entity-count value_variable with no count_of column counts records:
+    # the shape every two-child-limit household reference needs. Those
+    # references previously put a prose label in count_of, which the provider
+    # then looked up as a column and failed on.
+    adapter = StubAdapter()
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="affected",
+                entity="household",
+                measure="affected_households",
+                value=1.0,
+                source="test",
+                family="dwp_two_child_limit",
+                metadata={"contract_target_id": "tcl.households"},
+            )
+        ],
+        country="uk",
+    )
+    contract = {
+        "tcl.households": {
+            "bindings": {
+                "policyengine": {
+                    "kind": "baseline_flag_crosstab",
+                    "affected_flag_variable": "affected",
+                    "value_variable": "household_count",
+                    "from_entity": "household",
+                }
+            }
+        }
+    }
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    assert list(adapter.tables["household"]["affected_households"]) == [1.0, 0.0, 1.0]
+
+
+def test_crosstab_counts_a_real_value_variable_per_record():
+    adapter = StubAdapter()
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="children",
+                entity="household",
+                measure="affected_children",
+                value=1.0,
+                source="test",
+                family="dwp_two_child_limit",
+                metadata={"contract_target_id": "tcl.children"},
+            )
+        ],
+        country="uk",
+    )
+    contract = {
+        "tcl.children": {
+            "bindings": {
+                "policyengine": {
+                    "kind": "baseline_flag_crosstab",
+                    "affected_flag_variable": "affected",
+                    "count_of": "affected_children",
+                    "value_variable": "children",
+                    "from_entity": "household",
+                }
+            }
+        }
+    }
+
+    materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    # children is [3, 2, 4], masked by affected [1, 0, 1].
+    assert list(adapter.tables["household"]["affected_children"]) == [3.0, 0.0, 4.0]
