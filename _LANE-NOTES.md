@@ -1,5 +1,60 @@
 # Candidate 25% host-runbook lane notes
 
+## 2026-08-23 — required-input stop; no script emitted
+
+- The current exact-k release contract requires both Ledger facts and manifest
+  pins (`tools/build_us_fiscal_refresh_release.py:1563-1566`) and the loader
+  rejects a manifest pin on a bare JSONL
+  (`packages/microcosm-build/src/microcosm/build/ledger_artifact.py:148-158`).
+  The host has only
+  `/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`
+  (131852600 bytes, SHA-256
+  `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`).
+  No matching schema-v1 `manifest.json` exists in the targeted host locations.
+  The owner's “missing required input: stop” ruling therefore fired. No partial
+  script or fictional dry-run was produced.
+- Parallel checks found three independent remaining blocks: exact-k seed and
+  `pi_hi` are required run-request values with no current default
+  (`tools/us_bundle_generation/contracts.py:1-12`); the July incumbent
+  diagnostics carry 5659 targets, the old target-surface SHA, and no current
+  loss basis, so current-main rejects them
+  (`tools/build_us_fiscal_refresh_release.py:2676-2736,5862-5885`); and the
+  always-consumed full SCF donor's default
+  `/Users/maxghenis/.cache/microcosm/scf/p22i6.dta` is absent
+  (`tools/build_us_fiscal_refresh_release.py:9572-9587`).
+- Stage-1 empirical expectation: two recent f025 full-duration attempts took
+  10150.03 seconds (2.819 h) and 10075.75 seconds (2.799 h), recorded at
+  `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split/_buildo-runtime/out/stacked-f025-arm-order-r1/build.status.json`
+  and `.../stacked-f025-arm-investment-r1/build.status.json`. Both ended rc=1,
+  so they are attempts, not green candidates. A roughly 22-GiB observation is
+  credible only for the top-level process during part of a run; the complete
+  supervisor receipts recorded 81026367488 bytes (75.46 GiB) and 92175892480
+  bytes (85.83 GiB). It must not be used as a whole-process-tree safety bound.
+- The F1 evidence identifies the high-memory work: cold f001 **primary-QRF**
+  stage profiles recorded 78.91, 84.15, 96.28, and 96.95 GiB current RSS at
+  `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-f1/_F1-LANE-NOTES.md:366-389`.
+  The pool builder invokes that primary-QRF chain
+  (`tools/build_us_multispine_pool.py:2413-2440`), which launches a profiled
+  worker subprocess per target
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/puf_qrf_chain.py:270-349`);
+  the profiler samples each worker and persists its peak RSS
+  (`packages/microcosm-build/src/microcosm/build/stage_profile.py:20-45,100-217`).
+  The mandated 90-GiB reclaimable-memory precondition therefore protects
+  **stage 1**, not the calibration solve in stage 2. Applying the same
+  precondition before stage 2 is a conservative host-queue rule; there is no
+  current exact-input f025 stage-2 wall-time or peak-RSS receipt, so its
+  expectation is honestly **unknown**. Also, 90 GiB is a scheduling threshold,
+  not proof of headroom above the observed 96.95-GiB maximum.
+- The owner decides any later flip from the two candidate-vs-incumbent
+  scorecards, not from a script verdict. The scorer intentionally emits no
+  automated replacement verdict
+  (`tools/score_us_release_head_to_head.py:1957-1963,2016-2029`). Read the dense
+  and sparse candidate-minus-incumbent weighted loss (negative is lower), the
+  lower/equal/higher absolute-error counts and family/basis rollups, the worst
+  rows, and every computable candidate terminal-battery leg. The committed
+  incumbent evidence remains
+  `experiments/replacement_scorecard/incumbent_48b9d479.md`.
+
 ## 2026-08-23 — lane start and binding boundary
 
 - Branch `candidate-25pct-runbook` starts at `d69131a3`, identical to
