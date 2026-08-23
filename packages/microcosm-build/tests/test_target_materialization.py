@@ -225,3 +225,158 @@ def test_count_aliases_and_in_predicates_materialize_prepared_columns():
         0.0,
         1.0,
     ]
+
+
+def _banded_registry(*, count_measure: bool = True) -> TargetRegistry:
+    """Three adjacent income bands over one contract target."""
+
+    specs = []
+    for lower, label in ((0, "0"), (20, "20"), (40, "40")):
+        specs.append(
+            TargetSpec(
+                name=f"band_{label}",
+                entity="person",
+                measure=f"income_band_{label}",
+                value=1.0,
+                source="test",
+                family="hmrc_spi",
+                metadata={
+                    "contract_target_id": "spi.income_by_band",
+                    "ledger_filter_total_income_lower_bound": str(lower),
+                },
+            )
+        )
+    return TargetRegistry(specs, country="uk")
+
+
+_BANDED_CONTRACT = {
+    "spi.income_by_band": {
+        "bindings": {
+            "policyengine": {
+                "value_variable": "person_count",
+                "groupby_variable": "income",
+                "from_entity": "person",
+            }
+        }
+    }
+}
+
+
+def test_bands_slice_the_population_and_partition_it():
+    adapter = StubAdapter()
+    registry = _banded_registry()
+
+    result = materialize_target_bindings(
+        adapter, registry, _BANDED_CONTRACT, period=2025
+    )
+
+    assert result.skipped == ()
+    # income is [10, 20, 30]; bands are [0,20), [20,40), [40,inf).
+    assert list(adapter.tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
+    assert list(adapter.tables["person"]["income_band_20"]) == [0.0, 1.0, 1.0]
+    assert list(adapter.tables["person"]["income_band_40"]) == [0.0, 0.0, 0.0]
+    # Every record lands in exactly one band: the bands partition the surface.
+    total = sum(
+        adapter.tables["person"][f"income_band_{label}"]
+        for label in ("0", "20", "40")
+    )
+    assert list(total) == [1.0, 1.0, 1.0]
+
+
+def test_adjacent_bands_are_not_identical():
+    # The regression that would have caught the unsliced-measure defect:
+    # before banding was implemented every band returned the same unsliced
+    # column, so two adjacent bands compared equal.
+    adapter = StubAdapter()
+    materialize_target_bindings(
+        adapter, _banded_registry(), _BANDED_CONTRACT, period=2025
+    )
+
+    assert not np.array_equal(
+        adapter.tables["person"]["income_band_0"],
+        adapter.tables["person"]["income_band_20"],
+    )
+
+
+def test_published_range_labels_band_in_model_units():
+    adapter = StubAdapter()
+    # Monthly published bands, annual model values: "£1.01 to £2.00" x12
+    # covers [12.12, 24.12) and the sibling opens at 24.12.
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="award_low",
+                entity="person",
+                measure="award_low",
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_family_type": "Single, no children",
+                    "ledger_filter_monthly_award_bands": "£1.01 to £2.00",
+                },
+            ),
+            TargetSpec(
+                name="award_high",
+                entity="person",
+                measure="award_high",
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_monthly_award_bands": "£2.01 to £3.00",
+                },
+            ),
+        ],
+        country="uk",
+    )
+    contract = {
+        "uc.award_bands": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "person_count",
+                    "groupby_variable": "income",
+                    "from_entity": "person",
+                    "band_period_factor": 12,
+                }
+            }
+        }
+    }
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    # income is [10, 20, 30]: only 20 falls inside [12.12, 24.12).
+    assert list(adapter.tables["person"]["award_low"]) == [0.0, 1.0, 0.0]
+    assert list(adapter.tables["person"]["award_high"]) == [0.0, 0.0, 1.0]
+
+
+def test_unreadable_band_is_skipped_not_silently_unsliced():
+    adapter = StubAdapter()
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="mystery_band",
+                entity="person",
+                measure="mystery_band",
+                value=1.0,
+                source="test",
+                family="hmrc_spi",
+                metadata={
+                    "contract_target_id": "spi.income_by_band",
+                    "ledger_filter_total_income_band": "not a range",
+                },
+            )
+        ],
+        country="uk",
+    )
+
+    result = materialize_target_bindings(
+        adapter, registry, _BANDED_CONTRACT, period=2025
+    )
+
+    assert [skip.name for skip in result.skipped] == ["mystery_band"]
+    assert "no readable band edge" in result.skipped[0].reason
+    assert "mystery_band" not in adapter.tables["person"]
