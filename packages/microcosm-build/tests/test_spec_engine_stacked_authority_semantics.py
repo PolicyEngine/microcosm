@@ -30,8 +30,7 @@ pytest.importorskip(
 
 ROOT = Path(__file__).resolve().parents[3]
 MODULE = (
-    ROOT
-    / "packages/microcosm-build/src/microcosm/build/spec_engine/"
+    ROOT / "packages/microcosm-build/src/microcosm/build/spec_engine/"
     "stacked_authority_semantics.py"
 )
 
@@ -74,11 +73,10 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d"
+        "24ae81f408e8d608db1956463206fe9842b5214ca813113d3e5366fc66ca3cde"
     )
     assert {
-        name: component["sha256"]
-        for name, component in projected["components"].items()
+        name: component["sha256"] for name, component in projected["components"].items()
     } == {
         "declared_surface": (
             "d6d987b34d88bf4a6327dcd4318c67d45ab9392a1bdb2f586887fdcf340faffc"
@@ -97,6 +95,9 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
         ),
         "post_puf_transfer_surface": (
             "290c871baf8d5602dc1009fbba3db0b7fcf65b60ccf6557bf7776b8c0c07dbec"
+        ),
+        "post_transfer_calibration": (
+            "141519684c72ab84a077ae0f5716a0416f1e19da57262948e459633cbe560576"
         ),
         "puf_capital_gains_tail_support_contract": (
             "91bc9272cb7f28c6271fb9695ddf6ec05fe55b4458070fc47ae4a1d9607f3c89"
@@ -169,9 +170,10 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert list(projected["inputs"]) == ["alpha", "zeta"]
-    assert projected["pool_code"]["late_producer_schedule"][
-        "schedule_sha256"
-    ] == "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+    assert (
+        projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
+        == "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+    )
 
 
 def test_static_projection_selects_exact_defaulted_live_identity_components(

@@ -44,7 +44,7 @@ import struct
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -80,6 +80,9 @@ from microcosm.build.gates import (
 )
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
 from microcosm.build.source_manifest import load_source_manifest
+from microcosm.build.us_runtime import (
+    post_transfer_calibration as post_transfer_calibration_runtime,
+)
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     AcsPumsEarningsUniverseApplication,
@@ -90,6 +93,7 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    AcsImputedInput,
     AcsTransferResult,
     AcsTransferTargetBank,
     TargetFamilies,
@@ -124,6 +128,12 @@ from microcosm.build.us_runtime.multispine_pool import (
 from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
+from microcosm.build.us_runtime.post_transfer_calibration import (
+    PostTransferCalibrationSpec,
+    apply_post_transfer_calibration,
+    post_transfer_calibration_policy_identity,
+    validate_post_transfer_calibration_receipt,
 )
 from microcosm.build.us_runtime.puf_aggregate_records import (
     PufAggregateDisaggregationSpec,
@@ -207,7 +217,8 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_TRANSFER_TARGET_BANK_INPUT,
     us_late_producer_schedule_receipt,
 )
-from microcosm.frame import US_SCHEMA, Frame
+from microcosm.fit import Regime
+from microcosm.frame import US_SCHEMA, Frame, WeightKind
 
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
@@ -256,6 +267,7 @@ __all__ = [
     "us_puf_s_corp_universe_zero_rule_identity",
     "validate_stacked_late_producer_receipt",
     "validate_stacked_late_producer_transition_authority",
+    "validate_stacked_gap_fill_receipt",
     "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
@@ -1688,11 +1700,11 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v10 binds the primary-PUF whole-pool output-universe declaration. v9 bound
-# the content-hashed execution/transition-authority schema in addition to the
-# import-validated producer/input DAG. Version 8 named the graph but did not
-# authenticate its live input/output transition.
-_STACKED_AUTHORITY_VERSION = 10
+# v11 binds the post-transfer two-part calibration policy. v10 bound the
+# primary-PUF whole-pool output-universe declaration. v9 bound the
+# content-hashed execution/transition-authority schema in addition to the
+# import-validated producer/input DAG.
+_STACKED_AUTHORITY_VERSION = 11
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -1949,6 +1961,7 @@ class _StackedAuthority:
     support_profile: _BatterySupportProfile
     puf_capital_gains_tail_support_contract: Mapping[str, object]
     late_producer_schedule: Mapping[str, object]
+    post_transfer_calibration: Mapping[str, object]
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
     declared_form: str
@@ -2015,6 +2028,15 @@ class _StackedAuthority:
             "late_producer_schedule",
             _freeze_authority_payload(self.late_producer_schedule),
         )
+        if not isinstance(self.post_transfer_calibration, Mapping):
+            raise TypeError(
+                "Stacked authority post-transfer calibration policy must be a mapping."
+            )
+        object.__setattr__(
+            self,
+            "post_transfer_calibration",
+            _freeze_authority_payload(self.post_transfer_calibration),
+        )
         component_digests = dict(self.declared_component_sha256)
         if set(component_digests) != {
             "gap_fill_plan",
@@ -2025,6 +2047,7 @@ class _StackedAuthority:
             "support_profile",
             "puf_capital_gains_tail_support_contract",
             "late_producer_schedule",
+            "post_transfer_calibration",
         }:
             raise ValueError(
                 "Stacked authority must carry every component's declared digest."
@@ -2320,6 +2343,7 @@ def _authority_component_payloads(
     support_profile: _BatterySupportProfile,
     puf_capital_gains_tail_support_contract: Mapping[str, object],
     late_producer_schedule: Mapping[str, object],
+    post_transfer_calibration: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
@@ -2343,6 +2367,7 @@ def _authority_component_payloads(
             puf_capital_gains_tail_support_contract
         ),
         "late_producer_schedule": _json_ready(late_producer_schedule),
+        "post_transfer_calibration": _json_ready(post_transfer_calibration),
     }
 
 
@@ -2373,6 +2398,7 @@ def _authority_live_digests(
             authority.puf_capital_gains_tail_support_contract
         ),
         late_producer_schedule=authority.late_producer_schedule,
+        post_transfer_calibration=authority.post_transfer_calibration,
     )
     component_digests = {
         name: _canonical_sha256(payload) for name, payload in payloads.items()
@@ -2401,6 +2427,7 @@ def _make_stacked_authority(
     declared_form: str,
     puf_capital_gains_tail_support_contract: Mapping[str, object] | None = None,
     late_producer_schedule: Mapping[str, object] | None = None,
+    post_transfer_calibration: Mapping[str, object] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
@@ -2433,6 +2460,13 @@ def _make_stacked_authority(
     )
     if not isinstance(frozen_late_producer_schedule, Mapping):
         raise TypeError("Late producer schedule must be a mapping.")
+    frozen_post_transfer_calibration = _freeze_authority_payload(
+        post_transfer_calibration_policy_identity()
+        if post_transfer_calibration is None
+        else post_transfer_calibration
+    )
+    if not isinstance(frozen_post_transfer_calibration, Mapping):
+        raise TypeError("Post-transfer calibration policy must be a mapping.")
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         post_puf_transfer_surface=frozen_post_puf_surface,
@@ -2444,6 +2478,7 @@ def _make_stacked_authority(
         support_profile=support_profile,
         puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
         late_producer_schedule=frozen_late_producer_schedule,
+        post_transfer_calibration=frozen_post_transfer_calibration,
     )
     live_components = {
         name: _canonical_sha256(payload) for name, payload in component_payloads.items()
@@ -2468,6 +2503,7 @@ def _make_stacked_authority(
         support_profile=support_profile,
         puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
         late_producer_schedule=frozen_late_producer_schedule,
+        post_transfer_calibration=frozen_post_transfer_calibration,
         declared_component_sha256=(
             live_components
             if declared_component_sha256 is None
@@ -3112,6 +3148,7 @@ def _production_stacked_authority(
     ),
 ) -> _StackedAuthority:
     live_late_producer_schedule = us_late_producer_schedule_receipt()
+    live_post_transfer_calibration = post_transfer_calibration_policy_identity()
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
@@ -3126,6 +3163,8 @@ def _production_stacked_authority(
         and _BATTERY_SUPPORT_PROFILE is _canonical_profile
         and _json_ready(live_late_producer_schedule)
         == _json_ready(_canonical_authority.late_producer_schedule)
+        and _json_ready(live_post_transfer_calibration)
+        == _json_ready(_canonical_authority.post_transfer_calibration)
     )
     if identity:
         return _canonical_authority
@@ -3141,6 +3180,7 @@ def _production_stacked_authority(
         joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
         support_profile=_BATTERY_SUPPORT_PROFILE,
         late_producer_schedule=live_late_producer_schedule,
+        post_transfer_calibration=live_post_transfer_calibration,
         declared_form=_CANONICAL_AUTHORITY_FORM,
         declared_component_sha256=_canonical_authority.declared_component_sha256,
         declared_sha256=_canonical_authority.declared_sha256,
@@ -3451,6 +3491,15 @@ def _authority_receipt(
             "producer_count": authority.late_producer_schedule.get("producer_count"),
             "digest_matches_declared": component_integrity["late_producer_schedule"],
         },
+        "post_transfer_calibration": {
+            "identity": _json_ready(authority.post_transfer_calibration),
+            "sha256": live_components["post_transfer_calibration"],
+            "declared_sha256": authority.declared_component_sha256[
+                "post_transfer_calibration"
+            ],
+            "target_count": len(authority.post_transfer_calibration.get("targets", ())),
+            "digest_matches_declared": component_integrity["post_transfer_calibration"],
+        },
     }
     return {
         "authority_id": authority.authority_id,
@@ -3603,6 +3652,7 @@ def _authority_validation_failures(
             "PUF capital-gains-tail support contract",
         ),
         ("late_producer_schedule", "late producer schedule"),
+        ("post_transfer_calibration", "post-transfer calibration policy"),
     ):
         component = receipt["components"][name]
         if not component["digest_matches_declared"]:
@@ -3696,10 +3746,914 @@ def _validate_production_authority_receipt(
         )
 
 
+def _post_transfer_live_output_diagnostics(
+    frame: Frame,
+    *,
+    entity: str,
+    target: str,
+    reference_rows: np.ndarray,
+    recipient_rows: np.ndarray,
+) -> dict[str, object]:
+    """Independently recompute terminal carrier and amount diagnostics."""
+
+    table = frame.table(entity)
+    values = table[target].to_numpy(copy=False)
+    if values.dtype != np.dtype(np.float64):
+        raise ValueError(
+            f"{entity}/{target}: live calibration output must be exact float64."
+        )
+    resolved_weights = frame.resolve_weights(entity)
+    weights = resolved_weights.values
+    reference_total = float(weights[reference_rows].sum())
+    recipient_total = float(weights[recipient_rows].sum())
+    reference_positive_mass = float(weights[reference_rows & (values > 0.0)].sum())
+    after_positive_mass = float(weights[recipient_rows & (values > 0.0)].sum())
+    reference_quantiles = post_transfer_calibration_runtime._weighted_inverse_quantiles(
+        values[reference_rows],
+        weights[reference_rows],
+    )
+    recipient_quantiles = post_transfer_calibration_runtime._weighted_inverse_quantiles(
+        values[recipient_rows],
+        weights[recipient_rows],
+    )
+    if reference_quantiles is None or recipient_quantiles is None:
+        raise ValueError(
+            f"{entity}/{target}: live calibration output lacks positive "
+            "reference or recipient quantile support."
+        )
+
+    reference_share = reference_positive_mass / reference_total
+    target_positive_mass = reference_share * recipient_total
+    after_share = after_positive_mass / recipient_total
+    residual = after_positive_mass - target_positive_mass
+    return {
+        "weights": {
+            "sha256": _post_transfer_float64_sha256(
+                weights,
+                boundary=f"{entity}/{target} live weights",
+            ),
+            "kind": resolved_weights.kind.value,
+            "reference_total": reference_total,
+            "recipient_total": recipient_total,
+        },
+        "carrier": {
+            "reference_positive_mass": reference_positive_mass,
+            "reference_positive_share": reference_share,
+            "target_positive_mass": target_positive_mass,
+            "after_positive_mass": after_positive_mass,
+            "after_positive_share": after_share,
+            "residual_after_minus_target": residual,
+            "absolute_residual": abs(residual),
+        },
+        "amount": {
+            "reference_quantiles": [float(value) for value in reference_quantiles],
+            "recipient_after_quantiles": [
+                float(value) for value in recipient_quantiles
+            ],
+            "qed_after": post_transfer_calibration_runtime._qed(
+                reference_quantiles,
+                recipient_quantiles,
+            ),
+        },
+    }
+
+
+def _post_transfer_live_scope_binding(
+    frame: Frame,
+    *,
+    entity: str,
+    target: str,
+    reference_rows: np.ndarray,
+    recipient_rows: np.ndarray,
+) -> dict[str, object]:
+    """Reconstruct the receipt scope fields available from a final frame."""
+
+    table = frame.table(entity)
+    ids = table[frame.schema.entity_id_column(entity)].to_numpy(copy=False)
+    values = table[target].to_numpy(copy=False)
+    return {
+        "rows": len(table),
+        "reference_rows": int(reference_rows.sum()),
+        "recipient_rows": int(recipient_rows.sum()),
+        "reference_rows_sha256": _post_transfer_mask_sha256(reference_rows),
+        "recipient_rows_sha256": _post_transfer_mask_sha256(recipient_rows),
+        "entity_ids_sha256": _post_transfer_entity_ids_sha256(ids),
+        "output_values_sha256": _post_transfer_float64_sha256(
+            values,
+            boundary=f"{entity}/{target} live output",
+        ),
+    }
+
+
+def _validate_post_transfer_generation_context_copies(
+    owner_receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    """Require duplicated generation-context claims to agree structurally."""
+
+    calibration = owner_receipt.get("calibration")
+    context_binding = owner_receipt.get("context_binding")
+    calibration_scope = (
+        calibration.get("scope") if isinstance(calibration, Mapping) else None
+    )
+    context_scope = (
+        context_binding.get("scope") if isinstance(context_binding, Mapping) else None
+    )
+    calibration_weights = (
+        calibration.get("weights") if isinstance(calibration, Mapping) else None
+    )
+    if (
+        not isinstance(calibration_scope, Mapping)
+        or not isinstance(context_scope, Mapping)
+        or not isinstance(calibration_weights, Mapping)
+        or not isinstance(context_binding, Mapping)
+        or any(
+            calibration_scope.get(key) != value for key, value in context_scope.items()
+        )
+        or calibration_weights.get("sha256") != context_binding.get("weights_sha256")
+    ):
+        raise ValueError(
+            f"{boundary}: duplicated post-transfer generation context is inconsistent."
+        )
+
+
+def _validate_post_transfer_live_output_diagnostics(
+    calibration: Mapping[str, object],
+    *,
+    expected: Mapping[str, object],
+    boundary: str,
+) -> None:
+    """Bind terminally replayable diagnostics to live final-frame values."""
+
+    mismatched: list[str] = []
+    for section_name in ("weights", "carrier"):
+        observed_section = calibration.get(section_name)
+        expected_section = expected[section_name]
+        assert isinstance(expected_section, Mapping)
+        if not isinstance(observed_section, Mapping):
+            mismatched.append(section_name)
+            continue
+        mismatched.extend(
+            f"{section_name}.{key}"
+            for key, value in expected_section.items()
+            if observed_section.get(key) != value
+        )
+
+    observed_amount = calibration.get("amount")
+    expected_amount = expected["amount"]
+    assert isinstance(expected_amount, Mapping)
+    if not isinstance(observed_amount, Mapping):
+        mismatched.append("amount")
+    else:
+        mismatched.extend(
+            f"amount.{key}"
+            for key in (
+                "reference_quantiles",
+                "recipient_after_quantiles",
+                "qed_after",
+            )
+            if observed_amount.get(key) != expected_amount[key]
+        )
+    if mismatched:
+        raise ValueError(
+            f"{boundary}: calibration diagnostics do not match the live output "
+            f"frame for {mismatched}."
+        )
+
+
+def _validate_post_transfer_live_output_context(
+    frame: Frame,
+    *,
+    owner_receipt: Mapping[str, object],
+    spec: PostTransferCalibrationSpec,
+    boundary: str,
+) -> None:
+    """Replay all receipt fields reconstructible from the supplied final frame.
+
+    Mutable masks, input hashes, before-state diagnostics, transition counts,
+    and byte-preservation claims need the pre-calibration frame.  The receipt's
+    verification contract classifies those as generation-transition evidence;
+    they are bound by the enclosing execution authority, not replayed here.
+    """
+
+    context_binding = owner_receipt.get("context_binding")
+    live_output = (
+        context_binding.get("live_output")
+        if isinstance(context_binding, Mapping)
+        else None
+    )
+    if not isinstance(live_output, Mapping):
+        raise ValueError(f"{boundary}: calibration context binding is absent.")
+    entity = spec.entity
+    target = spec.target
+    table = frame.table(entity)
+    channel = table[support_channel_column(entity)].astype(str)
+    clone_index = pd.to_numeric(
+        table[support_clone_index_column(entity)],
+        errors="raise",
+    )
+    reference_rows = (
+        channel.eq(BASE_ASEC_SUPPORT_CHANNEL) & clone_index.eq(0)
+    ).to_numpy(dtype=bool)
+    recipient_rows = (
+        channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & clone_index.eq(0)
+    ).to_numpy(dtype=bool)
+    expected_scope = _post_transfer_live_scope_binding(
+        frame,
+        entity=entity,
+        target=target,
+        reference_rows=reference_rows,
+        recipient_rows=recipient_rows,
+    )
+    calibration = owner_receipt.get("calibration")
+    calibration_scope = (
+        calibration.get("scope") if isinstance(calibration, Mapping) else None
+    )
+    context_scope = (
+        context_binding.get("scope") if isinstance(context_binding, Mapping) else None
+    )
+    scope_mismatches: list[str] = []
+    for label, observed in (
+        ("calibration.scope", calibration_scope),
+        ("context_binding.scope", context_scope),
+    ):
+        if not isinstance(observed, Mapping):
+            scope_mismatches.append(label)
+            continue
+        scope_mismatches.extend(
+            f"{label}.{key}"
+            for key, value in expected_scope.items()
+            if observed.get(key) != value
+        )
+    scope_mismatches.extend(
+        f"owner_receipt.{key}"
+        for key in ("reference_rows", "recipient_rows")
+        if owner_receipt.get(key) != expected_scope[key]
+    )
+    if scope_mismatches:
+        raise ValueError(
+            f"{boundary}: calibration scope does not match the live output "
+            f"frame for {scope_mismatches}."
+        )
+    expected = _post_transfer_selected_output_binding(
+        frame,
+        entity=entity,
+        target=target,
+        reference_rows=reference_rows,
+        recipient_rows=recipient_rows,
+    )
+    mismatched = [
+        key for key, value in expected.items() if live_output.get(key) != value
+    ]
+    if mismatched:
+        raise ValueError(
+            f"{boundary}: calibration evidence does not match the live output "
+            f"frame for {mismatched}."
+        )
+    if not isinstance(calibration, Mapping):
+        raise ValueError(f"{boundary}: calibration receipt is absent.")
+    _validate_post_transfer_live_output_diagnostics(
+        calibration,
+        expected=_post_transfer_live_output_diagnostics(
+            frame,
+            entity=entity,
+            target=target,
+            reference_rows=reference_rows,
+            recipient_rows=recipient_rows,
+        ),
+        boundary=boundary,
+    )
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        positive = recipient_rows & pd.to_numeric(
+            table[target],
+            errors="raise",
+        ).gt(0.0).to_numpy(dtype=bool)
+        qualifying = acs_transfer_runtime.acs_adult_care_qualifying_rows(
+            table
+        ).to_numpy(dtype=bool)
+        units = table[frame.schema.membership_column("tax_unit")]
+        carrier_counts = (
+            pd.Series(positive, index=table.index)
+            .groupby(
+                units,
+                dropna=False,
+            )
+            .sum()
+        )
+        if (
+            (positive & ~qualifying).any()
+            or units.loc[positive].isna().any()
+            or carrier_counts.gt(1).any()
+        ):
+            raise ValueError(
+                f"{boundary}: live adult-care carriers violate qualifying-person "
+                "or one-carrier-per-tax-unit structure."
+            )
+    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
+        positive_weeks = recipient_rows & pd.to_numeric(
+            table[target],
+            errors="raise",
+        ).gt(0.0).to_numpy(dtype=bool)
+        positive_unemployment = (
+            pd.to_numeric(
+                table["unemployment_compensation"],
+                errors="raise",
+            )
+            .gt(0.0)
+            .to_numpy(dtype=bool)
+        )
+        if (positive_weeks & ~positive_unemployment).any():
+            raise ValueError(
+                f"{boundary}: live positive weeks-unemployed carriers lack "
+                "positive unemployment compensation."
+            )
+
+
+def _validate_post_transfer_live_output_binding(
+    owner_receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    """Require complete syntactic terminal binding even without a live frame."""
+
+    context_binding = owner_receipt.get("context_binding")
+    live_output = (
+        context_binding.get("live_output")
+        if isinstance(context_binding, Mapping)
+        else None
+    )
+    digest_keys = {
+        "reference_entity_ids_sha256",
+        "recipient_entity_ids_sha256",
+        "reference_output_values_sha256",
+        "recipient_output_values_sha256",
+        "reference_weights_sha256",
+        "recipient_weights_sha256",
+    }
+    if not isinstance(live_output, Mapping) or not (
+        digest_keys | {"reference_rows", "recipient_rows"}
+    ).issubset(live_output):
+        raise ValueError(f"{boundary}: calibration live-output binding is absent.")
+    if any(
+        not isinstance(live_output.get(key), int)
+        or isinstance(live_output.get(key), bool)
+        or live_output[key] < 0
+        for key in ("reference_rows", "recipient_rows")
+    ) or any(
+        not isinstance(live_output.get(key), str)
+        or len(live_output[key]) != 64
+        or any(character not in "0123456789abcdef" for character in live_output[key])
+        for key in digest_keys
+    ):
+        raise ValueError(f"{boundary}: calibration live-output binding is invalid.")
+
+
+_ACS_QRF_REGIMES = frozenset(
+    {
+        Regime.THREE_SIGN,
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.ZERO_INFLATED_NEGATIVE,
+        Regime.SIGN_ONLY,
+        Regime.POSITIVE_ONLY,
+        Regime.NEGATIVE_ONLY,
+        Regime.DEGENERATE_ZERO,
+    }
+)
+_ACS_QRF_PATTERN_EVIDENCE_KIND = "acs_transfer_qrf_pattern_regimes"
+_ACS_QRF_PATTERN_EVIDENCE_SCHEMA_VERSION = 1
+_ACS_QRF_WEIGHT_KINDS = frozenset(kind.value for kind in WeightKind)
+_ACS_TRANSFER_ROW_COUNT_FIELDS = (
+    "authorized_null_rows",
+    "imputed_rows",
+    "unmodeled_rows",
+    "residual_null_rows",
+)
+
+
+def _validate_acs_transfer_row_counts(
+    target_receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    required: bool = False,
+) -> dict[str, int]:
+    """Validate the legacy transfer counts independently of opt-in evidence."""
+
+    present = {
+        field for field in _ACS_TRANSFER_ROW_COUNT_FIELDS if field in target_receipt
+    }
+    if not present:
+        if required:
+            raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
+        return {}
+    if present != set(_ACS_TRANSFER_ROW_COUNT_FIELDS):
+        raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
+    counts = {field: target_receipt[field] for field in _ACS_TRANSFER_ROW_COUNT_FIELDS}
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in counts.values()
+    ):
+        raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
+    typed_counts = {field: int(value) for field, value in counts.items()}
+    if (
+        typed_counts["authorized_null_rows"]
+        != typed_counts["imputed_rows"] + typed_counts["unmodeled_rows"]
+        or typed_counts["residual_null_rows"] != typed_counts["unmodeled_rows"]
+    ):
+        raise ValueError(f"{boundary}: ACS transfer row-count accounting is invalid.")
+    return typed_counts
+
+
+def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
+    """Return deterministic JSON-ready evidence for one ACS transfer record."""
+
+    if not isinstance(record, AcsImputedInput):
+        raise TypeError("ACS QRF pattern evidence requires an AcsImputedInput.")
+    patterns = [
+        {
+            "name": pattern.name,
+            "observed_optional_predictors": list(pattern.observed_optional_predictors),
+            "predictors": list(pattern.predictors),
+            "seed": int(pattern.seed),
+            "weight_kind": pattern.weight_kind,
+            "donor_rows": int(pattern.donor_rows),
+            "recipient_rows": int(pattern.recipient_rows),
+            "target_regimes": [
+                {"model_target": model_target, "regime": regime}
+                for model_target, regime in pattern.target_regimes
+            ],
+        }
+        for pattern in record.patterns
+    ]
+    payload: dict[str, object] = {
+        "evidence_kind": _ACS_QRF_PATTERN_EVIDENCE_KIND,
+        "schema_version": _ACS_QRF_PATTERN_EVIDENCE_SCHEMA_VERSION,
+        "record": {
+            "entity": record.entity,
+            "family": record.family,
+            "column": record.column,
+            "predictors": list(record.predictors),
+            "seed": int(record.seed),
+            "weight_kind": record.weight_kind,
+            "imputed_recipient_rows": int(record.imputed_recipient_rows),
+            "unmodeled_recipient_rows": int(record.unmodeled_recipient_rows),
+        },
+        "pattern_count": len(patterns),
+        "pattern_recipient_rows": sum(
+            int(pattern.recipient_rows) for pattern in record.patterns
+        ),
+        "patterns": patterns,
+    }
+    return {**payload, "sha256": _canonical_sha256(payload)}
+
+
+def _acs_pattern_predictor_authority(
+    *,
+    entity: str,
+    family_targets: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return the canonical required and optional predictor orders."""
+
+    if entity == "person":
+        required = acs_transfer_runtime.ACS_PERSON_TRANSFER_PREDICTORS
+        optional = acs_transfer_runtime.ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS
+        contract = acs_transfer_runtime.acs_transfer_execution_contract_identity(
+            targets=family_targets,
+            derive_schedule_d=False,
+        )
+        housing = contract["housing"]
+        assert isinstance(housing, Mapping)
+        if set(family_targets).intersection(housing["targets"]):
+            mandatory = tuple(housing["mandatory_features"])
+            required = (*required, *mandatory)
+            optional = tuple(item for item in optional if item not in mandatory)
+        return tuple(required), tuple(optional)
+    optional_names = acs_transfer_runtime._GROUP_OPTIONAL_NAMES
+    return (
+        acs_transfer_runtime.ACS_GROUP_TRANSFER_PREDICTORS,
+        tuple(
+            optional_names[item]
+            for item in acs_transfer_runtime.ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS
+        ),
+    )
+
+
+def _validate_acs_imputed_pattern_evidence(
+    target_receipt: Mapping[str, object],
+    *,
+    expected_entity: str,
+    expected_family: str,
+    expected_target: str,
+    expected_family_targets: Sequence[str],
+    expected_regime_targets: Sequence[str] | None = None,
+    boundary: str,
+) -> None:
+    """Validate independently checkable ACS QRF pattern receipt structure.
+
+    The enclosing gap-fill manifest or late execution-chain signature binds
+    the reported seeds and regimes. Receipt-only validation cannot recompute
+    either without the transfer seed and exact encoded donor values, so this
+    function validates their types, vocabulary, and target placement rather
+    than claiming donor replay or out-of-sample verification.
+    """
+
+    evidence = target_receipt.get("qrf_pattern_evidence")
+    receipt_counts = _validate_acs_transfer_row_counts(
+        target_receipt,
+        boundary=boundary,
+    )
+    claimed_record_rows = receipt_counts.get("imputed_rows", 0) + receipt_counts.get(
+        "unmodeled_rows", 0
+    )
+    if evidence is None:
+        if claimed_record_rows:
+            raise ValueError(
+                f"{boundary}: ACS QRF pattern evidence is absent for a target "
+                "with realized transfer rows."
+            )
+        return
+    if not isinstance(evidence, Mapping):
+        raise ValueError(f"{boundary}: ACS QRF pattern evidence is not an object.")
+    expected_evidence_keys = {
+        "evidence_kind",
+        "schema_version",
+        "record",
+        "pattern_count",
+        "pattern_recipient_rows",
+        "patterns",
+        "sha256",
+    }
+    if set(evidence) != expected_evidence_keys:
+        raise ValueError(f"{boundary}: ACS QRF pattern evidence schema is invalid.")
+    unsigned = dict(evidence)
+    observed_sha256 = unsigned.pop("sha256")
+    if not isinstance(observed_sha256, str) or observed_sha256 != _canonical_sha256(
+        unsigned
+    ):
+        raise ValueError(f"{boundary}: ACS QRF pattern evidence SHA-256 mismatch.")
+    patterns = evidence.get("patterns")
+    record = evidence.get("record")
+    pattern_count = evidence.get("pattern_count")
+    pattern_recipient_rows = evidence.get("pattern_recipient_rows")
+    if (
+        evidence.get("evidence_kind") != _ACS_QRF_PATTERN_EVIDENCE_KIND
+        or evidence.get("schema_version") != _ACS_QRF_PATTERN_EVIDENCE_SCHEMA_VERSION
+        or not isinstance(pattern_count, int)
+        or isinstance(pattern_count, bool)
+        or pattern_count < 0
+        or not isinstance(patterns, list)
+        or pattern_count != len(patterns)
+        or not isinstance(pattern_recipient_rows, int)
+        or isinstance(pattern_recipient_rows, bool)
+        or pattern_recipient_rows < 0
+        or not isinstance(record, Mapping)
+        or (claimed_record_rows > 0 and pattern_count == 0)
+    ):
+        raise ValueError(f"{boundary}: ACS QRF pattern evidence header is invalid.")
+
+    expected_record_keys = {
+        "entity",
+        "family",
+        "column",
+        "predictors",
+        "seed",
+        "weight_kind",
+        "imputed_recipient_rows",
+        "unmodeled_recipient_rows",
+    }
+    if set(record) != expected_record_keys:
+        raise ValueError(f"{boundary}: ACS QRF pattern record schema is invalid.")
+    record_predictors = record.get("predictors")
+    record_seed = record.get("seed")
+    record_weight_kind = record.get("weight_kind")
+    if (
+        record.get("entity") != expected_entity
+        or record.get("family") != expected_family
+        or record.get("column") != expected_target
+        or not isinstance(record_predictors, list)
+        or any(not isinstance(item, str) for item in record_predictors)
+        or len(set(record_predictors)) != len(record_predictors)
+        or not isinstance(record_seed, int)
+        or isinstance(record_seed, bool)
+        or not 0 <= record_seed < 2**32
+        or record_weight_kind not in _ACS_QRF_WEIGHT_KINDS
+        or record.get("imputed_recipient_rows") != receipt_counts.get("imputed_rows")
+        or record.get("unmodeled_recipient_rows")
+        != receipt_counts.get("unmodeled_rows")
+    ):
+        raise ValueError(f"{boundary}: ACS QRF pattern record binding is invalid.")
+    expected_targets = acs_transfer_runtime._selected_model_target_names(
+        expected_family_targets,
+        (
+            expected_family_targets
+            if expected_regime_targets is None
+            else expected_regime_targets
+        ),
+    )
+    required_predictors, optional_authority = _acs_pattern_predictor_authority(
+        entity=expected_entity,
+        family_targets=expected_family_targets,
+    )
+    expected_pattern_keys = {
+        "name",
+        "observed_optional_predictors",
+        "predictors",
+        "seed",
+        "weight_kind",
+        "donor_rows",
+        "recipient_rows",
+        "target_regimes",
+    }
+    observed_pattern_options: list[tuple[str, ...]] = []
+    observed_pattern_codes: list[int] = []
+    observed_pattern_recipient_rows = 0
+    for index, pattern in enumerate(patterns):
+        if not isinstance(pattern, Mapping) or set(pattern) != expected_pattern_keys:
+            raise ValueError(
+                f"{boundary}: ACS QRF pattern evidence row {index} is invalid."
+            )
+        optional = pattern.get("observed_optional_predictors")
+        predictors = pattern.get("predictors")
+        target_regimes = pattern.get("target_regimes")
+        if (
+            not isinstance(optional, list)
+            or any(not isinstance(item, str) for item in optional)
+            or len(set(optional)) != len(optional)
+            or not isinstance(predictors, list)
+            or any(not isinstance(item, str) for item in predictors)
+            or len(set(predictors)) != len(predictors)
+            or not isinstance(pattern.get("seed"), int)
+            or isinstance(pattern.get("seed"), bool)
+            or not 0 <= pattern["seed"] < 2**32
+            or pattern.get("weight_kind") != record_weight_kind
+            or any(
+                not isinstance(pattern.get(field_name), int)
+                or isinstance(pattern.get(field_name), bool)
+                or pattern[field_name] < 1
+                for field_name in ("donor_rows", "recipient_rows")
+            )
+            or not isinstance(target_regimes, list)
+        ):
+            raise ValueError(
+                f"{boundary}: ACS QRF pattern evidence row {index} metadata is invalid."
+            )
+        optional_tuple = tuple(optional)
+        if optional_tuple != tuple(
+            item for item in optional_authority if item in optional_tuple
+        ) or tuple(predictors) != (*required_predictors, *optional_tuple):
+            raise ValueError(
+                f"{boundary}: ACS QRF pattern evidence row {index} predictor "
+                "order is outside canonical transfer authority."
+            )
+        expected_name = acs_transfer_runtime._pattern_name(index, optional_tuple)
+        if pattern.get("name") != expected_name:
+            raise ValueError(
+                f"{boundary}: ACS QRF pattern evidence row {index} name is not "
+                "derived from its observed optional predictors."
+            )
+        availability_code = sum(
+            1 << optional_authority.index(item) for item in optional_tuple
+        )
+        observed_pattern_options.append(optional_tuple)
+        observed_pattern_codes.append(availability_code)
+        observed_pattern_recipient_rows += pattern["recipient_rows"]
+        observed_targets: list[str] = []
+        for target_regime in target_regimes:
+            if (
+                not isinstance(target_regime, Mapping)
+                or set(target_regime) != {"model_target", "regime"}
+                or not isinstance(target_regime.get("model_target"), str)
+                or target_regime.get("regime") not in _ACS_QRF_REGIMES
+            ):
+                raise ValueError(
+                    f"{boundary}: ACS QRF pattern evidence row {index} target "
+                    "regime is invalid."
+                )
+            observed_targets.append(target_regime["model_target"])
+        if tuple(observed_targets) != expected_targets:
+            raise ValueError(
+                f"{boundary}: ACS QRF pattern evidence row {index} target order "
+                f"is {observed_targets}, expected {list(expected_targets)}."
+            )
+    if (
+        len(set(observed_pattern_options)) != pattern_count
+        or observed_pattern_codes != sorted(observed_pattern_codes)
+        or len(set(observed_pattern_codes)) != pattern_count
+        or observed_pattern_recipient_rows != pattern_recipient_rows
+        or receipt_counts.get("imputed_rows", 0) > pattern_recipient_rows
+        or (
+            len(expected_family_targets) == 1
+            and receipt_counts.get("imputed_rows") != pattern_recipient_rows
+        )
+    ):
+        raise ValueError(
+            f"{boundary}: ACS QRF pattern order or recipient-row accounting is invalid."
+        )
+    used_predictors = tuple(
+        predictor
+        for predictor in (*required_predictors, *optional_authority)
+        if any(predictor in pattern["predictors"] for pattern in patterns)
+    )
+    if tuple(record_predictors) != used_predictors:
+        raise ValueError(
+            f"{boundary}: ACS QRF record predictor surface is not reconstructed "
+            "from its ordered patterns."
+        )
+
+
+def validate_stacked_gap_fill_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    frame: Frame | None = None,
+) -> None:
+    """Reject a canonical gap-fill proof with missing calibration evidence."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError(f"{boundary}: stacked gap-fill receipt is absent.")
+    authority = receipt.get("authority")
+    if not isinstance(authority, Mapping):
+        raise ValueError(f"{boundary}: stacked gap-fill authority is absent.")
+    _validate_production_authority_receipt(authority, boundary=boundary)
+    expected_policy_sha256 = str(
+        _CANONICAL_STACKED_AUTHORITY.post_transfer_calibration["sha256"]
+    )
+    early_specs = {
+        spec.key: spec
+        for spec in (
+            post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        )
+        if spec.stage == "early_gap_fill"
+    }
+    expected_directions = {
+        direction.name: direction for direction in CANONICAL_STACKED_GAP_FILL_PLAN
+    }
+    directions = receipt.get("directions")
+    if not isinstance(directions, Mapping) or set(directions) != set(
+        expected_directions
+    ):
+        raise ValueError(
+            f"{boundary}: stacked gap-fill direction surface is non-canonical."
+        )
+    validated_keys: set[str] = set()
+    for name, direction in expected_directions.items():
+        direction_receipt = directions[name]
+        if not isinstance(direction_receipt, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {name!r} is absent."
+            )
+        targets = direction_receipt.get("targets")
+        if not isinstance(targets, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {name!r} has no targets."
+            )
+        direction_target_context = {
+            f"{entity}/{family}/{target}": (
+                entity,
+                family,
+                target,
+                family_targets,
+            )
+            for entity, families in direction.target_families.items()
+            for family, family_targets in families.items()
+            for target in family_targets
+        }
+        direction_target_keys = set(direction_target_context)
+        if set(targets) != direction_target_keys:
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {name!r} target "
+                "surface is non-canonical."
+            )
+        expected_calibrations = {
+            key: early_specs[key] for key in direction_target_keys if key in early_specs
+        }
+        expected_summary = {
+            "policy_sha256": expected_policy_sha256,
+            "target_count": len(expected_calibrations),
+            "targets": sorted(expected_calibrations),
+        }
+        if direction_receipt.get("post_transfer_calibration") != expected_summary:
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {name!r} has stripped "
+                "or misbound calibration summary evidence."
+            )
+        validated_keys.update(expected_calibrations)
+        for key, target_receipt in targets.items():
+            if not isinstance(target_receipt, Mapping):
+                raise ValueError(
+                    f"{boundary}: stacked gap-fill target {key!r} has no receipt."
+                )
+            _validate_acs_transfer_row_counts(
+                target_receipt,
+                boundary=f"{boundary} target {key}",
+                required=True,
+            )
+            owner_receipt = target_receipt.get("post_transfer_calibration")
+            spec = expected_calibrations.get(key)
+            if spec is None:
+                if "qrf_pattern_evidence" in target_receipt:
+                    raise ValueError(
+                        f"{boundary}: undeclared ACS QRF pattern evidence is "
+                        f"attached to {key!r}."
+                    )
+                if owner_receipt is not None:
+                    raise ValueError(
+                        f"{boundary}: undeclared gap-fill calibration evidence "
+                        f"is attached to {key!r}."
+                    )
+                continue
+            entity, family, target, family_targets = direction_target_context[key]
+            expected_regime_targets = tuple(
+                family_target
+                for family_target in family_targets
+                if f"{entity}/{family}/{family_target}" in early_specs
+            )
+            _validate_acs_imputed_pattern_evidence(
+                target_receipt,
+                expected_entity=entity,
+                expected_family=family,
+                expected_target=target,
+                expected_family_targets=family_targets,
+                expected_regime_targets=expected_regime_targets,
+                boundary=f"{boundary} target {key}",
+            )
+            if not isinstance(owner_receipt, Mapping) or any(
+                owner_receipt.get(field) != expected
+                for field, expected in {
+                    "stage": "early_gap_fill",
+                    "reference_selection": "asec_origin_clone_0",
+                    "recipient_selection": "acs_origin_clone_0",
+                    "mutable_selection": "recipient_null_before_nonnull_after",
+                }.items()
+            ):
+                raise ValueError(
+                    f"{boundary}: gap-fill calibration owner selection is "
+                    f"misbound for {key!r}."
+                )
+            calibration = owner_receipt.get("calibration")
+            context_binding = owner_receipt.get("context_binding")
+            if (
+                not isinstance(context_binding, Mapping)
+                or not isinstance(context_binding.get("scope"), Mapping)
+                or not isinstance(context_binding.get("weights_sha256"), str)
+            ):
+                raise ValueError(
+                    f"{boundary}: gap-fill calibration context binding is "
+                    f"absent for {key!r}."
+                )
+            _validate_post_transfer_live_output_binding(
+                owner_receipt,
+                boundary=f"{boundary} target {key}",
+            )
+            _validate_post_transfer_generation_context_copies(
+                owner_receipt,
+                boundary=f"{boundary} target {key}",
+            )
+            validate_post_transfer_calibration_receipt(
+                calibration,
+                spec=spec,
+                boundary=f"{boundary} target {key}",
+                expected_policy_sha256=expected_policy_sha256,
+            )
+            assert isinstance(calibration, Mapping)
+            scope = calibration["scope"]
+            assert isinstance(scope, Mapping)
+            count_keys = ("reference_rows", "recipient_rows", "mutable_rows")
+            if any(
+                not isinstance(owner_receipt.get(count_key), int)
+                or isinstance(owner_receipt.get(count_key), bool)
+                or owner_receipt[count_key] < 0
+                or owner_receipt[count_key] != scope.get(count_key)
+                for count_key in count_keys
+            ):
+                raise ValueError(
+                    f"{boundary}: gap-fill calibration row counts are misbound "
+                    f"for {key!r}."
+                )
+            if owner_receipt.get("constraint") != {"constraint": "none"}:
+                raise ValueError(
+                    f"{boundary}: gap-fill calibration constraint is misbound "
+                    f"for {key!r}."
+                )
+            if frame is not None:
+                _validate_post_transfer_live_output_context(
+                    frame,
+                    owner_receipt=owner_receipt,
+                    spec=spec,
+                    boundary=f"{boundary} target {key}",
+                )
+    if validated_keys != set(early_specs):
+        raise ValueError(
+            f"{boundary}: gap-fill calibration coverage does not match the "
+            "canonical early target surface."
+        )
+
+
 def validate_stacked_post_puf_transfer_receipt(
     receipt: Mapping[str, object],
     *,
     boundary: str,
+    frame: Frame | None = None,
 ) -> None:
     """Reject a late-transfer receipt unless its full DAG proof is canonical."""
 
@@ -3712,6 +4666,19 @@ def validate_stacked_post_puf_transfer_receipt(
             "production manifest emission is forbidden."
         )
     _validate_production_authority_receipt(authority, boundary=boundary)
+    expected_policy_sha256 = str(
+        _CANONICAL_STACKED_AUTHORITY.post_transfer_calibration["sha256"]
+    )
+    late_calibration_specs = {
+        spec.key: spec
+        for spec in (
+            post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        )
+        if spec.stage == "late_transfer"
+    }
+    late_specs_by_target = {
+        (spec.entity, spec.target): spec for spec in late_calibration_specs.values()
+    }
     schedule = receipt.get("producer_schedule")
     expected_schedule = _json_ready(us_late_producer_schedule_receipt())
     if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
@@ -3738,6 +4705,13 @@ def validate_stacked_post_puf_transfer_receipt(
             "canonical 19-group partition; production manifest emission is "
             "forbidden."
         )
+    validated_calibration_keys: set[str] = set()
+    canonical_family = {
+        (entity, target): family
+        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for family, family_targets in families.items()
+        for target in family_targets
+    }
     for name, group in expected_groups.items():
         group_receipt = groups[name]
         if (
@@ -3749,6 +4723,191 @@ def validate_stacked_post_puf_transfer_receipt(
                 f"{boundary}: stacked post-PUF transfer group {name!r} is "
                 "misbound; production manifest emission is forbidden."
             )
+        group_targets = group_receipt.get("targets")
+        if not isinstance(group_targets, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer group {name!r} has no "
+                "target receipts; production manifest emission is forbidden."
+            )
+        expected_group_target_keys = {
+            f"{group.entity}/{group.family}/{target}" for target in group.targets
+        }
+        if set(group_targets) != expected_group_target_keys:
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer group {name!r} target "
+                "surface is non-canonical; production manifest emission is "
+                "forbidden."
+            )
+        expected_calibrations = {
+            f"{group.entity}/{group.family}/{target}": spec
+            for target in group.targets
+            if (spec := late_specs_by_target.get((group.entity, target))) is not None
+            and _stacked_calibration_family_matches(
+                spec,
+                entity=group.entity,
+                family=group.family,
+                target=target,
+                stage="late_transfer",
+            )
+        }
+        expected_calibration_summary = {
+            "policy_sha256": expected_policy_sha256,
+            "target_count": len(expected_calibrations),
+            "targets": sorted(spec.key for spec in expected_calibrations.values()),
+        }
+        if group_receipt.get("post_transfer_calibration") != (
+            expected_calibration_summary
+        ):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer group {name!r} has "
+                "stripped or misbound calibration summary evidence."
+            )
+        validated_calibration_keys.update(
+            spec.key for spec in expected_calibrations.values()
+        )
+        for target_key, target_receipt in group_targets.items():
+            if not isinstance(target_receipt, Mapping):
+                raise ValueError(
+                    f"{boundary}: stacked post-PUF target {target_key!r} has "
+                    "no receipt."
+                )
+            _validate_acs_transfer_row_counts(
+                target_receipt,
+                boundary=f"{boundary} target {target_key}",
+                required=True,
+            )
+            owner_receipt = target_receipt.get("post_transfer_calibration")
+            spec = expected_calibrations.get(target_key)
+            if spec is None:
+                if "qrf_pattern_evidence" in target_receipt:
+                    raise ValueError(
+                        f"{boundary}: undeclared ACS QRF pattern evidence is "
+                        f"attached to {target_key!r}."
+                    )
+                if owner_receipt is not None:
+                    raise ValueError(
+                        f"{boundary}: undeclared post-transfer calibration "
+                        f"evidence is attached to {target_key!r}."
+                    )
+                continue
+            expected_regime_targets = tuple(
+                target
+                for target in group.targets
+                if f"{group.entity}/{group.family}/{target}" in expected_calibrations
+            )
+            _validate_acs_imputed_pattern_evidence(
+                target_receipt,
+                expected_entity=group.entity,
+                expected_family=group.family,
+                expected_target=target_key.rsplit("/", 1)[1],
+                expected_family_targets=group.targets,
+                expected_regime_targets=expected_regime_targets,
+                boundary=f"{boundary} target {target_key}",
+            )
+            if not isinstance(owner_receipt, Mapping):
+                raise ValueError(
+                    f"{boundary}: post-transfer calibration evidence is "
+                    f"absent for {target_key!r}."
+                )
+            if any(
+                owner_receipt.get(key) != value
+                for key, value in {
+                    "stage": "late_transfer",
+                    "reference_selection": "asec_origin_clone_0",
+                    "recipient_selection": "acs_origin_clone_0",
+                    "mutable_selection": "recipient_null_before_nonnull_after",
+                }.items()
+            ):
+                raise ValueError(
+                    f"{boundary}: post-transfer calibration owner selection "
+                    f"is misbound for {target_key!r}."
+                )
+            calibration = owner_receipt.get("calibration")
+            context_binding = owner_receipt.get("context_binding")
+            if (
+                not isinstance(context_binding, Mapping)
+                or not isinstance(context_binding.get("scope"), Mapping)
+                or not isinstance(context_binding.get("weights_sha256"), str)
+            ):
+                raise ValueError(
+                    f"{boundary}: post-transfer calibration context binding "
+                    f"is absent for {target_key!r}."
+                )
+            _validate_post_transfer_live_output_binding(
+                owner_receipt,
+                boundary=f"{boundary} target {target_key}",
+            )
+            _validate_post_transfer_generation_context_copies(
+                owner_receipt,
+                boundary=f"{boundary} target {target_key}",
+            )
+            validate_post_transfer_calibration_receipt(
+                calibration,
+                spec=spec,
+                boundary=f"{boundary} target {target_key}",
+                expected_policy_sha256=expected_policy_sha256,
+            )
+            assert isinstance(calibration, Mapping)
+            calibration_scope = calibration["scope"]
+            assert isinstance(calibration_scope, Mapping)
+            for count_key in ("reference_rows", "recipient_rows", "mutable_rows"):
+                if (
+                    not isinstance(owner_receipt.get(count_key), int)
+                    or isinstance(owner_receipt.get(count_key), bool)
+                    or owner_receipt[count_key] < 0
+                    or owner_receipt[count_key] != calibration_scope.get(count_key)
+                ):
+                    raise ValueError(
+                        f"{boundary}: post-transfer calibration {count_key} "
+                        f"evidence is misbound for {target_key!r}."
+                    )
+            constraint = owner_receipt.get("constraint")
+            if (
+                not isinstance(constraint, Mapping)
+                or constraint.get("constraint") != spec.special_constraint
+            ):
+                raise ValueError(
+                    f"{boundary}: post-transfer calibration constraint is "
+                    f"misbound for {target_key!r}."
+                )
+            if spec.special_constraint == ("adult_care_qualifying_one_per_tax_unit"):
+                if (
+                    constraint.get("qualifying_mutable_rows")
+                    != calibration_scope.get("allowed_carrier_rows")
+                    or constraint.get("one_per_empty_tax_unit_addition_candidates")
+                    != calibration_scope.get("addition_candidate_rows")
+                    or not isinstance(owner_receipt.get("post_reconciliation"), Mapping)
+                    or owner_receipt["post_reconciliation"].get("status")
+                    != "verified_no_op"
+                ):
+                    raise ValueError(
+                        f"{boundary}: adult-care calibration structure evidence "
+                        f"is invalid for {target_key!r}."
+                    )
+            elif spec.special_constraint == (
+                "weeks_requires_positive_unemployment_compensation"
+            ) and (
+                constraint.get("positive_unemployment_mutable_rows")
+                != calibration_scope.get("allowed_carrier_rows")
+                or calibration_scope.get("allowed_carrier_rows")
+                != calibration_scope.get("addition_candidate_rows")
+            ):
+                raise ValueError(
+                    f"{boundary}: weeks-unemployed calibration constraint "
+                    f"evidence is invalid for {target_key!r}."
+                )
+            if frame is not None:
+                _validate_post_transfer_live_output_context(
+                    frame,
+                    owner_receipt=owner_receipt,
+                    spec=spec,
+                    boundary=f"{boundary} target {target_key}",
+                )
+    if validated_calibration_keys != set(late_calibration_specs):
+        raise ValueError(
+            f"{boundary}: post-transfer calibration coverage does not match "
+            "the canonical late target surface."
+        )
     expected_target_labels = {
         f"{entity}/{family}/{target}"
         for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
@@ -3762,6 +4921,23 @@ def validate_stacked_post_puf_transfer_receipt(
             "canonical 70-target surface; production manifest emission is "
             "forbidden."
         )
+    for name, group in expected_groups.items():
+        group_receipt = groups[name]
+        assert isinstance(group_receipt, Mapping)
+        group_targets = group_receipt["targets"]
+        assert isinstance(group_targets, Mapping)
+        for target in group.targets:
+            bounded_label = f"{group.entity}/{group.family}/{target}"
+            aggregate_label = (
+                f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}"
+            )
+            if _json_ready(targets[aggregate_label]) != _json_ready(
+                group_targets[bounded_label]
+            ):
+                raise ValueError(
+                    f"{boundary}: aggregate post-PUF target {aggregate_label!r} is not "
+                    "reconstructed from its group receipt."
+                )
     if any(
         not isinstance(target_receipt, Mapping)
         or target_receipt.get("residual_null_rows") != 0
@@ -6990,7 +8166,11 @@ def validate_stacked_late_producer_receipt(
         raise ValueError(
             f"{boundary}: stacked late-producer DAG transfer proof is absent."
         )
-    validate_stacked_post_puf_transfer_receipt(transfer, boundary=boundary)
+    validate_stacked_post_puf_transfer_receipt(
+        transfer,
+        boundary=boundary,
+        frame=frame,
+    )
     groups = transfer["groups"]
     assert isinstance(groups, Mapping)
     canonical_family = {
@@ -7534,6 +8714,407 @@ if (
     )
 
 
+def _surface_target_triples(
+    surface: TargetFamilies,
+) -> set[tuple[str, str, str]]:
+    return {
+        (entity, family, target)
+        for entity, families in surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+
+
+def _one_candidate_per_adult_care_tax_unit(
+    frame: Frame,
+    *,
+    mutable_rows: pd.Series,
+    allowed_rows: pd.Series,
+) -> pd.Series:
+    """Choose one stable eligible zero per unit that has no current carrier."""
+
+    person = frame.table("person")
+    target = "pre_subsidy_care_expenses"
+    values = pd.to_numeric(person[target], errors="raise")
+    units = person[frame.schema.membership_column("tax_unit")]
+    entity_ids = person[frame.schema.entity_id_column("person")]
+    current_positive = values.gt(0.0)
+    unit_has_positive = current_positive.groupby(units).transform("any")
+    candidates = mutable_rows & allowed_rows & values.eq(0.0) & ~unit_has_positive
+    candidate_ids = entity_ids.where(candidates)
+    smallest_id = candidate_ids.groupby(units).transform("min")
+    return candidates & entity_ids.eq(smallest_id)
+
+
+def _post_transfer_mask_sha256(mask: np.ndarray) -> str:
+    return hashlib.sha256(
+        np.ascontiguousarray(mask, dtype=bool).tobytes(order="C")
+    ).hexdigest()
+
+
+def _post_transfer_float64_sha256(values: object, *, boundary: str) -> str:
+    array = np.asarray(values)
+    if array.ndim != 1 or array.dtype != np.dtype(np.float64):
+        raise ValueError(
+            f"{boundary}: post-transfer context requires an exact float64 vector."
+        )
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes(order="C")).hexdigest()
+
+
+def _post_transfer_entity_ids_sha256(values: object) -> str:
+    array = np.asarray(values)
+    scalars = [
+        value
+        if value is None or isinstance(value, (str, int, float, bool))
+        else repr(value)
+        for value in array.tolist()
+    ]
+    return _canonical_sha256(scalars)
+
+
+def _post_transfer_selected_output_binding(
+    frame: Frame,
+    *,
+    entity: str,
+    target: str,
+    reference_rows: np.ndarray,
+    recipient_rows: np.ndarray,
+) -> dict[str, object]:
+    """Hash stable clone-0 row identities, output values, and resolved weights."""
+
+    table = frame.table(entity)
+    ids = table[frame.schema.entity_id_column(entity)].to_numpy(copy=False)
+    values = table[target].to_numpy(copy=False)
+    weights = frame.resolve_weights(entity).values
+    return {
+        "reference_rows": int(reference_rows.sum()),
+        "recipient_rows": int(recipient_rows.sum()),
+        "reference_entity_ids_sha256": _post_transfer_entity_ids_sha256(
+            ids[reference_rows]
+        ),
+        "recipient_entity_ids_sha256": _post_transfer_entity_ids_sha256(
+            ids[recipient_rows]
+        ),
+        "reference_output_values_sha256": _post_transfer_float64_sha256(
+            values[reference_rows],
+            boundary=f"{entity}/{target} reference output",
+        ),
+        "recipient_output_values_sha256": _post_transfer_float64_sha256(
+            values[recipient_rows],
+            boundary=f"{entity}/{target} recipient output",
+        ),
+        "reference_weights_sha256": _post_transfer_float64_sha256(
+            weights[reference_rows],
+            boundary=f"{entity}/{target} reference weights",
+        ),
+        "recipient_weights_sha256": _post_transfer_float64_sha256(
+            weights[recipient_rows],
+            boundary=f"{entity}/{target} recipient weights",
+        ),
+    }
+
+
+def _post_transfer_calibration_context_binding(
+    input_frame: Frame,
+    output_frame: Frame,
+    *,
+    entity: str,
+    target: str,
+    reference_rows: np.ndarray,
+    recipient_rows: np.ndarray,
+    mutable_rows: np.ndarray,
+    allowed_carrier_rows: np.ndarray,
+    addition_candidate_rows: np.ndarray,
+) -> dict[str, object]:
+    """Independently bind one owner selection to its live input/output vectors."""
+
+    input_table = input_frame.table(entity)
+    output_table = output_frame.table(entity)
+    ids = input_table[input_frame.schema.entity_id_column(entity)].to_numpy(copy=False)
+    weights = input_frame.resolve_weights(entity).values
+    return {
+        "scope": {
+            "rows": len(input_table),
+            "reference_rows": int(reference_rows.sum()),
+            "recipient_rows": int(recipient_rows.sum()),
+            "mutable_rows": int(mutable_rows.sum()),
+            "allowed_carrier_rows": int(allowed_carrier_rows.sum()),
+            "addition_candidate_rows": int(addition_candidate_rows.sum()),
+            "reference_rows_sha256": _post_transfer_mask_sha256(reference_rows),
+            "recipient_rows_sha256": _post_transfer_mask_sha256(recipient_rows),
+            "mutable_rows_sha256": _post_transfer_mask_sha256(mutable_rows),
+            "allowed_carrier_rows_sha256": _post_transfer_mask_sha256(
+                allowed_carrier_rows
+            ),
+            "addition_candidate_rows_sha256": _post_transfer_mask_sha256(
+                addition_candidate_rows
+            ),
+            "entity_ids_sha256": _post_transfer_entity_ids_sha256(ids),
+            "input_values_sha256": _post_transfer_float64_sha256(
+                input_table[target].to_numpy(copy=False),
+                boundary=f"{entity}/{target} input",
+            ),
+            "output_values_sha256": _post_transfer_float64_sha256(
+                output_table[target].to_numpy(copy=False),
+                boundary=f"{entity}/{target} output",
+            ),
+        },
+        "weights_sha256": _post_transfer_float64_sha256(
+            weights,
+            boundary=f"{entity}/{target} weights",
+        ),
+        "live_output": _post_transfer_selected_output_binding(
+            output_frame,
+            entity=entity,
+            target=target,
+            reference_rows=reference_rows,
+            recipient_rows=recipient_rows,
+        ),
+    }
+
+
+def _stacked_calibration_family_matches(
+    spec: PostTransferCalibrationSpec,
+    *,
+    entity: str,
+    family: str,
+    target: str,
+    stage: str,
+) -> bool:
+    """Bind specs only to exact or authority-derived bounded families."""
+
+    if entity != spec.entity or target != spec.target:
+        return False
+    if family == spec.family:
+        return True
+    if stage != "late_transfer":
+        return False
+    canonical_family = {
+        (canonical_entity, canonical_target): canonical_family
+        for canonical_entity, families in (
+            CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for canonical_family, targets in families.items()
+        for canonical_target in targets
+    }.get((entity, target))
+    bounded_families = {
+        group.family
+        for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+        if group.entity == entity and target in group.targets
+    }
+    return canonical_family == spec.family and family in bounded_families
+
+
+def _stacked_post_transfer_calibration_specs(
+    target_families: TargetFamilies,
+    *,
+    stage: str,
+) -> tuple[PostTransferCalibrationSpec, ...]:
+    """Return the exact declared calibration specs present on one surface."""
+
+    if stage not in {"early_gap_fill", "late_transfer"}:
+        raise ValueError(f"Unknown stacked post-transfer calibration stage {stage!r}.")
+    surface_targets = _surface_target_triples(target_families)
+    return tuple(
+        spec
+        for spec in sorted(
+            post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values(),
+            key=lambda item: item.key,
+        )
+        if spec.stage == stage
+        and any(
+            _stacked_calibration_family_matches(
+                spec,
+                entity=entity,
+                family=family,
+                target=target,
+                stage=stage,
+            )
+            for entity, family, target in surface_targets
+        )
+    )
+
+
+def _apply_stacked_post_transfer_calibrations(
+    before: Frame,
+    after: Frame,
+    *,
+    target_families: TargetFamilies,
+    stage: str,
+) -> tuple[Frame, dict[str, dict[str, object]]]:
+    """Apply declared calibrations with owner-resolved origin and clone masks."""
+
+    current = after
+    receipts: dict[str, dict[str, object]] = {}
+    for spec in _stacked_post_transfer_calibration_specs(
+        target_families,
+        stage=stage,
+    ):
+        before_table = before.table(spec.entity)
+        table = current.table(spec.entity)
+        if not table.index.equals(before_table.index):
+            raise ValueError(
+                f"Post-transfer calibration {spec.key} requires byte-aligned "
+                "before/after entity indexes."
+            )
+        channel = table[support_channel_column(spec.entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(spec.entity)],
+            errors="raise",
+        )
+        reference_rows = channel.eq(BASE_ASEC_SUPPORT_CHANNEL) & clone_index.eq(0)
+        recipient_rows = channel.eq(ACS_STACKED_SUPPORT_CHANNEL) & clone_index.eq(0)
+        mutable_rows = (
+            recipient_rows
+            & before_table[spec.target].isna()
+            & table[spec.target].notna()
+        )
+        allowed_rows: pd.Series | None = None
+        addition_rows: pd.Series | None = None
+        constraint_receipt: dict[str, object] = {
+            "constraint": spec.special_constraint,
+        }
+        if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+            qualifying = acs_transfer_runtime.acs_adult_care_qualifying_rows(
+                current.table("person")
+            )
+            allowed_rows = mutable_rows & qualifying
+            addition_rows = _one_candidate_per_adult_care_tax_unit(
+                current,
+                mutable_rows=mutable_rows,
+                allowed_rows=allowed_rows,
+            )
+            constraint_receipt.update(
+                {
+                    "qualifying_mutable_rows": int(allowed_rows.sum()),
+                    "one_per_empty_tax_unit_addition_candidates": int(
+                        addition_rows.sum()
+                    ),
+                }
+            )
+        elif (
+            spec.special_constraint
+            == "weeks_requires_positive_unemployment_compensation"
+        ):
+            person = current.table("person")
+            unemployment = pd.to_numeric(
+                person["unemployment_compensation"],
+                errors="raise",
+            )
+            allowed_rows = mutable_rows & unemployment.gt(0.0)
+            addition_rows = allowed_rows.copy()
+            constraint_receipt["positive_unemployment_mutable_rows"] = int(
+                allowed_rows.sum()
+            )
+
+        reference_mask = reference_rows.to_numpy(dtype=bool)
+        recipient_mask = recipient_rows.to_numpy(dtype=bool)
+        mutable_mask = mutable_rows.to_numpy(dtype=bool)
+        allowed_mask = (
+            mutable_mask if allowed_rows is None else allowed_rows.to_numpy(dtype=bool)
+        )
+        addition_mask = (
+            allowed_mask
+            if addition_rows is None
+            else addition_rows.to_numpy(dtype=bool)
+        )
+        calibration_input = current
+        application = apply_post_transfer_calibration(
+            current,
+            entity=spec.entity,
+            family=spec.family,
+            target=spec.target,
+            reference_rows=reference_mask,
+            recipient_rows=recipient_mask,
+            mutable_rows=mutable_mask,
+            allowed_carrier_rows=(None if allowed_rows is None else allowed_mask),
+            addition_candidate_rows=(None if addition_rows is None else addition_mask),
+        )
+        context_binding = _post_transfer_calibration_context_binding(
+            calibration_input,
+            application.frame,
+            entity=spec.entity,
+            target=spec.target,
+            reference_rows=reference_mask,
+            recipient_rows=recipient_mask,
+            mutable_rows=mutable_mask,
+            allowed_carrier_rows=allowed_mask,
+            addition_candidate_rows=addition_mask,
+        )
+        validate_post_transfer_calibration_receipt(
+            application.receipt,
+            spec=spec,
+            boundary=f"stacked post-transfer owner {spec.key}",
+            expected_scope=context_binding["scope"],
+            expected_weights_sha256=str(context_binding["weights_sha256"]),
+        )
+        current = application.frame
+        target_receipt: dict[str, object] = {
+            "stage": stage,
+            "reference_selection": "asec_origin_clone_0",
+            "recipient_selection": "acs_origin_clone_0",
+            "mutable_selection": "recipient_null_before_nonnull_after",
+            "reference_rows": int(reference_rows.sum()),
+            "recipient_rows": int(recipient_rows.sum()),
+            "mutable_rows": int(mutable_rows.sum()),
+            "constraint": constraint_receipt,
+            "context_binding": context_binding,
+            "calibration": application.receipt,
+        }
+        if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+            person = current.table("person")
+            reconciled, reconciliation = acs_transfer_runtime.reconcile_acs_adult_care(
+                person,
+                mutable_rows=mutable_rows.to_numpy(dtype=bool),
+            )
+            before_payload = _canonical_donor_series_payload(
+                person[spec.target],
+                boundary="adult-care post-calibration structure before verification",
+            )
+            after_payload = _canonical_donor_series_payload(
+                reconciled,
+                boundary="adult-care post-calibration structure after verification",
+            )
+            if before_payload != after_payload:
+                raise ValueError(
+                    "Adult-care post-transfer calibration failed final "
+                    "one-qualifying-carrier-per-tax-unit reconciliation."
+                )
+            target_receipt["post_reconciliation"] = {
+                **reconciliation,
+                "status": "verified_no_op",
+            }
+        receipts[spec.key] = target_receipt
+    return current, receipts
+
+
+def _attach_post_transfer_calibration_receipts(
+    target_receipts: dict[str, dict[str, object]],
+    calibrations: Mapping[str, Mapping[str, object]],
+) -> dict[str, dict[str, object]]:
+    for key, calibration in calibrations.items():
+        receipt_key = key
+        if receipt_key not in target_receipts:
+            entity, _family, target = key.split("/", 2)
+            candidates = [
+                candidate
+                for candidate in target_receipts
+                if candidate.split("/", 2)[0] == entity
+                and candidate.split("/", 2)[2] == target
+            ]
+            if len(candidates) == 1:
+                receipt_key = candidates[0]
+        if receipt_key not in target_receipts:
+            raise ValueError(
+                f"Post-transfer calibration receipt target {key!r} is absent "
+                "from the transfer outcome receipt."
+            )
+        target_receipts[receipt_key]["post_transfer_calibration"] = _json_ready(
+            calibration
+        )
+    return target_receipts
+
+
 def gap_fill_stacked_spine(
     frame: Frame,
     *,
@@ -7543,6 +9124,13 @@ def gap_fill_stacked_spine(
     target_banks: Mapping[str, AcsTransferTargetBank] | None = None,
 ) -> GapFillResult:
     """Run the canonical stacked gap-fill plan with no caller authority."""
+
+    if max_targets_per_fit != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT:
+        raise ValueError(
+            "Canonical stacked gap fill requires "
+            f"max_targets_per_fit={DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT}; "
+            f"got {max_targets_per_fit}."
+        )
 
     return _gap_fill_stacked_spine_evaluate(
         frame,
@@ -7656,6 +9244,10 @@ def _gap_fill_stacked_spine_evaluate(
     receipts: dict[str, object] = {}
     transfer_results: dict[str, AcsTransferResult] = {}
     for direction in directions:
+        direction_calibration_specs = _stacked_post_transfer_calibration_specs(
+            direction.target_families,
+            stage="early_gap_fill",
+        )
         pre_counts = _verify_gap_fill_activation_authority(
             current,
             direction=direction,
@@ -7679,21 +9271,51 @@ def _gap_fill_stacked_spine_evaluate(
             n_estimators=n_estimators,
             max_targets_per_fit=max_targets_per_fit,
             target_bank=(target_banks or {}).get(direction.name),
+            regime_evidence_targets=tuple(
+                (spec.entity, spec.target) for spec in direction_calibration_specs
+            ),
         )
+        calibration_receipts: dict[str, dict[str, object]] = {}
+        if production:
+            calibrated, calibration_receipts = (
+                _apply_stacked_post_transfer_calibrations(
+                    current,
+                    result.frame,
+                    target_families=direction.target_families,
+                    stage="early_gap_fill",
+                )
+            )
+            result = replace(result, frame=calibrated)
         transfer_results[direction.name] = result
         current = result.frame
-        receipts[direction.name] = _verify_gap_fill_outcome(
+        direction_receipt = _verify_gap_fill_outcome(
             current,
             direction=direction,
             pre_counts=pre_counts,
             donor_snapshot=donor_snapshot,
             result=result,
         )
+        targets = direction_receipt["targets"]
+        assert isinstance(targets, dict)
+        _attach_post_transfer_calibration_receipts(targets, calibration_receipts)
+        direction_receipt["post_transfer_calibration"] = {
+            "policy_sha256": authority.post_transfer_calibration["sha256"],
+            "target_count": len(calibration_receipts),
+            "targets": sorted(calibration_receipts),
+        }
+        receipts[direction.name] = direction_receipt
 
     validate_stacked_spine_frame(current, boundary="stacked gap-fill output")
+    gap_fill_receipt = {"authority": authority_receipt, "directions": receipts}
+    if production:
+        validate_stacked_gap_fill_receipt(
+            gap_fill_receipt,
+            boundary="stacked gap-fill output",
+            frame=current,
+        )
     return GapFillResult(
         frame=current,
-        receipt={"authority": authority_receipt, "directions": receipts},
+        receipt=gap_fill_receipt,
         transfer_results=transfer_results,
     )
 
@@ -8078,6 +9700,13 @@ def _verify_gap_fill_outcome(
     }
     target_receipts: dict[str, dict[str, object]] = {}
     absence_rules = _direction_absence_rule_index(direction)
+    qrf_evidence_targets = {
+        (spec.entity, spec.target)
+        for spec in _stacked_post_transfer_calibration_specs(
+            direction.target_families,
+            stage="early_gap_fill",
+        )
+    }
     for entity, families in direction.target_families.items():
         table = frame.table(entity)
         channel = table[support_channel_column(entity)].astype(str)
@@ -8093,6 +9722,7 @@ def _verify_gap_fill_outcome(
         }[entity]
         for family, targets in families.items():
             for target in targets:
+                target_key = f"{entity}/{family}/{target}"
                 label = f"{direction.name}/{entity}/{family}/{target}"
                 before = donor_snapshot[entity].get(target)
                 after = donor_after.get(target)
@@ -8146,6 +9776,10 @@ def _verify_gap_fill_outcome(
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
+                if (entity, target) in qrf_evidence_targets and record is not None:
+                    target_receipt["qrf_pattern_evidence"] = (
+                        _acs_imputed_pattern_evidence(record)
+                    )
                 rule = absence_rules.get((entity, target))
                 if rule is not None:
                     expected_absence, absence_receipt = _gap_fill_absence_rule_mask(
@@ -8173,7 +9807,7 @@ def _verify_gap_fill_outcome(
                         f"residual_null_rows={residual_nulls}. Every downstream "
                         "consumer requires this early target complete."
                     )
-                target_receipts[f"{entity}/{family}/{target}"] = target_receipt
+                target_receipts[target_key] = target_receipt
     if failures:
         raise ValueError(
             "Stacked gap-fill outcome verification failed:\n  " + "\n  ".join(failures)
@@ -8429,7 +10063,23 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         target_bank=target_bank,
         derive_schedule_d=derive_schedule_d,
         execution_contract=execution_contract,
+        regime_evidence_targets=tuple(
+            (spec.entity, spec.target)
+            for spec in _stacked_post_transfer_calibration_specs(
+                surface,
+                stage="late_transfer",
+            )
+        ),
     )
+    calibration_receipts: dict[str, dict[str, object]] = {}
+    if production:
+        calibrated, calibration_receipts = _apply_stacked_post_transfer_calibrations(
+            frame,
+            transfer.frame,
+            target_families=surface,
+            stage="late_transfer",
+        )
+        transfer = replace(transfer, frame=calibrated)
     target_receipts = _verify_post_puf_transfer_outcome(
         transfer.frame,
         target_families=surface,
@@ -8438,6 +10088,10 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         pre_counts=pre_counts,
         producer_snapshot=producer_snapshot,
         result=transfer,
+    )
+    _attach_post_transfer_calibration_receipts(
+        target_receipts,
+        calibration_receipts,
     )
     validate_stacked_spine_frame(
         transfer.frame,
@@ -8455,6 +10109,11 @@ def _transfer_stacked_post_puf_inputs_evaluate(
             ),
             "resolved_donor_channel": transfer.resolved_donor_channel,
             "targets": target_receipts,
+            "post_transfer_calibration": {
+                "policy_sha256": authority.post_transfer_calibration["sha256"],
+                "target_count": len(calibration_receipts),
+                "targets": sorted(calibration_receipts),
+            },
             "fit_records": [
                 {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
                 for record in transfer.fit_records
@@ -8647,10 +10306,18 @@ def _verify_post_puf_transfer_outcome(
     target_receipts: dict[str, dict[str, object]] = {}
     puf_producer_keys = set(_surface_target_keys(puf_producer_families))
     source_producer_keys = set(_surface_target_keys(source_producer_families))
+    qrf_evidence_targets = {
+        (spec.entity, spec.target)
+        for spec in _stacked_post_transfer_calibration_specs(
+            target_families,
+            stage="late_transfer",
+        )
+    }
     for entity, families in target_families.items():
         table = frame.table(entity)
         for family, family_targets in families.items():
             for target in family_targets:
+                target_receipt_key = f"{entity}/{family}/{target}"
                 label = f"post_puf_transfer/{entity}/{family}/{target}"
                 key = (entity, family, target, 0)
                 puf_produced = key in puf_producer_keys
@@ -8706,7 +10373,7 @@ def _verify_post_puf_transfer_outcome(
                         f"unmodeled_rows={unmodeled}, "
                         f"residual_null_rows={residual_nulls}; zero are allowed."
                     )
-                target_receipts[f"{entity}/{family}/{target}"] = {
+                target_receipt: dict[str, object] = {
                     "producer_roles": [
                         role
                         for role, active in (
@@ -8721,6 +10388,11 @@ def _verify_post_puf_transfer_outcome(
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
+                if (entity, target) in qrf_evidence_targets and record is not None:
+                    target_receipt["qrf_pattern_evidence"] = (
+                        _acs_imputed_pattern_evidence(record)
+                    )
+                target_receipts[target_receipt_key] = target_receipt
     if failures:
         raise ValueError(
             "Stacked post-PUF transfer outcome verification failed:\n  "
@@ -9170,6 +10842,7 @@ def _aggregate_late_transfer_result(
     validate_stacked_post_puf_transfer_receipt(
         receipt,
         boundary="US late-transfer DAG finalization",
+        frame=frame,
     )
     return StackedPostPufTransferResult(frame, receipt, aggregate)
 

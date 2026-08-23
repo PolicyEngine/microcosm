@@ -401,7 +401,7 @@ def load_sipp_2023_vehicle_donor(
         delimiter="|",
         usecols=list(SIPP_VEHICLE_SOURCE_COLUMNS),
         chunksize=int(chunksize),
-        low_memory=False,
+        low_memory=True,
     )
     for chunk in reader:
         month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
