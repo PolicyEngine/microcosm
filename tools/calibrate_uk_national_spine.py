@@ -64,13 +64,22 @@ from microcosm.build.uk_runtime.national_build import (
     load_uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
     _CalibrationFrameAdapter,
+    _doctrine_bounds,
+    _post_solve_calibration_record,
+    national_calibration_mass_reason,
 )
 from microcosm.build.uk_runtime.diagnostics import write_uk_calibration_diagnostics
 from microcosm.build.uk_runtime.national_doctrine import UK_NATIONAL_SOLVE_DOCTRINE
-from microcosm.calibrate import TargetRegistry, effective_sample_size, score_targets
+from microcosm.calibrate import (
+    TargetRegistry,
+    calibrate,
+    effective_sample_size,
+    score_targets,
+)
 
 _REPOSITORY = Path(__file__).resolve().parent.parent
 _PIPELINE = "uk-frs-calibration"
@@ -157,12 +166,15 @@ def _repair_structural_nans(frame: Any) -> dict[str, Any]:
     return receipt
 
 
-def _attach_variable(
+def _compute_measure_input(
     frame: Any, simulation: Any, entity: str, variable: str, year: int
-) -> str:
-    """Compute one simulated variable at ``entity`` grain and attach it.
+) -> tuple[np.ndarray, str]:
+    """Compute one simulated variable at ``entity`` grain.
 
-    Returns a short description of the path taken, for the receipt.
+    Returns the values and a short description of the path taken. Values are
+    never written to the frame — they are injected at adapter level, where
+    column names are table-scoped, so the Frame's global-uniqueness rule
+    (which forbids ``region`` living on two entities) is never violated.
     """
 
     definition = simulation.tax_benefit_system.variables.get(variable)
@@ -216,40 +228,47 @@ def _attach_variable(
         )
     if values.dtype.kind not in {"O", "U", "S"}:
         values = values.astype(float)
-    table[variable] = values
-    if variable not in frame.table(entity).columns:
-        raise RuntimeError(f"attachment of {entity}.{variable} did not persist.")
-    return route
+    return values, route
 
 
-def _materialize_simulated_measures(
+def _inject_measure_inputs(adapter: Any, measure_inputs: dict) -> None:
+    for (entity, variable), values in measure_inputs.items():
+        adapter.tables[entity][variable] = values
+
+
+def _resolve_simulated_measures(
     frame: Any,
     simulation: Any,
     registry: TargetRegistry,
     year: int,
     *,
     side: str,
-    max_rounds: int = 6,
-) -> tuple[TargetRegistry, dict[str, Any]]:
-    """Attach simulated measure inputs until the register binds.
+    max_rounds: int = 8,
+) -> tuple[TargetRegistry, dict[tuple[str, str], np.ndarray], dict[str, Any]]:
+    """Compute simulated measure inputs until the register binds.
 
-    Drives the materializer's own skip reports: each round attaches the
-    missing (entity, variable) pairs from a live simulation and retries.
-    References whose needs cannot be met (counterfactual deltas, unknown
-    variables) are excluded with a reason. Returns the bindable registry and
-    the receipt.
+    Drives the materializer's own skip reports: each round computes the
+    missing (entity, variable) pairs from a live simulation, injects them at
+    adapter level, and retries. A reference is only excluded when its need
+    is structurally unmeetable here (counterfactual deltas, unknown
+    variables, or a key that was already provided in a previous round and
+    still does not satisfy it).
     """
 
     receipt: dict[str, Any] = {"side": side, "attached": {}, "excluded": {}}
+    measure_inputs: dict[tuple[str, str], np.ndarray] = {}
     active = list(registry.specs)
     for round_index in range(max_rounds):
         probe = UKFrameTargetAdapter(frame)
+        _inject_measure_inputs(probe, measure_inputs)
         result = materialize_uk_ledger_targets(
             probe, TargetRegistry(active, country="uk"), period=year
         )
         skipped = list(result.skipped)
         if not skipped:
             break
+        provided_before = set(measure_inputs)
+        provided_this_round: set[tuple[str, str]] = set()
         progressed = False
         for skip in skipped:
             info = skip.__dict__
@@ -276,23 +295,30 @@ def _materialize_simulated_measures(
                     progressed = True
                     continue
                 entity = definition.entity.key
-            key = f"{entity}.{variable}"
-            if key in receipt["attached"]:
-                # Attached last round and still skipped: this reference needs
-                # something else this loop cannot provide.
+            key = (entity, variable)
+            if key in provided_this_round:
+                # Someone else already computed it this round; this reference
+                # resolves on the next probe.
+                continue
+            if key in provided_before:
                 receipt["excluded"][name] = (
-                    f"still unmaterializable after attaching {key}: {reason}"
+                    f"still unmaterializable with {entity}.{variable} "
+                    f"provided: {reason}"
                 )
                 active = [spec for spec in active if spec.name != name]
                 progressed = True
                 continue
             try:
-                route = _attach_variable(frame, simulation, entity, variable, year)
+                values, route = _compute_measure_input(
+                    frame, simulation, entity, variable, year
+                )
             except (KeyError, ValueError) as error:
                 receipt["excluded"][name] = str(error)
                 active = [spec for spec in active if spec.name != name]
             else:
-                receipt["attached"][key] = route
+                measure_inputs[key] = values
+                provided_this_round.add(key)
+                receipt["attached"][f"{entity}.{variable}"] = route
             progressed = True
         if not progressed:
             raise RuntimeError(
@@ -301,7 +327,130 @@ def _materialize_simulated_measures(
             )
     else:
         raise RuntimeError("measure materialization did not converge.")
-    return TargetRegistry(active, country="uk"), receipt
+    return TargetRegistry(active, country="uk"), measure_inputs, receipt
+
+
+class _SpineCalibrationStage(UKNationalCalibrationStage):
+    """The national calibration stage, with adapter-level measure inputs.
+
+    Mirrors the parent's ``__call__`` with two insertions: simulated measure
+    inputs are injected into the adapter's table copies before
+    materialization, and removed again before the prepared frame is built —
+    the solver consumes the materialized measure columns, and dropping the
+    injected inputs keeps the prepared frame inside the Frame's
+    global-uniqueness rule. ``restore`` then rebuilds the pristine tables
+    around the calibrated weights, so the staged artifact carries none of
+    the injected columns.
+    """
+
+    def __init__(self, registry, *, period, measure_inputs):
+        super().__init__(registry, period=period)
+        self._measure_inputs = dict(measure_inputs)
+
+    def __call__(self, frame: Any) -> Any:
+        declared = len(self.registry.specs) + len(self.compilation.unsupported)
+        if self.compilation.unsupported:
+            raise RuntimeError(
+                f"unsupported references: {self.compilation.unsupported!r}"
+            )
+        adapter = _CalibrationFrameAdapter(frame)
+        original_columns = {
+            entity: set(table.columns) for entity, table in adapter.tables.items()
+        }
+        _inject_measure_inputs(adapter, self._measure_inputs)
+        materialized = materialize_uk_ledger_targets(
+            adapter, self.registry, period=self.period
+        )
+        if materialized.skipped:
+            skipped = [skip.__dict__ for skip in materialized.skipped]
+            raise RuntimeError(
+                f"calibration register did not bind: skipped={skipped[:5]}"
+            )
+        for entity, variable in self._measure_inputs:
+            if variable not in original_columns[entity]:
+                adapter.tables[entity].drop(columns=[variable], inplace=True)
+        prepared = adapter.prepared_frame()
+        mass_reason = national_calibration_mass_reason(
+            spec.family for spec in self.registry.specs
+        )
+        mass_log_records_before_calibration = len(frame.mass_log)
+        result = calibrate(
+            prepared,
+            self.registry.to_target_set(),
+            weight_entity="household",
+            epochs=self.doctrine.epochs,
+            learning_rate=self.doctrine.learning_rate,
+            mass=self.doctrine.mass_rule,
+            mass_reason=mass_reason,
+            max_weight_ratio=self.doctrine.max_weight_ratio,
+            seed=self.doctrine.seed,
+            l0_lambda=self.doctrine.l0_lambda,
+            target_loss_cap=self.doctrine.target_loss_cap,
+        )
+        if result.skipped or len(result.problem.names) != declared:
+            skipped_names = [item.name for item in result.skipped]
+            raise RuntimeError(
+                f"calibration matrix incomplete: declared={declared}, "
+                f"rows={len(result.problem.names)}, skipped={skipped_names[:10]}"
+            )
+        clean_frame = adapter.restore(result.frame)
+        self.solve_result = result
+        calibration_record = _post_solve_calibration_record(
+            frame,
+            clean_frame,
+            before_count=mass_log_records_before_calibration,
+        )
+        self.diagnostics = tuple(
+            {
+                "name": row.name,
+                "estimate": row.final_estimate,
+                "target": row.target,
+                "relative_error": row.relative_error,
+            }
+            for row in result.diagnostics
+        )
+        ratios = result.weights / result.initial_weights
+        before_kind = frame.weights_for("household").kind
+        after_kind = clean_frame.weights_for("household").kind
+        self.manifest = {
+            "activated_reference_count": declared,
+            "resolved_reference_count": len(self.registry.specs),
+            "matrix_target_count": len(result.problem.names),
+            "loss": result.final_loss,
+            "effective_sample_size": effective_sample_size(result.weights),
+            "max_weight_ratio": float(ratios.max()),
+            "max_weight_ratio_bound": self.doctrine.max_weight_ratio,
+            "target_materialization": materialized.report(),
+            "weights": {
+                "household_weight_kind": after_kind.value,
+                "household_weight_kind_chain": [
+                    {"stage": "staging", "kind": before_kind.value},
+                    {"stage": "national_calibration", "kind": after_kind.value},
+                ],
+                "mass_log_records": len(clean_frame.mass_log),
+                "calibration_mass_change": {
+                    "entity": str(calibration_record.entity),
+                    "old_total": float(calibration_record.old_total),
+                    "new_total": float(calibration_record.new_total),
+                    "relative_shift": (
+                        float(calibration_record.new_total)
+                        - float(calibration_record.old_total)
+                    )
+                    / float(calibration_record.old_total),
+                    "reason": str(calibration_record.reason),
+                },
+            },
+            "solve": {
+                "n_targets": len(result.problem.names),
+                "n_households": len(clean_frame.table("household")),
+                "initial_loss": float(result.initial_loss),
+                "final_loss": float(result.final_loss),
+                "n_nonzero": int(np.count_nonzero(result.weights)),
+            },
+            "parameters": {"doctrine": _doctrine_bounds(self.doctrine)},
+        }
+        self.output_content_identity = uk_frame_content_identity(clean_frame)
+        return clean_frame
 
 
 def _uk_target_geography_levels(registry: Any) -> dict[str, str]:
@@ -333,15 +482,24 @@ def _uk_target_geography_levels(registry: Any) -> dict[str, str]:
     return levels
 
 
-def _score_frame(frame: Any, registry: TargetRegistry, year: int) -> Any:
+def _score_frame(
+    frame: Any, registry: TargetRegistry, year: int, measure_inputs: dict
+) -> Any:
     """Materialize measures and score one frame on the shared register."""
 
     adapter = _CalibrationFrameAdapter(frame)
+    original_columns = {
+        entity: set(table.columns) for entity, table in adapter.tables.items()
+    }
+    _inject_measure_inputs(adapter, measure_inputs)
     result = materialize_uk_ledger_targets(adapter, registry, period=year)
     if result.skipped:
         raise RuntimeError(
             f"scoring register did not bind: {[s.__dict__ for s in result.skipped][:5]}"
         )
+    for entity, variable in measure_inputs:
+        if variable not in original_columns[entity]:
+            adapter.tables[entity].drop(columns=[variable], inplace=True)
     return score_targets(
         adapter.prepared_frame(),
         registry.to_target_set(),
@@ -355,6 +513,8 @@ def _score_block(
     registry: TargetRegistry,
     year: int,
     scorer: Any,
+    candidate_inputs: dict,
+    incumbent_inputs: dict,
 ) -> dict[str, Any]:
     """The #578 rule-1 block, on frames instead of H5 paths.
 
@@ -362,8 +522,8 @@ def _score_block(
     identical to ``score_uk_national_candidate.py``.
     """
 
-    candidate = _score_frame(candidate_frame, registry, year)
-    incumbent = _score_frame(incumbent_frame, registry, year)
+    candidate = _score_frame(candidate_frame, registry, year, candidate_inputs)
+    incumbent = _score_frame(incumbent_frame, registry, year, incumbent_inputs)
     candidate_errors = scorer._relative_errors(candidate)
     incumbent_errors = scorer._relative_errors(incumbent)
     missing = sorted(set(candidate_errors) ^ set(incumbent_errors))
@@ -699,21 +859,27 @@ def main(argv: list[str] | None = None) -> int:
 
     print("materializing simulated measures on the candidate spine...")
     candidate_sim = Microsimulation(dataset=str(prepared_input))
-    effective_registry, candidate_measures = _materialize_simulated_measures(
-        frame, candidate_sim, compilation.registry, calibration_year,
-        side="candidate",
+    effective_registry, candidate_inputs, candidate_measures = (
+        _resolve_simulated_measures(
+            frame, candidate_sim, compilation.registry, calibration_year,
+            side="candidate",
+        )
     )
     del candidate_sim
     append_phase(state, "simulated_measures_materialized")
     print(
         f"  bindable references: {len(effective_registry.specs)}/"
         f"{len(compilation.registry.specs)}; "
-        f"attached {len(candidate_measures['attached'])} measure inputs; "
+        f"computed {len(candidate_inputs)} measure inputs; "
         f"excluded {len(candidate_measures['excluded'])}"
     )
 
     # --- 5. calibrate -------------------------------------------------------
-    stage = UKNationalCalibrationStage(effective_registry, period=calibration_year)
+    stage = _SpineCalibrationStage(
+        effective_registry,
+        period=calibration_year,
+        measure_inputs=candidate_inputs,
+    )
     calibrated = stage(frame)
     append_phase(state, "national_calibration_solved")
 
@@ -736,13 +902,21 @@ def main(argv: list[str] | None = None) -> int:
     print("materializing simulated measures on the incumbent...")
     incumbent_frame, _ = load_uk_national_frame(args.incumbent_h5)
     incumbent_sim = Microsimulation(dataset=str(args.incumbent_h5))
-    score_registry, incumbent_measures = _materialize_simulated_measures(
-        incumbent_frame, incumbent_sim, effective_registry, calibration_year,
-        side="incumbent",
+    score_registry, incumbent_inputs, incumbent_measures = (
+        _resolve_simulated_measures(
+            incumbent_frame, incumbent_sim, effective_registry, calibration_year,
+            side="incumbent",
+        )
     )
     del incumbent_sim
     score = _score_block(
-        calibrated, incumbent_frame, score_registry, calibration_year, scorer
+        calibrated,
+        incumbent_frame,
+        score_registry,
+        calibration_year,
+        scorer,
+        candidate_inputs,
+        incumbent_inputs,
     )
     append_phase(state, "scored_vs_incumbent")
 
