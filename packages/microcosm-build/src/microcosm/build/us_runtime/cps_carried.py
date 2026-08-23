@@ -533,23 +533,31 @@ def us_reported_coverage_vintage_signal_gate(
     *,
     min_vintage_rows: int = US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS,
 ) -> GateResult:
-    """Require every pooled ASEC vintage to carry reported-coverage signal.
+    """Require every pooled source vintage to carry reported-coverage signal.
 
-    Microcosm #720: the pooled 2022/2023 ASEC source inputs lacked the
-    ``NOW_*`` at-interview recodes (except ``NOW_GRP``/``NOW_MRK``), so
+    Microcosm #720: the pooled income-year 2022/2023 ASEC inputs carried only
+    ``NOW_GRP``/``NOW_MRK`` of the 18 ``NOW_*`` at-interview recodes, so
     :func:`derive_us_cps_carried_inputs` silently mapped every 2022/2023
     -vintage person to ``False`` for seven of the nine reported-coverage
     flags and the certified Build P artifact reported 24.6M under-65
     Medicaid at interview against ~58M survey. A flag populated for one
     vintage passes the presence-style checks (``release_input_coverage``,
     ``degenerate_input_signal``); this gate enforces the per-vintage
-    invariant those checks cannot see: every ``source_year`` with at least
-    ``min_vintage_rows`` person rows must have at least one reporter for
-    every reported-coverage input.
+    invariant those checks cannot see.
 
-    Vintages below ``min_vintage_rows`` (smoke pools) are recorded in the
-    details but not enforced. A frame without a ``source_year`` column is
-    checked as a single vintage.
+    Groups are ``person_support_channel`` x ``source_year`` when the channel
+    column is present (ACS-spine rows also carry ``source_year``, so a
+    year-only key would let ACS signal mask a missing ASEC recode), else
+    ``source_year`` alone. Every group with at least ``min_vintage_rows``
+    person rows must have, for every reported-coverage input, a boolean-like
+    column with no nulls and at least one reporter. Provenance must be
+    present: a missing ``source_year`` column, null source years, or an
+    empty person table fail the gate rather than collapsing into one group.
+
+    Groups below ``min_vintage_rows`` (smoke pools) are recorded in the
+    details but not enforced. This is a zero-signal sentinel, not a survey
+    mass check: it observes that a vintage has no reporters; the #720
+    cause (a source input lacking the recode) is the documented reading.
     """
 
     person = frame.table("person")
@@ -558,6 +566,8 @@ def us_reported_coverage_vintage_signal_gate(
         for column in US_REPORTED_COVERAGE_PERSON_INPUTS
         if column not in person.columns
     ]
+    if "source_year" not in person.columns:
+        missing.append("source_year")
     if missing:
         return GateResult(
             name="reported_coverage_vintage_signal",
@@ -565,33 +575,73 @@ def us_reported_coverage_vintage_signal_gate(
             failures=tuple(f"person column missing: {column}." for column in missing),
             details={"missing": missing},
         )
-    if "source_year" in person.columns:
-        vintage_labels = person["source_year"]
-    else:
-        vintage_labels = pd.Series("all", index=person.index)
+    if len(person) == 0:
+        # Unreachable through a valid Frame (weights cannot be empty); kept
+        # so a direct caller cannot pass an empty table as "no failures".
+        return GateResult(
+            name="reported_coverage_vintage_signal",
+            passed=False,
+            failures=("person table is empty: no vintage carries any signal.",),
+            details={"rows": 0},
+        )
     failures: list[str] = []
+    null_years = int(person["source_year"].isna().sum())
+    if null_years:
+        failures.append(
+            f"source_year: {null_years} person rows have no source year; the "
+            "per-vintage invariant cannot be proven for unprovenanced rows."
+        )
+    keys: list[pd.Series] = []
+    if "person_support_channel" in person.columns:
+        keys.append(person["person_support_channel"].astype(str))
+    keys.append(person["source_year"])
     vintages: dict[str, dict[str, object]] = {}
-    for vintage, group in person.groupby(vintage_labels, sort=True, dropna=False):
-        label = str(vintage)
+    for key, group in person.groupby(keys, sort=True, dropna=True):
+        parts = key if isinstance(key, tuple) else (key,)
+        label = "/".join(str(part) for part in parts)
         rows = int(len(group))
-        reporter_counts = {
-            column: int(group[column].fillna(False).astype(bool).sum())
-            for column in US_REPORTED_COVERAGE_PERSON_INPUTS
-        }
+        reporter_counts: dict[str, int] = {}
+        null_counts: dict[str, int] = {}
+        dtype_failures: list[str] = []
+        for column in US_REPORTED_COVERAGE_PERSON_INPUTS:
+            values = group[column]
+            if not (
+                pd.api.types.is_bool_dtype(values)
+                or pd.api.types.is_numeric_dtype(values)
+            ):
+                dtype_failures.append(column)
+                reporter_counts[column] = 0
+                null_counts[column] = int(values.isna().sum())
+                continue
+            null_counts[column] = int(values.isna().sum())
+            reporter_counts[column] = int(values.fillna(False).astype(bool).sum())
         enforced = rows >= min_vintage_rows
         vintages[label] = {
             "rows": rows,
             "enforced": enforced,
             "reporter_counts": reporter_counts,
+            "null_counts": null_counts,
         }
         if not enforced:
             continue
-        for column, count in reporter_counts.items():
-            if count == 0:
+        for column in dtype_failures:
+            failures.append(
+                f"{column}: vintage {label} stores a non-boolean dtype "
+                f"({group[column].dtype}); reported-coverage inputs must be "
+                "boolean."
+            )
+        for column, count in null_counts.items():
+            if count and column not in dtype_failures:
                 failures.append(
-                    f"{column}: source_year {label} has 0 reporters over "
-                    f"{rows} person rows — the vintage source lacks the "
-                    "at-interview recode (microcosm #720)."
+                    f"{column}: vintage {label} has {count} null values over "
+                    f"{rows} person rows; the flag must be fully populated."
+                )
+        for column, count in reporter_counts.items():
+            if count == 0 and column not in dtype_failures:
+                failures.append(
+                    f"{column}: vintage {label} has 0 reporters over {rows} "
+                    "person rows (consistent with a source input lacking the "
+                    "at-interview recode, microcosm #720)."
                 )
     return GateResult(
         name="reported_coverage_vintage_signal",
@@ -599,6 +649,11 @@ def us_reported_coverage_vintage_signal_gate(
         failures=tuple(failures),
         details={
             "min_vintage_rows": int(min_vintage_rows),
+            "grouping": (
+                ["person_support_channel", "source_year"]
+                if "person_support_channel" in person.columns
+                else ["source_year"]
+            ),
             "vintages": vintages,
         },
     )

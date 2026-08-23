@@ -5021,6 +5021,41 @@ def _health_input_signal_gate(frame: Frame) -> GateResult:
     )
 
 
+US_REPORTED_COVERAGE_VINTAGE_GATE_RECEIPT = (
+    "reported_coverage_vintage_gate_failure.json"
+)
+
+
+def _write_reported_coverage_vintage_gate_receipt(
+    release_dir: Path, gate: GateResult
+) -> Path:
+    """Persist a RED reported-coverage vintage gate before the early raise.
+
+    The base-frame gate raises before the collector, diagnostics, and
+    manifests run, so without this receipt a failure would leave only
+    optional staging telemetry and an exception (microcosm #720 review).
+    The receipt never marks a directory certified: certification is keyed
+    on ``release_manifest.json`` (#568), so a rerun under the same id is
+    not blocked by it.
+    """
+
+    release_dir.mkdir(parents=True, exist_ok=True)
+    path = release_dir / US_REPORTED_COVERAGE_VINTAGE_GATE_RECEIPT
+    path.write_text(
+        json.dumps(
+            {
+                "gate": gate.name,
+                "passed": gate.passed,
+                "failures": list(gate.failures),
+                "details": dict(gate.details),
+            },
+            indent=1,
+            allow_nan=False,
+        )
+    )
+    return path
+
+
 def _engine_input_variables() -> tuple[str, ...]:
     """Persistable PolicyEngine input variables (formula-owned excluded)."""
     return tuple(PolicyEngineUSEngine().variables())
@@ -9349,6 +9384,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         base_frame
     )
     if not reported_coverage_vintage_gate.passed:
+        receipt_path = _write_reported_coverage_vintage_gate_receipt(
+            release_dir, reported_coverage_vintage_gate
+        )
         if telemetry is not None:
             telemetry.stage(
                 "reported_coverage_vintage_gate",
@@ -9363,6 +9401,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"Reported-coverage vintage signal failed: {failure}"
                 for failure in reported_coverage_vintage_gate.failures
             )
+            + f" (receipt: {receipt_path})"
         )
     if telemetry is not None:
         telemetry.stage(
@@ -10555,6 +10594,18 @@ def main(argv: Sequence[str] | None = None) -> None:
         early_terminal_gate_failures.append(
             "Health-input signal evaluation crashed in degraded mode; "
             f"recorded instead of masking earlier failures: {error}"
+        )
+    try:
+        reported_coverage_vintage_gate = us_reported_coverage_vintage_signal_gate(
+            export_frame
+        )
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        reported_coverage_vintage_gate = None
+        early_terminal_gate_failures.append(
+            "Reported-coverage vintage signal evaluation crashed in degraded "
+            f"mode; recorded instead of masking earlier failures: {error}"
         )
     try:
         other_health_insurance_gate = us_other_health_insurance_signal_gate(

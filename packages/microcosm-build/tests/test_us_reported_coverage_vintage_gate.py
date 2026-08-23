@@ -131,7 +131,7 @@ class TestGate:
         assert not gate.passed
         assert len(gate.failures) == 1
         assert "has_medicaid_health_coverage_at_interview" in gate.failures[0]
-        assert "source_year 2022" in gate.failures[0]
+        assert "vintage 2022 has 0 reporters" in gate.failures[0]
         assert "#720" in gate.failures[0]
 
     def test_issue_720_shape_fails_seven_flags_for_two_vintages(self) -> None:
@@ -147,7 +147,7 @@ class TestGate:
         assert not gate.passed
         assert len(gate.failures) == 14
         failed_vintages = {
-            failure.split("source_year ")[1].split(" ")[0] for failure in gate.failures
+            failure.split("vintage ")[1].split(" ")[0] for failure in gate.failures
         }
         assert failed_vintages == {"2022", "2023"}
         assert not any("has_esi" in failure for failure in gate.failures)
@@ -180,24 +180,71 @@ class TestGate:
         assert gate.passed, gate.failures
         assert gate.details["vintages"]["2022"]["enforced"] is False
 
-    def test_frame_without_source_year_is_one_vintage(self) -> None:
+    def test_missing_source_year_fails_closed(self) -> None:
         rows = [{**row} for row in _vintage_rows(2024)]
         for row in rows:
             del row["source_year"]
         gate = us_reported_coverage_vintage_signal_gate(
             _us_frame(rows), min_vintage_rows=3
         )
-        assert gate.passed, gate.failures
-        assert set(gate.details["vintages"]) == {"all"}
+        assert not gate.passed
+        assert gate.failures == ("person column missing: source_year.",)
 
-        for row in rows:
-            row["has_tricare_health_coverage_at_interview"] = False
+    def test_null_source_year_rows_fail(self) -> None:
+        rows = _vintage_rows(2024) + [{**_vintage_rows(2024)[0], "source_year": None}]
         gate = us_reported_coverage_vintage_signal_gate(
             _us_frame(rows), min_vintage_rows=3
         )
         assert not gate.passed
-        assert "source_year all" in gate.failures[0]
-        assert "has_tricare_health_coverage_at_interview" in gate.failures[0]
+        assert any("1 person rows have no source year" in f for f in gate.failures)
+
+    def test_support_channel_separates_acs_from_asec(self) -> None:
+        # An ACS-spine vintage with signal must not mask an ASEC vintage
+        # whose source lacked the recode: both carry source_year 2024.
+        asec = [
+            {**row, "person_support_channel": "asec"}
+            for row in _vintage_rows(
+                2024,
+                reporters=("has_esi", "has_marketplace_health_coverage_at_interview"),
+            )
+        ]
+        acs = [{**row, "person_support_channel": "acs"} for row in _vintage_rows(2024)]
+        gate = us_reported_coverage_vintage_signal_gate(
+            _us_frame(asec + acs), min_vintage_rows=3
+        )
+        assert not gate.passed
+        assert gate.details["grouping"] == ["person_support_channel", "source_year"]
+        assert set(gate.details["vintages"]) == {"acs/2024", "asec/2024"}
+        assert len(gate.failures) == 7
+        assert all("vintage asec/2024" in failure for failure in gate.failures)
+
+    def test_null_flag_values_fail_completeness(self) -> None:
+        person = _person_table(_vintage_rows(2024))
+        person["has_medicaid_health_coverage_at_interview"] = pd.array(
+            [True, None, False], dtype="boolean"
+        )
+        gate = us_reported_coverage_vintage_signal_gate(
+            _us_frame_from_person(person), min_vintage_rows=3
+        )
+        assert not gate.passed
+        assert len(gate.failures) == 1
+        assert "1 null values" in gate.failures[0]
+        assert (
+            gate.details["vintages"]["2024"]["null_counts"][
+                "has_medicaid_health_coverage_at_interview"
+            ]
+            == 1
+        )
+
+    def test_non_boolean_dtype_fails(self) -> None:
+        person = _person_table(_vintage_rows(2024))
+        person["has_esi"] = ["True", "False", "False"]
+        gate = us_reported_coverage_vintage_signal_gate(
+            _us_frame_from_person(person), min_vintage_rows=3
+        )
+        assert not gate.passed
+        assert len(gate.failures) == 1
+        assert "non-boolean dtype" in gate.failures[0]
 
     def test_missing_column_fails(self) -> None:
         rows = [{**row} for row in _vintage_rows(2024)]
@@ -251,4 +298,6 @@ class TestMechanism:
             "has_esi",
             "has_marketplace_health_coverage_at_interview",
         }
-        assert all("source_year 2023" in failure for failure in gate.failures)
+        assert all(
+            "vintage 2023 has 0 reporters" in failure for failure in gate.failures
+        )

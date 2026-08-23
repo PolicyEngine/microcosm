@@ -2267,6 +2267,33 @@ def test_release_gate_failures_include_reported_coverage_vintage_signal() -> Non
     ]
 
 
+def test_reported_coverage_vintage_gate_receipt_is_written(tmp_path) -> None:
+    builder = _load_builder_module()
+    gate = builder.GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=False,
+        failures=(
+            "has_medicaid_health_coverage_at_interview: vintage asec/2022 has 0 "
+            "reporters over 54464 person rows (consistent with a source input "
+            "lacking the at-interview recode, microcosm #720).",
+        ),
+        details={"min_vintage_rows": 5000, "vintages": {"asec/2022": {"rows": 54464}}},
+    )
+    release_dir = tmp_path / "releases" / "rid"
+
+    path = builder._write_reported_coverage_vintage_gate_receipt(release_dir, gate)
+
+    assert path == release_dir / builder.US_REPORTED_COVERAGE_VINTAGE_GATE_RECEIPT
+    payload = json.loads(path.read_text())
+    assert payload["gate"] == "reported_coverage_vintage_signal"
+    assert payload["passed"] is False
+    assert payload["failures"] == list(gate.failures)
+    assert payload["details"]["vintages"]["asec/2022"]["rows"] == 54464
+    # A receipt-only directory is not a certified release (#568): reruns under
+    # the same id stay allowed.
+    builder._refuse_certified_release_dir_reuse(release_dir)
+
+
 def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
     builder = _load_builder_module()
 
