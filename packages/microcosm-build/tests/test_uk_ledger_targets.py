@@ -98,3 +98,75 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
     assert adapter.tables["household"][
         "dwp/uc/two_child_limit/children_affected"
     ].tolist() == [3.0, 0.0, 4.0]
+
+
+def _composition_frame():
+    """Two households: one lone parent with a child, one older couple."""
+
+    import pandas as pd
+
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(5),
+                    "person_benunit_id": [0, 0, 1, 2, 2],
+                    "person_household_id": [0, 0, 0, 1, 1],
+                    "is_child": [0.0, 1.0, 0.0, 0.0, 0.0],
+                    "age": [40.0, 8.0, 30.0, 70.0, 72.0],
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(3),
+                    "family_type": ["LONE_PARENT", "SINGLE", "COUPLE_NO_CHILDREN"],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": np.arange(2)}),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.array([10.0, 20.0]), WeightKind.DESIGN)},
+        metadata={"time_period": "2025"},
+    )
+
+
+def test_household_condition_reduces_person_level_conditions():
+    # Person-level conditions collapse through person_household_id. Building
+    # the group-membership column here would ask for "person_person_id",
+    # which cannot exist — the failure that excluded every ONS
+    # household-composition reference from calibration.
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    adapter = UKFrameTargetAdapter(_composition_frame())
+
+    children = adapter.household_condition(
+        {
+            "variable": "is_child",
+            "entity": "person",
+            "reduce": "sum",
+            "operator": ">=",
+            "value": 1,
+        }
+    )
+
+    assert list(children) == [True, False]
+
+
+def test_household_condition_still_reduces_group_entities():
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    adapter = UKFrameTargetAdapter(_composition_frame())
+
+    single = adapter.household_condition(
+        {
+            "variable": "family_type",
+            "entity": "benunit",
+            "reduce": "any",
+            "operator": "==",
+            "value": "SINGLE",
+        }
+    )
+
+    assert list(single) == [True, False]
