@@ -1,4 +1,31 @@
-# Replacement-scorecard lane notes
+# PolicyEngine-US 1.819.0 lock-bump lane notes
+
+## 2026-08-23 — lane start and unchanged-lock environment
+
+- Branch: `bump-policyengine-us`, starting at `31640b91` (`origin/main`).
+- Owner ruling: the 25% replacement candidate must use
+  `policyengine-us==1.819.0`, not the currently locked `1.764.6`. This lane is
+  limited to the lock bump, compatibility repairs, identity re-pins, and PR-CI
+  validation. It will not build a pool/release, push, or tune a gate,
+  threshold, tolerance, or band.
+- The ordered first command, `uv sync --all-packages --extra us`, reached no
+  resolver or install action because the managed sandbox cannot initialize the
+  user-wide uv cache. Retrying with a fresh writable cache reached the locked
+  `jsonschema==4.26.0` wheel URL but DNS is disabled.
+- Environment recovery reused only prior exact-lock local state: cloned the
+  Python 3.14 `.venv` from `microcosm-scorecard` copy-on-write, then ran
+  `UV_CACHE_DIR=/private/tmp/microcosm-scorecard-uv.0rntvY/cache uv sync
+  --offline --all-packages --extra us`. uv rebuilt all five workspace wheels
+  and replaced their sibling-worktree editable origins with this worktree.
+- The GitNexus debugging skill applies to the expected failing-test diagnosis,
+  but no GitNexus query, context, graph, or resource tools are exposed in this
+  session. The fallback is `rg`, direct source reads, installed
+  `policyengine_us` variable inspection, and focused tests.
+
+## Historical replacement-scorecard notes
+
+The sections below came from the merged replacement-scorecard lane and were
+accurate when written. They are retained as history, not as current state.
 
 ## 2026-08-22 — lane start and environment
 
