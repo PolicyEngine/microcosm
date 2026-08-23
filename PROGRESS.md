@@ -1,65 +1,46 @@
-# Progress: one US target surface
+# Progress: UK UC caseload and council tax diagnosis
 
 ## State
 
-Surface unification and scale-identity enforcement are complete on
-`one-target-surface`: every US entrypoint
-now compiles one national + state + congressional-district target registry,
-and the CLI/config switches that could delete CD or JCT target rows are gone.
-Parity doctrine now protects that family as a red-line compile. Sparse and dense
-artifacts may differ in record count, never target membership.
+Evidence collection is complete on `uk-caseload-counciltax-diagnosis` from
+`origin/main` at `2aa96795`; report drafting is next. This lane is diagnostic
+only: no pool build, calibration, gate tuning, exclusion change, publication,
+push, or issue comment has been run.
 
 ## Done
 
-- Read `CLAUDE.md`, the target-parity declaration, the fiscal compiler and its
-  never-controls doctrine, the current CD opt-in tests, and
-  [microcosm#449](https://github.com/PolicyEngine/microcosm/issues/449) /
-  [microcosm#569](https://github.com/PolicyEngine/microcosm/issues/569).
+- Read the repository and PolicyEngine-wide `CLAUDE.md` instructions before
+  acting.
+- Confirmed the branch started clean at the post-#735/#733 `origin/main` merge.
 - Attempted the required `uv sync --all-packages --extra us`. The managed
-  sandbox denied writes to the default uv cache, then its network restriction
-  prevented a clean-cache download of `pyvis`. A byte-identical-lock sibling
-  environment was cloned copy-on-write; tests use that complete environment
-  with this worktree's package sources first on `PYTHONPATH` because an offline
-  editable reinstall still requires unavailable build-isolation metadata.
-- Attempted the GitNexus refactoring impact workflow. Local indexing completed,
-  but GitNexus could not register the index because the sandbox forbids writing
-  `~/.gitnexus/registry.json`; a direct source/call-site audit is the fallback.
-- Confirmed the starting worktree was clean and no build or push was run.
-- Ran the workspace suite for 1,137 seconds with no failure before interrupting
-  it inside the unrelated PUF-QRF stale-checkpoint subprocess regression; the
-  affected US target/compiler shard is the per-commit validation boundary, with
-  a complete workspace run reserved for the final tree. Ruff is green.
-- Established a green 10-file affected-suite baseline covering target
-  compilation, parity, the release builder/scorers, CD vintage translation,
-  Ledger profiles, and the generated calibration contract (100% in 349.59s).
-- Removed the congressional-district compilation option throughout the fiscal
-  compiler, builder, fiscal scorer, state-file scorer, ACS local tool, aging
-  diff, experiments, tests, docs, and generated contract. The canonical CD
-  crosswalk is now the default at each production entrypoint.
-- Removed the diagnostic JCT target-deletion option and its release-gate bypass;
-  diagnostic tools now score the same registry as releases.
-- Removed the parity generator's CD regime switch and regenerated the pinned
-  manifest to 32 compiled / 52 reviewed families. The generated calibration
-  contract declares all three geography layers and has no default-layer split.
-- The 10-file affected suite reaches 100% with exit 0 after the runtime change;
-  Ruff, byte compilation, and `git diff --check` pass.
-- Promoted the CD family into the parity anti-rot red-line set, pinned the
-  manifest's 32/52 header counts to parsed family counts, and asserted that its
-  compiled entry carries no exclusion fields or fence.
-- Strengthened the fiscal invariant: the CD aggregate is present in the
-  compiled registry while the taxable-interest rebase still refuses it as a
-  national control. The standard 10-file affected suite reaches 100% with exit
-  0 after the parity-doctrine change.
-- Removed the compiler's per-run support-exclusion parameter, the release CLI
-  and loader that populated it, its provenance branch, both experiment callers,
-  and the obsolete sparse Build-J exclusion JSON.
-- Added exact signature locks for the compiler, release builder, fiscal scorer,
-  and state scorer; legacy membership flags are parser-rejected.
-- Added a CD-bearing registry identity test across nominal 57,240-record sparse
-  and 337,704-record dense artifacts. Specs and content-addressed registry
-  version are identical. The standard affected suite reaches 100% with exit 0.
+  sandbox first denied the global uv cache and then denied PyPI DNS access from
+  a writable cache while fetching `quantile-forest==1.4.2`.
+- Identified a complete sibling environment with the byte-identical
+  `uv.lock` (`ea7af780...`) and verified that `uv run --no-sync`, directed to
+  that environment with this worktree's five `src` trees first on
+  `PYTHONPATH`, imports this branch's code.
+- Applied the GitNexus debugging workflow. Analysis produced a local index of
+  626 files, but registration failed because the sandbox forbids writing
+  `~/.gitnexus/registry.json`; source, call-site, fixture, and committed-receipt
+  audits are the fallback.
+- Completed parallel read-only audits of the UC facts/mechanisms and the
+  council-tax/`owned_land` paths. No sub-agent edited the worktree.
+- Isolated and corrected one root-journal wording that tripped the repository's
+  retired-package-name guard; the focused contract now passes.
+- Exercised the entire test surface. Two clean build-shard attempts each passed
+  6,032 tests and skipped 38 before a different unrelated US CLI subprocess
+  exceeded its fixed timeout. Both sole failures pass in isolation after their
+  imports are warm; the other package shards pass (203, 275, 93, and 294 tests,
+  with expected skips) and Ruff passes. A final exact full-suite attempt on this
+  journal state remains the commit gate.
 
 ## Next
 
-- Quantify the target-row delta and existing 25% timing evidence, run final
-  verification, then write `FINAL_REPORT.md`.
+- Obtain one green exact full-suite exit and commit this initial journal.
+- Quantify UC gaps by element and family type, with explicit denominators and
+  licensed-run limitations; delimit what #735's household target can fix.
+- Separate council-tax level error from `owned_land` release instability and
+  identify the smallest defensible remedy for each without changing gates or
+  owner-only exclusions.
+- Write the two evidence reports, unposted issue-comment drafts, final report,
+  and complete per-shard pytest plus Ruff validation for every commit.
