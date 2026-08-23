@@ -54,6 +54,7 @@ from microcosm.build.logbook_adoption import (
     resolve_predecessor,
     role_pins_digest,
 )
+from microcosm.build.uk_runtime.age_tail import disaggregate_uk_age_top_code
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
@@ -853,10 +854,29 @@ def main(argv: list[str] | None = None) -> int:
         gate_verdicts={},
     )
 
-    # --- 3. load + repair + prepared input for the simulation --------------
+    # --- 3. load + repair + age tail + prepared input ----------------------
     frame, _provenance = load_uk_national_frame(args.input_h5)
     append_phase(state, "input_loaded")
     nan_receipt = _repair_structural_nans(frame)
+
+    # Age-tail disaggregation: band populations come from the compiled
+    # register itself, so the imputation source and the target denominators
+    # cannot drift apart.
+    band_populations: dict[tuple[str, str], float] = {}
+    for spec in compilation.registry.specs:
+        for gender in ("male", "female"):
+            for band in ("80_84", "85_89", "90_plus"):
+                if spec.name == f"ons.population.{gender}_{band}":
+                    band_populations[(gender.upper(), band)] = float(spec.value)
+    age_receipt = disaggregate_uk_age_top_code(
+        frame, band_populations=band_populations, seed=UK_NATIONAL_SOLVE_DOCTRINE.seed
+    )
+    append_phase(state, "age_tail_disaggregated")
+    print(
+        f"age tail: {age_receipt['piled_persons']} top-coded persons "
+        f"reassigned across 80-84 / 85-89 / 90+"
+    )
+
     prepared_input = args.staging_h5.with_name("input-prepared.h5")
     write_uk_national_frame(frame, prepared_input)
     prepared_sha = _sha256_file(prepared_input)
@@ -967,6 +987,7 @@ def main(argv: list[str] | None = None) -> int:
             "prepared_input_sha256": prepared_sha,
         },
         "structural_nan_repair": nan_receipt,
+        "age_tail_disaggregation": age_receipt,
         "simulated_measures": {
             "candidate": candidate_measures,
             "incumbent": incumbent_measures,
@@ -1016,6 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
         "run_config": run_config,
         "input_posture": build_block["input_posture"],
         "structural_nan_repair": nan_receipt,
+        "age_tail_disaggregation": age_receipt,
         "simulated_measures": build_block["simulated_measures"],
         "register": {
             "compiled_sha256": register_sha,
