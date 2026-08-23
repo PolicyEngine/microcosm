@@ -1,53 +1,46 @@
-# Progress: 25% replacement-candidate host runbook
+# Progress: 25% replacement-candidate runbook, round 2
+
+Date: 2026-08-23
+
+Branch: `candidate-25pct-runbook`
 
 ## State
 
-**Blocked at the owner's required-input stop.** Current exact-k stage 2 requires
-a manifest-pinned Ledger consumer-artifact directory, but the host has only the
-bare v9.4 facts JSONL. No matching `manifest.json` or manifest SHA-256 exists.
-The lane has deliberately not written a partial `run-candidate.sh`, represented
-one as dry-run-valid, or run either builder.
+**In progress at ordered recovery item 1: the Ledger v9.4 consumer artifact.**
+Round 1 stopped correctly because only the pinned bare facts JSONL was present.
+Round 2 is authorized to recover the missing inputs without fabricating a path
+or digest. No pool build, release build, publication, promotion, push, or
+logbook-chain write has occurred.
+
+The candidate mode is owner-ruled as exact-k. The owner-stated pending default
+for the release solver seed is `0`; it will be recorded as pending Max's
+ratification. The `pi_hi` value remains subject to direct source and legacy-lane
+evidence before it may enter a command.
 
 ## Done
 
-- Read `CLAUDE.md`, both builders, README's release/alert boundary,
-  `tools/preflight_us_release_gates.py`, the exact-k launcher, the current
-  scorer, and all argument/loader paths reached before the missing-input stop.
-- Read the GitNexus exploration skill selected for the requested release-flow
-  audit. This session exposes no GitNexus repository resources or query tools,
-  so its documented direct-source fallback was used.
-- Completed the prescribed US-extra environment sync offline without changing
-  `uv.lock`; all five workspace packages point at this worktree and import.
-- Verified all six stage-1 paths and SHA-256 pins copied from the current 1%
-  host queue.
-- Measured the v9.4 Ledger facts file and established that no corresponding
-  schema-v1 artifact manifest is locally available. Recorded the exact stop in
-  `experiments/candidate_25pct/input_audit.md` and the non-run receipt in
-  `experiments/candidate_25pct/dry_run.md`.
-- Independently confirmed three remaining blockers already visible: no
-  owner-ratified exact-k seed/`pi_hi`, no current-surface builder-compatible
-  incumbent calibration diagnostics, and no local full SCF `p22i6.dta`.
-- Preserved the no-build, no-publish, no-promote, no-push, no-tuning,
-  under-15-GiB lane boundary. The pending logbook chain was not touched.
-- Wrote the final handoff to `FINAL_REPORT.md`. `ruff check .` and
-  `git diff --check` pass; the whole-tree formatter reports 64 inherited files,
-  and focused pytest collection was interrupted during schema-registry
-  validation rather than allowing redundant diagnostics to consume the host.
+- Read `CLAUDE.md`, the prior `FINAL_REPORT.md`,
+  `experiments/candidate_25pct/input_audit.md`, and
+  `experiments/candidate_25pct/dry_run.md` before taking round-2 action.
+- Confirmed the worktree starts clean at `4f616cb2b0f9`, four commits ahead of
+  `origin/main` (`d69131a3534a`).
+- Read the GitNexus exploration workflow. No GitNexus repository resource or
+  query tool is exposed in this session, so code-contract tracing will use the
+  checked-out sources and local repository history directly.
+- Established the serial stop rule: later inputs may be researched read-only in
+  parallel, but they will not be produced until every prior ordered input is
+  reproduced and verified.
 
 ## Next
 
-The owner or host-input producer must provide, without changing the current
-contract:
-
-1. The exact v9.4 Ledger consumer-artifact directory containing its reviewed
-   `manifest.json` and `consumer_facts.jsonl`, with both measured SHA-256 pins.
-2. Ratified stage-2 exact-k `seed` and `pi_hi` run-request values.
-3. Builder-compatible incumbent `calibration_diagnostics.json` scored on the
-   current 32842-row surface and current loss basis, with its SHA-256 and frozen
-   target-surface SHA-256.
-4. The local full SCF 2022 `p22i6.dta` and measured SHA-256.
-
-After those inputs exist, resume the stage-2 inventory at the Ledger artifact,
-continue through SSI bases, reviewed QRF exclusions, all donors/references and
-crosswalks, then write and dry-run the host script. Do not infer pins or release
-parameters from the July buildp invocation, examples, or tests.
+1. Locate the Chronicle checkout and the exact commit/tag and export command
+   that produced `consumer_facts_buildn_v9_4.jsonl`.
+2. Regenerate the artifact under a temporary directory and require byte-for-byte
+   SHA-256 equality with
+   `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
+3. Only after equality, install the complete artifact at
+   `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/inputs/ledger-v9_4/`
+   and record the facts and manifest digests.
+4. Continue through SCF, incumbent diagnostics, the frozen surface, and then the
+   guarded script in the owner's required order. Stop honestly at the first
+   input that cannot be produced.
