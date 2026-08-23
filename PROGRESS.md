@@ -58,13 +58,17 @@ legacy-arm input is a hard stop.
   but peaked at 75.46 and 85.85 GiB, while the July dense release attempt
   reached 96.83 GiB. The proposed 22 GiB estimate is not defensible as peak
   RSS.
+- Wrote the stopped round-3 outcome and required owner handoff to
+  `FINAL_REPORT.md`.
 
 ## Next
 
-1. Write the stopped round-3 outcome to `FINAL_REPORT.md`.
-2. Owner supplies and pins the exact full-SCF bytes accepted for this arm.
-3. Owner clarifies whether the deliverable is the single dense legacy
+1. Owner supplies and pins the exact full-SCF bytes accepted for this arm.
+2. Owner clarifies whether the deliverable is the single dense legacy
    candidate requested by the ruling, or separately authorizes a second sparse
    build. Only then construct, syntax-check, and dry-run the guarded launcher.
+3. Owner clarifies whether zero waivers applies only to per-run/operator
+   registers (implemented here) or also to current-main's checked-in exclusion
+   semantics.
 4. Do not run either builder, publish, promote, push, or touch pending
    logbook-chain state in this round.
