@@ -6,13 +6,19 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-**In progress: enumerating every owner-ruled legacy release-arm input before
-authorizing the guarded runbook.** The target-surface gate passed: legacy dense
-and exact-k reach the same unconditional unified compiler and materialization
-path. The first replacement is explicitly
+**Stopped at a missing mandatory full-SCF stage-2 input before launcher
+construction.** The target-surface gate passed: legacy dense and exact-k reach
+the same unconditional unified compiler and materialization path. The first
+replacement remains explicitly
 `one-surface + pkg3, legacy release arm, not exact-k certified`, using the bare
 v9.4 Ledger facts pin, `--dense-default-dataset`, and seed `0`. The exact-k
 artifact/feed re-pin and `pi_hi` decision are deferred to the next candidate.
+
+Current main unconditionally needs the full SCF extract at
+`/Users/maxghenis/.cache/microcosm/scf/p22i6.dta`. It is absent, its adjacent
+archive is absent, and the loader has no archive/member SHA pin. A second
+independent mismatch remains: one dense-default invocation emits one dense H5,
+not both the requested dense and sparse artifacts.
 
 No pool or release build, publication, promotion, push, tuning, or logbook-chain
 write is authorized in this round. Any differing target surface or missing
@@ -37,16 +43,28 @@ legacy-arm input is a hard stop.
   flags; both exact-k and dense consume the same materialized registry.
 - Recorded the qualification that dense mode also changes the post-calibration
   SSI delivery fence, not target membership.
-- Began the code-cited evidence in
+- Enumerated and measured all present July-explicit and current-main implicit
+  stage-2 file inputs in
   `experiments/candidate_25pct/input_audit_r3.md`.
+- Confirmed the zero-waiver route is to omit
+  `--qrf-tail-concentration-exclusions`; the optional loader returns `{}`.
+- Found and hash-checked all six pinned stage-1 sources without running the
+  pool builder.
+- Stopped on the absent full 2022 SCF extract without download or substitution.
+- Recorded the non-run receipt in
+  `experiments/candidate_25pct/dry_run_r3.md`; no external launcher, partial
+  command, `bash -n` claim, or script dry-run was fabricated.
+- Recorded process-tree evidence: same-week f025 attempts took about 2.8 hours
+  but peaked at 75.46 and 85.85 GiB, while the July dense release attempt
+  reached 96.83 GiB. The proposed 22 GiB estimate is not defensible as peak
+  RSS.
 
 ## Next
 
-1. Enumerate and hash every legacy-arm stage-2 input from the July 28 incumbent
-   invocation through parser and loader code; stop without substitution if any
-   input is absent.
-2. If the input gate passes, write the guarded off-chain two-stage host script,
-   validate it with `bash -n`, execute its real `--dry-run`, and commit the
-   receipt plus updated audit/journals.
-3. Write the final outcome to `FINAL_REPORT.md`. Do not run either builder and
-   do not publish, promote, push, or touch pending logbook-chain state.
+1. Write the stopped round-3 outcome to `FINAL_REPORT.md`.
+2. Owner supplies and pins the exact full-SCF bytes accepted for this arm.
+3. Owner clarifies whether the deliverable is the single dense legacy
+   candidate requested by the ruling, or separately authorizes a second sparse
+   build. Only then construct, syntax-check, and dry-run the guarded launcher.
+4. Do not run either builder, publish, promote, push, or touch pending
+   logbook-chain state in this round.
