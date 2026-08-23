@@ -184,6 +184,11 @@ class UKFrameTargetAdapter:
         source = self.tables[entity]
         if entity == "household":
             household_ids = source["household_id"]
+        elif entity == "person":
+            # People sit directly in a household; only group entities need the
+            # membership lookup below, whose column would be the nonexistent
+            # "person_person_id" here.
+            household_ids = source["person_household_id"]
         else:
             people = self.tables["person"]
             entity_membership = f"person_{entity}_id"
