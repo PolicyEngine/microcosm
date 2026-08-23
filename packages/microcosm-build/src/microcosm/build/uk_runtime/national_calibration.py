@@ -5,17 +5,32 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from microcosm.build.ledger_targets import compile_ledger_target_references
+import numpy as np
+
 from microcosm.build.plan import Stage
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
+    UKLedgerTargetCompilation,
     materialize_uk_ledger_targets,
 )
-from microcosm.calibrate import calibrate, effective_sample_size
-from microcosm.frame import Frame
+from microcosm.build.uk_runtime.national_doctrine import (
+    UK_NATIONAL_SOLVE_DOCTRINE,
+    UKNationalSolveDoctrine,
+)
+from microcosm.calibrate import (
+    CalibrationResult,
+    TargetRegistry,
+    calibrate,
+    effective_sample_size,
+)
+from microcosm.frame import Frame, WeightKind, Weights
 
-__all__ = ["UKNationalCalibrationStage", "uk_national_calibration_stage"]
+__all__ = [
+    "UKNationalCalibrationStage",
+    "national_calibration_mass_reason",
+    "uk_national_calibration_stage",
+]
 
 
 class UKNationalCalibrationStage:
@@ -23,68 +38,69 @@ class UKNationalCalibrationStage:
 
     def __init__(
         self,
-        facts: Sequence[Mapping[str, Any]],
+        registry: UKLedgerTargetCompilation | TargetRegistry,
         *,
-        references: Sequence[object] | None = None,
-        epochs: int = 256,
-        learning_rate: float = 0.02,
-        max_weight_ratio: float = 10.0,
-        seed: int = 0,
+        period: int,
+        doctrine: UKNationalSolveDoctrine = UK_NATIONAL_SOLVE_DOCTRINE,
     ) -> None:
-        from microcosm.build.country_spec import load_country_spec
-
-        self.facts = tuple(facts)
-        self.references = tuple(
-            load_country_spec("uk").target_references
-            if references is None
-            else references
+        self.compilation = (
+            registry
+            if isinstance(registry, UKLedgerTargetCompilation)
+            else UKLedgerTargetCompilation(registry=registry, unsupported=())
         )
-        self.epochs = epochs
-        self.learning_rate = learning_rate
-        self.max_weight_ratio = max_weight_ratio
-        self.seed = seed
+        self.registry = self.compilation.registry
+        # The materialization period is the declared calibration year the
+        # registry was compiled at — never the input frame's base-year
+        # time_period, which lags it (survey 2024, calibration 2025).
+        if not isinstance(period, int) or isinstance(period, bool) or period <= 0:
+            raise ValueError(
+                f"period must be the declared calibration year, got {period!r}."
+            )
+        self.period = period
+        self.doctrine = doctrine
         self.manifest: dict[str, object] | None = None
         self.diagnostics: tuple[dict[str, object], ...] = ()
+        self.solve_result: CalibrationResult | None = None
         self.output_content_identity: str | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        registry = compile_ledger_target_references(
-            self.facts, self.references, country="uk"
-        )
-        declared = len(self.references)
-        resolved = len(registry.specs)
-        if resolved != declared:
+        declared = len(self.registry.specs) + len(self.compilation.unsupported)
+        resolved = len(self.registry.specs)
+        if self.compilation.unsupported:
             raise RuntimeError(
                 "UK national calibration resolved "
-                f"{resolved} of {declared} activated target references."
+                f"{resolved} of {declared} activated target references; "
+                f"unsupported={self.compilation.unsupported!r}."
             )
+        adapter = _CalibrationFrameAdapter(frame)
         materialized = materialize_uk_ledger_targets(
-            UKFrameTargetAdapter(frame),
-            registry,
-            period=_registry_materialization_period(registry.specs),
+            adapter,
+            self.registry,
+            period=self.period,
         )
         if materialized.skipped:
-            skipped = [
-                {
-                    "name": item.name,
-                    "measure": item.measure,
-                    "reason": item.reason,
-                }
-                for item in materialized.skipped
-            ]
+            skipped = [skip.__dict__ for skip in materialized.skipped]
             raise RuntimeError(
-                "UK national calibration could not materialize every "
-                f"activated reference measure: {skipped}."
+                "UK national calibration could not materialize every activated "
+                f"target reference: skipped={skipped}."
             )
-        prepared = materialized.adapter.to_frame()
+        prepared = adapter.prepared_frame()
+        mass_reason = national_calibration_mass_reason(
+            spec.family for spec in self.registry.specs
+        )
+        mass_log_records_before_calibration = len(frame.mass_log)
         result = calibrate(
             prepared,
-            registry.to_target_set(),
+            self.registry.to_target_set(),
             weight_entity="household",
-            epochs=self.epochs,
-            learning_rate=self.learning_rate,
-            max_weight_ratio=self.max_weight_ratio,
-            seed=self.seed,
+            epochs=self.doctrine.epochs,
+            learning_rate=self.doctrine.learning_rate,
+            mass=self.doctrine.mass_rule,
+            mass_reason=mass_reason,
+            max_weight_ratio=self.doctrine.max_weight_ratio,
+            seed=self.doctrine.seed,
+            l0_lambda=self.doctrine.l0_lambda,
+            target_loss_cap=self.doctrine.target_loss_cap,
         )
         if result.skipped or len(result.problem.names) != declared:
             skipped = [item.name for item in result.skipped]
@@ -93,6 +109,13 @@ class UKNationalCalibrationStage:
                 f"reference: declared={declared}, rows={len(result.problem.names)}, "
                 f"skipped={skipped}."
             )
+        clean_frame = adapter.restore(result.frame)
+        self.solve_result = result
+        calibration_record = _post_solve_calibration_record(
+            frame,
+            clean_frame,
+            before_count=mass_log_records_before_calibration,
+        )
         self.diagnostics = tuple(
             {
                 "name": row.name,
@@ -103,6 +126,10 @@ class UKNationalCalibrationStage:
             for row in result.diagnostics
         )
         ratios = result.weights / result.initial_weights
+        old_total = float(calibration_record.old_total)
+        new_total = float(calibration_record.new_total)
+        before_kind = frame.weights_for("household").kind
+        after_kind = clean_frame.weights_for("household").kind
         self.manifest = {
             "activated_reference_count": declared,
             "resolved_reference_count": resolved,
@@ -110,10 +137,38 @@ class UKNationalCalibrationStage:
             "loss": result.final_loss,
             "effective_sample_size": effective_sample_size(result.weights),
             "max_weight_ratio": float(ratios.max()),
-            "max_weight_ratio_bound": self.max_weight_ratio,
+            "max_weight_ratio_bound": self.doctrine.max_weight_ratio,
+            "target_materialization": materialized.report(),
+            "weights": {
+                "household_weight_kind": after_kind.value,
+                "household_weight_kind_chain": [
+                    {"stage": "staging", "kind": before_kind.value},
+                    {"stage": "national_calibration", "kind": after_kind.value},
+                ],
+                "mass_log_records_before_calibration": (
+                    mass_log_records_before_calibration
+                ),
+                "mass_log_records": len(clean_frame.mass_log),
+                "calibration_mass_change": {
+                    "entity": str(calibration_record.entity),
+                    "old_total": old_total,
+                    "new_total": new_total,
+                    "relative_shift": (new_total - old_total) / old_total,
+                    "declared_factor": calibration_record.declared_factor,
+                    "reason": str(calibration_record.reason),
+                },
+            },
+            "solve": {
+                "n_targets": len(result.problem.names),
+                "n_households": len(clean_frame.table("household")),
+                "initial_loss": float(result.initial_loss),
+                "final_loss": float(result.final_loss),
+                "n_nonzero": int(np.count_nonzero(result.weights)),
+            },
+            "parameters": {"doctrine": _doctrine_bounds(self.doctrine)},
         }
-        self.output_content_identity = uk_frame_content_identity(result.frame)
-        return result.frame
+        self.output_content_identity = uk_frame_content_identity(clean_frame)
+        return clean_frame
 
     def checkpoint_metadata(self) -> Mapping[str, object]:
         if self.manifest is None:
@@ -165,21 +220,112 @@ class UKNationalCalibrationStage:
 
 
 def uk_national_calibration_stage(
-    facts: Sequence[Mapping[str, Any]], **kwargs: Any
+    registry: UKLedgerTargetCompilation, **kwargs: Any
 ) -> Stage:
     """Return the named ordered-stage entry for national calibration."""
 
-    transform = UKNationalCalibrationStage(facts, **kwargs)
+    transform = UKNationalCalibrationStage(registry, **kwargs)
     return Stage(name="national_calibration", transform=transform)
 
 
-def _registry_materialization_period(specs: Sequence[object]) -> int | str:
-    periods = {spec.period for spec in specs}
-    if not periods:
-        raise RuntimeError("UK national calibration has no target specs to materialize.")
-    if len(periods) != 1:
+def national_calibration_mass_reason(bound_families: Sequence[str]) -> str:
+    """The mass-record reason a national doctrine calibration declares."""
+
+    families = sorted({str(name) for name in bound_families})
+    if not families or any(not name.strip() for name in families):
+        raise ValueError("bound_families must name at least one target family.")
+    return (
+        "National doctrine calibration to bound target family(ies) "
+        f"{', '.join(families)}; total household mass moved with the targets."
+    )
+
+
+def _post_solve_calibration_record(
+    before: Frame,
+    after: Frame,
+    *,
+    before_count: int,
+):
+    if after.weights_for("household").kind is not WeightKind.CALIBRATED:
         raise RuntimeError(
-            "UK national calibration cannot materialize mixed-period target "
-            f"specs: {sorted(str(period) for period in periods)}."
+            "UK national calibration returned household weights whose kind is "
+            f"{after.weights_for('household').kind.value!r}, not 'calibrated'."
         )
-    return next(iter(periods))
+    if len(after.mass_log) != before_count + 1:
+        raise RuntimeError(
+            "UK national calibration must append exactly one mass record; "
+            f"before={before_count}, after={len(after.mass_log)}."
+        )
+    if before.mass_log != after.mass_log[:before_count]:
+        raise RuntimeError(
+            "UK national calibration changed pre-existing mass-log records."
+        )
+    record = after.mass_log[-1]
+    if record.entity != "household" or "calibration" not in record.reason:
+        raise RuntimeError(
+            "UK national calibration latest mass record is not the calibration "
+            f"record: entity={record.entity!r}, reason={record.reason!r}."
+        )
+    return record
+
+
+def _doctrine_bounds(doctrine: UKNationalSolveDoctrine) -> dict[str, object]:
+    return {
+        "epochs": doctrine.epochs,
+        "learning_rate": doctrine.learning_rate,
+        "max_weight_ratio": doctrine.max_weight_ratio,
+        "seed": doctrine.seed,
+        "target_loss_cap": doctrine.target_loss_cap,
+        "scale_rule": doctrine.scale_rule,
+        "target_weight_rule": doctrine.target_weight_rule,
+        "mass_rule": doctrine.mass_rule,
+        "l0_lambda": doctrine.l0_lambda,
+    }
+
+
+class _CalibrationFrameAdapter(UKFrameTargetAdapter):
+    """The shared UK adapter plus the prepared-frame/restore lifecycle.
+
+    Prepared measure columns are scratch state: they exist for constraint
+    compilation only, and ``restore`` rebuilds pristine entity tables around
+    the calibrated weights so the staged frame survives the HDFStore writer
+    (slash-named scratch columns crash it).
+    """
+
+    def __init__(self, frame: Frame) -> None:
+        super().__init__(frame)
+        self._source_frame = frame
+        self._original_tables = {
+            name: table.copy() for name, table in self.tables.items()
+        }
+
+    def prepared_frame(self) -> Frame:
+        return Frame(
+            {**self.tables, **self.link_tables},
+            self._source_frame.schema,
+            {
+                entity: self._source_frame.weights_for(entity)
+                for entity in self._source_frame.weighted_entities
+            },
+            self._source_frame.strata,
+            mass_log=self._source_frame.mass_log,
+            metadata=self._source_frame.metadata,
+        )
+
+    def restore(self, calibrated: Frame) -> Frame:
+        tables = {name: table.copy() for name, table in self._original_tables.items()}
+        tables.update({name: table.copy() for name, table in self.link_tables.items()})
+        return Frame(
+            tables,
+            calibrated.schema,
+            {
+                entity: Weights(
+                    calibrated.weights_for(entity).values,
+                    calibrated.weights_for(entity).kind,
+                )
+                for entity in calibrated.weighted_entities
+            },
+            calibrated.strata,
+            mass_log=calibrated.mass_log,
+            metadata=calibrated.metadata,
+        )
