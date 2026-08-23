@@ -1,564 +1,342 @@
-# Battery package 3 lane notes
+# Replacement-scorecard lane notes
 
-## Main/F0 merge continuation — 2026-08-22 02:09Z
+## 2026-08-22 — lane start and environment
 
-- Starting tracked revision: `c22e5d37`; local `origin/main`: `b4dfa0e7`.
-- This continuation owns only the main merge, the F0 home for the existing
-  post-draw calibration policy declaration, its spec/code identity test, and
-  the resulting closed-world anti-rot updates. It does not run a host build,
-  change a comparator/gate/threshold, certify an artifact, publish a release,
-  or merge PR #742.
-- Main's generated F0 bundle supersedes `specs/us_imputation_lineage.yaml`, so
-  the old file will remain deleted. The policy itself must survive by becoming
-  a closed, typed exact variant at the authored imputation-model location.
-- Earlier notes below remain source-cited history. Their branch-state and
-  handoff language is not current for this continuation.
-- Salvage audit: `ea21353d` has parent `bb94f789` and matches the current
-  tracked merge worktree byte-for-byte. It preserved literal conflict markers
-  and accidentally tracked `.codex-memory-guard.py` plus
-  `_BUILD-FAILURE-1PCT.txt`; it contains no F0 schema/spec/anti-rot edit. The
-  live automatic merge of `tools/build_us_multispine_pool.py` is retained
-  because it carries main's F0 adapter path and this branch's omission of empty
-  `target_regimes`. No salvage path was checked out or cherry-picked; the
-  marker snapshots, old YAML, and accidental diagnostic additions were
-  discarded while the owner files remain untracked and untouched.
-- Salvage audit, second and third snapshots (2026-08-22 continuation):
-  `e2402fd4` and `abcf7dc1` also have parent `bb94f789`. The worktree at
-  recovery time already equaled `abcf7dc1` for every tracked path (verified
-  with `git diff abcf7dc1 --stat`: the only differences were the two
-  salvage-only debris files), so the third snapshot's merge resolution, F0
-  policy port, and anti-rot edits were recovered in place — nothing was
-  checked out or cherry-picked. Taken: the staged `b4dfa0e7` merge
-  resolution; the closed `regime_gated_qrf_model` exact variant with the
-  `post_transfer_calibration_policy_v1` payload
-  (`packages/microcosm-build/src/microcosm/build/spec_engine/schema/imputation.schema.json`);
-  the authored declaration and its generator
-  (`packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml`,
-  `tools/us_bundle_generation/imputation.py`); the ninth
-  `post_transfer_calibration` authority component and version-11 binding
-  (`packages/microcosm-build/src/microcosm/build/spec_engine/stacked_authority_semantics.py`,
-  `.../us/spec/battery.yaml`); and the walked anti-rot literals
-  (field_usage/inventory/coverage/test pins). Discarded:
-  `.codex-memory-guard.py` (carpool tooling debris) and
-  `_BUILD-FAILURE-1PCT.txt` (stale r3 continuation note; its 1% failure was
-  already closed on-branch by `a932974f`..`c22e5d37`).
-- Chain site the salvage had not reached: the loader golden vector and every
-  bundle `spec_sha256` pin move on this merge, and the generating mechanism was
-  verified by single-file bisection, not assumed. `spec_sha256` hashes only the
-  spec envelope — country, manifest schema version, normative projections, and
-  resolved bindings (`spec_engine/loader.py:404-418`, `canonical.py:299-319`);
-  the schema-set receipt lives in the grammar receipt outside that envelope
-  (`loader.py:227-229,401`), which is why main's `sources.schema.json` property
-  additions moved no pin on main. The resolved bindings embed the selected seed
-  protocol's wire form, whose kernel attestations digest the bytes of the
-  attested kernel modules (`spec_engine/seeds.py:40-71,92-97,189-199,309-370`),
-  and the attested list includes `microcosm.build.us_runtime.acs_transfer`,
-  `weeks_unemployed`, `puf_qrf_chain`, and `microcosm.fit.qrf` — modules this
-  branch's calibration repair changed. Reverting each of this continuation's
-  schema/semantics/tool edits one at a time left the synthetic golden value
-  unchanged at `b1ab6ab0…`, confirming the branch's attested-kernel edits (not
-  the shared-schema edit) are the mover, exactly the legitimate identity
-  movement `CLAUDE.md` documents. Pin re-cut in
-  `packages/microcosm-build/tests/test_spec_engine_loader.py::test_semantic_hash_has_golden_vector_and_surface_separation`.
-- Verified unaffected: the UK gate-battery mirrors recompute from the live UK
-  gates manifest, not the schema registry — all ten
-  `packages/microcosm-build/tests/test_gate_battery_contract_pins.py` tests
-  pass on this tree with the imputation-schema variant present, so the
-  `microcosm-data` contract pins from `b4dfa0e7` stand here without a re-cut.
+- Branch: `replacement-scorecard`, starting at `2aa96795` (post-#741
+  `origin/main`).
+- Owner ruling: publication evidence is a same-yardstick incumbent-versus-
+  candidate comparison. This lane builds that yardstick and scores only the
+  incumbent because the 25% bundle-mode candidate does not yet exist.
+- Standing constraints recorded: no pushes, no pool builds, no gate/threshold/
+  band tuning, green suite per commit, scoring below 20 GiB RSS, and a build
+  queue check before scoring.
+- Environment: the default-cache sync was denied by the managed sandbox, and a
+  task-local empty cache could not download through disabled DNS. The sibling
+  `microcosm-one-surface` checkout has the identical `uv.lock` (`895535...`)
+  and a complete environment. Its `.venv` was cloned copy-on-write, after
+  which a narrow writable cache of locked Hatch build requirements allowed
+  `uv sync --offline --all-packages --extra us` to rebuild and relink all five
+  Microcosm workspace packages to this worktree.
+- The GitNexus exploration workflow was selected for the requested execution-
+  path audit, but this session exposes no GitNexus resources or query tools.
+  Repository-wide `rg`, symbol inspection, and focused tests are the fallback.
+- The inherited one-target-surface notes below were accurate when written and
+  are historical after #741; they are not current replacement-lane state.
+- Journal-step validation: `uv run python -m pytest -q
+  packages/microcosm-build/tests/test_us_state_files_scorer.py` passed (5/5),
+  and `uv run ruff check .` passed. A complete workspace baseline is still
+  running; the direct `python -m pytest` form avoids the cloned environment's
+  stale console-script shebang.
 
-## Second merge: `origin/main` at `2aa96795` — 2026-08-22 headless run
+## 2026-08-22 — yardstick audit
 
-- The first merge (with the recovered port, the re-cut loader golden vector,
-  and the changelog fragment) is commit `e66074ad`; the second merge is
-  commit `e0947020`. `origin/main` had advanced past the staged
-  `b4dfa0e7` MERGE_HEAD by `1d066e5d` (#733 review fixes), `d70ea39c`
-  (post-#735 UK spec / gate-battery digest re-cut), and merge `2aa96795`
-  (#733 UK FRS 2024-25 retarget).
-- Sole textual conflict: the UK entry of `EXPECTED_RESOURCES` in
-  `packages/microcosm-build/tests/test_spec_engine_country_bundles.py`. Both
-  parents' pins were computed on trees missing the other side's envelope
-  movers — this branch's `aa32c4c9…` includes the stacked-authority
-  version-11 binding but not #733's UK sources/runtime retarget; main's
-  `e12a2cb8…` the reverse. `spec_sha256` hashes the spec envelope — country,
-  manifest schema version, normative projections, resolved bindings
-  (`spec_engine/loader.py:404-418`) — so the union pin was recomputed fresh
-  via `load_bundle("uk")`: `bb711069…`, a third value, as required.
-- BE (`bf022118…`) and US (`d3de6760…`) recomputed identically on the union:
-  the `b4dfa0e7..2aa96795` range touches no BE- or US-side envelope input.
-  Its only shared-schema edit, `sources.schema.json`, sits in the grammar
-  receipt outside the hashed envelope (`spec_engine/loader.py:227-229,401`),
-  the mechanism already proven when main's property additions moved no pin.
-- Main's re-cut UK gate-battery digests (`uk/gates.json`, the
-  `microcosm-data` contract pins in `contract.py`/`test_contract.py`) merged
-  clean — this branch touches neither side of them — and the ten
-  gate-battery pin tests plus `test_contract.py` pass unchanged on the
-  union, inside the 339-test affected run.
-- Union-tree receipts before the full suite: `tools/spec_engine_coverage.py
-  --check` reports 41,471/41,471 configuration fields (main's 41,379 plus
-  this branch's 92 policy fields) and 40/40 inventory checks with no drift;
-  the loader golden vector holds (main's range touches neither
-  `loader.py` nor `canonical.py`); repository-wide Ruff and
-  `git diff --check` pass.
-- Wheel gate (the merge moves `microcosm-build/pyproject.toml` and packaged
-  spec data): all five shard wheels build; a clean venv installed from those
-  wheels under the exported lock constraints imports every shard from the
-  venv prefix with `policyengine_us` absent;
-  `tools/spec_envelope_digests.py be uk` runs from the installed wheels; and
-  wheel-venv `load_bundle` identities reproduce BE `bf022118…` / UK
-  `bb711069…` byte-for-byte, proving the authored spec and schema files ship
-  in the wheel (`packages/microcosm-build/pyproject.toml` data inclusion).
+- One compiler surface: `compile_us_fiscal_target_registry` has no
+  artifact-membership switch
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:933-1017`),
+  and the existing fiscal scorer's only divergent branch is loading before the
+  common repair/materialize/score sequence
+  (`tools/score_us_fiscal_targets.py:432-489`).
+- Full-surface rule: the head-to-head must reject either
+  `target_compilation.dropped_target_names` or `CalibrationResult.skipped`;
+  both lower layers otherwise report and continue past an unmaterialized or
+  uncompileable row
+  (`tools/build_us_fiscal_refresh_release.py:4323-4347`;
+  `packages/microcosm-calibrate/src/microcosm/calibrate/matrix.py:286-355`).
+- Aggregate rule: use the production
+  `sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct`
+  constants, with no family multipliers. Target-scale square roots are
+  normalized within amount/count basis, semantic concept groups receive one
+  concept budget, and present bases receive equal total budgets
+  (`tools/build_us_fiscal_refresh_release.py:344-348,5781-5814,6214-6290`).
+  The aggregate is the weighted mean of capped target-scaled absolute errors
+  (`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:473-518`).
+- Incumbent identity: PolicyEngine.py 4.15.0's bundled manifest names retired
+  data package 1.115.5 and its historical HF model repo, immutable
+  resolver revision `9531fe1d096244fe7eb45d791d52ef61b8a2a0a5`, filename
+  `enhanced_cps_2024.h5`, and SHA-256
+  `0a6b961ad363a421bde99f2c8e5d8f20370bcba45fd303050537a25bdd805b14`
+  (`policyengine/data/release_manifests/us.json@4.15.0:12-27,37-42`).
+  Microcosm's frozen parity reference pins revision `21280dca...` for the same
+  hash (`packages/microcosm-build/src/microcosm/build/us/ecps_parity_reference.json:7-14`).
+  Both cache-resolved files independently hash to `0a6b961a...`; the scorecard
+  will retain both identities and call the former the package-resolved one.
+  **[Superseded 2026-08-22, later session: 4.15.0 was tagged 2026-06-10 and is
+  not the live package. See "incumbent identity corrected" below — the live
+  policyengine.py 5.0.3 default US dataset is the buildp sparse artifact, not
+  enhanced_cps_2024.]**
+- Terminal-battery scope: all 131 marginal comparisons and the joint
+  immigration comparison are by-origin-only. Each needs support-channel and
+  clone-role columns to build separate ASEC and ACS masks
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11366-11378,11523-11533,11577-11580,11679-11739`).
+  The incumbent has neither field, so every battery comparison is
+  **inapplicable**, not failed or zero. A finished pool publishes an input-only
+  H5 while sealing terminal results into its manifest and diagnostics
+  (`tools/build_us_multispine_pool.py:3263-3334,3533-3550,3766-3786`); the
+  manifest loader validates the H5, diagnostics, digests, run identity, and
+  passing terminal alias before returning the frame
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:348-430,672-811`).
+  **[Partially superseded 2026-08-22, later session: the by-origin-only
+  classification and the pool-manifest receipt path stand, but the "incumbent
+  has neither field" premise described the eCPS. The actual live incumbent
+  (buildp sparse) carries both provenance columns; what it lacks is any
+  ACS-origin row — see "incumbent identity corrected" below.]**
+- Yardstick facts: the v9.4 feed at
+  `/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`
+  has SHA-256 `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
+  A read-only compile with the packaged current-vintage CD crosswalk, target
+  period 2024, no aging, and the standing scoring period waiver produced
+  32,842 specs at registry version `c4ac617743f2`. No artifact was built or
+  scored during this compile.
 
-## Build-shard merge-union guards — 2026-08-23 headless continuation
+## 2026-08-22 — incumbent identity corrected (fresh session, post-salvage)
 
-- The first complete build-shard run reached 100% and exposed three
-  deterministic union misses. The branch-side serializer omitted an empty
-  opt-in `target_regimes` field by routing dataclasses through mappings; main
-  replaced `dataclasses.asdict()` with direct field walking so immutable
-  `MappingProxyType` authority records serialize. The merged mapping path had
-  the omission filter, but the direct dataclass path did not. The union now
-  applies the same filter during direct walking
-  (`tools/build_us_multispine_pool.py:3826-3847`), preserving both intents.
-- Main's authored-imputation SHA audit treated every `*sha256` field as an
-  external-asset pin. The F0 port legitimately authors one derived policy
-  identity digest. The audit now remains closed: its only non-asset allowance
-  is the exact
-  `models/regime_gated_qrf/post_draw_calibration/sha256` path, while the two
-  existing asset pins remain exact
-  (`packages/microcosm-build/tests/test_us_spec_bundle.py:707-770`).
-- Direct import-graph enumeration reaches 66 classified US runtime modules;
-  the delta from main's 65 is exactly the branch-added
-  `post_transfer_calibration.py`. The cardinality pin now says 66, while the
-  existing required-module, retired-module, unclassified-module, and
-  source-spine-blind checks remain unchanged and pass
-  (`packages/microcosm-build/tests/test_us_spine_blindness.py:3270-3315`).
-- All three exact deterministic tests pass, as do touched-file Ruff,
-  formatting, and whitespace checks. GitNexus query/context tools were not
-  exposed in this session, so parent-source comparison, direct import-graph
-  enumeration, and exact source reads supplied the debugging evidence.
-- Two unrelated `test_us_trade_imdb_bulk.py` crash-publication cases timed out
-  while their child process imported `build_us_import_entry_margins.py`, before
-  reaching publication logic. They failed both in the complete shard and in
-  unchanged isolation under shared-host load. A one-thread, import-only probe
-  completed in 73.82 seconds while load was about 79, already beyond the
-  tests' unchanged 60-second bound. This lane will retry after contention
-  falls; it does not tune the timeout or any product threshold.
+- Environment: this session's `uv sync --all-packages --extra us` completed
+  normally (network available; the earlier codex-sandbox venv cloning is
+  historical).
+- **The live policyengine.py US dataset is the microcosm buildp sparse
+  artifact, not enhanced_cps_2024.** PyPI's latest `policyengine` is 5.0.3
+  (tagged 2026-08-21; 4.15.0, the version the earlier audit read, was tagged
+  2026-06-10). The 5.x bundle replaced the per-country release manifests:
+  `get_release_manifest` reads the bundled
+  `src/policyengine/data/bundle/manifest.json`, and
+  `resolve_managed_dataset_reference(country, dataset=None)` returns
+  `manifest.default_dataset_uri`
+  (`policyengine.py@5.0.3 src/policyengine/provenance/manifest.py:301-320,540-561`);
+  `default_dataset_uri` returns the certified artifact URI when
+  `certified_data_artifact.dataset == default_dataset`
+  (`.../provenance/manifest.py:181-187`), and dataset overlays are additive
+  only — an overlay that shadows the default raises
+  (`.../provenance/manifest.py:270-299`).
+- The 5.0.3 bundle's US entry: `default_dataset: populace_us_2024`,
+  `data_producer: populace`, build id
+  `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`,
+  HF repo `policyengine/populace-us` (repo_type `dataset`), revision equal to
+  the build id, filename `populace_us_2024.h5`, SHA-256
+  `48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e`,
+  certified for policyengine-us 1.764.6 — the same engine version this
+  workspace's `uv.lock` pins
+  (`policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json`
+  `data_releases.us.{default_dataset,certified_data_artifact,data_package,model_package}`).
+- Local bytes verified: the HF cache ref for that revision points at commit
+  `26dcad66867687f15735dc4926523e3741920836`, whose snapshot
+  `populace_us_2024.h5` (462,915,783 bytes) hashes to `48b9d479...` exactly.
+- Observed incumbent shape (read from those bytes this session): entity-table
+  layout (six US entities + `_time_period` 2024), 57,240 households, all
+  household weights positive; provenance columns present
+  (`household_support_channel`, `household_support_clone_index`, person
+  equivalents); channel counts `asec` 22,200 (clone 0) and `puf_tax_detail`
+  35,040 (clone 1); **zero `acs`-channel rows**. The by-origin battery
+  compares `asec` vs `acs` channels
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11577-11580,11695-11703`;
+  channel constants `support_provenance.py:31` and `stacked_spine.py:263`),
+  so every comparison is **inapplicable on observed evidence** — the
+  incumbent predates the ACS stack and has no ACS origin to compare, which
+  is a different (and observed) reason than the eCPS "no provenance columns"
+  premise.
+- CD provenance: the buildp H5 root attrs are PyTables boilerplate only — it
+  predates the CD vintage crosswalk attributes, so
+  `_assert_cd_vintage_support_matches` would fail on the attr comparison
+  (`tools/build_us_fiscal_refresh_release.py:2519-2567,2570-2597`). The
+  head-to-head scorer probes the attrs: strict when present, and otherwise
+  records an explicit legacy waiver receipt while still requiring the
+  household `congressional_district_geoid` lookup column to exist with
+  positive values (observed present on the incumbent).
+- Salvage adoption: the 1306-line sol draft was adopted after verifying every
+  imported symbol and cited mechanism against the code this session. Rewrites
+  beyond the identity block: entity H5s load through the canonical scorer's
+  `release._load_frame` seam (`tools/score_us_fiscal_targets.py:436`,
+  `tools/build_us_fiscal_refresh_release.py:2454-2471`), the
+  dropped-target check now runs before scoring (clear failure instead of a
+  loss-weight shape error), the battery inapplicability receipt is computed
+  from observed origin-channel counts instead of asserted, and the Markdown
+  scorecard renders rollups plus worst rows with the complete per-target
+  table living in the JSON twin.
 
-## Third merge: `origin/main` at `055dcfaf` — 2026-08-23
+## 2026-08-22 — scorer landed; incumbent probe on real bytes (resumed session)
 
-- The shared remote-tracking ref advanced six commits while the complete build
-  shard ran: UK E8 CGT structure, salary sacrifice, and student-loan stages;
-  their review fixes; the US fiscal-refresh memory-canary isolation; and merge
-  `055dcfaf` (#740). This range does not touch the F0 imputation policy, its
-  anti-rot ledger, or the US spec envelope.
-- Sole textual conflict: the UK entry of `EXPECTED_RESOURCES` in
-  `packages/microcosm-build/tests/test_spec_engine_country_bundles.py`, for the
-  same two-parent reason as the prior merge. This branch's `bb711069…` omits
-  E8; main's `1f163cbf…` omits the version-11 stacked-authority binding. Fresh
-  union-tree `load_bundle` results are BE `bf022118…`, UK `8bf62b6e…`, and US
-  `d3de6760…`; the conflict is resolved with the UK union value.
-- Main's updated UK gate-battery and `microcosm-data` contract pins merged
-  cleanly. The new shared `sources.schema.json` variants remain in the grammar
-  receipt outside the hashed envelope (`spec_engine/loader.py:227-229,401`),
-  while E8's authored UK sources legitimately move only the UK envelope.
-- Newest-union verification before committing the merge:
-  `tools/spec_engine_coverage.py --check` reports 41,471/41,471 fields and
-  40/40 inventory checks; the focused policy identity, country bundle, field
-  usage, coverage, inventory, gate/data contract, serializer, authored-SHA,
-  and 66-module spine-blind graph tests all pass in one process.
+- Battery entities are `person`/`tax_unit`/`spm_unit` (114/9/8 single-column
+  comparisons plus the joint person immigration comparison) — household is
+  not a battery entity
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3011-3025`).
+  The test fixture originally put provenance columns on household+person and
+  its two battery tests failed; the fixture now provisions channel/clone
+  columns on exactly the battery entities. The scorer needed no change.
+- Real-bytes probe of the incumbent (the scorer's own probe path run against
+  the cached `populace_us_2024.h5`, sha256 `48b9d479...`): layout
+  `entity_tables`; `read_nullable_us_h5_metadata` raises "no artifact
+  metadata" (caught → not a naked pool); CD vintage attrs both null with a
+  usable `household.congressional_district_geoid` lookup (57,240 rows, 436
+  positive unique geoids → the recorded legacy waiver path); frame loads as
+  166,321 persons / 57,240 households / 79,729 tax units / 59,900 spm units
+  with calibrated household weights. All three battery entities carry
+  provenance columns; per-entity channel counts: person asec 66,001 +
+  puf_tax_detail 100,320; tax_unit asec 30,974 + 48,755; spm_unit asec
+  23,286 + 36,614; **zero `acs` rows on every entity** → the battery payload
+  reports `inapplicable` with the observed empty-ACS-side reason. This
+  verifies the earlier journal claim and extends it to tax_unit/spm_unit.
+- Suite state at commit: head-to-head tests 7/7; state-files scorer,
+  refresh-builder, pool-h5-io, fiscal-targets, and release-target-parity
+  files all green (428 tests); ruff check + format clean.
 
-## Final newest-union verification — 2026-08-23
+## 2026-08-22 — newest salvage reconciled; candidate boundary made scoreable
 
-- Re-ran the two unchanged `test_us_trade_imdb_bulk.py` crash-publication
-  cases after shared-host load fell. Both pass with the existing 60-second
-  child-process bound and one-thread numerical-library environment. The
-  earlier failures were confined to child CLI import under contention; no
-  timeout, comparator, gate, or product threshold changed.
-- Repository-wide `ruff check .` and `git diff --check` pass on the final
-  `055dcfaf` union.
-- Four shard receipts, each in one pytest process with peak child RSS from
-  `resource.getrusage`: fit 93 passed, exit 0, 925,466,624 bytes (0.862 GiB);
-  calibrate 203 passed, exit 0, 481,968,128 bytes (0.449 GiB); frame 294
-  passed / 36 skipped, exit 0, 6,971,260,928 bytes (6.492 GiB); data 275
-  passed / one skipped, exit 0, 11,867,324,416 bytes (11.052 GiB).
-- The complete build root first passed behaviorally in one process (6,248
-  passed / 39 skipped) but reached 17,167,810,560 bytes (15.989 GiB). That
-  receipt violates this lane's `<15 GiB` constraint and is explicitly
-  rejected; it is not the resource evidence for completion.
-- The authoritative build rerun enumerated all 262 `test_*.py` files and ran
-  them in 17 fresh pytest processes under a 12 GiB/20 ms hard guard. Every
-  batch passed without a split or guard intervention. The exact aggregate is
-  6,248 passed / 39 skipped, exit 0, elapsed 6,966.45 seconds; maximum observed
-  RSS is 11,042,193,408 bytes (10.284 GiB). This reproduces the complete
-  single-process inventory while keeping the accepted receipt below 15 GiB.
-- Refreshed the packaging boundary on the newest union. All five wheels built
-  offline using the writable cache. A brand-new offline venv was created but
-  could not resolve uncached third-party packages (`pytest`, then
-  `huggingface-hub`), so it was not used as evidence. The five new local
-  wheels were instead reinstalled without dependency resolution into the
-  existing clean, lock-constrained wheel venv from the earlier gate. With
-  `PYTHONPATH` removed and isolated mode enabled, all five `microcosm.*`
-  shards import from that venv, `policyengine_us` is absent,
-  `tools/spec_envelope_digests.py be uk` passes, and installed-wheel
-  identities are BE `bf0221184046428782e7628dfad9b1a420bcc90c76ee88f4df373abecabff9d9`,
-  UK `8bf62b6e47583da1bdad1b71be1e705f424e6e245880e90f4411aba57fa5eb93`,
-  and US `d3de6760727cfcb6800209670d37e02b373d8dcda19f8ad054aa9d410e0efbb0`.
-- A fresh `git fetch origin main battery-pkg3-two-part` remains blocked before
-  transport by sandbox DNS (`Could not resolve host: github.com`). The shared
-  local `origin/main` ref is `055dcfaf` and is an ancestor of HEAD. No push has
-  been attempted; the sole permitted push remains the final transport step.
+- Inspected `refs/claude-salvage/replacement-scorecard-20260822-220105-73402`
+  (`5577ee4c`) and verified that its scorer blob exactly matched the inherited
+  uncommitted file. The salvage's household slicing was retained deliberately,
+  but its full-pool measure-array assembly was replaced: a 25% dense pool at
+  roughly 918,350 households would require about 56 GiB for one
+  8,192-column float64 copy. The scorer now materializes and scores one fixed
+  household slice at a time, checks weights plus target/scale/name/column
+  contracts on every slice, accumulates the additive matrix/weight products in
+  fixed order, frees the slice, and checks RSS before continuing
+  (`tools/score_us_release_head_to_head.py:654-852,1399-1477`;
+  `tools/build_us_fiscal_refresh_release.py:3730-3750`;
+  `packages/microcosm-calibrate/src/microcosm/calibrate/score.py:79-142`).
+- The production pool loader remains a readiness boundary. A separate
+  scorecard-evidence loader accepts the exact current stacked
+  `status=gate_failed` / `simulation_ready=false` pair without weakening any
+  manifest/diagnostics/H5 digest, schema, run-ID, materializer, terminal-alias,
+  transition-authority, weight-kind, or row-count authentication
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:371-588,719-869`).
+  This implements the owner's head-to-head ruling without relabeling a failed
+  candidate as simulation-ready.
+- Finished entity H5s do not retain the stacked assembly/tail manifests. Their
+  battery path therefore evaluates the canonical authority, 132 comparisons,
+  369 nominal scalar legs, clone-0 positive-weight scopes, metrics, support
+  rules, and tolerances as artifact evidence, while explicitly reporting
+  `production_receipt_authenticated=false`. The one structural ACS
+  group-quarters scope is derived from retained origin/clone/`TYPEHUGQ`/
+  membership/tenure columns and marks assembly authentication false
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7808-7897,11474-11492,11530-11898`).
+- Validation: the combined focused run covered 19 scorer/pool/battery cases.
+  Eighteen passed; the only failure was an assertion matching the wrong error
+  wording, after which that corrected test reran green. Ruff check/format,
+  Python byte compilation, and `git diff --check` pass. No pool build, push,
+  gate edit, threshold edit, or band edit occurred.
+- Mainline reconciliation: merged the six newer `origin/main` commits at
+  `34d93846` with no conflict; the only US change among them isolates the
+  fiscal-refresh memory canary. Post-merge validation passed all 13 scorecard
+  tests and all 8 fiscal-memory tests (21/21).
+- Required pre-score process check: `ps ax | grep
+  build_us_multispine_pool` was attempted and denied by the managed macOS
+  sandbox; `pgrep` and `top` are denied as well. The permitted `lsof -d cwd`
+  process scan found no build-runtime working directory, and a full permitted
+  file-descriptor scan found no open `build_us_multispine_pool`, pool H5,
+  checkpoint, or pool-manifest path. The incumbent score may therefore start;
+  no pool build was launched by this lane.
 
-## Scope and frozen boundary
+## 2026-08-23 — incumbent yardstick established
 
-This lane owns 16 adjudicated FIX-CANDIDATE checks: 13 in
-`source_operator_two_part_calibration`, two in
-`adult_care_post_reconciliation`, and one in
-`model_required_targeted_calibration`. The assigned baselines and named
-remedies are the rows in the read-only reference
-`../microcosm-arm-split/experiments/battery_burndown/adjudication.json`.
+- Exact command run from this worktree after the empty queue scan:
 
-No comparator, band, threshold, seed, fold, or sample contract may change. All
-builds in this lane are off-chain at `--sample-fraction 0.01` and
-`--sample-seed 578`; they omit `--logbook-prev-row-digest` and do not touch
-`logbook-pending-chain.txt`.
+  ```bash
+  .venv/bin/python tools/score_us_release_head_to_head.py \
+    --incumbent /Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/26dcad66867687f15735dc4926523e3741920836/populace_us_2024.h5 \
+    --ledger-facts /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl \
+    --out-prefix experiments/replacement_scorecard/incumbent_48b9d479 \
+    --maximum-microsim-batch-size 5000
+  ```
 
-## Post-transfer receipt failure #2: ordered capacity evidence
+- The scorer completed with exit 0 and peak RSS 18.666 GiB. It used registry
+  `c4ac617743f2` (32,842 unique target rows), Ledger facts SHA-256
+  `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`,
+  and CD crosswalk SHA-256
+  `c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec`.
+  The fixed streaming plan used five registry chunks and twelve household
+  slices per chunk, with a conservative live target-column payload bound of
+  983,040,000 bytes (`tools/score_us_release_head_to_head.py:654-852,1399-1477`).
+- Incumbent fiscal evidence: weighted loss
+  `0.11462448275649702`; fraction within 10% `0.2669143170330674`; 57,240
+  households and 57,240 nonzero shipped weights. The 32,842 per-target
+  contributions sum to `0.11462448275649767`, agreeing with the canonical
+  aggregate to floating-point summation tolerance. The production weighting
+  and aggregate formulas are code-cited in the result
+  (`tools/build_us_fiscal_refresh_release.py:344-348,481-516,5781-5814,6214-6290`;
+  `packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537,576-600`).
+- Incumbent battery evidence: 132/132 comparisons and all 369 nominal scalar
+  legs are explicitly `inapplicable`; the artifact has 120,261 positive-weight
+  clone-0 ASEC rows across the three battery entities and zero ACS rows. No
+  zero, pass, or failure was synthesized for those by-origin-only legs
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11644-11709,11824-11832,11948-12154`).
+- Result identities: JSON SHA-256
+  `b2ad1a07f9668bc5d796cc9de99ef12da781b1ee8163ea65781871a20da441c8`;
+  Markdown SHA-256
+  `3f9171b8f63fcef61518a4af1c18a8555c4f449ac62e9283e41ac2fe9c779021`.
+  Both record the incumbent artifact SHA-256 `48b9d479...`, exact HF repo,
+  revision, resolved commit, filename, PolicyEngine.py bundle version/source
+  commit, and certified policyengine-us version.
 
-### No-build reproduction
+## Owner command when the 25% candidate exists
 
-- The SHA-pinned replay harness reads the assembled Frame checkpoint and the
-  unemployment-compensation and weeks-unemployed target-bank H5 files,
-  validates their file, identity, and raw-draw digests, reconstructs only the
-  native clone-0 vectors, and calls the calibration kernel and its strict
-  receipt validator. It performs no target fit, DAG execution, Frame write, or
-  build (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:1-6,74-112,115-250`).
-- The stacked owner selects ASEC clone-0 reference rows, ACS clone-0 recipient
-  rows, transferred-null mutable rows, and—for weeks—only mutable rows with
-  positive unemployment compensation as allowed/addition candidates
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8960-8971,8995-9032`).
-- The preserved replay contains 4,311 reference rows, 34,293 recipient/mutable
-  rows, 134 positive reference rows, 24 initial recipient positives (all
-  disallowed), and 32 positive-UC addition candidates. Its reference total is
-  `80,851,529.27715749`, recipient total is `79,926,522.10879111`, reference
-  positive mass is `2,762,659.3294707513`, and target positive mass is
-  `2,731,052.2627107087` (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:144-206,230-250`).
-- At reproduction commit `4cc41652`, capacity generation reduces the 32
-  candidate weights with masked `ndarray.sum`, producing
-  `85,676.23791782455`, while selection independently reduces the same
-  ID-ordered weights with `np.cumsum`, producing `85,676.23791782456`
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:463-493,817-880` at that commit).
-  The exact validator relationship `0 <= lower <= upper <=
-  expected_candidate_mass` therefore rejects the receipt by one float64 ULP,
-  `1.4551915228366852e-11`; every other relationship passes
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:1389-1490` at `4cc41652`).
+First confirm that the host builder has finished. On the owner host (where
+process inspection is permitted), `ps ax | grep '[b]uild_us_multispine_pool'`
+must print nothing before either scoring command. Set the two published
+candidate paths, then run the dense pool and sparse-57k views separately on
+the same frozen incumbent and Ledger yardstick:
 
-### Semantic adjudication
+```bash
+CANDIDATE_POOL_MANIFEST=/absolute/path/to/25pct/pool.manifest.json
+CANDIDATE_SPARSE_H5=/absolute/path/to/25pct/sparse-57k.h5
+CANDIDATE_MANIFEST_SHA256="$(shasum -a 256 "$CANDIDATE_POOL_MANIFEST" | awk '{print $1}')"
+CANDIDATE_POOL_SHA8="$(jq -r '.pool_h5.sha256[0:8]' "$CANDIDATE_POOL_MANIFEST")"
+CANDIDATE_SPARSE_SHA8="$(shasum -a 256 "$CANDIDATE_SPARSE_H5" | awk '{print substr($1,1,8)}')"
 
-- The invariant is correct and target-type agnostic: a selected prefix cannot
-  exceed its declared candidate capacity. No tolerance or target exception is
-  authorized. The generating defect is that capacity and prefix evidence are
-  derived by two reduction schedules for the same declared ordered carrier
-  set (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:321-327,463-493,817-891` at `4cc41652`).
-- Weeks is a valid positive-carrier target. The ASEC source accepts only
-  integer `-1` or `0..52`, maps `-1` to zero, and defines the positive event as
-  an in-range integer above zero
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:791-800,1218-1222`).
-  Its dedicated QRF path rounds, clips, and revalidates predictions in that
-  domain; post-transfer amount mapping then selects only positive
-  reference-donor values and rejects support escape
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:911-983`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:588-626,702-705`).
-- The semantics-preserving repair is one immutable ordered-prefix schedule per
-  candidate set, consumed by both capacity and selection. Rewriting only the
-  terminal cumulative value is invalid because `_nearest_prefix` requires a
-  nondecreasing vector for its lower-mass tie break and `searchsorted`
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:487-515`).
+.venv/bin/python tools/score_us_release_head_to_head.py \
+  --incumbent /Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/26dcad66867687f15735dc4926523e3741920836/populace_us_2024.h5 \
+  --candidate "$CANDIDATE_POOL_MANIFEST" \
+  --candidate-manifest-sha256 "$CANDIDATE_MANIFEST_SHA256" \
+  --ledger-facts /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl \
+  --out-prefix "experiments/replacement_scorecard/head_to_head_dense_48b9d479_${CANDIDATE_POOL_SHA8}" \
+  --maximum-microsim-batch-size 5000
 
-### Two generating defects and the complete repair
+.venv/bin/python tools/score_us_release_head_to_head.py \
+  --incumbent /Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/26dcad66867687f15735dc4926523e3741920836/populace_us_2024.h5 \
+  --candidate "$CANDIDATE_SPARSE_H5" \
+  --ledger-facts /Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl \
+  --out-prefix "experiments/replacement_scorecard/head_to_head_sparse_48b9d479_${CANDIDATE_SPARSE_SHA8}" \
+  --maximum-microsim-batch-size 5000
+```
 
-- `_PrefixSchedule` binds one immutable ordered-position vector to one
-  float64 cumulative-mass vector. `_nearest_prefix` consumes that schedule and
-  reports its terminal element as candidate mass
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:282-287,471-515`).
-  Commit `d7b12bab` constructs the amount-descending/ID removal schedule and
-  ID-ordered addition schedule once, so capacity and selection use the same
-  candidate endpoint (`post_transfer_calibration.py:844-872,891-928`).
-- The SHA-pinned weeks replay therefore changes its candidate mass from
-  `85,676.23791782455` to the selection schedule's exact terminal
-  `85,676.23791782456`; upper minus candidate becomes zero and strict
-  validation succeeds. The harness now pins both the failing and repaired
-  relationship values rather than accepting an arbitrary validator failure
-  (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:210-286`).
-- The required cross-target replay found that `d7b12bab` still composed its
-  whole maximum from independently rounded partition endpoints. Both actual
-  child-support targets produced maximum `79,926,522.10879174` against
-  recipient total `79,926,522.10879111`, so only the exact
-  `maximum_attainable_mass <= recipient_total` relationship failed, by
-  `6.258487701416016e-07`. Expense partitions were
-  `71,696.09739141785 + 79,854,826.01140033`; received partitions were
-  `180,209.75664861224 + 79,746,312.35214312`.
-- The complete generating repair declares the attainable carrier set once as
-  `fixed_positive | allowed_positive | zero_candidates`. It zero-masks that
-  set onto the already ordered recipient-weight vector, retaining the same
-  vector length and reduction topology used by `recipient_total`. For
-  nonnegative weights, the exact subset bound is therefore structural; the
-  maximum is neither a sum of rounded partition scalars nor a clamp
-  (`post_transfer_calibration.py:823-885`).
-- Both SHA-pinned child receipts now have maximum exactly equal to recipient
-  total `79,926,522.10879111` while the historical partition sum remains
-  `79,926,522.10879174`; every strict relationship passes. The child harness
-  pins both targets' file/identity/raw hashes and requires the exact per-target
-  state, error, relationship, and floats on the red and green sides
-  (`tools/audit_us_post_transfer_child_support_checkpoints.py:1-80,91-207,210-302`).
-- A proper-subset regression supplies weights for which compressed regrouping
-  yields `0x1.433526fbe1946p+48`, `0.0625` above recipient total
-  `0x1.433526fbe1945p+48`. The same-topology union yields the recipient value
-  exactly and validates for every late `match_reference` declaration. Separate
-  regressions cover the production weeks candidate bytes, independently
-  rounded whole partitions, and the symmetric removal path
-  (`packages/microcosm-build/tests/test_us_post_transfer_calibration.py:544-753`).
-- The validator is unchanged: it still requires exact
-  `maximum_attainable_mass <= recipient_total` and exact
-  `0 <= lower <= upper <= candidate_mass`; its pre-existing approximate
-  partition-additivity and boundary checks were not adjusted
-  (`post_transfer_calibration.py:1457-1529`). No tolerance, threshold, band,
-  gate, or target exception changed.
+“Better than the incumbent” on this yardstick means the owner compares each
+candidate view with the incumbent’s exact `0.11462448275649702` weighted fiscal
+loss and the reported target-by-target balance of lower, equal, and higher
+absolute relative errors, while also inspecting every battery leg that is
+computable for that candidate. There is no scorecard threshold and no automatic
+conjunction or verdict. Because the incumbent’s ASEC-vs-ACS battery is
+definitionally inapplicable, the candidate’s battery is standalone evidence—it
+is not compared with a fabricated incumbent zero, pass, or failure. The owner
+decides whether the dense and sparse evidence justifies the flip.
 
-### Complete late-transfer target audit
+## Final validation and completion
 
-The registry contains exactly seven late targets; six share the repaired
-`match_reference` branch and one bypasses carrier selection by preserving
-recipient carriers
-(`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:208-258,786-812,840-932`).
+- The prescribed full workspace suite was run through the current worktree
+  interpreter because the copied `.venv/bin/pytest` console script retained a
+  stale sibling-worktree shebang. The first correctly routed run reached 7,027
+  passes and 76 skips; its only failure was the source-hygiene guard finding a
+  retired-package literal in this journal. Commit `6847d245` removed that
+  documentation-only literal, and the guard passed independently.
+- Final full-suite receipt:
 
-| Late target | Source semantics / observed 1% shape | Carrier verdict |
-| --- | --- | --- |
-| `pre_subsidy_care_expenses` | Nonnegative monetary care expense. ACS reconciliation restricts it to qualifying people and at most one carrier per tax unit; the late owner admits existing qualifying positives and one stable zero candidate per empty unit (`acs_transfer.py:660-739,1277-1299`; `stacked_spine.py:8728-8746,8977-8986`). | Covered: constrained `match_reference`; not a count. Its proper attainable subset uses the same whole-union mechanism and proper-subset regression. Host had not reached it. |
-| `child_support_expense` | Exact nonnegative annual `CHSP_VAL` carry (`child_support.py:166-201`); QRF reported six distinct donor values. | Covered: monetary `match_reference`. Its pinned checkpoint fails at `d7b12bab` and passes the complete union repair. |
-| `child_support_received` | Exact nonnegative annual `CSP_VAL` carry (`child_support.py:166-201`); QRF reported 15 distinct donor values. | Covered: monetary `match_reference`. Its pinned checkpoint fails at `d7b12bab` and passes the complete union repair. |
-| `disability_benefits` | Nonnegative annual two-slot sum excluding workers' compensation (`disability_benefits.py:184-220,558-560`); QRF reported ten distinct donor values. | Inapplicable: `preserve_recipient` emits neither capacity nor selection evidence (`post_transfer_calibration.py:230-236,1319-1335`). Its preserved checkpoint validates with before/after carrier mass `42,658.57948297383`. |
-| `weeks_unemployed` | Integer `-1` or `0..52`, with `-1` mapped to zero (`weeks_unemployed.py:791-800,911-983,1218-1222`); QRF reported 12 distinct donor values. | Covered: sole semantic count; positive-UC-constrained `match_reference` (`stacked_spine.py:8995-9008`). The exact replay proves reducer order, not count support, caused the failure. |
-| `workers_compensation` | Exact nonnegative annual `WC_VAL` carry (`workers_compensation.py:143-184,520-522`); host had not reached it. | Covered: monetary default-mask `match_reference`; shared-kernel regressions validate its declaration. |
-| `spm_unit_energy_subsidy` | Measured nonnegative annual `SPM_ENGVAL`, checked within unit and reduced to SPM-unit float64 (`energy_subsidy.py:157-233,543-557`); host had not reached it. | Covered: monetary default-mask `match_reference`; shared-kernel regressions validate its declaration at its entity grain. |
+  ```text
+  UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv run python -m pytest
+  7028 passed, 76 skipped, 1922 warnings in 5996.15s (1:39:56)
+  ```
 
-The host log's near-discrete evidence appears at `build.log:1252-1266,1404-1408`.
-Weeks does not rely on ACS's explicit discrete-numeric set, which contains only
-two mortgage-year targets; ordinary numeric targets otherwise use the
-continuous encoding. Its integer semantics come from the dedicated weeks
-source/QRF checks and post-transfer donor-support mapping cited above
-(`acs_transfer.py:129-138,3035-3117`). QRF's `<=32`-unique “near-discrete”
-branch is a leaf-storage optimization, not a carrier-capacity semantic
-distinction, which is why annual dollar targets also triggered it here
-(`microcosm-fit/qrf.py:388-401,482-503`).
+- Final static receipts: repository-wide `ruff check .` passed; all six Python
+  files changed on this branch passed `ruff format --check`; scorer
+  `py_compile` and `git diff --check` passed. A whole-tree format audit listed
+  69 pre-existing mainline files, which this lane deliberately did not rewrite.
+- Independent final audit found no deliverable-level gap. The implementation,
+  incumbent JSON/Markdown, exact candidate commands, comparison doctrine,
+  `PROGRESS.md`, and `FINAL_REPORT.md` are complete. The only next action is
+  external: the host builds the candidate, then the owner scores its dense and
+  sparse views and decides the flip.
+- No pool build, publication, push, gate edit, threshold edit, tolerance edit,
+  or band edit occurred in this lane.
 
-Current zero-based late-DAG positions are child support 24, disability 25,
-weeks 30, workers' compensation 31, energy subsidy 32, and adult care 34.
-The registry constructs and schedules those groups deterministically, stacked
-execution enumerates them serially, and each production group applies its
-post-transfer calibration before returning
-(`us_late_producer_registry.py:1338-1396,2013-2019`;
-`stacked_spine.py:10054-10095,10927-10931`). The failed host run had crossed
-child support and disability but had not produced checkpoints for workers'
-compensation, energy subsidy, or adult care. Their verdict is therefore a
-source/mask proof plus the six-spec shared-kernel regressions, not a claim of
-checkpoint replay.
+---
 
-## Source-cited mechanism record
-
-- The battery computes positive and negative carrier incidence separately,
-  compares ACS/ASEC weighted incidence to the frozen band, then computes five
-  weighted conditional carrier quantiles when both sides have enough rows
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:13351-13421`).
-- Its quantile-envelope diagnostic is the maximum symmetric normalized
-  separation across those five conditional quantiles
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:13481-13512`).
-- The fitted QRF draws a weighted sign gate and then a forest amount conditional
-  on the selected sign; that is the two-part mechanism calibrated here
-  (`packages/microcosm-fit/src/microcosm/fit/qrf.py:950-1003,1333-1429`).
-- Ordinary ACS transfers partition recipients by optional-predictor
-  availability and construct exact complete-donor model frames. Regime
-  detection and fitted-model verification run only for an explicit
-  owner-selected target subset; the existing pattern seed and draw surface do
-  not change
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:919-1115,1297-1579`).
-- The banked path applies the same explicit selection before the targetwise
-  chain and verifies only selected returned target regimes before accepting
-  their raw draws
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1621-1848`).
-- Adult-care qualification is a fail-closed section-21 predicate, and the
-  reconciliation clears nonqualifying mutable carriers, permits at most one
-  qualifying mutable carrier per tax unit, and preserves pre-existing positive
-  carriers
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:660-732`).
-- The weeks-unemployed signal gate rejects positive PUF support without
-  unemployment compensation, so carrier additions must respect that compatible
-  capacity (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:1328-1358`).
-- The prior-year income gate explicitly requires the ASEC negative
-  self-employment leg to survive, so this lane may calibrate only the positive
-  mutable leg (`packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py:829-887`).
-
-These mechanisms support an artifact-side correction; they do not justify a
-comparator change.
-
-## Implemented artifact mechanism
-
-- The immutable nine-target policy declares the exact early/late owner, carrier
-  mode, byte-exact negative leg, adult-care constraint, and weeks/UC constraint
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:123-263`).
-- The kernel requires disjoint reference/recipient masks and mutable-subset
-  scope, snapshots and byte-compares protected surfaces, computes the reference
-  positive mass, and uses deterministic nearest-prefix removal/addition within
-  a proven attainable-mass interval
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:445-547,727-922`).
-- Mutable positive amounts are mapped only to reference positive support and
-  are anchored at the frozen 10/25/50/75/90 percentiles; infeasible or
-  conflicting anchors are recorded rather than hidden
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:577-724`).
-- The kernel proves boundary saturation when capacity-limited and rejects any
-  change to nonmutable, negative, negative-zero, or zero-weight bytes, any
-  donor-support escape, or any preserve-carrier change
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:939-978`).
-- The stacked owner derives ASEC clone-0 reference rows, ACS clone-0 recipient
-  rows, and transferred-null mutable rows. Adult care uses qualifying rows plus
-  one candidate per empty unit; weeks uses positive-UC mutable rows. The final
-  adult-care reconciliation must be byte-identical/no-op
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8799-8955`).
-- Schema-v2 receipts explicitly state that terminal validation cannot replay
-  pre-calibration state; they separate live-replayable output claims from
-  generation-transition evidence
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:43-119,980-1055`).
-- Terminal validation independently recomputes live row/mask hashes, entity and
-  output hashes, full weights, carrier masses, reference/recipient quantiles,
-  QED, and coupled adult/weeks constraints
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3756-3818,3821-4025`).
-- Only the nine declared calibration targets receive QRF pattern receipts.
-  Those receipts persist ordered predictors, seeds, weights, row counts, and
-  selected regimes, then validate canonical predictor/pattern/target order and
-  exact record-family binding. All assigned and unassigned receipts validate
-  the same legacy row-count schema and accounting before their scope branch.
-  Unassigned transfers retain their evidence-free receipts and generic
-  serializers omit the empty opt-in field. Receipt-only validation deliberately
-  does not claim donor replay or out-of-sample verification
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4128-4445,4529-4795`).
-- Canonical early and late production both use the certified maximum of eight
-  targets per fit. Exact selected-family receipt binding therefore cannot be
-  weakened by caller-selected batching; the non-production test seam retains
-  smaller-width coverage.
-- The two pinned 3.73 GB SIPP readers retain chunked selection and downstream
-  explicit coercion while using streaming type inference. Guarded full-donor
-  reruns observed much lower RSS and unchanged locked donor facts
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:393-413`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/voluntary_filing.py:375-397`).
-
-## Adjudication limits retained
-
-- The named adjudication remedy calls for target/sign-scoped origin-aware
-  cross-fitted carrier calibration and held-out nonregression. This branch does
-  not have the adjudicated fold/comparator authority in main and does not invent
-  one. Its carrier correction is deterministic terminal reference-margin
-  matching, not cross-fitting or an out-of-sample estimate
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:839-922`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4211-4217`).
-- The unemployment-compensation row likewise lacks the adjudicated money-OOS
-  authority in this branch. The implementation freezes its carrier membership
-  and calibrates only conditional positive amounts; no OOS nonregression claim
-  is made
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:193-207,952-978`).
-- Weeks-unemployed carrier matching is allowed to stop at the exact
-  positive-UC-compatible capacity, but the receipt must prove the attainable
-  interval and boundary saturation
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:839-955`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8863-8876`).
-- Mutable masks, input hashes, before-state diagnostics, change counts, and
-  byte-preservation proofs need the generation-time pre-frame. Terminal
-  validation authenticates them through the enclosing execution authority and
-  does not claim to reconstruct them from the final frame
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:43-119`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3925-3938`).
-
-## Environment receipt
-
-- `uv sync --all-packages --extra us`: failed before resolution because the
-  sandbox denied writes to `/Users/maxghenis/.cache/uv`.
-- Writable-cache retry: failed downloading `pandas==3.0.3` because sandbox DNS
-  is unavailable.
-- Exact-lock fallback: `uv.lock` SHA-1
-  `6b213e740b114d008c0191fa492832a957a0a948` matches
-  `../microcosm-707/uv.lock`; that environment imports NumPy 2.4.6, pandas
-  3.0.3, and pytest 8.4.2 while `PYTHONPATH` points at this worktree.
-- The pre-continuation PR test surface was green: all 225 `microcosm-build`
-  test files; `microcosm-fit` 93 passed; `microcosm-calibrate` 201 passed;
-  `microcosm-frame` 294 passed/36 skipped; and `microcosm-data` 275 passed/one
-  skipped. Heavy files ran in fresh pytest processes. The final continuation
-  tree also passes all 225 `microcosm-build` test files across fresh processes,
-  including full ordinary/banked transfer, stacked binding, serializer, pool,
-  H5 loader, and real late-executor files. The full rerun exposed one synthetic
-  H5 target receipt with only `residual_null_rows`; its fixture was updated to
-  the valid four-zero count block, its full file reran green, and a fixture
-  scan found no other canonical partial blocks.
-- `ruff check .`, touched-file `ruff format --check`, and `git diff --check`
-  pass. Full-tree format checking reports 49 pre-existing files outside this
-  lane's formatting scope.
-- On the completed post-transfer receipt repair, all 47 focused calibration
-  tests and all five package roots (`microcosm-fit`, `microcosm-calibrate`,
-  `microcosm-data`, `microcosm-frame`, and the complete `microcosm-build`
-  root) exited zero under the guard. Repository-wide Ruff, touched-file
-  formatting, and whitespace checks also pass. Only established skips and
-  warnings appeared; no host build ran.
-- The final successful full-donor tests peaked at 0.485 GiB for vehicles and
-  0.532 GiB for voluntary filing; the largest successful isolated build-test
-  shard peaked at 6.531 GiB. An earlier 13.5 GiB/250 ms diagnostic guard
-  observed one rapid parser spike at 15.424 GiB before termination. The guard
-  was immediately tightened to 10 GiB/20 ms, the streaming reader was fixed,
-  and all successful reruns stayed below the cap.
-
-## Measurement ledger
-
-The before build used `--sample-fraction 0.01 --sample-seed 578`, clone fraction
-1 and clone seed 578, with no chain predecessor. Peak observed per-process RSS
-was 10.733 GiB. Artifact receipts:
-
-- `pool.h5`: SHA-256 `258891504201275f8006a1584b7d3e891890d15381724bc9f2b30b1f443d967f`
-- `pool.gates.json`: SHA-256 `94ee914bb7490e7f513184e691cf15847d1e585693ef184977196485f86f1fee`
-- `pool.manifest.json`: SHA-256 `953aaff72fac8cc17211959d0133f9bce8c22dd87b2957a0f6a89335fcc9c122`
-
-The exact frozen-battery values are below. `unsupported` means the battery did
-not emit QED because one side had fewer than five carriers; the parenthesized
-number is the same five-grid weighted diagnostic computed manually without
-changing that support rule.
-
-| Assigned check | Before at 1% |
-| --- | ---: |
-| adult care positive incidence ratio | 0.561425035 |
-| adult care positive QED | unsupported (manual 1.738865343) |
-| unemployment compensation positive QED | 0.352941176 |
-| child-support expense positive incidence ratio | 0.171280844 |
-| child-support expense positive QED | 0.953846154 |
-| child support received positive incidence ratio | 0.242882414 |
-| child support received positive QED | 1.000000000 |
-| disability benefits positive QED | 1.373534621 |
-| prior-year self-employment positive incidence ratio | 1.376752468 |
-| prior-year self-employment positive QED | 0.834720589 |
-| weeks unemployed positive incidence ratio | 0.025384419 |
-| weeks unemployed positive QED | 0.736842105 |
-| workers' compensation positive incidence ratio | 0.047614655 |
-| workers' compensation positive QED | unsupported (manual 1.918367347) |
-| SPM-unit energy subsidy positive incidence ratio | 0.240477284 |
-| SPM-unit energy subsidy positive QED | 0.666666667 |
-
-Sparse 1% sampling also puts the otherwise frozen unemployment-compensation
-and disability positive carrier ratios at 0.131859569 and 0.098471480. Their
-adjudicated remedies freeze carrier membership, so this lane will improve only
-their assigned amount-QED checks. The unassigned negative prior-year
-self-employment ratio is 1.435953092 and is likewise deliberately untouched.
-
-After values will be added after the calibrated 1% rebuild.
-## Historical lane notes imported from `origin/main` — 2026-08-22
-
-The following `one-target-surface` notes are preserved verbatim as merge
-history. Any present-tense branch state or pending work below belongs to that
-source lane's 2026-08-21 snapshot, not to this continuation.
-
-# One-target-surface lane notes
+# Historical: one-target-surface lane notes
 
 ## 2026-08-21 — baseline and doctrine
 

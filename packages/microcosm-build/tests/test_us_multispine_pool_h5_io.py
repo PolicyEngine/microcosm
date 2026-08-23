@@ -28,6 +28,7 @@ from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
     US_STACKED_POOL_OPERATOR_ORDER,
     AuthenticatedPoolH5MismatchError,
+    load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
 )
@@ -1129,6 +1130,77 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
         transition_authority["sha256"]
         == manifest["late_producer_transition_authority_sha256"]
     )
+
+
+def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    failed_gate = {
+        "passed": False,
+        "gates": {
+            "us_spine_agreement": {
+                "passed": False,
+                "failures": ["fixture terminal failure"],
+                "details": {"fixture": False},
+            }
+        },
+    }
+    manifest.update(
+        {
+            "status": "gate_failed",
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics.update(
+        {
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+    frame, loaded_manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+    )
+
+    assert frame.n("household") == 3
+    assert loaded_manifest["status"] == "gate_failed"
+    assert loaded_manifest["simulation_ready"] is False
+    assert loaded_manifest["terminal_gates"]["passed"] is False
+    assert authenticated_h5.sha256 == loaded_manifest["pool_h5"]["sha256"]
+
+
+@pytest.mark.parametrize(
+    ("status", "simulation_ready"),
+    (("simulation_ready", False), ("gate_failed", True), ("unknown", False)),
+)
+def test_scoring_pool_loader_rejects_incoherent_publication_status(
+    tmp_path: Path,
+    status: str,
+    simulation_ready: bool,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["status"] = status
+    manifest["simulation_ready"] = simulation_ready
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
 
 
 @pytest.mark.parametrize("location", ("manifest", "h5"))

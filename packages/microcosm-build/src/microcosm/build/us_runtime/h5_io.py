@@ -46,6 +46,7 @@ __all__ = [
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "US_STACKED_POOL_OPERATOR_ORDER",
+    "load_authenticated_us_multispine_pool_for_scoring",
     "load_legacy_calibrated_us_h5",
     "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
@@ -371,8 +372,15 @@ def _load_authenticated_us_multispine_pool_manifest(
     path: str | Path,
     *,
     expected_manifest_sha256: str | None = None,
+    allow_terminal_gate_failure: bool = False,
 ) -> tuple[dict[str, object], AuthenticatedPoolH5]:
-    """Return the validated manifest and its authenticated pool-H5 identity."""
+    """Return a validated manifest and its authenticated pool-H5 identity.
+
+    By default this is the production readiness boundary. The scoring-only
+    caller may also authenticate a current stacked publication whose terminal
+    gates failed. That exception changes no digest, schema, run-ID, H5,
+    diagnostics, or gate-alias validation and never labels the artifact ready.
+    """
 
     manifest_path = Path(path)
     manifest, manifest_sha256, _ = _read_json_object_with_identity(
@@ -385,10 +393,15 @@ def _load_authenticated_us_multispine_pool_manifest(
             f"US multispine pool manifest {manifest_path} has an unsupported "
             "artifact binding."
         )
-    if (
-        manifest.get("simulation_ready") is not True
-        or manifest.get("status") != "simulation_ready"
-    ):
+    is_ready = (
+        manifest.get("simulation_ready") is True
+        and manifest.get("status") == "simulation_ready"
+    )
+    is_terminal_gate_failure = (
+        manifest.get("simulation_ready") is False
+        and manifest.get("status") == "gate_failed"
+    )
+    if not is_ready and not (allow_terminal_gate_failure and is_terminal_gate_failure):
         raise ValueError(
             f"US multispine pool manifest {manifest_path} is not simulation-ready."
         )
@@ -401,6 +414,12 @@ def _load_authenticated_us_multispine_pool_manifest(
         if envelope == "stacked"
         else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
     )
+    if is_terminal_gate_failure and envelope != "stacked":
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} may expose a failed "
+            "terminal-gate publication for scoring only under the current "
+            "stacked envelope."
+        )
     _validate_stacked_late_dag_manifest_binding(
         manifest,
         manifest_path=manifest_path,
@@ -534,12 +553,12 @@ def _load_authenticated_us_multispine_pool_manifest(
         diagnostics.get("artifact_kind")
         != US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND
         or diagnostics.get("schema_version") != expected_schema_version
-        or diagnostics.get("simulation_ready") is not True
+        or diagnostics.get("simulation_ready") != manifest.get("simulation_ready")
         or diagnostics.get("publication_run_id") != publication_run_id
     ):
         raise ValueError(
             f"US multispine pool diagnostics {diagnostics_path} do not match "
-            "the ready manifest publication."
+            "the authenticated manifest publication."
         )
     manifest_agreement_gate = _mapping(
         manifest.get("agreement_gate"),
@@ -560,7 +579,7 @@ def _load_authenticated_us_multispine_pool_manifest(
     if diagnostics_agreement_gate != manifest_agreement_gate:
         raise ValueError(
             f"US multispine pool diagnostics {diagnostics_path} agreement-gate "
-            "verdict does not match the ready manifest."
+            "verdict does not match the authenticated manifest."
         )
     return manifest, AuthenticatedPoolH5(
         path=pool_path.resolve(),
@@ -690,16 +709,55 @@ def load_simulation_ready_us_multispine_pool(
         immutable identity object for every downstream H5 consumer.
     """
 
+    return _load_us_multispine_pool(
+        path,
+        expected_manifest_sha256=expected_manifest_sha256,
+        require_simulation_ready=True,
+    )
+
+
+def load_authenticated_us_multispine_pool_for_scoring(
+    path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
+) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
+    """Load authenticated pool evidence without promoting failed gates.
+
+    A current stacked publication with ``status=gate_failed`` and
+    ``simulation_ready=false`` remains useful as head-to-head evidence. This
+    loader accepts that exact status pair, authenticates the same manifest,
+    diagnostics, H5 bytes, run ID, terminal-gate aliases, and row counts as the
+    production loader, and preserves the failed receipt. It is deliberately
+    separate from :func:`load_simulation_ready_us_multispine_pool`, whose
+    readiness contract is unchanged.
+    """
+
+    return _load_us_multispine_pool(
+        path,
+        expected_manifest_sha256=expected_manifest_sha256,
+        require_simulation_ready=False,
+    )
+
+
+def _load_us_multispine_pool(
+    path: str | Path,
+    *,
+    expected_manifest_sha256: str | None,
+    require_simulation_ready: bool,
+) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
+    """Shared authenticated H5 reconstruction for readiness and scoring."""
+
     manifest_path = Path(path)
     manifest, authenticated_pool_h5 = _load_authenticated_us_multispine_pool_manifest(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
+        allow_terminal_gate_failure=not require_simulation_ready,
     )
     agreement_gate = _mapping(
         manifest.get("agreement_gate"),
         label=f"US multispine pool manifest {manifest_path}.agreement_gate",
     )
-    if agreement_gate.get("passed") is not True:
+    if require_simulation_ready and agreement_gate.get("passed") is not True:
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has no passing "
             "agreement-gate verdict."
