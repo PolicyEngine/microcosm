@@ -44,10 +44,47 @@ from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
 )
-from microcosm.fit import QRFChainState
+from microcosm.fit import QRFChainState, Regime
 from microcosm.frame import EntitySchema, Frame, Weights
 
 QRF: Any | None = None
+
+_VALID_QRF_REGIMES = frozenset(
+    {
+        Regime.THREE_SIGN,
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.ZERO_INFLATED_NEGATIVE,
+        Regime.SIGN_ONLY,
+        Regime.POSITIVE_ONLY,
+        Regime.NEGATIVE_ONLY,
+        Regime.DEGENERATE_ZERO,
+    }
+)
+
+
+def _validated_qrf_regimes(
+    value: Mapping[str, str],
+    *,
+    expected_targets: tuple[str, ...],
+    boundary: str,
+) -> dict[str, str]:
+    """Bind realized regimes to the exact fitted target order."""
+
+    if not isinstance(value, Mapping) or tuple(value) != expected_targets:
+        observed = list(value) if isinstance(value, Mapping) else type(value).__name__
+        raise ValueError(
+            f"{boundary} regime targets changed: expected "
+            f"{list(expected_targets)}, got {observed}."
+        )
+    invalid = {
+        target: regime
+        for target, regime in value.items()
+        if regime not in _VALID_QRF_REGIMES
+    }
+    if invalid:
+        raise ValueError(f"{boundary} carries invalid realized regimes {invalid}.")
+    return dict(value)
+
 
 __all__ = [
     "ACS_DONOR_CHANNEL_AUTO",
@@ -413,6 +450,7 @@ class AcsTransferPattern:
     weight_kind: str
     donor_rows: int
     recipient_rows: int
+    regimes: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -457,6 +495,7 @@ class AcsTransferBankPatternStep:
     pattern: str
     state_before: QRFChainState
     state_after: QRFChainState
+    regime: str
 
 
 @dataclass(frozen=True)
@@ -1350,6 +1389,11 @@ def _fit_family_patterns(
                 f"weight kind {fitted.weight_kind!r}, expected the donor "
                 f"Frame's {resolved_kind!r}."
             )
+        regimes = _validated_qrf_regimes(
+            fitted.regimes(),
+            expected_targets=model_targets,
+            boundary=f"ACS transfer {entity!r}/{family!r}/{pattern_name!r}",
+        )
 
         recipient_pattern = _encoded_predictor_frame(
             surface.recipient.iloc[recipient_positions],
@@ -1376,6 +1420,7 @@ def _fit_family_patterns(
             weight_kind=fitted.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
+            regimes=regimes,
         )
         pattern_records.append(pattern_record)
         fit_records.append(
@@ -1477,6 +1522,7 @@ def _fit_family_patterns_banked(
     contexts: list[_BankPatternContext] = []
     states: dict[str, QRFChainState] = {}
     raw_priors: dict[str, pd.DataFrame] = {}
+    pattern_regimes: dict[str, dict[str, str]] = {}
     pattern_records: list[AcsTransferPattern] = []
     fit_records: list[FitWeightRecord] = []
     for position, (observed_optional, recipient_positions) in enumerate(
@@ -1536,6 +1582,7 @@ def _fit_family_patterns_banked(
             weight_kind=state.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
+            regimes={},
         )
         contexts.append(
             _BankPatternContext(
@@ -1545,6 +1592,7 @@ def _fit_family_patterns_banked(
             )
         )
         states[pattern_name] = state
+        pattern_regimes[pattern_name] = {}
         raw_priors[pattern_name] = pd.DataFrame(
             index=surface.recipient.iloc[recipient_positions].index
         )
@@ -1631,6 +1679,7 @@ def _fit_family_patterns_banked(
                         pattern=pattern.name,
                         state_before=state_before,
                         state_after=result.state,
+                        regime=result.regime,
                     )
                 )
             checkpoint = AcsTransferTargetCheckpoint(
@@ -1669,6 +1718,9 @@ def _fit_family_patterns_banked(
                 context.recipient_positions
             ]
             states[pattern_name] = steps_by_pattern[pattern_name].state_after
+            pattern_regimes[pattern_name][model_target] = steps_by_pattern[
+                pattern_name
+            ].regime
 
     incomplete_states = [
         name for name, state in states.items() if not state.is_complete
@@ -1677,7 +1729,17 @@ def _fit_family_patterns_banked(
         raise AssertionError(
             f"ACS transfer bank left incomplete pattern chains: {incomplete_states}."
         )
-    patterns = tuple(pattern_records)
+    patterns = tuple(
+        replace(
+            pattern,
+            regimes=_validated_qrf_regimes(
+                pattern_regimes[pattern.name],
+                expected_targets=model_targets,
+                boundary=f"ACS transfer {entity!r}/{family!r}/{pattern.name!r} bank",
+            ),
+        )
+        for pattern in pattern_records
+    )
     kinds = {pattern.weight_kind for pattern in patterns}
     if len(kinds) != 1:  # pragma: no cover - every subset resolves one donor kind
         raise RuntimeError(
@@ -1754,6 +1816,11 @@ def _validate_banked_target_checkpoint(
             f"{entity}.{model_target}."
         )
     for step in checkpoint.pattern_steps:
+        if step.regime not in _VALID_QRF_REGIMES:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} carries "
+                f"invalid regime {step.regime!r} for pattern {step.pattern!r}."
+            )
         state_before = expected_states[step.pattern]
         if step.state_before != state_before:
             raise ValueError(

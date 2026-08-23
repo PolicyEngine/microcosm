@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
@@ -450,7 +451,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         "stage_checkpoints": {
             "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
             "schema_version": 1,
-            "materializer_version": 3 if not stacked else 5,
+            "materializer_version": 4 if not stacked else 5,
             "enabled": False,
             "agreement": {
                 "source": "always_fresh",
@@ -547,8 +548,28 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             }
         },
     }
-    group_receipts = {
-        group.name: {
+    group_receipts: dict[str, dict[str, object]] = {}
+    realized_regimes: list[dict[str, object]] = []
+    for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
+        model_targets = acs_transfer_module._model_target_names(group.targets)
+        group_regimes = [
+            {
+                "entity": group.entity,
+                "family": group.family,
+                "pattern": "pattern_0__required_only",
+                "observed_optional_predictors": [],
+                "predictors": ["fixture_predictor"],
+                "seed": 0,
+                "weight_kind": "household_weight",
+                "donor_rows": 1,
+                "recipient_rows": 1,
+                "model_targets": list(model_targets),
+                "regimes": {
+                    target: "zero_inflated_positive" for target in model_targets
+                },
+            }
+        ]
+        group_receipts[group.name] = {
             "producer": group.name,
             "entity": group.entity,
             "family": group.family,
@@ -559,9 +580,9 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
                 }
                 for target in group.targets
             },
+            "realized_regimes": group_regimes,
         }
-        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
-    }
+        realized_regimes.extend(group_regimes)
     group_by_name = {
         group.name: group
         for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
@@ -593,6 +614,7 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         ],
         "groups": group_receipts,
         "targets": aggregate_targets,
+        "realized_regimes": realized_regimes,
         "completion": {
             "status": "complete",
             "group_count": 19,
@@ -870,6 +892,19 @@ def test_ready_legacy_pool_loader_accepts_pre_653_schema_four_envelope(
         written_manifest["pool_h5"]["path"]
     )
     assert frame.n("household") == 3
+
+
+def test_ready_legacy_pool_loader_rejects_materializer_three_checkpoint(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["stage_checkpoints"]["materializer_version"] = 3
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="stage_checkpoints.identity"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 def test_ready_legacy_pool_loader_rejects_current_stacked_envelope(

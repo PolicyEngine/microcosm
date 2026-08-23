@@ -137,7 +137,7 @@ def _write_ready_pool(tmp_path: Path) -> Path:
                         "populace_us_multispine_pool_checkpoint_provenance"
                     ),
                     "schema_version": 1,
-                    "materializer_version": 3,
+                    "materializer_version": 4,
                     "enabled": False,
                     "agreement": {
                         "source": "always_fresh",

@@ -1,0 +1,1 @@
+The US retirement-distribution training cap now retains every rare signed-tail carrier (fixing the manufactured one-sided Keogh leg and the 401k/403b/SEP starvation reds), and ACS-transfer provenance, target-bank schema 2, and late receipts persist each fitted target's realized QRF regime with fail-closed validation.

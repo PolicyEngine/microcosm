@@ -1706,6 +1706,9 @@ class _ProducerDtypeFittedQRF:
         self.observations = observations
         self.weight_kind = weight_kind
 
+    def regimes(self) -> dict[str, str]:
+        return {outcome: "zero_inflated_positive" for outcome in self.outcomes}
+
     def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
         self.calls[f"{self.owner}.predict"] += 1
         rows = len(test)

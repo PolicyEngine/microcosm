@@ -332,6 +332,21 @@ def test_adult_tail_and_live_puf_orders_are_literal() -> None:
     )
 
 
+def test_retirement_distribution_cap_declares_support_preserving_candidates() -> None:
+    site = LEGACY_V1_PROTOCOL.site("retirement_distributions_training_cap")
+
+    assert site.seed_material == ("build_model_seed", "stage_training_cap")
+    assert site.rng_family == "pandas.Series.sample RandomState(MT19937)"
+    assert site.consumption_order == (
+        "retain_nonzero_union_then_prioritize_positive-weight_all-target-zero_positions",
+        "sample_remaining_all-target-zero_positions_with_pandas_series_sample",
+        "sort_selected_positions_then_ratio-calibrate_sampled-zero_weights",
+    )
+    assert site.draw_condition == "donor_rows_above_5000"
+    assert "DEFAULT_ZERO_ATOL" in site.derivation
+    assert "full_mass/sampled_mass" in site.derivation
+
+
 def test_acs_family_pattern_seed_and_label_golden_vectors() -> None:
     assert _family_seed(0, entity="person", family="family_a") == 2_974_888_678
     assert _family_seed(578, entity="tax_unit", family="transfers") == 2_219_304_948

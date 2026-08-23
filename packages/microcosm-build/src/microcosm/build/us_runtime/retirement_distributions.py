@@ -24,6 +24,7 @@ residual category.
 
 from __future__ import annotations
 
+from importlib import import_module
 from importlib.resources import files
 from typing import Any
 
@@ -345,9 +346,11 @@ def impute_us_retirement_distributions_to_puf_support_from_manifest(
     trains on measured ASEC distributions and replaces the four populated
     non-IRA outputs restored here on the PUF half. PUF taxable IRA remains
     sourced from the tax-detail stage, and Roth IRA remains the direct copied
-    ASEC mapping. A rare QRF output may legitimately remain zero on the PUF half
-    when the fixed 5,000-row training sample contains no positive donor; the
-    measured ASEC half remains authoritative and is never overwritten.
+    ASEC mapping. The fixed training cap retains the union of nonzero donors
+    across all four QRF targets, then samples only the common all-zero stratum
+    and calibrates its weights back to the full all-zero mass. This preserves
+    every realized sign regime and conditional nonzero-magnitude support while
+    the measured ASEC half remains authoritative and is never overwritten.
     """
 
     if operation.kind != "impute_retirement_distributions_to_puf_support":
@@ -428,17 +431,27 @@ def impute_us_retirement_distributions_to_puf_support_from_manifest(
     weights = pd.to_numeric(
         frame.loc[asec_mask, _PERSON_WEIGHT_COLUMN], errors="coerce"
     ).fillna(0.0)
-    if len(training) > max_train_samples:
-        sample = training.sample(
-            n=max_train_samples,
-            random_state=(context.config.seed if context is not None else 0),
-        ).index
-        training = training.loc[sample]
-        weights = weights.loc[sample]
+    for column in _PUF_QRF_OUTPUT_COLUMNS:
+        training[column] = pd.to_numeric(training[column], errors="coerce")
+        if not np.isfinite(training[column].to_numpy(dtype=np.float64)).all():
+            raise SourceRuntimeError(
+                "US retirement-distribution QRF training column "
+                f"{column!r} contains nonfinite values."
+            )
+    fit_module = import_module("microcosm.fit")
+    seed = context.config.seed if context is not None else 0
+    training, capped_weights = _cap_retirement_distribution_training(
+        training,
+        weights,
+        targets=_PUF_QRF_OUTPUT_COLUMNS,
+        max_train_samples=max_train_samples,
+        seed=seed,
+        zero_atol=float(fit_module.DEFAULT_ZERO_ATOL),
+    )
 
     test = frame.loc[puf_mask, predictor_columns].copy()
     test.columns = list(predictors)
-    for column in (*predictors, *_PUF_QRF_OUTPUT_COLUMNS):
+    for column in predictors:
         training[column] = pd.to_numeric(training[column], errors="coerce")
         if not np.isfinite(training[column].to_numpy(dtype=np.float64)).all():
             raise SourceRuntimeError(
@@ -455,15 +468,12 @@ def impute_us_retirement_distributions_to_puf_support_from_manifest(
 
     global QRF
     if QRF is None:
-        from importlib import import_module
-
-        QRF = import_module("microcosm.fit").QRF
-    seed = context.config.seed if context is not None else 0
+        QRF = fit_module.QRF
     fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
         training,
         list(predictors),
         list(_PUF_QRF_OUTPUT_COLUMNS),
-        weights=weights.to_numpy(dtype=np.float64),
+        weights=capped_weights,
     )
     predictions = fitted.predict(test).clip(lower=0.0)
 
@@ -471,6 +481,107 @@ def impute_us_retirement_distributions_to_puf_support_from_manifest(
     for column in _PUF_QRF_OUTPUT_COLUMNS:
         result.loc[puf_mask, column] = predictions[column].to_numpy(dtype=np.float64)
     return result
+
+
+def _cap_retirement_distribution_training(
+    training: pd.DataFrame,
+    weights: pd.Series | np.ndarray,
+    *,
+    targets: tuple[str, ...],
+    max_train_samples: int,
+    seed: int,
+    zero_atol: float,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Cap a joint retirement fit without deleting any target's sign support.
+
+    Every row that is nonzero for at least one target remains a census row.
+    The fixed-cap remainder is a seeded sample of rows that are QRF-zero for
+    every target. Scaling only those sampled rows back to their stratum's full
+    weight preserves total donor mass and every target's weighted sign masses,
+    while carrier weights and conditional magnitudes remain exact.
+    """
+
+    if max_train_samples <= 0:
+        raise SourceRuntimeError(
+            "US retirement-distribution training cap must be positive."
+        )
+    if zero_atol < 0.0 or not np.isfinite(zero_atol):
+        raise SourceRuntimeError(
+            "US retirement-distribution QRF zero tolerance must be finite and "
+            "nonnegative."
+        )
+    weight_values = np.asarray(weights, dtype=np.float64)
+    if weight_values.ndim != 1 or len(weight_values) != len(training):
+        raise SourceRuntimeError(
+            "US retirement-distribution weights must be one-dimensional and "
+            "positionally aligned with the training donor."
+        )
+    if not np.isfinite(weight_values).all() or (weight_values < 0.0).any():
+        raise SourceRuntimeError(
+            "US retirement-distribution weights must be finite and nonnegative."
+        )
+    if float(weight_values.sum()) <= 0.0:
+        raise SourceRuntimeError(
+            "US retirement-distribution training donor has zero total weight."
+        )
+
+    target_matrix = training.loc[:, list(targets)].to_numpy(dtype=np.float64)
+    if not np.isfinite(target_matrix).all():
+        raise SourceRuntimeError(
+            "US retirement-distribution training targets must be finite before "
+            "the support-preserving cap."
+        )
+    if len(training) <= max_train_samples:
+        return training.copy(), weight_values.copy()
+
+    union_nonzero = np.any(np.abs(target_matrix) > zero_atol, axis=1)
+    carrier_positions = np.flatnonzero(union_nonzero)
+    zero_positions = np.flatnonzero(~union_nonzero)
+    if len(carrier_positions) >= max_train_samples:
+        raise SourceRuntimeError(
+            "US retirement-distribution nonzero donor union leaves no room for "
+            "an all-target-zero row under the fixed training cap: "
+            f"union={len(carrier_positions)}, cap={max_train_samples}."
+        )
+
+    zero_slots = max_train_samples - len(carrier_positions)
+    positive_weight_zero_positions = zero_positions[weight_values[zero_positions] > 0.0]
+    zero_weight_zero_positions = zero_positions[weight_values[zero_positions] == 0.0]
+    if len(positive_weight_zero_positions) >= zero_slots:
+        sampled_zero_positions = (
+            pd.Series(positive_weight_zero_positions, dtype=np.int64)
+            .sample(n=zero_slots, random_state=seed)
+            .to_numpy(dtype=np.int64)
+        )
+    else:
+        zero_weight_slots = zero_slots - len(positive_weight_zero_positions)
+        sampled_zero_positions = np.concatenate(
+            (
+                positive_weight_zero_positions,
+                pd.Series(zero_weight_zero_positions, dtype=np.int64)
+                .sample(n=zero_weight_slots, random_state=seed)
+                .to_numpy(dtype=np.int64),
+            )
+        )
+    selected_positions = np.sort(
+        np.concatenate((carrier_positions, sampled_zero_positions))
+    )
+    capped_weights = weight_values[selected_positions].copy()
+    selected_zero = ~union_nonzero[selected_positions]
+    full_zero_mass = float(weight_values[zero_positions].sum())
+    sampled_zero_mass = float(capped_weights[selected_zero].sum())
+    if sampled_zero_mass <= 0.0 < full_zero_mass:
+        raise SourceRuntimeError(
+            "US retirement-distribution sampled all-target-zero donor has zero "
+            "weight but must represent positive full-stratum mass."
+        )
+    if full_zero_mass > 0.0:
+        capped_weights[selected_zero] *= full_zero_mass / sampled_zero_mass
+    if not np.isfinite(capped_weights).all():
+        raise SourceRuntimeError(
+            "US retirement-distribution calibrated training weights are nonfinite."
+        )
+    return training.iloc[selected_positions].copy(), capped_weights
 
 
 def _person_retirement_distribution_predictors(frame: Frame) -> pd.DataFrame:

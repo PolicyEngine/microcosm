@@ -5,6 +5,7 @@ import stat
 from pathlib import Path
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -26,10 +27,12 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.acs_transfer_bank import (
+    ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION,
     AcsTransferTargetBankStore,
 )
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.fit.qrf import DEFAULT_ZERO_ATOL, Regime, detect_regime
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
@@ -467,13 +470,29 @@ class _MeanQRF:
         }
         self.calls.append(call)
         means = {target: float(table[target].mean()) for target in targets}
-        return _MeanFitted(means, weight_kind)
+        regimes = {
+            target: detect_regime(
+                table[target].to_numpy(dtype=np.float64),
+                zero_atol=DEFAULT_ZERO_ATOL,
+            )
+            for target in targets
+        }
+        return _MeanFitted(means, weight_kind, regimes)
 
 
 class _MeanFitted:
-    def __init__(self, means: dict[str, float], weight_kind: str) -> None:
+    def __init__(
+        self,
+        means: dict[str, float],
+        weight_kind: str,
+        regimes: dict[str, str],
+    ) -> None:
         self.means = means
         self.weight_kind = weight_kind
+        self._regimes = regimes
+
+    def regimes(self) -> dict[str, str]:
+        return dict(self._regimes)
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         assert all(dtype == np.dtype("float64") for dtype in frame.dtypes)
@@ -622,6 +641,31 @@ def test_default_transfer_preserves_native_fields_and_registers_added_inputs() -
         for entry in provenance.values()
         for pattern in entry.patterns
     )
+    assert all(
+        tuple(pattern.regimes) == (entry.column,)
+        for entry in provenance.values()
+        for pattern in entry.patterns
+    )
+    regime_maps = {
+        tuple(pattern.regimes.items())
+        for entry in provenance.values()
+        for pattern in entry.patterns
+    }
+    assert regime_maps
+    assert {
+        regime
+        for entry in provenance.values()
+        for pattern in entry.patterns
+        for regime in pattern.regimes.values()
+    } <= {
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.POSITIVE_ONLY,
+        Regime.SIGN_ONLY,
+    }
+    assert all(
+        pattern.regimes["qualified_dividend_income"] == Regime.POSITIVE_ONLY
+        for pattern in provenance["qualified_dividend_income"].patterns
+    )
     assert provenance["qualified_dividend_income"].entity == "person"
     assert provenance["first_home_mortgage_balance"].entity == "tax_unit"
     assert set(ACS_GROUP_TRANSFER_PREDICTORS).issubset(
@@ -643,6 +687,39 @@ def test_default_transfer_preserves_native_fields_and_registers_added_inputs() -
         "acs_transfer:tax_unit:puf_tax_itemization",
     ):
         assert any(name.startswith(prefix) for name in fit_names)
+
+
+def test_unbanked_transfer_records_three_sign_regime() -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "signed_tail": [
+                -500.0,
+                0.0,
+                200.0,
+                0.0,
+                -50.0,
+                400.0,
+                0.0,
+                0.0,
+            ]
+        },
+    )
+
+    result = transfer_acs_inputs(
+        _recipient_frame(),
+        donor,
+        target_families={"person": {"signed_tail": ("signed_tail",)}},
+        seed=19,
+        n_estimators=3,
+    )
+
+    assert len(result.imputed_inputs) == 1
+    assert all(
+        pattern.regimes == {"signed_tail": Regime.THREE_SIGN}
+        for pattern in result.imputed_inputs[0].patterns
+    )
 
 
 def test_default_families_exclude_runtime_owned_take_up_columns() -> None:
@@ -904,6 +981,21 @@ def test_large_target_family_is_split_to_bound_retained_qrf_forests(
     }
 
 
+def test_realized_regime_receipt_requires_exact_targets_and_known_labels() -> None:
+    with pytest.raises(ValueError, match="regime targets changed"):
+        acs_transfer_module._validated_qrf_regimes(
+            {"first": Regime.ZERO_INFLATED_POSITIVE},
+            expected_targets=("first", "second"),
+            boundary="fixture",
+        )
+    with pytest.raises(ValueError, match="invalid realized regimes"):
+        acs_transfer_module._validated_qrf_regimes(
+            {"first": "not_a_regime"},
+            expected_targets=("first",),
+            boundary="fixture",
+        )
+
+
 def test_target_bank_cold_output_matches_unbanked_monolith(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -921,6 +1013,66 @@ def test_target_bank_cold_output_matches_unbanked_monolith(
         load_statuses=("missing", "missing", "missing"),
     )
     assert all(path.is_file() for path in _bank_paths(bank))
+
+
+def test_target_bank_persists_pattern_regimes_through_resume(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    monolithic = _run_bank_fixture()
+    bank_root = tmp_path / "regime-bank"
+    cold_bank = _bank_store(bank_root)
+    cold = _run_bank_fixture(cold_bank)
+    warm_bank = _bank_store(bank_root)
+    resumed = _run_bank_fixture(warm_bank)
+
+    _assert_transfer_results_exact(cold, monolithic)
+    _assert_transfer_results_exact(resumed, monolithic)
+    expected_patterns = monolithic.imputed_inputs[0].patterns
+    assert all(
+        set(pattern.regimes) == set(_BANK_TARGETS) for pattern in expected_patterns
+    )
+    for path in _bank_paths(cold_bank):
+        metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(path)
+        assert metadata["schema_version"] == ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION
+        model_target = metadata["target"]["model_target"]
+        expected = {
+            pattern.name: pattern.regimes[model_target] for pattern in expected_patterns
+        }
+        observed = {}
+        for step in metadata["pattern_steps"]:
+            assert set(step) == {
+                "pattern",
+                "regime",
+                "state_before_sha256",
+                "state_after",
+            }
+            observed[step["pattern"]] = step["regime"]
+        assert observed == expected
+    for bank, sources, statuses in (
+        (
+            cold_bank,
+            ("rebuilt",) * len(_BANK_TARGETS),
+            ("missing",) * len(_BANK_TARGETS),
+        ),
+        (
+            warm_bank,
+            ("checkpoint",) * len(_BANK_TARGETS),
+            ("resumed",) * len(_BANK_TARGETS),
+        ),
+    ):
+        receipt_targets = _assert_bank_receipt(
+            bank,
+            sources=sources,
+            load_statuses=statuses,
+        )
+        for target_index, model_target in enumerate(_BANK_TARGETS):
+            expected = {
+                pattern.name: pattern.regimes[model_target]
+                for pattern in expected_patterns
+            }
+            assert receipt_targets[str(target_index)]["realized_regimes"] == expected
 
 
 def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
@@ -958,6 +1110,57 @@ def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
         invalid = record["invalid_checkpoint"]
         assert invalid["reason"] == "checkpoint_validation_failed"
         assert invalid["message"] == (
+            "ACS transfer target checkpoint has an unsupported binding."
+        )
+
+
+def test_target_bank_schema_v1_artifacts_rebuild_for_regime_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "schema-v1-bank"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            acs_transfer_bank_module,
+            "ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION",
+            1,
+        )
+        legacy_bank = _bank_store(bank_root)
+        baseline = _run_bank_fixture(legacy_bank)
+        for path in _bank_paths(legacy_bank):
+            metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(path)
+            assert metadata["schema_version"] == 1
+            for step in metadata["pattern_steps"]:
+                step.pop("regime")
+            metadata.pop("content_metadata_sha256")
+            metadata["content_metadata_sha256"] = (
+                acs_transfer_bank_module._mapping_sha256(metadata)
+            )
+            encoded = acs_transfer_bank_module._canonical_json(metadata).encode("utf-8")
+            with h5py.File(path, mode="r+") as h5:
+                del h5[acs_transfer_bank_module._METADATA_DATASET]
+                h5.create_dataset(
+                    acs_transfer_bank_module._METADATA_DATASET,
+                    data=np.frombuffer(encoded, dtype=np.uint8),
+                    dtype=np.uint8,
+                    track_times=False,
+                )
+                h5.flush()
+
+    assert ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION == 2
+    current_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(current_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        current_bank,
+        sources=("rebuilt",) * len(_BANK_TARGETS),
+        load_statuses=("invalid_rebuild",) * len(_BANK_TARGETS),
+    )
+    for record in targets.values():
+        assert record["invalid_checkpoint"]["message"] == (
             "ACS transfer target checkpoint has an unsupported binding."
         )
 
@@ -1044,6 +1247,11 @@ def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
         assert all(
             person[target].dtype == CANONICAL_STRING_DTYPE
             for target in ("ssn_card_type", "immigration_status_str")
+        )
+        assert all(
+            set(pattern.regimes) == {"__acs_transfer_immigration_status_pair"}
+            for entry in result.imputed_inputs
+            for pattern in entry.patterns
         )
 
     targets = warm_bank.receipt()["targets"]

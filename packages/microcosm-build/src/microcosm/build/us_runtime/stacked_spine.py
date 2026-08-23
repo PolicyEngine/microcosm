@@ -90,6 +90,7 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    AcsImputedInput,
     AcsTransferResult,
     AcsTransferTargetBank,
     TargetFamilies,
@@ -3738,6 +3739,7 @@ def validate_stacked_post_puf_transfer_receipt(
             "canonical 19-group partition; production manifest emission is "
             "forbidden."
         )
+    reconstructed_regimes: list[dict[str, object]] = []
     for name, group in expected_groups.items():
         group_receipt = groups[name]
         if (
@@ -3749,6 +3751,23 @@ def validate_stacked_post_puf_transfer_receipt(
                 f"{boundary}: stacked post-PUF transfer group {name!r} is "
                 "misbound; production manifest emission is forbidden."
             )
+        reconstructed_regimes.extend(
+            _validated_acs_transfer_realized_regime_receipt(
+                group_receipt.get("realized_regimes"),
+                entity=group.entity,
+                family=group.family,
+                expected_model_targets=acs_transfer_runtime._model_target_names(
+                    group.targets
+                ),
+                boundary=f"{boundary} group {name!r}",
+            )
+        )
+    if receipt.get("realized_regimes") != reconstructed_regimes:
+        raise ValueError(
+            f"{boundary}: aggregate late-transfer realized regimes are not "
+            "reconstructed from the canonical group receipts; production "
+            "manifest emission is forbidden."
+        )
     expected_target_labels = {
         f"{entity}/{family}/{target}"
         for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
@@ -8189,7 +8208,146 @@ def _verify_gap_fill_outcome(
             {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
             for record in result.fit_records
         ],
+        "realized_regimes": _acs_transfer_realized_regime_receipt(result),
     }
+
+
+def _acs_transfer_realized_regime_receipt(
+    result: AcsTransferResult,
+) -> list[dict[str, object]]:
+    """Deduplicate full fitted-pattern regime evidence for one transfer."""
+
+    return _acs_imputed_inputs_realized_regime_receipt(result.imputed_inputs)
+
+
+def _acs_imputed_inputs_realized_regime_receipt(
+    imputed_inputs: Sequence[AcsImputedInput],
+) -> list[dict[str, object]]:
+    """Project realized regimes from the fitted provenance records themselves."""
+
+    rows: list[dict[str, object]] = []
+    seen: set[tuple[object, ...]] = set()
+    for record in imputed_inputs:
+        for pattern in record.patterns:
+            regime_items = tuple(pattern.regimes.items())
+            identity: tuple[object, ...] = (
+                record.entity,
+                record.family,
+                pattern.name,
+                pattern.observed_optional_predictors,
+                pattern.predictors,
+                pattern.seed,
+                pattern.weight_kind,
+                pattern.donor_rows,
+                pattern.recipient_rows,
+                regime_items,
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            rows.append(
+                {
+                    "entity": record.entity,
+                    "family": record.family,
+                    "pattern": pattern.name,
+                    "observed_optional_predictors": list(
+                        pattern.observed_optional_predictors
+                    ),
+                    "predictors": list(pattern.predictors),
+                    "seed": pattern.seed,
+                    "weight_kind": pattern.weight_kind,
+                    "donor_rows": pattern.donor_rows,
+                    "recipient_rows": pattern.recipient_rows,
+                    "model_targets": list(pattern.regimes),
+                    "regimes": dict(pattern.regimes),
+                }
+            )
+    return rows
+
+
+def _validated_acs_transfer_realized_regime_receipt(
+    value: object,
+    *,
+    entity: str,
+    family: str,
+    expected_model_targets: tuple[str, ...],
+    boundary: str,
+) -> list[dict[str, object]]:
+    """Validate one bounded transfer's complete fitted-pattern regime proof."""
+
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{boundary} has no realized-regime evidence.")
+    expected_keys = {
+        "entity",
+        "family",
+        "pattern",
+        "observed_optional_predictors",
+        "predictors",
+        "seed",
+        "weight_kind",
+        "donor_rows",
+        "recipient_rows",
+        "model_targets",
+        "regimes",
+    }
+    validated: list[dict[str, object]] = []
+    seen_patterns: set[str] = set()
+    for index, raw_row in enumerate(value):
+        if not isinstance(raw_row, Mapping) or set(raw_row) != expected_keys:
+            raise ValueError(f"{boundary} realized-regime row {index} schema changed.")
+        pattern = raw_row.get("pattern")
+        optional = raw_row.get("observed_optional_predictors")
+        predictors = raw_row.get("predictors")
+        seed = raw_row.get("seed")
+        donor_rows = raw_row.get("donor_rows")
+        recipient_rows = raw_row.get("recipient_rows")
+        weight_kind = raw_row.get("weight_kind")
+        if (
+            raw_row.get("entity") != entity
+            or raw_row.get("family") != family
+            or not isinstance(pattern, str)
+            or not pattern
+            or pattern in seen_patterns
+            or not isinstance(optional, list)
+            or any(not isinstance(item, str) or not item for item in optional)
+            or len(set(optional)) != len(optional)
+            or not isinstance(predictors, list)
+            or not predictors
+            or any(not isinstance(item, str) or not item for item in predictors)
+            or len(set(predictors)) != len(predictors)
+            or not isinstance(seed, int)
+            or isinstance(seed, bool)
+            or seed < 0
+            or not isinstance(weight_kind, str)
+            or not weight_kind
+            or not isinstance(donor_rows, int)
+            or isinstance(donor_rows, bool)
+            or donor_rows <= 0
+            or not isinstance(recipient_rows, int)
+            or isinstance(recipient_rows, bool)
+            or recipient_rows <= 0
+        ):
+            raise ValueError(
+                f"{boundary} realized-regime row {index} identity changed."
+            )
+        model_targets = raw_row.get("model_targets")
+        regimes = raw_row.get("regimes")
+        if (
+            not isinstance(model_targets, list)
+            or tuple(model_targets) != expected_model_targets
+            or not isinstance(regimes, Mapping)
+            or set(regimes) != set(expected_model_targets)
+            or any(
+                regime not in acs_transfer_runtime._VALID_QRF_REGIMES
+                for regime in regimes.values()
+            )
+        ):
+            raise ValueError(
+                f"{boundary} realized-regime row {index} targets or labels changed."
+            )
+        seen_patterns.add(pattern)
+        validated.append(dict(raw_row))
+    return validated
 
 
 # ---------------------------------------------------------------------------
@@ -8459,6 +8617,7 @@ def _transfer_stacked_post_puf_inputs_evaluate(
                 {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
                 for record in transfer.fit_records
             ],
+            "realized_regimes": _acs_transfer_realized_regime_receipt(transfer),
         },
         transfer_result=transfer,
     )
@@ -9055,7 +9214,7 @@ def _aggregate_late_transfer_result(
         str,
         tuple[
             Mapping[str, object],
-            tuple[object, ...],
+            tuple[AcsImputedInput, ...],
             tuple[FitWeightRecord, ...],
             tuple[str, ...],
             str | None,
@@ -9097,6 +9256,14 @@ def _aggregate_late_transfer_result(
         if group_receipt.get("producer") != group.name:
             raise ValueError(
                 f"US late-transfer group receipt for {group.name!r} is misbound."
+            )
+        fitted_regimes = _acs_imputed_inputs_realized_regime_receipt(
+            group_imputed_inputs
+        )
+        if group_receipt.get("realized_regimes") != fitted_regimes:
+            raise ValueError(
+                f"US late-transfer group {group.name!r} realized-regime receipt "
+                "differs from its fitted imputation provenance."
             )
         raw_targets = group_receipt.get("targets")
         if not isinstance(raw_targets, Mapping):
@@ -9145,6 +9312,7 @@ def _aggregate_late_transfer_result(
         deferred_inputs=tuple(dict.fromkeys(deferred_inputs)),
         resolved_donor_channel=next(iter(resolved_channels)),
     )
+    reconstructed_regimes = _acs_transfer_realized_regime_receipt(aggregate)
     receipt = {
         "authority": _authority_receipt(authority),
         "producer_schedule": dict(us_late_producer_schedule_receipt()),
@@ -9160,6 +9328,7 @@ def _aggregate_late_transfer_result(
             {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
             for record in aggregate.fit_records
         ],
+        "realized_regimes": reconstructed_regimes,
         "completion": {
             "status": "complete",
             "group_count": len(expected_groups),

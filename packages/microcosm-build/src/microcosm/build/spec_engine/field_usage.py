@@ -27,8 +27,8 @@ from .resolver import (
 from .schemas import load_schema_registry
 
 EXPECTED_AUTHORED_FIELD_COUNT = 32_161
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_219
-EXPECTED_CONFIGURATION_FIELD_COUNT = 41_380
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_220
+EXPECTED_CONFIGURATION_FIELD_COUNT = 41_381
 
 
 class FieldUsageError(AssertionError):
@@ -401,8 +401,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        823,
-        "c05ebb88538195798e9365f325381c14d92b74007f846f1fef50a08268e6d27d",
+        824,
+        "82eeb3578054e6eab7e714571ba1534a641814f10f57ddea46bbee9f2095ce76",
     ),
     "resolved_seed_site_bindings": (
         277,

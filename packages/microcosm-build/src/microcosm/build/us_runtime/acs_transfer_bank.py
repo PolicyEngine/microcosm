@@ -20,10 +20,37 @@ from microcosm.build.us_runtime.acs_transfer import (
     AcsTransferBankPatternStep,
     AcsTransferTargetCheckpoint,
 )
-from microcosm.fit import QRFChainState
+from microcosm.fit import QRFChainState, Regime
 
-ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION = 1
+ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION = 2
 """Serialization contract for one ACS-transfer target checkpoint."""
+
+# Target-checkpoint schema ledger.
+#
+# 1: Initial closed metadata envelope with chained states and raw draws.
+# 2: Every pattern step also persists its realized QRF regime, and the
+#    operational receipt projects the same pattern-to-regime evidence.
+
+_VALID_QRF_REGIMES = frozenset(
+    {
+        Regime.THREE_SIGN,
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.ZERO_INFLATED_NEGATIVE,
+        Regime.SIGN_ONLY,
+        Regime.POSITIVE_ONLY,
+        Regime.NEGATIVE_ONLY,
+        Regime.DEGENERATE_ZERO,
+    }
+)
+
+
+def _pattern_regime_receipt(
+    steps: Sequence[AcsTransferBankPatternStep],
+) -> dict[str, str]:
+    """Project checkpoint transitions into a compact auditable regime map."""
+
+    return {step.pattern: step.regime for step in steps}
+
 
 # ACS-transfer target-bank semantic-invalidation ledger.
 #
@@ -219,6 +246,7 @@ class AcsTransferTargetBankStore:
                 "size_bytes": path.stat().st_size,
                 "raw_draw_sha256": actual_raw_sha256,
                 "content_metadata_sha256": metadata["content_metadata_sha256"],
+                "realized_regimes": _pattern_regime_receipt(pattern_steps),
             }
             print(
                 "Resumed ACS transfer target "
@@ -270,6 +298,7 @@ class AcsTransferTargetBankStore:
             "pattern_steps": [
                 {
                     "pattern": step.pattern,
+                    "regime": step.regime,
                     "state_before_sha256": _mapping_sha256(step.state_before.to_dict()),
                     "state_after": step.state_after.to_dict(),
                 }
@@ -325,6 +354,7 @@ class AcsTransferTargetBankStore:
             "size_bytes": path.stat().st_size,
             "raw_draw_sha256": raw_draw_sha256,
             "content_metadata_sha256": metadata["content_metadata_sha256"],
+            "realized_regimes": _pattern_regime_receipt(checkpoint.pattern_steps),
             "write_seconds": time.perf_counter() - started_at,
         }
         print(
@@ -563,7 +593,12 @@ def _load_pattern_steps(
             raise ValueError(
                 f"ACS transfer target pattern_steps[{index}] must be an object."
             )
-        expected_keys = {"pattern", "state_before_sha256", "state_after"}
+        expected_keys = {
+            "pattern",
+            "regime",
+            "state_before_sha256",
+            "state_after",
+        }
         if set(raw_step) != expected_keys:
             raise ValueError(
                 f"ACS transfer target pattern_steps[{index}] keys changed."
@@ -577,6 +612,12 @@ def _load_pattern_steps(
         if pattern not in expected_states:
             raise ValueError(
                 f"ACS transfer target carries unexpected pattern {pattern!r}."
+            )
+        regime = raw_step.get("regime")
+        if regime not in _VALID_QRF_REGIMES:
+            raise ValueError(
+                f"ACS transfer target pattern {pattern!r} has invalid regime "
+                f"{regime!r}."
             )
         state_before = expected_states[pattern]
         expected_before_sha256 = _mapping_sha256(state_before.to_dict())
@@ -602,6 +643,7 @@ def _load_pattern_steps(
                 pattern=pattern,
                 state_before=state_before,
                 state_after=state_after,
+                regime=regime,
             )
         )
     if tuple(observed_patterns) != expected_patterns:
@@ -622,6 +664,11 @@ def _validate_pattern_steps_for_write(
             raise TypeError(
                 "ACS transfer checkpoint pattern_steps must contain "
                 "AcsTransferBankPatternStep values."
+            )
+        if step.regime not in _VALID_QRF_REGIMES:
+            raise ValueError(
+                f"ACS transfer pattern {step.pattern!r} has invalid regime "
+                f"{step.regime!r}."
             )
     patterns = tuple(step.pattern for step in checkpoint.pattern_steps)
     if any(not pattern for pattern in patterns) or len(set(patterns)) != len(patterns):

@@ -31,6 +31,7 @@ from microcosm.build.spec_engine import LegacyPayloadMismatchError
 from microcosm.build.us_runtime.acs_transfer import transfer_acs_inputs
 from microcosm.build.us_runtime.acs_transfer_bank import (
     ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
+    ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION,
 )
 from microcosm.build.us_runtime.multispine_pool import (
     MultispinePoolCheckpoint,
@@ -57,6 +58,7 @@ from microcosm.build.us_runtime.take_up_contract import (
     load_take_up_contract,
     take_up_contract_identity,
 )
+from microcosm.fit.qrf import DEFAULT_ZERO_ATOL, detect_regime
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
@@ -263,16 +265,33 @@ class _MeanQRF:
             weights == frame.resolve_weights(frame.column_entity(targets[0])).kind.value
         )
         table = frame.table(frame.column_entity(targets[0]))
+        regimes = {
+            target: detect_regime(
+                table[target].to_numpy(dtype=np.float64),
+                zero_atol=DEFAULT_ZERO_ATOL,
+            )
+            for target in targets
+        }
         return _MeanFitted(
             {target: float(table[target].mean()) for target in targets},
             weights,
+            regimes,
         )
 
 
 class _MeanFitted:
-    def __init__(self, means: dict[str, float], weight_kind: str) -> None:
+    def __init__(
+        self,
+        means: dict[str, float],
+        weight_kind: str,
+        regimes: dict[str, str],
+    ) -> None:
         self.means = means
         self.weight_kind = weight_kind
+        self._regimes = regimes
+
+    def regimes(self) -> dict[str, str]:
+        return dict(self._regimes)
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(
@@ -802,6 +821,7 @@ def _target_bank_receipt_after_interruption(
             "path": f"/fixture/targets/{index:03d}__target_{index}.h5",
             "checkpoint_sha256": f"{index:064x}",
             "size_bytes": 1_000 + index,
+            "realized_regimes": {"pattern_0__required_only": "zero_inflated_positive"},
         }
         if not resumed:
             record["write_status"] = "rebuilt"
@@ -809,7 +829,7 @@ def _target_bank_receipt_after_interruption(
         targets[str(index)] = record
     return {
         "artifact_kind": "populace_us_multispine_acs_transfer_target_bank_provenance",
-        "schema_version": 1,
+        "schema_version": ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION,
         "materializer_version": ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
         "root": "/fixture/acs-transfer",
         "identity": {"fixture": "identity"},
@@ -929,16 +949,39 @@ def _canonical_late_transfer_receipt(
     }
     groups: dict[str, object] = {}
     targets: dict[str, object] = {}
+    realized_regimes: list[dict[str, object]] = []
     for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS:
         group_targets = {
             f"{group.entity}/{group.family}/{target}": {"residual_null_rows": 0}
             for target in group.targets
         }
+        model_targets = acs_transfer_module._model_target_names(group.targets)
+        group_regimes = [
+            {
+                "entity": group.entity,
+                "family": group.family,
+                "pattern": "pattern_0__required_only",
+                "observed_optional_predictors": [],
+                "predictors": ["fixture_predictor"],
+                "seed": 0,
+                "weight_kind": "household_weight",
+                "donor_rows": 1,
+                "recipient_rows": 1,
+                "model_targets": list(model_targets),
+                "regimes": {
+                    target: "zero_inflated_positive" for target in model_targets
+                },
+            }
+        ]
         groups[group.name] = {
             "producer": group.name,
+            "entity": group.entity,
+            "family": group.family,
             "ordered_targets": list(group.targets),
             "targets": group_targets,
+            "realized_regimes": group_regimes,
         }
+        realized_regimes.extend(group_regimes)
         for target in group.targets:
             targets[
                 f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}"
@@ -960,6 +1003,7 @@ def _canonical_late_transfer_receipt(
         ],
         "groups": groups,
         "targets": targets,
+        "realized_regimes": realized_regimes,
         "completion": {
             "status": "complete",
             "group_count": 19,
@@ -1903,7 +1947,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde",
+            "spec_sha256": "5b0014c3eb6cb121f0a9f2138ab860be30ef2251dd6ff4ec38cbf5f778899554",
         },
     }
 
@@ -2106,7 +2150,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde",
+        "spec_sha256": "5b0014c3eb6cb121f0a9f2138ab860be30ef2251dd6ff4ec38cbf5f778899554",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -2750,7 +2794,7 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
         verified,
         policyengine_us_version="fixture-engine",
     )
-    assert current["materializer_version"] == 3
+    assert current["materializer_version"] == 4
     assert "late_producer_schedule" not in current["pool_code"]
 
     changed_schedule = pool_tool._json_ready(
@@ -2770,7 +2814,45 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
     assert changed == current
 
 
-def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
+def test_legacy_materializer_v3_checkpoint_cannot_resume_after_shared_fix(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    checkpoint_root = tmp_path / "legacy-v3-checkpoints"
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            pool_tool,
+            "_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
+            3,
+        )
+        legacy_identity = pool_tool._legacy_pool_checkpoint_base_identity(
+            verified,
+            policyengine_us_version="fixture-engine",
+        )
+        legacy_store = pool_tool._PoolStageCheckpointStore(
+            checkpoint_root,
+            base_identity=legacy_identity,
+            materializer_version=3,
+        )
+        legacy_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+        _run_checkpoint_fixture(pool_tool, tmp_path, store=legacy_store)
+
+    current_identity = pool_tool._legacy_pool_checkpoint_base_identity(
+        verified,
+        policyengine_us_version="fixture-engine",
+    )
+    current_store = pool_tool._PoolStageCheckpointStore(
+        checkpoint_root,
+        base_identity=current_identity,
+        materializer_version=4,
+    )
+    assert legacy_store.base_identity_sha256 != current_store.base_identity_sha256
+    assert current_store.load_deepest() is None
+
+
+def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2803,7 +2885,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
 
     current = identity()
     pool_code = current["pool_code"]
-    assert current["materializer_version"] == 11
+    assert current["materializer_version"] == 12
     assert current["stacked_authority"]["version"] == 10
     assert pool_code["operator_order"] == [
         "assemble_stacked_spine",
@@ -3007,7 +3089,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
         )
     )
 
-    assert current["materializer_version"] == stale_qrf["materializer_version"] == 11
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 12
     assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
@@ -3055,7 +3137,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     assert "checkpoint base identity is stale" in capsys.readouterr().out
 
 
-def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
+def test_pool_envelope_v8_preserves_stacked_bank_identity_but_rejects_v7(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3088,7 +3170,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         legacy.setattr(
             pool_tool,
             "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
-            6,
+            7,
         )
         assert identity() == current_identity
         legacy_store = pool_tool._PoolStageCheckpointStore(
@@ -3109,7 +3191,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         )
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert identity() == current_identity
     current_store = pool_tool._PoolStageCheckpointStore(
         checkpoint_root,
@@ -3198,7 +3280,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -3252,7 +3334,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 11
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 12
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -3642,22 +3724,22 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     assert keywords["resume"] is None
     assert callable(keywords["checkpoint"])
     checkpoint_store = keywords["checkpoint"].__self__
-    assert checkpoint_store.base_identity["materializer_version"] == 3
+    assert checkpoint_store.base_identity["materializer_version"] == 4
     assert "late_producer_schedule" not in checkpoint_store.base_identity["pool_code"]
 
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
     assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 8
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4
     assert "materializer_version" not in manifest["pool_h5"]
-    assert manifest["stage_checkpoints"]["materializer_version"] == 3
+    assert manifest["stage_checkpoints"]["materializer_version"] == 4
     assert {
         receipt["materializer_version"]
         for receipt in manifest["stage_checkpoints"]["stages"].values()
-    } == {3}
+    } == {4}
     manifest_bytes = outputs.manifest.read_bytes().replace(
         str(tmp_path.resolve()).encode(),
         b"$TMP",
@@ -3677,9 +3759,13 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # Exact pre-#653 schema-4/materializer-3 publication bytes from
-        # preserved #652 commit 54d2dee6.
-        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
+        # Pre-#653 schema-4 publication bytes (preserved #652 commit 54d2dee6)
+        # with the checkpoint identity advanced to materializer 4: the
+        # retirement-distribution source operator shared by both paths changed
+        # semantics, so legacy checkpoints must not resume across it. The
+        # pool-H5 and agreement digests above are unchanged, proving the
+        # data surface stayed byte-stable below the training cap.
+        "manifest": "685824ba549326b1eac79b5fbf5cf7981e59e0daa9f7cd74ed5d7952e50c06bd",
     }
 
 
@@ -4110,7 +4196,7 @@ def test_pool_imputation_binds_and_publishes_acs_target_bank(
     frame = _source_frame()
     checkpoint_identity = {
         "artifact_kind": "fixture-pool-checkpoint-identity",
-        "materializer_version": 7,
+        "materializer_version": pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
         "inputs": {"fixture": {"sha256": "b" * 64}},
     }
     base_identity_sha256 = pool_tool._pool_checkpoint_identity_sha256(
@@ -4845,7 +4931,7 @@ def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
         manifest = pool_tool._read_json_object(
             cold_store.checkpoint_manifest_path(stage)
         )
-        assert manifest["materializer_version"] == 7
+        assert manifest["materializer_version"] == 8
         loaded = pool_tool.load_frame_checkpoint(path).frame
         if stage == "assembled":
             assert "fixture_declared_boolean" not in loaded.person
@@ -4866,11 +4952,11 @@ def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
     assert resumed.frame.person["fixture_declared_boolean"].isna().sum() == 1
 
 
-def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
+def test_simulated_v8_checkpoint_accepts_both_string_encodings_without_rewrite(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """V7 authenticates both physical string encodings as one logical frame."""
+    """V8 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -4882,7 +4968,7 @@ def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
     canonical_v2_bytes = checkpoint_path.read_bytes()
     canonical_identity = loaded.metadata["identity"]
-    assert loaded.metadata["materializer_version"] == 7
+    assert loaded.metadata["materializer_version"] == 8
     assert any(
         column["dtype"] == str(CANONICAL_STRING_DTYPE)
         for columns in loaded.metadata["frame_schema"]["entities"].values()
@@ -4913,7 +4999,7 @@ def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
     banked_v2_bytes = checkpoint_path.read_bytes()
     assert banked_v2_bytes != canonical_v2_bytes
     assert legacy_metadata["identity"] == canonical_identity
-    assert legacy_metadata["materializer_version"] == 7
+    assert legacy_metadata["materializer_version"] == 8
     assert any(
         column["dtype"] == "object"
         for columns in legacy_metadata["frame_schema"]["entities"].values()
@@ -5321,9 +5407,9 @@ def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
             assert manifest["identity"]["materializer_version"] == legacy_version
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-    assert current_store.base_identity["materializer_version"] == 7
+    assert current_store.base_identity["materializer_version"] == 8
     assert current_store.load_deepest() is None
 
     output = capsys.readouterr().out

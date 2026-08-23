@@ -31,6 +31,7 @@ from microcosm.build.us_runtime.retirement_distributions import (
     with_us_retirement_distribution_inputs,
 )
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
+from microcosm.fit.qrf import DEFAULT_ZERO_ATOL, Regime, detect_regime
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -345,6 +346,272 @@ def test_puf_half_uses_qrf_and_asec_half_remains_exact(
     )
     gate = us_retirement_distributions_signal_gate(result)
     assert gate.passed, gate.failures
+
+
+def test_production_imputer_hands_rare_keogh_support_to_qrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row_count = 6_000
+    positions = np.arange(row_count, dtype=np.int64)
+    person = pd.DataFrame(
+        {
+            "person_id": positions + 1,
+            "person_household_id": positions + 10_000,
+            "person_tax_unit_id": positions + 20_000,
+            "person_spm_unit_id": positions + 30_000,
+            "person_family_id": positions + 40_000,
+            "person_marital_unit_id": positions + 50_000,
+            "age": np.full(row_count, 67, dtype=np.int64),
+            "is_female": np.zeros(row_count, dtype=bool),
+            "has_esi": np.zeros(row_count, dtype=bool),
+            "tax_unit_role_input": ["HEAD"] * row_count,
+            "employment_income_before_lsr": np.full(row_count, 50_000.0),
+            "self_employment_income_before_lsr": np.zeros(row_count),
+            "social_security_retirement": np.full(row_count, 10_000.0),
+            "social_security_disability": np.zeros(row_count),
+            "social_security_dependents": np.zeros(row_count),
+            "social_security_survivors": np.zeros(row_count),
+        }
+    )
+    for suffix in _SLOT_SUFFIXES:
+        person[f"DST_SC{suffix}"] = np.zeros(row_count, dtype=np.int64)
+        person[f"DST_VAL{suffix}"] = np.zeros(row_count, dtype=np.float64)
+    person.loc[[2_427, 4_711], "DST_SC1"] = 5
+    person.loc[[2_427, 4_711], "DST_VAL1"] = (2_040.0, 30_000.0)
+    identifiers = {
+        "household": person["person_household_id"].to_numpy(),
+        "tax_unit": person["person_tax_unit_id"].to_numpy(),
+        "spm_unit": person["person_spm_unit_id"].to_numpy(),
+        "family": person["person_family_id"].to_numpy(),
+        "marital_unit": person["person_marital_unit_id"].to_numpy(),
+    }
+    tables = {
+        entity: pd.DataFrame({f"{entity}_id": values})
+        for entity, values in identifiers.items()
+    }
+    tables["person"] = person
+    tables["tax_unit"]["filing_status_input"] = ["SINGLE"] * row_count
+    source = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.ones(row_count), WeightKind.DESIGN)},
+    )
+    direct = with_us_retirement_distribution_inputs(
+        source,
+        seed=0,
+        time_period=2024,
+    )
+    expanded = clone_us_frame_for_puf_support(direct)
+    calls: dict[str, object] = {}
+
+    class FakeFitted:
+        def predict(self, test: pd.DataFrame, **_kwargs) -> pd.DataFrame:
+            return pd.DataFrame(
+                0.0,
+                index=test.index,
+                columns=list(_PUF_QRF_OUTPUTS),
+            )
+
+    class FakeQRF:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def fit(
+            self,
+            training: pd.DataFrame,
+            predictors: list[str],
+            targets: list[str],
+            *,
+            weights: np.ndarray,
+        ) -> FakeFitted:
+            calls["training"] = training.copy()
+            calls["predictors"] = tuple(predictors)
+            calls["targets"] = tuple(targets)
+            calls["weights"] = weights.copy()
+            return FakeFitted()
+
+    monkeypatch.setattr(module, "QRF", FakeQRF)
+    with_us_retirement_distribution_inputs(
+        expanded,
+        seed=0,
+        time_period=2024,
+        force_puf_imputation=True,
+    )
+
+    training = calls["training"]
+    capped_weights = calls["weights"]
+    assert isinstance(training, pd.DataFrame)
+    assert isinstance(capped_weights, np.ndarray)
+    assert len(training) == len(capped_weights) == 5_000
+    np.testing.assert_array_equal(
+        np.sort(
+            training.loc[
+                training["keogh_distributions"] > DEFAULT_ZERO_ATOL,
+                "keogh_distributions",
+            ].to_numpy()
+        ),
+        [2_040.0, 30_000.0],
+    )
+    assert (
+        detect_regime(
+            training["keogh_distributions"].to_numpy(),
+            zero_atol=DEFAULT_ZERO_ATOL,
+        )
+        == Regime.ZERO_INFLATED_POSITIVE
+    )
+    np.testing.assert_array_equal(
+        capped_weights[training["keogh_distributions"].to_numpy() > DEFAULT_ZERO_ATOL],
+        [0.5, 0.5],
+    )
+    assert capped_weights.sum() == pytest.approx(float(row_count) / 2.0)
+
+
+def test_puf_training_cap_preserves_nonzero_union_and_weighted_sign_mass() -> None:
+    row_count = 6_000
+    source_positions = np.arange(row_count, dtype=np.int64)
+    training = pd.DataFrame(
+        {
+            "source_position": source_positions,
+            **{
+                target: np.zeros(row_count, dtype=np.float64)
+                for target in _PUF_QRF_OUTPUTS
+            },
+        },
+        index=pd.Index(
+            10_000 + (source_positions // 2) * 3,
+            name="duplicate_non_range_donor_index",
+        ),
+    )
+    carriers = {
+        "taxable_401k_distributions": {5_902: 10_000.0},
+        "taxable_403b_distributions": {5_903: 2_000.0},
+        "keogh_distributions": {5_906: 2_040.0, 5_912: 30_000.0},
+        "taxable_sep_distributions": {5_909: 4_000.0},
+    }
+    for target, values in carriers.items():
+        for position, value in values.items():
+            training.iloc[position, training.columns.get_loc(target)] = value
+    weights = np.linspace(1.0, 3.0, row_count, dtype=np.float64)
+
+    first, first_weights = module._cap_retirement_distribution_training(
+        training,
+        weights,
+        targets=_PUF_QRF_OUTPUTS,
+        max_train_samples=5_000,
+        seed=0,
+        zero_atol=DEFAULT_ZERO_ATOL,
+    )
+    second, second_weights = module._cap_retirement_distribution_training(
+        training,
+        weights,
+        targets=_PUF_QRF_OUTPUTS,
+        max_train_samples=5_000,
+        seed=0,
+        zero_atol=DEFAULT_ZERO_ATOL,
+    )
+
+    assert len(first) == 5_000
+    pd.testing.assert_frame_equal(first, second)
+    np.testing.assert_array_equal(first_weights, second_weights)
+    retained_positions = first["source_position"].to_numpy(dtype=np.int64)
+    assert (
+        sha256(retained_positions.astype("<i8", copy=False).tobytes()).hexdigest()
+        == "1e8723f7a54e1d8cc7973053c56895347652425147320347e086f75196e50a35"
+    )
+    carrier_positions = sorted(
+        position for target in carriers.values() for position in target
+    )
+    assert set(carrier_positions).issubset(retained_positions)
+    position_to_capped = {
+        int(position): float(weight)
+        for position, weight in zip(retained_positions, first_weights, strict=True)
+    }
+    for position in carrier_positions:
+        assert position_to_capped[position] == weights[position]
+
+    full_targets = training.loc[:, list(_PUF_QRF_OUTPUTS)]
+    capped_targets = first.loc[:, list(_PUF_QRF_OUTPUTS)]
+    for target in _PUF_QRF_OUTPUTS:
+        full_values = full_targets[target].to_numpy(dtype=np.float64)
+        capped_values = capped_targets[target].to_numpy(dtype=np.float64)
+        assert detect_regime(
+            full_values,
+            zero_atol=DEFAULT_ZERO_ATOL,
+        ) == detect_regime(capped_values, zero_atol=DEFAULT_ZERO_ATOL)
+        assert (
+            detect_regime(
+                capped_values,
+                zero_atol=DEFAULT_ZERO_ATOL,
+            )
+            == Regime.ZERO_INFLATED_POSITIVE
+        )
+        for full_mask, capped_mask in (
+            (
+                np.abs(full_values) <= DEFAULT_ZERO_ATOL,
+                np.abs(capped_values) <= DEFAULT_ZERO_ATOL,
+            ),
+            (
+                full_values > DEFAULT_ZERO_ATOL,
+                capped_values > DEFAULT_ZERO_ATOL,
+            ),
+        ):
+            assert first_weights[capped_mask].sum() == pytest.approx(
+                weights[full_mask].sum()
+            )
+    assert first_weights.sum() == pytest.approx(weights.sum())
+
+    common_zero = ~first.loc[:, list(_PUF_QRF_OUTPUTS)].any(axis=1).to_numpy()
+    original_selected_weights = weights[retained_positions]
+    zero_factors = first_weights[common_zero] / original_selected_weights[common_zero]
+    np.testing.assert_allclose(zero_factors, zero_factors[0], rtol=0.0, atol=1e-12)
+
+
+def test_puf_training_cap_fails_when_nonzero_union_leaves_no_zero_slot() -> None:
+    row_count = 5_001
+    training = pd.DataFrame(
+        {target: np.zeros(row_count, dtype=np.float64) for target in _PUF_QRF_OUTPUTS}
+    )
+    training.loc[:4_999, "taxable_401k_distributions"] = 1.0
+
+    with pytest.raises(SourceRuntimeError, match="leaves no room"):
+        module._cap_retirement_distribution_training(
+            training,
+            np.ones(row_count, dtype=np.float64),
+            targets=_PUF_QRF_OUTPUTS,
+            max_train_samples=5_000,
+            seed=0,
+            zero_atol=DEFAULT_ZERO_ATOL,
+        )
+
+
+def test_puf_training_cap_does_not_waste_representative_slots_on_zero_weights() -> None:
+    row_count = 12
+    training = pd.DataFrame(
+        {
+            "source_position": np.arange(row_count, dtype=np.int64),
+            **{
+                target: np.zeros(row_count, dtype=np.float64)
+                for target in _PUF_QRF_OUTPUTS
+            },
+        }
+    )
+    training.loc[11, "keogh_distributions"] = 2_040.0
+    weights = np.zeros(row_count, dtype=np.float64)
+    weights[[1, 5, 9, 11]] = (2.0, 3.0, 5.0, 7.0)
+
+    capped, capped_weights = module._cap_retirement_distribution_training(
+        training,
+        weights,
+        targets=_PUF_QRF_OUTPUTS,
+        max_train_samples=6,
+        seed=0,
+        zero_atol=DEFAULT_ZERO_ATOL,
+    )
+
+    retained_positions = capped["source_position"].to_numpy(dtype=np.int64)
+    assert {1, 5, 9, 11}.issubset(retained_positions)
+    assert capped_weights.sum() == pytest.approx(weights.sum())
+    assert capped_weights[retained_positions == 11].item() == 7.0
 
 
 def test_completed_puf_surface_survives_narrowed_support_without_refit(

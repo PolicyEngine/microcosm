@@ -381,14 +381,15 @@ _QRF_RNG_VERSION = ";".join(
         f"quantile-forest=={_distribution_version('quantile-forest')}",
     )
 )
-_BUILD_CAP_SITES = (
+_UNIFORM_BUILD_CAP_SITES_BEFORE_RETIREMENT = (
     "prior_year_income_training_cap",
     "childcare_training_cap",
     "retirement_contributions_training_cap",
     "disability_benefits_training_cap",
     "housing_inputs_training_cap",
     "workers_compensation_training_cap",
-    "retirement_distributions_training_cap",
+)
+_UNIFORM_BUILD_CAP_SITES_AFTER_RETIREMENT = (
     "child_support_training_cap",
     "energy_subsidy_training_cap",
     "other_health_insurance_training_cap",
@@ -422,6 +423,30 @@ def _stable_site(
         reset_boundary="stateless_per_entity",
         draw_condition=draw_condition,
         derivation=_BLAKE2B_DRAW,
+    )
+
+
+def _uniform_build_cap_site(site_id: str) -> DrawSiteProtocol:
+    """Declare one legacy whole-donor pandas training cap."""
+
+    return _site(
+        site_id,
+        "build_model",
+        value_source="run_request.build_model_seed",
+        default=0,
+        rng_family="pandas.DataFrame.sample RandomState(MT19937)",
+        rng_version=(
+            f"pandas=={_distribution_version('pandas')};"
+            f"numpy=={_distribution_version('numpy')}"
+        ),
+        seed_material=("build_model_seed", "stage_training_cap"),
+        consumption_order=(
+            "source_dataframe_row_order",
+            "sorted_selected_positions",
+        ),
+        reset_boundary="fresh_generator_per_source_stage",
+        draw_condition="donor_rows_above_5000",
+        derivation="pandas_sample(n=5000,random_state=build_model_seed)",
     )
 
 
@@ -846,26 +871,37 @@ LEGACY_V1_SITES = (
         derivation="PCG64 plus Sampford fixed-size selection",
     ),
     *tuple(
-        _site(
-            site_id,
-            "build_model",
-            value_source="run_request.build_model_seed",
-            default=0,
-            rng_family="pandas.DataFrame.sample RandomState(MT19937)",
-            rng_version=(
-                f"pandas=={_distribution_version('pandas')};"
-                f"numpy=={_distribution_version('numpy')}"
-            ),
-            seed_material=("build_model_seed", "stage_training_cap"),
-            consumption_order=(
-                "source_dataframe_row_order",
-                "sorted_selected_positions",
-            ),
-            reset_boundary="fresh_generator_per_source_stage",
-            draw_condition="donor_rows_above_5000",
-            derivation="pandas_sample(n=5000,random_state=build_model_seed)",
-        )
-        for site_id in _BUILD_CAP_SITES
+        _uniform_build_cap_site(site_id)
+        for site_id in _UNIFORM_BUILD_CAP_SITES_BEFORE_RETIREMENT
+    ),
+    _site(
+        "retirement_distributions_training_cap",
+        "build_model",
+        value_source="run_request.build_model_seed",
+        default=0,
+        rng_family="pandas.Series.sample RandomState(MT19937)",
+        rng_version=(
+            f"pandas=={_distribution_version('pandas')};"
+            f"numpy=={_distribution_version('numpy')}"
+        ),
+        seed_material=("build_model_seed", "stage_training_cap"),
+        consumption_order=(
+            "retain_nonzero_union_then_prioritize_positive-weight_all-target-zero_positions",
+            "sample_remaining_all-target-zero_positions_with_pandas_series_sample",
+            "sort_selected_positions_then_ratio-calibrate_sampled-zero_weights",
+        ),
+        reset_boundary="fresh_generator_per_retirement_distribution_stage",
+        draw_condition="donor_rows_above_5000",
+        derivation=(
+            "retain_union(abs(target)>DEFAULT_ZERO_ATOL);"
+            "retain_or_sample_positive_weight_all_zero;"
+            "pandas_sample_zero_weight_fillers_if_needed;"
+            "all_zero_weight_ratio=full_mass/sampled_mass"
+        ),
+    ),
+    *tuple(
+        _uniform_build_cap_site(site_id)
+        for site_id in _UNIFORM_BUILD_CAP_SITES_AFTER_RETIREMENT
     ),
     _site(
         "legacy_geography_ladder",

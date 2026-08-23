@@ -224,11 +224,11 @@ __all__ = [
 POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 """Schema version for the companion pool build manifest."""
 
-# ``--legacy-two-spine`` is a byte-stable compatibility surface.  Stacked
-# publication and checkpoint-envelope versions may advance without rewriting
-# the retiring pipeline's last supported envelope.
+# ``--legacy-two-spine`` keeps its publication schema byte-compatible, while
+# its checkpoint identity must still advance when a source operator shared by
+# both paths changes semantics.
 _LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
-_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
+_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
 
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""
@@ -261,6 +261,10 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 7: Stacked primary-PUF output universes are explicit. Earlier envelopes can
 #    contain nulls outside the PUF clone for an output declared over the whole
 #    pool and therefore cannot resume safely even when their bank is reusable.
+# 8: The retirement-distribution training cap preserves target sign support,
+#    and ACS-transfer receipts persist exact fitted-pattern regimes. Earlier
+#    checkpoints may contain a support-deleting retirement sample or lack the
+#    evidence required to adjudicate a signed-tail fit.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -275,7 +279,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 7
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 8
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -306,11 +310,13 @@ _STACKED_PIPELINE = "us-stacked-pool"
 _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
     "populace_us_stacked_pool_checkpoint_identity"
 )
-# Version 11 additionally binds the primary-PUF whole-pool universe semantics.
-# Earlier checkpoints must rebuild rather than resume with a nullable
-# s_corp_income leaf. Version 10 bound the complete late-resource semantics and
-# corrected outer order (the primary PUF callback is nested inside the DAG).
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 11
+# Version 12 binds the support-preserving retirement-distribution training cap
+# and exact ACS fitted-pattern regime receipts. Earlier checkpoints may have
+# lost rare target support or omit the regime evidence required for review.
+# Version 11 bound the primary-PUF whole-pool universe semantics; version 10
+# bound the complete late-resource semantics and corrected outer order (the
+# primary PUF callback is nested inside the DAG).
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 12
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"

@@ -2686,6 +2686,11 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     assert absence["rows"] == 1
     assert absence["unexpected_null_rows"] == 0
     assert absence["structural_rows_filled"] == 0
+    assert survey["realized_regimes"]
+    assert all(
+        row["model_targets"] == list(row["regimes"])
+        for row in survey["realized_regimes"]
+    )
 
     survey_transfer = result.transfer_results["asec_survey_to_acs"]
     native_predictor_used = any(
@@ -4672,6 +4677,7 @@ def _run_real_late_executor_fixture(
     bank_identity_sha256: str | None = None,
     bound_clone_attachment_seed: int = 578,
     asec_earnings_delta: float = 0.0,
+    tamper_group_regime: bool = False,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
     initial = _late_universe_entry_fixture()
@@ -4809,25 +4815,64 @@ def _run_real_late_executor_fixture(
                 derive_schedule_d=False,
             )
         )
+        model_targets = acs_transfer_module._model_target_names(group.targets)
+        pattern = acs_transfer_module.AcsTransferPattern(
+            name="fixture_complete_case",
+            observed_optional_predictors=(),
+            predictors=("age",),
+            seed=0,
+            weight_kind="design",
+            donor_rows=1,
+            recipient_rows=1,
+            regimes={target: "zero_inflated_positive" for target in model_targets},
+        )
         transfer_result = AcsTransferResult(
             frame=frame,
-            imputed_inputs=(),
+            imputed_inputs=tuple(
+                acs_transfer_module.AcsImputedInput(
+                    column=target,
+                    entity=group.entity,
+                    family=group.family,
+                    donor_spine="fixture",
+                    donor_channel="asec",
+                    predictors=pattern.predictors,
+                    seed=pattern.seed,
+                    weight_kind=pattern.weight_kind,
+                    patterns=(pattern,),
+                )
+                for target in group.targets
+            ),
             fit_records=(),
             deferred_inputs=(),
             resolved_donor_channel="asec",
         )
+        receipt = {
+            "producer": group.name,
+            "entity": group.entity,
+            "family": group.family,
+            "ordered_targets": list(group.targets),
+            "targets": {
+                f"{group.entity}/{group.family}/{target}": {
+                    "residual_null_rows": 0,
+                }
+                for target in group.targets
+            },
+            "realized_regimes": (
+                stacked_spine_module._acs_transfer_realized_regime_receipt(
+                    transfer_result
+                )
+            ),
+        }
+        if (
+            tamper_group_regime
+            and group is stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+        ):
+            first_row = receipt["realized_regimes"][0]
+            first_target = first_row["model_targets"][0]
+            first_row["regimes"][first_target] = "zero_inflated_negative"
         return stacked_spine_module.StackedPostPufTransferResult(
             frame,
-            {
-                "producer": group.name,
-                "ordered_targets": list(group.targets),
-                "targets": {
-                    f"{group.entity}/{group.family}/{target}": {
-                        "residual_null_rows": 0,
-                    }
-                    for target in group.targets
-                },
-            },
+            receipt,
             transfer_result,
         )
 
@@ -4920,12 +4965,132 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
             stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
         ]["sha256"]
     )
+    post_puf_receipt = result.receipt["post_puf_transfer"]
+    assert len(post_puf_receipt["realized_regimes"]) == 19
+    assert post_puf_receipt["realized_regimes"] == [
+        row
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        for row in post_puf_receipt["groups"][group.name]["realized_regimes"]
+    ]
+    assert all(
+        row["model_targets"] == list(row["regimes"])
+        for row in post_puf_receipt["realized_regimes"]
+    )
+    assert all(
+        row["producer_receipt"]["realized_regimes"]
+        for row in result.receipt["execution"]
+        if row["kind"] == "late_transfer"
+    )
     stacked_spine_module.validate_stacked_late_producer_receipt(
         result.receipt,
         boundary="executor regression",
         frame=result.frame,
         expected_transition_authority_sha256=result.transition_authority_sha256,
     )
+    transfer = post_puf_receipt
+    first_group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+
+    missing = deepcopy(transfer)
+    del missing["groups"][first_group.name]["realized_regimes"]
+    with pytest.raises(ValueError, match="no realized-regime evidence"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            missing,
+            boundary="missing regime fixture",
+        )
+
+    invalid = deepcopy(transfer)
+    invalid_row = invalid["groups"][first_group.name]["realized_regimes"][0]
+    invalid_target = invalid_row["model_targets"][0]
+    invalid_row["regimes"][invalid_target] = "not_a_regime"
+    with pytest.raises(ValueError, match="targets or labels changed"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            invalid,
+            boundary="invalid regime fixture",
+        )
+
+    duplicate = deepcopy(transfer)
+    duplicate["groups"][first_group.name]["realized_regimes"].append(
+        deepcopy(duplicate["groups"][first_group.name]["realized_regimes"][0])
+    )
+    with pytest.raises(ValueError, match="identity changed"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            duplicate,
+            boundary="duplicate regime fixture",
+        )
+
+    detached = deepcopy(transfer)
+    detached["realized_regimes"] = detached["realized_regimes"][:-1]
+    with pytest.raises(ValueError, match="not reconstructed"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            detached,
+            boundary="detached regime fixture",
+        )
+
+    legacy = deepcopy(dict(result.receipt))
+    legacy["version"] = 3
+    for group_receipt in legacy["post_puf_transfer"]["groups"].values():
+        group_receipt.pop("realized_regimes")
+    legacy["post_puf_transfer"].pop("realized_regimes")
+    with pytest.raises(ValueError, match="receipt version changed"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            legacy,
+            boundary="legacy v3 regime-free fixture",
+        )
+
+
+def test_late_executor_rejects_regime_receipt_detached_from_fitted_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="realized-regime receipt differs from its fitted imputation provenance",
+    ):
+        _run_real_late_executor_fixture(
+            monkeypatch,
+            tamper_group_regime=True,
+        )
+
+
+def test_realized_regime_receipt_survives_canonical_json_key_sorting() -> None:
+    expected_targets = ("z_target", "a_target")
+    receipt = [
+        {
+            "entity": "person",
+            "family": "fixture",
+            "pattern": "complete_case",
+            "observed_optional_predictors": [],
+            "predictors": ["age"],
+            "seed": 0,
+            "weight_kind": "design",
+            "donor_rows": 2,
+            "recipient_rows": 3,
+            "model_targets": list(expected_targets),
+            "regimes": {
+                "z_target": "three_sign",
+                "a_target": "zero_inflated_positive",
+            },
+        }
+    ]
+    round_tripped = json.loads(json.dumps(receipt, sort_keys=True))
+    assert list(round_tripped[0]["regimes"]) == ["a_target", "z_target"]
+
+    assert stacked_spine_module._validated_acs_transfer_realized_regime_receipt(
+        round_tripped,
+        entity="person",
+        family="fixture",
+        expected_model_targets=expected_targets,
+        boundary="canonical JSON fixture",
+    ) == round_tripped
+
+    del round_tripped[0]["regimes"]["z_target"]
+    with pytest.raises(ValueError, match="targets or labels changed"):
+        stacked_spine_module._validated_acs_transfer_realized_regime_receipt(
+            round_tripped,
+            entity="person",
+            family="fixture",
+            expected_model_targets=expected_targets,
+            boundary="missing regime fixture",
+        )
 
 
 def test_late_executor_authority_binds_every_transfer_bank_identity(
