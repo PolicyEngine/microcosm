@@ -327,6 +327,29 @@ wait_ready() {
   done
 }
 
+ready_now() {
+  local stage="$1"
+  local needed_gib="$2"
+  local reclaimable
+  local busy
+  local ac
+  local go
+
+  reclaimable="$(reclaimable_gib 2>/dev/null || printf '0')"
+  busy=0
+  builders_busy && busy=1
+  ac=0
+  on_ac_power && ac=1
+  go=0
+  [ -f "$GO_MARKER" ] && go=1
+  if [ "$reclaimable" -ge "$needed_gib" ] && [ "$busy" -eq 0 ] && [ "$ac" -eq 1 ] && [ "$go" -eq 1 ]; then
+    emit "PRECONDITION RECHECK READY stage=$stage need_reclaimable_gib=$needed_gib reclaimable_gib=$reclaimable busy=$busy ac=$ac go=$go"
+    return 0
+  fi
+  emit "PRECONDITION CHANGED stage=$stage need_reclaimable_gib=$needed_gib reclaimable_gib=$reclaimable busy=$busy ac=$ac go=$go; repeating wait-and-authenticate cycle"
+  return 1
+}
+
 sample_tree_rss() {
   local stage="$1"
   local root_pid="$2"
@@ -808,11 +831,13 @@ else
   if pool_is_complete; then
     emit "STAGE SKIP stage=pool reason=validated-output-and-gates path=$POOL_H5"
   else
-    wait_ready pool 90
-    recheck_code_authority
-    check_pool_inputs
-    wait_ready pool 90
-    recheck_code_authority
+    while :; do
+      wait_ready pool 90
+      recheck_code_authority
+      check_pool_inputs
+      recheck_code_authority
+      ready_now pool 90 && break
+    done
     if pool_is_complete; then
       emit "STAGE SKIP stage=pool reason=validated-output-completed-while-waiting path=$POOL_H5"
     else
@@ -828,12 +853,14 @@ else
   if dense_is_complete; then
     emit "STAGE SKIP stage=release-dense reason=validated-artifact-and-manifests path=$DENSE_ARTIFACT"
   else
-    wait_ready release-dense 110
-    recheck_code_authority
-    check_dense_inputs
-    consume_pool_manifest_pin
-    wait_ready release-dense 110
-    recheck_code_authority
+    while :; do
+      wait_ready release-dense 110
+      recheck_code_authority
+      check_dense_inputs
+      consume_pool_manifest_pin
+      recheck_code_authority
+      ready_now release-dense 110 && break
+    done
     if dense_is_complete; then
       emit "STAGE SKIP stage=release-dense reason=validated-output-completed-while-waiting path=$DENSE_ARTIFACT"
     else
