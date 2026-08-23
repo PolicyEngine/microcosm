@@ -137,6 +137,10 @@ class ArtifactIdentity:
     revision: str
     sha256: str
     size_bytes: int
+    #: The uk-data release tag the revision was published under (informational;
+    #: the parity tool may record it as ``source.version``). None when the
+    #: identity was given as explicit pins without a tag.
+    version: str | None = None
 
     def __post_init__(self) -> None:
         if not _HEX40.match(self.revision):
@@ -165,10 +169,12 @@ def committed_identity(reference_path: Path = REFERENCE_PATH) -> ArtifactIdentit
     """The identity the committed parity reference was extracted from."""
 
     source = _load_json(reference_path)["source"]
+    version = source.get("version")
     return ArtifactIdentity(
         revision=str(source["revision"]),
         sha256=str(source["sha256"]),
         size_bytes=int(source["size_bytes"]),
+        version=str(version) if version is not None else None,
     )
 
 
@@ -250,7 +256,9 @@ def resolve_release_identity(
         raise SystemExit(
             f"{repo_id}@{commit}/{filename} is not an LFS file; no sha256."
         )
-    return ArtifactIdentity(revision=commit, sha256=str(sha), size_bytes=int(info.size))
+    return ArtifactIdentity(
+        revision=commit, sha256=str(sha), size_bytes=int(info.size), version=release
+    )
 
 
 def resolve_zip_identity(
@@ -450,7 +458,39 @@ def _parity_tool(identity: ArtifactIdentity):
         f"https://huggingface.co/{tool.SOURCE_REPO_ID}/resolve/"
         f"{identity.revision}/{tool.SOURCE_FILENAME}"
     )
+    if hasattr(tool, "SOURCE_VERSION"):
+        # #747 records the release tag beside the byte identity; an extraction
+        # for another release must not inherit the committed tag.
+        if identity.version is None:
+            raise SystemExit(
+                "the committed parity tool records SOURCE_VERSION; pass --release "
+                "or --version so the regenerated reference names its release."
+            )
+        tool.SOURCE_VERSION = identity.version
     return tool
+
+
+_SOURCE_VERSION_LINE = re.compile(r'^SOURCE_VERSION = "([^"]*)"$', re.M)
+
+
+def move_source_version(path: Path, new_version: str, *, write: bool) -> str | None:
+    """Move the parity tool's ``SOURCE_VERSION`` assignment (anchored, never a
+    global literal replacement: release tags such as ``1.56.16`` also appear in
+    unrelated pins like the registry-parity ``pinned_version``).
+
+    Returns the previous tag, or None when the committed tool has no such
+    constant.
+    """
+
+    text = path.read_text(encoding="utf-8")
+    match = _SOURCE_VERSION_LINE.search(text)
+    if match is None:
+        return None
+    previous = match.group(1)
+    if write and previous != new_version:
+        text = text[: match.start(1)] + new_version + text[match.end(1) :]
+        path.write_text(text, encoding="utf-8")
+    return previous
 
 
 def render_json(payload: dict[str, Any]) -> str:
@@ -665,6 +705,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     target.add_argument(
         "--size-bytes", type=int, help="explicit artifact size (with --revision)"
     )
+    target.add_argument(
+        "--version",
+        help=(
+            "release tag to record when the parity tool carries SOURCE_VERSION "
+            "(implied by --release; required with --revision once that constant "
+            "exists)"
+        ),
+    )
     source = parser.add_argument_group("licensed bytes")
     source.add_argument("--input-h5", type=Path, help="local artifact (sha-verified)")
     source.add_argument(
@@ -755,7 +803,9 @@ def main(argv: list[str] | None = None) -> int:
             token=token,
         )
     elif args.revision and args.sha256 and args.size_bytes:
-        new = ArtifactIdentity(args.revision, args.sha256, int(args.size_bytes))
+        new = ArtifactIdentity(
+            args.revision, args.sha256, int(args.size_bytes), version=args.version
+        )
     else:
         raise SystemExit(
             "pass --release TAG, or --revision/--sha256/--size-bytes together."
@@ -959,6 +1009,12 @@ def main(argv: list[str] | None = None) -> int:
     touched["identity"] = move_literals(
         IDENTITY_MIRRORS, identity_replacements(old, new), label="identity", write=True
     )
+    if new.version is not None:
+        previous_version = move_source_version(
+            PARITY_TOOL_PATH, new.version, write=True
+        )
+        if previous_version is not None:
+            touched["source_version"] = {"from": previous_version, "to": new.version}
     REFERENCE_PATH.write_text(render_json(new_reference), encoding="utf-8")
     MANIFEST_PATH.write_text(render_json(new_manifest), encoding="utf-8")
     totals_out.parent.mkdir(parents=True, exist_ok=True)

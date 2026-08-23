@@ -44,9 +44,14 @@ PARITY = _module(
 class TestCommittedLockstep:
     def test_every_identity_mirror_carries_the_committed_identity(self) -> None:
         identity = REPIN.committed_identity()
-        assert identity == REPIN.ArtifactIdentity(
-            PARITY.SOURCE_REVISION, PARITY.SOURCE_SHA256, PARITY.SOURCE_SIZE_BYTES
+        assert (identity.revision, identity.sha256, identity.size_bytes) == (
+            PARITY.SOURCE_REVISION,
+            PARITY.SOURCE_SHA256,
+            PARITY.SOURCE_SIZE_BYTES,
         )
+        # Once the parity tool records the release tag (#747), the committed
+        # reference must name the same tag.
+        assert identity.version == getattr(PARITY, "SOURCE_VERSION", None)
         for path in REPIN.IDENTITY_MIRRORS:
             text = path.read_text(encoding="utf-8")
             assert identity.revision in text, path
@@ -181,6 +186,42 @@ class TestLiteralMoves:
         path.write_text('REV = "old-rev"\n')
         REPIN.move_literals((path,), {"old-rev": "new-rev"}, label="test", write=False)
         assert path.read_text() == 'REV = "old-rev"\n'
+
+
+class TestSourceVersion:
+    def test_move_source_version_is_anchored_to_the_assignment(self, tmp_path) -> None:
+        tool = tmp_path / "tool.py"
+        tool.write_text(
+            'PINNED = "1.56.16"\nSOURCE_VERSION = "1.56.16"\nOTHER = "x1.56.16"\n'
+        )
+        previous = REPIN.move_source_version(tool, "1.56.17", write=True)
+        assert previous == "1.56.16"
+        assert tool.read_text() == (
+            'PINNED = "1.56.16"\nSOURCE_VERSION = "1.56.17"\nOTHER = "x1.56.16"\n'
+        )
+
+    def test_move_source_version_reports_absence(self, tmp_path) -> None:
+        tool = tmp_path / "tool.py"
+        tool.write_text('SOURCE_REVISION = "a" * 40\n')
+        assert REPIN.move_source_version(tool, "1.56.17", write=True) is None
+        assert tool.read_text() == 'SOURCE_REVISION = "a" * 40\n'
+
+    def test_parity_tool_patch_requires_a_tag_when_the_tool_records_one(
+        self, monkeypatch
+    ) -> None:
+        class Tool:
+            SOURCE_REPO_ID = "repo"
+            SOURCE_FILENAME = "f.h5"
+            SOURCE_VERSION = "1.56.16"
+
+        monkeypatch.setattr(REPIN, "_load_module", lambda path, name: Tool())
+        identity = REPIN.ArtifactIdentity("b" * 40, "c" * 64, 1)
+        with pytest.raises(SystemExit, match="SOURCE_VERSION"):
+            REPIN._parity_tool(identity)
+        tagged = REPIN.ArtifactIdentity("b" * 40, "c" * 64, 1, version="1.56.17")
+        patched = REPIN._parity_tool(tagged)
+        assert patched.SOURCE_VERSION == "1.56.17"
+        assert patched.SOURCE_REVISION == "b" * 40
 
 
 class TestCanonicalTotalsDigest:
