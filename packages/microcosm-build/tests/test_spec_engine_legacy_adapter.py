@@ -197,7 +197,7 @@ def test_adapter_preserves_generation_zero_identity_components(
     imputation = legacy_payload["imputation"]
     assert isinstance(imputation, dict)
     assert legacy_payload["stacked_authority_receipt"]["sha256"] == (
-        "3dec9ba965fd5fbfc6f2a6dabf07da21e51182806b339097ca979a6ac7bfd046"
+        "02dc155fc52b5abbec379d0da92cae06a072ec09115f70e42f576f6057d09d89"
     )
     assert imputation["late_producer_schedule_receipt"]["schedule_sha256"] == (
         "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"

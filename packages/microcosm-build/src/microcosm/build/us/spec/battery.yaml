@@ -459,12 +459,12 @@ metric_registry:
 - entity: person
   family: puf_tax_itemization
   column: sstb_self_employment_income_would_be_qualified
-  clone_index: 0
+  clone_index: 1
   metric: boolean_incidence
 - entity: person
   family: puf_tax_itemization
   column: business_is_sstb
-  clone_index: 0
+  clone_index: 1
   metric: boolean_incidence
 - entity: person
   family: puf_tax_itemization
@@ -823,4 +823,4 @@ metric_contracts:
     threshold: categorical_total_variation
 authority_binding:
   authority_id: us_stacked_spine_authority
-  version: 10
+  version: 11

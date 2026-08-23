@@ -330,9 +330,9 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "3dec9ba965fd5fbfc6f2a6dabf07da21e51182806b339097ca979a6ac7bfd046",
+    "authority": "02dc155fc52b5abbec379d0da92cae06a072ec09115f70e42f576f6057d09d89",
     "early_families": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
-    "full_checkpoint": "1bccda60109864a258e7119d6bc898b73ca04b64bcffe512117745ef00f002f1",
+    "full_checkpoint": "eda339e847775a4dbb260d4d2906866d1dfe7911355e2c3efe15e4d61c16dfa0",
     "gap_fill_schedule": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10",
     "graph_nodes": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864",
     "late_families": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",

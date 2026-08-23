@@ -110,6 +110,44 @@ and this worktree's package sources:
   `uv run pytest` per shard; this lane reran the gate the same way with
   per-shard logs and explicit exit codes before committing.
 
+## 2026-08-23 complete salvage disposition
+
+- All four salvage commits are sibling snapshots rooted at `9835fb4b`.
+  `21f95b71` and `8942ef97` are byte-identical trees. Relative to
+  `03e23e42`, their substantive additions are the declared deterministic-
+  origin binding and fail-closed target-count/accounting validation in
+  `stacked_spine.py`, with corresponding regressions. The remaining changes
+  are journal updates and formatting.
+- Took the recovered regime/origin receipt implementation, schemas,
+  checkpoint invalidation, documentation, and tests into prerequisite commit
+  `f042bfa8`. Relative to `8942ef97`, that commit differs technically only by
+  three fixture corrections: the newest snapshot's pool-tool
+  `unmodeled_rows: 0`, the legacy checkpoint materializer repin from 3 to 4,
+  and the missing stacked-HDF5 `unmodeled_rows: 0`.
+- Took the four `experiments/qbi_ownership/` assets from newest snapshot
+  `321b3185` as an analysis and implementation basis, then superseded them in
+  `7e0c5081`. The recovered `evidence.json` had been produced with
+  `--skip-sha`, contained a nondeterministic timestamp, lacked closed artifact
+  bindings and per-check ownership records, and compared only six-digit
+  display values. Its extractor also allowed a SHA-skipped run to overwrite
+  canonical output.
+- Discarded the generated WIP commit wrappers, stale journal/gate placeholders,
+  superseded `03e23e42` variants, and the newest snapshot's conflation of
+  terminal value provenance with first-failing-stage ownership. The committed
+  evidence instead records all eight terminal values as `qrf_transfer` while
+  identifying five transfer-first criteria and three producer-first QED
+  criteria. It also replaces the unsupported claim that coarse recipient
+  marginals identify the transfer mechanism with a requirement for
+  target-by-channel-by-pattern diagnostics.
+- No unique production regime-persistence or origin-receipt implementation
+  from the newest salvage was discarded. Later terminal-role work builds on
+  that recovered prerequisite; therefore byte-identity claims are bound to
+  commit `f042bfa8`, not to the subsequently modified working tree. The
+  recovered and committed canonical evidence JSON SHA-256 values are
+  `f0463f449a260b69bc72663702ff6b1b778dfca1dbcc3c3c5430204a122d7114`
+  and `38e60c1ec5e39b86df957148c877b3062ca97028f33ea0d1411013c2911c4b55`,
+  respectively.
+
 ## Realized-regime receipt prerequisite
 
 - The monolithic transfer recomputes each target's QRF regime from the exact
@@ -280,3 +318,71 @@ code/evidence tree being committed:
 - build: 5,981 passed, 39 skipped (58m52s)
 - `uv run ruff check .`: clean
 - `git diff --check`: clean
+
+## Exact-two SSTB terminal-role correction (2026-08-23)
+
+- The adjudicated live signals are now the only non-native comparison roles:
+  `sstb_self_employment_income_would_be_qualified` and `business_is_sstb`
+  map to the PUF-detail clone-1 role; every other physical battery target
+  defaults to clone 0. The immutable declaration and lookup are at
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2112-2141`.
+- The role scope fails closed unless it is exactly those two QBI boolean PUF
+  outputs, and metric registry materialization carries each target's resolved
+  role
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2998-3100`).
+  Surface, plan, producer/transfer authority, and runtime comparator keys are
+  role-aware
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2144-2167,3293-3306,3460-3472,8854-8875,9038-9049,9113-9124,11991-12004`).
+- The spec projection permits nonzero registered roles while rejecting one
+  physical target declared across multiple roles
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/battery_semantics.py:43-71`).
+  The live battery contract similarly indexes by physical target, preserves
+  its registered role, and rejects ambiguity
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_battery_contract.py:66-118`).
+- The canonical battery YAML assigns clone 1 to exactly the two targets and
+  advances the old-base authority binding from 10 to 11
+  (`packages/microcosm-build/src/microcosm/build/us/spec/battery.yaml:459-468,823-826`).
+  A later semantic union with current `origin/main` must use fresh version 12,
+  because main independently used version 11 for post-transfer calibration.
+- Direct role, fail-closed, live-contract, projection, transfer-authority, and
+  comparator regressions are green as a 424-test focused suite. No gate,
+  band, ceiling, fold, seed, exclusion, amount model, or build artifact was
+  changed.
+
+## Exact-two correction commit gate (2026-08-23)
+
+The four non-build package shards completed green with bounded native threads:
+
+- frame: 294 passed, 36 skipped (3m45s)
+- fit: 93 passed (16s)
+- calibrate: 201 passed (17s)
+- data: 275 passed, 1 skipped (15s)
+
+Two exact full-build-shard foreground attempts were terminated externally at
+the execution service's one-hour ceiling (exit 143), at approximately 11% and
+14% progress. Neither reported a test failure. Because the host was running
+many concurrent Python lanes, the unchanged all-in-one command could not
+finish inside that ceiling. No timeout or test/model threshold was changed.
+
+To retain exhaustive coverage, the 255 sorted `test_*.py` files were split
+into ten deterministic, disjoint consecutive slices and passed to the same
+`uv run pytest` command. Every file appears exactly once:
+
+- files 1–26: 578 passed, 1 skipped (42m08s)
+- files 27–52: 426 passed (22m34s)
+- files 53–78: 265 passed, 7 skipped (17s)
+- files 79–104: 491 passed, 15 skipped (1m20s)
+- files 105–130: 303 passed, 11 skipped (56s)
+- files 131–156: 691 passed, 1 skipped (2m00s)
+- files 157–182: 664 passed, 1 skipped (29m33s)
+- files 183–208: 980 passed (17m22s)
+- files 209–234: 924 passed, 2 skipped (49m13s)
+- files 235–255: 675 passed, 1 skipped (19m58s)
+
+The partitioned build result is therefore 5,997 passed and 39 skipped over all
+255 test files. Together with the four package shards above, it covers the
+entire workspace test suite required by this lane. `uv run ruff check .` and
+`git diff --check` both completed cleanly on the commit tree.
+
+No pool build was started; this is test execution only. The host queue retains
+exclusive ownership of all `build_us_multispine_pool.py` runs.

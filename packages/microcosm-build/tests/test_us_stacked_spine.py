@@ -100,6 +100,11 @@ from microcosm.build.us_runtime.us_late_overlap_ownership import (
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
+_SSTB_TERMINAL_ROLE_TARGETS = (
+    "business_is_sstb",
+    "sstb_self_employment_income_would_be_qualified",
+)
+
 
 def _source_frame(
     *,
@@ -842,7 +847,18 @@ def test_finalize_preserve_nulls_materializes_registry_boolean_outputs() -> None
     boolean_outputs = tuple(
         column
         for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-        if registry.get(("person", "puf_tax_itemization", column, 0))
+        if registry.get(
+            (
+                "person",
+                "puf_tax_itemization",
+                column,
+                stacked_spine_module._battery_target_role(
+                    "person",
+                    "puf_tax_itemization",
+                    column,
+                ),
+            )
+        )
         == "boolean_incidence"
     )
     assert set(boolean_outputs) == set(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
@@ -1726,7 +1742,12 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     surface_targets = {
-        (entity, family, target, 0)
+        (
+            entity,
+            family,
+            target,
+            stacked_spine_module._battery_target_role(entity, family, target),
+        )
         for entity, families in surface.items()
         for family, targets in families.items()
         for target in targets
@@ -1759,7 +1780,12 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         == "monetary_sign_separated"
     )
     gap_targets = {
-        (entity, family, target, 0)
+        (
+            entity,
+            family,
+            target,
+            stacked_spine_module._battery_target_role(entity, family, target),
+        )
         for entity, families in (
             stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE.items()
         )
@@ -1767,7 +1793,12 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for target in targets
     }
     post_puf_targets = {
-        (entity, family, target, 0)
+        (
+            entity,
+            family,
+            target,
+            stacked_spine_module._battery_target_role(entity, family, target),
+        )
         for entity, families in (
             stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
         )
@@ -1775,7 +1806,12 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for target in targets
     }
     puf_producer_targets = {
-        (entity, family, target, 0)
+        (
+            entity,
+            family,
+            target,
+            stacked_spine_module._battery_target_role(entity, family, target),
+        )
         for entity, families in (
             stacked_spine_module.CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE.items()
         )
@@ -1783,7 +1819,12 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for target in targets
     }
     source_producer_targets = {
-        (entity, family, target, 0)
+        (
+            entity,
+            family,
+            target,
+            stacked_spine_module._battery_target_role(entity, family, target),
+        )
         for entity, families in (
             stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE.items()
         )
@@ -1806,6 +1847,71 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
     } & {target for _entity, _family, target, _clone in surface_targets}
 
 
+def test_canonical_battery_declares_exactly_two_clone_one_targets() -> None:
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    clone_one = {
+        (entity, family, target)
+        for entity, family, target, clone_index in registry
+        if clone_index == 1
+    }
+    expected = {
+        ("person", "puf_tax_itemization", target)
+        for target in _SSTB_TERMINAL_ROLE_TARGETS
+    }
+
+    assert clone_one == expected
+    assert {
+        clone_index
+        for _entity, _family, _target, clone_index in registry
+    } == {0, 1}
+    assert all(
+        clone_index == (1 if (entity, family, target) in expected else 0)
+        for entity, family, target, clone_index in registry
+    )
+    assert not {
+        ("person", "puf_tax_itemization", target, 0)
+        for target in _SSTB_TERMINAL_ROLE_TARGETS
+    } & set(registry)
+    assert {
+        clone_index
+        for _entity, _family, _targets, clone_index in (
+            stacked_spine_module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
+        )
+    } == {0}
+    stacked_spine_module._validate_explicit_origin_battery_role_declarations()
+
+
+@pytest.mark.parametrize(
+    ("target", "role"),
+    (
+        pytest.param(
+            "self_employment_income_would_be_qualified",
+            1,
+            id="third_qbi_boolean",
+        ),
+        pytest.param("is_pregnant", 1, id="non_qbi_boolean"),
+        pytest.param("business_is_sstb", 2, id="wrong_clone_role"),
+    ),
+)
+def test_explicit_battery_role_declarations_reject_every_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    role: int,
+) -> None:
+    forged = dict(
+        stacked_spine_module._EXPLICIT_ORIGIN_BATTERY_ROLE_DECLARATIONS
+    )
+    forged[("person", "puf_tax_itemization", target)] = role
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_EXPLICIT_ORIGIN_BATTERY_ROLE_DECLARATIONS",
+        forged,
+    )
+
+    with pytest.raises(RuntimeError, match="Battery role declarations"):
+        stacked_spine_module._validate_explicit_origin_battery_role_declarations()
+
+
 def _registry_boolean_targets(
     surface: Mapping[str, Mapping[str, tuple[str, ...]]],
 ) -> set[tuple[str, str]]:
@@ -1815,7 +1921,15 @@ def _registry_boolean_targets(
         for entity, families in surface.items()
         for family, targets in families.items()
         for target in targets
-        if registry[(entity, family, target, 0)] == "boolean_incidence"
+        if registry[
+            (
+                entity,
+                family,
+                target,
+                stacked_spine_module._battery_target_role(entity, family, target),
+            )
+        ]
+        == "boolean_incidence"
     }
 
 
@@ -2121,6 +2235,49 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         "boolean_incidence": 20,
         "categorical_tvd": 3,
     }
+
+
+@pytest.mark.parametrize("target", _SSTB_TERMINAL_ROLE_TARGETS)
+def test_primary_puf_clone_one_callback_outputs_receive_dtype_validation(
+    target: str,
+) -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    ]
+    complete = _fill_late_contract_surface(
+        _post_puf_transfer_fixture(),
+        contracts=(contract,),
+        include_outputs=True,
+    )
+    stacked_spine_module._validate_late_callback_output_metric_families(
+        complete,
+        contract,
+    )
+
+    tables = {entity: complete.table(entity) for entity in complete.entities}
+    person = complete.table("person").copy()
+    person[target] = np.ones(len(person), dtype=np.float64)
+    tables["person"] = person
+    wrong_dtype = Frame(
+        tables,
+        complete.schema,
+        {
+            entity: complete.weights_for(entity)
+            for entity in complete.weighted_entities
+        },
+        complete.strata,
+        mass_log=complete.mass_log,
+        metadata=complete.metadata,
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=rf"{target}.*boolean_incidence.*float64",
+    ):
+        stacked_spine_module._validate_late_callback_output_metric_families(
+            wrong_dtype,
+            contract,
+        )
 
 
 def test_explicit_test_seams_reject_the_canonical_authority() -> None:
@@ -3068,6 +3225,192 @@ def _post_puf_transfer_fixture() -> Frame:
         mass_log=attached.mass_log,
         metadata=attached.metadata,
     )
+
+
+@pytest.mark.parametrize("target", _SSTB_TERMINAL_ROLE_TARGETS)
+def test_sstb_clone_one_role_controls_transfer_activation_and_outcome(
+    target: str,
+) -> None:
+    complete = _sstb_terminal_role_fixture()
+    surface = {"person": {"puf_tax_itemization": (target,)}}
+    person = complete.table("person")
+    clone_one = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    ).eq(1)
+
+    def with_person(frame: Frame, replacement: pd.DataFrame) -> Frame:
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["person"] = replacement
+        return Frame(
+            tables,
+            frame.schema,
+            {
+                entity: frame.weights_for(entity)
+                for entity in frame.weighted_entities
+            },
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
+
+    activation_person = person.copy()
+    activation_person.loc[~clone_one, target] = pd.NA
+    activation = with_person(complete, activation_person)
+    activation_counts = (
+        stacked_spine_module._verify_post_puf_transfer_activation_authority(
+            activation,
+            target_families=surface,
+            puf_producer_families=surface,
+            source_producer_families={},
+        )
+    )
+    target_counts = activation_counts[("person", target)]
+    assert target_counts["producer_rows"] == int(clone_one.sum())
+    assert target_counts["recipient_rows"] == int((~clone_one).sum())
+    assert target_counts["authorized_null_rows"] == int((~clone_one).sum())
+
+    broken_person = activation_person.copy()
+    broken_person.loc[broken_person.index[clone_one][0], target] = pd.NA
+    with pytest.raises(
+        ValueError,
+        match=rf"{target}:.*PUF clone.*producer role.*null cell",
+    ):
+        stacked_spine_module._verify_post_puf_transfer_activation_authority(
+            with_person(complete, broken_person),
+            target_families=surface,
+            puf_producer_families=surface,
+            source_producer_families={},
+        )
+
+    complete_counts = (
+        stacked_spine_module._verify_post_puf_transfer_activation_authority(
+            complete,
+            target_families=surface,
+            puf_producer_families=surface,
+            source_producer_families={},
+        )
+    )
+    snapshot = {
+        ("person", target): stacked_spine_module._post_puf_producer_snapshot(
+            complete,
+            entity="person",
+            target=target,
+            puf_produced=True,
+            source_produced=False,
+        )
+    }
+    receipts = stacked_spine_module._verify_post_puf_transfer_outcome(
+        complete,
+        target_families=surface,
+        puf_producer_families=surface,
+        source_producer_families={},
+        pre_counts=complete_counts,
+        producer_snapshot=snapshot,
+        result=AcsTransferResult(
+            frame=complete,
+            resolved_donor_channel="asec",
+        ),
+    )
+    receipt = receipts[f"person/puf_tax_itemization/{target}"]
+    assert receipt["producer_roles"] == ["puf_clone"]
+    assert receipt["producer_rows"] == int(clone_one.sum())
+    assert receipt["origin"] == {"channel": "preexisting"}
+
+    changed_person = person.copy()
+    changed_row = changed_person.index[clone_one][0]
+    changed_person.loc[changed_row, target] = not bool(
+        changed_person.loc[changed_row, target]
+    )
+    changed = with_person(complete, changed_person)
+    with pytest.raises(ValueError, match=rf"{target}: producer byte identity failed"):
+        stacked_spine_module._verify_post_puf_transfer_outcome(
+            changed,
+            target_families=surface,
+            puf_producer_families=surface,
+            source_producer_families={},
+            pre_counts=complete_counts,
+            producer_snapshot=snapshot,
+            result=AcsTransferResult(
+                frame=changed,
+                resolved_donor_channel="asec",
+            ),
+        )
+
+
+@pytest.mark.parametrize("target", _SSTB_TERMINAL_ROLE_TARGETS)
+def test_sstb_clone_one_role_controls_transfer_orchestration_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    attached = _post_puf_transfer_fixture()
+    tables = {entity: attached.table(entity) for entity in attached.entities}
+    person = attached.table("person").copy()
+    clone_one = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    ).eq(1)
+    person[target] = pd.Series(False, index=person.index, dtype="boolean")
+    person.loc[clone_one, target] = True
+    tables["person"] = person
+    frame = Frame(
+        tables,
+        attached.schema,
+        {
+            entity: attached.weights_for(entity)
+            for entity in attached.weighted_entities
+        },
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+    surface = {"person": {"puf_tax_itemization": (target,)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+        post_puf_puf_producer_surface=surface,
+        post_puf_source_producer_surface={},
+    )
+
+    def identity_transfer(
+        bound_frame: Frame,
+        donor: Frame,
+        **kwargs: object,
+    ) -> AcsTransferResult:
+        donor_person = donor.table("person")
+        assert donor_person[support_channel_column("person")].astype(str).eq(
+            "asec"
+        ).all()
+        assert pd.to_numeric(
+            donor_person[support_clone_index_column("person")],
+            errors="raise",
+        ).eq(1).all()
+        assert kwargs["target_families"] == surface
+        return AcsTransferResult(
+            frame=bound_frame,
+            resolved_donor_channel="asec",
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "transfer_acs_inputs",
+        identity_transfer,
+    )
+    result = (
+        stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+            frame,
+            authority=authority,
+            seed=578,
+            n_estimators=10,
+        )
+    )
+
+    receipt = result.receipt["targets"][f"person/puf_tax_itemization/{target}"]
+    assert receipt["producer_roles"] == ["puf_clone"]
+    assert receipt["producer_rows"] == int(clone_one.sum())
+    assert receipt["authorized_null_rows"] == 0
+    assert receipt["origin"] == {"channel": "preexisting"}
 
 
 def test_bounded_transfer_group_remaps_canonical_producer_roles() -> None:
@@ -7400,7 +7743,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -7420,7 +7763,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 10
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 11
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -7439,7 +7782,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 10
+    assert receipt["version"] == 11
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
@@ -7956,7 +8299,12 @@ def test_completeness_gate_wildcard_proof_covers_every_origin() -> None:
 
 def _declared_battery_metric(entity: str, family: str, target: str) -> str:
     canonical = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.get(
-        (entity, family, target, 0)
+        (
+            entity,
+            family,
+            target,
+            stacked_spine_module._battery_target_role(entity, family, target),
+        )
     )
     if canonical is not None:
         return canonical
@@ -8070,6 +8418,75 @@ def _battery_frame(
         acs_sample_fraction=1.0,
         acs_sample_seed=0,
     ).frame
+
+
+def _sstb_terminal_role_fixture() -> Frame:
+    base = _battery_frame(
+        {
+            target: (
+                np.zeros(8, dtype=np.bool_),
+                np.zeros(11, dtype=np.bool_),
+            )
+            for target in _SSTB_TERMINAL_ROLE_TARGETS
+        }
+    )
+    attached = clone_us_frame_for_puf_support(
+        base,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+    )
+    tables = {entity: attached.table(entity).copy() for entity in attached.entities}
+    person = tables["person"]
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    )
+    clone_one = clone_index.eq(1)
+    for target in _SSTB_TERMINAL_ROLE_TARGETS:
+        person[target] = pd.Series(False, index=person.index, dtype="boolean")
+        for origin in ("asec", "acs"):
+            rows = person.index[clone_one & channel.eq(origin)]
+            person.loc[rows, target] = np.arange(len(rows)) % 2 == 0
+    return Frame(
+        tables,
+        attached.schema,
+        {
+            entity: attached.weights_for(entity)
+            for entity in attached.weighted_entities
+        },
+        attached.strata,
+        mass_log=attached.mass_log,
+        metadata=attached.metadata,
+    )
+
+
+def test_sstb_terminal_battery_uses_only_the_live_clone_one_signals() -> None:
+    frame = _sstb_terminal_role_fixture()
+    person = frame.table("person")
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    )
+    native = clone_index.eq(0)
+    clone_one = clone_index.eq(1)
+    for target in _SSTB_TERMINAL_ROLE_TARGETS:
+        assert not person.loc[native, target].any()
+        assert person.loc[clone_one, target].any()
+        assert not person.loc[clone_one, target].all()
+
+    result = by_origin_battery(frame)
+
+    assert result.passed, result.failures
+    comparisons = result.details["comparisons"]
+    for target in _SSTB_TERMINAL_ROLE_TARGETS:
+        clone_one_label = f"person/puf_tax_itemization/{target}[clone_1]"
+        clone_zero_label = f"person/puf_tax_itemization/{target}[clone_0]"
+        assert clone_one_label in comparisons
+        assert clone_zero_label not in comparisons
+        receipt = comparisons[clone_one_label]
+        assert receipt["status"] == "tested"
+        assert 0.8 <= receipt["incidence_ratio_acs_over_asec"] <= 1.25
 
 
 @pytest.mark.parametrize("clone_role", (0, 1))

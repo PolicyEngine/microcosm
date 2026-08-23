@@ -48,12 +48,12 @@ at the six-significant-digit precision published by adjudication rows 65–66
 
 Battery statistics were recomputed with the terminal battery's exact math:
 clone-scoped positive-weight rows split by support channel
-(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11943-12001`),
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11991-12050`),
 positive-leg incidence over the full origin scope with carriers as raw row
-counts (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12177-12234`), weighted inverse-ECDF
+counts (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12329-12386`), weighted inverse-ECDF
 p10/p25/p50/p75/p90 magnitude quantiles and the QED envelope
-(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12307-12338`), frozen tolerances
-(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11623-11626`), and person weights inherited from
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12459-12490`), frozen tolerances
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11775-11778`), and person weights inherited from
 household importance weights through membership (microcosm-frame
 `packages/microcosm-frame/src/microcosm/frame/bundle.py:516-546`).
 
@@ -89,7 +89,7 @@ authorized complement rows were imputed, and residual/unmodeled rows are zero
 (`experiments/qbi_ownership/extract_qbi_ownership_evidence.py:1087-1195,1668-1715`).
 The live code defines PUF-produced rows as clone>0, sends their complement
 through the transfer, preserves producer bytes, and records the completion
-equations (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8728-8772,8832-8852,8945-9040`). Together those bindings attribute every
+equations (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8784-8920,8974-9192`). Together those bindings attribute every
 terminal clone-0 value in these eight checks to `qrf_transfer`; the first stage
 outside the frozen comparator still differs by criterion:
 
@@ -110,10 +110,11 @@ incidence tracks the donor level (REIT 0.05766 vs donor 0.05759; UBIA
 0.05878 vs 0.05844; BDC 0.00921 vs 0.00855) and the drawn ACS clone-0
 incidence is lower than both the donor and the ACS clone-1 producer level
 (REIT 0.02221 vs 0.06032; UBIA 0.04553 vs 0.06469; BDC 0.00303 vs
-0.00914). The chained qualification booleans drawn by the same models for
-the same recipients stay in band on clone-0 (`business_is_sstb` 1.05464,
-SSTB qualification 1.05341 pre-reconciliation); their membership in the
-same byte-verified chained target bank is explicit
+0.00914). For the BDC/REIT batch, the chained qualification booleans drawn by
+the same batch models for the same recipients stay in band on clone-0
+(`business_is_sstb` 1.05464, SSTB qualification 1.05341
+pre-reconciliation); their membership in the same byte-verified chained
+target bank is explicit
 (`experiments/qbi_ownership/extract_qbi_ownership_evidence.py:297-317,809-995`).
 These coarse comparisons
 localize the failing stages but do not, by themselves, isolate the causal
@@ -143,7 +144,8 @@ Stage-specific findings:
    `min(bdc, max(non_qualified_dividend_income, 0))`
    (`packages/microcosm-build/src/microcosm/build/us_runtime/qbi_inputs.py:1342-1349,1354-1356`) kills 704/932 (75.5%) ASEC and
    2,181/3,044 (71.6%) ACS clone-0 carriers — near-proportionally — so the
-   ratio barely moves (0.329192 → 0.328928) while both levels drop ~3.6×.
+   ratio barely moves (0.329192 → 0.328928) while the channel levels drop
+   approximately 4.09× (ASEC) and 3.53× (ACS).
    The red ratio pre-exists the cap.
 3. **`qualified_reit_and_ptp_income`: transfer-first incidence,
    producer-first QED; reconciliation is secondary and ratio-improving.**
@@ -156,8 +158,9 @@ Stage-specific findings:
    defect.** Clone-1 QEDs are 0.584598 (BDC), 0.597071 (REIT), and 0.451897
    (W2) — above the 0.25 ceiling — with UBIA green (0.187807). Although the
    terminal battery evaluates clone 0 for these amount targets (production
-   declares the terminal role at
-   `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2145-2166`), these three
+   gives clone 1 to exactly two named SSTB booleans, validates that closed
+   role scope, and performs the clone-scoped comparison at
+   `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2112-2141,2998-3091,11991-12002`), these three
    QEDs establish that the shape failure is present in the upstream donor
    surface before the transfer. The transfer then magnifies it, so the
    producer and transfer magnitude surfaces must be evaluated as a coupled
@@ -167,8 +170,9 @@ Stage-specific findings:
    non-qualified-dividend base and 22,350 rows carry REIT/PTP above the
    dividend+partnership base; all nine coupled invariant counts are zero at
    `simulated` (`evidence.json.invariants`), confirming reconciliation
-   enforces the identities the transfer ignored — by destroying ~3.6× of
-   BDC/REIT carrier mass on both channels. The transfer does not expose the
+   enforces the identities the transfer ignored — with BDC/REIT carrier
+   reductions spanning approximately 2.9–4.1× across the two targets and
+   channels. The transfer does not expose the
    exact coupled bases as separate predictors: non-qualified dividends are
    folded into a broader donor investment aggregate, its recipient analog is
    an ACS aggregate, and partnership/S-corporation income is absent from the
@@ -184,7 +188,7 @@ employment-income positive share 0.4920 (ASEC clone-0) vs 0.5097 (ACS
 clone-0) with medians 50,000 vs 48,529, and self-employment positive share
 0.0376 vs 0.0472. These summaries do not cover the joint predictor
 distribution, per-row availability-pattern assignment, gate scores, or gate
-outcomes, so they cannot establish which model feature causes the
+outcomes, so they cannot establish which model feature causes the BDC/REIT
 2.6–3.0× drawn-incidence gap. The four availability
 patterns (478 / 45,032 / 235,192 / 683,997 of the 964,699 clone-0
 recipients; distinguished by observation of the social-security, retirement,
@@ -241,7 +245,7 @@ transfer's own recomputation contract
   validator requires the origin record
   (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:509-555,582-671`;
   `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer_bank.py:350-420,612-780`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8945-9040`).
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4025-4153,4178-4208`).
   This extraction recomputed the failed attempt's regimes exactly as the rule
   requires for historical artifacts.
 
@@ -253,7 +257,7 @@ transfer's own recomputation contract
 - The derive-stage reconciliation then forces both flags false on every
   native-role row: `support_role_series` assigns the ASEC-compatible role to
   all clone-0 records on **both** channels
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/support_provenance.py:370-379`),
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/support_provenance.py:370-379,412-473`),
   and the reconciliation kernel sets both SSTB flags false on that role mask
   (`packages/microcosm-build/src/microcosm/build/us_runtime/qbi_inputs.py:1246-1264`), making the terminal clone-0 comparison dead
   by construction (0/0 carriers) — reproduced here.

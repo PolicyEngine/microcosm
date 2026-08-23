@@ -68,33 +68,53 @@ def build_live_stacked_battery_contract() -> dict[str, object]:
 
     stacked = importlib.import_module("microcosm.build.us_runtime.stacked_spine")
     metric_by_key = stacked.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    metric_by_physical_target: dict[tuple[str, str, str], tuple[int, str]] = {}
+    for (entity, family, column, clone_index), metric in metric_by_key.items():
+        physical_target = (entity, family, column)
+        existing = metric_by_physical_target.get(physical_target)
+        if existing is not None:
+            raise RuntimeError(
+                "Canonical battery metric registry has duplicate physical target "
+                f"{physical_target!r} at clone roles {existing[0]!r} and "
+                f"{clone_index!r}."
+            )
+        metric_by_physical_target[physical_target] = (clone_index, metric)
+
     registry = []
-    ordered_keys: set[tuple[str, str, str, int]] = set()
+    ordered_physical_targets: set[tuple[str, str, str]] = set()
     for entity, families in stacked.CANONICAL_STACKED_DECLARED_SURFACE.items():
         for family, columns in families.items():
             for column in columns:
-                key = (entity, family, column, 0)
-                metric = metric_by_key.get(key)
-                if metric is None:
+                physical_target = (entity, family, column)
+                if physical_target in ordered_physical_targets:
+                    raise RuntimeError(
+                        "Canonical battery declared surface repeats physical target "
+                        f"{physical_target!r}."
+                    )
+                try:
+                    clone_index, metric = metric_by_physical_target[physical_target]
+                except KeyError as error:
                     raise RuntimeError(
                         "Canonical battery surface has no metric registry row for "
-                        f"{key!r}."
-                    )
+                        f"{physical_target!r}."
+                    ) from error
                 registry.append(
                     {
                         "entity": entity,
                         "family": family,
                         "column": column,
-                        "clone_index": 0,
+                        "clone_index": clone_index,
                         "metric": metric,
                     }
                 )
-                ordered_keys.add(key)
-    if ordered_keys != set(metric_by_key):
+                ordered_physical_targets.add(physical_target)
+    if ordered_physical_targets != set(metric_by_physical_target):
         raise RuntimeError(
             "Canonical battery metric registry and declared surface differ: "
-            f"missing={sorted(set(metric_by_key) - ordered_keys)!r}, "
-            f"extra={sorted(ordered_keys - set(metric_by_key))!r}."
+            "missing="
+            f"{sorted(set(metric_by_physical_target) - ordered_physical_targets)!r}, "
+            "extra="
+            f"{sorted(ordered_physical_targets - set(metric_by_physical_target))!r}."
         )
     joint_registry = [
         {

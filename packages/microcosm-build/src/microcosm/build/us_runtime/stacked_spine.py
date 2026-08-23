@@ -172,6 +172,7 @@ from microcosm.build.us_runtime.puf_support import (
     puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
+from microcosm.build.us_runtime.qbi_inputs import US_QBI_BOOLEAN_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -1689,11 +1690,11 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v10 binds the primary-PUF whole-pool output-universe declaration. v9 bound
-# the content-hashed execution/transition-authority schema in addition to the
-# import-validated producer/input DAG. Version 8 named the graph but did not
-# authenticate its live input/output transition.
-_STACKED_AUTHORITY_VERSION = 10
+# v11 binds the per-target terminal comparison role for the two PUF-owned SSTB
+# booleans. v10 bound the primary-PUF whole-pool output-universe declaration;
+# v9 bound the content-hashed execution/transition-authority schema in addition
+# to the import-validated producer/input DAG.
+_STACKED_AUTHORITY_VERSION = 11
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -2108,12 +2109,44 @@ def _freeze_joint_metric_registry(
     return MappingProxyType(frozen)
 
 
+#: The exact non-native terminal comparison roles authorized by the canonical
+#: battery. All targets absent from this immutable declaration remain clone 0.
+_EXPECTED_ORIGIN_BATTERY_ROLE_DECLARATIONS: Mapping[
+    tuple[str, str, str], int
+] = MappingProxyType(
+    {
+        (
+            "person",
+            "puf_tax_itemization",
+            "sstb_self_employment_income_would_be_qualified",
+        ): PUF_TAX_DETAIL_CLONE_INDEX,
+        (
+            "person",
+            "puf_tax_itemization",
+            "business_is_sstb",
+        ): PUF_TAX_DETAIL_CLONE_INDEX,
+    }
+)
+_EXPLICIT_ORIGIN_BATTERY_ROLE_DECLARATIONS = (
+    _EXPECTED_ORIGIN_BATTERY_ROLE_DECLARATIONS
+)
+
+
+def _battery_target_role(entity: str, family: str, target: str) -> int:
+    """Return the terminal comparison role authorized for one target."""
+
+    return _EXPLICIT_ORIGIN_BATTERY_ROLE_DECLARATIONS.get(
+        (entity, family, target),
+        0,
+    )
+
+
 def _surface_target_keys(
     surface: TargetFamilies,
 ) -> tuple[tuple[str, str, str, int], ...]:
     return tuple(
         sorted(
-            (entity, family, target, 0)
+            (entity, family, target, _battery_target_role(entity, family, target))
             for entity, families in surface.items()
             for family, targets in families.items()
             for target in targets
@@ -2126,7 +2159,7 @@ def _plan_target_keys(
 ) -> tuple[tuple[str, str, str, int], ...]:
     return tuple(
         sorted(
-            (entity, family, target, 0)
+            (entity, family, target, _battery_target_role(entity, family, target))
             for direction in plan
             for entity, families in direction.target_families.items()
             for family, targets in families.items()
@@ -2962,11 +2995,97 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
 )
 
 
+def _validate_explicit_origin_battery_role_declarations(
+    declarations: Mapping[tuple[str, str, str], int] | None = None,
+) -> None:
+    """Require exactly the two PUF-owned SSTB terminal comparison roles."""
+
+    role_declarations = (
+        _EXPLICIT_ORIGIN_BATTERY_ROLE_DECLARATIONS
+        if declarations is None
+        else declarations
+    )
+    if not isinstance(role_declarations, Mapping):
+        raise RuntimeError("Battery role declarations must be a mapping.")
+
+    malformed = sorted(
+        repr(key)
+        for key in role_declarations
+        if not isinstance(key, tuple)
+        or len(key) != 3
+        or any(not isinstance(value, str) or not value for value in key)
+    )
+    if malformed:
+        raise RuntimeError(
+            "Battery role declarations contain malformed target keys: "
+            f"{malformed}."
+        )
+
+    invalid_roles = sorted(
+        (key, role)
+        for key, role in role_declarations.items()
+        if isinstance(role, bool)
+        or not isinstance(role, int)
+        or role != PUF_TAX_DETAIL_CLONE_INDEX
+    )
+    if invalid_roles:
+        raise RuntimeError(
+            "Battery role declarations may assign only the PUF-detail clone "
+            f"role {PUF_TAX_DETAIL_CLONE_INDEX}; got {invalid_roles}."
+        )
+
+    puf_person_outputs = frozenset(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS)
+    outside_qbi_person_boundary = sorted(
+        key
+        for key in role_declarations
+        if key[0] != "person"
+        or key[1] != "puf_tax_itemization"
+        or key[2] not in US_QBI_BOOLEAN_OUTPUT_COLUMNS
+        or key[2] not in puf_person_outputs
+    )
+    if outside_qbi_person_boundary:
+        raise RuntimeError(
+            "Battery role declarations require person/puf_tax_itemization "
+            "targets in both the QBI boolean outputs and the primary-PUF "
+            f"person boundary; got {outside_qbi_person_boundary}."
+        )
+
+    actual = dict(role_declarations)
+    expected = dict(_EXPECTED_ORIGIN_BATTERY_ROLE_DECLARATIONS)
+    if actual != expected:
+        missing = sorted(set(expected) - set(actual))
+        extra = sorted(set(actual) - set(expected))
+        changed = sorted(
+            (key, expected[key], actual[key])
+            for key in set(expected) & set(actual)
+            if actual[key] != expected[key]
+        )
+        raise RuntimeError(
+            "Battery role declarations must exactly equal the two authorized "
+            f"SSTB targets; missing={missing}, extra={extra}, changed={changed}."
+        )
+
+    declared_metric_targets = {
+        (entity, family, column)
+        for metric_declarations in (
+            _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS.values()
+        )
+        for entity, family, column in metric_declarations
+    }
+    outside_metric_registry = sorted(set(actual) - declared_metric_targets)
+    if outside_metric_registry:
+        raise RuntimeError(
+            "Battery role declarations name targets outside the explicit metric "
+            f"declarations: {outside_metric_registry}."
+        )
+
+
 def _explicit_origin_battery_metric_registry(
     surface: TargetFamilies,
 ) -> Mapping[tuple[str, str, str, int], str]:
+    _validate_explicit_origin_battery_role_declarations()
     registry = {
-        (entity, family, column, 0): metric
+        (entity, family, column, _battery_target_role(entity, family, column)): metric
         for metric, declarations in _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS.items()
         for entity, family, column in declarations
     }
@@ -3174,7 +3293,13 @@ def _restrict_surface_to_declared_targets(
             retained = tuple(
                 target
                 for target in targets
-                if (entity, family, target, 0) in declared_keys
+                if (
+                    entity,
+                    family,
+                    target,
+                    _battery_target_role(entity, family, target),
+                )
+                in declared_keys
             )
             if retained:
                 restricted.setdefault(entity, {})[family] = retained
@@ -3335,7 +3460,14 @@ def _direction_target_index(
         for entity, families in direction.target_families.items():
             for family, targets in families.items():
                 for target in targets:
-                    index[(entity, family, target, 0)] = direction
+                    index[
+                        (
+                            entity,
+                            family,
+                            target,
+                            _battery_target_role(entity, family, target),
+                        )
+                    ] = direction
     return index
 
 
@@ -6237,9 +6369,7 @@ def _validate_late_callback_output_metric_families(
     """Fail closed when a callback materializes a registered output incorrectly."""
 
     declared_by_column: dict[tuple[str, str], list[tuple[str, str]]] = {}
-    for (entity, family, column, clone_index), metric in metric_registry.items():
-        if clone_index != 0:
-            continue
+    for (entity, family, column, _clone_index), metric in metric_registry.items():
         declared_by_column.setdefault((entity, column), []).append((family, metric))
 
     failures: list[str] = []
@@ -8724,8 +8854,20 @@ def _transfer_stacked_post_puf_inputs_evaluate(
             frame,
             entity=entity,
             target=target,
-            puf_produced=(entity, family, target, 0) in puf_producer_keys,
-            source_produced=(entity, family, target, 0) in source_producer_keys,
+            puf_produced=(
+                entity,
+                family,
+                target,
+                _battery_target_role(entity, family, target),
+            )
+            in puf_producer_keys,
+            source_produced=(
+                entity,
+                family,
+                target,
+                _battery_target_role(entity, family, target),
+            )
+            in source_producer_keys,
         )
         for entity, families in surface.items()
         for family, targets in families.items()
@@ -8896,7 +9038,12 @@ def _verify_post_puf_transfer_activation_authority(
         for family, targets in families.items():
             for target in targets:
                 label = f"post_puf_transfer/{entity}/{family}/{target}"
-                key = (entity, family, target, 0)
+                key = (
+                    entity,
+                    family,
+                    target,
+                    _battery_target_role(entity, family, target),
+                )
                 puf_produced = key in puf_producer_keys
                 source_produced = key in source_producer_keys
                 producer_rows = _post_puf_producer_mask(
@@ -8966,7 +9113,12 @@ def _verify_post_puf_transfer_outcome(
         for family, family_targets in families.items():
             for target in family_targets:
                 label = f"post_puf_transfer/{entity}/{family}/{target}"
-                key = (entity, family, target, 0)
+                key = (
+                    entity,
+                    family,
+                    target,
+                    _battery_target_role(entity, family, target),
+                )
                 puf_produced = key in puf_producer_keys
                 source_produced = key in source_producer_keys
                 producer_rows = _post_puf_producer_mask(

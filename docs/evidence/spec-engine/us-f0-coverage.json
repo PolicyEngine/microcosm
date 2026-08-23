@@ -1806,11 +1806,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "3dec9ba965fd5fbfc6f2a6dabf07da21e51182806b339097ca979a6ac7bfd046"
+          "sha256": "02dc155fc52b5abbec379d0da92cae06a072ec09115f70e42f576f6057d09d89"
         },
         "failures": [],
         "observed": {
-          "sha256": "3dec9ba965fd5fbfc6f2a6dabf07da21e51182806b339097ca979a6ac7bfd046"
+          "sha256": "02dc155fc52b5abbec379d0da92cae06a072ec09115f70e42f576f6057d09d89"
         },
         "status": "covered"
       },
@@ -1852,7 +1852,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "1bccda60109864a258e7119d6bc898b73ca04b64bcffe512117745ef00f002f1"
+          "sha256": "eda339e847775a4dbb260d4d2906866d1dfe7911355e2c3efe15e4d61c16dfa0"
         },
         "failures": [],
         "observed": {
@@ -1875,7 +1875,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "1bccda60109864a258e7119d6bc898b73ca04b64bcffe512117745ef00f002f1"
+          "sha256": "eda339e847775a4dbb260d4d2906866d1dfe7911355e2c3efe15e4d61c16dfa0"
         },
         "status": "covered"
       },
@@ -2438,7 +2438,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "b76480d057fcc139dda0f9e05d4da0bee945adf7640b2138430ef765e6da6b6c"
+      "spec_sha256": "5780b4d4b4c4c3d60157eae87f8e7b1222357bba35c78de3c7183a7a3c176188"
     }
   },
   "report_schema_version": 3,
@@ -2448,7 +2448,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "b76480d057fcc139dda0f9e05d4da0bee945adf7640b2138430ef765e6da6b6c"
+    "spec_sha256": "5780b4d4b4c4c3d60157eae87f8e7b1222357bba35c78de3c7183a7a3c176188"
   },
   "status": "pass"
 }

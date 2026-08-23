@@ -2,8 +2,8 @@
 
 ## State
 
-This commit establishes reproducible ownership evidence for all eight red QBI
-amount checks. The SHA-verified failed-attempt checkpoints, thirteen bank
+The ownership evidence and the supported two-check terminal-role correction
+are implemented. The SHA-verified failed-attempt checkpoints, thirteen bank
 targets, publication manifest/gates, late-transfer receipt, exact comparator
 metrics, 52 target-pattern regime cells, and nine coupled invariants validate
 as one closed evidence artifact. The canonical extractor is fail-before-write,
@@ -18,6 +18,13 @@ copy omits its origin channel. The coupled refit plan records the structural
 1% diagnostics and whole-pool acceptance harness needed before a safe amount
 surface change; no unsupported amount-model change is included here.
 
+The battery now compares exactly
+`sstb_self_employment_income_would_be_qualified` and `business_is_sstb` on the
+PUF-detail clone-1 role. Every other physical target remains on clone 0. The
+role declaration is immutable and fail-closed, the live/spec contracts preserve
+the registered role, and duplicate registration of one physical target across
+roles is rejected.
+
 No gate, band, ceiling, fold, seed, exclusion, build artifact, or logbook chain
 has been changed. This lane has started no pool build; the headless order assigns
 all builds to the host queue.
@@ -25,9 +32,10 @@ all builds to the host queue.
 ## Done
 
 - Inspected salvage commits `03e23e42`, `21f95b71`, `8942ef97`, and newest
-  `321b3185`. The newest snapshot supersedes the others; recovered source,
-  tests, and docs match it byte-for-byte. Its four evidence assets are deferred
-  from the prerequisite commit.
+  `321b3185`. Recovered the regime/origin receipt implementation and useful
+  tests; superseded stale wrappers, journal placeholders, unsafe SHA-skipped
+  evidence, and the conflation of terminal provenance with first-failing-stage
+  ownership.
 - Ran the mandated `uv sync --all-packages --extra us` successfully with a
   sandbox-writable uv cache.
 - Audited the adjudication's workstream-5, remediation-order, reviewed-
@@ -62,17 +70,28 @@ all builds to the host queue.
 - Completed the evidence gate: frame 294 passed/36 skipped; fit 93 passed;
   calibrate 201 passed; data 275 passed/1 skipped; build 5,981 passed/39
   skipped; Ruff and `git diff --check` clean.
+- Implemented the adjudicated terminal-role fix as an exact-two authority:
+  only the two SSTB boolean checks use PUF-detail clone 1. Added fail-closed
+  role scope, role-aware surface/plan/metric/transfer/comparator construction,
+  live/spec contract validation, authority repins, and direct regressions.
+- The focused terminal-role suite is green: 424 passed. The four non-build
+  package shards are also green: frame 294 passed/36 skipped; fit 93 passed;
+  calibrate 201 passed; data 275 passed/1 skipped.
+- The exhaustive build-package gate is green over all 255 sorted test files:
+  5,997 passed, 39 skipped. The monolithic command twice exceeded the
+  execution service's one-hour foreground ceiling without a reported failure,
+  so coverage was completed as ten deterministic, disjoint file slices with
+  unchanged tests and thresholds. Ruff and `git diff --check` are clean.
 
 ## Next
 
-1. Implement the separate exact-two SSTB terminal-role authority fix on this
-   ownership evidence: assign only `business_is_sstb` and
-   `sstb_self_employment_income_would_be_qualified` to clone 1, regenerate the
-   battery contract, repin authority receipts, and commit it behind another
-   full gate.
-2. Recheck every documentation `module:line` citation after the role-aware
-   source edits, write `FINAL_REPORT.md`, and leave both journals current.
-3. Hand the amount-surface diagnostic/refit to the host queue: instrument and
+1. Commit the fully gated exact-two terminal-role correction.
+2. Semantically integrate current `origin/main`, preserving both its selected
+   post-transfer-calibration evidence and this lane's all-target origin/regime
+   contract under a fresh authority version; repin and rerun the full gate.
+3. Recheck every documentation `module:line` citation after integration,
+   replace `FINAL_REPORT.md`, and leave both journals current.
+4. Hand the amount-surface diagnostic/refit to the host queue: instrument and
    compare the frozen 1% baseline first; run the 25% certification only after
    the 1% structural change clears all eight checks and nine invariants.
 

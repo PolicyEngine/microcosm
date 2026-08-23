@@ -43,6 +43,7 @@ def derive_battery_registry_views(document: Mapping[str, object]) -> dict[str, o
     ]
     surface: dict[str, dict[str, list[str]]] = {}
     seen: set[tuple[str, str, str, int]] = set()
+    physical_seen: set[tuple[str, str, str]] = set()
     for index, row in enumerate(registry):
         try:
             key = (
@@ -60,11 +61,13 @@ def derive_battery_registry_views(document: Mapping[str, object]) -> dict[str, o
                 f"battery/metric_registry/{index}: duplicate metric key {key!r}"
             )
         seen.add(key)
-        if key[3] != 0:
+        physical_key = key[:3]
+        if physical_key in physical_seen:
             raise SpecValidationError(
-                "battery/metric_registry/"
-                f"{index}/clone_index: generation-0 declared surface requires 0"
+                f"battery/metric_registry/{index}: duplicate physical target "
+                f"{physical_key!r} across clone roles"
             )
+        physical_seen.add(physical_key)
         surface.setdefault(key[0], {}).setdefault(key[1], []).append(key[2])
 
     metric_counts = dict(

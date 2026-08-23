@@ -2006,7 +2006,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "b76480d057fcc139dda0f9e05d4da0bee945adf7640b2138430ef765e6da6b6c",
+            "spec_sha256": "5780b4d4b4c4c3d60157eae87f8e7b1222357bba35c78de3c7183a7a3c176188",
         },
     }
 
@@ -2209,7 +2209,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "b76480d057fcc139dda0f9e05d4da0bee945adf7640b2138430ef765e6da6b6c",
+        "spec_sha256": "5780b4d4b4c4c3d60157eae87f8e7b1222357bba35c78de3c7183a7a3c176188",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -2947,7 +2947,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     current = identity()
     pool_code = current["pool_code"]
     assert current["materializer_version"] == 11
-    assert current["stacked_authority"]["version"] == 10
+    assert current["stacked_authority"]["version"] == 11
     assert pool_code["operator_order"] == [
         "assemble_stacked_spine",
         "prepare_multispine_source_inputs_for_clone",

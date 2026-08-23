@@ -8,6 +8,7 @@ from dataclasses import fields, is_dataclass
 
 import pytest
 
+import microcosm.build.us_runtime.stacked_spine as stacked_spine
 from microcosm.build.spec_engine import ResourceKind, load_bundle
 from microcosm.build.spec_engine.battery_semantics import (
     derive_battery_registry_views,
@@ -140,3 +141,79 @@ def test_battery_registry_projection_refuses_duplicate_keys(
     mutated["metric_registry"].append(deepcopy(mutated["metric_registry"][0]))
     with pytest.raises(SpecValidationError, match="duplicate metric key"):
         derive_battery_registry_views(mutated)
+
+
+def test_battery_registry_projection_accepts_nonzero_clone_role(
+    battery: dict[str, object],
+) -> None:
+    mutated = deepcopy(battery)
+    row = next(
+        item for item in mutated["metric_registry"] if item["clone_index"] == 0
+    )
+    row["clone_index"] = 1
+
+    views = derive_battery_registry_views(mutated)
+
+    assert views["declared_surface"] == _json_ready(CANONICAL_STACKED_DECLARED_SURFACE)
+
+
+def test_battery_registry_projection_refuses_physical_target_across_roles(
+    battery: dict[str, object],
+) -> None:
+    mutated = deepcopy(battery)
+    duplicate = deepcopy(mutated["metric_registry"][0])
+    duplicate["clone_index"] = int(duplicate["clone_index"]) + 1
+    mutated["metric_registry"].append(duplicate)
+
+    with pytest.raises(SpecValidationError, match="duplicate physical target"):
+        derive_battery_registry_views(mutated)
+
+
+def test_live_battery_contract_emits_registered_nonzero_clone_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = stacked_spine_authority_receipt()
+    mutated = dict(CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY)
+    source_key = next(key for key in sorted(mutated) if key[3] == 0)
+    entity, family, column, _clone_index = source_key
+    metric = mutated.pop(source_key)
+    mutated[(entity, family, column, 1)] = metric
+    monkeypatch.setattr(
+        stacked_spine,
+        "CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY",
+        mutated,
+    )
+    monkeypatch.setattr(
+        stacked_spine,
+        "stacked_spine_authority_receipt",
+        lambda: authority,
+    )
+
+    contract = build_live_stacked_battery_contract()
+    rows = [
+        row
+        for row in contract["metric_registry"]
+        if (row["entity"], row["family"], row["column"])
+        == (entity, family, column)
+    ]
+
+    assert len(rows) == 1
+    assert rows[0]["clone_index"] == 1
+
+
+def test_live_battery_contract_refuses_physical_target_across_roles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mutated = dict(CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY)
+    source_key = next(iter(mutated))
+    entity, family, column, clone_index = source_key
+    duplicate_role = clone_index + 1
+    mutated[(entity, family, column, duplicate_role)] = mutated[source_key]
+    monkeypatch.setattr(
+        stacked_spine,
+        "CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY",
+        mutated,
+    )
+
+    with pytest.raises(RuntimeError, match="duplicate physical target"):
+        build_live_stacked_battery_contract()
