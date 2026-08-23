@@ -58,7 +58,7 @@ def _unit_draw(source_id: object, seed: int, stream: str) -> float:
     """Deterministic uniform in [0, 1) keyed on a stable identity."""
 
     digest = hashlib.sha256(
-        f"uk_age_tail:{stream}:{seed}:{source_id}".encode("utf-8")
+        f"uk_age_tail:{stream}:{seed}:{source_id}".encode()
     ).digest()
     return int.from_bytes(digest[:8], "big") / float(1 << 64)
 

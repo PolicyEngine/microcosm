@@ -36,7 +36,7 @@ import hashlib
 import json
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,8 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
 )
 from microcosm.build.uk_runtime.age_tail import disaggregate_uk_age_top_code
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.diagnostics import write_uk_calibration_diagnostics
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
@@ -65,7 +67,6 @@ from microcosm.build.uk_runtime.national_build import (
     load_uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
     _CalibrationFrameAdapter,
@@ -73,7 +74,6 @@ from microcosm.build.uk_runtime.national_calibration import (
     _post_solve_calibration_record,
     national_calibration_mass_reason,
 )
-from microcosm.build.uk_runtime.diagnostics import write_uk_calibration_diagnostics
 from microcosm.build.uk_runtime.national_doctrine import (
     UK_NATIONAL_SOLVE_DOCTRINE,
     uk_national_target_loss_weights,
@@ -780,7 +780,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     started_at = time.perf_counter()
-    started_ts = datetime.now(timezone.utc)
+    started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
 
     # --- 1. verify inputs -------------------------------------------------
