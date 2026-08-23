@@ -46,11 +46,19 @@ without inventing a path, pin, or owner ruling.
   resumes a gate-failed pool from checkpoints, samples process-tree RSS, keeps
   append-only logs, remains off-chain, and stops sparse at the owner ruling.
 - Passed Bash 3.2 syntax, ShellCheck, and whitespace checks for the launcher.
+- Ran the committed launcher in real `--dry-run` mode at `6327ec02`; all input
+  hashes, the SCF Stata header, parser flags, and rendered commands passed. The
+  full exit-0 transcript is committed in
+  `experiments/candidate_25pct/dry_run_r4.md`.
+- Attempted the required host-path installation. The managed sandbox denied
+  creation of `_buildo-runtime/out/candidate-25` as outside its writable roots,
+  so the receipt uses the byte-identical committed canonical launcher and does
+  not claim that the external copy exists.
 
 ## Next
 
-1. Install the byte-identical launcher at the requested host output path and
-   run a real `--dry-run` without starting either builder.
-2. Commit the round-4 dry-run receipt, lane notes, final progress state, and
-   `FINAL_REPORT.md`. Do not push, publish, promote, tune, or touch pending
-   logbook-chain state.
+1. Write and commit `_LANE-NOTES.md` with evidence-backed wall/RSS envelopes
+   and the exact launch action, including the one host-copy prerequisite forced
+   by the managed filesystem boundary.
+2. Commit the final progress state and `FINAL_REPORT.md`. Do not push, publish,
+   promote, tune, or touch pending logbook-chain state.
