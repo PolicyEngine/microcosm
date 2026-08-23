@@ -49,6 +49,7 @@ stop.
 - Stopped later-input recovery, as required, before any SCF download,
   incumbent-diagnostics generation, frozen-surface compilation, host-script
   creation, or dry-run.
+- Wrote the final round-2 handoff to `FINAL_REPORT.md`.
 
 ## Next
 
