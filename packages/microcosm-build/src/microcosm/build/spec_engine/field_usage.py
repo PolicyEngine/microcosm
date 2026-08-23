@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_260
+EXPECTED_AUTHORED_FIELD_COUNT = 32_684
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_651
-EXPECTED_CONFIGURATION_FIELD_COUNT = 41_911
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_335
 
 
 class FieldUsageError(AssertionError):
@@ -205,7 +205,12 @@ def _claim_rows(
     if claim.pointer_class == "family_concept_validation":
         return [row for row in rows if is_concept_validation(row[0])]
     if claim.pointer_class == "pipeline_legacy":
-        return [row for row in rows if "/execution_stages/" not in row[0]]
+        return [
+            row
+            for row in rows
+            if "/execution_stages/" not in row[0]
+            and "/final_h5_member_inventory/" not in row[0]
+        ]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -457,6 +462,10 @@ _PINS: dict[str, tuple[int, str]] = {
     "spine_pipeline_execution_stages": (
         23,
         "70cb14ea5d371672ad15b81fd1f297d77a62866b4b262d0f2de0140f0c0e8c04",
+    ),
+    "spine_pipeline_final_h5_member_inventory": (
+        424,
+        "6a29ef24152387f8b7e67c877f913d24130c108d40614b9f6fd105f41ad4c035",
     ),
     "spine_sampling": (
         17,
@@ -855,6 +864,19 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
             "execution_abi",
         )
     )
+    claims.append(
+        _claim(
+            "spine_pipeline_final_h5_member_inventory",
+            (
+                f"{_A}/spec~1spine.yaml/pipeline_contract/"
+                "final_h5_member_inventory"
+            ),
+            UsageMode.COMPILER_SEMANTIC,
+            _NO_EFFECT,
+            "compiler_ir.execution_abi.final_h5_member_inventory",
+            "final_h5_member_inventory",
+        )
+    )
 
     claims.extend(
         [
@@ -1225,6 +1247,26 @@ def _verify_execution_abi(
             )
 
 
+def _verify_final_h5_member_inventory(
+    context: _VerificationContext,
+    claim: UsageClaim,
+) -> None:
+    _verify_compiled_domain(context, claim)
+    _, source = _pointer_value(context.sources, claim.source_prefix)
+    execution_abi = _wire(context.compiled.execution_abi)
+    if not isinstance(source, Mapping) or not isinstance(execution_abi, Mapping):
+        raise FieldUsageError(
+            "spine_pipeline_final_h5_member_inventory: objects required"
+        )
+    pipeline = execution_abi.get("pipeline")
+    if not isinstance(pipeline, Mapping) or (
+        pipeline.get("final_h5_member_inventory") != source
+    ):
+        raise FieldUsageError(
+            "spine_pipeline_final_h5_member_inventory: compiler authority differs"
+        )
+
+
 def _verify_compiled_domain(context: _VerificationContext, claim: UsageClaim) -> None:
     kind = ResourceKind(_domain_kind(claim))
     _, source = _pointer_value(context.sources, claim.source_prefix)
@@ -1446,6 +1488,9 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
             context, claim
         ),
         "execution_abi": lambda: _verify_execution_abi(context, claim),
+        "final_h5_member_inventory": lambda: _verify_final_h5_member_inventory(
+            context, claim
+        ),
         "catalog_columns": lambda: _verify_catalog_columns(context, claim),
         "catalog_waivers": lambda: _verify_catalog_waivers(context, claim),
         "imputation_validation": lambda: _verify_imputation_validation(context, claim),

@@ -3282,3 +3282,571 @@ red seen during verification was re-run solo before judgment.
 - Maximum RSS across every run in this continuation: 11.13 GiB
   (`microcosm-data`), under the 15 GiB lane ceiling. No pool build, sample
   rung, Logbook operation, exclusion, publication, or push occurred.
+
+## F1 certification comparator closure kickoff (2026-08-22)
+
+### State
+
+- This continuation runs only on `spec-engine-f1-cert` at opening HEAD
+  `7d4a60dc`. It owns the certification runner and the comparator's node-reuse,
+  final-H5 member-closure, and calibration-scope evidence gaps. It will not
+  edit the concurrently owned brokered-QRF draw path.
+- No pool build, sample rung, Logbook operation, publication, or push has run.
+  The owner-host queue retains exclusive ownership of the four certification
+  builds.
+- Normative byte identity, the sealed D4 receipt canonicalization vector, and
+  the 72-site seed-ledger binding remain unchanged during diagnosis.
+
+### Done
+
+- Loaded the repository guide and debugging workflow, then attempted the
+  required US-extra sync. The global cache was sandbox-refused; the isolated
+  cache retry reached the network boundary while downloading locked NumPy.
+- Read the approved F1 charter, recovered the removed R6 owner snapshot from
+  Git object `1997107e4d061764bbb2c1e0d9a38991fb47f5e0`, and read the current
+  journals, final output, runner, and typed comparator before code changes.
+- Confirmed the comparator reports all three items through its typed
+  vector-coverage gate. Overall PASS requires all three completeness facts as
+  well as the independently executed within- and cross-mode comparisons
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1349-1370`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1382-1444`).
+- Started three independent read-only source traces, one per item. GitNexus
+  graph resources are unavailable, so every conclusion will be confirmed from
+  source and tests with module:line citations.
+
+### Next
+
+1. Establish a memory-bounded green package-suite and Ruff baseline, then
+   commit this opening state in `PROGRESS.md` and this journal.
+2. Resolve each item independently: implement and regress unambiguous code
+   fixes; write a costed D4 memo and stop that item if owner judgment is
+   required.
+3. Refresh the owner-host command handoff for the `spec-engine-f1-cert` branch
+   and write the final report to `FINAL_REPORT.md` without launching builds.
+
+## F1 certification comparator closure host handoff (2026-08-22)
+
+### Scope and preflight
+
+This replaces the historical r6 handoff at lines 2574--2791 for any new owner
+run. It keeps the four pool builds in constants A, constants B, bundle A,
+bundle B order. It does not add downstream calibration children because the
+owner has not selected CAL-A in `_F1-CERTIFICATION-DECISION-MEMO.md`. No command
+in this section was run from the under-15-GiB certification lane.
+
+Run every fenced block in this section, in order, in one persistent `zsh`
+session on the serial high-memory owner host; the blocks are not standalone
+snippets. The branch is local-only under the no-push order, so the owner must
+first make the final local `spec-engine-f1-cert` ref available in this exact
+worktree. The preflight captures that branch tip and rechecks it before every
+role. It also refuses any tracked or untracked dirt.
+
+```zsh
+set -euo pipefail
+
+readonly F1_CERT_WORKTREE='/Users/maxghenis/PolicyEngine/_worktrees/microcosm-f1-cert'
+cd "$F1_CERT_WORKTREE"
+
+[[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
+  print -u2 'F1 certification checkout is not tracked-clean'
+  exit 2
+}
+git switch --no-guess spec-engine-f1-cert
+[[ "$(git branch --show-current)" == 'spec-engine-f1-cert' ]]
+readonly F1_CERT_COMMIT="$(git rev-parse --verify 'HEAD^{commit}')"
+[[ "$(git rev-parse --verify 'refs/heads/spec-engine-f1-cert^{commit}')" == \
+  "$F1_CERT_COMMIT" ]]
+
+uv sync --all-packages --extra us
+
+f1_assert_checkout() {
+  [[ "$PWD" == "$F1_CERT_WORKTREE" ]] &&
+    [[ "$(git branch --show-current)" == 'spec-engine-f1-cert' ]] &&
+    [[ "$(git rev-parse --verify 'HEAD^{commit}')" == "$F1_CERT_COMMIT" ]] &&
+    [[ "$(git rev-parse --verify 'refs/heads/spec-engine-f1-cert^{commit}')" == \
+      "$F1_CERT_COMMIT" ]] &&
+    [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]]
+}
+f1_assert_checkout
+
+readonly F1_CERT_ROOT='/absolute/host/path/us-f1-certification-f1-cert'
+[[ "$F1_CERT_ROOT" == /* ]]
+case "$F1_CERT_ROOT/" in
+  "$F1_CERT_WORKTREE"/*)
+    print -u2 'F1 certification output root must be outside the worktree'
+    exit 2
+    ;;
+esac
+[[ ! -e "$F1_CERT_ROOT" ]]
+```
+
+Bind the six authenticated pool inputs. Their SHA-256 values are the compiler
+source pins at `packages/microcosm-build/src/microcosm/build/us/spec/sources.yaml:3-71`;
+only the absolute paths are host-specific.
+
+```zsh
+readonly F1_ASEC_RAW_STAGE_H5='/absolute/path/asec-raw-stage.h5'
+readonly F1_ASEC_RAW_STAGE_H5_SHA256='51e9fafcd6f16140018fa90c7afbeb6d79008bfc8c122e437d23a399b30553fe'
+readonly F1_ACS_HOUSEHOLD_ZIP='/absolute/path/acs-household.zip'
+readonly F1_ACS_HOUSEHOLD_ZIP_SHA256='8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0'
+readonly F1_ACS_PERSON_ZIP='/absolute/path/acs-person.zip'
+readonly F1_ACS_PERSON_ZIP_SHA256='afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894'
+readonly F1_ACS_RENT_H5='/absolute/path/acs-rent.h5'
+readonly F1_ACS_RENT_H5_SHA256='0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4'
+readonly F1_PUF_H5='/absolute/path/puf.h5'
+readonly F1_PUF_H5_SHA256='7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df'
+readonly F1_PUF_SOURCE_YEAR_CSV='/absolute/path/puf-source-year.csv'
+readonly F1_PUF_SOURCE_YEAR_CSV_SHA256='0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df'
+
+case "$F1_CERT_ROOT" in
+  /absolute/host/path/*)
+    print -u2 'Replace the F1_CERT_ROOT placeholder before running the handoff'
+    exit 2
+    ;;
+esac
+for F1_POOL_INPUT in \
+  "$F1_ASEC_RAW_STAGE_H5" \
+  "$F1_ACS_HOUSEHOLD_ZIP" \
+  "$F1_ACS_PERSON_ZIP" \
+  "$F1_ACS_RENT_H5" \
+  "$F1_PUF_H5" \
+  "$F1_PUF_SOURCE_YEAR_CSV"; do
+  case "$F1_POOL_INPUT" in
+    /absolute/path/*)
+      print -u2 "Replace source placeholder before running: $F1_POOL_INPUT"
+      exit 2
+      ;;
+  esac
+done
+unset F1_POOL_INPUT
+
+f1_assert_sha256() {
+  local path="$1" expected="$2" observed
+  [[ -f "$path" ]]
+  observed="$(shasum -a 256 "$path" | awk '{print $1}')"
+  [[ "$observed" == "$expected" ]]
+}
+
+f1_assert_sha256 "$F1_ASEC_RAW_STAGE_H5" "$F1_ASEC_RAW_STAGE_H5_SHA256"
+f1_assert_sha256 "$F1_ACS_HOUSEHOLD_ZIP" "$F1_ACS_HOUSEHOLD_ZIP_SHA256"
+f1_assert_sha256 "$F1_ACS_PERSON_ZIP" "$F1_ACS_PERSON_ZIP_SHA256"
+f1_assert_sha256 "$F1_ACS_RENT_H5" "$F1_ACS_RENT_H5_SHA256"
+f1_assert_sha256 "$F1_PUF_H5" "$F1_PUF_H5_SHA256"
+f1_assert_sha256 "$F1_PUF_SOURCE_YEAR_CSV" "$F1_PUF_SOURCE_YEAR_CSV_SHA256"
+
+[[ ! -e "$F1_CERT_ROOT" ]]
+mkdir -p "$F1_CERT_ROOT/logs" "$F1_CERT_ROOT/gate-diffs"
+git show --no-patch \
+  --format='branch=spec-engine-f1-cert%ncommit=%H%ncommit_time=%cI%nsubject=%s' \
+  "$F1_CERT_COMMIT" > "$F1_CERT_ROOT/source-checkout.txt"
+
+f1_assert_pool_inputs() {
+  f1_assert_sha256 "$F1_ASEC_RAW_STAGE_H5" "$F1_ASEC_RAW_STAGE_H5_SHA256"
+  f1_assert_sha256 "$F1_ACS_HOUSEHOLD_ZIP" "$F1_ACS_HOUSEHOLD_ZIP_SHA256"
+  f1_assert_sha256 "$F1_ACS_PERSON_ZIP" "$F1_ACS_PERSON_ZIP_SHA256"
+  f1_assert_sha256 "$F1_ACS_RENT_H5" "$F1_ACS_RENT_H5_SHA256"
+  f1_assert_sha256 "$F1_PUF_H5" "$F1_PUF_H5_SHA256"
+  f1_assert_sha256 "$F1_PUF_SOURCE_YEAR_CSV" "$F1_PUF_SOURCE_YEAR_CSV_SHA256"
+}
+```
+
+The runner claims an absent role root, starts one pool child, forces
+`--resume-policy forbid`, clone-attachment fraction 1.0, and the same seed for
+the sample and clone attachment (`tools/f1_certification_run.py:139-177`); its
+absent-root claim is fail-closed
+(`tools/f1_certification_run.py:372-392`). Write
+the documentation-only resume predicate, then run all four roles strictly
+sequentially:
+
+```zsh
+f1_assert_checkout
+.venv/bin/python tools/f1_certification_run.py resume-gate \
+  --mode bundle \
+  --sample-fraction 0.01 \
+  --seed 578 \
+  --output "$F1_CERT_ROOT/us-f1-resume-gate.md"
+
+f1_run_role() {
+  local mode="$1" role="$2"
+  local -a role_pipe_status
+  f1_assert_checkout
+  f1_assert_pool_inputs
+  [[ ! -e "$F1_CERT_ROOT/$role" ]]
+  set +e
+  env \
+    -u POPULACE_LOGBOOK_PREV_ROW_DIGEST \
+    -u POPULACE_LEDGER_URL \
+    -u POPULACE_LEDGER_KEY \
+    -u POPULACE_LEDGER_API_KEY \
+    /usr/bin/time -l \
+    .venv/bin/python tools/f1_certification_run.py run \
+    --mode "$mode" \
+    --sample-fraction 0.01 \
+    --seed 578 \
+    --output-root "$F1_CERT_ROOT/$role" \
+    --asec-raw-stage-h5 "$F1_ASEC_RAW_STAGE_H5" \
+    --asec-raw-stage-h5-sha256 "$F1_ASEC_RAW_STAGE_H5_SHA256" \
+    --acs-household-zip "$F1_ACS_HOUSEHOLD_ZIP" \
+    --acs-household-zip-sha256 "$F1_ACS_HOUSEHOLD_ZIP_SHA256" \
+    --acs-person-zip "$F1_ACS_PERSON_ZIP" \
+    --acs-person-zip-sha256 "$F1_ACS_PERSON_ZIP_SHA256" \
+    --acs-rent-h5 "$F1_ACS_RENT_H5" \
+    --acs-rent-h5-sha256 "$F1_ACS_RENT_H5_SHA256" \
+    --puf-h5 "$F1_PUF_H5" \
+    --puf-h5-sha256 "$F1_PUF_H5_SHA256" \
+    --puf-source-year-csv "$F1_PUF_SOURCE_YEAR_CSV" \
+    --puf-source-year-csv-sha256 "$F1_PUF_SOURCE_YEAR_CSV_SHA256" \
+    2>&1 | tee "$F1_CERT_ROOT/logs/$role.time.log"
+  role_pipe_status=("${pipestatus[@]}")
+  set -e
+  f1_assert_checkout
+  f1_assert_pool_inputs
+  if (( role_pipe_status[2] != 0 )); then
+    print -u2 "Log capture failed for $role; preserve the role root"
+    return 2
+  fi
+  return "${role_pipe_status[1]}"
+}
+
+f1_run_role constants constants-a
+f1_run_role constants constants-b
+f1_run_role bundle bundle-a
+f1_run_role bundle bundle-b
+```
+
+The baseline and pkg3 gates are diagnostic comparison inputs, never substitute
+authorities for the sealed comparator and never a license to tune or exclude a
+row. Their hashes were rechecked read-only in this lane before recording them:
+
+```zsh
+readonly F1_BASELINE_GATES='/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.gates.json'
+readonly F1_BASELINE_GATES_SHA256='1d6059868680f872fe04d452a536bcc3c215bafabb4c50d7740a469fe6a8b56a'
+readonly F1_PKG3_GATES='/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/pkg3/pool.gates.json'
+readonly F1_PKG3_GATES_SHA256='3ace0af0fd9e2ed6cb37cb110280f0c5cade182118c62737635c7ad177050ac3'
+
+f1_assert_sha256 "$F1_BASELINE_GATES" "$F1_BASELINE_GATES_SHA256"
+f1_assert_sha256 "$F1_PKG3_GATES" "$F1_PKG3_GATES_SHA256"
+{
+  print "baseline1pct_path=$F1_BASELINE_GATES"
+  print "baseline1pct_sha256=$F1_BASELINE_GATES_SHA256"
+  print "pkg3_path=$F1_PKG3_GATES"
+  print "pkg3_sha256=$F1_PKG3_GATES_SHA256"
+} > "$F1_CERT_ROOT/gate-reference-inputs.txt"
+
+f1_record_gate_diff() {
+  local role="$1" label="$2" reference="$3" status
+  f1_assert_checkout
+  f1_assert_sha256 "$F1_BASELINE_GATES" "$F1_BASELINE_GATES_SHA256"
+  f1_assert_sha256 "$F1_PKG3_GATES" "$F1_PKG3_GATES_SHA256"
+  [[ -f "$F1_CERT_ROOT/$role/pool.gates.json" ]]
+  if diff -u "$reference" "$F1_CERT_ROOT/$role/pool.gates.json" \
+      > "$F1_CERT_ROOT/gate-diffs/$role-vs-$label.diff"; then
+    status=0
+  else
+    status=$?
+  fi
+  (( status <= 1 ))
+  print "$status" > "$F1_CERT_ROOT/gate-diffs/$role-vs-$label.status"
+}
+
+for role in constants-a constants-b bundle-a bundle-b; do
+  f1_record_gate_diff "$role" baseline1pct "$F1_BASELINE_GATES"
+  f1_record_gate_diff "$role" pkg3 "$F1_PKG3_GATES"
+done
+```
+
+Finally run the four-receipt comparator. It requires four distinct paths and a
+current plan and writes both verdict files before its normal status 0 or 1
+return (`tools/f1_certification_run.py:210-249`). The CLI maps the enumerated
+comparison, certification, plan-lock, and OS input/execution errors to status 2;
+an unexpected Python exception is not caught by that mapping
+(`tools/f1_certification_run.py:448-459`). Therefore a status 0 or 1 is accepted
+as a D4 verdict only when both outputs exist and the JSON's typed `passed` fact
+agrees with that status. Status 1 remains an honest, retained FAIL while either
+owner-stopped item is unresolved; it is not a certification PASS.
+
+```zsh
+f1_assert_checkout
+[[ ! -e "$F1_CERT_ROOT/verdict" ]]
+set +e
+.venv/bin/python tools/f1_certification_run.py compare \
+  --constants-a "$F1_CERT_ROOT/constants-a/us-f1-build-receipt.json" \
+  --constants-b "$F1_CERT_ROOT/constants-b/us-f1-build-receipt.json" \
+  --bundle-a "$F1_CERT_ROOT/bundle-a/us-f1-build-receipt.json" \
+  --bundle-b "$F1_CERT_ROOT/bundle-b/us-f1-build-receipt.json" \
+  --output-root "$F1_CERT_ROOT/verdict" \
+  2>&1 | tee "$F1_CERT_ROOT/logs/comparator.log"
+F1_COMPARE_PIPE_STATUS=("${pipestatus[@]}")
+set -e
+F1_COMPARE_STATUS="${F1_COMPARE_PIPE_STATUS[1]}"
+F1_COMPARE_TEE_STATUS="${F1_COMPARE_PIPE_STATUS[2]}"
+f1_assert_checkout
+f1_assert_pool_inputs
+print "$F1_COMPARE_STATUS" > "$F1_CERT_ROOT/comparator.exit-status"
+print "$F1_COMPARE_TEE_STATUS" > "$F1_CERT_ROOT/comparator-tee.exit-status"
+
+if (( F1_COMPARE_TEE_STATUS != 0 )); then
+  print -u2 'Comparator log capture failed; preserve the root as an execution error'
+  exit 2
+fi
+
+f1_assert_verdict_outputs() {
+  if [[ ! -f "$F1_CERT_ROOT/verdict/us-f1-certification.json" || \
+        ! -f "$F1_CERT_ROOT/verdict/us-f1-certification.md" ]]; then
+    print -u2 'Comparator returned 0/1 without both verdict files; execution error'
+    return 2
+  fi
+}
+
+f1_recorded_verdict_status() {
+  .venv/bin/python - "$F1_CERT_ROOT/verdict/us-f1-certification.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    payload = json.load(stream)
+passed = payload.get("passed") if isinstance(payload, dict) else None
+if type(passed) is not bool:
+    raise SystemExit(2)
+print(0 if passed else 1)
+PY
+}
+
+case "$F1_COMPARE_STATUS" in
+  0|1)
+    if ! f1_assert_verdict_outputs; then
+      exit 2
+    fi
+    if ! F1_RECORDED_VERDICT_STATUS="$(f1_recorded_verdict_status)"; then
+      print -u2 'Comparator JSON has no typed passed verdict; execution error'
+      exit 2
+    fi
+    if [[ "$F1_RECORDED_VERDICT_STATUS" != "$F1_COMPARE_STATUS" ]]; then
+      print -u2 'Comparator exit status disagrees with its JSON verdict; execution error'
+      exit 2
+    fi
+    if (( F1_COMPARE_STATUS == 0 )); then
+      print 'D4 comparator PASS (status 0)'
+    else
+      print -u2 'D4 comparator emitted a well-formed FAIL; retain both verdict files'
+      exit 1
+    fi
+    ;;
+  2)
+    print -u2 'Comparator input/execution error; not a D4 verdict'
+    exit 2
+    ;;
+  *)
+    print -u2 "Unexpected comparator status $F1_COMPARE_STATUS"
+    exit 2
+    ;;
+esac
+```
+
+With `set -euo pipefail`, any failed timed role stops the sequence. The runner
+claims the absent role root before launching and returns a child failure without
+cleanup (`tools/f1_certification_run.py:139-145`,
+`tools/f1_certification_run.py:177-179`,
+`tools/f1_certification_run.py:372-392`). Preserve the entire failed
+`F1_CERT_ROOT`, choose a new absent sibling root, rerun preflight, and restart
+from constants A. Never delete or reuse a failed role root, mix roles from
+different attempts, overlap heavy children, or use the gate-reference diffs to
+override the sealed verdict. The existing cold f001 profiles remain
+78.91--96.95 GiB RSS (`_F1-LANE-NOTES.md:2764-2779`), so provision every pool
+child above the worst observed peak plus host margin.
+
+## F1 certification comparator closure implementation (2026-08-22)
+
+### Exact opening-head failures and disposition
+
+- **Node reuse — owner ruling, STOP.** Production still emits an empty node-id
+  inventory, `node_reuse_inventory_complete=False`, and an empty reuse-key map
+  (`tools/build_us_multispine_pool.py:6017-6025`,
+  `tools/build_us_multispine_pool.py:6042-6050`). The comparator requires the
+  exact compiler producer order for coverage and exact complete maps for both
+  within- and cross-mode comparison
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1574-1631`).
+  The runtime does not carry the semantic run/content/dependency/backend inputs
+  needed by `node_reuse_identity`; substituting static `CompiledNode.node_key`
+  or an operational journal would therefore be a false mechanism claim
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/executor.py:1523-1681`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/pool_physical_executor.py:1-15`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:9990-10003`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:10166-10229`). The
+  costed NR-A/NR-B decision and forbidden shortcuts are recorded in
+  `_F1-CERTIFICATION-DECISION-MEMO.md`.
+- **Final H5 — code/spec fix.** At opening commit `7d4a60dc`, the coverage
+  compiler deliberately returned `status=unsupported` and
+  `FINAL_H5_INVENTORY_NOT_COMPILED` after validating only the two logical H5
+  selector rows
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py@7d4a60dc:584-620`).
+  The opening comparator treated that status as container-incomplete
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py@7d4a60dc:2040-2102`),
+  so selector completeness and overall vector coverage could not pass. This was
+  missing compiler authority, not a D4 normalization question.
+- **Calibration — owner ruling, STOP.** The runner launches only the pool tool
+  and emits its receipt (`tools/f1_certification_run.py:139-207`); the producer
+  explicitly reports the normative calibration-weight vector absent
+  (`tools/build_us_multispine_pool.py:6017-6032`). The comparator rejects a
+  production `complete=True` claim until a sealed inventory exists
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2593-2638`),
+  while overall coverage still requires completion
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`).
+  D4 classifies calibration weights as normative raw bytes, so neither receipt
+  normalization nor exclusion can resolve an absent release artifact
+  (`_F1-CHARTER.md:156-179`,
+  `tools/build_us_fiscal_refresh_release.py:5727-5746`,
+  `tools/build_us_fiscal_refresh_release.py:11142-11148`). The
+  costed CAL-A/CAL-B decision and four-versus-eight-child consequence are in
+  `_F1-CERTIFICATION-DECISION-MEMO.md`.
+
+### Final-H5 implementation
+
+- Authored the reviewed declaration as 391 non-weight columns across person
+  320, household 23, tax unit 24, SPM unit 14, family 5, and marital unit 5.
+  With six table members and the household weight vector, the closed set is
+  exactly 398. A read-only source-schema falsification pass found and restored
+  six initially omitted tax-unit tail-provenance members. Baseline and pkg3
+  independently match the counts, but neither is authority. The required time
+  period and artifact-metadata roots are validated separately as bounded
+  headers and encoded into both logical selectors; they are not miscounted as
+  entity/weight members
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:973-1044`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1834-1886`).
+- The generator requires canonical strict JSON, the exact six source
+  id/SHA/byte-size triplets, typed-catalog containment, and the reviewed
+  cardinality before placing the inventory into the country spec
+  (`tools/us_bundle_generation/identity_contracts.py:50-187`). The generic
+  inventory validator owns canonical order, NFC strings, exact relationships,
+  selector weight naming, member count, member-set digest, and whole-inventory
+  digest (`packages/microcosm-build/src/microcosm/build/spec_engine/final_h5_inventory.py:210-468`).
+  The compiler independently rebinds every source triplet and the catalog
+  digest before emitting the inventory in compiler ABI v6/execution ABI v3 for
+  current US plans
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:42-45`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2128-2266`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2709-2763`).
+- The production coverage contract now carries that compiler inventory; its
+  result independently carries observed count/digest and exact missing/extra
+  rows. The scanner reads only fixed-storer schema axes and bounded one-row
+  headers, rejects unmodelled physical nodes, and never loads entity values
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:884-970`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:973-1295`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:1336-1377`).
+- One captured file identity is fenced into the locator registry immediately
+  before raw/logical collection and is then passed to physical closure
+  (`tools/build_us_multispine_pool.py:5993-6008`). Raw reads, logical H5 reads,
+  embedded metadata, and the scanner all require the same regular-file
+  device/inode/size/mtime/ctime tuple and verify the descriptor pandas actually
+  opened (`packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:186-304`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1012-1049`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1661-1789`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1834-1980`).
+- The comparator separately validates the contract and observed result,
+  reconstructs the observed member set from exact missing/extra rows,
+  recomputes its count/digest/status, and requires the contract inventory to be
+  exactly equal as validated canonical JSON values to the execution-plan inventory
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2060-2118`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2333-2456`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2742-2782`).
+  Normative artifact rows remain required and `raw_byte_exact`
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2513-2536`);
+  no receipt rule, seed site, gate, band, fold, or certification threshold was
+  changed.
+
+### Verification and integration boundary
+
+- Earlier focused final-H5, artifact-collection, artifact-comparison, compiler,
+  generator, field-ledger, pool-coverage and comparator batches were green. The
+  pool-coverage plus full comparator batch reports 63 passed at 2.14 GB peak
+  RSS; the independent same-file adversarial batch reports two passed at
+  0.434 GB. Generated coverage is 42,335/42,335 fields and 40/40 inventories;
+  `ruff check .` and `git diff --check` passed on that earlier tree.
+- Regressions cover missing/extra tables, columns and weight, malformed and raw
+  hidden HDF nodes, duplicate/noncanonical inventory, forged observed digest,
+  a valid but different plan inventory, symlinks, mutation, path replacement,
+  wrong pandas descriptor, bounded axes/headers, and prohibition on entity
+  value loads. The final audit additionally required two improvements now in
+  the tree: selector weight naming fails in the generic inventory validator,
+  and a one-row six-entity frame is written through the real production H5
+  writer then matched exactly to all 398 compiler members. The generic
+  inventory batch passed all 37 tests after the naming hardening, and the
+  production-writer regression passed alone after collection (1 passed in
+  319.77 s). The surrounding `/usr/bin/time -l` process returned 1 only because
+  the sandbox forbids its trailing `sysctl kern.clockrate` probe; pytest itself
+  reported PASS.
+- A final read-only diff audit found no false-green path. Its one current-tree
+  blocker is the expected stale generated compiler-ABI receipt; generation is
+  deliberately deferred until the sibling source is integrated. Its generic
+  schema note was closed by rejecting an empty ordinary-column mapping, and the
+  reviewed declaration/member digests are now explicit regression pins
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/final_h5_inventory.py:148-176`,
+  `packages/microcosm-build/tests/test_spec_engine_identity_contracts.py:90-103`).
+  The compiler authenticates the source triplets and catalog digest, while the
+  generator—not the runtime compiler—checks the raw declaration bytes.
+- The consolidated post-hardening inventory/compiler/collection/comparison/
+  coverage/comparator run passed every selected case except
+  `test_committed_report_is_current`, which rejected exactly that stale ABI
+  receipt (2.656 GB peak RSS, 1,057.61 s). The real-writer case was deselected
+  from this run because its separate post-hardening pass is recorded above.
+  This is not counted as a green batch; the receipt must be regenerated from
+  the final integrated source before the complete suite.
+- Whole-repository verification and any commit remain gated on the sibling
+  brokered-QRF repair landing. No pool/release build, push, publication, gate
+  diff, or host-handoff command was run from this lane.
+
+### Integrated final verification and commit gate (2026-08-23)
+
+- Integrated sibling commit `15ebddad792b12726de1369c1c712d3a38fced28`
+  exactly and restored this lane through a three-way application. A final
+  name-only audit confirms no brokered-QRF, quantile, or draw-path file differs
+  from that base. The generated US spec is current at
+  `e8543c545aea4ccca71605c1504e0c6c843c8eee6c8fefaf858cb888a73dbcec`;
+  coverage is 42,335/42,335 fields and 40/40 inventories.
+- A post-integration audit found that lower artifact collection/comparison
+  accepted any internally re-signed code-ABI domain. The compiler already
+  seals the intended v3 domain, and the two consumers now also demand that
+  exact domain before accepting its seal
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2709-2723`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/schema/locks.schema.json:705-739`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:626-673`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_comparison.py:814-910`).
+  Re-signed v2 regressions pass; this does not change the D4 vector, artifacts,
+  seed ledger, gates, bands, ceilings, folds, or exclusions.
+- Focused post-integration verification passed: final-H5/comparator batch 104
+  passed/1 deselected (2,346 MB peak), real production-writer regression 1
+  passed (2,135 MB), exact ABI-focused batch 3 passed (1,742 MB), full
+  comparator/domain batch 42 passed (1,720 MB), and the deterministic source
+  census 1 passed (1,672 MB). The census is 218 sources, 283 callsites, 120
+  bindings, 163 exemptions, 162 classifications, and the same 72 seed sites.
+- One monolithic build-suite diagnostic was behaviorally green (6,496 passed,
+  37 skipped) but reached 17,315,348,480 bytes RSS, above the lane ceiling, and
+  is not a compliant receipt. The exact same 265 sorted modules were therefore
+  run in 23 fresh serial groups (manifest SHA-256
+  `8fcdda505568587e4826cd23ef0acde5b157823aa27c83b655fbd9637bba2514`).
+  They reconciled exactly to 6,496 passed/37 skipped, with a maximum group RSS
+  of 8,335,998,976 bytes.
+- The remaining fresh-process suite ledger is: calibrate 201 passed at
+  478,822,400 bytes; data 275 passed/1 skipped at 12,082,708,480 bytes; fit 98
+  passed at 729,939,968 bytes; frame 294 passed/36 skipped at 6,970,884,096
+  bytes. Every compliant child stayed below 15 GiB. Repo-wide `ruff check .`,
+  `git diff --check`, generated US bundle `--check`, coverage `--check`, and
+  extracted host-handoff `zsh -n` all pass.
+- The exact comparator remains deliberately status 1 until the owner rules on
+  node reuse and calibration. Coverage requires the compiler's complete
+  producer inventory and exact keys, but production emits an empty/incomplete
+  node map
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1574-1631`,
+  `tools/build_us_multispine_pool.py:6017-6022`,
+  `tools/build_us_multispine_pool.py:6042-6050`). Production calibration is
+  likewise accepted only as the explicit incomplete sealed scope, while
+  overall coverage requires completion
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1962-2016`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2593-2638`,
+  `tools/build_us_multispine_pool.py:6025-6032`). The two costed owner options
+  and STOP boundaries remain in `_F1-CERTIFICATION-DECISION-MEMO.md`.
+- No pool or release build, push, publication, gate comparison, threshold
+  change, or owner-host command ran in this lane.

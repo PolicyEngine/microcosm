@@ -7,9 +7,16 @@ the production spec-engine does not import any of these constants.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
+from microcosm.build.spec_engine.canonical import canonical_json_bytes, sha256_json
+from microcosm.build.spec_engine.final_h5_inventory import (
+    build_final_h5_member_inventory,
+)
 from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
 from microcosm.build.us_runtime.h5_io import (
     US_STACKED_POOL_EXECUTION_STAGES,
@@ -40,6 +47,145 @@ _AUXILIARY_OPERATIONS = (
     "select_exact_k",
 )
 
+_FINAL_H5_COLUMNS_PATH = Path(__file__).with_name("final_h5_columns.json")
+_FINAL_H5_TABLES = (
+    "family",
+    "household",
+    "marital_unit",
+    "person",
+    "spm_unit",
+    "tax_unit",
+)
+_FINAL_H5_WEIGHTS = (
+    {"entity": "household", "column": "household_weight"},
+)
+_FINAL_H5_SOURCE_IDS = (
+    "acs_household",
+    "acs_person",
+    "acs_rent_donor",
+    "asec_raw_stage",
+    "processed_puf",
+    "puf_source_year",
+)
+
+
+def _strict_final_h5_columns(raw: bytes) -> dict[str, object]:
+    def pairs(values: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in values:
+            if key in result:
+                raise ValueError(f"duplicate final-H5 declaration key {key!r}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> object:
+        raise ValueError(f"non-finite final-H5 declaration value {value}")
+
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=pairs,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("Final-H5 declaration is not strict UTF-8 JSON.") from error
+    if not isinstance(value, dict):
+        raise ValueError("Final-H5 declaration must be a JSON object.")
+    if raw != canonical_json_bytes(value) + b"\n":
+        raise ValueError("Final-H5 declaration must use canonical JSON bytes.")
+    return value
+
+
+def _final_h5_member_inventory() -> dict[str, object]:
+    """Build the reviewed final-container member set from pinned inputs.
+
+    The JSON declaration is migration-tool authority, not a runtime scan.  Its
+    exact members are emitted into the country spec and then compiler-sealed.
+    The catalog containment check prevents a newly typed physical column from
+    silently remaining outside that declaration.
+    """
+
+    from tools.us_bundle_generation.core import build_catalogs, build_sources
+
+    raw_declaration = _FINAL_H5_COLUMNS_PATH.read_bytes()
+    columns = _strict_final_h5_columns(raw_declaration)
+    if not isinstance(columns, dict) or tuple(columns) != _FINAL_H5_TABLES:
+        raise ValueError(
+            "Final-H5 declaration must contain the six canonical entity tables."
+        )
+    if not all(
+        isinstance(entity_columns, list)
+        and entity_columns
+        and all(isinstance(column, str) and column for column in entity_columns)
+        for entity_columns in columns.values()
+    ):
+        raise ValueError("Final-H5 declaration contains an invalid column set.")
+
+    catalog = build_catalogs()
+    catalog_rows = catalog.get("columns")
+    if not isinstance(catalog_rows, list):
+        raise ValueError("Typed catalog has no column array.")
+    catalog_keys = sorted(
+        str(row["key"])
+        for row in catalog_rows
+        if isinstance(row, Mapping)
+    )
+    physical_catalog_keys = tuple(
+        key for key in catalog_keys if not key.endswith(".@resolved_weight")
+    )
+    declared_keys = {
+        f"{entity}.{column}"
+        for entity, entity_columns in columns.items()
+        for column in entity_columns
+    }
+    missing_catalog_keys = sorted(set(physical_catalog_keys) - declared_keys)
+    if missing_catalog_keys:
+        raise ValueError(
+            "Final-H5 declaration omits typed physical catalog columns: "
+            f"{missing_catalog_keys}."
+        )
+
+    sources = build_sources().get("sources")
+    if not isinstance(sources, list):
+        raise ValueError("Typed source authority has no source array.")
+    source_by_id = {
+        str(row["id"]): row
+        for row in sources
+        if isinstance(row, Mapping) and isinstance(row.get("id"), str)
+    }
+    pinned_source_ids = tuple(
+        sorted(
+            source_id
+            for source_id, source in source_by_id.items()
+            if source.get("byte_size") is not None
+        )
+    )
+    if pinned_source_ids != _FINAL_H5_SOURCE_IDS:
+        raise ValueError(
+            "Final-H5 source authority differs from the six brokered inputs."
+        )
+    authority: dict[str, object] = {
+        "declaration_sha256": hashlib.sha256(raw_declaration).hexdigest(),
+        "typed_catalog_keys_sha256": sha256_json(catalog_keys),
+    }
+    for source_id in pinned_source_ids:
+        source = source_by_id[source_id]
+        authority[f"{source_id}_source_id"] = source_id
+        authority[f"{source_id}_source_sha256"] = source["sha256"]
+        authority[f"{source_id}_source_byte_size"] = source["byte_size"]
+
+    inventory = build_final_h5_member_inventory(
+        authority=authority,
+        tables=_FINAL_H5_TABLES,
+        columns=columns,
+        weights=_FINAL_H5_WEIGHTS,
+    )
+    if inventory["member_count"] != 398 or sum(
+        len(entity_columns) for entity_columns in columns.values()
+    ) != 391:
+        raise ValueError("Final-H5 reviewed member cardinality changed.")
+    return inventory
+
 
 def build_pipeline_contract() -> dict[str, object]:
     """Extract the complete static pipeline/checkpoint identity surface."""
@@ -58,6 +204,7 @@ def build_pipeline_contract() -> dict[str, object]:
         "post_clone_source_operator_order": list(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
         "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
         "auxiliary_operations": list(_AUXILIARY_OPERATIONS),
+        "final_h5_member_inventory": _final_h5_member_inventory(),
         "qbi_reconciliation": us_qbi_reconciliation_contract_identity(),
         "simulation_household_batch_size": {
             "value": POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,

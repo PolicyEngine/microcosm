@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
+import tools.us_bundle_generation.identity_contracts as generation_identity_contracts
 from microcosm.build.spec_engine import SpecValidationError, load_schema_registry
 from microcosm.build.spec_engine.identity_contracts import (
     IdentityContractError,
@@ -85,6 +87,41 @@ def test_pipeline_contract_is_an_exact_generation_zero_projection() -> None:
         "classification": "normative_legacy_identity_fence",
         "current_identity_effect": "bound_into_generation_0_checkpoint_identity",
     }
+    final_h5 = contract["final_h5_member_inventory"]
+    assert isinstance(final_h5, dict)
+    authority = final_h5["authority"]
+    assert isinstance(authority, dict)
+    assert authority["declaration_sha256"] == (
+        "8275121f869291172404f068cf645911d95aa6e5606fb1704f4214c0cbfffa25"
+    )
+    assert final_h5["members_sha256"] == (
+        "150a07a9f9ca0687d70fed3d582dbe9669647868f9a694fee24a8870b6659e08"
+    )
+    source_id_keys = tuple(
+        sorted(key for key in authority if key.endswith("_source_id"))
+    )
+    assert source_id_keys == tuple(
+        f"{source_id}_source_id"
+        for source_id in generation_identity_contracts._FINAL_H5_SOURCE_IDS
+    )
+
+
+def test_final_h5_declaration_refuses_duplicate_json_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = generation_identity_contracts._FINAL_H5_COLUMNS_PATH.read_bytes()
+    duplicate = source[:-2] + b',"family":[]}\n'
+    declaration = tmp_path / "final_h5_columns.json"
+    declaration.write_bytes(duplicate)
+    monkeypatch.setattr(
+        generation_identity_contracts,
+        "_FINAL_H5_COLUMNS_PATH",
+        declaration,
+    )
+
+    with pytest.raises(ValueError, match="duplicate final-H5 declaration key"):
+        build_pipeline_contract()
 
 
 def test_tail_artifact_manifest_schema_has_one_typed_bundle_home(

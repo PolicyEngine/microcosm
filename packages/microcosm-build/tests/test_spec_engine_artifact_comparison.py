@@ -17,10 +17,16 @@ from microcosm.build.spec_engine.artifact_selector_contract import (
     ARTIFACT_SELECTOR_CONTRACT_SHA256,
 )
 from microcosm.build.spec_engine.canonical import sha256_json
-from microcosm.build.spec_engine.compiler_ir import current_compiler_ir_abi
+from microcosm.build.spec_engine.compiler_ir import (
+    EXECUTION_ABI,
+    current_compiler_ir_abi,
+)
 from microcosm.build.spec_engine.executor import (
     RunProvenanceIdentity,
     build_run_provenance_identity,
+)
+from microcosm.build.spec_engine.final_h5_inventory import (
+    build_final_h5_member_inventory,
 )
 from microcosm.build.spec_engine.model import freeze_json
 
@@ -73,7 +79,7 @@ def _execution_abi(
     ]
     selectors = sorted({str(row["content_selector_ref"]) for row in selected_artifacts})
     code_unsigned = {
-        "domain": "fixture-artifact-comparison-v1",
+        "domain": EXECUTION_ABI,
         "content_selectors": selectors,
         "locator_grammar": ARTIFACT_LOCATOR_GRAMMAR,
         "artifact_selector_contract_sha256": ARTIFACT_SELECTOR_CONTRACT_SHA256,
@@ -93,6 +99,12 @@ def _execution_abi(
             "operator_order": ["fixture-operation"],
             "producer_order": ["node:first", "node:second"],
             "seed_stream_map_sha256": "5" * 64,
+            "final_h5_member_inventory": build_final_h5_member_inventory(
+                authority={"fixture_source_sha256": "4" * 64},
+                tables=["person"],
+                columns={"person": ["person_id"]},
+                weights=[],
+            ),
         },
         "operations": [],
         "logical_stages": [
@@ -1026,6 +1038,24 @@ def test_execution_abi_seal_is_verified_before_comparison() -> None:
     with pytest.raises(ArtifactComparisonError, match="execution_abi seal mismatch"):
         compare_artifact_sets(
             abi,
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
+            constants_receipts={},
+            bundle_receipts={},
+        )
+
+    stale = copy.deepcopy(_execution_abi())
+    stale["code_abi"]["domain"] = "stacked-artifact-comparison-vector-v2"
+    code_unsigned = {
+        key: value
+        for key, value in stale["code_abi"].items()
+        if key != "implementation_sha256"
+    }
+    stale["code_abi"]["implementation_sha256"] = sha256_json(code_unsigned)
+    _reseal(stale)
+    with pytest.raises(ArtifactComparisonError, match="domain is unsupported"):
+        compare_artifact_sets(
+            stale,
             constants_artifacts={"frame": b"same", "bank": b"same"},
             bundle_artifacts={"frame": b"same", "bank": b"same"},
             constants_receipts={},

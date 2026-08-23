@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import unicodedata
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -29,6 +30,11 @@ from .executor import (
     ExecutorError,
     RunProvenanceIdentity,
     build_run_provenance_identity,
+)
+from .final_h5_inventory import (
+    FinalH5InventoryError,
+    canonical_final_h5_member_descriptors,
+    validate_final_h5_member_inventory,
 )
 from .plan_lock import PLAN_LOCK_SCHEMA_ID
 from .schemas import load_schema_registry
@@ -2070,15 +2076,16 @@ def _validate_pool_coverage_receipt(receipt: Mapping[str, object]) -> bool:
         ),
         location=location,
     )
-    if receipt["domain"] != _POOL_COVERAGE_DOMAIN or receipt["schema_version"] != 1:
+    if receipt["domain"] != _POOL_COVERAGE_DOMAIN or receipt["schema_version"] != 2:
         raise F1CertificationError(f"{location}: production type mismatch")
     contract = _object(receipt["contract"], location=f"{location}/contract")
     contracts = _validate_pool_coverage_contract(contract)
     final_h5 = _object(receipt["final_pool_h5"], location=f"{location}/final_pool_h5")
-    if final_h5 != contract["final_pool_h5"]:
-        raise F1CertificationError(
-            f"{location}/final_pool_h5: differs from sealed contract"
-        )
+    final_complete = _validate_final_h5_coverage_result(
+        final_h5,
+        contract=contract["final_pool_h5"],
+        location=f"{location}/final_pool_h5",
+    )
     results = _array(receipt["target_banks"], location=f"{location}/target_banks")
     if len(results) != len(contracts):
         raise F1CertificationError(
@@ -2099,17 +2106,12 @@ def _validate_pool_coverage_receipt(receipt: Mapping[str, object]) -> bool:
         raise F1CertificationError(
             f"{location}/bank_member_coverage_complete: summary mismatch"
         )
-    final_status = final_h5["status"]
-    container_complete = bank_complete and final_status == "complete"
+    container_complete = bank_complete and final_complete
     if receipt["container_member_coverage_complete"] is not container_complete:
         raise F1CertificationError(
             f"{location}/container_member_coverage_complete: summary mismatch"
         )
-    expected_status = (
-        "unsupported"
-        if final_status == "unsupported"
-        else ("complete" if container_complete else "incomplete")
-    )
+    expected_status = "complete" if container_complete else "incomplete"
     if receipt["status"] != expected_status:
         raise F1CertificationError(f"{location}/status: summary mismatch")
     _validate_mapping_seal(receipt, seal_key="receipt_sha256", location=location)
@@ -2136,7 +2138,7 @@ def _validate_pool_coverage_contract(
         ),
         location=location,
     )
-    if contract["domain"] != _POOL_COVERAGE_DOMAIN or contract["schema_version"] != 1:
+    if contract["domain"] != _POOL_COVERAGE_DOMAIN or contract["schema_version"] != 2:
         raise F1CertificationError(f"{location}: production type mismatch")
     for key in ("authority_sha256", "spec_sha256", "execution_abi_sha256"):
         _sha256(contract[key], location=f"{location}/{key}")
@@ -2300,23 +2302,235 @@ def _validate_final_h5_coverage_contract(value: object, *, location: str) -> Non
                 "artifact_ids",
                 "locator_ref",
                 "selector_refs",
-                "status",
-                "unsupported_reason",
+                "member_inventory",
             }
         ),
         location=location,
     )
-    _string_tuple(row["artifact_ids"], location=f"{location}/artifact_ids")
+    artifact_ids = _string_tuple(
+        row["artifact_ids"], location=f"{location}/artifact_ids"
+    )
     _nonempty_string(row["locator_ref"], location=f"{location}/locator_ref")
     selectors = _string_tuple(
         row["selector_refs"], location=f"{location}/selector_refs"
     )
     if frozenset(selectors) != _H5_SELECTORS:
         raise F1CertificationError(f"{location}/selector_refs: inventory mismatch")
-    if row["status"] != "unsupported" or row["unsupported_reason"] != (
-        "compiler_authority_lacks_final_h5_entity_column_weight_inventory"
-    ):
-        raise F1CertificationError(f"{location}: unsupported verdict mismatch")
+    if len(artifact_ids) != len(selectors):
+        raise F1CertificationError(
+            f"{location}/artifact_ids: selector cardinality mismatch"
+        )
+    inventory = _validated_final_h5_inventory(
+        row["member_inventory"],
+        location=f"{location}/member_inventory",
+    )
+    _final_h5_member_rows(
+        canonical_final_h5_member_descriptors(inventory),
+        location=f"{location}/member_inventory/members",
+    )
+
+
+def _validate_final_h5_coverage_result(
+    value: object,
+    *,
+    contract: object,
+    location: str,
+) -> bool:
+    row = _object(value, location=location)
+    _exact_keys(
+        row,
+        frozenset(
+            {
+                "artifact_ids",
+                "locator_ref",
+                "selector_refs",
+                "inventory_sha256",
+                "expected_member_count",
+                "expected_members_sha256",
+                "observed_member_count",
+                "observed_members_sha256",
+                "missing_members",
+                "extra_members",
+                "status",
+                "complete",
+            }
+        ),
+        location=location,
+    )
+    contract_row = _object(contract, location=f"{location}/contract")
+    _validate_final_h5_coverage_contract(
+        contract_row,
+        location=f"{location}/contract",
+    )
+    inventory = _validated_final_h5_inventory(
+        contract_row["member_inventory"],
+        location=f"{location}/contract/member_inventory",
+    )
+    expected_members = tuple(canonical_final_h5_member_descriptors(inventory))
+    artifact_ids = _string_tuple(
+        row["artifact_ids"], location=f"{location}/artifact_ids"
+    )
+    locator_ref = _nonempty_string(
+        row["locator_ref"], location=f"{location}/locator_ref"
+    )
+    selector_refs = _string_tuple(
+        row["selector_refs"], location=f"{location}/selector_refs"
+    )
+    inventory_sha256 = _sha256(
+        row["inventory_sha256"], location=f"{location}/inventory_sha256"
+    )
+    expected_member_count = _nonnegative_int(
+        row["expected_member_count"],
+        location=f"{location}/expected_member_count",
+    )
+    expected_members_sha256 = _sha256(
+        row["expected_members_sha256"],
+        location=f"{location}/expected_members_sha256",
+    )
+    links = {
+        "artifact_ids": (artifact_ids, tuple(contract_row["artifact_ids"])),
+        "locator_ref": (locator_ref, contract_row["locator_ref"]),
+        "selector_refs": (selector_refs, tuple(contract_row["selector_refs"])),
+        "inventory_sha256": (inventory_sha256, inventory["inventory_sha256"]),
+        "expected_member_count": (
+            expected_member_count,
+            inventory["member_count"],
+        ),
+        "expected_members_sha256": (
+            expected_members_sha256,
+            inventory["members_sha256"],
+        ),
+    }
+    for key, (observed, expected) in links.items():
+        if observed != expected:
+            raise F1CertificationError(f"{location}/{key}: differs from contract")
+
+    missing = _final_h5_member_rows(
+        row["missing_members"],
+        location=f"{location}/missing_members",
+    )
+    extra = _final_h5_member_rows(
+        row["extra_members"],
+        location=f"{location}/extra_members",
+    )
+    expected_by_key = {
+        _final_h5_member_key(member): member for member in expected_members
+    }
+    missing_keys = {_final_h5_member_key(member) for member in missing}
+    extra_keys = {_final_h5_member_key(member) for member in extra}
+    if not missing_keys.issubset(expected_by_key):
+        raise F1CertificationError(f"{location}/missing_members: not in contract")
+    if extra_keys & set(expected_by_key) or missing_keys & extra_keys:
+        raise F1CertificationError(f"{location}/extra_members: contradict contract")
+
+    observed_members = _sort_final_h5_member_rows(
+        tuple(
+            member
+            for key, member in expected_by_key.items()
+            if key not in missing_keys
+        )
+        + extra
+    )
+    observed_count = _nonnegative_int(
+        row["observed_member_count"],
+        location=f"{location}/observed_member_count",
+    )
+    if observed_count != len(observed_members):
+        raise F1CertificationError(f"{location}/observed_member_count: mismatch")
+    observed_sha256 = _sha256(
+        row["observed_members_sha256"],
+        location=f"{location}/observed_members_sha256",
+    )
+    if observed_sha256 != sha256_json(observed_members):
+        raise F1CertificationError(f"{location}/observed_members_sha256: mismatch")
+
+    complete = (
+        not missing
+        and not extra
+        and observed_count == inventory["member_count"]
+        and observed_sha256 == inventory["members_sha256"]
+    )
+    expected_status = "complete" if complete else "incomplete"
+    if row["status"] != expected_status or row["complete"] is not complete:
+        raise F1CertificationError(f"{location}: typed result verdict mismatch")
+    return complete
+
+
+def _validated_final_h5_inventory(
+    value: object,
+    *,
+    location: str,
+) -> dict[str, object]:
+    try:
+        return validate_final_h5_member_inventory(value)
+    except FinalH5InventoryError as error:
+        raise F1CertificationError(f"{location}: invalid: {error}") from error
+
+
+def _final_h5_member_rows(
+    value: object,
+    *,
+    location: str,
+) -> tuple[dict[str, str], ...]:
+    rows: list[dict[str, str]] = []
+    for index, item in enumerate(_array(value, location=location)):
+        child_location = f"{location}/{index}"
+        row = _object(item, location=child_location)
+        kind = row.get("kind")
+        expected_keys = (
+            frozenset({"kind", "entity"})
+            if kind == "entity_table"
+            else frozenset({"kind", "entity", "column"})
+        )
+        _exact_keys(row, expected_keys, location=child_location)
+        if kind not in {"entity_table", "entity_column", "weight_vector"}:
+            raise F1CertificationError(f"{child_location}/kind: unsupported")
+        entity = _nfc_string(row["entity"], location=f"{child_location}/entity")
+        normalized: dict[str, str] = {"kind": str(kind), "entity": entity}
+        if kind != "entity_table":
+            column = _nfc_string(
+                row["column"], location=f"{child_location}/column"
+            )
+            is_weight_name = column == f"{entity}_weight"
+            if (kind == "weight_vector") is not is_weight_name:
+                raise F1CertificationError(
+                    f"{child_location}: member kind differs from H5 selector protocol"
+                )
+            normalized["column"] = column
+        rows.append(normalized)
+    result = tuple(rows)
+    keys = tuple(_final_h5_member_key(row) for row in result)
+    if len(keys) != len(set(keys)):
+        raise F1CertificationError(f"{location}: duplicate members forbidden")
+    if result != _sort_final_h5_member_rows(result):
+        raise F1CertificationError(f"{location}: canonical member order required")
+    return result
+
+
+def _sort_final_h5_member_rows(
+    rows: tuple[dict[str, str], ...],
+) -> tuple[dict[str, str], ...]:
+    kind_order = {"entity_table": 0, "entity_column": 1, "weight_vector": 2}
+    return tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                kind_order[row["kind"]],
+                row["entity"],
+                row.get("column", ""),
+            ),
+        )
+    )
+
+
+def _final_h5_member_key(
+    value: Mapping[str, object],
+) -> tuple[str, str, str | None]:
+    return (
+        str(value["kind"]),
+        str(value["entity"]),
+        str(value["column"]) if "column" in value else None,
+    )
 
 
 def _coverage_member_rows(
@@ -2547,6 +2761,25 @@ def _validate_pool_coverage_plan_inventory(
         raise F1CertificationError(
             "selector final-H5 locator differs from plan artifact vector"
         )
+    pipeline = _object(
+        execution_abi["pipeline"],
+        location="execution_abi/pipeline",
+    )
+    plan_inventory = _validated_final_h5_inventory(
+        pipeline.get("final_h5_member_inventory"),
+        location="execution_abi/pipeline/final_h5_member_inventory",
+    )
+    contract_inventory = _validated_final_h5_inventory(
+        final_h5["member_inventory"],
+        location=(
+            "coverage/selector_coverage_receipt/contract/final_pool_h5/"
+            "member_inventory"
+        ),
+    )
+    if contract_inventory != plan_inventory:
+        raise F1CertificationError(
+            "selector final-H5 member inventory differs from execution plan"
+        )
 
 
 def _plan_spec_sha256(plan_lock: Mapping[str, object]) -> str:
@@ -2560,6 +2793,13 @@ def _nonempty_string(value: object, *, location: str) -> str:
     if not isinstance(value, str) or not value:
         raise F1CertificationError(f"{location}: non-empty string required")
     return value
+
+
+def _nfc_string(value: object, *, location: str) -> str:
+    text = _nonempty_string(value, location=location)
+    if unicodedata.normalize("NFC", text) != text:
+        raise F1CertificationError(f"{location}: NFC string required")
+    return text
 
 
 def _nonnegative_int(value: object, *, location: str) -> int:

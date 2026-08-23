@@ -20,6 +20,10 @@ from .artifact_selector_contract import (
     ARTIFACT_SELECTOR_CONTRACT_SHA256,
 )
 from .canonical import sha256_json
+from .final_h5_inventory import (
+    FinalH5InventoryError,
+    validate_final_h5_member_inventory,
+)
 from .model import (
     FrozenMap,
     FrozenValue,
@@ -35,10 +39,10 @@ from .model import (
 from .resolver import F0_KERNEL_REGISTRY
 from .typed_closure import TypedClosureError, compile_producer_outputs
 
-COMPILER_IR_ABI_VERSION = 5
+COMPILER_IR_ABI_VERSION = 6
 EXECUTOR_CONTRACT_ABI = "compiled-node-brokered-contracts-v2"
 BROKER_SEMANTICS_ABI = "legacy-v1-ledger-broker-semantics-v2"
-EXECUTION_ABI = "stacked-artifact-comparison-vector-v2"
+EXECUTION_ABI = "stacked-artifact-comparison-vector-v3"
 ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN = (
     "microcosm.spec-engine.row-classifier-implementation.v1"
 )
@@ -261,6 +265,10 @@ def _compiler_ir_abi() -> CompilerIRABI:
         (
             "microcosm.build.spec_engine.artifact_comparison",
             Path(__file__).resolve().with_name("artifact_comparison.py"),
+        ),
+        (
+            "microcosm.build.spec_engine.final_h5_inventory",
+            Path(__file__).resolve().with_name("final_h5_inventory.py"),
         ),
         (
             "microcosm.build.spec_engine.scope_algebra",
@@ -2108,6 +2116,156 @@ def _compile_nodes(
     return tuple(compiled)
 
 
+def _lowercase_sha256(value: object, *, location: str) -> str:
+    digest = _string(value, location=location)
+    if len(digest) != 64 or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
+        raise CompilerIRError(f"{location}: lowercase sha256 required")
+    return digest
+
+
+def _compile_final_h5_member_inventory(
+    pipeline: Mapping[str, object],
+    *,
+    source_grants: Sequence[Mapping[str, object]],
+    catalogs_resource: Mapping[str, object],
+) -> dict[str, object]:
+    """Validate the country declaration against compiler-known authorities."""
+
+    try:
+        inventory = validate_final_h5_member_inventory(
+            pipeline.get("final_h5_member_inventory")
+        )
+    except FinalH5InventoryError as error:
+        raise CompilerIRError(
+            "spine/pipeline_contract/final_h5_member_inventory: " f"{error}"
+        ) from error
+
+    authority = _mapping(
+        inventory["authority"],
+        location="final_h5_member_inventory/authority",
+    )
+    source_ids = tuple(
+        sorted(
+            _string(row.get("id"), location="source_broker_grant/sources/id")
+            for row in source_grants
+        )
+    )
+    if not source_ids:
+        raise CompilerIRError(
+            "final_h5_member_inventory/authority: source pin triplet required"
+        )
+    expected_authority_keys = {
+        "declaration_sha256",
+        "typed_catalog_keys_sha256",
+    }
+    for source_id in source_ids:
+        prefix = f"{source_id}_source"
+        expected_authority_keys.update(
+            {f"{prefix}_id", f"{prefix}_sha256", f"{prefix}_byte_size"}
+        )
+    if set(authority) != expected_authority_keys:
+        raise CompilerIRError(
+            "final_h5_member_inventory/authority: fields differ from the closed "
+            f"source/catalog contract; missing="
+            f"{sorted(expected_authority_keys - set(authority))}, extra="
+            f"{sorted(set(authority) - expected_authority_keys)}"
+        )
+    _lowercase_sha256(
+        authority["declaration_sha256"],
+        location="final_h5_member_inventory/authority/declaration_sha256",
+    )
+
+    grant_by_id = {str(row["id"]): row for row in source_grants}
+    for expected_source_id in source_ids:
+        prefix = f"{expected_source_id}_source"
+        id_key = f"{prefix}_id"
+        source_id = _string(
+            authority[id_key],
+            location=f"final_h5_member_inventory/authority/{id_key}",
+        )
+        if source_id != expected_source_id:
+            raise CompilerIRError(
+                "final_h5_member_inventory/authority: source role differs for "
+                f"{id_key!r}"
+            )
+        grant = grant_by_id.get(source_id)
+        if grant is None:
+            raise CompilerIRError(
+                "final_h5_member_inventory/authority: unknown pinned source "
+                f"{source_id!r}"
+            )
+        sha_key = f"{prefix}_sha256"
+        byte_size_key = f"{prefix}_byte_size"
+        declared_sha256 = _lowercase_sha256(
+            authority[sha_key],
+            location=f"final_h5_member_inventory/authority/{sha_key}",
+        )
+        declared_size = authority[byte_size_key]
+        if (
+            isinstance(declared_size, bool)
+            or not isinstance(declared_size, int)
+            or declared_size < 1
+        ):
+            raise CompilerIRError(
+                f"final_h5_member_inventory/authority/{byte_size_key}: "
+                "positive integer required"
+            )
+        if declared_sha256 != grant["sha256"] or declared_size != grant["byte_size"]:
+            raise CompilerIRError(
+                "final_h5_member_inventory/authority: pinned source identity "
+                f"differs for {source_id!r}"
+            )
+
+    catalog_values = _array(
+        catalogs_resource.get("columns"),
+        location="resources/catalogs/columns",
+    )
+    catalog_keys = tuple(
+        sorted(
+            _string(
+                _mapping(value, location=f"resources/catalogs/columns/{index}").get(
+                    "key"
+                ),
+                location=f"resources/catalogs/columns/{index}/key",
+            )
+            for index, value in enumerate(catalog_values)
+        )
+    )
+    if len(catalog_keys) != len(set(catalog_keys)):
+        raise CompilerIRError("resources/catalogs/columns: duplicate keys")
+    declared_catalog_sha256 = _lowercase_sha256(
+        authority["typed_catalog_keys_sha256"],
+        location=(
+            "final_h5_member_inventory/authority/typed_catalog_keys_sha256"
+        ),
+    )
+    if declared_catalog_sha256 != sha256_json(list(catalog_keys)):
+        raise CompilerIRError(
+            "final_h5_member_inventory/authority: typed catalog digest differs"
+        )
+    columns = _mapping(
+        inventory["columns"],
+        location="final_h5_member_inventory/columns",
+    )
+    declared_column_keys = {
+        f"{entity}.{column}"
+        for entity, values in columns.items()
+        for column in _array(values, location=f"final_h5_member_inventory/{entity}")
+    }
+    physical_catalog_keys = {
+        key for key in catalog_keys if not key.endswith(".@resolved_weight")
+    }
+    missing_catalog_keys = sorted(physical_catalog_keys - declared_column_keys)
+    if missing_catalog_keys:
+        raise CompilerIRError(
+            "final_h5_member_inventory: typed physical columns are undeclared: "
+            f"{missing_catalog_keys}"
+        )
+    return inventory
+
+
 def _compile_execution_abi(
     resources: Mapping[str, object],
     *,
@@ -2206,6 +2364,14 @@ def _compile_execution_abi(
         **source_broker_grant_unsigned,
         "sha256": sha256_json(source_broker_grant_unsigned),
     }
+    final_h5_member_inventory = _compile_final_h5_member_inventory(
+        pipeline,
+        source_grants=source_grants,
+        catalogs_resource=_mapping(
+            resources.get(ResourceKind.CATALOGS.value),
+            location="resources/catalogs",
+        ),
+    )
     artifact_protocol = _mapping(
         pipeline.get("artifact_protocol"),
         location="resources/spine/pipeline_contract/artifact_protocol",
@@ -2571,6 +2737,7 @@ def _compile_execution_abi(
             "operator_order": list(operator_order),
             "producer_order": list(stage_dag.order),
             "seed_stream_map_sha256": sha256_json(seed_stream_map.to_wire()),
+            "final_h5_member_inventory": final_h5_member_inventory,
         },
         "operations": operations,
         "logical_stages": logical_stages,

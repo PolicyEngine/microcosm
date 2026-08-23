@@ -594,7 +594,8 @@
         "artifact_protocol",
         "operator_order",
         "producer_order",
-        "seed_stream_map_sha256"
+        "seed_stream_map_sha256",
+        "final_h5_member_inventory"
        ],
        "properties": {
         "id": {"type": "string", "minLength": 1},
@@ -607,7 +608,10 @@
          "type": "array",
          "items": {"type": "string", "minLength": 1}
         },
-        "seed_stream_map_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+        "seed_stream_map_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+        "final_h5_member_inventory": {
+         "$ref": "spine.schema.json#/$defs/final_h5_member_inventory"
+        }
        }
       }
      ]
@@ -714,7 +718,7 @@
         "implementation_sha256"
        ],
        "properties": {
-        "domain": {"type": "string", "minLength": 1},
+        "domain": {"const": "stacked-artifact-comparison-vector-v3"},
         "content_selectors": {
          "type": "array",
          "items": {"type": "string", "minLength": 1}

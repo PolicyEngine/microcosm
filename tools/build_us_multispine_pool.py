@@ -167,6 +167,7 @@ from microcosm.build.us_runtime.operator_boundary import (
 )
 from microcosm.build.us_runtime.pool_artifact_coverage import (
     PoolArtifactCoverageContract,
+    capture_pool_h5_file_identity,
     compile_pool_artifact_coverage,
     validate_pool_artifact_coverage,
 )
@@ -5989,6 +5990,11 @@ def _emit_f1_evidence(
     if mode_value not in {"constants", "bundle"}:
         raise ValueError("F1 evidence requires constants or bundle run config.")
     mode = str(mode_value)
+    pool_h5_identity = capture_pool_h5_file_identity(outputs.pool_h5)
+    registry.fence_file(
+        coverage_contract.final_pool_h5.locator_ref,
+        pool_h5_identity,
+    )
     collected = collect_artifact_digests(
         plan_lock["execution_abi"],
         registry=registry,
@@ -5997,6 +6003,8 @@ def _emit_f1_evidence(
     selector_coverage = validate_pool_artifact_coverage(
         coverage_contract,
         bank_roots=bank_roots,
+        pool_h5=outputs.pool_h5,
+        pool_h5_identity=pool_h5_identity,
     )
     artifact_locator_refs = tuple(
         sorted(

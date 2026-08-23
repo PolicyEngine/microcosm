@@ -11,6 +11,7 @@ import pytest
 from microcosm.build.spec_engine.canonical import normalize_and_project, sha256_json
 from microcosm.build.spec_engine.compiler_ir import (
     COMPILER_IR_ABI_VERSION,
+    EXECUTION_ABI,
     EXECUTOR_CONTRACT_ABI,
     ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN,
     CompiledSpecIR,
@@ -247,7 +248,7 @@ def test_us_nodes_have_exact_effective_seed_grants(
 def test_compiled_nodes_lift_immutable_executor_contracts_and_bind_them(
     compiled_us: CompiledSpecIR,
 ) -> None:
-    assert COMPILER_IR_ABI_VERSION == 5
+    assert COMPILER_IR_ABI_VERSION == 6
     assert EXECUTOR_CONTRACT_ABI == "compiled-node-brokered-contracts-v2"
     producer_by_id = {node.id: node for node in compiled_us.producer_graph.nodes}
     assert tuple(node.execution_rank for node in compiled_us.nodes) == tuple(
@@ -424,6 +425,7 @@ def test_operational_broker_source_is_not_a_compiler_or_node_identity_input(
         "microcosm.build.spec_engine.artifact_selector_contract",
         "microcosm.build.spec_engine.artifact_collection",
         "microcosm.build.spec_engine.artifact_comparison",
+        "microcosm.build.spec_engine.final_h5_inventory",
     } <= modules
 
 
@@ -431,6 +433,7 @@ def test_execution_abi_seals_artifact_and_source_comparison_authorities(
     compiled_us: CompiledSpecIR,
 ) -> None:
     execution = thaw_json(compiled_us.execution_abi)
+    assert execution["code_abi"]["domain"] == EXECUTION_ABI
     assert execution["code_abi"]["compiler_ir_abi_sha256"] == (
         compiled_us.compiler_ir_abi.sha256
     )
@@ -486,6 +489,70 @@ def test_execution_abi_seals_artifact_and_source_comparison_authorities(
             "sources": expected_sources,
         }
     )
+    final_h5 = execution["pipeline"]["final_h5_member_inventory"]
+    assert final_h5["semantics"] == "canonical_member_set"
+    assert final_h5["member_count"] == 398
+    assert len(final_h5["tables"]) == 6
+    assert sum(len(columns) for columns in final_h5["columns"].values()) == 391
+    assert final_h5["weights"] == [
+        {"entity": "household", "column": "household_weight"}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("authority_key", "message"),
+    [
+        ("asec_raw_stage_source_sha256", "pinned source identity differs"),
+        ("typed_catalog_keys_sha256", "typed catalog digest differs"),
+    ],
+)
+def test_final_h5_authority_refuses_resigned_pin_mismatches(
+    resolved_us: ResolvedSpec,
+    authority_key: str,
+    message: str,
+) -> None:
+    def mutate(value: dict[str, Any]) -> None:
+        pipeline = value["pipeline_contract"]
+        assert isinstance(pipeline, dict)
+        inventory = pipeline["final_h5_member_inventory"]
+        assert isinstance(inventory, dict)
+        authority = inventory["authority"]
+        assert isinstance(authority, dict)
+        authority[authority_key] = "f" * 64
+        payload = {
+            key: child
+            for key, child in inventory.items()
+            if key != "inventory_sha256"
+        }
+        inventory["inventory_sha256"] = sha256_json(payload)
+
+    mutated = _mutate_domain(resolved_us, ResourceKind.SPINE, mutate)
+    with pytest.raises(CompilerIRError, match=message):
+        compile_spec(mutated)
+
+
+def test_final_h5_authority_refuses_removed_source_role_triplet(
+    resolved_us: ResolvedSpec,
+) -> None:
+    def mutate(value: dict[str, Any]) -> None:
+        pipeline = value["pipeline_contract"]
+        assert isinstance(pipeline, dict)
+        inventory = pipeline["final_h5_member_inventory"]
+        assert isinstance(inventory, dict)
+        authority = inventory["authority"]
+        assert isinstance(authority, dict)
+        for suffix in ("id", "sha256", "byte_size"):
+            authority.pop(f"processed_puf_source_{suffix}")
+        payload = {
+            key: child
+            for key, child in inventory.items()
+            if key != "inventory_sha256"
+        }
+        inventory["inventory_sha256"] = sha256_json(payload)
+
+    mutated = _mutate_domain(resolved_us, ResourceKind.SPINE, mutate)
+    with pytest.raises(CompilerIRError, match="fields differ from the closed"):
+        compile_spec(mutated)
 
 
 def test_dependency_input_and_output_mutations_change_bound_node_keys(

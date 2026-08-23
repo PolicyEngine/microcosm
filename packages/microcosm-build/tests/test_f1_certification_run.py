@@ -14,7 +14,10 @@ from microcosm.build.spec_engine.artifact_selector_contract import (
     ARTIFACT_SELECTOR_CONTRACT_SHA256,
 )
 from microcosm.build.spec_engine.canonical import sha256_json
-from microcosm.build.spec_engine.compiler_ir import current_compiler_ir_abi
+from microcosm.build.spec_engine.compiler_ir import (
+    EXECUTION_ABI,
+    current_compiler_ir_abi,
+)
 from microcosm.build.spec_engine.executor import (
     RunProvenanceIdentity,
     build_run_provenance_identity,
@@ -32,6 +35,10 @@ from microcosm.build.spec_engine.f1_certification import (
     atomic_write_json,
     compare_f1_cold_build_receipts,
     complete_coverage_evidence,
+)
+from microcosm.build.spec_engine.final_h5_inventory import (
+    build_final_h5_member_inventory,
+    canonical_final_h5_member_descriptors,
 )
 
 
@@ -64,6 +71,12 @@ def _source_grant() -> dict[str, object]:
 
 
 def _plan_lock() -> dict[str, object]:
+    final_h5_member_inventory = build_final_h5_member_inventory(
+        authority={"fixture": "test_f1_certification_run"},
+        tables=("household",),
+        columns={"household": ("household_id",)},
+        weights=({"entity": "household", "column": "household_weight"},),
+    )
     artifact = {
         "id": "payload",
         "kind": "fixture_payload",
@@ -77,7 +90,7 @@ def _plan_lock() -> dict[str, object]:
         "required": True,
     }
     code_unsigned = {
-        "domain": "fixture-f1-certification-v1",
+        "domain": EXECUTION_ABI,
         "content_selectors": ["selector:file_bytes_v1"],
         "locator_grammar": ARTIFACT_LOCATOR_GRAMMAR,
         "artifact_selector_contract_sha256": ARTIFACT_SELECTOR_CONTRACT_SHA256,
@@ -97,6 +110,7 @@ def _plan_lock() -> dict[str, object]:
             "operator_order": ["publish"],
             "producer_order": ["node:z", "node:a"],
             "seed_stream_map_sha256": "5" * 64,
+            "final_h5_member_inventory": final_h5_member_inventory,
         },
         "operations": [],
         "logical_stages": [],
@@ -435,28 +449,29 @@ def _production_plan_and_selector_receipt() -> tuple[
         "expected_members_sha256": sha256_json([member]),
         "expected_members": [member],
     }
-    final_h5 = {
+    pipeline = execution_abi["pipeline"]
+    assert isinstance(pipeline, dict)
+    final_inventory = pipeline["final_h5_member_inventory"]
+    assert isinstance(final_inventory, dict)
+    final_h5_contract = {
         "artifact_ids": ["entities", "weights"],
         "locator_ref": "fixture:pool_h5",
         "selector_refs": [
             "selector:h5_all_entity_tables_and_columns_v1",
             "selector:h5_all_weight_vectors_v1",
         ],
-        "status": "unsupported",
-        "unsupported_reason": (
-            "compiler_authority_lacks_final_h5_entity_column_weight_inventory"
-        ),
+        "member_inventory": final_inventory,
     }
     spec_binding = plan["spec_binding"]
     assert isinstance(spec_binding, dict)
     contract_body = {
         "domain": "microcosm.us-pool-artifact-member-coverage.v1",
-        "schema_version": 1,
+        "schema_version": 2,
         "authority_sha256": "a" * 64,
         "spec_sha256": spec_binding["spec_sha256"],
         "execution_abi_sha256": execution_abi["sha256"],
         "target_banks": [bank],
-        "final_pool_h5": final_h5,
+        "final_pool_h5": final_h5_contract,
     }
     contract = {**contract_body, "sha256": sha256_json(contract_body)}
     result = {
@@ -473,15 +488,33 @@ def _production_plan_and_selector_receipt() -> tuple[
         "status": "complete",
         "complete": True,
     }
+    final_members = list(canonical_final_h5_member_descriptors(final_inventory))
+    final_h5_result = {
+        "artifact_ids": ["entities", "weights"],
+        "locator_ref": "fixture:pool_h5",
+        "selector_refs": [
+            "selector:h5_all_entity_tables_and_columns_v1",
+            "selector:h5_all_weight_vectors_v1",
+        ],
+        "inventory_sha256": final_inventory["inventory_sha256"],
+        "expected_member_count": len(final_members),
+        "expected_members_sha256": sha256_json(final_members),
+        "observed_member_count": len(final_members),
+        "observed_members_sha256": sha256_json(final_members),
+        "missing_members": [],
+        "extra_members": [],
+        "status": "complete",
+        "complete": True,
+    }
     receipt_body = {
         "domain": "microcosm.us-pool-artifact-member-coverage.v1",
-        "schema_version": 1,
+        "schema_version": 2,
         "contract": contract,
         "target_banks": [result],
         "bank_member_coverage_complete": True,
-        "final_pool_h5": final_h5,
-        "container_member_coverage_complete": False,
-        "status": "unsupported",
+        "final_pool_h5": final_h5_result,
+        "container_member_coverage_complete": True,
+        "status": "complete",
     }
     return plan, {**receipt_body, "receipt_sha256": sha256_json(receipt_body)}
 
@@ -499,7 +532,7 @@ def _production_evidence_fixture(
         bound_locator_refs=("fixture:bank", "fixture:pool_h5"),
         node_reuse_ids=("node:z", "node:a"),
         node_reuse_inventory_complete=True,
-        selector_inventory_complete=False,
+        selector_inventory_complete=True,
         calibration_scope_complete=False,
         selector_coverage_receipt=selector,
         calibration_scope_receipt={
@@ -1120,10 +1153,30 @@ def test_runner_checks_all_selector_receipts_against_one_current_authority(
 
 def test_production_selector_receipt_rejects_resealed_false_summary() -> None:
     plan, selector = _production_plan_and_selector_receipt()
-    selector["container_member_coverage_complete"] = True
+    selector["container_member_coverage_complete"] = False
     body = {key: value for key, value in selector.items() if key != "receipt_sha256"}
     selector["receipt_sha256"] = sha256_json(body)
     with pytest.raises(ValueError, match="summary mismatch"):
+        complete_coverage_evidence(
+            plan,
+            bound_locator_refs=("fixture:bank", "fixture:pool_h5"),
+            node_reuse_ids=("node:z", "node:a"),
+            node_reuse_inventory_complete=True,
+            selector_inventory_complete=False,
+            calibration_scope_complete=False,
+            selector_coverage_receipt=selector,
+        )
+
+
+def test_production_selector_receipt_recomputes_final_h5_observed_digest() -> None:
+    plan, selector = _production_plan_and_selector_receipt()
+    final_h5 = selector["final_pool_h5"]
+    assert isinstance(final_h5, dict)
+    final_h5["observed_members_sha256"] = "f" * 64
+    body = {key: value for key, value in selector.items() if key != "receipt_sha256"}
+    selector["receipt_sha256"] = sha256_json(body)
+
+    with pytest.raises(ValueError, match="observed_members_sha256: mismatch"):
         complete_coverage_evidence(
             plan,
             bound_locator_refs=("fixture:bank", "fixture:pool_h5"),
@@ -1133,6 +1186,35 @@ def test_production_selector_receipt_rejects_resealed_false_summary() -> None:
             calibration_scope_complete=False,
             selector_coverage_receipt=selector,
         )
+
+
+def test_production_selector_inventory_must_equal_execution_plan() -> None:
+    _plan, selector = _production_plan_and_selector_receipt()
+    replacement = build_final_h5_member_inventory(
+        authority={"fixture": "not_the_execution_plan"},
+        tables=("household",),
+        columns={"household": ("household_id",)},
+        weights=({"entity": "household", "column": "household_weight"},),
+    )
+    contract = selector["contract"]
+    final_h5_result = selector["final_pool_h5"]
+    assert isinstance(contract, dict) and isinstance(final_h5_result, dict)
+    final_h5_contract = contract["final_pool_h5"]
+    assert isinstance(final_h5_contract, dict)
+    final_h5_contract["member_inventory"] = replacement
+    final_h5_result["inventory_sha256"] = replacement["inventory_sha256"]
+    contract_body = {key: value for key, value in contract.items() if key != "sha256"}
+    contract["sha256"] = sha256_json(contract_body)
+    selector_body = {
+        key: value for key, value in selector.items() if key != "receipt_sha256"
+    }
+    selector["receipt_sha256"] = sha256_json(selector_body)
+
+    with pytest.raises(
+        ValueError,
+        match="final-H5 member inventory differs from execution plan",
+    ):
+        _production_evidence_fixture(selector_receipt=selector)
 
 
 def test_production_selector_and_calibration_plan_links_fail_closed() -> None:
@@ -1151,7 +1233,7 @@ def test_production_selector_and_calibration_plan_links_fail_closed() -> None:
         bound_locator_refs=("fixture:bank", "fixture:pool_h5"),
         node_reuse_ids=("node:z", "node:a"),
         node_reuse_inventory_complete=True,
-        selector_inventory_complete=False,
+        selector_inventory_complete=True,
         calibration_scope_complete=False,
         selector_coverage_receipt=selector,
     )
@@ -1183,7 +1265,7 @@ def test_production_selector_and_calibration_plan_links_fail_closed() -> None:
             node_reuse_ids=valid.coverage.node_reuse_ids,
             node_reuse_inventory_complete=True,
             selector_coverage_receipt=valid.coverage.selector_coverage_receipt,
-            selector_inventory_complete=False,
+            selector_inventory_complete=True,
             calibration_scope_receipt=calibration,
             calibration_scope_complete=False,
         )

@@ -6,25 +6,47 @@ module adds the independent side of that check for the QRF target banks: the
 expected directory and file members are derived from the sealed physical
 authorities and matched back to the exact artifact-vector rows.
 
-The final pool H5 is deliberately different.  The runtime plan seals
-selectors that enumerate all *observed* tables, columns, and weight vectors,
-but it does not contain an exact final materialized inventory against which
-that observation can be checked.  The typed contract therefore records that
-surface as unsupported.  It must not be promoted to a coverage pass by a
-caller merely because the H5 selectors returned bytes.
+The final pool H5 is closed independently from the logical selectors.  Its
+expected table, column, and weight members come only from the compiler-sealed
+runtime inventory.  The validator reads only fixed-storer schema axes, rejects
+unmodelled HDF keys, and fences the same physical file across artifact
+collection and coverage inspection.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import stat
-from collections.abc import Mapping, Sequence
+import unicodedata
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 
+import numpy as np
+import pandas as pd
+import tables
+
+from microcosm.build.spec_engine.artifact_collection import (
+    ArtifactCollectionError,
+    capture_artifact_file_identity,
+)
+from microcosm.build.spec_engine.artifact_collection import (
+    ArtifactFileIdentity as PoolH5FileIdentity,
+)
+from microcosm.build.spec_engine.artifact_selector_contract import (
+    H5_ARTIFACT_METADATA_KEY,
+    H5_TIME_PERIOD_KEY,
+)
 from microcosm.build.spec_engine.canonical import sha256_json
-from microcosm.build.spec_engine.model import FrozenMap
+from microcosm.build.spec_engine.final_h5_inventory import (
+    FinalH5InventoryError,
+    canonical_final_h5_member_descriptors,
+    validate_final_h5_member_inventory,
+)
+from microcosm.build.spec_engine.model import FrozenMap, freeze_json, thaw_json
 from microcosm.build.us_runtime.acs_transfer import _model_target_names
 from microcosm.build.us_runtime.acs_transfer_bank import (
     AcsTransferTargetBankStore,
@@ -46,7 +68,7 @@ from microcosm.build.us_runtime.stacked_spine import (
 )
 
 _COVERAGE_DOMAIN = "microcosm.us-pool-artifact-member-coverage.v1"
-_COVERAGE_SCHEMA_VERSION = 1
+_COVERAGE_SCHEMA_VERSION = 2
 _DIRECTORY_SELECTOR = "selector:directory_tree_bytes_v1"
 _H5_ENTITY_SELECTOR = "selector:h5_all_entity_tables_and_columns_v1"
 _H5_WEIGHT_SELECTOR = "selector:h5_all_weight_vectors_v1"
@@ -54,6 +76,7 @@ _H5_SELECTORS = frozenset({_H5_ENTITY_SELECTOR, _H5_WEIGHT_SELECTOR})
 _RAW_BYTE_COMPARISON = "raw_byte_exact"
 _NORMATIVE_SURFACE = "normative"
 _VIRTUAL_BANK_ROOT = Path("__microcosm_artifact_coverage_bank_root__")
+_FINAL_H5_HEADER_MAX_BYTES = 1_048_576
 
 
 class PoolArtifactCoverageError(ValueError):
@@ -80,7 +103,6 @@ class CoverageStatus(StrEnum):
 
     COMPLETE = "complete"
     INCOMPLETE = "incomplete"
-    UNSUPPORTED = "unsupported"
 
 
 class CoverageRootStatus(StrEnum):
@@ -91,12 +113,19 @@ class CoverageRootStatus(StrEnum):
     NOT_DIRECTORY = "not_directory"
 
 
-class CoverageUnsupportedReason(StrEnum):
-    """Stable reason codes that prohibit a self-derived coverage pass."""
+class FinalH5MemberKind(StrEnum):
+    """Logical member kinds sealed by the compact final-H5 inventory."""
 
-    FINAL_H5_INVENTORY_NOT_COMPILED = (
-        "compiler_authority_lacks_final_h5_entity_column_weight_inventory"
-    )
+    ENTITY_TABLE = "entity_table"
+    ENTITY_COLUMN = "entity_column"
+    WEIGHT_VECTOR = "weight_vector"
+
+
+_FINAL_H5_KIND_ORDER = {
+    FinalH5MemberKind.ENTITY_TABLE: 0,
+    FinalH5MemberKind.ENTITY_COLUMN: 1,
+    FinalH5MemberKind.WEIGHT_VECTOR: 2,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,24 +194,43 @@ class TargetBankCoverageContract:
 
 
 @dataclass(frozen=True, slots=True)
+class FinalH5MemberDescriptor:
+    """One table, ordinary column, or weight member in canonical set order."""
+
+    kind: FinalH5MemberKind
+    entity: str
+    column: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, FinalH5MemberKind):
+            raise TypeError("final H5 member kind must be FinalH5MemberKind")
+        _nonempty_string(self.entity, location="final H5 member/entity")
+        if self.kind is FinalH5MemberKind.ENTITY_TABLE:
+            if self.column is not None:
+                raise PoolArtifactCoverageError(
+                    "final H5 table member cannot carry a column"
+                )
+        else:
+            _nonempty_string(self.column, location="final H5 member/column")
+
+    def to_wire(self) -> dict[str, str]:
+        wire = {"kind": self.kind.value, "entity": self.entity}
+        if self.column is not None:
+            wire["column"] = self.column
+        return wire
+
+
+@dataclass(frozen=True, slots=True)
 class FinalH5CoverageContract:
-    """Typed statement that final-H5 member closure is not compiler-issued."""
+    """Exact compiler-issued logical-member inventory for the final pool H5."""
 
     artifact_ids: tuple[str, ...]
     locator_ref: str
     selector_refs: tuple[str, ...]
-    status: CoverageStatus
-    unsupported_reason: CoverageUnsupportedReason
+    member_inventory: FrozenMap
+    expected_members: tuple[FinalH5MemberDescriptor, ...]
 
     def __post_init__(self) -> None:
-        if self.status is not CoverageStatus.UNSUPPORTED:
-            raise PoolArtifactCoverageError(
-                "final H5 coverage cannot be supported without a compiled inventory"
-            )
-        if not isinstance(self.unsupported_reason, CoverageUnsupportedReason):
-            raise TypeError(
-                "final H5 unsupported_reason must be CoverageUnsupportedReason"
-            )
         _unique_nonempty_strings(self.artifact_ids, location="final H5 artifact_ids")
         _nonempty_string(self.locator_ref, location="final H5 locator_ref")
         _unique_nonempty_strings(self.selector_refs, location="final H5 selectors")
@@ -190,14 +238,36 @@ class FinalH5CoverageContract:
             raise PoolArtifactCoverageError(
                 "final H5 coverage must bind both sealed logical selectors"
             )
+        if not isinstance(self.member_inventory, FrozenMap):
+            raise TypeError("final H5 member_inventory must be FrozenMap")
+        try:
+            inventory = validate_final_h5_member_inventory(
+                thaw_json(self.member_inventory)
+            )
+        except FinalH5InventoryError as error:
+            raise PoolArtifactCoverageError(
+                "final H5 member inventory is invalid"
+            ) from error
+        expected = _final_h5_members_from_inventory(inventory)
+        if self.expected_members != expected:
+            raise PoolArtifactCoverageError(
+                "final H5 expected members differ from the compact inventory"
+            )
+
+    @property
+    def inventory_sha256(self) -> str:
+        return _inventory_string(self.member_inventory, "inventory_sha256")
+
+    @property
+    def expected_members_sha256(self) -> str:
+        return sha256_json([member.to_wire() for member in self.expected_members])
 
     def to_wire(self) -> dict[str, object]:
         return {
             "artifact_ids": list(self.artifact_ids),
             "locator_ref": self.locator_ref,
             "selector_refs": list(self.selector_refs),
-            "status": self.status.value,
-            "unsupported_reason": self.unsupported_reason.value,
+            "member_inventory": thaw_json(self.member_inventory),
         }
 
 
@@ -287,11 +357,101 @@ class TargetBankCoverageResult:
 
 
 @dataclass(frozen=True, slots=True)
+class FinalH5CoverageResult:
+    """Observed logical-member closure for one identity-fenced final pool H5."""
+
+    artifact_ids: tuple[str, ...]
+    locator_ref: str
+    selector_refs: tuple[str, ...]
+    inventory_sha256: str
+    expected_member_count: int
+    expected_members_sha256: str
+    observed_members: tuple[FinalH5MemberDescriptor, ...]
+    missing_members: tuple[FinalH5MemberDescriptor, ...]
+    extra_members: tuple[FinalH5MemberDescriptor, ...]
+    status: CoverageStatus
+
+    def __post_init__(self) -> None:
+        _unique_nonempty_strings(
+            self.artifact_ids, location="final H5 result artifacts"
+        )
+        _nonempty_string(self.locator_ref, location="final H5 result locator")
+        _unique_nonempty_strings(
+            self.selector_refs, location="final H5 result selectors"
+        )
+        if frozenset(self.selector_refs) != _H5_SELECTORS:
+            raise PoolArtifactCoverageError(
+                "final H5 result must bind both sealed logical selectors"
+            )
+        _sha256(self.inventory_sha256, location="final H5 result inventory sha256")
+        _sha256(
+            self.expected_members_sha256,
+            location="final H5 result expected-members sha256",
+        )
+        if (
+            isinstance(self.expected_member_count, bool)
+            or not isinstance(self.expected_member_count, int)
+            or self.expected_member_count <= 0
+        ):
+            raise PoolArtifactCoverageError(
+                "final H5 expected member count must be a positive integer"
+            )
+        _validate_final_h5_members(
+            self.observed_members,
+            location="observed final H5 members",
+            nonempty=False,
+        )
+        _validate_final_h5_members(
+            self.missing_members,
+            location="missing final H5 members",
+            nonempty=False,
+        )
+        _validate_final_h5_members(
+            self.extra_members,
+            location="extra final H5 members",
+            nonempty=False,
+        )
+        if self.status not in {CoverageStatus.COMPLETE, CoverageStatus.INCOMPLETE}:
+            raise PoolArtifactCoverageError(
+                "final H5 result status must be complete or incomplete"
+            )
+        if self.complete is not (not self.missing_members and not self.extra_members):
+            raise PoolArtifactCoverageError(
+                "final H5 result status contradicts its missing/extra members"
+            )
+
+    @property
+    def observed_members_sha256(self) -> str:
+        return sha256_json([member.to_wire() for member in self.observed_members])
+
+    @property
+    def complete(self) -> bool:
+        return self.status is CoverageStatus.COMPLETE
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "artifact_ids": list(self.artifact_ids),
+            "locator_ref": self.locator_ref,
+            "selector_refs": list(self.selector_refs),
+            "inventory_sha256": self.inventory_sha256,
+            "expected_member_count": self.expected_member_count,
+            "expected_members_sha256": self.expected_members_sha256,
+            "observed_member_count": len(self.observed_members),
+            "observed_members_sha256": self.observed_members_sha256,
+            "missing_members": [member.to_wire() for member in self.missing_members],
+            "extra_members": [member.to_wire() for member in self.extra_members],
+            "status": self.status.value,
+            "complete": self.complete,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PoolArtifactCoverageReceipt:
-    """Typed bank result plus an explicit non-pass for unsupported H5 closure."""
+    """Typed bank and final-H5 results linked to one compiled contract."""
 
     contract: PoolArtifactCoverageContract
     target_banks: tuple[TargetBankCoverageResult, ...]
+    final_pool_h5: FinalH5CoverageResult
 
     def __post_init__(self) -> None:
         if not isinstance(self.contract, PoolArtifactCoverageContract):
@@ -302,6 +462,73 @@ class PoolArtifactCoverageReceipt:
             raise PoolArtifactCoverageError(
                 "coverage result order differs from its target-bank contract"
             )
+        if not isinstance(self.final_pool_h5, FinalH5CoverageResult):
+            raise TypeError("final_pool_h5 must be FinalH5CoverageResult")
+        final_contract = self.contract.final_pool_h5
+        links = (
+            (
+                "artifact_ids",
+                self.final_pool_h5.artifact_ids,
+                final_contract.artifact_ids,
+            ),
+            ("locator_ref", self.final_pool_h5.locator_ref, final_contract.locator_ref),
+            (
+                "selector_refs",
+                self.final_pool_h5.selector_refs,
+                final_contract.selector_refs,
+            ),
+            (
+                "inventory_sha256",
+                self.final_pool_h5.inventory_sha256,
+                final_contract.inventory_sha256,
+            ),
+            (
+                "expected_member_count",
+                self.final_pool_h5.expected_member_count,
+                len(final_contract.expected_members),
+            ),
+            (
+                "expected_members_sha256",
+                self.final_pool_h5.expected_members_sha256,
+                final_contract.expected_members_sha256,
+            ),
+        )
+        changed = {
+            name: (observed_value, expected_value)
+            for name, observed_value, expected_value in links
+            if observed_value != expected_value
+        }
+        if changed:
+            raise PoolArtifactCoverageError(
+                f"final H5 result differs from its compiled contract: {changed}"
+            )
+        expected_by_key = {
+            _final_h5_member_key(member): member
+            for member in final_contract.expected_members
+        }
+        observed_by_key = {
+            _final_h5_member_key(member): member
+            for member in self.final_pool_h5.observed_members
+        }
+        exact_missing = _sort_final_h5_members(
+            tuple(
+                expected_by_key[key]
+                for key in expected_by_key.keys() - observed_by_key.keys()
+            )
+        )
+        exact_extra = _sort_final_h5_members(
+            tuple(
+                observed_by_key[key]
+                for key in observed_by_key.keys() - expected_by_key.keys()
+            )
+        )
+        if (
+            self.final_pool_h5.missing_members != exact_missing
+            or self.final_pool_h5.extra_members != exact_extra
+        ):
+            raise PoolArtifactCoverageError(
+                "final H5 result missing/extra members contradict its observations"
+            )
 
     @property
     def bank_member_coverage_complete(self) -> bool:
@@ -309,15 +536,10 @@ class PoolArtifactCoverageReceipt:
 
     @property
     def container_member_coverage_complete(self) -> bool:
-        return (
-            self.bank_member_coverage_complete
-            and self.contract.final_pool_h5.status is CoverageStatus.COMPLETE
-        )
+        return self.bank_member_coverage_complete and self.final_pool_h5.complete
 
     @property
     def status(self) -> CoverageStatus:
-        if self.contract.final_pool_h5.status is CoverageStatus.UNSUPPORTED:
-            return CoverageStatus.UNSUPPORTED
         if self.container_member_coverage_complete:
             return CoverageStatus.COMPLETE
         return CoverageStatus.INCOMPLETE
@@ -329,7 +551,7 @@ class PoolArtifactCoverageReceipt:
             "contract": self.contract.to_wire(),
             "target_banks": [bank.to_wire() for bank in self.target_banks],
             "bank_member_coverage_complete": self.bank_member_coverage_complete,
-            "final_pool_h5": self.contract.final_pool_h5.to_wire(),
+            "final_pool_h5": self.final_pool_h5.to_wire(),
             "container_member_coverage_complete": (
                 self.container_member_coverage_complete
             ),
@@ -358,7 +580,7 @@ def compile_pool_artifact_coverage(
     plan: USPoolRuntimePlan,
     authorities: USPoolKernelAuthorities,
 ) -> PoolArtifactCoverageContract:
-    """Compile exact bank members and an explicit unsupported final-H5 record."""
+    """Compile exact bank and final-H5 logical-member inventories."""
 
     if not isinstance(plan, USPoolRuntimePlan):
         raise TypeError("plan must be USPoolRuntimePlan")
@@ -483,7 +705,10 @@ def compile_pool_artifact_coverage(
         for row in directory_rows
         for locator_ref in (_row_string(row, "locator_ref"),)
     )
-    h5 = _compile_final_h5_coverage(artifact_rows)
+    h5 = _compile_final_h5_coverage(
+        artifact_rows,
+        member_inventory=plan.execution.pipeline.get("final_h5_member_inventory"),
+    )
     return PoolArtifactCoverageContract(
         authority_sha256=plan.authority_sha256,
         spec_sha256=plan.spec_sha256,
@@ -497,12 +722,15 @@ def validate_pool_artifact_coverage(
     contract: PoolArtifactCoverageContract,
     *,
     bank_roots: Mapping[str, str | Path],
+    pool_h5: str | Path,
+    pool_h5_identity: PoolH5FileIdentity,
 ) -> PoolArtifactCoverageReceipt:
-    """Validate exact observed bank members for every contract locator.
+    """Validate exact bank and final-H5 members for every contract locator.
 
     Missing and extra ordinary members are returned as typed incomplete rows.
-    Symlinks, special files, duplicate roots, and locator-binding mismatches are
-    malformed evidence and raise :class:`PoolArtifactCoverageError`.
+    Symlinks, special files, duplicate roots, locator mismatches, unmodelled HDF
+    keys, and file-identity changes are malformed evidence and raise
+    :class:`PoolArtifactCoverageError`.
     """
 
     if not isinstance(contract, PoolArtifactCoverageContract):
@@ -578,11 +806,22 @@ def validate_pool_artifact_coverage(
                 ),
             )
         )
-    return PoolArtifactCoverageReceipt(contract=contract, target_banks=tuple(results))
+    final_h5_result = _validate_final_h5_coverage(
+        contract.final_pool_h5,
+        pool_h5=pool_h5,
+        pool_h5_identity=pool_h5_identity,
+    )
+    return PoolArtifactCoverageReceipt(
+        contract=contract,
+        target_banks=tuple(results),
+        final_pool_h5=final_h5_result,
+    )
 
 
 def _compile_final_h5_coverage(
     artifact_rows: tuple[FrozenMap, ...],
+    *,
+    member_inventory: object,
 ) -> FinalH5CoverageContract:
     rows = tuple(
         row for row in artifact_rows if row.get("content_selector_ref") in _H5_SELECTORS
@@ -612,12 +851,601 @@ def _compile_final_h5_coverage(
                 "final-pool H5 artifact row differs from the required normative "
                 "raw-byte contract"
             )
+    try:
+        inventory = validate_final_h5_member_inventory(member_inventory)
+    except FinalH5InventoryError as error:
+        raise PoolArtifactCoverageError(
+            "execution pipeline requires a valid final_h5_member_inventory"
+        ) from error
+    frozen_inventory = freeze_json(inventory)
+    if not isinstance(frozen_inventory, FrozenMap):  # pragma: no cover - validator owns
+        raise AssertionError("final H5 inventory did not freeze to a mapping")
+    expected_members = _final_h5_members_from_inventory(inventory)
+    for member in expected_members:
+        weight_protocol_match = member.column == f"{member.entity}_weight"
+        if member.kind is FinalH5MemberKind.ENTITY_TABLE:
+            continue
+        if (member.kind is FinalH5MemberKind.WEIGHT_VECTOR) is not (
+            weight_protocol_match
+        ):
+            raise PoolArtifactCoverageError(
+                "final H5 member kind differs from the sealed selector naming "
+                f"protocol: {member.to_wire()}"
+            )
     return FinalH5CoverageContract(
         artifact_ids=tuple(_row_string(row, "id") for row in rows),
         locator_ref=locators.pop(),
         selector_refs=selectors,
-        status=CoverageStatus.UNSUPPORTED,
-        unsupported_reason=(CoverageUnsupportedReason.FINAL_H5_INVENTORY_NOT_COMPILED),
+        member_inventory=frozen_inventory,
+        expected_members=expected_members,
+    )
+
+
+def capture_pool_h5_file_identity(path: str | Path) -> PoolH5FileIdentity:
+    """Capture one symlink-free regular-file identity without serializing it."""
+
+    absolute = _absolute_pool_h5_path(path)
+    _require_nonsymlink_regular_path(absolute)
+    try:
+        return capture_artifact_file_identity(absolute)
+    except ArtifactCollectionError as error:
+        raise PoolArtifactCoverageError(
+            f"cannot capture final pool H5 identity: {absolute}: {error}"
+        ) from error
+
+
+def _validate_final_h5_coverage(
+    contract: FinalH5CoverageContract,
+    *,
+    pool_h5: str | Path,
+    pool_h5_identity: PoolH5FileIdentity,
+) -> FinalH5CoverageResult:
+    if not isinstance(pool_h5_identity, PoolH5FileIdentity):
+        raise TypeError("pool_h5_identity must be PoolH5FileIdentity")
+    path = _absolute_pool_h5_path(pool_h5)
+    if path != pool_h5_identity.path:
+        raise PoolArtifactCoverageError(
+            "final pool H5 path differs from its pre-collection identity: "
+            f"expected={pool_h5_identity.path}, observed={path}"
+        )
+    with _fenced_pool_h5(path, pool_h5_identity):
+        observed_members = _scan_final_h5_members(
+            path,
+            contract=contract,
+            pool_h5_identity=pool_h5_identity,
+        )
+
+    expected_by_key = {
+        _final_h5_member_key(row): row for row in contract.expected_members
+    }
+    observed_by_key = {_final_h5_member_key(row): row for row in observed_members}
+    missing = _sort_final_h5_members(
+        tuple(
+            expected_by_key[key]
+            for key in expected_by_key.keys() - observed_by_key.keys()
+        )
+    )
+    extra = _sort_final_h5_members(
+        tuple(
+            observed_by_key[key]
+            for key in observed_by_key.keys() - expected_by_key.keys()
+        )
+    )
+    complete = not missing and not extra
+    return FinalH5CoverageResult(
+        artifact_ids=contract.artifact_ids,
+        locator_ref=contract.locator_ref,
+        selector_refs=contract.selector_refs,
+        inventory_sha256=contract.inventory_sha256,
+        expected_member_count=len(contract.expected_members),
+        expected_members_sha256=contract.expected_members_sha256,
+        observed_members=observed_members,
+        missing_members=missing,
+        extra_members=extra,
+        status=CoverageStatus.COMPLETE if complete else CoverageStatus.INCOMPLETE,
+    )
+
+
+@contextmanager
+def _fenced_pool_h5(
+    path: Path,
+    expected: PoolH5FileIdentity,
+) -> Iterator[Path]:
+    _require_current_pool_h5_identity(path, expected)
+    try:
+        yield path
+    finally:
+        _require_current_pool_h5_identity(path, expected)
+
+
+def _require_current_pool_h5_identity(
+    path: Path,
+    expected: PoolH5FileIdentity,
+) -> None:
+    observed = capture_pool_h5_file_identity(path)
+    if observed != expected:
+        raise PoolArtifactCoverageError(
+            "final pool H5 changed since its pre-collection identity was captured: "
+            f"{path}"
+        )
+
+
+def _scan_final_h5_members(
+    path: Path,
+    *,
+    contract: FinalH5CoverageContract,
+    pool_h5_identity: PoolH5FileIdentity,
+) -> tuple[FinalH5MemberDescriptor, ...]:
+    members: list[FinalH5MemberDescriptor] = []
+    expected_tables = frozenset(
+        member.entity
+        for member in contract.expected_members
+        if member.kind is FinalH5MemberKind.ENTITY_TABLE
+    )
+    maximum_name_bytes = max(
+        len(value.encode("utf-8"))
+        for member in contract.expected_members
+        for value in (member.entity, member.column)
+        if value is not None
+    )
+    maximum_axis_bytes = len(contract.expected_members) * maximum_name_bytes
+    try:
+        with pd.HDFStore(path, mode="r") as store:
+            _require_open_pool_h5_identity(store, pool_h5_identity)
+            root_names = _validated_h5_root_names(
+                store,
+                expected_tables=expected_tables,
+            )
+            _validate_final_h5_headers(
+                store,
+                root_names=root_names,
+            )
+            for entity in sorted(root_names & expected_tables):
+                key = f"/{entity}"
+                entity = _entity_from_h5_key(key)
+                columns = _fixed_frame_columns(
+                    store,
+                    key=key,
+                    maximum_columns=len(contract.expected_members),
+                    maximum_axis_bytes=maximum_axis_bytes,
+                )
+                members.append(
+                    FinalH5MemberDescriptor(
+                        kind=FinalH5MemberKind.ENTITY_TABLE,
+                        entity=entity,
+                    )
+                )
+                for column in columns:
+                    kind = (
+                        FinalH5MemberKind.WEIGHT_VECTOR
+                        if column == f"{entity}_weight"
+                        else FinalH5MemberKind.ENTITY_COLUMN
+                    )
+                    members.append(
+                        FinalH5MemberDescriptor(
+                            kind=kind,
+                            entity=entity,
+                            column=column,
+                        )
+                    )
+            _require_open_pool_h5_identity(store, pool_h5_identity)
+    except PoolArtifactCoverageError:
+        raise
+    except Exception as error:
+        raise PoolArtifactCoverageError(
+            f"cannot inspect final pool H5 logical-member closure: {path}"
+        ) from error
+    observed = _sort_final_h5_members(tuple(members))
+    _validate_final_h5_members(
+        observed,
+        location=f"observed final H5 {path}",
+        nonempty=False,
+    )
+    return observed
+
+
+def _validate_final_h5_headers(
+    store: pd.HDFStore,
+    *,
+    root_names: frozenset[str],
+) -> None:
+    required = {
+        _entity_from_h5_key(H5_TIME_PERIOD_KEY),
+        _entity_from_h5_key(H5_ARTIFACT_METADATA_KEY),
+    }
+    missing = required - root_names
+    if missing:
+        raise PoolArtifactCoverageError(
+            f"final pool H5 is missing required header keys: {sorted(missing)}"
+        )
+    period_rows = _bounded_series_header(
+        store,
+        key=H5_TIME_PERIOD_KEY,
+    )
+    if not isinstance(period_rows, pd.Series) or len(period_rows) != 1:
+        raise PoolArtifactCoverageError(
+            "final pool H5 time-period header must be a one-row Series"
+        )
+    period = period_rows.iloc[0]
+    if isinstance(period, np.integer):
+        period = int(period)
+    if not isinstance(period, int) or isinstance(period, bool):
+        raise PoolArtifactCoverageError(
+            "final pool H5 time-period header must contain one integer"
+        )
+
+    metadata_rows = _bounded_series_header(
+        store,
+        key=H5_ARTIFACT_METADATA_KEY,
+    )
+    if not isinstance(metadata_rows, pd.Series) or len(metadata_rows) != 1:
+        raise PoolArtifactCoverageError(
+            "final pool H5 artifact-metadata header must be a one-row Series"
+        )
+    metadata_text = metadata_rows.iloc[0]
+    if not isinstance(metadata_text, str):
+        raise PoolArtifactCoverageError(
+            "final pool H5 artifact-metadata header must contain JSON text"
+        )
+    try:
+        _strict_json_object(metadata_text)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise PoolArtifactCoverageError(
+            "final pool H5 artifact-metadata header must contain a strict JSON object"
+        ) from error
+
+
+def _fixed_frame_columns(
+    store: pd.HDFStore,
+    *,
+    key: str,
+    maximum_columns: int,
+    maximum_axis_bytes: int,
+) -> tuple[str, ...]:
+    storer = store.get_storer(key)
+    if (
+        storer is None
+        or storer.is_table
+        or getattr(storer.attrs, "pandas_type", None) != "frame"
+    ):
+        raise PoolArtifactCoverageError(
+            f"unexpected non-fixed-DataFrame key in final pool H5: {key!r}"
+        )
+    nblocks = getattr(storer.attrs, "nblocks", None)
+    if (
+        isinstance(nblocks, bool)
+        or not isinstance(nblocks, int | np.integer)
+        or nblocks < 1
+        or nblocks > maximum_columns
+    ):
+        raise PoolArtifactCoverageError(
+            f"final pool H5 key {key!r} has invalid fixed-frame block cardinality"
+        )
+    expected_nodes = {
+        "axis0",
+        "axis1",
+        *(
+            node_name
+            for block in range(int(nblocks))
+            for node_name in (f"block{block}_items", f"block{block}_values")
+        ),
+    }
+    _require_exact_group_leaves(
+        storer.group,
+        expected_names=expected_nodes,
+        location=f"final pool H5 key {key!r}",
+    )
+    axis = storer.group.axis0
+    shape = tuple(axis.shape)
+    size_in_memory = axis.size_in_memory
+    if (
+        len(shape) != 1
+        or isinstance(shape[0], bool)
+        or not isinstance(shape[0], int | np.integer)
+        or shape[0] < 0
+        or shape[0] > maximum_columns
+        or isinstance(size_in_memory, bool)
+        or not isinstance(size_in_memory, int | np.integer)
+        or size_in_memory < 0
+        or size_in_memory > maximum_axis_bytes
+    ):
+        raise PoolArtifactCoverageError(
+            f"final pool H5 key {key!r} column axis exceeds its sealed memory bound"
+        )
+    try:
+        index = storer.read_index("axis0")
+    except Exception as error:
+        raise PoolArtifactCoverageError(
+            f"cannot read fixed-DataFrame column axis for final pool H5 key {key!r}"
+        ) from error
+    columns = tuple(index.tolist())
+    if not all(isinstance(column, str) and column for column in columns):
+        raise PoolArtifactCoverageError(
+            f"final pool H5 key {key!r} has a non-string or empty column name"
+        )
+    if len(columns) != len(set(columns)):
+        raise PoolArtifactCoverageError(
+            f"final pool H5 key {key!r} has duplicate column names"
+        )
+    for column in columns:
+        if unicodedata.normalize("NFC", column) != column:
+            raise PoolArtifactCoverageError(
+                f"final pool H5 key {key!r} has a non-NFC column name"
+            )
+    return columns
+
+
+def _validated_h5_root_names(
+    store: pd.HDFStore,
+    *,
+    expected_tables: frozenset[str],
+) -> frozenset[str]:
+    header_names = {
+        _entity_from_h5_key(H5_TIME_PERIOD_KEY),
+        _entity_from_h5_key(H5_ARTIFACT_METADATA_KEY),
+    }
+    allowed_names = expected_tables | header_names
+    observed: set[str] = set()
+    for node in store._handle.root._f_iter_nodes():
+        name = node._v_name
+        if not isinstance(name, str) or not name:
+            raise PoolArtifactCoverageError(
+                "final pool H5 exposes a malformed physical root-node name"
+            )
+        if name not in allowed_names:
+            raise PoolArtifactCoverageError(
+                f"unmodelled physical root node in final pool H5: {name!r}"
+            )
+        if name in observed:
+            raise PoolArtifactCoverageError(
+                f"duplicate physical root node in final pool H5: {name!r}"
+            )
+        if not isinstance(node, tables.Group):
+            raise PoolArtifactCoverageError(
+                f"final pool H5 root node must be a pandas group: {name!r}"
+            )
+        observed.add(name)
+    return frozenset(observed)
+
+
+def _bounded_series_header(
+    store: pd.HDFStore,
+    *,
+    key: str,
+) -> pd.Series:
+    storer = store.get_storer(key)
+    if (
+        storer is None
+        or not storer.is_table
+        or getattr(storer.attrs, "pandas_type", None) != "series_table"
+        or storer.nrows != 1
+    ):
+        raise PoolArtifactCoverageError(
+            f"final pool H5 header {key!r} must be a one-row table Series"
+        )
+    _require_exact_group_leaves(
+        storer.group,
+        expected_names={"table"},
+        location=f"final pool H5 header {key!r}",
+    )
+    size_in_memory = storer.table.size_in_memory
+    if (
+        isinstance(size_in_memory, bool)
+        or not isinstance(size_in_memory, int | np.integer)
+        or size_in_memory < 0
+        or size_in_memory > _FINAL_H5_HEADER_MAX_BYTES
+    ):
+        raise PoolArtifactCoverageError(
+            f"final pool H5 header {key!r} exceeds its sealed memory bound"
+        )
+    rows = store.select(key, start=0, stop=1)
+    if not isinstance(rows, pd.Series) or len(rows) != 1:
+        raise PoolArtifactCoverageError(
+            f"final pool H5 header {key!r} did not decode as one Series row"
+        )
+    return rows
+
+
+def _require_exact_group_leaves(
+    group: tables.Group,
+    *,
+    expected_names: set[str],
+    location: str,
+) -> None:
+    observed: set[str] = set()
+    for node in group._f_iter_nodes():
+        name = node._v_name
+        if name not in expected_names:
+            raise PoolArtifactCoverageError(
+                f"{location} contains an unmodelled physical child node: {name!r}"
+            )
+        if name in observed or not isinstance(node, tables.Leaf):
+            raise PoolArtifactCoverageError(
+                f"{location} contains a duplicate or nested physical node: {name!r}"
+            )
+        observed.add(name)
+    if observed != expected_names:
+        raise PoolArtifactCoverageError(
+            f"{location} physical child inventory differs: "
+            f"missing={sorted(expected_names - observed)}, "
+            f"extra={sorted(observed - expected_names)}"
+        )
+
+
+def _require_open_pool_h5_identity(
+    store: pd.HDFStore,
+    expected: PoolH5FileIdentity,
+) -> None:
+    try:
+        descriptor = store._handle.fileno()
+        status = os.fstat(descriptor)
+    except (AttributeError, OSError, TypeError, ValueError) as error:
+        raise PoolArtifactCoverageError(
+            "cannot bind the open pandas H5 handle to its captured file identity"
+        ) from error
+    if not stat.S_ISREG(status.st_mode) or _stat_identity_key(status) != (
+        expected.device,
+        expected.inode,
+        expected.size_bytes,
+        expected.mtime_ns,
+        expected.ctime_ns,
+    ):
+        raise PoolArtifactCoverageError(
+            "pandas opened a different final pool H5 than the pre-collection file"
+        )
+
+
+def _entity_from_h5_key(key: object) -> str:
+    if (
+        not isinstance(key, str)
+        or not key.startswith("/")
+        or key.count("/") != 1
+        or len(key) == 1
+    ):
+        raise PoolArtifactCoverageError(
+            f"unexpected nested or malformed final pool H5 key: {key!r}"
+        )
+    entity = key[1:]
+    if unicodedata.normalize("NFC", entity) != entity:
+        raise PoolArtifactCoverageError(f"final pool H5 entity key is not NFC: {key!r}")
+    return entity
+
+
+def _strict_json_object(raw: str) -> dict[str, object]:
+    def pairs(values: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in values:
+            if key in result:
+                raise ValueError(f"duplicate JSON key {key!r}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> object:
+        raise ValueError(f"non-finite JSON constant {value}")
+
+    value = json.loads(
+        raw,
+        object_pairs_hook=pairs,
+        parse_constant=reject_constant,
+    )
+    if not isinstance(value, dict):
+        raise TypeError("JSON object required")
+    return value
+
+
+def _absolute_pool_h5_path(value: str | Path) -> Path:
+    try:
+        return Path(os.path.abspath(os.fspath(value)))
+    except (TypeError, ValueError, OSError) as error:
+        raise PoolArtifactCoverageError(
+            f"invalid final pool H5 path: {value!r}"
+        ) from error
+
+
+def _require_nonsymlink_regular_path(path: Path) -> None:
+    current = Path(path.anchor)
+    for index, part in enumerate(path.parts[1:]):
+        current /= part
+        is_target = index == len(path.parts[1:]) - 1
+        try:
+            status = os.lstat(current)
+        except OSError as error:
+            raise PoolArtifactCoverageError(
+                f"required final pool H5 path is unavailable: {current}: {error}"
+            ) from error
+        if stat.S_ISLNK(status.st_mode):
+            raise PoolArtifactCoverageError(
+                f"symbolic link in final pool H5 path is forbidden: {current}"
+            )
+        if is_target and not stat.S_ISREG(status.st_mode):
+            raise PoolArtifactCoverageError(
+                f"final pool H5 must be a regular file: {current}"
+            )
+        if not is_target and not stat.S_ISDIR(status.st_mode):
+            raise PoolArtifactCoverageError(
+                f"final pool H5 parent must be a directory: {current}"
+            )
+
+
+def _stat_identity_key(status: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _final_h5_members_from_inventory(
+    inventory: object,
+) -> tuple[FinalH5MemberDescriptor, ...]:
+    try:
+        rows = canonical_final_h5_member_descriptors(inventory)
+    except FinalH5InventoryError as error:
+        raise PoolArtifactCoverageError(
+            "cannot expand final H5 member inventory"
+        ) from error
+    members = tuple(
+        FinalH5MemberDescriptor(
+            kind=FinalH5MemberKind(row["kind"]),
+            entity=row["entity"],
+            column=row.get("column"),
+        )
+        for row in rows
+    )
+    _validate_final_h5_members(
+        members,
+        location="compiled final H5 members",
+        nonempty=True,
+    )
+    return members
+
+
+def _validate_final_h5_members(
+    members: tuple[FinalH5MemberDescriptor, ...],
+    *,
+    location: str,
+    nonempty: bool,
+) -> None:
+    if not isinstance(members, tuple) or not all(
+        isinstance(member, FinalH5MemberDescriptor) for member in members
+    ):
+        raise PoolArtifactCoverageError(f"{location}: typed member tuple required")
+    if nonempty and not members:
+        raise PoolArtifactCoverageError(f"{location}: must not be empty")
+    if members != _sort_final_h5_members(members):
+        raise PoolArtifactCoverageError(f"{location}: canonical member order required")
+    keys = tuple(_final_h5_member_key(member) for member in members)
+    if len(keys) != len(set(keys)):
+        raise PoolArtifactCoverageError(f"{location}: duplicate members forbidden")
+
+
+def _sort_final_h5_members(
+    members: tuple[FinalH5MemberDescriptor, ...],
+) -> tuple[FinalH5MemberDescriptor, ...]:
+    return tuple(
+        sorted(
+            members,
+            key=lambda member: (
+                _FINAL_H5_KIND_ORDER[member.kind],
+                member.entity,
+                member.column or "",
+            ),
+        )
+    )
+
+
+def _final_h5_member_key(
+    member: FinalH5MemberDescriptor,
+) -> tuple[FinalH5MemberKind, str, str | None]:
+    return member.kind, member.entity, member.column
+
+
+def _inventory_string(inventory: FrozenMap, field: str) -> str:
+    return _nonempty_string(
+        inventory.get(field),
+        location=f"final H5 member inventory/{field}",
     )
 
 
@@ -930,14 +1758,18 @@ __all__ = [
     "ArtifactMemberKind",
     "CoverageRootStatus",
     "CoverageStatus",
-    "CoverageUnsupportedReason",
     "FinalH5CoverageContract",
+    "FinalH5CoverageResult",
+    "FinalH5MemberDescriptor",
+    "FinalH5MemberKind",
     "PoolArtifactCoverageContract",
     "PoolArtifactCoverageError",
     "PoolArtifactCoverageReceipt",
+    "PoolH5FileIdentity",
     "TargetBankCoverageContract",
     "TargetBankCoverageResult",
     "TargetBankKind",
+    "capture_pool_h5_file_identity",
     "compile_pool_artifact_coverage",
     "validate_pool_artifact_coverage",
 ]

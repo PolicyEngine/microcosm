@@ -11,10 +11,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from microcosm.build.spec_engine import (
+    artifact_collection as artifact_collection_module,
+)
 from microcosm.build.spec_engine import compile_spec, load_bundle
 from microcosm.build.spec_engine.artifact_collection import (
     ArtifactCollectionError,
     ArtifactLocatorRegistry,
+    capture_artifact_file_identity,
     collect_artifact_digests,
     collect_artifact_surfaces,
 )
@@ -24,7 +28,10 @@ from microcosm.build.spec_engine.artifact_selector_contract import (
     ARTIFACT_SELECTOR_CONTRACT_SHA256,
 )
 from microcosm.build.spec_engine.canonical import sha256_json
-from microcosm.build.spec_engine.compiler_ir import current_compiler_ir_abi
+from microcosm.build.spec_engine.compiler_ir import (
+    EXECUTION_ABI,
+    current_compiler_ir_abi,
+)
 from microcosm.build.spec_engine.model import thaw_json
 
 
@@ -454,7 +461,7 @@ def _sealed_abi(
 ) -> dict[str, object]:
     selectors = sorted({str(row["content_selector_ref"]) for row in artifacts})
     code_unsigned = {
-        "domain": "fixture",
+        "domain": EXECUTION_ABI,
         "content_selectors": selectors,
         "locator_grammar": ARTIFACT_LOCATOR_GRAMMAR,
         "artifact_selector_contract_sha256": ARTIFACT_SELECTOR_CONTRACT_SHA256,
@@ -923,6 +930,85 @@ def test_h5_entity_and_weight_selectors_are_disjoint_logical_surfaces(
     assert baseline["weights"] != metadata_changed["weights"]
 
 
+def test_h5_selectors_refuse_a_different_open_file_than_the_fenced_locator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    locator = "runtime_output:pool_h5"
+    abi = _sealed_abi(
+        [
+            _artifact(
+                "entities",
+                locator,
+                "selector:h5_all_entity_tables_and_columns_v1",
+            ),
+            _artifact(
+                "weights",
+                locator,
+                "selector:h5_all_weight_vectors_v1",
+            ),
+        ]
+    )
+    original = tmp_path / "original.h5"
+    replacement = tmp_path / "replacement.h5"
+    _write_pool_h5(original, income=10)
+    _write_pool_h5(replacement, income=99)
+    registry = ArtifactLocatorRegistry(allowed_roots=[tmp_path])
+    registry.bind_file(locator, original)
+    registry.fence_file(locator, capture_artifact_file_identity(original))
+
+    real_hdf_store = pd.HDFStore
+
+    def open_replacement(
+        _path: object,
+        *args: object,
+        **kwargs: object,
+    ) -> pd.HDFStore:
+        return real_hdf_store(replacement, *args, **kwargs)
+
+    monkeypatch.setattr(
+        artifact_collection_module.pd,
+        "HDFStore",
+        open_replacement,
+    )
+    with pytest.raises(ArtifactCollectionError, match="opened a different H5"):
+        collect_artifact_surfaces(
+            abi,
+            registry=registry,
+            authority_mode="constants",
+        )
+
+
+def test_file_identity_fence_refuses_replacement_before_collection(
+    tmp_path: Path,
+) -> None:
+    locator = "runtime_output:pool_h5"
+    abi = _sealed_abi(
+        [
+            _artifact(
+                "entities",
+                locator,
+                "selector:h5_all_entity_tables_and_columns_v1",
+            )
+        ]
+    )
+    pool_h5 = tmp_path / "pool.h5"
+    replacement = tmp_path / "replacement.h5"
+    _write_pool_h5(pool_h5)
+    _write_pool_h5(replacement, income=99)
+    registry = ArtifactLocatorRegistry(allowed_roots=[tmp_path])
+    registry.bind_file(locator, pool_h5)
+    registry.fence_file(locator, capture_artifact_file_identity(pool_h5))
+    replacement.replace(pool_h5)
+
+    with pytest.raises(ArtifactCollectionError, match="captured artifact identity"):
+        collect_artifact_surfaces(
+            abi,
+            registry=registry,
+            authority_mode="constants",
+        )
+
+
 def test_execution_abi_and_code_abi_seals_are_verified_before_io(
     tmp_path: Path,
 ) -> None:
@@ -935,6 +1021,23 @@ def test_execution_abi_and_code_abi_seals_are_verified_before_io(
     tampered = copy.deepcopy(abi)
     tampered["normative_artifact_vector"][0]["id"] = "changed"
     with pytest.raises(ArtifactCollectionError, match="execution_abi seal mismatch"):
+        collect_artifact_surfaces(
+            tampered,
+            registry=registry,
+            authority_mode="constants",
+        )
+
+    tampered = copy.deepcopy(abi)
+    tampered["code_abi"]["domain"] = "stacked-artifact-comparison-vector-v2"
+    code_unsigned = {
+        key: value
+        for key, value in tampered["code_abi"].items()
+        if key != "implementation_sha256"
+    }
+    tampered["code_abi"]["implementation_sha256"] = sha256_json(code_unsigned)
+    unsigned = {key: value for key, value in tampered.items() if key != "sha256"}
+    tampered["sha256"] = sha256_json(unsigned)
+    with pytest.raises(ArtifactCollectionError, match="execution ABI domain"):
         collect_artifact_surfaces(
             tampered,
             registry=registry,

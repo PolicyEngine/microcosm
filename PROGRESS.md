@@ -1,38 +1,183 @@
-# F1 residual brokered-QRF landing — 2026-08-22/23
+# F1 certification comparator closure — 2026-08-22/23
 
 ## State
 
-- The salvaged repair is verified green across the whole workspace and is
-  being committed by this continuation together with one additional fix of
-  its own: the ninth mapped-at-HEAD red
-  (`test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`,
-  flagging `pool_physical_executor.py:140`) was still red in the salvage and
-  is closed by replacing the `lambda row: row[0]` sort key with tuple
-  unpacking in `_available_input_sort_key` — production-module change only,
-  bit-identical ordering, scanner untouched.
-- The full per-run verification ledger (every build module in 30+ serial
-  measured processes, the four other package suites, ruff, coverage
-  `--check`, bundle `--check`, whitespace, and the 299-file/7,371-test
-  collection gate) is in `_F1-LANE-NOTES.md` §"F1 residual brokered-QRF
-  salvage verification and landing (2026-08-22)". Max RSS across runs:
-  11.13 GiB, under the 15 GiB ceiling. The only reds ever seen were the
-  blindness red above (repaired) and deadline-bound trade CLI/bulk child
-  interpreters that exceeded their authored 60 s deadlines while four to
-  eight other lanes saturated the host — each passed on solo rerun with no
-  source or test change.
-- Nothing pushed; no build, sample rung, Logbook operation, exclusion, or
-  publication. `logbook-pending-chain.txt` untouched.
+- Work is local on `spec-engine-f1-cert`; the sibling brokered-QRF repair is
+  integrated exactly at `15ebddad792b12726de1369c1c712d3a38fced28` on top
+  of opening comparator parent `7d4a60dc`. Nothing has been pushed.
+- This lane owns only the certification runner and its three deliberately
+  fail-closed production-evidence items: node reuse, exact final-H5 member
+  closure, and calibration scope. The brokered-QRF draw path remains excluded
+  from this work and has no diff from the integrated sibling commit.
+- No pool build is authorized from this lane. The owner-host serial queue owns
+  the four 1% certification builds; the existing baseline and pkg3 gate files
+  are comparison inputs only.
+- The comparator now implements only the unambiguous exact final-H5 closure
+  fix. Node-reuse and calibration checks remain unchanged and fail-closed;
+  normative artifacts remain raw-byte exact, provenance remains governed by
+  the sealed D4 vector, and the 72-site seed ledger is unchanged.
+- The original red shared parent prevented a green opening checkpoint. The
+  sibling repair is now a committed green base, merge conflicts are resolved,
+  and compiler/coverage artifacts have been regenerated at combined US spec
+  SHA-256 `e8543c545aea4ccca71605c1504e0c6c843c8eee6c8fefaf858cb888a73dbcec`.
+  This lane has not edited the sibling draw path or made a knowingly red
+  checkpoint commit.
+- Node reuse and calibration are stopped pending the two independent owner
+  selections in `_F1-CERTIFICATION-DECISION-MEMO.md`. Exact final-H5 member
+  closure is implemented. Every package suite, repo-wide Ruff, generated-bundle
+  check, generated-coverage check, whitespace check, and host-handoff syntax
+  check is green on the final implementation tree under the 15 GiB RSS cap.
+
+## Done
+
+- Read `CLAUDE.md`, the approved `_F1-CHARTER.md`, the recovered R6 owner
+  snapshot (`1997107e4d061764bbb2c1e0d9a38991fb47f5e0`), the existing F1
+  journal/progress/final-report state, `tools/f1_certification_run.py`, and the
+  typed comparator in
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py`.
+- Ran the required `uv sync --all-packages --extra us` first. The default
+  command was refused by the sandbox-owned user cache; a writable-cache retry
+  created the local environment but could not download locked NumPy because
+  sandbox DNS is unavailable. No dependency or tracked source changed.
+- Confirmed the GitNexus query/context tools are unavailable in this session;
+  diagnosis therefore uses direct repository/source/test tracing, with one
+  independent read-only trace assigned to each fail-closed item.
+- Confirmed that overall PASS requires all three typed completeness facts plus
+  the cold-build, within-mode, and cross-mode gates
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:373-397`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1349-1370`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1382-1444`).
+- Traced node reuse to an absent production dispatch/semantic-identity seam,
+  not plan-lock canonicalization. Production emits an empty map and incomplete
+  inventory; substituting static compiler node keys would omit run-input,
+  dependency, backend/materializer, source-broker, and RNG behavior identity
+  (`tools/build_us_multispine_pool.py:6017-6050`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/executor.py:1523-1681`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:9990-10003`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:10166-10229`).
+- Traced calibration to a real scope mismatch: the four-role runner stops at a
+  pre-calibration pool, while D4 makes downstream calibration weights
+  normative raw-byte artifacts. A green current-charter implementation needs
+  an owner-selected composite release mode and four additional release
+  children; the alternative is an explicit narrower-charter deferral that
+  remains red under the current comparator
+  (`tools/f1_certification_run.py:139-207`,
+  `tools/build_us_multispine_pool.py:6017-6032`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:1962-2016`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2593-2638`).
+- Wrote the costed two-decision owner memo and stopped both ambiguous items. It
+  forbids static reuse keys, shadow-only dispatch, completion booleans,
+  calibration exclusions, summary comparison, and any seed/gate tuning.
+- Established final-H5 closure as a code/spec fix. The exact pinned ASEC source
+  checkpoint matches its declared SHA-256 and independently exposes its source
+  schema. A read-only falsification check caught six initially omitted
+  tax-unit tail-provenance outputs: the closed logical-selector target is 391 non-weight columns
+  (320 person, 23 household, 24 tax unit, 14 SPM unit, 5 family, 5 marital
+  unit), six table descriptors, and one household weight vector: 398 members.
+  Baseline and pkg3 H5s agree on those counts, but neither is being used as the
+  authority. The required period and metadata roots are validated and encoded
+  separately rather than miscounted as entity/weight members
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:973-1044`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1834-1886`).
+- Added an outcome-neutral, branch-pinned owner-host handoff. It captures and
+  rechecks `spec-engine-f1-cert`, verifies all source and baseline/pkg3 gate
+  pins, runs constants A/B then bundle A/B strictly serially, retains gate
+  diffs as diagnostics only, distinguishes comparator statuses 0/1/2, and
+  preserves any failed root.
+- Added a country-neutral canonical inventory contract, generated the reviewed
+  US declaration, bound its six exact source identities and typed catalog into
+  compiler ABI v6/execution ABI v3, and emitted the contract into current US
+  plans (`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:42-45`,
+  `tools/us_bundle_generation/identity_contracts.py:50-187`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/final_h5_inventory.py:210-468`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2128-2266`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2709-2763`).
+- Added an identity-fenced, metadata-only physical scanner. It closes exact
+  fixed HDF roots, table axes, columns and the household weight against the
+  compiler inventory; reports exact missing/extra members; and refuses
+  malformed keys, unbounded headers/axes, symlinks, replacements and mutation
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:884-970`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:973-1295`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/pool_artifact_coverage.py:1336-1377`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:186-304`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1012-1049`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1661-1789`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:1834-1980`).
+- Bound the scanner result independently into the typed production receipt,
+  made the comparator reconstruct its observed set/count/digest/status, and
+  require the plan and contract inventories to be exactly equal as validated
+  canonical JSON values before selector completeness can pass
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2060-2118`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2333-2456`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/f1_certification.py:2742-2782`).
+- Added missing/extra/malformed/mutation/forged-receipt regressions and an
+  integration regression that writes a six-entity one-row frame through the
+  real production H5 writer, then demands the exact compiler-issued member
+  set. Independent audits found no raw-byte, seed-ledger, or false-green
+  weakening; their two fail-late/integration suggestions were incorporated.
+- Fast-forwarded to the sibling's committed green QRF repair, restored the
+  comparator work through a three-way application, retained both journal
+  chronologies, and independently confirmed the receipt-identity and final-H5
+  changes coexist. Generated coverage is again 42,335/42,335 fields and 40/40
+  inventories.
+- Closed an independent defense-in-depth finding: lower collection/comparison
+  layers now require execution-ABI domain
+  `stacked-artifact-comparison-vector-v3` as well as its seal, so an arbitrary
+  re-signed alternate domain cannot pass. The compiler embeds the sealed code
+  ABI, while both consumers independently reject a stale or alternate domain
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:2709-2723`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/schema/locks.schema.json:705-739`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_collection.py:626-673`,
+  `packages/microcosm-build/src/microcosm/build/spec_engine/artifact_comparison.py:814-910`).
+- Final verification is green. Focused receipts include 104 passed/1
+  deselected for final-H5/comparator, the real production writer regression,
+  42 comparator/domain tests, and the source census at 218 sources, 283
+  callsites, 120 bindings, 163 exemptions, 162 classifications, and unchanged
+  72 seed sites. The build suite reconciled exactly to 6,496 passed/37 skipped
+  across 265 modules in 23 fresh groups; peak compliant RSS was
+  8,335,998,976 bytes. The other suites report calibrate 201 passed
+  (478,822,400 bytes), data 275 passed/1 skipped (12,082,708,480 bytes), fit
+  98 passed (729,939,968 bytes), and frame 294 passed/36 skipped
+  (6,970,884,096 bytes). Repo-wide Ruff, `git diff --check`, the US bundle
+  `--check` at `e8543c54...a73dbcec`, generated coverage at
+  42,335/42,335 plus 40/40, and host-handoff zsh parsing all pass. A single
+  monolithic build-suite run was functionally green at 6,496/37 but peaked at
+  17,315,348,480 bytes and is explicitly not counted as the compliant receipt.
 
 ## Next
 
-1. Commit the implementation with the journals (verification is complete:
-   every module green at the final tree, including all five imdb_bulk
-   deadline tests on solo reruns), then append and commit the
-   `FINAL_REPORT.md` closeout.
+1. Commit this coherent green implementation on `spec-engine-f1-cert`.
+2. Write the final report to `FINAL_REPORT.md`, update this state with the
+   implementation commit, and commit the documentation closeout.
+3. Stop on node reuse and calibration pending the two owner rulings. Do not run
+   any pool/release build, push, publication, or owner-host command from this
+   lane.
 
 ---
 
-# F1 residual brokered-QRF verification continuation — 2026-08-22 [superseded by the landing above]
+# F1 residual brokered-QRF landing — 2026-08-22/23 [historical; integrated at `15ebddad`]
+
+## State
+
+- The salvaged repair was verified green across the whole workspace together
+  with one additional source-blindness fix in
+  `_available_input_sort_key`; the ordering remained bit-identical and the
+  scanner was untouched.
+- Its full serial verification ledger is in `_F1-LANE-NOTES.md` under “F1
+  residual brokered-QRF salvage verification and landing (2026-08-22)”. Max
+  RSS was 11.13 GiB. Deadline-bound child interpreters that timed out under
+  heavy shared-host load all passed unchanged on solo rerun.
+- Nothing was pushed; no build, sample rung, Logbook operation, exclusion, or
+  publication occurred.
+
+## Next
+
+- Superseded: the repair and journals were committed at `15ebddad`; this
+  comparator lane consumed that exact commit without editing its draw path.
+
+---
+
+# F1 residual brokered-QRF verification continuation — 2026-08-22
 
 ## State
 

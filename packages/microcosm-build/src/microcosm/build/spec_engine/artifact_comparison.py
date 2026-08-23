@@ -22,8 +22,12 @@ from .artifact_selector_contract import (
     normalize_release_id,
 )
 from .canonical import canonical_json_bytes, sha256_json
-from .compiler_ir import current_compiler_ir_abi
+from .compiler_ir import EXECUTION_ABI, current_compiler_ir_abi
 from .executor import RunProvenanceIdentity
+from .final_h5_inventory import (
+    FinalH5InventoryError,
+    validate_final_h5_member_inventory,
+)
 
 _COMPARISON_DOMAIN = "microcosm.spec-engine.artifact-comparison.v1"
 _NORMATIVE_VECTOR_DOMAIN = "microcosm.spec-engine.normative-artifact-vector-digest.v1"
@@ -132,6 +136,7 @@ _PIPELINE_KEYS = frozenset(
         "operator_order",
         "producer_order",
         "seed_stream_map_sha256",
+        "final_h5_member_inventory",
     }
 )
 _ARTIFACT_BINDING_KEYS = frozenset(
@@ -829,6 +834,10 @@ def _validate_execution_abi(
 
     code_abi = _json_object(abi["code_abi"], location="execution_abi/code_abi")
     _require_exact_keys(code_abi, _CODE_ABI_KEYS, location="execution_abi/code_abi")
+    if code_abi["domain"] != EXECUTION_ABI:
+        raise ArtifactComparisonError(
+            "execution_abi/code_abi domain is unsupported"
+        )
     if code_abi["receipt_difference_match"] != "exactly_one_sealed_rule":
         raise ArtifactComparisonError(
             "execution_abi/code_abi does not require exactly one sealed rule"
@@ -893,6 +902,12 @@ def _validate_execution_abi(
         pipeline["seed_stream_map_sha256"],
         location="execution_abi/pipeline/seed_stream_map_sha256",
     )
+    try:
+        validate_final_h5_member_inventory(pipeline["final_h5_member_inventory"])
+    except FinalH5InventoryError as error:
+        raise ArtifactComparisonError(
+            "execution_abi/pipeline/final_h5_member_inventory: " f"{error}"
+        ) from error
     _validate_source_broker_grant_abi(abi["source_broker_grant"])
 
     artifact_values = _json_array(

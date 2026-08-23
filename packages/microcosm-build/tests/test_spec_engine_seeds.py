@@ -405,7 +405,7 @@ def test_production_callsites_are_independent_exact_classified_and_attested() ->
     }
     modules = discover_production_source_modules(root)
     callsites = discover_production_callsites(root)
-    assert len(modules) == 217
+    assert len(modules) == 218
     assert len(callsites) == 283
     assert len(LEGACY_V1_PRODUCTION_BINDINGS) == 120
     assert len(LEGACY_V1_PRODUCTION_EXEMPTIONS) == 163

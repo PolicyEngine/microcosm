@@ -41,7 +41,7 @@ from .artifact_selector_contract import (
     normalize_release_id,
 )
 from .canonical import canonical_json_bytes, sha256_json
-from .compiler_ir import current_compiler_ir_abi
+from .compiler_ir import EXECUTION_ABI, current_compiler_ir_abi
 from .model import FrozenMap, thaw_json
 
 _SUPPORTED_SELECTORS = frozenset(
@@ -184,6 +184,40 @@ class LocatorSourceKind(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactFileIdentity:
+    """Host-local regular-file identity shared across one collection boundary."""
+
+    path: Path
+    device: int
+    inode: int
+    size_bytes: int
+    mtime_ns: int
+    ctime_ns: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, Path) or not self.path.is_absolute():
+            raise ArtifactCollectionError(
+                "artifact file identity requires an absolute Path"
+            )
+        for field in ("device", "inode", "size_bytes", "mtime_ns", "ctime_ns"):
+            value = getattr(self, field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ArtifactCollectionError(
+                    f"artifact file identity {field} must be a non-negative integer"
+                )
+
+    @property
+    def stat_key(self) -> tuple[int, int, int, int, int]:
+        return (
+            self.device,
+            self.inode,
+            self.size_bytes,
+            self.mtime_ns,
+            self.ctime_ns,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class LocatorBinding:
     """One immutable construction-time binding for an opaque locator."""
 
@@ -191,6 +225,7 @@ class LocatorBinding:
     kind: LocatorSourceKind
     path: Path | None = None
     canonical_json: bytes | None = None
+    file_identity: ArtifactFileIdentity | None = None
 
 
 class ArtifactLocatorRegistry:
@@ -238,6 +273,34 @@ class ArtifactLocatorRegistry:
             locator_ref=ref,
             kind=LocatorSourceKind.JSON_VALUE,
             canonical_json=payload,
+        )
+
+    def fence_file(
+        self,
+        locator_ref: str,
+        identity: ArtifactFileIdentity,
+    ) -> None:
+        """Bind one existing file locator to a captured physical identity once."""
+
+        ref = _nonempty_string(locator_ref, location="locator_ref")
+        if not isinstance(identity, ArtifactFileIdentity):
+            raise TypeError("identity must be ArtifactFileIdentity")
+        binding = self._bindings.get(ref)
+        if binding is None:
+            raise ArtifactCollectionError(f"unknown locator binding: {ref!r}")
+        if binding.kind is not LocatorSourceKind.FILE or binding.path is None:
+            raise ArtifactCollectionError(f"{ref!r}: file binding required for fence")
+        if binding.file_identity is not None:
+            raise ArtifactCollectionError(f"{ref!r}: file identity already fenced")
+        if binding.path != identity.path:
+            raise ArtifactCollectionError(
+                f"{ref!r}: captured identity path differs from locator binding"
+            )
+        self._bindings[ref] = LocatorBinding(
+            locator_ref=binding.locator_ref,
+            kind=binding.kind,
+            path=binding.path,
+            file_identity=identity,
         )
 
     def _bind_path(
@@ -575,6 +638,8 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
     code_abi = _mapping(abi.get("code_abi"), location="execution_abi/code_abi")
     if set(code_abi) != _CODE_ABI_KEYS:
         raise ArtifactCollectionError("execution_abi/code_abi keys changed")
+    if code_abi.get("domain") != EXECUTION_ABI:
+        raise ArtifactCollectionError("unsupported execution ABI domain")
     if code_abi.get("locator_grammar") != ARTIFACT_LOCATOR_GRAMMAR:
         raise ArtifactCollectionError("unsupported execution ABI locator grammar")
     if (
@@ -961,7 +1026,11 @@ def _apply_selector(
     elif selector == "selector:file_bytes_v1":
         _require_kind(binding, LocatorSourceKind.FILE)
         assert binding.path is not None
-        _encode_regular_file(output, binding.path)
+        _encode_regular_file(
+            output,
+            binding.path,
+            expected_identity=binding.file_identity,
+        )
     elif selector == "selector:directory_tree_bytes_v1":
         _require_kind(binding, LocatorSourceKind.DIRECTORY)
         assert binding.path is not None
@@ -976,6 +1045,7 @@ def _apply_selector(
             output,
             binding.path,
             weights=selector == "selector:h5_all_weight_vectors_v1",
+            expected_identity=binding.file_identity,
         )
     else:
         raise ArtifactCollectionError(f"selector {selector!r} requires a JSON document")
@@ -1110,7 +1180,10 @@ def _cross_authenticate_artifact_bindings(
             raise ArtifactCollectionError(
                 f"{location}/path: published resolved path differs from locator"
             )
-        raw_sha256, raw_size = _regular_file_identity(binding.path)
+        raw_sha256, raw_size = _regular_file_identity(
+            binding.path,
+            expected_identity=binding.file_identity,
+        )
         if envelope.get("sha256") != raw_sha256:
             raise ArtifactCollectionError(
                 f"{location}/sha256: published digest differs from raw file"
@@ -1157,7 +1230,10 @@ def _cross_authenticate_artifact_bindings(
             ) from error
 
         if row.embedded_identity_protocol == "h5_artifact_metadata_v1":
-            embedded = _read_h5_artifact_metadata(binding.path)
+            embedded = _read_h5_artifact_metadata(
+                binding.path,
+                expected_identity=binding.file_identity,
+            )
         else:
             embedded = _read_json_binding(binding, location=row.locator_ref)
             terminal_document = documents.get("terminal_gates")
@@ -1394,7 +1470,11 @@ def _validate_binding(
     allowed_roots: Sequence[Path],
 ) -> None:
     if binding.kind is LocatorSourceKind.JSON_VALUE:
-        if binding.path is not None or binding.canonical_json is None:
+        if (
+            binding.path is not None
+            or binding.canonical_json is None
+            or binding.file_identity is not None
+        ):
             raise ArtifactCollectionError(
                 f"{binding.locator_ref}: malformed JSON-value binding"
             )
@@ -1414,6 +1494,25 @@ def _validate_binding(
         raise ArtifactCollectionError(f"{binding.locator_ref}: directory required")
     if binding.kind is LocatorSourceKind.FILE and not binding.path.is_file():
         raise ArtifactCollectionError(f"{binding.locator_ref}: regular file required")
+    if binding.file_identity is not None:
+        if binding.kind is not LocatorSourceKind.FILE or not isinstance(
+            binding.file_identity,
+            ArtifactFileIdentity,
+        ):
+            raise ArtifactCollectionError(
+                f"{binding.locator_ref}: malformed file-identity fence"
+            )
+        try:
+            observed = os.lstat(binding.path)
+        except OSError as error:  # pragma: no cover - path chain reports this first
+            raise ArtifactCollectionError(
+                f"{binding.locator_ref}: cannot inspect fenced file"
+            ) from error
+        _require_expected_file_identity(
+            binding.path,
+            status=observed,
+            expected=binding.file_identity,
+        )
 
 
 def _validate_path_chain(root: Path, target: Path, *, optional: bool) -> None:
@@ -1474,7 +1573,10 @@ def _read_json_binding(
     if binding.kind not in {LocatorSourceKind.FILE, LocatorSourceKind.OPTIONAL_FILE}:
         raise ArtifactCollectionError(f"{location}: JSON file binding required")
     assert binding.path is not None
-    raw = _read_regular_file(binding.path)
+    raw = _read_regular_file(
+        binding.path,
+        expected_identity=binding.file_identity,
+    )
     try:
         return _strict_json_object(raw)
     except (TypeError, ValueError, UnicodeDecodeError) as error:
@@ -1505,9 +1607,17 @@ def _strict_json_object(raw: bytes) -> dict[str, object]:
     return value
 
 
-def _read_regular_file(path: Path) -> bytes:
+def _read_regular_file(
+    path: Path,
+    *,
+    expected_identity: ArtifactFileIdentity | None = None,
+) -> bytes:
     output = bytearray()
-    _encode_regular_file(output, path)
+    _encode_regular_file(
+        output,
+        path,
+        expected_identity=expected_identity,
+    )
     return bytes(output)
 
 
@@ -1516,11 +1626,17 @@ def _encode_regular_file(
     path: Path,
     *,
     framed: bool = False,
+    expected_identity: ArtifactFileIdentity | None = None,
 ) -> None:
     descriptor = _open_regular_file(path)
     size = 0
     try:
         before = os.fstat(descriptor)
+        _require_expected_file_identity(
+            path,
+            status=before,
+            expected=expected_identity,
+        )
         if framed:
             output.extend(struct.pack(">Q", before.st_size))
         while True:
@@ -1533,21 +1649,72 @@ def _encode_regular_file(
     finally:
         os.close(descriptor)
     _require_unchanged_file(path, before=before, after=after)
+    _require_expected_file_identity(
+        path,
+        status=after,
+        expected=expected_identity,
+    )
     if size != after.st_size:
         raise ArtifactCollectionError(f"file size changed while collecting: {path}")
 
 
-def _regular_file_sha256(path: Path) -> bytes:
-    digest, _size = _regular_file_identity(path)
+def capture_artifact_file_identity(path: str | Path) -> ArtifactFileIdentity:
+    """Capture one regular-file identity for cross-selector fencing."""
+
+    absolute = _absolute_path(path)
+    descriptor = _open_regular_file(absolute)
+    try:
+        before = os.fstat(descriptor)
+        observed = os.lstat(absolute)
+        after = os.fstat(descriptor)
+    except OSError as error:
+        raise ArtifactCollectionError(
+            f"unable to inspect artifact file identity {absolute}: {error}"
+        ) from error
+    finally:
+        os.close(descriptor)
+    before_key = _file_stat_key(before)
+    if before_key != _file_stat_key(after) or before_key != _file_stat_key(observed):
+        raise ArtifactCollectionError(
+            f"artifact file changed while capturing identity: {absolute}"
+        )
+    return ArtifactFileIdentity(
+        path=absolute,
+        device=before.st_dev,
+        inode=before.st_ino,
+        size_bytes=before.st_size,
+        mtime_ns=before.st_mtime_ns,
+        ctime_ns=before.st_ctime_ns,
+    )
+
+
+def _regular_file_sha256(
+    path: Path,
+    *,
+    expected_identity: ArtifactFileIdentity | None = None,
+) -> bytes:
+    digest, _size = _regular_file_identity(
+        path,
+        expected_identity=expected_identity,
+    )
     return bytes.fromhex(digest)
 
 
-def _regular_file_identity(path: Path) -> tuple[str, int]:
+def _regular_file_identity(
+    path: Path,
+    *,
+    expected_identity: ArtifactFileIdentity | None = None,
+) -> tuple[str, int]:
     descriptor = _open_regular_file(path)
     digest = hashlib.sha256()
     size = 0
     try:
         before = os.fstat(descriptor)
+        _require_expected_file_identity(
+            path,
+            status=before,
+            expected=expected_identity,
+        )
         while True:
             chunk = os.read(descriptor, 1024 * 1024)
             if not chunk:
@@ -1558,6 +1725,11 @@ def _regular_file_identity(path: Path) -> tuple[str, int]:
     finally:
         os.close(descriptor)
     _require_unchanged_file(path, before=before, after=after)
+    _require_expected_file_identity(
+        path,
+        status=after,
+        expected=expected_identity,
+    )
     if size != after.st_size:
         raise ArtifactCollectionError(f"file size changed while collecting: {path}")
     return digest.hexdigest(), size
@@ -1586,16 +1758,35 @@ def _require_unchanged_file(
     after: os.stat_result,
 ) -> None:
     observed = os.lstat(path)
-    identity_before = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
-    identity_after = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-    identity_path = (
-        observed.st_dev,
-        observed.st_ino,
-        observed.st_size,
-        observed.st_mtime_ns,
-    )
+    identity_before = _file_stat_key(before)
+    identity_after = _file_stat_key(after)
+    identity_path = _file_stat_key(observed)
     if identity_before != identity_after or identity_after != identity_path:
         raise ArtifactCollectionError(f"file changed while collecting: {path}")
+
+
+def _file_stat_key(status: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _require_expected_file_identity(
+    path: Path,
+    *,
+    status: os.stat_result,
+    expected: ArtifactFileIdentity | None,
+) -> None:
+    if expected is None:
+        return
+    if path != expected.path or _file_stat_key(status) != expected.stat_key:
+        raise ArtifactCollectionError(
+            f"opened file differs from its captured artifact identity: {path}"
+        )
 
 
 def _encode_directory_tree(output: _EncodingSink, root: Path) -> None:
@@ -1645,8 +1836,13 @@ def _encode_h5_logical_surface(
     path: Path,
     *,
     weights: bool,
+    expected_identity: ArtifactFileIdentity | None = None,
 ) -> None:
-    initial_sha256 = _regular_file_sha256(path)
+    identity = expected_identity or capture_artifact_file_identity(path)
+    initial_sha256 = _regular_file_sha256(
+        path,
+        expected_identity=identity,
+    )
     domain = (
         b"microcosm.selector.h5-all-weight-vectors.v1\0"
         if weights
@@ -1656,6 +1852,7 @@ def _encode_h5_logical_surface(
     selected = 0
     try:
         with pd.HDFStore(path, mode="r") as store:
+            _require_open_h5_file_identity(store, identity)
             _encode_h5_header(output, store)
             for key in sorted(store.keys()):
                 if key in {H5_TIME_PERIOD_KEY, H5_ARTIFACT_METADATA_KEY}:
@@ -1675,6 +1872,7 @@ def _encode_h5_logical_surface(
                     continue
                 _encode_table(output, key, value, columns=columns)
                 selected += 1
+            _require_open_h5_file_identity(store, identity)
     except (OSError, KeyError, TypeError, ValueError) as error:
         if isinstance(error, ArtifactCollectionError):
             raise
@@ -1684,7 +1882,7 @@ def _encode_h5_logical_surface(
     if selected == 0:
         surface = "weight vector" if weights else "entity table"
         raise ArtifactCollectionError(f"H5 contains no {surface} surface: {path}")
-    if _regular_file_sha256(path) != initial_sha256:
+    if _regular_file_sha256(path, expected_identity=identity) != initial_sha256:
         raise ArtifactCollectionError(f"H5 changed while collecting: {path}")
 
 
@@ -1739,20 +1937,47 @@ def _h5_header_values(store: pd.HDFStore) -> tuple[int, dict[str, object]]:
     return period, metadata
 
 
-def _read_h5_artifact_metadata(path: Path) -> dict[str, object]:
-    initial_sha256 = _regular_file_sha256(path)
+def _read_h5_artifact_metadata(
+    path: Path,
+    *,
+    expected_identity: ArtifactFileIdentity | None = None,
+) -> dict[str, object]:
+    identity = expected_identity or capture_artifact_file_identity(path)
+    initial_sha256 = _regular_file_sha256(
+        path,
+        expected_identity=identity,
+    )
     try:
         with pd.HDFStore(path, mode="r") as store:
+            _require_open_h5_file_identity(store, identity)
             _period, metadata = _h5_header_values(store)
+            _require_open_h5_file_identity(store, identity)
     except (OSError, KeyError, TypeError, ValueError) as error:
         if isinstance(error, ArtifactCollectionError):
             raise
         raise ArtifactCollectionError(
             f"unable to read H5 artifact metadata: {path}"
         ) from error
-    if _regular_file_sha256(path) != initial_sha256:
+    if _regular_file_sha256(path, expected_identity=identity) != initial_sha256:
         raise ArtifactCollectionError(f"H5 changed while collecting: {path}")
     return metadata
+
+
+def _require_open_h5_file_identity(
+    store: pd.HDFStore,
+    expected: ArtifactFileIdentity,
+) -> None:
+    try:
+        descriptor = store._handle.fileno()
+        status = os.fstat(descriptor)
+    except (AttributeError, OSError, TypeError, ValueError) as error:
+        raise ArtifactCollectionError(
+            "cannot bind the open pandas H5 handle to its captured artifact identity"
+        ) from error
+    if not stat.S_ISREG(status.st_mode) or _file_stat_key(status) != expected.stat_key:
+        raise ArtifactCollectionError(
+            "pandas opened a different H5 than the captured artifact file"
+        )
 
 
 def _encode_table(
@@ -2064,11 +2289,13 @@ def _is_sha256(value: object) -> bool:
 
 __all__ = [
     "ArtifactCollectionError",
+    "ArtifactFileIdentity",
     "ArtifactLocatorRegistry",
     "CollectedArtifactDigests",
     "CollectedArtifactSurfaces",
     "LocatorBinding",
     "LocatorSourceKind",
+    "capture_artifact_file_identity",
     "collect_artifact_digests",
     "collect_artifact_surfaces",
 ]
