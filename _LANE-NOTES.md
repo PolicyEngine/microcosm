@@ -208,3 +208,75 @@ The complete build shard was then rerun with
 Resource-pool bounding changes execution concurrency only and keeps this lane
 within its RSS contract; model and test thresholds remain untouched. No pool
 build was started, because the headless order assigns builds to the host queue.
+
+## Ownership evidence package (2026-08-22)
+
+- `experiments/qbi_ownership/extract_qbi_ownership_evidence.py` authenticates
+  the failed-attempt publication manifest/gates, the assembled/transferred/
+  simulated stage checkpoints, thirteen QBI target-bank files, and the
+  post-PUF transfer receipt before emitting a closed validation receipt. The
+  production checkpoint loader binds physical identity before stage use
+  (`tools/build_us_multispine_pool.py:2139-2141`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:2851-2908`).
+- The extractor reproduced all eight adjudicated comparator cells at exact
+  stored precision and recorded two distinct facts for each: the terminal
+  value origin and the first stage where its criterion becomes red. All eight
+  terminal values come through the late QRF transfer; all four incidence
+  checks plus UBIA QED first fail there, while BDC, REIT/PTP, and W2 QED first
+  fail on clone 1 and worsen after transfer. The transfer fills only the
+  declared complement of producer rows, and the stacked executor validates
+  the target accounting/origin envelope
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8728-8772,8832-8852,8945-9040`).
+- Recomputed realized regimes from the exact frozen 108,073-row donor support
+  for four availability patterns per target. The 52 target-pattern cells all
+  match the fitter; every red amount is `zero_inflated_positive`. That regime
+  uses a weighted zero/positive gate followed by the positive-value QRF
+  (`packages/microcosm-fit/src/microcosm/fit/qrf.py:104-105,950-1003,1333-1429`).
+  Future monolithic, bank, and stacked receipts now persist and validate the
+  exact pattern-regime map
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:509-555,582-671`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer_bank.py:350-420,612-780`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8945-9040`).
+- Reran the same nine whole-pool coupled identities before and after QBI
+  reconciliation. The terminal simulated checkpoint has zero violations for
+  all nine. The transferred checkpoint records all pre-reconciliation deltas,
+  including 2,996 BDC and 22,350 REIT/PTP exposure mismatches; the production
+  reconciliation applies those exposure caps and computes the nine-identity
+  summary
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/qbi_inputs.py:1324-1359,1377-1487`).
+- The ownership regression exercises all four amount targets across the group,
+  aggregate, and signed execution receipt copies. Each copy must carry the
+  same nonempty `qrf_transfer` origin and exact target-pattern regimes; deleting
+  `origin.channel` from any one copy is rejected by the closed receipt
+  validator
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:509-555,582-671`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8945-9040`).
+- Canonical extraction ran twice with full SHA verification and produced the
+  same `evidence.json` SHA-256
+  `38e60c1ec5e39b86df957148c877b3062ca97028f33ea0d1411013c2911c4b55`.
+  Validation reports: 8 ownership checks, 13 SHA-verified bank target files,
+  52 regime cells, 9/9 terminal invariants at zero, and no adjudication
+  mismatch. A canonical `--skip-sha` invocation exited 2 before write and left
+  that digest unchanged.
+- The refit plan does not infer a gate remedy from coarse marginals. Current
+  closed receipts record regimes and pattern catalogs but not row assignments,
+  gate scores/outcomes, or target-by-channel-by-pattern gate cross-tabs
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:509-555,582-671`).
+  Those diagnostics and the exact BDC/REIT exposure predictors require the
+  host-owned 1% demonstration build; the 25% host run remains certification.
+  No pool build, model tuning, exclusion, logbook-chain write, or amount-model
+  change occurred in this lane.
+
+## Ownership evidence commit gate (2026-08-22)
+
+All commands used the synchronized worktree environment, the writable uv
+cache, `UV_NO_SYNC=1`, and bounded native thread pools. Results cover the exact
+code/evidence tree being committed:
+
+- frame: 294 passed, 36 skipped (2m39s)
+- fit: 93 passed (22s)
+- calibrate: 201 passed (21s)
+- data: 275 passed, 1 skipped (21s)
+- build: 5,981 passed, 39 skipped (58m52s)
+- `uv run ruff check .`: clean
+- `git diff --check`: clean

@@ -5194,6 +5194,169 @@ def _rehash_late_receipt_after_fixture_mutation(
     receipt["sha256"] = stacked_spine_module._canonical_sha256(receipt)
 
 
+_QBI_AMOUNT_TRANSFER_TARGETS = (
+    "qualified_bdc_income",
+    "qualified_reit_and_ptp_income",
+    "unadjusted_basis_qualified_property",
+    "w2_wages_from_qualified_business",
+)
+
+
+def _qbi_amount_transfer_receipt_copies(
+    receipt: dict[str, object],
+    *,
+    target: str,
+) -> tuple[
+    object,
+    dict[str, object],
+    tuple[dict[str, object], dict[str, object], dict[str, object]],
+]:
+    group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if target in item.targets
+    )
+    canonical_family = next(
+        family
+        for family, targets in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE[
+                group.entity
+            ].items()
+        )
+        if target in targets
+    )
+    bounded_label = f"{group.entity}/{group.family}/{target}"
+    aggregate_label = f"{group.entity}/{canonical_family}/{target}"
+    transfer = receipt["post_puf_transfer"]
+    group_target = transfer["groups"][group.name]["targets"][bounded_label]
+    aggregate_target = transfer["targets"][aggregate_label]
+    row = next(
+        item for item in receipt["execution"] if item["producer"] == group.name
+    )
+    execution_target = row["producer_receipt"]["targets"][bounded_label]
+    assert isinstance(group_target, dict)
+    assert isinstance(aggregate_target, dict)
+    assert isinstance(row, dict)
+    assert isinstance(execution_target, dict)
+    return group, row, (group_target, aggregate_target, execution_target)
+
+
+@pytest.fixture(scope="module")
+def _qbi_amount_transfer_origin_receipt() -> dict[str, object]:
+    patcher = pytest.MonkeyPatch()
+    try:
+        result, _events, _finalizer_calls = _run_real_late_executor_fixture(patcher)
+    finally:
+        patcher.undo()
+
+    receipt = deepcopy(dict(result.receipt))
+    pattern_catalog = [
+        {
+            "name": acs_transfer_module._pattern_name(0, ()),
+            "observed_optional_predictors": [],
+        },
+        {
+            "name": acs_transfer_module._pattern_name(1, ("fixture_optional",)),
+            "observed_optional_predictors": ["fixture_optional"],
+        },
+    ]
+    regimes = {
+        pattern["name"]: "positive_only" for pattern in pattern_catalog
+    }
+    changed_rows: dict[str, dict[str, object]] = {}
+    for target in _QBI_AMOUNT_TRANSFER_TARGETS:
+        group, row, target_copies = _qbi_amount_transfer_receipt_copies(
+            receipt,
+            target=target,
+        )
+        canonical = deepcopy(target_copies[0])
+        canonical.update(
+            {
+                "producer_roles": ["puf_clone"],
+                "authorized_null_rows": 1,
+                "imputed_rows": 1,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+                "origin": {
+                    "channel": "qrf_transfer",
+                    "model_target": target,
+                    "availability_patterns": deepcopy(pattern_catalog),
+                    "realized_regimes_by_pattern": dict(regimes),
+                },
+            }
+        )
+        for target_receipt in target_copies:
+            target_receipt.clear()
+            target_receipt.update(deepcopy(canonical))
+        changed_rows[group.name] = row
+    for row in changed_rows.values():
+        row["producer_receipt_sha256"] = stacked_spine_module._canonical_sha256(
+            row["producer_receipt"]
+        )
+    _rehash_late_receipt_after_fixture_mutation(receipt)
+    stacked_spine_module.validate_stacked_late_producer_receipt(
+        receipt,
+        boundary="QBI amount ownership fixture",
+    )
+    return receipt
+
+
+@pytest.mark.parametrize("target", _QBI_AMOUNT_TRANSFER_TARGETS)
+def test_qbi_amount_transfer_origin_is_reproducible_and_required(
+    _qbi_amount_transfer_origin_receipt: dict[str, object],
+    target: str,
+) -> None:
+    canonical = _qbi_amount_transfer_origin_receipt
+    _group, row, target_copies = _qbi_amount_transfer_receipt_copies(
+        canonical,
+        target=target,
+    )
+    origins = [target_receipt["origin"] for target_receipt in target_copies]
+    assert len(
+        {
+            stacked_spine_module._canonical_sha256(origin)
+            for origin in origins
+        }
+    ) == 1
+    for target_receipt, origin in zip(target_copies, origins, strict=True):
+        assert target_receipt["producer_roles"] == ["puf_clone"]
+        assert origin["channel"] == "qrf_transfer"
+        assert origin["model_target"] == target
+        catalog = origin["availability_patterns"]
+        regimes = origin["realized_regimes_by_pattern"]
+        assert catalog
+        assert regimes
+        assert tuple(regimes) == tuple(pattern["name"] for pattern in catalog)
+        acs_transfer_module.validate_acs_transfer_input_origin_receipt(
+            origin,
+            boundary=f"QBI ownership regression for {target}",
+        )
+    assert row["producer_receipt_sha256"] == (
+        stacked_spine_module._canonical_sha256(row["producer_receipt"])
+    )
+
+    for copy_index in range(len(target_copies)):
+        forged = deepcopy(canonical)
+        _forged_group, forged_row, forged_copies = (
+            _qbi_amount_transfer_receipt_copies(forged, target=target)
+        )
+        forged_copies[copy_index]["origin"].pop("channel")
+        if copy_index == 2:
+            forged_row["producer_receipt_sha256"] = (
+                stacked_spine_module._canonical_sha256(
+                    forged_row["producer_receipt"]
+                )
+            )
+        _rehash_late_receipt_after_fixture_mutation(forged)
+        with pytest.raises(ValueError):
+            stacked_spine_module.validate_stacked_late_producer_receipt(
+                forged,
+                boundary=(
+                    f"QBI amount {target} missing origin channel copy {copy_index}"
+                ),
+            )
+
+
 def test_late_receipt_rejects_unrecorded_transfer_origin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
