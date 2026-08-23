@@ -1,4 +1,4 @@
-# Progress: 25% replacement-candidate runbook, round 2
+# Progress: 25% replacement-candidate runbook, round 3
 
 Date: 2026-08-23
 
@@ -6,61 +6,39 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-**Stopped at ordered recovery item 1: the Ledger v9.4 consumer artifact cannot
-be reproduced byte-for-byte by Chronicle.** The exact provenance commit rejects
-the archived feed under its consumer schema; the only historical artifact
-writer that can read the mixed legacy feed rewrites the facts from `b3c08356…`
-to `f455145f…`. No substitute artifact, manifest path, or manifest pin was
-invented. No pool build, release build, publication, promotion, push, SCF
-download, or logbook-chain write occurred.
+**In progress: auditing the owner-ruled legacy release arm before authorizing
+the guarded runbook.** The first replacement is now explicitly
+`one-surface + pkg3, legacy release arm, not exact-k certified`, using the bare
+v9.4 Ledger facts pin, `--dense-default-dataset`, and seed `0`. The exact-k
+artifact/feed re-pin and `pi_hi` decision are deferred to the next candidate.
 
-The candidate mode is owner-ruled as exact-k. The owner-stated seed `0` is
-recorded pending Max's ratification. Source/history review found no defensible
-builder default or July-incumbent value for `pi_hi`; current authority declares
-it required with `default: null`. That is a second independent owner-directed
-stop.
+No pool or release build, publication, promotion, push, tuning, or logbook-chain
+write is authorized in this round. Any differing target surface or missing
+legacy-arm input is a hard stop.
 
 ## Done
 
-- Read `CLAUDE.md`, the prior `FINAL_REPORT.md`,
-  `experiments/candidate_25pct/input_audit.md`, and
-  `experiments/candidate_25pct/dry_run.md` before taking round-2 action.
-- Confirmed the worktree starts clean at `4f616cb2b0f9`, four commits ahead of
-  `origin/main` (`d69131a3534a`).
-- Read the GitNexus exploration workflow. No GitNexus repository resource or
-  query tool is exposed in this session, so code-contract tracing will use the
-  checked-out sources and local repository history directly.
-- Established the serial stop rule: later inputs may be researched read-only in
-  parallel, but they will not be produced until every prior ordered input is
-  reproduced and verified.
-- Located the host v9.4 provenance receipt: 37,405 rows from Ledger commit
-  `0575510d93ec`, pinned to
-  `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
-- Ran `build-consumer-artifact` from an archived snapshot of that exact commit.
-  It rejected row 1 for a missing required `assertion` before producing an
-  artifact.
-- Ran the earliest historical artifact writer that can read the legacy rows as
-  a corroborating `/private/tmp` check. Its 37,405 output rows measured
-  `f455145f07a3047a325effc957f0d5dc8d4e317e96fec594a5625ef30e20cff6`
-  and differed starting at byte 23, so the output was rejected and not moved.
-- Recorded the complete evidence in
-  `experiments/candidate_25pct/input_audit_r2.md` and the non-run disposition in
-  `experiments/candidate_25pct/dry_run_r2.md`.
-- Stopped later-input recovery, as required, before any SCF download,
-  incumbent-diagnostics generation, frozen-surface compilation, host-script
-  creation, or dry-run.
-- Wrote the final round-2 handoff to `FINAL_REPORT.md`.
+- Read `CLAUDE.md`, `FINAL_REPORT.md`,
+  `experiments/candidate_25pct/input_audit.md`,
+  `experiments/candidate_25pct/input_audit_r2.md`, and
+  `experiments/candidate_25pct/dry_run_r2.md` before round-3 investigation.
+- Confirmed the worktree starts clean at `08ceb451` on
+  `candidate-25pct-runbook`, seven commits ahead of the local `origin/main`
+  reference.
+- Read the GitNexus exploration workflow for the required compiler-path trace.
+- Recorded the owner ruling that supersedes round 2's exact-k stop for this
+  first replacement only.
 
 ## Next
 
-The owner must choose a new reviewed contract; this lane cannot make that
-choice without fabricating provenance. Viable directions are either:
-
-1. ratify a new Chronicle-native consumer feed/artifact and update the reviewed
-   facts pin away from `b3c08356…`, or
-2. add and review a Chronicle compatibility exporter that preserves the legacy
-   mixed-contract bytes and emits a producer-owned manifest.
-
-The owner must also ratify an exact-k `pi_hi`. After both issues are resolved,
-restart ordered recovery at item 1; do not resume at SCF or create a partial
-host command from the currently missing pins.
+1. Prove from checked-out current-main code that legacy and exact-k reach the
+   same `compile_us_fiscal_target_registry` target surface, and isolate the
+   effects of `--dense-default-dataset`.
+2. Enumerate and hash every legacy-arm stage-2 input from the July 28 incumbent
+   invocation through parser and loader code; stop without substitution if any
+   input is absent.
+3. If both gates pass, write the guarded off-chain two-stage host script,
+   validate it with `bash -n`, execute its real `--dry-run`, and commit the
+   receipt plus updated audit/journals.
+4. Write the final outcome to `FINAL_REPORT.md`. Do not run either builder and
+   do not publish, promote, push, or touch pending logbook-chain state.
