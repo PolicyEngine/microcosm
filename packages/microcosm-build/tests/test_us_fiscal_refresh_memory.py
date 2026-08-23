@@ -234,15 +234,17 @@ def _variable_module_count() -> int:
     )
 
 
-@requires_us
-def test_reform_materialization_builds_one_engine_system_per_family() -> None:
-    """The pre-#456 builder rebuilt the full tax-benefit system every batch.
+def _isolated_family_measurement() -> None:
+    """Measure the per-family module registrations; asserts on failure.
 
-    Each build permanently registers one set of variable modules in
-    ``sys.modules`` (measured: ~5,600 entries, ~55-60 MB RSS floor, immune to
-    gc). Three batches per family must therefore add ~one set, not three:
-    against the old builder this assertion sees three sets per family and
-    fails.
+    Runs the pre-#456 leak canary end-to-end. Must execute in a fresh
+    interpreter: variable-module names are keyed by ``id(system)``, and in a
+    warm suite process CPython can hand a fresh system a dead prior system's
+    recycled address, re-registering its module set under already-existing
+    names — the measured delta then reads 0 and the liveness assert fails
+    spuriously (the nondeterministic main-CI red first seen on the merge run
+    for the FRS 2024-25 retarget). A virgin process has no dead systems to
+    recycle, so the count deltas measure real registrations.
     """
     builder = _load_builder_module()
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
@@ -279,6 +281,31 @@ def test_reform_materialization_builds_one_engine_system_per_family() -> None:
         f"reform materialization registered {added} variable modules for one "
         f"family of 3 batches (single build ~{single_build_modules}); the "
         "per-target-family system reuse of microcosm#456 has regressed"
+    )
+
+
+@requires_us
+def test_reform_materialization_builds_one_engine_system_per_family() -> None:
+    """The pre-#456 builder rebuilt the full tax-benefit system every batch.
+
+    Each build permanently registers one set of variable modules in
+    ``sys.modules`` (measured: ~5,600 entries, ~55-60 MB RSS floor, immune to
+    gc). Three batches per family must therefore add ~one set, not three:
+    against the old builder this assertion sees three sets per family and
+    fails. The measurement runs in a fresh interpreter because the module
+    count is only meaningful there — see ``_isolated_family_measurement``.
+    """
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve())],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode == 0, (
+        "isolated per-family measurement failed in the fresh interpreter:\n"
+        f"{result.stdout}\n{result.stderr}"
     )
 
 
@@ -345,3 +372,7 @@ def test_released_simulations_do_not_accumulate() -> None:
         f"{alive_after - alive_before} finished batch simulations survived "
         "the family boundary; release_engine_simulation has regressed"
     )
+
+
+if __name__ == "__main__":
+    _isolated_family_measurement()

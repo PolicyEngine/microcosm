@@ -100,15 +100,15 @@ CHECKPOINT_BINDINGS = {
     },
 }
 
-#: Battery constants mirrored from stacked_spine.py:11623-11626 and the
-#: support profile at stacked_spine.py:3026-3030.
+#: Battery constants mirrored from stacked_spine.py:13892-13894 and the
+#: support profile at stacked_spine.py:3177-3181.
 INCIDENCE_BOUNDS = (0.8, 1.25)
 QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
 QED_TOLERANCE = 0.25
 MIN_EFFECTIVE_SUPPORT = 5
 
 #: Support-provenance column names (support_provenance.py:333-344) and
-#: channel labels (support_provenance.py:31-34; stacked_spine.py:264).
+#: channel/clone labels (support_provenance.py:31-34).
 PERSON_CHANNEL = "person_support_channel"
 PERSON_CLONE = "person_support_clone_index"
 ASEC = "asec"

@@ -343,15 +343,18 @@ def test_constant_derived_domain_counts_are_complete(
     producer_graph = imputation["producer_graph"]
     assert len(producer_graph["nodes"]) == 38
     assert len(producer_graph["ownership_matrix"]) == 18
-    assert not {
-        "edges",
-        "input_inventories",
-        "incomparable_node_policy",
-        "order",
-        "ordering",
-        "transfer_groups",
-        "waves",
-    } & producer_graph.keys()
+    assert (
+        not {
+            "edges",
+            "input_inventories",
+            "incomparable_node_policy",
+            "order",
+            "ordering",
+            "transfer_groups",
+            "waves",
+        }
+        & producer_graph.keys()
+    )
     assert all(
         "depends_on" not in node and "write_scopes" not in node
         for node in producer_graph["nodes"]
@@ -360,11 +363,14 @@ def test_constant_derived_domain_counts_are_complete(
         node for node in producer_graph["nodes"] if node["id"] == "primary_puf_qrf"
     )
     assert len(primary_node["outputs"]) == 35
-    assert sum(
-        len(node["outputs"])
-        for node in producer_graph["nodes"]
-        if node["kind"] == "late_transfer"
-    ) == 0
+    assert (
+        sum(
+            len(node["outputs"])
+            for node in producer_graph["nodes"]
+            if node["kind"] == "late_transfer"
+        )
+        == 0
+    )
     assert sum(len(node["outputs"]) for node in producer_graph["nodes"]) == 92
     compiled_schedule = project_imputation_legacy_payloads(
         imputation,
@@ -412,18 +418,11 @@ def test_constant_derived_domain_counts_are_complete(
     source_backed_steps = [
         step for step in take_up_steps if "source_operation_ref" in step
     ]
-    local_steps = [
-        step for step in take_up_steps if "source_operation_ref" not in step
-    ]
+    local_steps = [step for step in take_up_steps if "source_operation_ref" not in step]
     assert len(source_backed_steps) == 17
     assert len(local_steps) == 7
     assert (
-        len(
-            {
-                step["source_operation_ref"]["stage"]
-                for step in source_backed_steps
-            }
-        )
+        len({step["source_operation_ref"]["stage"] for step in source_backed_steps})
         == 8
     )
     source_operations = {
@@ -433,9 +432,7 @@ def test_constant_derived_domain_counts_are_complete(
         assert "operation_id" not in step
         reference = step["source_operation_ref"]
         assert set(reference) == {"stage", "operation_index", "operation_id"}
-        operation = source_operations[reference["stage"]][
-            reference["operation_index"]
-        ]
+        operation = source_operations[reference["stage"]][reference["operation_index"]]
         assert reference["operation_id"] == operation["kind"]
     assert all(
         isinstance(step["operation_id"], str) and step["operation_id"]
@@ -457,7 +454,6 @@ def test_constant_derived_domain_counts_are_complete(
         "cd_policy",
         "congressional_district",
         "county",
-        "default_geography_layers",
         "facts_sha256",
         "geography_layers",
         "manifest_sha256",
@@ -708,7 +704,7 @@ def test_typed_imputation_reconstructs_all_constants_authority_components(
     )
 
 
-def test_authored_imputation_contains_only_external_asset_sha256_pins(
+def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
     generated_documents: dict[str, dict[str, object]],
 ) -> None:
     imputation = generated_documents["imputation.yaml"]
@@ -717,19 +713,38 @@ def test_authored_imputation_contains_only_external_asset_sha256_pins(
     assert "source_stage_asset" not in graph["resource_semantics"]
 
     asset_pins: list[tuple[str, str]] = []
+    identity_digests: list[tuple[tuple[str, ...], str]] = []
 
-    def collect_sha256(value: object) -> None:
+    def collect_sha256(value: object, path: tuple[str, ...] = ()) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
+                child_path = (*path, key)
                 if key.endswith("sha256"):
-                    assert key == "asset_sha256"
-                    asset_pins.append((str(value["asset"]), str(child)))
-                collect_sha256(child)
+                    if key == "asset_sha256":
+                        asset_pins.append((str(value["asset"]), str(child)))
+                    else:
+                        identity_digests.append((child_path, str(child)))
+                collect_sha256(child, child_path)
         elif isinstance(value, list):
             for child in value:
-                collect_sha256(child)
+                collect_sha256(child, (*path, "[]"))
 
     collect_sha256(imputation)
+    assert identity_digests == [
+        (
+            (
+                "models",
+                "regime_gated_qrf",
+                "post_draw_calibration",
+                "sha256",
+            ),
+            str(
+                imputation["models"]["regime_gated_qrf"]["post_draw_calibration"][
+                    "sha256"
+                ]
+            ),
+        )
+    ]
     assert len(asset_pins) == 2
     assert set(asset_pins) == {
         (
@@ -788,8 +803,7 @@ def test_imputation_schema_refuses_malformed_external_asset_sha256(
         primary_binding = next(
             resource["binding"]
             for resource in primary_node["virtual_resources"]
-            if resource["binding"]["resource_kind"]
-            == "primary_puf_execution_config"
+            if resource["binding"]["resource_kind"] == "primary_puf_execution_config"
         )
         primary_binding["capital_gains_tail"]["soi_e19200_agi_bands"][
             "asset_sha256"

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,9 @@ __all__ = [
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "DEFAULT_LEDGER_ASSERTION",
     "LedgerConsumerArtifact",
+    "add_ledger_artifact_args",
     "load_ledger_consumer_artifact",
+    "resolve_ledger_artifact",
 ]
 
 CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v1"
@@ -110,16 +113,14 @@ def load_ledger_consumer_artifact(
             )
         if not facts_path.exists():
             raise FileNotFoundError(
-                "Ledger consumer artifact has no consumer_facts.jsonl: "
-                f"{artifact_path}"
+                f"Ledger consumer artifact has no consumer_facts.jsonl: {artifact_path}"
             )
         manifest_bytes = manifest_path.read_bytes()
         manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
         manifest = json.loads(manifest_bytes)
         if not isinstance(manifest, dict):
             raise ValueError(
-                f"Ledger consumer artifact manifest must be an object: "
-                f"{manifest_path}"
+                f"Ledger consumer artifact manifest must be an object: {manifest_path}"
             )
         schema_version = manifest.get("schema_version")
         if schema_version != CONSUMER_ARTIFACT_SCHEMA_VERSION:
@@ -139,10 +140,7 @@ def load_ledger_consumer_artifact(
                 "Ledger consumer artifact fact rows do not match the "
                 f"manifest hash: {facts_sha256} != {declared}."
             )
-    if (
-        expected_facts_sha256 is not None
-        and expected_facts_sha256 != facts_sha256
-    ):
+    if expected_facts_sha256 is not None and expected_facts_sha256 != facts_sha256:
         raise ValueError(
             "Ledger consumer facts do not match the pinned hash: "
             f"{facts_sha256} != {expected_facts_sha256}."
@@ -165,6 +163,47 @@ def load_ledger_consumer_artifact(
         facts_sha256=facts_sha256,
         manifest=manifest,
         manifest_sha256=manifest_sha256,
+    )
+
+
+def add_ledger_artifact_args(parser: ArgumentParser) -> None:
+    """Add shared Ledger consumer-artifact arguments to a CLI parser."""
+
+    parser.add_argument(
+        "--ledger-facts",
+        type=Path,
+        help=(
+            "PolicyEngine Ledger consumer artifact directory (manifest.json "
+            "+ consumer_facts.jsonl) or a bare consumer_facts.jsonl file."
+        ),
+    )
+    parser.add_argument(
+        "--ledger-facts-sha256",
+        help="Pin: expected SHA-256 of consumer_facts.jsonl.",
+    )
+    parser.add_argument(
+        "--ledger-manifest-sha256",
+        help=(
+            "Pin: expected SHA-256 of the Ledger consumer artifact manifest.json; "
+            "requires an artifact directory feed."
+        ),
+    )
+
+
+def resolve_ledger_artifact(args: Namespace) -> LedgerConsumerArtifact | None:
+    """Load the CLI-selected Ledger artifact, returning ``None`` when absent."""
+
+    ledger_facts = getattr(args, "ledger_facts", None)
+    if ledger_facts is None:
+        if getattr(args, "ledger_facts_sha256", None) is not None:
+            raise ValueError("--ledger-facts-sha256 requires --ledger-facts.")
+        if getattr(args, "ledger_manifest_sha256", None) is not None:
+            raise ValueError("--ledger-manifest-sha256 requires --ledger-facts.")
+        return None
+    return load_ledger_consumer_artifact(
+        ledger_facts,
+        expected_facts_sha256=getattr(args, "ledger_facts_sha256", None),
+        expected_manifest_sha256=getattr(args, "ledger_manifest_sha256", None),
     )
 
 

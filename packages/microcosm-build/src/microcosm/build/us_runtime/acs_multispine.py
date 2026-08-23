@@ -271,7 +271,9 @@ def _json_ready(value: Any) -> Any:
 
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _json_ready(getattr(value, item.name)) for item in fields(value)
+            item.name: _json_ready(getattr(value, item.name))
+            for item in fields(value)
+            if item.name != "target_regimes" or getattr(value, item.name)
         }
     if isinstance(value, np.generic):
         return _json_ready(value.item())
@@ -297,6 +299,11 @@ def _json_ready(value: Any) -> Any:
                     "ACS multispine provenance mapping keys must be strings; "
                     f"got {type(key).__name__}."
                 )
+            if key == "target_regimes" and not item:
+                # The opt-in stacked audit field did not exist on legacy ACS
+                # multispine pattern provenance. Keep default callers' JSON
+                # schema byte-compatible when the audit selection is empty.
+                continue
             converted[key] = _json_ready(item)
         return converted
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):

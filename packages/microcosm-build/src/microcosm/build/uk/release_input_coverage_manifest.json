@@ -458,10 +458,57 @@
   "weight_source": "household_weight"
  },
  "family_coverage": {
+  "cgt_band_donors": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_increasing_support",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "household_is_cgt_band_donor",
+    "capital_gains"
+   ],
+   "required_mass_change_reason": "Stack 30 positive-weight HMRC Table 2.1a support households per retained gain band; published donor mass is added explicitly.",
+   "rewrites": [
+    "capital_gains"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
+   "source_vintages": {
+    "source": "HMRC Capital Gains Tax statistics, July 2025, Table 2.1a",
+    "survey": "HMRC Capital Gains Tax statistics Table 2.1a and Advani-Summers capital-gains incidence"
+   },
+   "stage": "cgt_band_donors",
+   "status": "required_at_build"
+  },
+  "cgt_incidence_clone": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "household_is_capital_gains_clone",
+    "capital_gains"
+   ],
+   "required_mass_change_reason": "Capital-gains incidence clone splits every household's mass equally across original and clone records; total household mass is conserved.",
+   "rewrites": [
+    "capital_gains"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
+   "source_vintages": {
+    "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+    "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence"
+   },
+   "stage": "cgt_incidence_clone",
+   "status": "required_at_build"
+  },
   "etb_services": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
    "output_weight_kind": "importance",
    "outputs": [
     "dfe_education_spending",
@@ -478,7 +525,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "e0cef76862d76135038500b7cae217c5a1304b5afaca8929e5b4ff92479fa9fc",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.",
     "survey": "Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table"
@@ -490,6 +537,7 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
    "output_weight_kind": "importance",
    "outputs": [
     "full_rate_vat_expenditure_rate"
@@ -497,7 +545,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "e0cef76862d76135038500b7cae217c5a1304b5afaca8929e5b4ff92479fa9fc",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.",
     "survey": "Effects of Taxes and Benefits 1977-2024"
@@ -518,12 +566,36 @@
    ],
    "required_mass_change_reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
    "source_manifest": "cgt_source_stages.json",
-   "source_manifest_sha256": "16b68f1d222116278421b210d3d9de0d06edcdf25d68f5a29dbf0f52ca63384a",
+   "source_manifest_sha256": "71104111b4b9f2da00ce49ad5abec54a35d300196032c9742d62e02aa1730774",
    "source_vintages": {
     "hmrc_surface": "2023-24",
-    "mapped_build_period": "2023"
+    "mapped_build_period": "2024"
    },
    "stage": "hmrc_cgt_gains",
+   "status": "required_at_build"
+  },
+  "hmrc_cgt_gains_spine": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "calibration_permitted": false,
+   "effective_mass_requirements": {},
+   "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+   "fenced_fact_count": 76,
+   "output_weight_kind": "importance",
+   "outputs": [
+    "capital_gains"
+   ],
+   "required_mass_change_reason": "Amounts-only capital gains redraw on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [
+    "capital_gains"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
+   "source_vintages": {
+    "hmrc_surface": "2023-24",
+    "mapped_build_period": "2024"
+   },
+   "stage": "hmrc_cgt_gains_spine",
    "status": "required_at_build"
   },
   "hmrc_spi_income": {
@@ -531,6 +603,8 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "calibration_permitted": false,
+   "canonical_source_manifest": "source_stages.json",
+   "canonical_source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
    "effective_mass_requirements": {
     "charitable_investment_gifts": {
      "mass_share_denominator": "all_person_effective_mass",
@@ -603,7 +677,8 @@
    "source_manifest_sha256": "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea",
    "source_vintages": {
     "hmrc_surface": "2023-24",
-    "mapped_build_period": "2023",
+    "mapped_build_period": "2024",
+    "period_mapping": "latest_published_tax_year",
     "spi_donor": "2022-23"
    },
    "spi_prior_national_household_mass_share": 0.5,
@@ -614,6 +689,7 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
    "output_weight_kind": "importance",
    "outputs": [
     "food_and_non_alcoholic_beverages_consumption",
@@ -639,7 +715,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "e0cef76862d76135038500b7cae217c5a1304b5afaca8929e5b4ff92479fa9fc",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
    "source_vintages": {
     "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.",
     "survey": "Living Costs and Food Survey 2023-24"
@@ -651,6 +727,7 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
    "output_weight_kind": "importance",
    "outputs": [],
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
@@ -659,7 +736,7 @@
     "property_wealth"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "e0cef76862d76135038500b7cae217c5a1304b5afaca8929e5b4ff92479fa9fc",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
    "source_vintages": {
     "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
     "survey": "Public regional property reference"
@@ -667,10 +744,57 @@
    "stage": "regional_property_uprating",
    "status": "required_at_build"
   },
+  "salary_sacrifice": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "pension_contributions_via_salary_sacrifice",
+    "employee_pension_contributions"
+   ],
+   "required_mass_change_reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved.",
+   "rewrites": [
+    "pension_contributions_via_salary_sacrifice",
+    "employee_pension_contributions"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
+   "source_vintages": {
+    "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
+    "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
+   },
+   "stage": "salary_sacrifice",
+   "status": "required_at_build"
+  },
+  "student_loans": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "student_loan_plan"
+   ],
+   "required_mass_change_reason": "Student-loan plan assignment writes an enum column only; household rows and typed household weights pass through and total household mass is conserved.",
+   "rewrites": [
+    "student_loan_plan"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
+   "source_vintages": {
+    "source": "Explore Education Statistics Table 6a, Higher education total",
+    "survey": "Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England"
+   },
+   "stage": "student_loans",
+   "status": "required_at_build"
+  },
   "was_wealth": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
    "output_weight_kind": "importance",
    "outputs": [
     "owned_land",
@@ -690,7 +814,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "e0cef76862d76135038500b7cae217c5a1304b5afaca8929e5b4ff92479fa9fc",
+   "source_manifest_sha256": "6f50637a95c340c07382d13af5a43da9d2a1a1167f713aba3605b3ca62efe449",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
     "survey": "Wealth and Assets Survey round 8"
@@ -701,12 +825,12 @@
  },
  "reference": {
   "derived_from": "efrs_parity_reference.json",
-  "filename": "enhanced_frs_2023_24.h5",
-  "period": "2023",
+  "filename": "enhanced_frs_2024_25.h5",
+  "period": "2024",
   "populated_input_columns": 145,
-  "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-  "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-  "vintage": "2023_24"
+  "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+  "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+  "vintage": "2024_25"
  },
  "restoration_evidence": {
   "derived_from": "efrs_parity_known_gaps.json",

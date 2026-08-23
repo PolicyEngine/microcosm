@@ -3843,7 +3843,13 @@ def _json_ready(value: object) -> object:
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
             raise ValueError("Build receipt mappings must use string JSON keys.")
-        return {key: _json_ready(item) for key, item in value.items()}
+        return {
+            key: _json_ready(item)
+            for key, item in value.items()
+            # The opt-in stacked audit field did not exist on legacy transfer
+            # provenance. Preserve the default build-receipt JSON schema.
+            if key != "target_regimes" or item
+        }
     if is_dataclass(value) and not isinstance(value, type):
         # Walk fields directly rather than through dataclasses.asdict(), whose
         # recursive deepcopy cannot serialize immutable MappingProxyType
@@ -3851,6 +3857,9 @@ def _json_ready(value: object) -> object:
         return {
             field.name: _json_ready(getattr(value, field.name))
             for field in fields(value)
+            # Match the mapping path above while avoiding dataclasses.asdict()
+            # for immutable authority records.
+            if field.name != "target_regimes" or getattr(value, field.name)
         }
     if isinstance(value, (list, tuple)):
         return [_json_ready(item) for item in value]

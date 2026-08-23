@@ -284,20 +284,20 @@ def test_ported_june_parity_gates_reject_empty_evidence() -> None:
 def _input_mass_reference(totals=None) -> UKInputMassReference:
     return UKInputMassReference(
         totals=({"employment_income": 10.0} if totals is None else totals),
-        filename="enhanced_frs_2023_24.h5",
-        revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-        sha256=("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
-        vintage="2023_24",
+        filename="enhanced_frs_2024_25.h5",
+        revision="a2039519d3b92aecc06c66dfd175cb46ac24cada",
+        sha256=("97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"),
+        vintage="2024_25",
     )
 
 
 def _input_mass_descriptor() -> UKInputMassReferenceDescriptor:
     return UKInputMassReferenceDescriptor(
         name="efrs-post-calibration",
-        filename="enhanced_frs_2023_24.h5",
-        revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-        sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-        vintage="2023_24",
+        filename="enhanced_frs_2024_25.h5",
+        revision="a2039519d3b92aecc06c66dfd175cb46ac24cada",
+        sha256="97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+        vintage="2024_25",
         totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
         scope_note="Seeded scoped-reference note.",
     )
@@ -332,9 +332,7 @@ def test_zeroed_input_column_fails_by_name() -> None:
     assert gate.name == "input_mass_parity"
     assert "employment_income" in gate.failures[0]
     assert "mass is zero" in gate.failures[0]
-    assert gate.details["reference_identity"]["filename"] == (
-        "enhanced_frs_2023_24.h5"
-    )
+    assert gate.details["reference_identity"]["filename"] == ("enhanced_frs_2024_25.h5")
 
 
 def test_999_permille_mass_loss_fails_by_name() -> None:

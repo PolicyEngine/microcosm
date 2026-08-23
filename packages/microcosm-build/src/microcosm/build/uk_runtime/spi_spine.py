@@ -162,7 +162,10 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # Reviewed constants for every load-bearing manifest parameter the spine
 # transforms consume. The drift asserts below fail closed on any manifest-only
 # edit (adversarial-review finding on #717): a manifest change to these values
-# requires a matching reviewed code change here.
+# requires a matching reviewed code change here. The #730/#684 two-arm rule
+# applies to every declared parameter: it needs (1) a drift assert and (2) an
+# executed-effect receipt, or an explicit absence statement. Seeded draws use
+# twin-build determinism as their executed-effect receipt.
 SPI_SPINE_STAGE1_PREDICTORS = ("age", "gender", "region")
 SPI_SPINE_STAGE2_PREDICTORS = (
     "age",
@@ -250,12 +253,22 @@ class UKSPIIncomeSpineResult:
 class UKFRSHMRCSpineLeavesStageTransform:
     frs_raw_dir: Path
     stage: SourceStageSpec
+    # A #627 scale-ladder receipt build: the spine was subsampled after
+    # frs_spine, so raw-tab person coverage legitimately exceeds the frame.
+    sampled_rung: bool = False
     # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKFRSHMRCSpineLeavesResult | None = field(default=None, init=False)
 
-    def __init__(self, frs_raw_dir: str | Path, *, stage: SourceStageSpec) -> None:
+    def __init__(
+        self,
+        frs_raw_dir: str | Path,
+        *,
+        stage: SourceStageSpec,
+        sampled_rung: bool = False,
+    ) -> None:
         object.__setattr__(self, "frs_raw_dir", Path(frs_raw_dir))
         object.__setattr__(self, "stage", stage)
+        object.__setattr__(self, "sampled_rung", bool(sampled_rung))
         object.__setattr__(self, "last_result", None)
 
     def __call__(self, frame: Frame) -> Frame:
@@ -278,11 +291,18 @@ class UKFRSHMRCSpineLeavesStageTransform:
         source_leaves = _materialize_source_leaves(adult, benefits)
         person = frame.table("person").copy()
         missing_ids = sorted(set(source_leaves.index) - set(person["person_id"]))
-        if missing_ids:
+        if missing_ids and not self.sampled_rung:
             raise ValueError(
                 "Raw FRS retained leaves contain person identity value(s) absent "
                 f"from the raw spine: {missing_ids[:5]}."
             )
+        if missing_ids:
+            # A rung sample deliberately drops most source people; restrict
+            # the raw surface to the survivors (the full-scale fence above
+            # stays strict — mirrors frs_hmrc_leaves' sampled_rung posture).
+            source_leaves = source_leaves.loc[
+                source_leaves.index.isin(person["person_id"].to_numpy())
+            ]
         aligned = source_leaves.reindex(person["person_id"], fill_value=0.0)
         for column in FRS_HMRC_RETAINED_LEAF_COLUMNS:
             person[column] = aligned[column].to_numpy(dtype=float)
@@ -339,6 +359,10 @@ class UKFRSHMRCSpineLeavesStageTransform:
 class UKSPISupportChannelStageTransform:
     stage: SourceStageSpec
     seed: int = 42
+    # A #627 scale-ladder receipt build: scale the declared synthetic stack
+    # by the survey-side sample fraction so the prior-mass pairing holds at
+    # every rung (f100 keeps the declared count exactly).
+    sample_fraction: float = 1.0
     # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPISupportResult | None = field(default=None, init=False)
 
@@ -349,6 +373,8 @@ class UKSPISupportChannelStageTransform:
             self.stage,
             seed=self.seed,
         )
+        if self.sample_fraction != 1.0 and count is not None:
+            count = max(1, int(round(count * self.sample_fraction)))
         result = build_uk_spi_support_channel(
             tables["person"],
             tables["benunit"],
@@ -416,6 +442,10 @@ class UKSPIIncomeSpineStageTransform:
     seed: int = 42
     qrf_estimators: int = 100
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE
+    # A #627 scale-ladder receipt build: a sampled stack cannot carry mass in
+    # ultra-sparse restored columns, so the effective-mass fence records the
+    # gap instead of raising (f100 keeps the strict fence).
+    sampled_rung: bool = False
     # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPIIncomeSpineResult | None = field(default=None, init=False)
 
@@ -428,6 +458,7 @@ class UKSPIIncomeSpineStageTransform:
         seed: int = 42,
         qrf_estimators: int = 100,
         donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
+        sampled_rung: bool = False,
     ) -> None:
         object.__setattr__(self, "spi_tab_path", Path(spi_tab_path))
         object.__setattr__(self, "hmrc_ods_path", Path(hmrc_ods_path))
@@ -435,6 +466,7 @@ class UKSPIIncomeSpineStageTransform:
         object.__setattr__(self, "seed", seed)
         object.__setattr__(self, "qrf_estimators", qrf_estimators)
         object.__setattr__(self, "donor_sample_size", donor_sample_size)
+        object.__setattr__(self, "sampled_rung", bool(sampled_rung))
         object.__setattr__(self, "last_result", None)
 
     @property
@@ -492,11 +524,16 @@ class UKSPIIncomeSpineStageTransform:
             for name, share in distributional_mass_shares.items()
             if share < DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
         }
-        if insufficient:
+        if insufficient and not self.sampled_rung:
             raise RuntimeError(
                 "Rebuilt SPI spine channel did not restore required "
                 f"effective-mass coverage: {insufficient}."
             )
+        # On a sampled rung the scaled stack cannot carry mass in
+        # ultra-sparse restored columns (e.g. charitable_investment_gifts at
+        # ~0.02 percent density); the gap is receipted via the replay
+        # report's distributional_mass_shares — the full-scale fence above
+        # stays strict.
         report = _build_spine_replay_report(
             source_targets=source_targets,
             support=support,

@@ -33,6 +33,7 @@ from microcosm.build.gates import FitWeightRecord, GateResult
 from microcosm.build.uk_runtime.battery_bindings import (
     UK_GATE_REGISTRY,
     UKGateBinding,
+    _ledger_compile_parity_registry,
 )
 from microcosm.build.uk_runtime.national_frame import (
     _uk_gate_surface,
@@ -48,6 +49,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
 from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassReference,
 )
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
@@ -449,9 +451,9 @@ class TestBatteryRegressions:
         ]
         # 11 as on main (uk_nonnegative_columns passes with zero required
         # columns — the scheduled stages declare none), the two E4 stochastic
-        # gates, the E5 support gate, and the E6 aggregate-admin gate; their
-        # evaluators have direct tests.
-        assert len(passed) == 15
+        # gates, the E5 support gate, the E6 aggregate-admin gate, and the E8
+        # student-loan enum gate; their evaluators have direct tests.
+        assert len(passed) == 16
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
@@ -719,7 +721,48 @@ class TestPreflightBindings:
         assert statuses == {
             "uk_release_input_coverage_manifest_current": GateStatus.PASSED,
             "uk_release_family_build_stages": GateStatus.PASSED,
+            "uk_ledger_compile_parity_production_2023": (GateStatus.EVIDENCE_ABSENT),
+            "uk_ledger_compile_parity_incumbent_2025": GateStatus.EVIDENCE_ABSENT,
         }
+
+    def test_ledger_compile_parity_selects_the_declared_period_registry(self) -> None:
+        registry_2023 = TargetRegistry(
+            (
+                TargetSpec(
+                    name="target",
+                    entity="household",
+                    measure="measure",
+                    value=1.0,
+                    period=2023,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        registry_2025 = TargetRegistry(
+            (
+                TargetSpec(
+                    name="target",
+                    entity="household",
+                    measure="measure",
+                    value=2.0,
+                    period=2025,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        context = EvidenceContext(
+            artifacts={
+                "uk_ledger_compiled_registries": {
+                    2023: registry_2023,
+                    2025: registry_2025,
+                }
+            }
+        )
+
+        assert _ledger_compile_parity_registry(context, 2023) is registry_2023
+        assert _ledger_compile_parity_registry(context, 2025) is registry_2025
 
     def test_missing_required_stage_fails_with_the_assertion_text(
         self, uk_gates

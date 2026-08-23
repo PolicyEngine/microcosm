@@ -146,9 +146,7 @@ def _late_families(
         for index, value in enumerate(
             _array(imputation.get("families"), location="imputation/families")
         )
-        for family in [
-            _mapping(value, location=f"imputation/families/{index}")
-        ]
+        for family in [_mapping(value, location=f"imputation/families/{index}")]
         if family.get("stage") == "late_producer_dag"
     )
 
@@ -183,9 +181,7 @@ def _late_transfer_surface(
         ):
             target = _mapping(
                 value,
-                location=(
-                    f"imputation/late_families/{index}/targets/{target_index}"
-                ),
+                location=(f"imputation/late_families/{index}/targets/{target_index}"),
             )
             name = _nonempty_string(
                 target.get("name"),
@@ -208,9 +204,7 @@ def _late_transfer_surface(
         )
         projection = _mapping(
             donor.get("projection"),
-            location=(
-                f"imputation/late_families/{index}/donor_contract/projection"
-            ),
+            location=(f"imputation/late_families/{index}/donor_contract/projection"),
         )
         donor_channels.add(
             _nonempty_string(
@@ -239,8 +233,7 @@ def _late_transfer_surface(
             _nonempty_string(
                 recipient.get("selection"),
                 location=(
-                    "imputation/late_families/"
-                    f"{index}/recipient_contract/selection"
+                    f"imputation/late_families/{index}/recipient_contract/selection"
                 ),
             )
         )
@@ -277,9 +270,7 @@ def _primary_puf_output_keys(
 ) -> set[tuple[str, str]]:
     primary = [
         family
-        for value in _array(
-            imputation.get("families"), location="imputation/families"
-        )
+        for value in _array(imputation.get("families"), location="imputation/families")
         for family in [_mapping(value, location="imputation/families row")]
         if family.get("stage") == "primary_puf_qrf"
     ]
@@ -412,6 +403,22 @@ def _authority_component_payloads(
     imputation_payloads: Mapping[str, object],
 ) -> tuple[dict[str, object], dict[str, object]]:
     battery = project_battery_authority_components(domains["battery"])
+    models = _mapping(
+        domains["imputation"].get("models"),
+        location="imputation/models",
+    )
+    regime_gated_qrf = _mapping(
+        models.get("regime_gated_qrf"),
+        location="imputation/models/regime_gated_qrf",
+    )
+    post_transfer_calibration = deepcopy(
+        dict(
+            _mapping(
+                regime_gated_qrf.get("post_draw_calibration"),
+                location=("imputation/models/regime_gated_qrf/post_draw_calibration"),
+            )
+        )
+    )
     transfer_surface, donor_channel, donor_clone_index, recipient_selection = (
         _late_transfer_surface(domains["imputation"])
     )
@@ -456,6 +463,7 @@ def _authority_component_payloads(
         "support_profile": deepcopy(battery["support_profile"]),
         "puf_capital_gains_tail_support_contract": tail_support,
         "late_producer_schedule": late_schedule,
+        "post_transfer_calibration": post_transfer_calibration,
     }
     counts = {
         "gap_fill_target_count": _gap_fill_target_count(gap_fill_plan),
@@ -485,6 +493,14 @@ def _authority_component_payloads(
             _array(
                 battery["joint_metric_registry"],
                 location="battery projection/joint_metric_registry",
+            )
+        ),
+        "post_transfer_calibration_target_count": len(
+            _array(
+                post_transfer_calibration.get("targets"),
+                location=(
+                    "imputation/models/regime_gated_qrf/post_draw_calibration/targets"
+                ),
             )
         ),
     }
@@ -545,9 +561,7 @@ def project_stacked_authority_receipt(spec: ResolvedSpec) -> dict[str, object]:
             "declared_sha256": digests["post_puf_transfer_surface"],
             "target_count": counts["post_puf_target_count"],
             "puf_producer_target_count": counts["puf_producer_target_count"],
-            "source_producer_target_count": counts[
-                "source_producer_target_count"
-            ],
+            "source_producer_target_count": counts["source_producer_target_count"],
             "donor_channel": _mapping(
                 payloads["post_puf_transfer_surface"],
                 location="authority/post_puf_transfer_surface",
@@ -588,13 +602,9 @@ def project_stacked_authority_receipt(spec: ResolvedSpec) -> dict[str, object]:
             "digest_matches_declared": True,
         },
         "puf_capital_gains_tail_support_contract": {
-            "identity": deepcopy(
-                payloads["puf_capital_gains_tail_support_contract"]
-            ),
+            "identity": deepcopy(payloads["puf_capital_gains_tail_support_contract"]),
             "sha256": digests["puf_capital_gains_tail_support_contract"],
-            "declared_sha256": digests[
-                "puf_capital_gains_tail_support_contract"
-            ],
+            "declared_sha256": digests["puf_capital_gains_tail_support_contract"],
             "digest_matches_declared": True,
         },
         "late_producer_schedule": {
@@ -603,6 +613,13 @@ def project_stacked_authority_receipt(spec: ResolvedSpec) -> dict[str, object]:
             "declared_sha256": digests["late_producer_schedule"],
             "schedule_sha256": late_schedule.get("schedule_sha256"),
             "producer_count": late_schedule.get("producer_count"),
+            "digest_matches_declared": True,
+        },
+        "post_transfer_calibration": {
+            "identity": deepcopy(payloads["post_transfer_calibration"]),
+            "sha256": digests["post_transfer_calibration"],
+            "declared_sha256": digests["post_transfer_calibration"],
+            "target_count": counts["post_transfer_calibration_target_count"],
             "digest_matches_declared": True,
         },
     }
@@ -658,15 +675,12 @@ def _tail_support_contract(
     )
     contract = _mapping(
         tail.get("legacy_contract"),
-        location=(
-            "spine/support_roles/puf_tax_detail/tail_support/legacy_contract"
-        ),
+        location=("spine/support_roles/puf_tax_detail/tail_support/legacy_contract"),
     )
     schema_version = _integer(
         tail.get("manifest_schema_version"),
         location=(
-            "spine/support_roles/puf_tax_detail/tail_support/"
-            "manifest_schema_version"
+            "spine/support_roles/puf_tax_detail/tail_support/manifest_schema_version"
         ),
         minimum=1,
     )
@@ -747,9 +761,7 @@ def _take_up_identity(
     asserted = _mapping(
         legacy.get("asserted_engine"), location="projected take_up/asserted_engine"
     )
-    programs = _array(
-        legacy.get("programs"), location="projected take_up/programs"
-    )
+    programs = _array(legacy.get("programs"), location="projected take_up/programs")
     return {
         "version": legacy["version"],
         "country": legacy["country"],
@@ -808,13 +820,14 @@ def _rung_token(publication: Mapping[str, object], fraction: float) -> str:
             location="publication/release/rung_fractions",
         )
     ):
-        row = _mapping(
-            value, location=f"publication/release/rung_fractions/{index}"
-        )
-        if _finite_float(
-            row.get("fraction"),
-            location=f"publication/release/rung_fractions/{index}/fraction",
-        ) == fraction:
+        row = _mapping(value, location=f"publication/release/rung_fractions/{index}")
+        if (
+            _finite_float(
+                row.get("fraction"),
+                location=f"publication/release/rung_fractions/{index}/fraction",
+            )
+            == fraction
+        ):
             matches.append(
                 _nonempty_string(
                     row.get("token"),
@@ -869,9 +882,7 @@ def _resolved_late_resource_semantics(
     matches = [
         _mapping(value, location="late resource semantics producer")
         for value in producers
-        if _mapping(
-            value, location="late resource semantics producer"
-        ).get("producer")
+        if _mapping(value, location="late resource semantics producer").get("producer")
         == "primary_puf_qrf"
     ]
     if len(matches) != 1:
@@ -924,9 +935,7 @@ def _model_parameters(imputation: Mapping[str, object]) -> tuple[int, int]:
             location="imputation/families/max_targets_per_fit",
             minimum=1,
         )
-        for value in _array(
-            imputation.get("families"), location="imputation/families"
-        )
+        for value in _array(imputation.get("families"), location="imputation/families")
         for family in [_mapping(value, location="imputation/families row")]
         if family.get("max_targets_per_fit") is not None
     }
@@ -1044,8 +1053,7 @@ def project_stacked_checkpoint_base_identity(
                     _array(
                         pipeline.get("pre_clone_source_operator_order"),
                         location=(
-                            "spine/pipeline_contract/"
-                            "pre_clone_source_operator_order"
+                            "spine/pipeline_contract/pre_clone_source_operator_order"
                         ),
                     )
                 )
@@ -1058,8 +1066,7 @@ def project_stacked_checkpoint_base_identity(
                     _array(
                         pipeline.get("post_clone_source_operator_order"),
                         location=(
-                            "spine/pipeline_contract/"
-                            "post_clone_source_operator_order"
+                            "spine/pipeline_contract/post_clone_source_operator_order"
                         ),
                     )
                 )
@@ -1116,8 +1123,7 @@ def project_stacked_checkpoint_base_identity(
             "simulation_household_batch_size": _integer(
                 simulation_batch.get("value"),
                 location=(
-                    "spine/pipeline_contract/"
-                    "simulation_household_batch_size/value"
+                    "spine/pipeline_contract/simulation_household_batch_size/value"
                 ),
                 minimum=1,
             ),
@@ -1174,9 +1180,7 @@ def project_stacked_checkpoint_static_components(
             attachment.get("fraction"),
             location="spine/support_roles/puf_tax_detail/attachment/fraction",
         ).get("default"),
-        location=(
-            "spine/support_roles/puf_tax_detail/attachment/fraction/default"
-        ),
+        location=("spine/support_roles/puf_tax_detail/attachment/fraction/default"),
     )
     attachment_seed = _integer(
         _mapping(

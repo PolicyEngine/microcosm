@@ -9,7 +9,12 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_SEED,
     UK_CGT_IMPUTATION_STAGE_NAME,
     UK_CGT_MASS_CONSERVATION_REASON,
+    UK_CGT_SPINE_MASS_CONSERVATION_REASON,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
+)
+from microcosm.build.uk_runtime.cgt_structure import (
+    CGT_CLONE_MASS_CHANGE_REASON,
+    CGT_DONOR_MASS_CHANGE_REASON,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_JOINT_ODS_SHA256,
@@ -19,6 +24,12 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     load_uk_release_input_coverage_manifest,
+)
+from microcosm.build.uk_runtime.salary_sacrifice import (
+    SALSAC_MASS_CHANGE_REASON,
+)
+from microcosm.build.uk_runtime.student_loans import (
+    STUDENT_LOANS_MASS_CHANGE_REASON,
 )
 
 _MANIFEST_PATH = (
@@ -121,7 +132,7 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
     )
     compliant = SimpleNamespace(
         household_weight_kind=WeightKind.IMPORTANCE,
-        time_period="2023",
+        time_period="2024",
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -135,7 +146,42 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 old_total=100.0,
                 new_total=100.0,
                 declared_factor=1.0,
+                reason=CGT_CLONE_MASS_CHANGE_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=110.0,
+                declared_factor=None,
+                reason=CGT_DONOR_MASS_CHANGE_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
                 reason=UK_CGT_MASS_CONSERVATION_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=SALSAC_MASS_CHANGE_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=STUDENT_LOANS_MASS_CHANGE_REASON,
             ),
             MassChangeRecord(
                 entity="household",
@@ -152,7 +198,7 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
 
     missing_receipt = SimpleNamespace(
         household_weight_kind=WeightKind.IMPORTANCE,
-        time_period="2023",
+        time_period="2024",
         mass_log=compliant.mass_log[:1],
     )
     _, failures = _family_build_state_diagnostics(missing_receipt, manifest)
@@ -160,10 +206,21 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
 
     wrong_kind = SimpleNamespace(
         household_weight_kind=WeightKind.DESIGN,
-        time_period="2023",
+        time_period="2024",
         mass_log=compliant.mass_log,
     )
     _, failures = _family_build_state_diagnostics(wrong_kind, manifest)
     assert any(
         "hmrc_cgt_gains" in failure and "kind" in failure for failure in failures
     )
+
+
+def test_certified_and_spine_families_require_distinct_receipts() -> None:
+    """One record must never satisfy both CGT families (review finding)."""
+    manifest = load_uk_release_input_coverage_manifest()
+    families = manifest.family_coverage
+    certified = families["hmrc_cgt_gains"]["required_mass_change_reason"]
+    spine = families["hmrc_cgt_gains_spine"]["required_mass_change_reason"]
+    assert certified == UK_CGT_MASS_CONSERVATION_REASON
+    assert spine == UK_CGT_SPINE_MASS_CONSERVATION_REASON
+    assert certified != spine

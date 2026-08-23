@@ -98,7 +98,7 @@ def _evidence() -> dict[str, dict[str, object]]:
             "hmrc_surface": {"sha256": "d" * 64, "size_bytes": 166_693},
         },
         "build_evidence": {
-            "period": "2023",
+            "period": HMRC_SPI_BUILD_PERIOD,
             "seed": 42,
             "spi_prior_mass_share": 0.5,
         },
@@ -255,7 +255,7 @@ def test_future_exact_and_directional_fact_invariants() -> None:
         component="employment_income",
         measure="amount",
         unit="GBP",
-        period="2023",
+        period=HMRC_SPI_BUILD_PERIOD,
         total_income_lower_bound=12_570,
         total_income_upper_bound=15_000,
         published_value=100.0,

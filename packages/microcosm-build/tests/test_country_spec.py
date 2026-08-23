@@ -281,8 +281,14 @@ class TestUKCountryPackage:
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
+            "frs_release.json",
             "gates.json",
             "brma_rent_counts.json",
+            "hmrc_cgt_size_bands.json",
+            "advani_summers_capital_gains_distribution.json",
+            "salary_sacrifice_anchor.json",
+            "slc_liable_stocks.json",
+            "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
@@ -298,20 +304,25 @@ class TestUKCountryPackage:
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
+            "ledger_compile_parity_incumbent_2025_signed_differences.json",
+            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
+            "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
             "uk_national_targets.json",
             "target_references.json",
+            "target_reference_membership.json",
         )
 
-    def test_uk_source_manifest_loads_twenty_one_stages(self) -> None:
+    def test_uk_source_manifest_loads_twenty_six_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        assert len(spec.sources.stages) == 21
+        assert len(spec.sources.stages) == 26
 
 
 class TestExistingPackagesGeneralize:
@@ -341,8 +352,14 @@ class TestExistingPackagesGeneralize:
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
+            "frs_release.json",
             "gates.json",
             "brma_rent_counts.json",
+            "hmrc_cgt_size_bands.json",
+            "advani_summers_capital_gains_distribution.json",
+            "salary_sacrifice_anchor.json",
+            "slc_liable_stocks.json",
+            "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
@@ -358,14 +375,42 @@ class TestExistingPackagesGeneralize:
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
+            "ledger_compile_parity_incumbent_2025_signed_differences.json",
+            "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
+            "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
             "uk_national_targets.json",
             "target_references.json",
+            "target_reference_membership.json",
         )
+
+    def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
+        spec = load_country_spec("uk")
+
+        references = {reference.name: reference for reference in spec.target_references}
+        assert len(references) == 388
+        assert references["obr.esa"].value_operation == "sum"
+        assert references["dwp.uc.households"].value_operation == (
+            "calendar_year_average"
+        )
+        assert (
+            references["obr.income_tax"].assertion_policy == "allow_source_projection"
+        )
+
+        fanout = references["hmrc/employment_income_income_band_100_000_to_150_000"]
+        assert fanout.metadata == {
+            "contract_target_id": (
+                "hmrc.spi.employment_income.amount_by_total_income_band"
+            ),
+            "measure_kind": "prepared_column",
+        }
+        assert fanout.uprating_from_period == "2023"
+        assert fanout.uprating_to_period == 2025
 
 
 class TestResolvedCountrySpecSeam:
@@ -570,6 +615,8 @@ class TestUKGatesManifest:
         assert [gate.id for gate in manifest.gates] == [
             "uk_release_input_coverage_manifest_current",
             "uk_release_family_build_stages",
+            "uk_ledger_compile_parity_production_2023",
+            "uk_ledger_compile_parity_incumbent_2025",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -582,6 +629,7 @@ class TestUKGatesManifest:
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
@@ -591,6 +639,18 @@ class TestUKGatesManifest:
         # Legacy behaviour: every evaluated failure raises, so every
         # declared entry blocks release.
         assert all(g.criticality == "release_blocking" for g in manifest.gates)
+
+    def test_ledger_compile_parity_gates_pin_their_fixture_periods(
+        self, manifest
+    ) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+
+        assert (
+            params["uk_ledger_compile_parity_production_2023"]["target_period"] == 2023
+        )
+        assert (
+            params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
+        )
 
     def test_only_the_weights_audit_blocks_on_absent_evidence(self, manifest) -> None:
         # "An absent audit is not a passing audit" — the retired schema-3
@@ -850,6 +910,27 @@ class TestRefusals:
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="values live in Ledger"):
             load_country_spec(package_dir)
+
+    def test_sum_target_reference_roundtrips(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"].append("target_references.json")
+        files["target_references.json"] = {
+            "country": "xx",
+            "target_references": [
+                {
+                    "name": "summed",
+                    "ledger_selector": {"source_name": "somewhere"},
+                    "value_operation": "sum",
+                    "entity": "person",
+                    "measure": "people",
+                }
+            ],
+        }
+        package_dir = _write_package(tmp_path, files)
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.target_references[0].value_operation == "sum"
 
     def test_restricted_licence_requires_a_private_repo(self, tmp_path) -> None:
         files = _minimal_package()

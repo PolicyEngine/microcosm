@@ -13,6 +13,9 @@ from microcosm.build.us_runtime.acs_transfer import (
     ACS_PERSON_TRANSFER_PREDICTORS,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
 )
+from microcosm.build.us_runtime.post_transfer_calibration import (
+    post_transfer_calibration_policy_identity,
+)
 from microcosm.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from microcosm.build.us_runtime.stacked_spine import stacked_gap_fill_plan
 from microcosm.build.us_runtime.us_late_producer_registry import (
@@ -91,6 +94,13 @@ def test_model_and_split_attributes_match_constants_era_oracle(
                 family["max_targets_per_fit"]
                 == DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
             ), family["id"]
+
+
+def test_post_draw_calibration_policy_matches_the_code(
+    spec: dict[str, object],
+) -> None:
+    declared = spec["models"]["regime_gated_qrf"]["post_draw_calibration"]
+    assert declared == post_transfer_calibration_policy_identity()
 
 
 def test_non_transfer_producers_match_constants_era_registry(

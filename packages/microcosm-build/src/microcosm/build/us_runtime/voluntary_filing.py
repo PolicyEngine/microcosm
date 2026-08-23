@@ -385,7 +385,7 @@ def load_sipp_2023_voluntary_filing_donor(
         delimiter="|",
         usecols=list(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS),
         chunksize=int(chunksize),
-        low_memory=False,
+        low_memory=True,
     )
     for chunk in reader:
         month = _numeric(chunk["MONTHCODE"])

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "Disclosure-free support intervals derived from published HMRC Table 2.1a gain bands retained by the CGT donor stage. Intervals are lower-inclusive and upper-exclusive.",
+  "source": {
+    "resource": "hmrc_cgt_size_bands.json",
+    "table": "2.1a",
+    "minimum_lower_limit": 12300
+  },
+  "bounds": {
+    "capital_gains": [12300, null]
+  },
+  "bands": [
+    {"lower": 12300, "upper": 25000},
+    {"lower": 25000, "upper": 50000},
+    {"lower": 50000, "upper": 100000},
+    {"lower": 100000, "upper": 250000},
+    {"lower": 250000, "upper": 500000},
+    {"lower": 500000, "upper": 1000000},
+    {"lower": 1000000, "upper": 2000000},
+    {"lower": 2000000, "upper": 5000000},
+    {"lower": 5000000, "upper": null}
+  ],
+  "semantic_fit_note": "These intervals describe donor-stage initial support. The later Table 3 redraw can move amounts within a different band surface, so terminal support-gate applicability requires reviewer confirmation."
+}

@@ -151,9 +151,7 @@ def test_compiled_gate_is_byte_identical_to_constants_era_payloads(
         "gap_fill_producer_schedule_receipt": imputation[
             "gap_fill_producer_schedule_receipt"
         ],
-        "late_producer_schedule_receipt": imputation[
-            "late_producer_schedule_receipt"
-        ],
+        "late_producer_schedule_receipt": imputation["late_producer_schedule_receipt"],
         "overlap_ownership": imputation["overlap_ownership"],
     }
     live_gate = {
@@ -197,7 +195,7 @@ def test_adapter_preserves_generation_zero_identity_components(
     imputation = legacy_payload["imputation"]
     assert isinstance(imputation, dict)
     assert legacy_payload["stacked_authority_receipt"]["sha256"] == (
-        "02dc155fc52b5abbec379d0da92cae06a072ec09115f70e42f576f6057d09d89"
+        "da45195e95addd1db37749a247eae8b29daa076b8c87997a41ba13c92035f589"
     )
     assert imputation["late_producer_schedule_receipt"]["schedule_sha256"] == (
         "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"

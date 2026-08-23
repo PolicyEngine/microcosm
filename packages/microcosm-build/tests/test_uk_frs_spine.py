@@ -323,7 +323,7 @@ def _write_fixture(
                 "table": table,
                 "kind": "licensed_microdata",
                 "format": "tab",
-                "vintage": "2023_24",
+                "vintage": "2024_25",
                 "locator": path.name,
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "size_bytes": path.stat().st_size,
@@ -761,13 +761,26 @@ def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
     assert set(stage.outputs) == set(UKFRSSpineStageTransform.output_columns())
 
 
+def test_full_roster_artifact_pins_are_coherent() -> None:
+    # Regression armor for the #723 licensed-run finding: the WAS round-8 tab
+    # was declared by two stages (was_wealth, lcfs_consumption) with different
+    # locator strings, so `_artifact_pins()` refused the full-roster driver
+    # run — a break only a licensed build could see. Collecting pins over the
+    # complete manifest keeps the same-artifact-same-pin invariant CI-visible.
+    tool = _load_tool()
+    spec = load_country_spec("uk")
+    stages = list(spec.sources.stage_map().values())
+    pins = tool._artifact_pins(stages)
+    assert pins, "full-roster pin collection must not be empty"
+
+
 def test_builds_structural_frame_from_pinned_tabs(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path)
 
     frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
 
     validate_uk_national_frame(frame)
-    assert uk_time_period(frame) == "2023"
+    assert uk_time_period(frame) == "2024"
     assert frame.weights_for("household").kind is WeightKind.DESIGN
     np.testing.assert_array_equal(
         frame.weights_for("household").values,
@@ -1058,7 +1071,7 @@ def _fake_value(column: str, rows: int):
     if column.endswith("_support_channel"):
         return ["frs"] * rows
     if column == "source_household_key":
-        return [f"2023:{index + 1}" for index in range(rows)]
+        return [f"2024:{index + 1}" for index in range(rows)]
     if column == "household_is_spi_synthetic":
         return [False] * rows
     return np.arange(1, rows + 1, dtype=float)
@@ -1163,6 +1176,8 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "stage1": 42,
         "stage2": 43,
     }
+    assert sidecar["source_vintages"] == {"frs": "2024_25"}
+    assert sidecar["sampling"] is None
     replay_bytes = output.with_suffix(".hmrc_replay.json").read_bytes()
     assert json.loads(replay_bytes) == {"report_kind": "fake_spine_replay"}
     # The synthetic spec declares no non-table pinned artifacts, so the pin
@@ -1352,7 +1367,7 @@ def test_driver_refuses_misnamed_hmrc_ods(tmp_path: Path) -> None:
         tool._validate_args(args)
 
 
-def test_driver_has_no_sample_fraction_path(tmp_path: Path) -> None:
+def test_driver_rejects_non_rung_sample_fraction(tmp_path: Path) -> None:
     tool = _load_tool()
 
     with pytest.raises(SystemExit):
@@ -1370,6 +1385,144 @@ def test_driver_has_no_sample_fraction_path(tmp_path: Path) -> None:
                 "0.5",
             ]
         )
+
+
+def test_driver_derives_rung_tokens_from_sample_fraction() -> None:
+    tool = _load_tool()
+
+    assert tool.UK_SAMPLE_RUNG_TOKENS[tool._rung_sample_fraction("0.01")] == "f001"
+    assert tool.UK_SAMPLE_RUNG_TOKENS[tool._rung_sample_fraction("0.10")] == "f010"
+    assert tool.UK_SAMPLE_RUNG_TOKENS[tool._rung_sample_fraction("1.0")] == "f100"
+
+
+def test_driver_refuses_checkpoint_dir_on_sampled_rung(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--frs-raw-dir",
+                str(tmp_path),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "hmrc.ods"),
+                "--sample-fraction",
+                "0.10",
+                "--checkpoint-dir",
+                str(tmp_path / "checkpoints"),
+            ]
+        )
+
+
+def test_driver_records_sampled_spine_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("tables")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "spine.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        tool,
+        "sample_frame_households",
+        lambda frame, **kwargs: (
+            frame,
+            {"eligible_households": len(frame.table("household"))},
+        ),
+    )
+    monkeypatch.setattr(
+        tool,
+        "normalize_sampled_household_mass",
+        lambda frame, **kwargs: (frame, 1.0),
+    )
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--sample-fraction",
+                "0.10",
+                "--sample-seed",
+                "999",
+            ]
+        )
+        == 0
+    )
+
+    sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    assert sidecar["sampling"] == {
+        "fraction": 0.1,
+        "seed": 999,
+        "rung_token": "f010",
+        "pre_household_count": 2,
+        "post_household_count": 2,
+        "normalization_factor": 1.0,
+        "receipt": {"eligible_households": 2},
+    }
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert rows[0].rung == "f010"
+
+
+def test_driver_sampled_named_edge_aborts_with_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "spine.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+
+    def _raise_named_edge(*args, **kwargs):
+        raise ValueError(tool._RUNG_NAMED_EDGE_SIGNATURE)
+
+    monkeypatch.setattr(tool, "sample_frame_households", _raise_named_edge)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--sample-fraction",
+                "0.10",
+            ]
+        )
+        == tool._RUNG_ABORT_EXIT_CODE
+    )
+
+    receipt = json.loads(output.with_suffix(".rung_abort.json").read_text())
+    assert receipt["named_edge"] == "spine_split_singleton_class"
+    assert receipt["sampling"]["rung_token"] == "f010"
+    assert not output.exists()
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert rows[0].disposition == "discarded"
+    assert rows[0].rung == "f010"
 
 
 def test_refuses_missing_tab(tmp_path: Path) -> None:
@@ -1424,6 +1577,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
+        "cgt_published_fact_surface",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -1444,8 +1598,32 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
             "etb_vat",
             "etb_services",
             "hmrc_spi_income_spine",
+            "hmrc_cgt_gains_spine",
         )
         for artifact in stage_map[stage_name].artifacts
-        if "table" not in artifact and "resource" not in artifact
+        if "table" not in artifact
+        and "resource" not in artifact
+        and "sha256" in artifact
     }
     assert {role: pin["sha256"] for role, pin in pins.items()} == declared
+
+
+def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
+    tool = _load_tool()
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stages = spec.sources.stage_map()
+
+    declared = tool._declared_seeds([stages[name] for name in tool._STAGE_NAMES])
+
+    assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
+    assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
+    assert declared["salary_sacrifice"] == {
+        "salary_sacrifice": 42,
+        "salary_sacrifice_conversion": 2024,
+    }
+    assert declared["student_loans"] == {
+        "student_loan_plan_5": 42,
+        "student_loan_plan_2": 42,
+    }

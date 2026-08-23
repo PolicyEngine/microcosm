@@ -2,98 +2,96 @@
 
 ## State
 
-The ownership evidence and the supported two-check terminal-role correction
-are implemented. The SHA-verified failed-attempt checkpoints, thirteen bank
-targets, publication manifest/gates, late-transfer receipt, exact comparator
-metrics, 52 target-pattern regime cells, and nine coupled invariants validate
-as one closed evidence artifact. The canonical extractor is fail-before-write,
-byte-reproducible, and rejects debug SHA bypass for its canonical output.
+Complete for the authorized lane. The ownership evidence, realized-regime
+persistence, exact-two SSTB role fix, and end-to-end ownership receipt
+hardening are implemented. The merge of the `origin/main` snapshot at
+`d69131a3` is fully resolved and verified; the combined authority is version
+12 and preserves main's nine selective post-transfer calibrations alongside
+this lane's complete origin/regime envelope
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:1703-1707,4344-4687,5072-5754`).
 
-The decomposition distinguishes terminal value provenance from the first
-failing criterion. All eight terminal clone-0 values have `qrf_transfer`
-provenance. All four incidence checks and UBIA QED first fail in the late
-transfer; BDC, REIT/PTP, and W2 QED first fail at the clone-1 PUF producer and
-worsen in transfer. The regression now fails if any canonical amount receipt
-copy omits its origin channel. The coupled refit plan records the structural
-1% diagnostics and whole-pool acceptance harness needed before a safe amount
-surface change; no unsupported amount-model change is included here.
+All eight terminal amount cells have `qrf_transfer` provenance. All four
+incidence checks and UBIA QED first turn red in the late transfer; BDC,
+REIT/PTP, and W2 QED first turn red on the clone-1 producer. Frozen-donor
+replay establishes `zero_inflated_positive` for all four amounts under every
+realized availability pattern. Receipt checks persist and validate that result
+going forward without claiming that a self-consistent receipt substitutes for
+donor replay
+(`experiments/qbi_ownership/extract_qbi_ownership_evidence.py:1507-1767,1857-1972`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:561-723`).
 
-The battery now compares exactly
-`sstb_self_employment_income_would_be_qualified` and `business_is_sstb` on the
-PUF-detail clone-1 role. Every other physical target remains on clone 0. The
-role declaration is immutable and fail-closed, the live/spec contracts preserve
-the registered role, and duplicate registration of one physical target across
-roles is rejected.
-
-No gate, band, ceiling, fold, seed, exclusion, build artifact, or logbook chain
-has been changed. This lane has started no pool build; the headless order assigns
-all builds to the host queue.
+Exactly the two SSTB booleans compare clone 1; every other physical target
+remains clone 0. No amount-model change is included because the host-owned 1%
+target × channel × pattern diagnostic/refit run does not yet exist
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2133-2160,3030-3131`).
 
 ## Done
 
-- Inspected salvage commits `03e23e42`, `21f95b71`, `8942ef97`, and newest
-  `321b3185`. Recovered the regime/origin receipt implementation and useful
-  tests; superseded stale wrappers, journal placeholders, unsafe SHA-skipped
-  evidence, and the conflation of terminal provenance with first-failing-stage
-  ownership.
-- Ran the mandated `uv sync --all-packages --extra us` successfully with a
-  sandbox-writable uv cache.
-- Audited the adjudication's workstream-5, remediation-order, reviewed-
-  exclusion, and failed-attempt identity citations before forming an ownership
-  view.
-- Repaired two incomplete recovered fixtures exposed by the full diagnostic
-  gate: the frozen legacy checkpoint materializer binding and the mandatory
-  `unmodeled_rows` count in canonical stacked HDF5 receipts.
-- Reran the affected tests successfully: exact-k ladder 3/3, stacked HDF5
-  loader 38/38, and deterministic trade-entry build 1/1.
-- Completed the prerequisite gate: frame 294 passed/36 skipped; fit 93 passed;
-  calibrate 201 passed; data 275 passed/1 skipped; build 5,977 passed/39
-  skipped; Ruff and `git diff --check` clean. Native/thread pools were bounded
-  to one for the final build-shard run after an unbounded run starved four
-  unchanged subprocess tests; those four also pass unchanged in isolation.
-- Authenticated the failed 25% publication manifest/gates, all three stage
-  checkpoint hashes and identities, thirteen target-bank checkpoint files,
-  and the post-PUF transfer receipt against their frozen release/run bindings.
-- Recomputed every QBI batch availability-pattern regime from the frozen
-  108,073-row donor support. All 52 target-pattern cells agree with the fitter;
-  each red amount is `zero_inflated_positive` for every pattern.
-- Reran the nine coupled invariants on transferred and terminal checkpoints.
-  All nine terminal counts are zero; the pre-reconciliation transfer has 2,996
-  BDC and 22,350 REIT/PTP exposure mismatches plus the seven expected coupled
-  identity deltas recorded in `evidence.json`.
-- Added a four-target regression proving that group, aggregate, and signed
-  execution receipts share the exact origin digest and that removing
-  `origin.channel` from any copy is rejected.
-- Reproduced canonical `evidence.json` twice at SHA-256
-  `38e60c1ec5e39b86df957148c877b3062ca97028f33ea0d1411013c2911c4b55`;
-  the extractor reports zero adjudication mismatches and validation `passed`.
-- Completed the evidence gate: frame 294 passed/36 skipped; fit 93 passed;
-  calibrate 201 passed; data 275 passed/1 skipped; build 5,981 passed/39
-  skipped; Ruff and `git diff --check` clean.
-- Implemented the adjudicated terminal-role fix as an exact-two authority:
-  only the two SSTB boolean checks use PUF-detail clone 1. Added fail-closed
-  role scope, role-aware surface/plan/metric/transfer/comparator construction,
-  live/spec contract validation, authority repins, and direct regressions.
-- The focused terminal-role suite is green: 424 passed. The four non-build
-  package shards are also green: frame 294 passed/36 skipped; fit 93 passed;
-  calibrate 201 passed; data 275 passed/1 skipped.
-- The exhaustive build-package gate is green over all 255 sorted test files:
-  5,997 passed, 39 skipped. The monolithic command twice exceeded the
-  execution service's one-hour foreground ceiling without a reported failure,
-  so coverage was completed as ten deterministic, disjoint file slices with
-  unchanged tests and thresholds. Ruff and `git diff --check` are clean.
+- Inspected salvages `03e23e42`, `21f95b71`, `8942ef97`, and newest
+  `321b3185`; recovered the useful regime/origin implementation and discarded
+  superseded wrappers, stale journals, SHA-skipped output, and conflated
+  ownership conclusions.
+- Completed `uv sync --all-packages --extra us` with a writable uv cache.
+- Authenticated the adjudication's failed publication, gates, three stage
+  checkpoints, 13 bank target files, and late-transfer receipt.
+- Reproduced all eight QBI amount cells and both SSTB clone-1 comparisons.
+  Canonical evidence is byte-stable at SHA-256
+  `38e60c1ec5e39b86df957148c877b3062ca97028f33ea0d1411013c2911c4b55`.
+- Recomputed all 52 cells (13 chained targets × four patterns) from the exact
+  108,073-row frozen donor support; all 16 cells for the four red amounts are
+  `zero_inflated_positive`.
+- Reran the nine coupled invariants at transferred and terminal stages; all
+  nine terminal counts are zero
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/qbi_inputs.py:1377-1487`).
+- Persisted full target origin/model-target/pattern/regime evidence through
+  monolithic, banked, group, aggregate, signed, checkpoint, and ready-H5
+  boundaries
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:561-723`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4344-4687,5072-5754,8766-9015`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:594-640`).
+- Added the required four-target regression: deleting `origin.channel` from
+  group, aggregate, or signed execution copies is rejected even after all
+  enclosing receipts are rehashed
+  (`packages/microcosm-build/tests/test_us_stacked_spine.py:6581-6720`).
+- Implemented the supported exact-two terminal-role correction and direct
+  fail-closed regressions
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:2133-2160,3030-3131`).
+- Resolved the semantic merge with authority/spec/checkpoint repins, retained
+  both receipt systems, and added live producer-count, donor-route, predictor-
+  catalog, sibling-catalog, and early-receipt validation
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4344-4687,5072-5754,5603-5617,8766-9015`).
+- Replayed canonical evidence after the merge; zero mismatches and identical
+  output digest.
+- Focused merged ownership/receipt regression: 20 passed, 278 deselected; the
+  two corrected live-count cases passed exactly.
+- Preserved the intentional version split after the semantic merge: outer
+  checkpoint materializer v11 and embedded stacked authority v12. The
+  checkpoint identity regression now pins both values independently
+  (`tools/build_us_multispine_pool.py:316-335`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:1703-1707`;
+  `packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3393-3645`).
+- Restored the canonical validation order after merging exact ownership and
+  calibration receipts: row-count, target-surface, and calibration-summary
+  failures retain their specific diagnostics; the focused eight-case
+  compatibility regression passed
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4262-4298,4773-4857`).
+- Completed the exhaustive package gate on the resolved tree: frame 294
+  passed/36 skipped; fit 93 passed; calibrate 203 passed; data 275 passed/1
+  skipped; build 6,323 passed/39 skipped across 6,362 unique tests. The exact
+  package-wide build command passed 6,321 and skipped 39 before two trade-entry
+  subprocesses hit unchanged 300-second limits under accumulated host load;
+  the unchanged complete trade-entry file then passed 13/13 fresh, and the
+  complete IMDB bulk file also passed in its fresh foreground run.
+- Repository-wide `ruff check .`, targeted formatting checks, both cached and
+  unstaged `git diff --check`, and spec-engine coverage (41,471/41,471 fields;
+  40/40 inventory checks) pass.
 
 ## Next
 
-1. Commit the fully gated exact-two terminal-role correction.
-2. Semantically integrate current `origin/main`, preserving both its selected
-   post-transfer-calibration evidence and this lane's all-target origin/regime
-   contract under a fresh authority version; repin and rerun the full gate.
-3. Recheck every documentation `module:line` citation after integration,
-   replace `FINAL_REPORT.md`, and leave both journals current.
-4. Hand the amount-surface diagnostic/refit to the host queue: instrument and
-   compare the frozen 1% baseline first; run the 25% certification only after
-   the 1% structural change clears all eight checks and nine invariants.
+1. Host handoff: instrument and compare the frozen 1% baseline, demonstrate a
+   coupled amount refit with whole-pool reconciliation, and run 25%
+   certification only after the 1% structural candidate clears the eight
+   amount checks and nine coupled invariants.
 
-The former root entry described the merged mortgage-donor lane and is retained
-in Git history through commit `2c7a7218`; it is not current state for this lane.
+No pool build, push, publication, exclusion, threshold tuning, or logbook-chain
+operation has occurred in this lane.

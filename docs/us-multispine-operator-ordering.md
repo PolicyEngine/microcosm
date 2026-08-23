@@ -181,7 +181,7 @@ by_origin_battery
    `acs_2024_pums_wagp_age_15_plus` and
    `acs_2024_pums_semp_age_15_plus` rule IDs in its receipt, and leaves raw
    `WAGP`/`SEMP` blanks unchanged. Eligible mapped or raw nulls still fail in
-   [`_require_complete_recipient_predictor_sources`](../packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py#L3036-L3167)
+   [`_require_complete_recipient_predictor_sources`](../packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py#L3059-L3190)
    with the original greppable `missing values before coercion` diagnostic and
    the responsible rule ID. All-child units remain
    recipients with receipted zero earnings predictors; they are not generic
@@ -229,14 +229,17 @@ by_origin_battery
    The authority versions distinguish the two contracts. The primary-QRF root
    and target checkpoint schema remains version 6. The capital-gains tail
    manifest uses schema version 2 and binds its support contract and receipt.
-   The canonical stacked authority remains version 9, the outer stacked
-   checkpoint materializer uses version 10, and the stacked pool stage
-   checkpoint materializer uses version 5.
+   The canonical stacked authority is version 12
+   ([runtime authority](../packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py#L1703-L1707)),
+   the outer stacked checkpoint materializer uses version 11, and the stacked
+   pool stage checkpoint materializer uses version 8.
    The outer base identity binds primary-QRF version 6, the ACS universe and
    QBI reconciliation contracts, the tail schema and support contract, and
-   late-producer registry schema version 14, including the signed static and
+   late-producer registry schema version 16 and receipt schema version 4,
+   including the signed static and
    derivation-mode semantics of every virtual DAG resource. The companion pool
-   manifest uses schema version 7.
+   manifest uses schema version 8; the retiring legacy manifest and checkpoint
+   materializer remain version 4.
    Older outer authority or materializer payloads are stale; primary-QRF
    version 6 remains current.
 
@@ -293,8 +296,9 @@ by_origin_battery
    final publication reject a missing, stale, or reissued authority;
    NON-CANONICAL test receipts cannot ship.
 
-   Outer materializer v10 also embeds one signed resource-semantics row for
-   every DAG producer. Static configs are exact; donor tables are bound by the
+   The outer materializer embeds one signed resource-semantics row for every
+   DAG producer (introduced in v10 and retained by current v11). Static configs
+   are exact; donor tables are bound by the
    declared canonical scalar-content codec; primary and transfer banks name
    their outer/stage identity derivations; and source receipts name their
    callback-receipt digest derivation. The resource keys must exactly equal the
@@ -896,7 +900,7 @@ and valid. Neither receipt authorizes an upstream null.
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
-| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v16/receipt schema v4, outer stacked materializer v11/authority v11, stacked pool-stage materializer v8, pool manifest schema v8, and the ACS-universe, QBI-mutation, tail-support, late-DAG, signed virtual-resource-semantics, and exact-two terminal-role identities must match exactly before any cached stage is discovered. Registry v16, outer v11, and manifest v8 predate this lane; this lane advances authority v10→v11, receipt v3→v4, pool-stage materializer v7→v8, and the retiring legacy checkpoint materializer v3→v4. The retiring legacy envelope remains manifest schema v4/materializer v4. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
+| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v16/receipt schema v4, outer stacked materializer v11/authority v12 ([runtime version](../packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py#L1703-L1707), [spec version binding](../packages/microcosm-build/src/microcosm/build/us/spec/battery.yaml#L824-L826)), stacked pool-stage materializer v8, pool manifest schema v8, and the ACS-universe, QBI-mutation, tail-support, late-DAG, signed virtual-resource-semantics, [exact-two terminal-role](../packages/microcosm-build/src/microcosm/build/us/spec/battery.yaml#L459-L468), and post-transfer-calibration identities must match exactly before any cached stage is discovered. Registry v16, outer v11, and manifest v8 predate this lane; the semantic union advances authority v10→v12 (the role and calibration source branches independently used v11), receipt v3→v4, pool-stage materializer v7→v8, and the retiring legacy checkpoint materializer v3→v4. The retiring legacy envelope remains manifest schema v4/materializer v4. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | ACS earnings-universe materialization, primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in six derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
 | Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 29 source targets, with two overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
@@ -908,7 +912,7 @@ and valid. Neither receipt authorizes an upstream null.
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
 | Simulated checkpoint pair and resume | The persistent input-only frame and temporary evaluation frame must share exact assembly provenance; SSI exists only on the evaluation half. The live QBI receipt must authenticate the persistent frame at emission, durable write/load, and resume. | Derived/seeded persistent inputs plus the separately materialized SSI evaluation output. | No. A forged QBI receipt, altered persistent value, invalid SSI binding, or mismatched pair invalidates the simulated checkpoint and falls back only to an independently valid earlier stage. |
 | Terminal completeness | All 131 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 131-target terminal surface. |
-| By-origin battery | All 131 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
+| By-origin battery | All 131 registered role-declared surfaces are complete and valid before support is measured: 129 clone-0 surfaces and exactly two SSTB clone-1 surfaces ([role authority and scope](../packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py#L2133-L2160), [registry materialization](../packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py#L3030-L3131), [comparison grouping and application](../packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py#L14007-L14297)). | The terminal simulation frame, comparing ASEC and ACS native origins at each target's declared role. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
 | Manifest construction and canonical publication closure | Legacy and stacked builders reauthenticate QBI live output, canonical stacked authority, terminal-gate receipts, H5/diagnostics run IDs, and artifact digests before readiness can be asserted. | The validated persistent pool, immutable stage receipts, terminal gate snapshot, and atomically staged publication files. | No. Construction rejects forged or wrong-route receipts; publication begins with a non-ready tombstone, and only one fully authenticated run can replace it with a ready manifest. |
 
 The audit leaves no generic “receipted but null” path into a hard consumer.
