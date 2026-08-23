@@ -858,14 +858,16 @@ def test_locked_policyengine_us_pin_guards_the_obbba_window_premise() -> None:
     # Companion to the engine-gated window test above, enforced in the BASE
     # environment (mandatory CI installs no engine extra, so that test skips
     # there). The window premise was verified against policyengine-us
-    # 1.764.6, and uv.lock is the only door a different engine can enter
-    # mandatory CI through — so pin it here. Bumping the engine must move
+    # 1.764.6 and re-verified against 1.819.0 on 2026-08-23 in a [us]-extra
+    # environment (both deductions absent at 2024-01-01 and 2029-01-01,
+    # present at 2025/2026/2028), and uv.lock is the only door a different
+    # engine can enter mandatory CI through — so pin it here. Bumping the engine must move
     # this pin in the same change, after re-running
     # test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists in
     # a [us]-extra environment to re-verify the TY2025-TY2028 window.
     lock_text = (Path(__file__).parents[3] / "uv.lock").read_text()
     versions = re.findall(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
-    assert versions == ["1.764.6"], versions
+    assert versions == ["1.819.0"], versions
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
