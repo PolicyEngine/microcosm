@@ -42,7 +42,7 @@ EXPECTED_RESOURCES = {
         ),
         (
             "uk",
-            "e091f4b012d28fe865681a8e166d5d2a9043955e9113e9097cd5161bc0433690",
+            "57855b0cea72a99558ac1f204541fccd899fa7bf312e36e399f2ffec078598a2",
             {
                 "benunit.benunit_id",
                 "household.household_id",
