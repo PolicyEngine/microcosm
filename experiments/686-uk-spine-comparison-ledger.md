@@ -224,6 +224,17 @@ omission from a merged increment, now closed — parity reports **0 missing**.
 
 ## Levels — annual £ per carrier
 
+> **Two different level statistics — read the label.** This section is the
+> **conditional mean**: £ per *carrier*, over nonzero rows only. The E5 and E6
+> tables above are the **population mean per household**, over every household
+> including zeros, as a ratio to the donor's. They answer different questions
+> and can disagree on which side is closer — a build can put too little on each
+> carrier while putting carriers on too many households, and come out right in
+> aggregate. **The signing used the population mean**, because that is what a
+> calibration target binds and what survives a difference in incidence. Where a
+> verdict here differs from one above, the one above is operative.
+
+
 Conditional means over nonzero rows; carrier counts withheld here for brevity
 but recorded in the interactive ledger and reproducible from the licensed
 evidence dir; no cell is dominated by a single record; all cells ≥10 carriers.
