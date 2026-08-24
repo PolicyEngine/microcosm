@@ -12,7 +12,7 @@ jointly replaces the wage and self-employment prior-year amounts on the PUF
 half using eight demographic/income predictors and a 5,000-person training
 cap.  Microcosm preserves that treatment and strengthens it with typed person
 design weights.  ``employment_income_last_year`` is formula-owned in
-PolicyEngine-US 1.764.6 and the retired finalizer explicitly dropped it, so it
+PolicyEngine-US 1.819.0 and the retired finalizer explicitly dropped it, so it
 is retained only through the joint fit and removed from the export-ready
 support frame.  The two persisted input leaves are
 ``self_employment_income_last_year`` and ``previous_year_income_available``.

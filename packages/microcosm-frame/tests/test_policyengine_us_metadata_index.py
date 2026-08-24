@@ -145,9 +145,9 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
         assert (metadata.entity, metadata.dtype, metadata.period) == expected
 
     index = module.PolicyEngineUSVariableMetadataIndex()
-    assert len(index._definitions) == 5_770
-    assert len(index.variables()) == 863
-    assert len(index.formula_owned_outputs(index._definitions)) == 4_907
+    assert len(index._definitions) == 6_146
+    assert len(index.variables()) == 924
+    assert len(index.formula_owned_outputs(index._definitions)) == 5_222
     assert index.formula_owned_outputs(["AK", "e00700", "ar_agi", "mi_surtax"]) == {
         "AK",
         "ar_agi",

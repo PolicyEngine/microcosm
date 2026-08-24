@@ -54,7 +54,7 @@ def _fake_domains() -> dict[str, object]:
         "take_up": {
             "programs": [
                 {"id": f"program_{index:02d}", "variable": f"variable_{index:02d}"}
-                for index in range(13)
+                for index in range(17)
             ]
         },
     }
@@ -70,7 +70,7 @@ def _fake_engine_contract() -> dict[str, dict[str, object]]:
             "consumers": [f"consumer_{index:02d}"],
             "engine_class": "data_seeded",
         }
-        for index in range(13)
+        for index in range(17)
     }
 
 
@@ -345,10 +345,10 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
     )
     assert payload["engine"] == {
         "package": "policyengine-us",
-        "version": "1.764.6",
+        "version": "1.819.0",
     }
-    assert len(payload["programs"]) == 13
-    assert len({row["variable"] for row in payload["programs"].values()}) == 13
+    assert len(payload["programs"]) == 17
+    assert len({row["variable"] for row in payload["programs"].values()}) == 17
     assert all(
         set(row)
         == {
@@ -362,15 +362,15 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         for row in payload["programs"].values()
     )
     remaining = payload["remaining_stage_input_manifest"]
-    assert len(remaining["rows"]) == 993
-    assert remaining["receipt"]["entry_count"] == 993
+    assert len(remaining["rows"]) == 1058
+    assert remaining["receipt"]["entry_count"] == 1058
     assert remaining["receipt"]["stage_counts"] == {
         "derive": 34,
-        "seed": 29,
-        "simulate": 930,
+        "seed": 33,
+        "simulate": 991,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+        "98231086a18676778346fc3219bb9450f7eb85eb77791640598cba7a5ae66ef6"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]

@@ -1,0 +1,1 @@
+Pin the nine scotgov.council_tax_stock UK calibration targets to Scotland: the substring geography rule saw no "scotland" in "scotgov" and pinned them to the UK, so the Scotland-stamped CTAXBASE chargeable-dwelling facts could never match and the whole family was held as no_fact_at_or_before_period.

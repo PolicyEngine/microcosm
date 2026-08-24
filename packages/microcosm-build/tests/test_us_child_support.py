@@ -454,6 +454,12 @@ def test_policyengine_us_graph_uses_positive_annual_received_and_expense() -> No
             "people": {
                 "adult": {
                     "age": {"2024": 35},
+                    # PE-US 1.769.0 began applying the payer's SNAP income
+                    # counted share to deductible child-support expense, and
+                    # 1.794.3 changed missing pre-LSR work hours from 40 to 0.
+                    # Keep this graph test on the positive-expense path by
+                    # making the adult satisfy the work requirement explicitly.
+                    "weekly_hours_worked_before_lsr": {"2024": 40},
                     _RECEIVED: {"2024": received},
                     _EXPENSE: {"2024": expense},
                 }

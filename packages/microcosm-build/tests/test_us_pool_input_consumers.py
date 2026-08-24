@@ -55,10 +55,32 @@ NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
     },
 }
 
-_REQUIRED_ENGINE_CONSUMER_GRAINS = {
-    # WICYN is stored on its adult-female reporter only as a carrier for the
-    # SPM unit's receipt fact. Person-grain use requires re-adjudication.
-    "receives_wic": "spm_unit",
+_REVIEWED_WIC_CONSUMERS = {
+    # WICYN identifies the adult-female reporter/carrier, not the beneficiary.
+    # These targets are reviewed from the six PolicyEngine-US 1.819.0 formulas;
+    # output entity alone is insufficient because Pell aggregates by tax unit
+    # and Virginia reads people inside an SPM-unit aggregation. Values pin the
+    # direct receiver and the enclosing aggregation entity, in that order.
+    ("ca_care_categorically_eligible", "parameter_add", "household"): (
+        "household",
+        "household",
+    ),
+    ("is_acp_eligible", "parameter_add", "spm_unit"): ("spm_unit", "spm_unit"),
+    ("md_ccs_weekly_copay", "add", "spm_unit"): ("spm_unit", "spm_unit"),
+    (
+        "pell_grant_simplified_formula_applies",
+        "parameter_add",
+        "person",
+    ): ("tax_unit", "tax_unit"),
+    (
+        "tx_dart_reduced_fare_program_eligible",
+        "parameter_adds",
+        "person",
+    ): ("person", "person"),
+    ("va_ccsp_income_test_waived", "entity_call", "spm_unit"): (
+        "person",
+        "spm_unit",
+    ),
 }
 
 
@@ -115,29 +137,38 @@ def _validate_allowlist(
         )
 
 
-def _assert_required_engine_consumer_grain(
+def _assert_reviewed_engine_consumers(
     variable: str,
     receipts: Sequence[ConsumerReceipt],
     engine_index: _EngineConsumerIndex,
 ) -> None:
-    required_grain = _REQUIRED_ENGINE_CONSUMER_GRAINS.get(variable)
-    if required_grain is None:
+    if variable != "receives_wic":
         return
 
-    for receipt in receipts:
-        try:
-            actual_grain = engine_index.variable_metadata(receipt.consumer).entity
-        except ValueError:
-            actual_grain = "unresolved"
-        if actual_grain != required_grain:
-            raise AssertionError(
-                f"{variable}: PolicyEngine-US consumer {receipt.consumer} "
-                f"({receipt.kind} at {receipt.path}:{receipt.line}) has "
-                f"{actual_grain} grain; only {required_grain} aggregation is "
-                "supported for the reporter-carried SPM-unit receipt fact. "
-                "Re-adjudicate before person-level use: "
-                f"{WIC_CARRIER_ADJUDICATION_URL}"
-            )
+    actual = {
+        (
+            receipt.consumer,
+            receipt.kind,
+            engine_index.variable_metadata(receipt.consumer).entity,
+            receipt.receiver_entity,
+            receipt.aggregation_entity,
+        )
+        for receipt in receipts
+    }
+    expected = {
+        (*signature, receiver_entity, aggregation_entity)
+        for signature, (
+            receiver_entity,
+            aggregation_entity,
+        ) in _REVIEWED_WIC_CONSUMERS.items()
+    }
+    assert actual == expected, (
+        "receives_wic: PolicyEngine-US consumer signatures changed; preserve "
+        "the reporting-adult carrier semantics and re-adjudicate every added, "
+        "removed, or changed consumer before adapting: "
+        f"{WIC_CARRIER_ADJUDICATION_URL}; expected={sorted(expected)!r}; "
+        f"actual={sorted(actual)!r}"
+    )
 
 
 def _assert_surface_entry_has_consumer(
@@ -152,7 +183,7 @@ def _assert_surface_entry_has_consumer(
             f"{entry.variable}: redundant non-engine consumer allowlist entry; "
             "PolicyEngine-US now has an external consumer receipt"
         )
-        _assert_required_engine_consumer_grain(
+        _assert_reviewed_engine_consumers(
             entry.variable,
             receipts,
             engine_index,
@@ -201,29 +232,35 @@ def test_non_engine_consumer_allowlist_is_exact_and_current() -> None:
     )
 
 
-def test_receives_wic_consumers_are_spm_unit_grain() -> None:
+def test_receives_wic_consumers_are_exactly_reviewed() -> None:
     receipts = _ENGINE_INDEX.consumer_receipts("receives_wic")
 
-    assert {
+    actual = {
         (
             receipt.consumer,
             receipt.kind,
             _ENGINE_INDEX.variable_metadata(receipt.consumer).entity,
+            receipt.receiver_entity,
+            receipt.aggregation_entity,
         )
         for receipt in receipts
-    } == {
-        ("md_ccs_weekly_copay", "add", "spm_unit"),
-        ("va_ccsp_income_test_waived", "entity_call", "spm_unit"),
     }
-    _assert_required_engine_consumer_grain(
+    assert actual == {
+        (*signature, receiver_entity, aggregation_entity)
+        for signature, (
+            receiver_entity,
+            aggregation_entity,
+        ) in _REVIEWED_WIC_CONSUMERS.items()
+    }
+    _assert_reviewed_engine_consumers(
         "receives_wic",
         receipts,
         _ENGINE_INDEX,
     )
 
 
-class _PersonGrainWICConsumerMutation:
-    """Inject one future person-level WIC consumer into the live AST index."""
+class _UnreviewedWICConsumerMutation:
+    """Inject one future WIC consumer into the live AST index."""
 
     _CONSUMER = "synthetic_person_wic_consumer"
 
@@ -241,6 +278,8 @@ class _PersonGrainWICConsumerMutation:
                 path="variables/synthetic_person_wic_consumer.py",
                 line=19,
                 kind="entity_call",
+                receiver_entity="person",
+                aggregation_entity="person",
             ),
         )
 
@@ -255,20 +294,66 @@ class _PersonGrainWICConsumerMutation:
         return self._delegate.variable_metadata(name)
 
 
-def test_receives_wic_guard_rejects_person_grain_consumer_mutation() -> None:
-    mutated_index = _PersonGrainWICConsumerMutation(_ENGINE_INDEX)
+def test_receives_wic_guard_rejects_unreviewed_consumer_mutation() -> None:
+    mutated_index = _UnreviewedWICConsumerMutation(_ENGINE_INDEX)
 
     with pytest.raises(
         AssertionError,
         match=(
-            r"^receives_wic: PolicyEngine-US consumer "
-            r"synthetic_person_wic_consumer .* has person grain; only spm_unit "
-            r"aggregation is supported.*issues/591#issuecomment-5160668979$"
+            r"^receives_wic: PolicyEngine-US consumer signatures changed; "
+            r"preserve the reporting-adult carrier semantics and re-adjudicate "
+            r"every added, removed, or changed consumer.*"
         ),
     ):
         _assert_consumer_guard(
             _POOL_INPUT_SURFACE,
             NON_ENGINE_CONSUMER_ALLOWLIST,
+            mutated_index,
+        )
+
+
+class _ChangedWICAggregationMutation:
+    """Change only one reviewed consumer's aggregation grain."""
+
+    _CONSUMER = "va_ccsp_income_test_waived"
+
+    def __init__(self, delegate: _EngineConsumerIndex) -> None:
+        self._delegate = delegate
+
+    def consumer_receipts(self, name: str) -> tuple[ConsumerReceipt, ...]:
+        receipts = self._delegate.consumer_receipts(name)
+        if name != "receives_wic":
+            return receipts
+        return tuple(
+            ConsumerReceipt(
+                consumer=receipt.consumer,
+                path=receipt.path,
+                line=receipt.line,
+                kind=receipt.kind,
+                receiver_entity=receipt.receiver_entity,
+                aggregation_entity=(
+                    "household"
+                    if receipt.consumer == self._CONSUMER
+                    else receipt.aggregation_entity
+                ),
+            )
+            for receipt in receipts
+        )
+
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        return self._delegate.variable_metadata(name)
+
+
+def test_receives_wic_guard_rejects_changed_aggregation_entity() -> None:
+    mutated_index = _ChangedWICAggregationMutation(_ENGINE_INDEX)
+
+    with pytest.raises(
+        AssertionError,
+        match=r"^receives_wic: PolicyEngine-US consumer signatures changed;",
+    ):
+        _assert_reviewed_engine_consumers(
+            "receives_wic",
+            mutated_index.consumer_receipts("receives_wic"),
             mutated_index,
         )
 
@@ -404,8 +489,40 @@ def test_guard_rejects_redundant_allowlist_entry() -> None:
 
 
 @pytest.mark.parametrize(
-    "variable",
+    ("variable", "consumer", "kind"),
     (
+        (
+            "first_home_mortgage_balance",
+            "deductible_mortgage_interest_tax_unit",
+            "entity_call",
+        ),
+        (
+            "first_home_mortgage_interest",
+            "home_mortgage_interest_tax_unit",
+            "add",
+        ),
+        (
+            "first_home_mortgage_origination_year",
+            "deductible_mortgage_interest_tax_unit",
+            "entity_call",
+        ),
+        (
+            "second_home_mortgage_balance",
+            "deductible_mortgage_interest_tax_unit",
+            "entity_call",
+        ),
+        (
+            "second_home_mortgage_interest",
+            "home_mortgage_interest_tax_unit",
+            "add",
+        ),
+        (
+            "second_home_mortgage_origination_year",
+            "deductible_mortgage_interest_tax_unit",
+            "entity_call",
+        ),
+    ),
+    ids=(
         "first_home_mortgage_balance",
         "first_home_mortgage_interest",
         "first_home_mortgage_origination_year",
@@ -413,14 +530,17 @@ def test_guard_rejects_redundant_allowlist_entry() -> None:
         "second_home_mortgage_interest",
         "second_home_mortgage_origination_year",
     ),
-    ids=lambda variable: variable,
 )
-def test_colocated_mortgage_consumer_is_discoverable(variable: str) -> None:
+def test_colocated_mortgage_consumer_is_discoverable(
+    variable: str,
+    consumer: str,
+    kind: str,
+) -> None:
     assert any(
-        receipt.consumer == "deductible_mortgage_interest_tax_unit"
+        receipt.consumer == consumer
         and receipt.path.endswith("/mortgage_interest_structure.py")
         and receipt.line > 0
-        and receipt.kind == "entity_call"
+        and receipt.kind == kind
         for receipt in _ENGINE_INDEX.consumer_receipts(variable)
     )
 
@@ -434,12 +554,12 @@ def test_colocated_mortgage_consumer_is_discoverable(variable: str) -> None:
             "il_pi_has_developmental_delay.py",
         ),
         (
-            "taxable_private_pension_income",
+            "taxable_pension_income",
             "ok_pension_subtraction",
             "ok_pension_subtraction.py",
         ),
     ),
-    ids=("is_disabled", "taxable_private_pension_income"),
+    ids=("is_disabled", "taxable_pension_income"),
 )
 def test_group_member_consumer_is_discoverable(
     variable: str,

@@ -369,7 +369,7 @@ identities, cold caches, OOS/statistical gates.
   runtime/source-lock record; a CI check rejects duplicate literal
   authorities per normalized key.
 
-## Take-up: orthogonal ownership × typed pipeline steps, 13 real programs
+## Take-up: orthogonal ownership × typed pipeline steps, 17 real programs
 
 The v2 eight-value treatment enum conflated ownership, mechanism,
 invocation grouping, policy interaction, and an escape hatch. v3:
@@ -387,7 +387,7 @@ dependence: {group: …}   # batching/correlation grouping — an execution
 final_owner_stage: …
 ```
 
-- **All 13 contract programs get committed rows** (no ellipsis): SNAP
+- **All 17 contract programs get committed rows** (no ellipsis): SNAP
   (national prior → state anchored count calibration, eligible-only
   domain, final owner); TANF (seeded rate); EITC (seeded rate,
   rate-by-approximated-qualifying-children); Medicaid (anchored count
@@ -398,7 +398,9 @@ final_owner_stage: …
   Head Start (imputed/transferred: SIPP-trained QRF); housing
   assistance (mixed row-scope: measured on ASEC rows, imputed on PUF
   support — segments, not one whole-column treatment); ACA (typed
-  dedicated pipeline steps for Marketplace assignment + calibration).
+  dedicated pipeline steps for Marketplace assignment + calibration);
+  WIC (modeled through a source-stage category-rate assignment); and CA, CO, and NM
+  premium-assistance flags (engine defaults with named rate debt).
 - **The engine ABI lock**: from the single engine pin, the compiler
   generates `engine_abi.lock.json` — `{program → variable, entity,
   value_type, default, engine_class, consumers}` — committed and
@@ -539,7 +541,7 @@ As in v2 (declared order, `splits: declared_only`,
 ledger (five/37; 19/70) declared explicitly at the flip and the
 per-target `requires_concepts` blocks from the concept registry.
 
-### take_up.yaml — see the orthogonal schema above; 13 committed rows.
+### take_up.yaml — see the orthogonal schema above; 17 committed rows.
 
 ### battery.yaml / calibration.yaml / selection.yaml
 

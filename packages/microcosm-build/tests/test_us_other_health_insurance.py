@@ -808,7 +808,7 @@ def test_esi_exclusion_pins_complete_hermetic_source_unavailability_evidence() -
 def test_policyengine_us_graph_uses_other_health_insurance_premiums() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variable = CountryTaxBenefitSystem().variables[_OTHER]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"
@@ -853,10 +853,10 @@ def test_policyengine_us_graph_uses_other_health_insurance_premiums() -> None:
 
 
 @requires_us
-def test_policyengine_1_764_6_se_health_ald_contract_and_live_binding() -> None:
+def test_policyengine_1_819_0_se_health_ald_contract_and_live_binding() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variables = CountryTaxBenefitSystem().variables
     for name in US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS:
         variable = variables[name]

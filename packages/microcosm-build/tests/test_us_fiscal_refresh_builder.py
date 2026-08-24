@@ -2326,6 +2326,63 @@ def test_release_gate_failures_include_health_input_signal() -> None:
     ]
 
 
+def test_release_gate_failures_include_reported_coverage_vintage_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    reported_coverage_vintage_gate = builder.GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=False,
+        failures=(
+            "has_medicaid_health_coverage_at_interview: source_year 2022 has 0 "
+            "reporters over 54464 person rows — the vintage source lacks the "
+            "at-interview recode (microcosm #720).",
+        ),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+    ) == [
+        "Reported-coverage vintage signal failed: "
+        "has_medicaid_health_coverage_at_interview: source_year 2022 has 0 "
+        "reporters over 54464 person rows — the vintage source lacks the "
+        "at-interview recode (microcosm #720).",
+    ]
+
+
+def test_reported_coverage_vintage_gate_receipt_is_written(tmp_path) -> None:
+    builder = _load_builder_module()
+    gate = builder.GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=False,
+        failures=(
+            "has_medicaid_health_coverage_at_interview: vintage asec/2022 has 0 "
+            "reporters over 54464 person rows (consistent with a source input "
+            "lacking the at-interview recode, microcosm #720).",
+        ),
+        details={"min_vintage_rows": 5000, "vintages": {"asec/2022": {"rows": 54464}}},
+    )
+    release_dir = tmp_path / "releases" / "rid"
+
+    path = builder._write_reported_coverage_vintage_gate_receipt(release_dir, gate)
+
+    assert path == release_dir / builder.US_REPORTED_COVERAGE_VINTAGE_GATE_RECEIPT
+    payload = json.loads(path.read_text())
+    assert payload["gate"] == "reported_coverage_vintage_signal"
+    assert payload["passed"] is False
+    assert payload["failures"] == list(gate.failures)
+    assert payload["details"]["vintages"]["asec/2022"]["rows"] == 54464
+    # A receipt-only directory is not a certified release (#568): reruns under
+    # the same id stay allowed.
+    builder._refuse_certified_release_dir_reuse(release_dir)
+
+
 def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
     builder = _load_builder_module()
 
@@ -4676,6 +4733,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_pregnancy_signal_gate",
         lambda frame: builder.GateResult(
             name="pregnancy_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_reported_coverage_vintage_signal_gate",
+        lambda frame: builder.GateResult(
+            name="reported_coverage_vintage_signal",
             passed=True,
             details={"checked": True},
         ),
@@ -11202,3 +11268,380 @@ def test_calibration_diagnostics_schema_lockstep() -> None:
     )
 
     assert WRITER_SCHEMA_VERSION == CONTRACT_SCHEMA_VERSION
+
+
+# ---------------------------------------------------------------------------
+# Evidence-tier builder mode (microcosm#506)
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_release_id_reserves_the_segment_for_the_tier() -> None:
+    builder = _load_builder_module()
+
+    builder._assert_us_release_id(
+        "populace-us-2024-evidence-abc1234-20260812T000000Z",
+        evidence_release=True,
+    )
+    builder._assert_us_release_id("populace-us-2024-abc1234-20260812T000000Z")
+
+    with pytest.raises(ValueError, match="must carry"):
+        builder._assert_us_release_id(
+            "populace-us-2024-abc1234-20260812T000000Z",
+            evidence_release=True,
+        )
+    with pytest.raises(ValueError, match="reserved for --evidence-release"):
+        builder._assert_us_release_id(
+            "populace-us-2024-evidence-abc1234-20260812T000000Z"
+        )
+
+
+def test_default_release_id_carries_the_evidence_segment() -> None:
+    builder = _load_builder_module()
+    from datetime import UTC, datetime
+
+    stamp = datetime(2026, 8, 12, 1, 2, 3, tzinfo=UTC)
+    certified = builder._default_release_id(
+        SimpleNamespace(exact_k=None, evidence_release=False),
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
+    evidence = builder._default_release_id(
+        SimpleNamespace(exact_k=None, evidence_release=True),
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
+    assert certified == "populace-us-2024-abcdef0-123456789abc-20260812T010203Z"
+    assert evidence == "populace-us-2024-evidence-abcdef0-123456789abc-20260812T010203Z"
+    # The two ids differ ONLY by the tier segment, and each passes its own
+    # tier's assertion while failing the other's.
+    assert evidence.replace("-evidence-", "-") == certified
+    builder._assert_us_release_id(certified)
+    builder._assert_us_release_id(evidence, evidence_release=True)
+
+
+def test_evidence_known_failures_map_the_adjudicated_owner_register() -> None:
+    builder = _load_builder_module()
+    failures = [
+        (
+            "SOI Table 1.4 national dollar fit failed: target "
+            "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount"
+            "@2024' has relative_error=-0.302, exceeding 0.25."
+        ),
+        (
+            "QRF tail concentration failed: 7 sparse QRF-imputed columns "
+            "past the top-k share bound."
+        ),
+    ]
+
+    entries = builder._evidence_known_failures(
+        failures, builder.US_EVIDENCE_FAILURE_OWNERS
+    )
+
+    assert [entry["failure"] for entry in entries] == failures
+    assert entries[0]["owner"] == "PolicyEngine/microcosm#487"
+    assert "PolicyEngine/microcosm#481" in entries[1]["owner"]
+
+
+def test_evidence_known_failures_refuse_unowned_failures() -> None:
+    builder = _load_builder_module()
+    with pytest.raises(RuntimeError, match="match no\\s+owner") as excinfo:
+        builder._evidence_known_failures(
+            ["Some novel gate failed: it broke."],
+            builder.US_EVIDENCE_FAILURE_OWNERS,
+        )
+    # The refusal names the unowned failure verbatim so the operator can
+    # adjudicate exactly what the run recorded.
+    assert "Some novel gate failed: it broke." in str(excinfo.value)
+
+
+def test_evidence_failure_owner_file_takes_precedence(tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text(
+        json.dumps(
+            {
+                "QRF tail concentration failed:": "PolicyEngine/microcosm#900",
+                "Input coverage failed:": "PolicyEngine/microcosm#368",
+            }
+        )
+    )
+
+    patterns = builder._load_evidence_failure_owner_patterns(owners_path)
+    entries = builder._evidence_known_failures(
+        [
+            "QRF tail concentration failed: whatever.",
+            "Input coverage failed: tip_income missing.",
+        ],
+        patterns,
+    )
+
+    assert entries[0]["owner"] == "PolicyEngine/microcosm#900"
+    assert entries[1]["owner"] == "PolicyEngine/microcosm#368"
+
+
+def test_evidence_failure_owner_file_requires_issue_refs(tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text(json.dumps({"Input coverage failed:": "Max"}))
+    with pytest.raises(ValueError, match="issue reference"):
+        builder._load_evidence_failure_owner_patterns(owners_path)
+
+    owners_path.write_text(json.dumps({" ": "PolicyEngine/microcosm#1"}))
+    with pytest.raises(ValueError, match="empty pattern"):
+        builder._load_evidence_failure_owner_patterns(owners_path)
+
+
+def test_evidence_manifest_fields_are_structurally_uncertifiable() -> None:
+    """The flag can never mint a certified-shape manifest: the fields carry
+    the evidence schema marker, which the certified contract rejects, and an
+    empty failure record is refused outright."""
+    builder = _load_builder_module()
+    from microcosm.data.contract import (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+        RELEASE_MANIFEST_SCHEMA_VERSION,
+    )
+
+    entries = [
+        {"failure": "SOI Table 1.4 national dollar fit failed: x.", "owner": "#487"}
+    ]
+    fields = builder._evidence_release_manifest_fields(entries)
+
+    assert fields["schema_version"] == EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    assert fields["schema_version"] != RELEASE_MANIFEST_SCHEMA_VERSION
+    assert fields["tier"] == "evidence"
+    assert fields["known_failures"] == entries
+
+    with pytest.raises(ValueError, match="all-green artifact"):
+        builder._evidence_release_manifest_fields([])
+
+
+def test_evidence_release_flags_parse(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text("{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.evidence_release is False
+    assert args.evidence_failure_owners is None
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--evidence-release",
+            "--evidence-failure-owners",
+            str(owners_path),
+        ],
+    )
+    args = builder._parse_args()
+    assert args.evidence_release is True
+    assert args.evidence_failure_owners == owners_path
+
+
+def test_evidence_owner_file_without_evidence_release_is_refused(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text("{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            str(tmp_path),
+            "--evidence-failure-owners",
+            str(owners_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder._parse_args()
+    assert "requires --evidence-release" in capsys.readouterr().err
+
+
+def test_evidence_release_is_incompatible_with_exact_k(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            str(tmp_path),
+            "--evidence-release",
+            "--exact-k",
+            "20000",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder._parse_args()
+    assert "incompatible with --exact-k" in capsys.readouterr().err
+
+
+def test_evidence_mode_conversion_is_pinned_structurally() -> None:
+    """microcosm#506 control-flow guard (the #443/#568 AST pattern): in
+    _main() (the build body under the #563 telemetry wrapper), every
+    terminal 'Release gates failed' raise after the #548 accumulator forms
+    must be conditioned on --evidence-release (the conversion sites), every
+    one BEFORE it must be unconditional (preflight and mid-build gates never
+    convert), the all-green evidence refusal must sit before the manifest
+    write, and _build_manifests must receive the owned failure record."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _ancestor_if_tests(node: ast.AST) -> list[str]:
+        tests = []
+        cursor = node
+        while cursor in parents:
+            cursor = parents[cursor]
+            if isinstance(cursor, ast.If):
+                tests.append(ast.unparse(cursor.test))
+        return tests
+
+    accumulator = next(
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "terminal_gate_failures"
+    )
+
+    # The exact certified-guard forms — polarity included, so a reversed or
+    # aliased condition cannot pass (round-2 sol mutation probe).
+    certified_guard_tests = {
+        "not args.evidence_release",
+        "not args.evidence_release or evidence_refusal is not None",
+    }
+    gate_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+    ]
+    assert gate_raises, "_main() lost its release-gate raises"
+    for raise_node in gate_raises:
+        ancestor_tests = _ancestor_if_tests(raise_node)
+        guarded = any(test in certified_guard_tests for test in ancestor_tests)
+        mentions_flag = any(
+            "args.evidence_release" in test or "evidence_refusal" in test
+            for test in ancestor_tests
+        )
+        if raise_node.lineno > accumulator.lineno:
+            assert guarded, (
+                f"terminal raise at line {raise_node.lineno} must sit under "
+                f"one of {sorted(certified_guard_tests)}; the conversion "
+                "site regressed or changed polarity"
+            )
+        else:
+            assert not mentions_flag, (
+                f"pre-terminal raise at line {raise_node.lineno} is "
+                "conditioned on --evidence-release; preflight/mid-build "
+                "gates must abort in both modes"
+            )
+
+    refusals = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Evidence release refused: every terminal gate passed"
+        in (ast.get_source_segment(source, node) or "")
+    ]
+    assert len(refusals) == 1, "the all-green evidence refusal must exist once"
+    # Exact guard chain, innermost first: reachable precisely when the flag
+    # is set and no terminal failure was recorded — an extra wrapper (the
+    # unreachability mutation) or a polarity flip breaks the equality.
+    assert _ancestor_if_tests(refusals[0]) == [
+        "not terminal_gate_failures",
+        "args.evidence_release",
+    ]
+
+    manifest_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    assert refusals[0].lineno < manifest_calls[0].lineno, (
+        "the all-green refusal must precede the manifest write"
+    )
+    manifest_keyword = next(
+        keyword
+        for keyword in manifest_calls[0].keywords
+        if keyword.arg == "evidence_known_failures"
+    )
+    # The kwarg must forward the resolved record, not a constant (the
+    # evidence_known_failures=None mutation).
+    assert isinstance(manifest_keyword.value, ast.Name)
+    assert manifest_keyword.value.id == "evidence_known_failures"
+    owned_assignments = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "evidence_known_failures"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_evidence_known_failures"
+    ]
+    assert len(owned_assignments) == 1, (
+        "the owned record must be assigned from _evidence_known_failures"
+    )
+    assert "args.evidence_release" in _ancestor_if_tests(owned_assignments[0])
+
+    # Every owner-resolution site: the batched conversion, the reform-smoke
+    # and take-up recordings, the coverage-gate recording, and the final
+    # assignment before the manifest write. A dropped site weakens the
+    # unowned-failure refusal.
+    owner_check_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_evidence_known_failures"
+    ]
+    assert len(owner_check_calls) == 5, (
+        f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
+    )

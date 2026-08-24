@@ -128,7 +128,8 @@ POST_REFERENCE_COLUMN_NOTES = {
         "(PolicyEngine/microcosm#451 item 1), derived from the measured ASEC "
         "self-care difficulty item PEDISDRS by the adult_care_inputs "
         "base-builder stage. Also read by SNAP/Medicaid work-requirement "
-        "exemptions and state CDCC analogs in PolicyEngine-US 1.764.6. "
+        "logic and multiple state dependent-care formulas in PolicyEngine-US "
+        "1.819.0. "
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
     ),
@@ -163,7 +164,15 @@ WORKERS_COMPENSATION_INPUTS = ("workers_compensation",)
 
 WEEKS_UNEMPLOYED_INPUTS = ("weeks_unemployed",)
 
-WIC_CLAIM_INPUTS = ("would_claim_wic",)
+WIC_CLAIM_INPUTS = ("takes_up_wic_if_eligible",)
+
+# The SHA-pinned incumbent reference predates PolicyEngine-US 1.777.0 and
+# therefore truthfully records the retired WIC column name. Project that
+# historical evidence onto the verified 1.819.0 successor without rewriting
+# the reference artifact.
+REFERENCE_LAYER_RENAMES = {
+    "would_claim_wic": "takes_up_wic_if_eligible",
+}
 
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
@@ -309,7 +318,7 @@ REFORM_COVERAGE_PROBES = [
             "without the adjacent-year carry the neutralization is a "
             "structural zero. The distinct "
             "previous_year_income_available flag has no formula consumer in "
-            "PolicyEngine-US 1.764.6 and remains protected by the hard "
+            "PolicyEngine-US 1.819.0 and remains protected by the hard "
             "non-default column gate."
         ),
         "issue": "PolicyEngine/microcosm#38",
@@ -825,7 +834,7 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["domestic_production_ald"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 1.764.6 excludes the former Section 199 deduction "
+            "PolicyEngine-US 1.819.0 excludes the former Section 199 deduction "
             "from current-law above-the-line deductions. This probe preserves "
             "the exact 2024 list and adds only domestic_production_ald, so "
             "baseline-minus-reform income tax must be positive. Without the "
@@ -866,7 +875,7 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["salt_refund_income"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 1.764.6 includes salt_refund_income in the "
+            "PolicyEngine-US 1.819.0 includes salt_refund_income in the "
             "South Carolina, Idaho, and West Virginia subtraction lists. "
             "Neutralizing only that leaf removes the state subtraction and "
             "raises state income tax, so baseline-minus-reform state income "
@@ -1070,16 +1079,16 @@ REFORM_COVERAGE_PROBES = [
         "id": "wic_claim_neutralization",
         "name": "WIC claim neutralization",
         "parameter_changes": {},
-        "neutralized_variable": "would_claim_wic",
+        "neutralized_variable": "takes_up_wic_if_eligible",
         "budget_measure": "wic",
         "period": 2024,
         "effect_direction": "baseline_minus_reform",
         "expected_sign": "positive",
-        "binding_inputs": ["would_claim_wic"],
+        "binding_inputs": ["takes_up_wic_if_eligible"],
         "min_abs_effect": 25_000_000.0,
         "reason": (
             "PolicyEngine-US multiplies each eligible person's monthly WIC "
-            "food package by would_claim_wic. A 6,000-household production-"
+            "food package by takes_up_wic_if_eligible. A 6,000-household production-"
             "ingredient smoke with the FNS category-rate stage scored "
             "+$57.19M baseline-minus-neutralized; without the restored claim "
             "surface the probe is a structural zero."
@@ -1369,7 +1378,7 @@ REFORM_COVERAGE_PROBES = [
             "structural zero. The "
             "other source-mapped housing leaves are enforced by their exact "
             "ASEC mappings and signal gate; household tenure_type has no "
-            "standalone PolicyEngine-US 1.764.6 formula consumer."
+            "standalone PolicyEngine-US 1.819.0 formula consumer."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -1409,7 +1418,9 @@ def build_manifest() -> dict:
     known_gaps = _load("ecps_parity_known_gaps.json")["known_gaps"]
 
     populated_layers = {
-        name for name, share in parity["nonzero_shares"].items() if float(share) > 0.0
+        REFERENCE_LAYER_RENAMES.get(name, name)
+        for name, share in parity["nonzero_shares"].items()
+        if float(share) > 0.0
     } | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
     ssi_assets = set(SSI_COUNTABLE_RESOURCE_ASSETS)
 

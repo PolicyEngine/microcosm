@@ -46,6 +46,14 @@ class ConsumerReceipt:
     path: str
     line: int
     kind: str
+    # Exact entity object on which the variable is requested or aggregated.
+    # Empty only when the static reference site exposes no resolvable entity
+    # receiver; class-level ``adds`` use the owning variable's entity.
+    receiver_entity: str = ""
+    # Enclosing group aggregation when it differs from the direct receiver.
+    # For ``spm_unit.any(person(...))``, for example, these fields are
+    # ``person`` and ``spm_unit`` respectively.
+    aggregation_entity: str = ""
 
 
 @dataclass(frozen=True)
@@ -1480,6 +1488,7 @@ def _bind_target(
 _ENTITY_CALL_NAMES = frozenset(
     {"person", "household", "tax_unit", "spm_unit", "family", "marital_unit"}
 )
+_ENTITY_AGGREGATION_METHODS = frozenset({"all", "any", "max", "min", "sum"})
 _REFERENCE_HELPER_ARGUMENTS: dict[str, int] = {
     # PolicyEngine-Core logical aggregators share ``add``'s
     # ``(entity, period, variables)`` signature.
@@ -1600,10 +1609,12 @@ class _ConsumerInterpreter:
         modules: Mapping[str, _ModuleIR],
         module_envs: Mapping[str, Mapping[str, _ExactValue]],
         resolver: _ParameterListResolver,
+        definitions: Mapping[str, _SourceVariableDefinition],
     ) -> None:
         self._modules = modules
         self._module_envs = module_envs
         self._resolver = resolver
+        self._definitions = definitions
         self._evaluator = _ExactEvaluator()
         self._functions, self._bindings = _function_bindings(modules, module_envs)
         self._receipts: dict[str, set[ConsumerReceipt]] = {}
@@ -1713,6 +1724,10 @@ class _ConsumerInterpreter:
                     consumer=owner.name,
                     owner_name=owner.name,
                     frame=frame,
+                    receiver_entity=self._definitions[owner.name].metadata.entity,
+                    aggregation_entity=(
+                        self._definitions[owner.name].metadata.entity
+                    ),
                 )
             elif (
                 name == "defined_for"
@@ -1992,24 +2007,50 @@ class _ConsumerInterpreter:
         env: Mapping[str, _ExactValue],
         frame: _EvaluationFrame,
         owner_name: str | None,
+        aggregation_entity: str = "",
     ) -> None:
         if isinstance(expression, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
-            self._scan_comprehension(expression, env, frame, owner_name)
+            self._scan_comprehension(
+                expression,
+                env,
+                frame,
+                owner_name,
+                aggregation_entity,
+            )
             return
         if isinstance(expression, ast.Lambda):
             return
         if isinstance(expression, ast.Call):
             function_name = _source_name(expression.func)
             callee = self._evaluator.evaluate(expression.func, env, frame)
+            nested_aggregation_entity = aggregation_entity
+            if (
+                isinstance(expression.func, ast.Attribute)
+                and expression.func.attr in _ENTITY_AGGREGATION_METHODS
+            ):
+                aggregation_receiver = self._evaluator.evaluate(
+                    expression.func.value,
+                    env,
+                    frame,
+                )
+                if isinstance(aggregation_receiver, _EntityValue):
+                    nested_aggregation_entity = aggregation_receiver.name
             if (
                 function_name in _ENTITY_CALL_NAMES or isinstance(callee, _EntityValue)
             ) and expression.args:
+                receiver_entity = (
+                    callee.name
+                    if isinstance(callee, _EntityValue)
+                    else function_name or ""
+                )
                 self._record_expression(
                     expression.args[0],
                     env=env,
                     frame=frame,
                     owner_name=owner_name,
                     base_kind="entity_call",
+                    receiver_entity=receiver_entity,
+                    aggregation_entity=aggregation_entity,
                 )
             elif isinstance(expression.func, ast.Name) and function_name in {
                 "add",
@@ -2029,12 +2070,23 @@ class _ConsumerInterpreter:
                 )
                 if variable_expression is None:
                     self._raise_unresolved(expression, frame)
+                receiver = (
+                    self._evaluator.evaluate(expression.args[0], env, frame)
+                    if expression.args
+                    else _unknown(f"receiver:{expression.lineno}")
+                )
                 self._record_expression(
                     variable_expression,
                     env=env,
                     frame=frame,
                     owner_name=owner_name,
                     base_kind=function_name,
+                    receiver_entity=(
+                        receiver.name if isinstance(receiver, _EntityValue) else ""
+                    ),
+                    aggregation_entity=(
+                        receiver.name if isinstance(receiver, _EntityValue) else ""
+                    ),
                 )
             else:
                 helper_argument = _REFERENCE_HELPER_ARGUMENTS.get(function_name or "")
@@ -2047,11 +2099,20 @@ class _ConsumerInterpreter:
                         frame=frame,
                         owner_name=owner_name,
                         base_kind="helper_call",
+                        aggregation_entity=aggregation_entity,
                     )
             self._enqueue_helper(expression, env, frame)
+        else:
+            nested_aggregation_entity = aggregation_entity
         for child in ast.iter_child_nodes(expression):
             if isinstance(child, ast.expr):
-                self._scan_expression(child, env, frame, owner_name)
+                self._scan_expression(
+                    child,
+                    env,
+                    frame,
+                    owner_name,
+                    nested_aggregation_entity,
+                )
 
     def _scan_comprehension(
         self,
@@ -2059,12 +2120,19 @@ class _ConsumerInterpreter:
         env: Mapping[str, _ExactValue],
         frame: _EvaluationFrame,
         owner_name: str | None,
+        aggregation_entity: str = "",
     ) -> None:
         states: list[dict[str, _ExactValue]] = [dict(env)]
         for generator in expression.generators:
             expanded: list[dict[str, _ExactValue]] = []
             for state in states:
-                self._scan_expression(generator.iter, state, frame, owner_name)
+                self._scan_expression(
+                    generator.iter,
+                    state,
+                    frame,
+                    owner_name,
+                    aggregation_entity,
+                )
                 iterable = _materialize_value(
                     self._evaluator.evaluate(generator.iter, state, frame),
                     frame=frame,
@@ -2085,7 +2153,13 @@ class _ConsumerInterpreter:
                             )
                         include = True
                         for condition in generator.ifs:
-                            self._scan_expression(condition, bound, frame, owner_name)
+                            self._scan_expression(
+                                condition,
+                                bound,
+                                frame,
+                                owner_name,
+                                aggregation_entity,
+                            )
                             truth = _truth(
                                 self._evaluator.evaluate(condition, bound, frame)
                             )
@@ -2096,7 +2170,13 @@ class _ConsumerInterpreter:
                             expanded.append(bound)
             states = expanded
         for state in states:
-            self._scan_expression(expression.elt, state, frame, owner_name)
+            self._scan_expression(
+                expression.elt,
+                state,
+                frame,
+                owner_name,
+                aggregation_entity,
+            )
 
     def _enqueue_helper(
         self,
@@ -2162,6 +2242,8 @@ class _ConsumerInterpreter:
         frame: _EvaluationFrame,
         owner_name: str | None,
         base_kind: str,
+        receiver_entity: str = "",
+        aggregation_entity: str = "",
     ) -> None:
         value = self._evaluator.evaluate(expression, env, frame)
         self._record_receipts(
@@ -2172,6 +2254,8 @@ class _ConsumerInterpreter:
             consumer=frame.consumer,
             owner_name=owner_name,
             frame=frame,
+            receiver_entity=receiver_entity,
+            aggregation_entity=aggregation_entity,
         )
 
     def _record_receipts(
@@ -2184,6 +2268,8 @@ class _ConsumerInterpreter:
         consumer: str,
         owner_name: str | None,
         frame: _EvaluationFrame,
+        receiver_entity: str = "",
+        aggregation_entity: str = "",
     ) -> None:
         value = _materialize_value(
             value,
@@ -2210,6 +2296,8 @@ class _ConsumerInterpreter:
                     path=module.display_path,
                     line=expression.lineno,
                     kind=kind,
+                    receiver_entity=receiver_entity,
+                    aggregation_entity=aggregation_entity,
                 )
             )
 
@@ -2382,7 +2470,12 @@ def _index_policyengine_us_sources(
         raise RuntimeError(
             f"No PolicyEngine variable classes found below {variables_root}."
         )
-    consumers = _ConsumerInterpreter(modules, module_envs, resolver).run()
+    consumers = _ConsumerInterpreter(
+        modules,
+        module_envs,
+        resolver,
+        definitions,
+    ).run()
     return _PolicyEngineUSSourceIndex(
         definitions=MappingProxyType(definitions),
         consumers=consumers,

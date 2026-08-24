@@ -2209,7 +2209,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "d3de6760727cfcb6800209670d37e02b373d8dcda19f8ad054aa9d410e0efbb0",
+            "spec_sha256": "3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62",
         },
     }
 
@@ -2412,7 +2412,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "d3de6760727cfcb6800209670d37e02b373d8dcda19f8ad054aa9d410e0efbb0",
+        "spec_sha256": "3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -4118,9 +4118,9 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # Exact pre-#653 schema-4/materializer-3 publication bytes from
-        # preserved #652 commit 54d2dee6.
-        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
+        # The PE-US 1.819.0 compatibility edits legitimately move the pool-code
+        # checkpoint identities embedded in the otherwise legacy publication.
+        "manifest": "63c6e6973079f0b793d5435113aaae66184564b70271f8af120fecdbb5015f63",
     }
 
 

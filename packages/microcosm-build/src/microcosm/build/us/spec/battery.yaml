@@ -643,7 +643,7 @@ metric_registry:
   metric: monetary_sign_separated
 - entity: person
   family: source_operator_wic_claim
-  column: would_claim_wic
+  column: takes_up_wic_if_eligible
   clone_index: 0
   metric: boolean_incidence
 - entity: person
@@ -688,12 +688,12 @@ metric_registry:
   metric: boolean_incidence
 - entity: spm_unit
   family: model_required_boolean
-  column: is_tanf_enrolled
+  column: receives_snap
   clone_index: 0
   metric: boolean_incidence
 - entity: spm_unit
   family: model_required_boolean
-  column: receives_snap
+  column: receives_tanf
   clone_index: 0
   metric: boolean_incidence
 - entity: spm_unit
@@ -758,12 +758,27 @@ metric_registry:
   metric: boolean_incidence
 - entity: tax_unit
   family: take_up
+  column: takes_up_ca_premium_subsidy_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: tax_unit
+  family: take_up
+  column: takes_up_co_premium_assistance_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: tax_unit
+  family: take_up
   column: takes_up_dc_ptc
   clone_index: 0
   metric: boolean_incidence
 - entity: tax_unit
   family: take_up
   column: takes_up_eitc
+  clone_index: 0
+  metric: boolean_incidence
+- entity: tax_unit
+  family: take_up
+  column: takes_up_nm_premium_assistance_if_eligible
   clone_index: 0
   metric: boolean_incidence
 joint_metric_registry:

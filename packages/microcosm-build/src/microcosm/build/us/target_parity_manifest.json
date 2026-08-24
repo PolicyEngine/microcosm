@@ -673,12 +673,12 @@
   "wic.national_summary": {
    "status": "reviewed_exclusion",
    "classification": "source_absent",
-   "reason": "USDA WIC national annual summary the retired pipeline calibrated (WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE). The pinned feed carries no WIC fact; WIC receipt is modeled via the would_claim_wic input.",
+   "reason": "USDA WIC national annual summary the retired pipeline calibrated (WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE). The pinned feed carries no WIC fact; WIC receipt is modeled via the takes_up_wic_if_eligible input.",
    "evidence": "retired us-data pipeline (archived) db/etl_national_targets.py WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE; feed carries no 'wic' source",
    "fence": {
     "origin": "us-data db/etl_national_targets.py WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE",
     "purpose": "anchor WIC participation to the USDA national summary.",
-    "verdict_basis": "source-absent: no WIC ledger fact in the feed. WIC receipt is modeled via the would_claim_wic take-up input, not a target here."
+    "verdict_basis": "source-absent: no WIC ledger fact in the feed. WIC receipt is modeled via the takes_up_wic_if_eligible take-up input, not a target here."
    }
   }
  }

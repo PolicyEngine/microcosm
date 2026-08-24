@@ -533,10 +533,10 @@ def test_signal_gate_rejects_either_dead_support_channel(dead_channel: str) -> N
 
 
 @requires_us
-def test_policyengine_us_1_764_6_contract_and_positive_annual_behavior() -> None:
+def test_policyengine_us_1_819_0_contract_and_positive_annual_behavior() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"
@@ -547,6 +547,9 @@ def test_policyengine_us_1_764_6_contract_and_positive_annual_behavior() -> None
         "people": {
             "adult": {
                 "age": {"2024": 40},
+                # SNAP 1.769.0+ applies this person's countable-income share
+                # to unearned income; make the graph fixture work-eligible.
+                "weekly_hours_worked_before_lsr": {"2024": 40},
                 _OUTPUT: {"2024": 6_000.0},
             }
         },
@@ -589,6 +592,7 @@ def test_shipped_snap_exclusion_probe_binds_with_positive_sign() -> None:
             "adult": {
                 "age": {"2024": 40},
                 "employment_income": {"2024": 12_000.0},
+                "weekly_hours_worked_before_lsr": {"2024": 40},
                 _OUTPUT: {"2024": 6_000.0},
             }
         },

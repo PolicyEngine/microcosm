@@ -11,9 +11,10 @@ allocation is pinned to the final archived implementation at
 * ``datasets/cps/imputation_parameters.yaml`` lines 24-55 records the
   administrative sources and the four allocation shares.
 
-The outputs are the five ``*_desired`` input leaves.  PolicyEngine-US 1.764.6
-owns the statutory IRA, elective-deferral, and self-employed-plan limits, so
-this stage must not cap the measured source amount itself.
+The outputs are the five ``*_desired`` input leaves.  PolicyEngine-US 1.819.0
+applies the statutory combined elective-deferral and IRA limits and the
+self-employed-plan cap, so this stage preserves the uncapped measured desired
+amounts.
 """
 
 from __future__ import annotations

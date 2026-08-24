@@ -113,7 +113,7 @@ US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES: tuple[str, ...] = (
     "medicaid_premium",
 )
 # Self-employed premium attribution (PolicyEngine/microcosm#451 item 2): the
-# section 162(l) ALD chain in PolicyEngine-US 1.764.6 reads person inputs
+# section 162(l) ALD chain in PolicyEngine-US 1.819.0 reads person inputs
 # health_insurance_premiums (via the self_employed_health_insurance_premiums
 # adds-aggregation, gated by is_self_employed) and caps the deduction at
 # total_self_employment_income = self_employment_income +

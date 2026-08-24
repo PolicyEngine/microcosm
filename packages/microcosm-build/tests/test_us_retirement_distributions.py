@@ -517,11 +517,11 @@ def test_all_sha_locked_asec_artifacts_carry_exact_source_signal() -> None:
 
 
 @requires_us
-def test_policyengine_1_764_6_contract_and_live_binding() -> None:
+def test_policyengine_1_819_0_contract_and_live_binding() -> None:
     from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variables = CountryTaxBenefitSystem().variables
     for name in _OUTPUTS:
         variable = variables[name]

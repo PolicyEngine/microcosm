@@ -676,11 +676,11 @@ def test_required_source_columns_are_the_measured_set() -> None:
 
 
 @requires_us
-def test_policyengine_1_764_6_cdcc_adult_care_contract_and_live_binding() -> None:
+def test_policyengine_1_819_0_cdcc_adult_care_contract_and_live_binding() -> None:
     from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variables = CountryTaxBenefitSystem().variables
     flag = variables[_FLAG]
     assert flag.is_input_variable()

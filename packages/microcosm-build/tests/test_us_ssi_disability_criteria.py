@@ -630,10 +630,10 @@ def test_gate_requires_complete_support_provenance(
 
 
 @requires_us
-def test_policyengine_us_1_764_6_ssi_is_positive_then_zero_when_neutralized() -> None:
+def test_policyengine_us_1_819_0_ssi_is_positive_then_zero_when_neutralized() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"
