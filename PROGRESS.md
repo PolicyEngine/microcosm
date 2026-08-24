@@ -13,10 +13,10 @@ that lets the current builder derive support by cold fixed-penalty L0 at its
 literal default 0.8. The release accepts the realized non-exact count and
 supplies no frozen selection, exact-count rule, `pi_hi`, Keogh mass protection,
 operator exclusion register, or tuning override. Round 5 passed from committed
-launcher `52a2bcfb`; its receipt is ready to commit.
+launcher `52a2bcfb`; its receipt is committed at `175a607a`. The required
+`FINAL_REPORT.md` is complete and all final static checks pass.
 
-No pool, release, scorer, publication, promotion, or push has run in this
-round.
+No pool, release, scorer, publication, promotion, or push was run by this task.
 
 ## Done
 
@@ -120,9 +120,20 @@ round.
 - Created `experiments/candidate_25pct/dry_run_r5.md` with the tested commit,
   launcher hash, verbatim stdout, exit status, stale-pin observation, and
   side-effect checks.
+- Committed the round-5 receipt and journal as `175a607a`.
+- Replaced the obsolete round-4 sparse STOP report with the final owner-ruling-A
+  contract trace, exact sparse input delta, Keogh/waiver adjudication,
+  implementation/validation summary, and external stale-pin prerequisite in
+  `FINAL_REPORT.md`.
+- Re-ran `bash -n`, ShellCheck, the lightweight owner-ruling contract preflight,
+  and `git diff --check`; all pass. The launcher remains executable and its
+  tested SHA-256 is
+  `484874a22d63e8a0faf16f3eb504eed152a0a2d5993d9b6db5d5e18aeee69838`.
 
 ## Next
 
-1. Commit `dry_run_r5.md` and this journal.
-2. Write and commit the final outcome to `FINAL_REPORT.md`, then verify a clean
-   branch and final checks.
+1. Owner decides how to reconcile the pre-existing external `candidate-25`
+   root pinned to `8fa966d9` (or authorizes a fresh output-root policy) before
+   any execute-mode launch.
+2. After that explicit external-state decision, launch the committed runbook;
+   no further repository implementation is pending.

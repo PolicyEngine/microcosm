@@ -1,210 +1,226 @@
-# Final report: 25% candidate runbook, round 4
+# Final report: candidate 25% stage 2b under owner ruling A
 
-Date: 2026-08-23
+Date: 2026-08-24
 
 Branch: `candidate-25pct-runbook`
 
 Required label: **one-surface + pkg3, legacy release arm, not exact-k
 certified**.
 
-Outcome: **the dense-first launcher, complete input audit, real exit-0 dry-run,
-and lane handoff are committed. Sparse correctly stops for an owner ruling. No
-pool or release build ran.** The only incomplete delivery is the requested
-external launcher copy: the managed filesystem denied writes to
-`/Users/maxghenis/PolicyEngine/_buildo-runtime`, so the executable exists only
-at the committed canonical path until the owner performs the exact-byte copy
-below.
+## Outcome
 
-## Cleared blocker and input authority
+Stage 2b is implemented in
+`experiments/candidate_25pct/run-candidate.sh`. The launcher now runs a second,
+serial release after stage 2a and lets the new 25% pool derive its own support
+through current main's cold legacy fixed-penalty L0 path at the literal default
+share `0.8`. It accepts the realized record count: there is no frozen
+selection-source manifest, exact-count assertion, `pi_hi`, or target count.
 
-The owner-supplied full Federal Reserve SCF 2022 extract exists at
-`/Users/maxghenis/.cache/microcosm/scf/p22i6.dta`, is 236,952,250 bytes, and
-hashes to
-`61e2fceb1594e4009eb996d6e25d38a5d8e4874930fc2bfce3c87ffa6946ad0a`.
-Its header identifies Stata release 118 with little-endian `LSF` byte order.
-Current main's explicit `--scf-full-extract` route resolves that exact path and
-passes it to the Stata loader
-(`tools/build_us_fiscal_refresh_release.py:1248-1256,9579-9587`). The source
-URL, unpack date, header bytes, loader trace, and hash are recorded in
-`experiments/candidate_25pct/input_audit_r4.md`.
+The sparse release is off-chain, uses `--no-staging`, persists a commit-bound
+release ID, has its own checkpoints/log/RSS CSV/completion marker, validates
+authenticated outputs before any idempotent skip, and prints its artifact path,
+SHA-256, and scorer command at completion.
 
-The dry-run fully rehashed all 18 immutable inputs:
+The final committed launcher passed `bash -n`, ShellCheck, diff hygiene, and a
+real exit-0 dry-run. No pool, release, scorer, publication, promotion, push, or
+staging operation was run by this task.
 
-- the six pool inputs copied exactly from the incumbent host queue;
-- Ledger v9.4 at the required
-  `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`
-  pin;
-- the July export-mass reference, SSI prior-weight basis, SCF summary/full
-  extracts, ASEC archive, SIPP donors, ORG donor, and packaged CD crosswalk;
-- the committed incumbent evidence JSON and the actual 462,915,783-byte
-  incumbent H5 at SHA-256
-  `48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e`.
+## Current-main legacy L0 contract
 
-Round 3's surface finding stands: the owner-ruled legacy arm compiles the same
-unified fiscal target registry as exact-k. Dense and sparse remain separate
-stage-2 invocations.
+The local current-main authority is `origin/main` at `7b90bb18`, including the
+PolicyEngine-US 1.819.0 lock. The inspected builder, tests, and runtime files on
+this branch are byte-identical to that authority.
 
-## Launcher delivered in the repository
+- `DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8` lives at
+  `tools/build_us_fiscal_refresh_release.py:437`. The parser wires
+  `--l0-refit-lambda-share` to that constant and documents division by the
+  candidate household count at lines 1132-1140. The sparse command deliberately
+  omits the flag so it consumes the literal default.
+- Current main's epoch default is 1,500 at lines 438 and 1105-1112. Stage 2b
+  therefore explicitly supplies `--epochs 6000`.
+- With `--dense-default-dataset`, the builder follows the full-pool
+  `dense_no_l0` branch at lines 10610-10635. Stage 2a uses that flag and 3,000
+  epochs.
+- Without `--dense-default-dataset`, a selection source, or exact-k arguments,
+  the builder computes `0.8 / n_candidate_households` at lines 10436-10450 and
+  calls `calibrate_l0_refit` at lines 10636-10655. It records
+  `result.selection.n_nonzero` and the exported support at lines 10656-10677;
+  it does not assert an exact or strict-subset count.
 
-The executable source is
-`experiments/candidate_25pct/run-candidate.sh` (mode `0755`), SHA-256:
+The material command distinction is therefore:
 
 ```text
-94f113bf1d3d7fc58c3973549b66a8aef9f2a3d55931c5f0ea60560e65f16a1a
+stage 2a dense:  --base-h5 <stage-1 pool> --dense-default-dataset --epochs 3000
+stage 2b sparse: --base-h5 <stage-1 pool>                         --epochs 6000
 ```
 
-It provides:
+Both invocations carry the same common, pinned stage-2 sources and their own
+output/checkpoint/release-ID state. The sparse invocation adds no selection
+artifact and no L0 tuning flag.
 
-- explicit launchd-safe `PATH`, `HOME=/Users/maxghenis`, and
-  `PYTHONUNBUFFERED=1`;
+The incumbent epoch authority is
+`/Users/maxghenis/PolicyEngine/_buildo-runtime/scripts/buildp_sparse9.sh:123-143`,
+which passes `--epochs 6000` at line 140. That incumbent was a frozen-support,
+`--dense-default-dataset` polish run, so it establishes the requested epoch
+count but is not evidence for cold-L0 selection or Keogh-path semantics.
+
+## Sparse-specific input and zero-waiver ruling
+
+Beyond stage 2a's immutable inputs, stage 2b needs exactly one additional
+pinned input:
+
+```text
+path:   /Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/attempt6_basis_schema3_seed.json
+size:   4,782 bytes
+sha256: 25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a
+```
+
+The incumbent sparse launcher supplies that path and pin at
+`buildp_sparse9.sh:133-134`. Current main requires the path/hash pair and
+authenticates it before use
+(`tools/build_us_fiscal_refresh_release.py:6041-6109`). The SSI runtime accepts
+schema-2/3 legacy capacity/floor seeds at
+`packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py:902-918`.
+Its current-schema retry-of-retry guard at lines 943-959 is why the launcher
+does not substitute the incumbent's final schema-4 output. Post-build
+authentication requires the sparse release's `us_ssi_take_up.json` to record
+this exact schema-3 source hash and to be a schema-4 `release_final` artifact.
+Sparse keeps hard SSI delivery enforcement; only the dense diagnostic arm gets
+fences (`tools/build_us_fiscal_refresh_release.py:10758-10771`).
+
+The standing zero-waiver rule is implemented by omission:
+
+- Current main rejects the retired `--zero-support-exclusions` option, including
+  an attempted empty file
+  (`packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:52-93`).
+  The launcher does not pass it.
+- `--qrf-tail-concentration-exclusions` is optional. Omission returns `{}` at
+  `tools/build_us_fiscal_refresh_release.py:7922-7935` and records a null file,
+  null hash, and empty reviewed-exclusions map at lines 11258-11290. The
+  launcher omits it and validates those receipts.
+- The sparse command preflight also forbids all other gate bypasses, evidence
+  switches, loss/ratio/L2 tuning, warm start, target-family multipliers,
+  selection/exact-k arguments, and target-aging/tolerance overrides.
+
+Mutable sparse checkpoints, the persisted release ID, logs, RSS CSV, output
+root, artifact, and completion marker are run state, not additional immutable
+inputs.
+
+## Keogh-carrier decision
+
+`--selection-mass-protection keogh_distributions` is omitted.
+
+Current main's parser help says the option injects a synthetic mass target so a
+refit cannot crush carriers that a protect-swap placed in a **frozen
+selection** (`tools/build_us_fiscal_refresh_release.py:927-938`). The
+implementation doctrine repeats that protect-swap/frozen-selection contract at
+lines 2001-2016. The incumbent's use of the flag occurred alongside a frozen
+selection source and dense polish; it does not make the flag part of cold
+legacy L0.
+
+Although the parser can mechanically accept the option without a selection
+manifest, doing so here would add a synthetic target beyond owner ruling A and
+would be new tuning. The launcher omits it, statically rejects its appearance,
+and post-build validation rejects any
+`selection_mass_protection.*` diagnostic target.
+
+## Implemented stage 2b
+
+The sparse stage writes beneath
+`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/release-sparse/`
+and uses release IDs of the required form:
+
+```text
+populace-us-2024-onesurface-pkg3-legacy-sparse-<sha8>-<UTC timestamp>
+```
+
+Its invocation carries the authenticated stage-1 `pool.h5`, all common stage-2
+sources, the schema-3 SSI basis and pin, seed 0, 6,000 epochs, sparse checkpoint
+and output roots, `--skip-reform-validation`, and `--no-staging`. It omits the
+dense flag, selection H5/manifest, selection mass protection, exact-k, `pi_hi`,
+exact-k pool manifest, QRF exclusion register, warm start, and tuning flags.
+
+The implementation also provides:
+
+- serial stage order: pool, dense release, then sparse release;
+- the same 85-GiB reclaimable-memory readiness gate for all stages, plus no
+  running pool/release builder, AC power, and the owner `.max-go` marker;
+- reauthentication after every wait and immediately before launch;
+- `/usr/bin/time -l` logs and 30-second process-tree RSS CSV sampling;
 - unconditional off-chain execution by unsetting
-  `POPULACE_LOGBOOK_PREV_ROW_DIGEST`, wrapping builders with `env -u`, omitting
-  `--logbook-prev-row-digest`, and never reading or writing pending-chain state;
-- serial pool then dense execution, no publication/promotion path, append-only
-  main/stage logs, and 30-second process-tree RSS CSV sampling;
-- authenticated idempotent skips, including exact pool sampling/clone receipts,
-  all six pool provenance pins, H5/gates hashes, the pool-manifest wrapper pin,
-  the dense base-dataset link, code/Ledger identity, dense method/epochs, empty
-  reviewed exclusions, enforced/passing QRF tails, and disabled staging;
-- checkpoint resume after a pool gate-failed diagnostic trio rather than
-  incorrectly accepting it as complete;
-- a persisted root commit pin and dense release ID, with clean-HEAD and
-  byte-identical launcher rechecks before launch;
-- pre-launch authentication/readiness loops. Every real builder waits for no
-  running pool/release builder, the stage's reclaimable-memory threshold, AC
-  power, and the `.max-go` marker, polling every 300 seconds. If readiness
-  changes during hashing, authentication repeats before launch;
-- `com.microcosm.candidate25` self-removal on actual-mode exit.
+  `POPULACE_LOGBOOK_PREV_ROW_DIGEST` globally and with `env -u` at each command;
+- persisted commit-bound release IDs and authenticated marker reconstruction;
+- output validation for the artifact hash, build ID, `l0_refit` identity,
+  default share/effective penalty, 6,000 selection/refit epochs, positive
+  realized count no greater than the candidate pool, exported-count equality,
+  absence of selection/warm-start/exact-k/Keogh paths, code/Ledger/pool pins,
+  SSI basis provenance, disabled staging, and green calibration/QRF gates;
+- final dense and sparse artifact identities followed by exact dense and sparse
+  head-to-head scorer commands. The launcher prints but never runs the scorer.
 
-Stage 1 renders the required f025 command with sample fraction `0.25`, sample
-seed `578`, full clone attachment, clone seed `578`, the six exact queue
-inputs, `candidate-25/pool/checkpoints`, and `candidate-25/pool/pool.h5`. A
-successful simulation-ready manifest is hashed into
-`pool.manifest.sha256`; dense rehashes and consumes it through the legacy
-`--base-h5` route. It is deliberately not passed as `--pool-manifest`, because
-that current parser group is exact-k-only and incompatible with
-`--dense-default-dataset`.
+The owner ruling text is recorded in the script header, runtime journal line,
+and `PROGRESS.md`. The earlier actual wait mismatch (90 GiB for pool and 110 GiB
+for dense despite an 85-GiB plan/recheck) was corrected so every initial wait
+and final recheck now uses 85 GiB.
 
-Stage 2a renders one dense legacy release with `--dense-default-dataset`, seed
-0, 3,000 epochs, Ledger v9.4 and its pin, the verified July SSI basis and pin,
-the reference H5, both SCF extracts, all other explicit donors,
-`--skip-reform-validation`, `--no-staging`, and no reviewed-exclusion register.
-The release ID is
-`populace-us-2024-onesurface-pkg3-legacy-dense-<sha8>-<UTC timestamp>`.
+## Dry-run and verification
 
-At completion the launcher prints the dense artifact path and SHA-256, the
-sparse non-production status, the incumbent evidence identity, and the exact
-`tools/score_us_release_head_to_head.py` dense command using the incumbent H5,
-candidate H5, Ledger JSONL, and output prefix. It never runs the scorer itself.
-
-## Sparse stage: intentional STOP
-
-Current main cannot derive an exact new 57,240-household selection authority
-from the candidate pool. Its selection-manifest tool records every identity
-from an already selected H5; it has no count, seed, filtering, or L0 selection
-interface. Passing the full pool would freeze the whole pool. The legacy cold
-L0 route instead uses a fixed penalty of 0.8 and records whatever non-exact
-count results. Exact 57,240 is available only through the separately ratified
-exact-k arm, outside this legacy ruling and missing the owner's `pi_hi` and
-artifact pins.
-
-The launcher therefore prints a dense-only STOP and this exact decision:
-
-> Which rule may choose the candidate pool support: (A) current legacy
-> fixed-penalty L0 at default 0.8, accepting its non-exact realized count, or
-> (B) a newly ratified exact-57,240 rule, including algorithm, seed, and
-> Keogh-carrier inclusion policy? If B uses current exact-k, supply `pi_hi` and
-> its artifact pins.
-
-The incumbent evidence still establishes 6,000 epochs and
-`--selection-mass-protection keogh_distributions` for any future authorized
-frozen-support invocation. Current doctrine still requires Keogh carrier
-protection because Ledger v9.4 has no real Keogh fact. Neither fact authorizes
-reuse of the incumbent's old-pool selection manifest.
-
-## Real dry-run and verification
-
-The committed canonical launcher was executed, not simulated:
+The final implementation bytes were tested from clean commit
+`52a2bcfbd98d55444ec55abaffce41cbd773a184`:
 
 ```text
 ./experiments/candidate_25pct/run-candidate.sh --dry-run
 exit 0
 ```
 
-It ran from commit `6327ec0208803a811f59783723a2cd4df5824ad2` and took
-29 seconds. Every data hash and SCF header check passed; every used current
-parser flag passed; the complete pool, dense, and scorer command lines printed;
-sparse stopped at the owner question; and the terminal receipt confirmed no
-builder, selection, release, scorer, publication, promotion, staging, or
-launchd mutation. The candidate output root remained absent. The full stdout
-is committed verbatim in `experiments/candidate_25pct/dry_run_r4.md`.
+Launcher SHA-256:
 
-Validation completed:
+```text
+484874a22d63e8a0faf16f3eb504eed152a0a2d5993d9b6db5d5e18aeee69838
+```
+
+The dry-run authenticated every immutable input, verified current parser
+surfaces and the SCF header, emitted the owner-ruling contract proof, printed
+the pool/dense/sparse commands with 85-GiB plans, and printed both artifact and
+scorer lines. Full stdout and side-effect checks are committed verbatim in
+`experiments/candidate_25pct/dry_run_r5.md`.
+
+Validation status:
 
 ```text
 bash -n experiments/candidate_25pct/run-candidate.sh       PASS
 shellcheck experiments/candidate_25pct/run-candidate.sh    PASS
-.venv/bin/python tools/score_us_release_head_to_head.py --help
-                                                            PASS
+owner-ruling AST/argv contract preflight                   PASS
+./experiments/candidate_25pct/run-candidate.sh --dry-run   PASS (exit 0)
 git diff --check                                           PASS
 ```
 
-The live scorer help confirms that `--incumbent`, `--ledger-facts`, and
-`--out-prefix` are required and `--candidate` accepts an entity H5; the printed
-command uses exactly that surface.
+No pool/release build, scorer, publication, promotion, staging, push, or
+pending Logbook-chain action was performed. The candidate pool directory
+remained empty and `release-sparse/` remained absent. A pre-existing external
+smoke log changed independently during the review window; this launcher never
+reads or writes the `smoke/` subtree.
 
-No pool/release build, publication, promotion, push, tuning, or scorer run
-occurred. No Python test suite was warranted for the shell-and-journal-only
-changes. No pending Logbook chain state was touched.
+## Execute-mode prerequisite
 
-## Runtime handoff
+The pre-existing external candidate root is pinned to commit
+`8fa966d9398efc3a445845051501082295a244c9`, and its dense release-ID file is
+also pre-existing. It contains no stage-1 pool artifact. The new dry-run reports
+the mismatch without mutation, while execute mode correctly fails closed before
+any stage action.
 
-The evidence-backed dense-only planning window is about 4.5 measured hours;
-reserve 6 hours plus any readiness wait:
+No external state was deleted, overwritten, or repinned. Before an actual
+launch, the owner must explicitly authorize reconciliation of that stale root
+or choose a fresh output-root policy. This prerequisite does not affect the
+committed runbook or its read-only dry-run receipt.
 
-- pool: about 2.8--3.0 h, measured 70.34--85.85 GiB maximum RSS, 90 GiB
-  reclaimable-memory gate;
-- dense: nearest July analogue 1 h 39 m 07 s, measured 96.83 GiB peak, 110 GiB
-  gate; the exact new-pool wall/RSS remains unmeasured;
-- sparse: not scheduled. Conditional July evidence is 2 h 42 m 04 s and 79.17
-  GiB, with a future 90 GiB gate if the owner authorizes selection.
+## Commits
 
-Exact log/status locations and field/line citations are in `_LANE-NOTES.md`.
+- `78197b9a` — start the owner-ruling-A progress journal.
+- `6f9c4ad7` — record the current-main sparse contract.
+- `24d9ff18` — implement the guarded owner-ruling-A sparse stage.
+- `52a2bcfb` — align validation with the non-exact realized-count contract.
+- `175a607a` — commit the exit-0 round-5 dry-run receipt.
 
-## Managed-filesystem blocker and owner action
-
-The required external directory did not exist. This authorized install attempt
-failed at the sandbox boundary:
-
-```text
-mkdir: /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25: Operation not permitted
-```
-
-No external file is claimed. The owner must first install the committed exact
-bytes:
-
-```bash
-mkdir -p /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25 && /usr/bin/install -m 755 /Users/maxghenis/PolicyEngine/_worktrees/microcosm-candidate-runbook/experiments/candidate_25pct/run-candidate.sh /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/run-candidate.sh
-```
-
-Then the requested one-line launch action is:
-
-```bash
-launchctl submit -l com.microcosm.candidate25 -- /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/run-candidate.sh
-```
-
-The worktree must be clean when launched. The launcher will pin the then-current
-full commit and embed its SHA-8 in the persisted dense release ID.
-
-## Round-4 commits before this report
-
-- `c02a4d56` — start the round-4 progress journal.
-- `28a179e2` — clear dense inputs and stop unruled sparse selection.
-- `430b341a` — add the guarded dense-first candidate launcher.
-- `55eb2452` — close the readiness/authentication race.
-- `a695afa4` — require the enforced QRF tail gate on dense skips.
-- `6327ec02` — report dereferenced input sizes.
-- `98da000b` — record the round-4 real dry-run.
-- `40f25a1f` — document the candidate lane runtime handoff.
-
-No push was made.
+This final report and the completed progress journal are committed as the last
+coherent step. No push was made.
