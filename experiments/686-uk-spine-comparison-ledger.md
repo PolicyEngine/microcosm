@@ -41,56 +41,145 @@ The 1.56.14→1.56.16 re-pin moved no reference share by more than 0.0023
 |---|---|
 | L0 build + determinism | complete — 3 rungs clean, twins payload-identical, record identity exact at 52,846 |
 | L1 identity receipts | e4 e5 e6 e7 e8 green (e7 written at #686; ladder complete) |
-| L2 whole-spine parity | measured — 26 beyond ±0.02, verdict `defect` until the queue is ruled |
+| L2 whole-spine parity | **signed_parity** — 26 beyond ±0.02, all signed; 0 unsigned; `--strict` clean |
 | L3 baselines | measured — 177 input-mass totals, 47 QRF tail grids |
 
-## E6 · consumption — needs ruling
+## What signing did, and what the band means
 
-Measured fresh against the donors. On the eleven LCFS columns **ours is closer
-on seven**, the incumbent on three, one tie — weaker than "the incumbent
-collapses zero-inflated targets" (which stays true and dramatic on education:
-incumbent 0.0003 vs donor 0.0476) but honest. Petrol/diesel are partly by
-design (our `has_fuel` gate zeroes non-fuel households); on petrol the *level*
-favours us while the share favours the incumbent — see Levels.
+`spine_swap_signed_differences.json` now holds **13 entries covering 26
+beyond-band share columns, 2 entity counts and 2 net-new columns**. The
+instrument reads it and returns `signed_parity` with nothing unsigned.
 
-| column | donor truth (share) | incumbent | ours | closer |
-|---|---|---|---|---|
-| dfe_education_spending | see ETB note | 0.0003 | 0.2258 | undecidable |
-| bus_subsidy_spending | see ETB note | 0.3167 | 0.5554 | undecidable |
-| rail_subsidy_spending | see ETB note | 0.1277 | 0.1422 | undecidable |
-| restaurants_and_hotels_consumption | 0.7651 | 0.6324 | 0.7903 | ours |
-| petrol_spending | 0.3911 | 0.4446 | 0.3002 | incumbent |
-| education_consumption | 0.0476 | 0.1256 | 0.0170 | ours |
-| household_furnishings_consumption | 0.9104 | 0.8136 | 0.9216 | ours |
-| miscellaneous_consumption | 0.9728 | 0.9003 | 0.9918 | ours |
-| communication_consumption | 0.8696 | 0.7974 | 0.8814 | ours |
-| alcohol_and_tobacco_consumption | 0.5383 | 0.5603 | 0.5150 | tie |
-| domestic_energy_consumption | 0.9879 | 0.9549 | 0.9952 | ours |
-| diesel_spending | 0.2040 | 0.1910 | 0.1580 | incumbent |
-| transport_consumption | 0.8702 | 0.8668 | 0.8934 | incumbent |
-| health_consumption | 0.5426 | 0.5128 | 0.5386 | ours |
+| entry | class | covers |
+|---|---|---|
+| `lcfs-consumption-regime-gated-incidence` | mechanism_change | 10 LCFS columns where ours is closer to the donor |
+| `lcfs-fuel-consumption-incidence-gate` | mechanism_change | petrol, diesel — incumbent closer on share, ours on level |
+| `lcfs-transport-aggregate-incidence` | mechanism_change | transport — incumbent marginally closer on share |
+| `etb-services-regime-gated-incidence` | **defect_fix** | dfe_education, bus_subsidy — incumbent degenerate |
+| `was-wealth-qrf-incidence` | qrf_implementation | 5 benchmarked wealth columns |
+| `was-student-loan-balance-fold` | qrf_implementation | student_loan_balance — no benchmark |
+| `spi-channel-qrf-incidence` | qrf_implementation | the 3 SPI-rewritten columns |
+| `salary-sacrifice-conversion-depth` | mechanism_change | employee_pension_contributions |
+| `donor-selection-rng-entity-counts` | rng_stream | person +32, benunit −12 (household stays exact) |
+| `num-bedrooms-net-new-column` | net_new_column | spine adds it |
+| `other-investment-income-net-new-column` | net_new_column | spine adds it |
+| `scottish-water-incumbent-nan-zeroing` | defect_fix | water share |
+| `scottish-water-sewerage-successor-level` | mechanism_change | water + council_tax **levels** (dormant until calibration) |
 
-**ETB truth is not yet decidable**: the donor share moves with the weight
-basis (education 0.0943 unweighted / 0.1327 household / 0.2150 individual)
-and none reconcile with the E6 receipt's 0.2546. Until the stage's weight
-convention is pinned, quoting one as truth would be false precision.
+**Three entries where the incumbent is closer** — petrol, diesel, transport —
+are scoped apart on purpose. A single LCFS class entry would have signed them
+under a verdict they do not share; that was your objection and it is what
+drove the split. Each says in its own text that the evidence runs the other
+way on incidence, so re-opening one does not require re-opening the class.
 
-## E5 · wealth — signed at E5 · carry-forward?
+**The band.** The instrument now holds the share surface to the ±0.02 #723
+band rather than the reference's 6-decimal grain. Without that, 90 further
+columns — third-decimal drift from re-running every stochastic stage — would
+each have needed a permanent adjudication, which is precisely the blanket
+amnesty the register exists to stop. Nothing is hidden: all 90 are still in
+the receipt under `within_band` (max 0.019), `--share-band 0` restores the
+exact check, and **structural differences ignore the band entirely** — a
+column appearing or vanishing, and every entity count, signs exactly at any
+band.
+
+## E6 · consumption — signed
+
+Re-measured against each donor through the **stage's own committed cleaning
+function**, on the **survey-weighted** basis. That convention matters: it
+reproduces the E6 acceptance receipt's education figure (0.2546 unweighted on
+the ETB services frame) exactly, which is what confirms it is the house
+convention rather than one of several defensible choices.
+
+On the thirteen LCFS columns **ours is closer on ten shares and twelve
+levels**. Petrol and diesel are the `has_fuel` gate under-placing incidence —
+signed as that, with the direction stated. Level is population mean per
+household, as a ratio to the donor's.
+
+| column | donor (share) | incumbent | ours | closer | donor £/hh | inc × | our × | closer |
+|---|---|---|---|---|---|---|---|---|
+| restaurants_and_hotels_consumption | 0.7651 | 0.6305 | 0.7903 | ours | 2,291 | 1.75 | 1.25 | ours |
+| education_consumption | 0.0476 | 0.1258 | 0.0170 | ours | 264 | 5.00 | 0.41 | ours |
+| household_furnishings_consumption | 0.9104 | 0.8126 | 0.9216 | ours | 2,019 | 1.68 | 1.63 | ours |
+| electricity_consumption | 0.9228 | 0.8614 | 0.9644 | ours | 845 | 1.06 | 0.99 | ours |
+| gas_consumption | 0.9815 | 0.9523 | 0.9952 | ours | 651 | 1.07 | 1.00 | ours |
+| miscellaneous_consumption | 0.9728 | 0.8975 | 0.9918 | ours | 2,375 | 1.81 | 1.21 | ours |
+| communication_consumption | 0.8696 | 0.7951 | 0.8814 | ours | 672 | 1.16 | 1.20 | incumbent |
+| alcohol_and_tobacco_consumption | 0.5383 | 0.5630 | 0.5150 | ours | 579 | 1.25 | 1.24 | ours |
+| domestic_energy_consumption | 0.9835 | 0.9541 | 0.9953 | ours | 1,496 | 1.06 | 1.00 | ours |
+| health_consumption | 0.5426 | 0.5128 | 0.5386 | ours | 394 | 1.90 | 1.59 | ours |
+| transport_consumption | 0.8702 | 0.8623 | 0.8934 | **incumbent** | 4,593 | 1.63 | 1.37 | ours |
+| petrol_spending | 0.3911 | 0.4442 | 0.3002 | **incumbent** | 631 | 2.06 | 0.85 | ours |
+| diesel_spending | 0.2040 | 0.1903 | 0.1580 | **incumbent** | 390 | 2.29 | 0.81 | ours |
+
+### ETB — the weight-basis question is closed
+
+It was never undecidable; it was measured on the wrong frame. The stage's own
+convention is explicit in code: donor SN 8856, **year 2023 only**, complete
+cases on the **thirteen-column services subset** (4,199 rows), weighted by
+**`hhold_adj_weight`**. The incumbent cleans an eighteen-column subset, so a
+"donor share" taken off its frame has a different denominator — that
+mismatch, not a weighting ambiguity, produced the three irreconcilable
+candidates recorded earlier.
+
+| column | donor (share) | incumbent | ours | closer | donor £/hh | incumbent | ours | closer |
+|---|---|---|---|---|---|---|---|---|
+| dfe_education_spending | 0.2794 | 0.000265 | 0.2258 | ours | 3,461 | 2 | 3,111 | ours |
+| bus_subsidy_spending | 0.5255 | 0.3167 | 0.5554 | ours | 87 | 114 | 89 | ours |
+| rail_subsidy_spending | 0.1652 | 0.1277 | 0.1422 | ours | 225 | 691 | 211 | ours |
+
+The incumbent's education column is **degenerate**: 14 nonzero households in
+52,846, £2 per household against a donor £3,461. That is decidable on any
+weight basis, so these are signed as a **defect fix on the incumbent side**,
+not a method preference. Rail is inside the band and needs no signature; it is
+shown because it moves the same way.
+
+The incumbent additionally divides each household total by household size and
+stores the per-head figure in a household-entity column
+(`policyengine_uk_data/datasets/imputations/services/etb.py`). That is a
+second, independent defect — but it does **not** reconcile the levels (rail is
+3.07× the donor even after it), so it is recorded as an observation rather
+than as the explanation. **Worth an upstream issue alongside #467; not filed,
+pending your call.**
+
+## E5 · wealth — signed, carried forward
 
 Adjudicated 2026-08-19 ("E5 is not required to reproduce the incumbent's
-inflated totals; donor-benchmark evidence"). Fresh measurement corroborates.
+inflated totals; donor-benchmark evidence"). Re-measured through
+`clean_was_household_table` over the pinned WAS R8 tab (15,128 rows, weighted
+by `R8xshhwgt`), the ruling holds and the level evidence behind it is the more
+dramatic surface.
 
-| column | donor truth · WAS R8 (share) | incumbent | ours | closer |
-|---|---|---|---|---|
-| savings | 0.6072 | 0.6620 | 0.6107 | ours (0.0035 off) |
-| property_wealth | 0.6433 | 0.7081 | 0.6607 | ours |
-| other_residential_property_value | 0.0363 | 0.0763 | 0.0367 | ours (0.0004 off) |
-| main_residence_value | 0.6236 | 0.6747 | 0.6356 | ours |
-| corporate_wealth | not measured (fold of several donor columns) | 0.8222 | 0.7792 | — |
-| student_loan_balance | not measured (separate source) | 0.0197 | 0.0493 | — |
+| column | donor (share) | incumbent | ours | closer | donor £/hh | inc × | our × | closer |
+|---|---|---|---|---|---|---|---|---|
+| savings | 0.6072 | 0.6621 | 0.6107 | ours (0.0035 off) | 16,918 | 5.70 | 1.97 | ours |
+| property_wealth | 0.6433 | 0.7082 | 0.6607 | ours | 249,247 | 1.03 | 0.98 | ours |
+| other_residential_property_value | 0.0363 | 0.0750 | 0.0367 | ours (0.0004 off) | 9,422 | 6.18 | 1.26 | ours |
+| main_residence_value | 0.6236 | 0.6761 | 0.6356 | ours | 212,344 | 1.02 | 0.88 | incumbent |
+| corporate_wealth | 0.7629 | 0.8225 | 0.7792 | ours | 160,010 | 1.85 | 1.45 | ours |
+| student_loan_balance | no like-for-like benchmark | 0.0197 | 0.0493 | — | — | — | — | — |
+
+Ours is closer on **five of five** benchmarked shares and four of five levels.
+`corporate_wealth`, previously "not measured", now has a benchmark — it is the
+committed fold of five WAS aggregates, so it can be reconstructed on the donor
+frame exactly as the stage builds it.
+
+**A caveat that matters, and a correction.** The *unweighted* donor shares tell
+the opposite story on incidence — the incumbent looks closer on all five. WAS
+oversamples wealth-holders by design, so the unweighted frame is not a
+population; the weighted basis is, and it is the basis used throughout this
+document. The earlier "ours closer on 4/4" reading was on the weighted basis
+and stands; a mid-review unweighted re-measurement briefly appeared to
+overturn it and did not.
+
+`student_loan_balance` is signed **on its own** rather than inside the wealth
+class: it is a fold of two WAS loan aggregates at a different entity grain,
+with no like-for-like donor share available. It is the one E5 column whose
+direction is unevidenced, and the register says so.
 
 `owned_land` is **not** in this list; its reviewed exclusion expiring
-2026-09-20 is a separate question.
+2026-09-20 is a separate question. For the record it is in band (−0.0026) and
+ours is closer to the donor on both share (0.0071 donor · 0.0143 incumbent ·
+0.0119 ours) and level (9.28× against 2.44×).
 
 ## E7 · SPI channel — evidence gap closed, favours the spine
 
@@ -218,11 +307,21 @@ implementations.
 
 ## Open
 
-- **ETB weight basis** — pins the truth for three columns.
-- **E6 is not one class** — a single entry over all fifteen would sign columns where we are further from the donor than the incumbent is.
-- **Entity-count entry scope** — surface-wide vs scoped to the two entities.
-- **Stale donor ratios** in the E5/E6 prose receipts were measured at 1.56.14; the tables above are fresh at the current pin.
-- **Upstream defect filed** as policyengine-uk-data#467 (no prescriptive fix); our side is correct and signed.
+- **The queue is signed.** All 26 beyond-band divergences carry register
+  entries; whole-spine parity is `signed_parity`, `--strict` clean. The two
+  items that blocked it are closed: the ETB weight basis (above) and the
+  entity-count scope (signed to `person` and `benunit` only, so a future
+  household-count divergence stays a defect).
+- **The incumbent's ETB per-head division** — a second upstream defect of the
+  #467 family, observed but not filed. Your call.
+- **`communication_consumption`** is the one LCFS column where the incumbent is
+  closer on level (1.16× against our 1.20×) while we are closer on share. It is
+  signed inside the donor-faithful class; if that bothers you it should be
+  scoped out, and that is a one-line register change.
+- **`student_loan_balance`** carries no donor benchmark — signed on the
+  standing E5 adjudication, direction unevidenced.
+- **Upstream defect filed** as policyengine-uk-data#467 (no prescriptive fix);
+  our side is correct and signed.
 
 ## Disclosure and citation
 
