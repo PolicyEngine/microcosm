@@ -823,10 +823,10 @@ DENSE_COMMAND=(
 )
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  emit "PRECONDITION PLAN stage=pool poll_seconds=300 need_reclaimable_gib=90 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
+  emit "PRECONDITION PLAN stage=pool poll_seconds=300 need_reclaimable_gib=85 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
   print_command "COMMAND stage=pool" /usr/bin/time -l /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "${POOL_COMMAND[@]}"
   emit "POOL MANIFEST PIN DEFERRED dynamic_output=$POOL_MANIFEST release-wrapper-will-record-and-consume-full-sha256"
-  emit "PRECONDITION PLAN stage=release-dense poll_seconds=300 need_reclaimable_gib=110 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
+  emit "PRECONDITION PLAN stage=release-dense poll_seconds=300 need_reclaimable_gib=85 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
   print_command "COMMAND stage=release-dense" /usr/bin/time -l /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "${DENSE_COMMAND[@]}"
   stage_sparse_stop
   emit "DENSE ARTIFACT planned_path=$DENSE_ARTIFACT sha256=pending-stage-2a"
@@ -840,7 +840,7 @@ else
       recheck_code_authority
       check_pool_inputs
       recheck_code_authority
-      ready_now pool 90 && break
+      ready_now pool 85 && break
     done
     if pool_is_complete; then
       emit "STAGE SKIP stage=pool reason=validated-output-completed-while-waiting path=$POOL_H5"
@@ -863,7 +863,7 @@ else
       check_dense_inputs
       consume_pool_manifest_pin
       recheck_code_authority
-      ready_now release-dense 110 && break
+      ready_now release-dense 85 && break
     done
     if dense_is_complete; then
       emit "STAGE SKIP stage=release-dense reason=validated-output-completed-while-waiting path=$DENSE_ARTIFACT"
