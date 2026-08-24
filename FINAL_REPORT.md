@@ -1,226 +1,130 @@
-# Final report: candidate 25% stage 2b under owner ruling A
+# Final report: candidate-chain smoke CD-vintage provenance defect
 
 Date: 2026-08-24
 
 Branch: `candidate-25pct-runbook`
 
-Required label: **one-surface + pkg3, legacy release arm, not exact-k
-certified**.
-
 ## Outcome
 
-Stage 2b is implemented in
-`experiments/candidate_25pct/run-candidate.sh`. The launcher now runs a second,
-serial release after stage 2a and lets the new 25% pool derive its own support
-through current main's cold legacy fixed-penalty L0 path at the literal default
-share `0.8`. It accepts the realized record count: there is no frozen
-selection-source manifest, exact-count assertion, `pi_hi`, or target count.
+**STOP — current main has a real stacked-pool/release contract defect. There is
+no honest stage-1 or stage-2a runbook argument fix.** The generated US target
+contract always includes congressional districts and requires a vintage
+crosswalk
+(`packages/microcosm-build/src/microcosm/build/us/spec/calibration.yaml:12-20`).
+The release always selects the packaged crosswalk when no override is supplied
+(`tools/build_us_fiscal_refresh_release.py:1509-1516`), then requires the input
+H5 to already carry matching root attrs and a positive household CD lookup
+(`tools/build_us_fiscal_refresh_release.py:2565-2613,8571-8590`). The production
+stacked-pool CLI exposes no crosswalk, Ledger/geography-ladder, or CD-assignment
+input (`tools/build_us_multispine_pool.py:441-577`), as its exhaustive parser
+test confirms
+(`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:4185-4247`).
 
-The sparse release is off-chain, uses `--no-staging`, persists a commit-bound
-release ID, has its own checkpoints/log/RSS CSV/completion marker, validates
-authenticated outputs before any idempotent skip, and prints its artifact path,
-SHA-256, and scorer command at completion.
+The complete end-to-end investigation and exact missing wiring are recorded in
+`experiments/candidate_25pct/cd_vintage_provenance_defect.md`.
 
-The final committed launcher passed `bash -n`, ShellCheck, diff hygiene, and a
-real exit-0 dry-run. No pool, release, scorer, publication, promotion, push, or
-staging operation was run by this task.
+## Why this is not runbook wiring
 
-## Current-main legacy L0 contract
+- Stage 1 supplies all six required authenticated input pairs plus the relevant
+  sampling, checkpoint, and output controls
+  (`experiments/candidate_25pct/run-candidate.sh:1153-1173`). The pool rejects
+  preassembly operator outputs, including household CD geography
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-353,372-406`;
+  `tools/build_us_multispine_pool.py:4566-4584`), so the lookup cannot be
+  smuggled through an existing source either.
+- Stage 2a authenticates the correct packaged crosswalk but omits an explicit
+  crosswalk flag
+  (`experiments/candidate_25pct/run-candidate.sh:91-92,248-259,1189-1211`).
+  Adding that flag would be a no-op because the release parser already supplies
+  exactly that default (`tools/build_us_fiscal_refresh_release.py:1509-1516`;
+  behavior pinned at
+  `packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:1783-1822`).
+- The release crosswalk translates old-vintage Ledger facts into
+  current-vintage target facts; it does not assign households
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:933-967`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/congressional_district_vintage.py:211-298`).
+  Preflight runs before Ledger load and target compilation
+  (`tools/build_us_fiscal_refresh_release.py:8571-8590,8645-8658`).
+- `--gate-congressional-district-targets` affects only later release-gate
+  diagnostics (`tools/build_us_fiscal_refresh_release.py:6446-6589`); it cannot
+  change the earlier support-provenance preflight.
+- The stacked pool deliberately publishes fixed-format pandas entities and
+  rejects table-format storage
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:966-1048`).
+  The release guard recognizes the lookup only inside a compound
+  `household/table` dataset
+  (`tools/build_us_fiscal_refresh_release.py:2616-2661`). This physical-layout
+  mismatch would remain even if a semantic CD column were added.
+- The tracked production flow found that both assigns districts and stamps the
+  two attrs is the separate PUF-support-base pipeline
+  (`tools/build_us_puf_support_base.py:1329-1432,2756-2793`). That full producer
+  is not an omitted argument or metadata-only post-step for the stacked pool.
 
-The local current-main authority is `origin/main` at `7b90bb18`, including the
-PolicyEngine-US 1.819.0 lock. The inspected builder, tests, and runtime files on
-this branch are byte-identical to that authority.
+## Existing smoke disposition
 
-- `DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8` lives at
-  `tools/build_us_fiscal_refresh_release.py:437`. The parser wires
-  `--l0-refit-lambda-share` to that constant and documents division by the
-  candidate household count at lines 1132-1140. The sparse command deliberately
-  omits the flag so it consumes the literal default.
-- Current main's epoch default is 1,500 at lines 438 and 1105-1112. Stage 2b
-  therefore explicitly supplies `--epochs 6000`.
-- With `--dense-default-dataset`, the builder follows the full-pool
-  `dense_no_l0` branch at lines 10610-10635. Stage 2a uses that flag and 3,000
-  epochs.
-- Without `--dense-default-dataset`, a selection source, or exact-k arguments,
-  the builder computes `0.8 / n_candidate_households` at lines 10436-10450 and
-  calls `calibrate_l0_refit` at lines 10636-10655. It records
-  `result.selection.n_nonzero` and the exported support at lines 10656-10677;
-  it does not assert an exact or strict-subset count.
+The unchanged 1% launcher built the six-input stacked pool and passed it to the
+dense release as `--base-h5`
+(`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/smoke/run-smoke.sh:18-25`).
+Release preflight reports all three missing requirements: crosswalk SHA, target
+vintage, and household `congressional_district_geoid`
+(`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/smoke/release.log:45-67`).
+Read-only H5 inspection confirmed fixed axis/block storage, no
+`household/table`, no semantic CD column, and no vintage attrs, matching the
+publisher/guard incompatibility
+(`experiments/candidate_25pct/cd_vintage_provenance_defect.md:175-218`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:966-1007`;
+`tools/build_us_fiscal_refresh_release.py:2646-2661`). The packaged crosswalk
+digest is the correctly pinned
+`c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec`
+(`experiments/candidate_25pct/run-candidate.sh:91-92`).
 
-The material command distinction is therefore:
+Per the requested stop condition:
 
-```text
-stage 2a dense:  --base-h5 <stage-1 pool> --dense-default-dataset --epochs 3000
-stage 2b sparse: --base-h5 <stage-1 pool>                         --epochs 6000
-```
+- `experiments/candidate_25pct/run-candidate.sh` is unchanged;
+- `--dry-run` is not extended to assert linkage that stage 1 cannot produce;
+- no guard or vintage-module code is changed;
+- no pool H5 or existing smoke artifact is changed;
+- neither smoke stage is rerun; and
+- `experiments/candidate_25pct/smoke_r2.md` is not created.
 
-Both invocations carry the same common, pinned stage-2 sources and their own
-output/checkpoint/release-ID state. The sparse invocation adds no selection
-artifact and no L0 tuning flag.
+## Required current-main fix
 
-The incumbent epoch authority is
-`/Users/maxghenis/PolicyEngine/_buildo-runtime/scripts/buildp_sparse9.sh:123-143`,
-which passes `--epochs 6000` at line 140. That incumbent was a frozen-support,
-`--dense-default-dataset` polish run, so it establishes the requested epoch
-count but is not evidence for cold-L0 selection or Keogh-path semantics.
+A separate main-branch PR must:
 
-## Sparse-specific input and zero-waiver ruling
+1. add pinned crosswalk and real post-assembly household-CD assignment authority
+   to the stacked-pool CLI/operator graph, because geography outputs are
+   forbidden at the source boundary
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-353,372-406`);
+2. bind the authority, vintage, assignment algorithm, and seed into checkpoint
+   identity, and record assignment provenance in the manifest; the current
+   manifest authenticates terminal H5 bytes but has no CD-vintage assignment
+   field (`tools/build_us_multispine_pool.py:3477-3568`);
+3. extend atomic nullable H5 publication and verification to carry both
+   required root attrs; the current writer has no attrs channel
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:902-1048`);
+4. reconcile the release reader's `household/table` assumption with the
+   producer's fixed-nullable contract
+   (`tools/build_us_fiscal_refresh_release.py:2616-2661`;
+   `packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:966-1048`);
+   and
+5. add a real stacked-pool-to-release-preflight integration test, because the
+   existing guard tests mock the provenance reader
+   (`packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:1062-1121`).
 
-Beyond stage 2a's immutable inputs, stage 2b needs exactly one additional
-pinned input:
+## Verification
 
-```text
-path:   /Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/attempt6_basis_schema3_seed.json
-size:   4,782 bytes
-sha256: 25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a
-```
-
-The incumbent sparse launcher supplies that path and pin at
-`buildp_sparse9.sh:133-134`. Current main requires the path/hash pair and
-authenticates it before use
-(`tools/build_us_fiscal_refresh_release.py:6041-6109`). The SSI runtime accepts
-schema-2/3 legacy capacity/floor seeds at
-`packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py:902-918`.
-Its current-schema retry-of-retry guard at lines 943-959 is why the launcher
-does not substitute the incumbent's final schema-4 output. Post-build
-authentication requires the sparse release's `us_ssi_take_up.json` to record
-this exact schema-3 source hash and to be a schema-4 `release_final` artifact.
-Sparse keeps hard SSI delivery enforcement; only the dense diagnostic arm gets
-fences (`tools/build_us_fiscal_refresh_release.py:10758-10771`).
-
-The standing zero-waiver rule is implemented by omission:
-
-- Current main rejects the retired `--zero-support-exclusions` option, including
-  an attempted empty file
-  (`packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:52-93`).
-  The launcher does not pass it.
-- `--qrf-tail-concentration-exclusions` is optional. Omission returns `{}` at
-  `tools/build_us_fiscal_refresh_release.py:7922-7935` and records a null file,
-  null hash, and empty reviewed-exclusions map at lines 11258-11290. The
-  launcher omits it and validates those receipts.
-- The sparse command preflight also forbids all other gate bypasses, evidence
-  switches, loss/ratio/L2 tuning, warm start, target-family multipliers,
-  selection/exact-k arguments, and target-aging/tolerance overrides.
-
-Mutable sparse checkpoints, the persisted release ID, logs, RSS CSV, output
-root, artifact, and completion marker are run state, not additional immutable
-inputs.
-
-## Keogh-carrier decision
-
-`--selection-mass-protection keogh_distributions` is omitted.
-
-Current main's parser help says the option injects a synthetic mass target so a
-refit cannot crush carriers that a protect-swap placed in a **frozen
-selection** (`tools/build_us_fiscal_refresh_release.py:927-938`). The
-implementation doctrine repeats that protect-swap/frozen-selection contract at
-lines 2001-2016. The incumbent's use of the flag occurred alongside a frozen
-selection source and dense polish; it does not make the flag part of cold
-legacy L0.
-
-Although the parser can mechanically accept the option without a selection
-manifest, doing so here would add a synthetic target beyond owner ruling A and
-would be new tuning. The launcher omits it, statically rejects its appearance,
-and post-build validation rejects any
-`selection_mass_protection.*` diagnostic target.
-
-## Implemented stage 2b
-
-The sparse stage writes beneath
-`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/release-sparse/`
-and uses release IDs of the required form:
+Five focused parser/default/guard/writer tests passed:
 
 ```text
-populace-us-2024-onesurface-pkg3-legacy-sparse-<sha8>-<UTC timestamp>
+test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root
+test_cd_targets_default_to_the_packaged_vintage_crosswalk
+test_cd_vintage_support_provenance_requires_matching_h5_attrs
+test_cd_vintage_support_provenance_rejects_missing_cd_lookup
+test_nullable_writer_round_trips_fixed_tables_and_caller_artifact_kind
+
+5 passed
 ```
 
-Its invocation carries the authenticated stage-1 `pool.h5`, all common stage-2
-sources, the schema-3 SSI basis and pin, seed 0, 6,000 epochs, sparse checkpoint
-and output roots, `--skip-reform-validation`, and `--no-staging`. It omits the
-dense flag, selection H5/manifest, selection mass protection, exact-k, `pi_hi`,
-exact-k pool manifest, QRF exclusion register, warm start, and tuning flags.
-
-The implementation also provides:
-
-- serial stage order: pool, dense release, then sparse release;
-- the same 85-GiB reclaimable-memory readiness gate for all stages, plus no
-  running pool/release builder, AC power, and the owner `.max-go` marker;
-- reauthentication after every wait and immediately before launch;
-- `/usr/bin/time -l` logs and 30-second process-tree RSS CSV sampling;
-- unconditional off-chain execution by unsetting
-  `POPULACE_LOGBOOK_PREV_ROW_DIGEST` globally and with `env -u` at each command;
-- persisted commit-bound release IDs and authenticated marker reconstruction;
-- output validation for the artifact hash, build ID, `l0_refit` identity,
-  default share/effective penalty, 6,000 selection/refit epochs, positive
-  realized count no greater than the candidate pool, exported-count equality,
-  absence of selection/warm-start/exact-k/Keogh paths, code/Ledger/pool pins,
-  SSI basis provenance, disabled staging, and green calibration/QRF gates;
-- final dense and sparse artifact identities followed by exact dense and sparse
-  head-to-head scorer commands. The launcher prints but never runs the scorer.
-
-The owner ruling text is recorded in the script header, runtime journal line,
-and `PROGRESS.md`. The earlier actual wait mismatch (90 GiB for pool and 110 GiB
-for dense despite an 85-GiB plan/recheck) was corrected so every initial wait
-and final recheck now uses 85 GiB.
-
-## Dry-run and verification
-
-The final implementation bytes were tested from clean commit
-`52a2bcfbd98d55444ec55abaffce41cbd773a184`:
-
-```text
-./experiments/candidate_25pct/run-candidate.sh --dry-run
-exit 0
-```
-
-Launcher SHA-256:
-
-```text
-484874a22d63e8a0faf16f3eb504eed152a0a2d5993d9b6db5d5e18aeee69838
-```
-
-The dry-run authenticated every immutable input, verified current parser
-surfaces and the SCF header, emitted the owner-ruling contract proof, printed
-the pool/dense/sparse commands with 85-GiB plans, and printed both artifact and
-scorer lines. Full stdout and side-effect checks are committed verbatim in
-`experiments/candidate_25pct/dry_run_r5.md`.
-
-Validation status:
-
-```text
-bash -n experiments/candidate_25pct/run-candidate.sh       PASS
-shellcheck experiments/candidate_25pct/run-candidate.sh    PASS
-owner-ruling AST/argv contract preflight                   PASS
-./experiments/candidate_25pct/run-candidate.sh --dry-run   PASS (exit 0)
-git diff --check                                           PASS
-```
-
-No pool/release build, scorer, publication, promotion, staging, push, or
-pending Logbook-chain action was performed. The candidate pool directory
-remained empty and `release-sparse/` remained absent. A pre-existing external
-smoke log changed independently during the review window; this launcher never
-reads or writes the `smoke/` subtree.
-
-## Execute-mode prerequisite
-
-The pre-existing external candidate root is pinned to commit
-`8fa966d9398efc3a445845051501082295a244c9`, and its dense release-ID file is
-also pre-existing. It contains no stage-1 pool artifact. The new dry-run reports
-the mismatch without mutation, while execute mode correctly fails closed before
-any stage action.
-
-No external state was deleted, overwritten, or repinned. Before an actual
-launch, the owner must explicitly authorize reconciliation of that stale root
-or choose a fresh output-root policy. This prerequisite does not affect the
-committed runbook or its read-only dry-run receipt.
-
-## Commits
-
-- `78197b9a` — start the owner-ruling-A progress journal.
-- `6f9c4ad7` — record the current-main sparse contract.
-- `24d9ff18` — implement the guarded owner-ruling-A sparse stage.
-- `52a2bcfb` — align validation with the non-exact realized-count contract.
-- `175a607a` — commit the exit-0 round-5 dry-run receipt.
-
-This final report and the completed progress journal are committed as the last
-coherent step. No push was made.
+`git diff --check` passed. The relevant runtime files are byte-identical to
+local `origin/main` at `7b90bb1882b0248d751a64bf817ec127e5c42a47`. No build,
+smoke rerun, push, publication, promotion, or staging action was performed.

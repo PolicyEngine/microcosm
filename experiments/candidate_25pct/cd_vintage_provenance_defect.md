@@ -96,8 +96,8 @@ rerun either smoke stage.
 
 ## Why the stacked producer cannot satisfy the contract
 
-The stage-1 runbook command uses the complete supported stacked-pool surface:
-six authenticated source pairs plus sampling, checkpoint, and output controls
+The stage-1 runbook command supplies all six required authenticated input pairs
+plus its sampling, checkpoint, and output controls
 (`experiments/candidate_25pct/run-candidate.sh:1153-1173`). The implementation
 loads only ASEC, ACS PUMS, ACS rent, and PUF inputs
 (`tools/build_us_multispine_pool.py:858-884`); no omitted runbook argument can
@@ -124,12 +124,12 @@ The production stacked command neither accepts this authority nor calls this
 path (`tools/build_us_multispine_pool.py:441-577,4566-4584`), and the optional
 path contains no crosswalk-SHA H5 stamping contract.
 
-The only current producer that completes both operations is the distinct
-PUF-support-base pipeline. It translates the Ledger facts, derives a district
-distribution, assigns household districts, and records the assignment inputs
-(`tools/build_us_puf_support_base.py:1329-1367`), then writes both vintage root
-attributes (`tools/build_us_puf_support_base.py:1410-1432`; staged export at
-`tools/build_us_puf_support_base.py:2756-2793`). Its parser makes assignment
+The tracked production flow found that completes both operations is the
+distinct PUF-support-base pipeline. It translates the Ledger facts, derives a
+district distribution, assigns household districts, and records the assignment
+inputs (`tools/build_us_puf_support_base.py:1329-1367`), then writes both vintage
+root attributes (`tools/build_us_puf_support_base.py:1410-1432`; staged export
+at `tools/build_us_puf_support_base.py:2756-2793`). Its parser makes assignment
 dependent on Ledger facts and makes the block ladder dependent on a crosswalk
 (`tools/build_us_puf_support_base.py:375-454`). Substituting that full support
 base pipeline is not a stage-1 argument fix for the stacked-pool runbook.
@@ -169,10 +169,44 @@ The existing launcher ran the six-input stacked pool at `--sample-fraction
 The release traceback reports all three contract failures: missing crosswalk
 SHA, missing target vintage, and missing household district lookup
 (`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/smoke/release.log:45-67`).
-The failed process used about 1.79 GiB maximum RSS
+The failed process used about 1.66 GiB maximum RSS
 (`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/smoke/release.log:68-85`).
 
-Read-only `h5ls`/`h5dump` inspection of that unchanged H5 found 36,734 household
+The following read-only inspection receipt is persisted here so the physical
+artifact findings are reproducible rather than inferred from the writer:
+
+```text
+$ shasum -a 256 /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/smoke/pool/pool.h5
+e8a84ea6bf40017c0d3108b569e4eac7e36e3fccdf4903c98b5034ab9d3a51b5  .../pool.h5
+
+$ h5ls -r .../pool.h5 | rg '^/household(/| )|congressional_district'
+/household               Group
+/household/axis0         Dataset {24}
+/household/axis1         Dataset {36734}
+/household/block0_items  Dataset {1}
+...
+/household/block9_values Dataset {1/Inf}
+
+$ h5ls .../pool.h5/household/table
+table      **NOT FOUND**
+
+$ h5dump -d /household/axis0 .../pool.h5 | rg '^   \([0-9]+\):'
+(0): "household_id", "state_fips", "H_TENURE", "SERIALNO", "ST", "PUMA",
+(6): "puma_geoid", "puma", "NP", "ADJHSG", "TEN", "RNTP", "GRNTP",
+(13): "TAXAMT", "TYPEHUGQ", "tenure_type", "acs_monthly_contract_rent",
+(17): "acs_monthly_gross_rent", "acs_annual_property_tax",
+(19): "household_spine_source_id", "household_source_id",
+(21): "household_support_channel", "household_support_clone_index",
+(23): "household_weight"
+
+$ h5dump -A -g / .../pool.h5 | sed -n '1,38p' | rg 'ATTRIBUTE'
+ATTRIBUTE "CLASS" {
+ATTRIBUTE "PYTABLES_FORMAT_VERSION" {
+ATTRIBUTE "TITLE" {
+ATTRIBUTE "VERSION" {
+```
+
+This inspection of the unchanged H5 found 36,734 household
 rows and fixed-format `household/axis*` plus `household/block*` datasets, with
 no `household/table`. Its 24 household columns include `puma_geoid` but not
 `congressional_district_geoid`; its root carries only generic PyTables
@@ -227,9 +261,10 @@ authenticated contract:
    source assembly because preassembly geography outputs are forbidden
    (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-353,372-406`;
    `tools/build_us_multispine_pool.py:4566-4584`).
-2. Bind the new authority inputs, vintage, assignment seed/kernel, and results
-   into checkpoint identity and the terminal manifest. The current manifest
-   authenticates its inputs and H5 bytes but has no CD-vintage field
+2. Bind the new authority, vintage, assignment algorithm, and seed into
+   checkpoint identity, and record assignment provenance in the terminal
+   manifest. The current manifest already authenticates the terminal H5 bytes
+   but has no CD-vintage assignment field
    (`tools/build_us_multispine_pool.py:3477-3568`).
 3. Extend nullable H5 publication to write and round-trip the crosswalk SHA and
    target-vintage root attributes atomically. The current signature and

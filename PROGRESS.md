@@ -6,7 +6,7 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-STOP decision reached: current main has a stacked-pool/release producer-consumer
+Complete. Current main has a stacked-pool/release producer-consumer
 contract gap, not an omitted stage-1 or stage-2a runbook argument. The release
 always selects a CD-vintage crosswalk and preflights the input H5, while the
 production stacked-pool surface cannot assign household districts, stamp the
@@ -43,10 +43,14 @@ or smoke rerun was launched; and `smoke_r2.md` was not created.
 - Ran five focused parser/default/guard/writer tests; all passed.
 - Documented the exact missing current-main producer, provenance, H5-reader,
   and integration-test wiring in the defect report.
+- Replaced `FINAL_REPORT.md` with the final stop disposition.
+- Passed `git diff --check` and confirmed the runbook, guard, vintage module,
+  existing H5, and external smoke state remain unchanged.
 
 ## Next
 
-1. Commit this defect finding and progress state as a coherent investigation
-   step.
-2. Replace `FINAL_REPORT.md` with the concise stop report, run repository
-   hygiene checks, and commit the finalized journal/report.
+1. Open a separate current-main implementation PR for the authenticated
+   stacked-pool CD assignment/provenance and fixed-H5 reader contract documented
+   in `experiments/candidate_25pct/cd_vintage_provenance_defect.md`.
+2. Only after that main fix lands, update the candidate runbook to pass and
+   dry-run-verify the new supported inputs, then rerun the authorized 1% smoke.
