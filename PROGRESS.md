@@ -1,68 +1,43 @@
-# Progress: 25% replacement-candidate runbook, round 4
+# Progress: candidate 25% stage 2b, owner ruling A
 
-Date: 2026-08-23
+Date: 2026-08-24
 
 Branch: `candidate-25pct-runbook`
 
 ## State
 
-Round 4 is complete within the writable worktree. The full-SCF blocker is
-cleared; the guarded dense-first launcher, round-4 audit, real exit-0 dry-run,
-runtime handoff, and final report are ready. No pool or release builder ran.
+Implementation has started from clean commit `b8176985`, which already merges
+the PolicyEngine-US 1.819.0 lock from `origin/main` (`7b90bb18`). The task is to
+replace the deliberate sparse STOP with the owner-authorized legacy
+fixed-penalty L0 release, extend the real dry-run receipt, and leave all build
+and publication paths unexecuted.
 
-Dense is GO after the owner installs the committed launcher at the required
-host path. Sparse is STOP pending a selection-authority ruling. The managed
-filesystem denied that one external copy, so the external launcher does not
-yet exist and no claim to the contrary is made.
+No pool, release, scorer, publication, promotion, or push has run in this
+round.
 
 ## Done
 
-- Read `CLAUDE.md`, `FINAL_REPORT.md`,
-  `experiments/candidate_25pct/input_audit_r3.md`, and
-  `experiments/candidate_25pct/dry_run_r3.md` in full before round-4 work.
-- Confirmed the worktree was clean at `27798ddb` on
-  `candidate-25pct-runbook`, 11 commits ahead of `origin/main`.
-- Read the GitNexus exploration skill. Its graph tools and MCP server are not
-  exposed in this session, so source tracing will use direct current-tree
-  inspection, parser help, tests, and host evidence.
-- Established the round-3 constraints that continue to apply: identical
-  unified target surface, 75--86 GiB measured f025 pool peaks, and separate
-  dense/sparse release invocations.
-- Verified and recorded every round-4 input/parser decision in
-  `experiments/candidate_25pct/input_audit_r4.md`, including the full-SCF hash,
-  incumbent SSI basis, zero-waiver omission, and legacy pool-manifest wrapper
-  pin.
-- Determined that current main cannot select an exact new 57,240-record support:
-  its manifest tool only serializes an already-selected H5, while legacy L0 is
-  fixed-penalty rather than exact-count. Stage 2b will stop dense-only with the
-  exact owner question instead of fabricating a selection.
-- Selected evidence-backed reclaimable-memory gates: 90 GiB for pool and 110
-  GiB for dense. The latter clears the July dense pressure peak of 96.83 GiB.
-- Added the committed-source launcher at
-  `experiments/candidate_25pct/run-candidate.sh`: it pins the commit and pool
-  manifest across retries, authenticates completed outputs before skips,
-  resumes a gate-failed pool from checkpoints, samples process-tree RSS, keeps
-  append-only logs, remains off-chain, and stops sparse at the owner ruling.
-- Passed Bash 3.2 syntax, ShellCheck, and whitespace checks for the launcher.
-- Ran the scorer's live `--help`; its required/optional argument surface
-  matches the printed dense command.
-- Ran the committed launcher in real `--dry-run` mode at `6327ec02`; all input
-  hashes, the SCF Stata header, parser flags, and rendered commands passed. The
-  full exit-0 transcript is committed in
-  `experiments/candidate_25pct/dry_run_r4.md`.
-- Attempted the required host-path installation. The managed sandbox denied
-  creation of `_buildo-runtime/out/candidate-25` as outside its writable roots,
-  so the receipt uses the byte-identical committed canonical launcher and does
-  not claim that the external copy exists.
-- Updated `_LANE-NOTES.md` with per-stage wall/RSS evidence, 90/110 GiB launch
-  gates, the sparse STOP, the required exact-byte host installation, and the
-  exact `launchctl submit` owner action.
-- Wrote the complete round-4 outcome and remaining host action to
-  `FINAL_REPORT.md`.
+- Read `CLAUDE.md` and the GitNexus exploration skill before task actions.
+- Confirmed the worktree was clean on `candidate-25pct-runbook` at
+  `b8176985`.
+- Confirmed the branch contains the `origin/main` PolicyEngine-US 1.819.0 lock
+  merge and identified `origin/main` commit `7b90bb18` as the current-main code
+  authority available locally.
+- Tried the skill's GitNexus resource discovery. Its graph server/tools are not
+  exposed in this session, so contract tracing will use direct source, tests,
+  parser help, and committed/host receipts.
+- Started independent read-only reviews of the legacy sparse builder contract,
+  current launcher conventions, and required validation surface.
 
 ## Next
 
-1. Owner: copy the committed `run-candidate.sh` to the required external path,
-   verify the worktree is clean, and use the exact `_LANE-NOTES.md` launch line.
-2. Owner: rule on legacy non-exact L0 versus a newly ratified exact-57,240
-   support authority before any sparse stage is added.
+1. Read every required prior report and the complete launcher, then trace the
+   legacy sparse/L0 path on current main with exact source citations.
+2. Record the complete stage-2b input/contract decision, including the 0.8
+   default, 6,000 epochs, zero-waiver handling, and whether Keogh protection
+   belongs to legacy cold L0.
+3. Implement and commit the guarded, off-chain sparse release stage and keep
+   this journal current after each coherent step.
+4. Run the real `--dry-run`, commit `dry_run_r5.md`, and pass `bash -n`,
+   ShellCheck, and final repository checks.
+5. Write and commit the final outcome to `FINAL_REPORT.md`.
