@@ -11,16 +11,34 @@ Updated as adjudications land.
 
 ## What the numbers are
 
-Every figure in the share tables is a **nonzero share**: the fraction of the
-column's owning-entity rows carrying a non-zero value, 0–1. `0.6072` for
-savings means 60.7% of households report some savings — it is not an amount.
-The parity screen measures *incidence*, never level. That limit is real: a
-column can match perfectly on share while being badly wrong on level — the
-Scottish water fix produces an identical share of 0.878377 under both the
-retired and corrected mappings while the amount moved from ~£185 to ~£395 per
-Scottish household. Figures that are levels carry a £ sign and sit in the
-Levels section, as conditional means (mean over nonzero carriers) with the
-carrier count alongside.
+**Two quantities are evaluated here, and both matter.**
+
+**Shares** are *nonzero shares*: the fraction of the column's owning-entity
+rows carrying a non-zero value, 0–1. `0.6072` for savings means 60.7% of
+households report some savings — it is not an amount.
+
+**Levels** are amounts in £, and they appear in two forms. Throughout the E5,
+E6 and ETB tables the level is the **population mean per household** — the
+total spread over *every* household including the zeros — quoted as a ratio to
+the donor's (`1.25×` means we are 25% above the donor). The separate Levels
+section reports the **conditional mean**: £ per *carrier*, over nonzero rows
+only.
+
+**Why both, and why it is not optional.** The committed parity instrument
+measures incidence and nothing else. That is a real limit, and it is the
+reason this document exists: a column can match perfectly on share while being
+badly wrong on level. The Scottish water fix is the proof — an identical share
+of 0.878377 under both the retired and the corrected mapping, while the amount
+moved from ~£185 to ~£395 per Scottish household. The instrument would have
+called that parity.
+
+So the instrument decides *what must be adjudicated*, and the level evidence
+decides *which way*. Several columns come out differently on the two: petrol
+and diesel are further from the donor than the incumbent on incidence and much
+closer on amount, and that split is signed explicitly rather than averaged
+away. **Where a share verdict and a level verdict disagree, the population
+mean is the operative one** — it is what a calibration target binds, and it is
+the one that survives a difference in incidence.
 
 ## Which incumbent
 
@@ -32,8 +50,12 @@ Three artifacts get called "the incumbent"; they answer different questions.
 | B | `incumbent_{base,wealth,consumption}_ebf733c.h5` | partial pipelines rebuilt locally at 1.56.14 for E3/E5/E6 method head-to-heads; one release behind, carries the benunit-sort defect |
 | C | WAS R8 · LCFS 2023-24 · ETB · SPI 2022-23 | the source surveys — ground truth neither build controls |
 
-The 1.56.14→1.56.16 re-pin moved no reference share by more than 0.0023
-(E7: exactly zero); the deltas below are robust to it.
+The 1.56.14→1.56.16 re-pin moved no reference share by more than 0.0046 (R0).
+A direct check across the nineteen E5/E6 columns puts the largest at 0.0045,
+on `transport_consumption` — consistent, and small, but not negligible: it is
+exactly the size that flipped the `alcohol_and_tobacco_consumption` verdict
+when an earlier pass measured against the wrong vintage. Every incumbent
+figure here is measured on artifact **A** at the pin.
 
 ## Gate status
 
@@ -52,9 +74,9 @@ instrument reads it and returns `signed_parity` with nothing unsigned.
 
 | entry | class | covers |
 |---|---|---|
-| `lcfs-consumption-regime-gated-incidence` | mechanism_change | 10 LCFS columns where ours is closer to the donor |
+| `lcfs-consumption-regime-gated-incidence` | mechanism_change | 9 LCFS columns where ours is closer to the donor |
 | `lcfs-fuel-consumption-incidence-gate` | mechanism_change | petrol, diesel — incumbent closer on share, ours on level |
-| `lcfs-transport-aggregate-incidence` | mechanism_change | transport — incumbent marginally closer on share |
+| `lcfs-aggregate-incidence-incumbent-closer` | mechanism_change | transport, alcohol — incumbent closer on share, ours on level |
 | `etb-services-regime-gated-incidence` | **defect_fix** | dfe_education, bus_subsidy — incumbent degenerate |
 | `was-wealth-qrf-incidence` | qrf_implementation | 5 benchmarked wealth columns |
 | `was-student-loan-balance-fold` | qrf_implementation | student_loan_balance — no benchmark |
@@ -66,7 +88,8 @@ instrument reads it and returns `signed_parity` with nothing unsigned.
 | `scottish-water-incumbent-nan-zeroing` | defect_fix | water share |
 | `scottish-water-sewerage-successor-level` | mechanism_change | water + council_tax **levels** (dormant until calibration) |
 
-**Three entries where the incumbent is closer** — petrol, diesel, transport —
+**Two entries covering four columns where the incumbent is closer on share** —
+petrol, diesel, transport, alcohol_and_tobacco —
 are scoped apart on purpose. A single LCFS class entry would have signed them
 under a verdict they do not share; that was your objection and it is what
 drove the split. Each says in its own text that the evidence runs the other
@@ -90,26 +113,35 @@ reproduces the E6 acceptance receipt's education figure (0.2546 unweighted on
 the ETB services frame) exactly, which is what confirms it is the house
 convention rather than one of several defensible choices.
 
-On the thirteen LCFS columns **ours is closer on ten shares and twelve
+On the thirteen LCFS columns **ours is closer on nine shares and twelve
 levels**. Petrol and diesel are the `has_fuel` gate under-placing incidence —
 signed as that, with the direction stated. Level is population mean per
 household, as a ratio to the donor's.
 
 | column | donor (share) | incumbent | ours | closer | donor £/hh | inc × | our × | closer |
 |---|---|---|---|---|---|---|---|---|
-| restaurants_and_hotels_consumption | 0.7651 | 0.6305 | 0.7903 | ours | 2,291 | 1.75 | 1.25 | ours |
-| education_consumption | 0.0476 | 0.1258 | 0.0170 | ours | 264 | 5.00 | 0.41 | ours |
-| household_furnishings_consumption | 0.9104 | 0.8126 | 0.9216 | ours | 2,019 | 1.68 | 1.63 | ours |
-| electricity_consumption | 0.9228 | 0.8614 | 0.9644 | ours | 845 | 1.06 | 0.99 | ours |
-| gas_consumption | 0.9815 | 0.9523 | 0.9952 | ours | 651 | 1.07 | 1.00 | ours |
-| miscellaneous_consumption | 0.9728 | 0.8975 | 0.9918 | ours | 2,375 | 1.81 | 1.21 | ours |
-| communication_consumption | 0.8696 | 0.7951 | 0.8814 | ours | 672 | 1.16 | 1.20 | incumbent |
-| alcohol_and_tobacco_consumption | 0.5383 | 0.5630 | 0.5150 | ours | 579 | 1.25 | 1.24 | ours |
-| domestic_energy_consumption | 0.9835 | 0.9541 | 0.9953 | ours | 1,496 | 1.06 | 1.00 | ours |
-| health_consumption | 0.5426 | 0.5128 | 0.5386 | ours | 394 | 1.90 | 1.59 | ours |
-| transport_consumption | 0.8702 | 0.8623 | 0.8934 | **incumbent** | 4,593 | 1.63 | 1.37 | ours |
-| petrol_spending | 0.3911 | 0.4442 | 0.3002 | **incumbent** | 631 | 2.06 | 0.85 | ours |
-| diesel_spending | 0.2040 | 0.1903 | 0.1580 | **incumbent** | 390 | 2.29 | 0.81 | ours |
+| restaurants_and_hotels_consumption | 0.7651 | 0.6324 | 0.7903 | ours | 2,291 | 1.74 | 1.25 | ours |
+| education_consumption | 0.0476 | 0.1256 | 0.0170 | ours | 264 | 4.80 | 0.41 | ours |
+| household_furnishings_consumption | 0.9104 | 0.8136 | 0.9216 | ours | 2,019 | 1.67 | 1.63 | ours |
+| electricity_consumption | 0.9228 | 0.8621 | 0.9644 | ours | 845 | 1.06 | 0.99 | ours |
+| gas_consumption | 0.9815 | 0.9532 | 0.9952 | ours | 651 | 1.06 | 1.00 | ours |
+| miscellaneous_consumption | 0.9728 | 0.9003 | 0.9918 | ours | 2,375 | 1.80 | 1.21 | ours |
+| communication_consumption | 0.8696 | 0.7974 | 0.8814 | ours | 672 | 1.15 | 1.20 | incumbent |
+| domestic_energy_consumption | 0.9835 | 0.9549 | 0.9953 | ours | 1,496 | 1.06 | 1.00 | ours |
+| health_consumption | 0.5426 | 0.5128 | 0.5386 | ours | 394 | 1.88 | 1.59 | ours |
+| alcohol_and_tobacco_consumption | 0.5383 | 0.5603 | 0.5150 | **incumbent** | 579 | 1.26 | 1.24 | ours |
+| transport_consumption | 0.8702 | 0.8668 | 0.8934 | **incumbent** | 4,593 | 1.62 | 1.37 | ours |
+| petrol_spending | 0.3911 | 0.4446 | 0.3002 | **incumbent** | 631 | 2.05 | 0.85 | ours |
+| diesel_spending | 0.2040 | 0.1910 | 0.1580 | **incumbent** | 390 | 2.31 | 0.81 | ours |
+
+> **A correction, recorded rather than quietly fixed.** An earlier pass
+> measured the incumbent side against the **1.56.14** published artifact — the
+> only full incumbent H5 on disk — instead of the pinned **1.56.16** one. The
+> two differ by at most 0.0045 on any share, but that was enough to flip one
+> verdict: `alcohol_and_tobacco_consumption` read as ours at 1.56.14 and reads
+> as the incumbent at the pin. Every incumbent figure in this document is now
+> measured on the pinned artifact itself (sha256 `e433e532`, fetched at
+> revision `a9e52499`), and it is signed accordingly.
 
 ### ETB — the weight-basis question is closed
 
@@ -124,8 +156,8 @@ candidates recorded earlier.
 | column | donor (share) | incumbent | ours | closer | donor £/hh | incumbent | ours | closer |
 |---|---|---|---|---|---|---|---|---|
 | dfe_education_spending | 0.2794 | 0.000265 | 0.2258 | ours | 3,461 | 2 | 3,111 | ours |
-| bus_subsidy_spending | 0.5255 | 0.3167 | 0.5554 | ours | 87 | 114 | 89 | ours |
-| rail_subsidy_spending | 0.1652 | 0.1277 | 0.1422 | ours | 225 | 691 | 211 | ours |
+| bus_subsidy_spending | 0.5255 | 0.3167 | 0.5554 | ours | 87 | 113 | 89 | ours |
+| rail_subsidy_spending | 0.1652 | 0.1277 | 0.1422 | ours | 225 | 689 | 211 | ours |
 
 The incumbent's education column is **degenerate**: 14 nonzero households in
 52,846, £2 per household against a donor £3,461. That is decidable on any
@@ -137,7 +169,7 @@ The incumbent additionally divides each household total by household size and
 stores the per-head figure in a household-entity column
 (`policyengine_uk_data/datasets/imputations/services/etb.py`). That is a
 second, independent defect — but it does **not** reconcile the levels (rail is
-3.07× the donor even after it), so it is recorded as an observation rather
+3.06× the donor even after it), so it is recorded as an observation rather
 than as the explanation. **Worth an upstream issue alongside #467; not filed,
 pending your call.**
 
@@ -151,11 +183,11 @@ dramatic surface.
 
 | column | donor (share) | incumbent | ours | closer | donor £/hh | inc × | our × | closer |
 |---|---|---|---|---|---|---|---|---|
-| savings | 0.6072 | 0.6621 | 0.6107 | ours (0.0035 off) | 16,918 | 5.70 | 1.97 | ours |
-| property_wealth | 0.6433 | 0.7082 | 0.6607 | ours | 249,247 | 1.03 | 0.98 | ours |
-| other_residential_property_value | 0.0363 | 0.0750 | 0.0367 | ours (0.0004 off) | 9,422 | 6.18 | 1.26 | ours |
+| savings | 0.6072 | 0.6620 | 0.6107 | ours (0.0035 off) | 16,918 | 5.66 | 1.97 | ours |
+| property_wealth | 0.6433 | 0.7081 | 0.6607 | ours | 249,247 | 1.04 | 0.98 | ours |
+| other_residential_property_value | 0.0363 | 0.0763 | 0.0367 | ours (0.0004 off) | 9,422 | 6.12 | 1.26 | ours |
 | main_residence_value | 0.6236 | 0.6761 | 0.6356 | ours | 212,344 | 1.02 | 0.88 | incumbent |
-| corporate_wealth | 0.7629 | 0.8225 | 0.7792 | ours | 160,010 | 1.85 | 1.45 | ours |
+| corporate_wealth | 0.7629 | 0.8222 | 0.7792 | ours | 160,010 | 1.84 | 1.45 | ours |
 | student_loan_balance | no like-for-like benchmark | 0.0197 | 0.0493 | — | — | — | — | — |
 
 Ours is closer on **five of five** benchmarked shares and four of five levels.
@@ -178,8 +210,8 @@ direction is unevidenced, and the register says so.
 
 `owned_land` is **not** in this list; its reviewed exclusion expiring
 2026-09-20 is a separate question. For the record it is in band (−0.0026) and
-ours is closer to the donor on both share (0.0071 donor · 0.0143 incumbent ·
-0.0119 ours) and level (9.28× against 2.44×).
+ours is closer to the donor on both share (0.0071 donor · 0.0145 incumbent ·
+0.0119 ours) and level (9.19× against 2.44×).
 
 ## E7 · SPI channel — evidence gap closed, favours the spine
 
@@ -326,7 +358,7 @@ implementations.
 - **The incumbent's ETB per-head division** — a second upstream defect of the
   #467 family, observed but not filed. Your call.
 - **`communication_consumption`** is the one LCFS column where the incumbent is
-  closer on level (1.16× against our 1.20×) while we are closer on share. It is
+  closer on level (1.15× against our 1.20×) while we are closer on share. It is
   signed inside the donor-faithful class; if that bothers you it should be
   scoped out, and that is a one-line register change.
 - **`student_loan_balance`** carries no donor benchmark — signed on the
