@@ -1,6 +1,12 @@
 #!/bin/bash
 # Serial host launcher for the 25% one-surface + pkg3 legacy candidate.
 # This is a legacy release arm and is not exact-k certified.
+# OWNER RULING (Max, 2026-08-24): option A. The sparse candidate uses the
+# current legacy fixed-penalty L0 selection at its literal default 0.8 and
+# accepts the non-exact realized record count. It derives its own support from
+# the new 25% pool: no frozen selection-source manifest, no exact-count rule,
+# and no pi_hi. Keogh mass protection is omitted because current main documents
+# that flag for protect-swapped carriers in a frozen selection, not cold L0.
 
 set -u
 set -o pipefail
@@ -17,7 +23,6 @@ GO_MARKER="/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/.max
 PYTHON="$WT/.venv/bin/python"
 POOL_TOOL="$WT/tools/build_us_multispine_pool.py"
 RELEASE_TOOL="$WT/tools/build_us_fiscal_refresh_release.py"
-SELECTION_TOOL="$WT/tools/build_us_selection_source_manifest.py"
 SCORER_TOOL="$WT/tools/score_us_release_head_to_head.py"
 CANONICAL_LAUNCHER="$WT/experiments/candidate_25pct/run-candidate.sh"
 
@@ -38,6 +43,14 @@ DENSE_ARTIFACT="$DENSE_ROOT/artifacts/populace_us_2024.h5"
 DENSE_DONE="$DENSE_ROOT/.stage-complete"
 DENSE_LOG="$DENSE_ROOT/release.log"
 DENSE_RSS="$DENSE_ROOT/rss.csv"
+
+SPARSE_ROOT="$ROOT/release-sparse"
+SPARSE_CHECKPOINTS="$SPARSE_ROOT/checkpoints"
+SPARSE_RELEASE_ID_FILE="$SPARSE_ROOT/release_id.txt"
+SPARSE_ARTIFACT="$SPARSE_ROOT/artifacts/populace_us_2024.h5"
+SPARSE_DONE="$SPARSE_ROOT/.stage-complete"
+SPARSE_LOG="$SPARSE_ROOT/release.log"
+SPARSE_RSS="$SPARSE_ROOT/rss.csv"
 
 MAIN_LOG="$ROOT/run-candidate.log"
 CODE_PIN="$ROOT/code.commit"
@@ -65,6 +78,8 @@ SCF_FULL="/Users/maxghenis/.cache/microcosm/scf/p22i6.dta"
 SCF_FULL_SHA="61e2fceb1594e4009eb996d6e25d38a5d8e4874930fc2bfce3c87ffa6946ad0a"
 SSI_BASIS="/Users/maxghenis/PolicyEngine/_buildo-runtime/out/buildo-run/dense-p2/releases/populace-us-2024-buildp-dense-cae8640-20260728T050443Z/us_ssi_take_up.json"
 SSI_BASIS_SHA="56118bde095b8ef2559a26a3478ff5f8b61939eca402dffcec61189e7de631e3"
+SPARSE_SSI_BASIS="/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/attempt6_basis_schema3_seed.json"
+SPARSE_SSI_BASIS_SHA="25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a"
 ASEC_WEEKS="/Users/maxghenis/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub23csv.zip"
 ASEC_WEEKS_SHA="d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11"
 SIPP_FULL="/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/pu2023.csv"
@@ -102,6 +117,10 @@ DENSE_RELEASE_ID=""
 DENSE_RELEASE_DIR=""
 DENSE_RELEASE_MANIFEST=""
 DENSE_BUILD_MANIFEST=""
+SPARSE_RELEASE_ID=""
+SPARSE_RELEASE_DIR=""
+SPARSE_RELEASE_MANIFEST=""
+SPARSE_BUILD_MANIFEST=""
 
 utc_now() {
   /bin/date -u +%FT%TZ
@@ -178,7 +197,6 @@ check_code_authority() {
   [ -x "$PYTHON" ] || die "missing executable Python path=$PYTHON"
   [ -f "$POOL_TOOL" ] || die "missing pool builder path=$POOL_TOOL"
   [ -f "$RELEASE_TOOL" ] || die "missing release builder path=$RELEASE_TOOL"
-  [ -f "$SELECTION_TOOL" ] || die "missing selection tool path=$SELECTION_TOOL"
   [ -f "$SCORER_TOOL" ] || die "missing scorer path=$SCORER_TOOL"
   [ -f "$CANONICAL_LAUNCHER" ] || die "missing canonical launcher path=$CANONICAL_LAUNCHER"
   [ -f "$0" ] || die "cannot resolve invoked launcher path=$0"
@@ -213,8 +231,7 @@ check_code_authority() {
     --ssi-take-up-prior-weight-basis-sha256 \
     --checkpoint-root --release-id --seed --epochs \
     --skip-reform-validation --no-staging --out
-  require_parser_flags selection "$RELEASE_TOOL" \
-    --selection-source-manifest --selection-mass-protection
+  require_parser_flags sparse "$RELEASE_TOOL" --l0-refit-lambda-share
   require_parser_flags scorer "$SCORER_TOOL" \
     --incumbent --candidate --ledger-facts --out-prefix
 }
@@ -228,18 +245,27 @@ check_pool_inputs() {
   check_sha256 puf-source-year-csv "$PUF_SOURCE" "$PUF_SOURCE_SHA"
 }
 
-check_dense_inputs() {
+check_release_inputs() {
   check_sha256 ledger-v9.4 "$LEDGER" "$LEDGER_SHA"
   check_sha256 export-input-mass-reference "$EXPORT_REFERENCE" "$EXPORT_REFERENCE_SHA"
   check_sha256 scf-summary-extract "$SCF_SUMMARY" "$SCF_SUMMARY_SHA"
   check_sha256 scf-full-extract "$SCF_FULL" "$SCF_FULL_SHA"
   check_scf_header
-  check_sha256 ssi-prior-weight-basis "$SSI_BASIS" "$SSI_BASIS_SHA"
   check_sha256 asec-2023-weeks-source "$ASEC_WEEKS" "$ASEC_WEEKS_SHA"
   check_sha256 sipp-full-donor "$SIPP_FULL" "$SIPP_FULL_SHA"
   check_sha256 sipp-tips-donor "$SIPP_TIPS" "$SIPP_TIPS_SHA"
   check_sha256 cps-org-wages-compressed "$ORG_WAGES" "$ORG_WAGES_SHA"
   check_sha256 packaged-cd-crosswalk "$CD_CROSSWALK" "$CD_CROSSWALK_SHA"
+}
+
+check_dense_inputs() {
+  check_release_inputs
+  check_sha256 dense-ssi-prior-weight-basis "$SSI_BASIS" "$SSI_BASIS_SHA"
+}
+
+check_sparse_inputs() {
+  check_release_inputs
+  check_sha256 sparse-ssi-prior-weight-basis "$SPARSE_SSI_BASIS" "$SPARSE_SSI_BASIS_SHA"
 }
 
 check_reporting_inputs() {
@@ -249,7 +275,9 @@ check_reporting_inputs() {
 
 check_immutable_inputs() {
   check_pool_inputs
-  check_dense_inputs
+  check_release_inputs
+  check_sha256 dense-ssi-prior-weight-basis "$SSI_BASIS" "$SSI_BASIS_SHA"
+  check_sha256 sparse-ssi-prior-weight-basis "$SPARSE_SSI_BASIS" "$SPARSE_SSI_BASIS_SHA"
   check_reporting_inputs
 }
 
@@ -268,6 +296,113 @@ print_command() {
   if [ "$DRY_RUN" -eq 0 ]; then
     printf '%s\n' "$rendered" >> "$MAIN_LOG"
   fi
+}
+
+validate_sparse_command_contract() {
+  local validation
+
+  validation="$("$PYTHON" - "$RELEASE_TOOL" "${SPARSE_COMMAND[@]:2}" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+
+constant_values = []
+l0_flag_defaults = []
+for node in ast.walk(tree):
+    if isinstance(node, (ast.Assign, ast.AnnAssign)):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if any(
+            isinstance(target, ast.Name)
+            and target.id == "DEFAULT_L0_REFIT_LAMBDA_SHARE"
+            for target in targets
+        ):
+            constant_values.append(ast.literal_eval(node.value))
+    if not isinstance(node, ast.Call) or not node.args:
+        continue
+    if not (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "add_argument"
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "--l0-refit-lambda-share"
+    ):
+        continue
+    for keyword in node.keywords:
+        if keyword.arg == "default":
+            l0_flag_defaults.append(keyword.value)
+
+argv = sys.argv[2:]
+present = set(argv)
+
+failures = []
+if constant_values != [0.8]:
+    failures.append(
+        "current builder does not define the owner-ruled L0 default exactly once "
+        f"as 0.8: {constant_values!r}"
+    )
+if len(l0_flag_defaults) != 1 or not (
+    isinstance(l0_flag_defaults[0], ast.Name)
+    and l0_flag_defaults[0].id == "DEFAULT_L0_REFIT_LAMBDA_SHARE"
+):
+    failures.append("--l0-refit-lambda-share is not wired to the current default constant")
+
+prohibited = {
+    "--allow-ecps-parity-gaps",
+    "--allow-input-coverage-gaps",
+    "--allow-input-mass-drift",
+    "--allow-qrf-tail-concentration",
+    "--allow-reform-coverage-smoke-failures",
+    "--allow-unaged-dollar-targets",
+    "--dense-default-dataset",
+    "--evidence-release",
+    "--evidence-failure-owners",
+    "--exact-k",
+    "--exact-k-pi-hi",
+    "--l0-refit-lambda-share",
+    "--l2-lambda",
+    "--learning-rate",
+    "--max-weight-ratio",
+    "--pool-manifest",
+    "--pool-manifest-sha256",
+    "--pool-release-id",
+    "--qrf-tail-concentration-exclusions",
+    "--refit-l2-lambda",
+    "--selection-mass-protection",
+    "--selection-mode",
+    "--selection-join-key",
+    "--selection-source-h5",
+    "--selection-source-manifest",
+    "--target-family-loss-multiplier",
+    "--warm-start-calibration-npz",
+    "--zero-support-exclusions",
+}
+unexpected = sorted(present & prohibited)
+if unexpected:
+    failures.append(f"sparse command enters a prohibited/tuned path: {unexpected}")
+
+for flag, value in (("--seed", "0"), ("--epochs", "6000")):
+    if argv.count(flag) != 1:
+        failures.append(f"sparse command must contain {flag} exactly once")
+        continue
+    index = argv.index(flag)
+    if index + 1 >= len(argv) or argv[index + 1] != value:
+        failures.append(f"sparse command must set {flag} to {value}")
+for flag in ("--skip-reform-validation", "--no-staging"):
+    if argv.count(flag) != 1:
+        failures.append(f"sparse command must contain {flag} exactly once")
+if failures:
+    raise SystemExit("; ".join(failures))
+print(
+    "SPARSE LEGACY CONTRACT OK "
+    "l0_lambda_share=0.8 source=none exact_k=none pi_hi=none "
+    "selection_mass_protection=none operator_waivers=none "
+    "seed=0 epochs=6000 no_staging=true"
+)
+PY
+)" || die "sparse command violates owner ruling A or current parser defaults"
+  emit "$validation"
 }
 
 reclaimable_gib() {
@@ -289,10 +424,10 @@ reclaimable_gib() {
 }
 
 builders_busy() {
-  if /usr/bin/pgrep -f '[.]venv/bin/python[0-9.]* tools/build_us_multispine_pool[.]py' >/dev/null 2>&1; then
+  if /usr/bin/pgrep -f '[.]venv/bin/python.*[/]tools/build_us_multispine_pool[.]py' >/dev/null 2>&1; then
     return 0
   fi
-  if /usr/bin/pgrep -f '[.]venv/bin/python[0-9.]* tools/build_us_fiscal_refresh_release[.]py' >/dev/null 2>&1; then
+  if /usr/bin/pgrep -f '[.]venv/bin/python.*[/]tools/build_us_fiscal_refresh_release[.]py' >/dev/null 2>&1; then
     return 0
   fi
   return 1
@@ -434,12 +569,21 @@ write_new_file() {
 pin_code_authority() {
   local recorded
 
-  if [ -f "$CODE_PIN" ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    if [ -f "$CODE_PIN" ]; then
+      recorded="$(/usr/bin/awk 'NF {print $1; exit}' "$CODE_PIN")"
+      if [ "$recorded" = "$CODE_SHA" ]; then
+        emit "CODE PIN OBSERVED commit=$recorded path=$CODE_PIN execute_mode_conflict=false"
+      else
+        emit "CODE PIN OBSERVED recorded_commit=$recorded planned_commit=$CODE_SHA path=$CODE_PIN execute_mode_conflict=true dry_run_mutation=false"
+      fi
+    else
+      emit "CODE PIN PLANNED commit=$CODE_SHA path=$CODE_PIN"
+    fi
+  elif [ -f "$CODE_PIN" ]; then
     recorded="$(/usr/bin/awk 'NF {print $1; exit}' "$CODE_PIN")"
     [ "$recorded" = "$CODE_SHA" ] || die "candidate root is pinned to another commit recorded=$recorded current=$CODE_SHA"
     emit "CODE PIN CONSUMED commit=$recorded path=$CODE_PIN"
-  elif [ "$DRY_RUN" -eq 1 ]; then
-    emit "CODE PIN PLANNED commit=$CODE_SHA path=$CODE_PIN"
   else
     write_new_file "$CODE_PIN" "$CODE_SHA  $WT"
     emit "CODE PIN RECORDED commit=$CODE_SHA path=$CODE_PIN"
@@ -570,6 +714,7 @@ record_pool_manifest_pin() {
 }
 
 consume_pool_manifest_pin() {
+  local stage="$1"
   local recorded
   local actual
 
@@ -578,7 +723,7 @@ consume_pool_manifest_pin() {
   actual="$(sha256_file "$POOL_MANIFEST")" || die "cannot rehash pool manifest before release"
   [ "$recorded" = "$actual" ] || die "release refused changed pool manifest recorded=$recorded actual=$actual"
   validate_pool_outputs
-  emit "POOL MANIFEST PIN CONSUMED stage=release-dense sha256=$actual path=$POOL_MANIFEST"
+  emit "POOL MANIFEST PIN CONSUMED stage=$stage sha256=$actual path=$POOL_MANIFEST"
 }
 
 pool_is_complete() {
@@ -758,10 +903,230 @@ record_dense_done() {
   emit "DENSE ARTIFACT RECORDED sha256=$actual path=$DENSE_ARTIFACT"
 }
 
-stage_sparse_stop() {
-  emit "STAGE 2b SPARSE STOP: no selection derivation or sparse release command will run"
-  emit "OWNER QUESTION: which rule may choose the candidate pool support: (A) current legacy fixed-penalty L0 at default 0.8, accepting its non-exact realized count, or (B) a newly ratified exact-57,240 rule, including algorithm, seed, and Keogh-carrier inclusion policy? If B uses current exact-k, supply pi_hi and its artifact pins. Current main has no legacy CLI that derives an exact 57,240 selection manifest from a pool."
-  emit "SPARSE PENDING owner ruling on candidate-pool selection doctrine"
+set_sparse_release_id() {
+  local candidate
+
+  candidate="populace-us-2024-onesurface-pkg3-legacy-sparse-${CODE_SHA8}-${RUN_TS}"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    SPARSE_RELEASE_ID="$candidate"
+  elif [ -f "$SPARSE_RELEASE_ID_FILE" ]; then
+    SPARSE_RELEASE_ID="$(/usr/bin/awk 'NF {print $1; exit}' "$SPARSE_RELEASE_ID_FILE")"
+  else
+    [ ! -f "$SPARSE_ARTIFACT" ] || die "sparse artifact exists without persisted release id path=$SPARSE_ARTIFACT"
+    write_new_file "$SPARSE_RELEASE_ID_FILE" "$candidate"
+    SPARSE_RELEASE_ID="$candidate"
+  fi
+  printf '%s\n' "$SPARSE_RELEASE_ID" | /usr/bin/grep -Eq '^populace-us-2024-onesurface-pkg3-legacy-sparse-[0-9a-f]{8}-[0-9]{8}T[0-9]{6}Z$' || die "invalid persisted sparse release id value=$SPARSE_RELEASE_ID"
+  printf '%s\n' "$SPARSE_RELEASE_ID" | /usr/bin/grep -Eq "^populace-us-2024-onesurface-pkg3-legacy-sparse-${CODE_SHA8}-[0-9]{8}T[0-9]{6}Z$" || die "persisted sparse release id does not match pinned commit commit=$CODE_SHA value=$SPARSE_RELEASE_ID"
+  SPARSE_RELEASE_DIR="$SPARSE_ROOT/releases/$SPARSE_RELEASE_ID"
+  SPARSE_RELEASE_MANIFEST="$SPARSE_RELEASE_DIR/release_manifest.json"
+  SPARSE_BUILD_MANIFEST="$SPARSE_RELEASE_DIR/build_manifest.json"
+  emit "SPARSE RELEASE ID value=$SPARSE_RELEASE_ID state_file=$SPARSE_RELEASE_ID_FILE"
+}
+
+validate_sparse_release() {
+  local validation
+
+  validation="$("$PYTHON" - \
+    "$SPARSE_ARTIFACT" \
+    "$SPARSE_RELEASE_MANIFEST" \
+    "$SPARSE_BUILD_MANIFEST" \
+    "$SPARSE_RELEASE_DIR/qrf_tail_concentration.json" \
+    "$SPARSE_RELEASE_DIR/calibration_diagnostics.json" \
+    "$POOL_MANIFEST" \
+    "$SPARSE_RELEASE_DIR/us_ssi_take_up.json" \
+    "$SPARSE_RELEASE_ID" "$CODE_SHA" "$LEDGER_SHA" "$SPARSE_SSI_BASIS_SHA" <<'PY'
+import hashlib
+import json
+import math
+import sys
+from pathlib import Path
+
+(
+    artifact,
+    release_path,
+    build_path,
+    qrf_path,
+    diagnostics_path,
+    pool_manifest_path,
+    ssi_path,
+) = map(Path, sys.argv[1:8])
+release_id, code_sha, ledger_sha, sparse_ssi_basis_sha = sys.argv[8:12]
+for path in (
+    artifact,
+    release_path,
+    build_path,
+    qrf_path,
+    diagnostics_path,
+    pool_manifest_path,
+    ssi_path,
+):
+    if not path.is_file():
+        raise SystemExit(f"missing sparse release output: {path}")
+
+digest = hashlib.sha256()
+with artifact.open("rb") as stream:
+    for chunk in iter(lambda: stream.read(1 << 20), b""):
+        digest.update(chunk)
+artifact_sha = digest.hexdigest()
+release = json.loads(release_path.read_text(encoding="utf-8"))
+build = json.loads(build_path.read_text(encoding="utf-8"))
+qrf = json.loads(qrf_path.read_text(encoding="utf-8"))
+diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+pool_manifest = json.loads(pool_manifest_path.read_text(encoding="utf-8"))
+ssi = json.loads(ssi_path.read_text(encoding="utf-8"))
+if release.get("build", {}).get("build_id") != release_id:
+    raise SystemExit("sparse release manifest build id mismatch")
+entry = release.get("artifacts", {}).get("populace_us_2024", {})
+if entry.get("sha256") != artifact_sha:
+    raise SystemExit("sparse artifact hash does not match release manifest")
+default = release.get("build", {}).get("default_dataset", {})
+if default.get("method") != "l0_refit" or default.get("sparse") is not True:
+    raise SystemExit(f"sparse default-dataset identity is wrong: {default}")
+if default.get("l0_lambda_share") != 0.8:
+    raise SystemExit(
+        f"sparse L0 penalty share is not the owner-ruled default: {default.get('l0_lambda_share')}"
+    )
+if default.get("selection_epochs") != 6000 or default.get("refit_epochs") != 6000:
+    raise SystemExit(
+        "sparse epoch receipt is wrong: "
+        f"selection={default.get('selection_epochs')} refit={default.get('refit_epochs')}"
+    )
+candidate_count = default.get("n_candidate_households")
+selected_count = default.get("n_selected_households")
+exported_count = default.get("n_exported_households")
+for label, value in (
+    ("candidate", candidate_count),
+    ("selected", selected_count),
+    ("exported", exported_count),
+):
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise SystemExit(f"sparse {label} household count is invalid: {value!r}")
+if not selected_count < candidate_count:
+    raise SystemExit(
+        f"legacy L0 did not realize sparse support: selected={selected_count} candidate={candidate_count}"
+    )
+if exported_count != selected_count:
+    raise SystemExit(
+        f"sparse export count differs from realized L0 support: {exported_count} != {selected_count}"
+    )
+expected_lambda = 0.8 / candidate_count
+if not math.isclose(
+    float(default.get("l0_lambda", math.nan)),
+    expected_lambda,
+    rel_tol=1e-12,
+    abs_tol=0.0,
+):
+    raise SystemExit(
+        "sparse fixed L0 penalty does not equal default share / candidate count: "
+        f"{default.get('l0_lambda')} != {expected_lambda}"
+    )
+if default.get("selection_l2_lambda") != 0.0 or default.get("refit_l2_lambda") != 0.0:
+    raise SystemExit("sparse release used a tuned L2 penalty")
+if release.get("build", {}).get("selection_source") != {"enabled": False}:
+    raise SystemExit("sparse release unexpectedly used a selection source")
+if build.get("calibration", {}).get("selection_source") != {"enabled": False}:
+    raise SystemExit("sparse build manifest unexpectedly used a selection source")
+if release.get("build", {}).get("warm_start_calibration") != {"enabled": False}:
+    raise SystemExit("sparse release unexpectedly used warm-start calibration weights")
+if build.get("calibration", {}).get("warm_start") != {"enabled": False}:
+    raise SystemExit("sparse build unexpectedly used warm-start calibration weights")
+if "exact_k_ladder" in release.get("build", {}) or "exact_k_ladder" in build:
+    raise SystemExit("sparse release unexpectedly entered the exact-k ladder")
+if build.get("dataset", {}).get("default") != default:
+    raise SystemExit("sparse build and release default-dataset receipts differ")
+if diagnostics.get("build", {}).get("default_dataset") != default:
+    raise SystemExit("sparse diagnostics and release default-dataset receipts differ")
+if any(
+    str(row.get("name", "")).startswith("selection_mass_protection.")
+    for row in diagnostics.get("targets", ())
+    if isinstance(row, dict)
+):
+    raise SystemExit("sparse release injected frozen-selection mass protection")
+if build.get("code", {}).get("git_commit") != code_sha:
+    raise SystemExit("sparse build commit does not match launcher commit")
+if build.get("ledger_artifact", {}).get("facts_sha256") != ledger_sha:
+    raise SystemExit("sparse build Ledger facts pin mismatch")
+expected_ssi_basis = {
+    "kind": "release_artifact",
+    "source_schema_version": 3,
+    "source_sha256": sparse_ssi_basis_sha,
+}
+if ssi.get("prior_weight_basis") != expected_ssi_basis:
+    raise SystemExit(
+        "sparse SSI prior-weight basis receipt mismatch: "
+        f"{ssi.get('prior_weight_basis')} != {expected_ssi_basis}"
+    )
+if ssi.get("schema_version") != 4 or ssi.get("measurement_phase") != "release_final":
+    raise SystemExit("sparse SSI delivery artifact is not current-schema release-final")
+if build.get("staging", {}).get("enabled") is not False:
+    raise SystemExit(f"sparse build unexpectedly enabled staging: {build.get('staging')}")
+if build.get("gates", {}).get("calibration", {}).get("passed") is not True:
+    raise SystemExit("sparse release calibration gates did not pass")
+qrf_surface = qrf.get("surface", {})
+if qrf.get("enforced") is not True:
+    raise SystemExit("sparse release did not enforce QRF tail concentration")
+if qrf.get("tail_concentration", {}).get("passed") is not True:
+    raise SystemExit("sparse release did not pass QRF tail concentration")
+if qrf_surface.get("reviewed_exclusions_file") is not None:
+    raise SystemExit("sparse release used a reviewed-exclusions file")
+if qrf_surface.get("reviewed_exclusions_sha256") is not None:
+    raise SystemExit("sparse release recorded a reviewed-exclusions sha")
+if qrf_surface.get("reviewed_exclusions") != {}:
+    raise SystemExit("sparse release used nonempty reviewed exclusions")
+pool_h5 = pool_manifest.get("pool_h5", {})
+pool_sha = pool_h5.get("sha256")
+if not isinstance(pool_sha, str) or len(pool_sha) != 64:
+    raise SystemExit("authenticated pool manifest lacks a pool H5 sha")
+base_sha = diagnostics.get("build", {}).get("base_dataset_sha256")
+if base_sha != pool_sha:
+    raise SystemExit(
+        f"sparse release base dataset does not match pool: {base_sha} != {pool_sha}"
+    )
+print(
+    f"SPARSE RELEASE OK artifact_sha256={artifact_sha} release_id={release_id} "
+    f"candidate_households={candidate_count} realized_households={selected_count}"
+)
+PY
+)" || die "sparse release authentication failed"
+  emit "$validation"
+}
+
+sparse_is_complete() {
+  local actual
+  local recorded
+
+  if [ -f "$SPARSE_DONE" ]; then
+    validate_sparse_release
+    actual="$(sha256_file "$SPARSE_ARTIFACT")" || die "cannot hash completed sparse artifact"
+    recorded="$(/usr/bin/awk 'NF {print $1; exit}' "$SPARSE_DONE")"
+    [ "$recorded" = "$actual" ] || die "sparse completion marker disagrees with artifact recorded=$recorded actual=$actual"
+    return 0
+  fi
+  if [ -f "$SPARSE_RELEASE_MANIFEST" ] || [ -f "$SPARSE_BUILD_MANIFEST" ]; then
+    [ -f "$SPARSE_RELEASE_MANIFEST" ] && [ -f "$SPARSE_BUILD_MANIFEST" ] && [ -f "$SPARSE_ARTIFACT" ] || die "partial certified sparse manifest/artifact set requires owner inspection"
+    validate_sparse_release
+    actual="$(sha256_file "$SPARSE_ARTIFACT")" || die "cannot hash sparse artifact while reconstructing marker"
+    write_new_file "$SPARSE_DONE" "$actual  $SPARSE_ARTIFACT"
+    emit "SPARSE COMPLETION MARKER RECONSTRUCTED sha256=$actual"
+    return 0
+  fi
+  return 1
+}
+
+record_sparse_done() {
+  local actual
+  local recorded
+
+  validate_sparse_release
+  actual="$(sha256_file "$SPARSE_ARTIFACT")" || die "cannot hash sparse artifact"
+  if [ -f "$SPARSE_DONE" ]; then
+    recorded="$(/usr/bin/awk 'NF {print $1; exit}' "$SPARSE_DONE")"
+    [ "$recorded" = "$actual" ] || die "sparse completion marker changed recorded=$recorded actual=$actual"
+  else
+    write_new_file "$SPARSE_DONE" "$actual  $SPARSE_ARTIFACT"
+  fi
+  emit "SPARSE ARTIFACT RECORDED sha256=$actual path=$SPARSE_ARTIFACT"
 }
 
 POOL_COMMAND=(
@@ -788,7 +1153,7 @@ POOL_COMMAND=(
 
 trap 'cleanup_label $?' EXIT
 if [ "$DRY_RUN" -eq 0 ]; then
-  /bin/mkdir -p "$ROOT" "$POOL_ROOT" "$DENSE_ROOT" || die "cannot create candidate output directories root=$ROOT"
+  /bin/mkdir -p "$ROOT" "$POOL_ROOT" "$DENSE_ROOT" "$SPARSE_ROOT" || die "cannot create candidate output directories root=$ROOT"
 fi
 
 cd "$WT" || die "cannot cd to worktree path=$WT"
@@ -797,6 +1162,8 @@ check_code_authority
 pin_code_authority
 check_immutable_inputs
 set_dense_release_id
+set_sparse_release_id
+emit "OWNER RULING A ACTIVE sparse_path=legacy-cold-l0 default_lambda_share=0.8 realized_count=non-exact selection_source=none exact_k=none pi_hi=none keogh_mass_protection=omitted zero_operator_waivers=true"
 
 DENSE_COMMAND=(
   "$PYTHON" "$RELEASE_TOOL"
@@ -822,21 +1189,45 @@ DENSE_COMMAND=(
   --no-staging
 )
 
+SPARSE_COMMAND=(
+  "$PYTHON" "$RELEASE_TOOL"
+  --base-h5 "$POOL_H5"
+  --ledger-facts "$LEDGER"
+  --ledger-facts-sha256 "$LEDGER_SHA"
+  --export-input-mass-reference-h5 "$EXPORT_REFERENCE"
+  --asec-2023-weeks-unemployed-source "$ASEC_WEEKS"
+  --scf-summary-extract "$SCF_SUMMARY"
+  --scf-full-extract "$SCF_FULL"
+  --sipp-tip-donor "$SIPP_TIPS"
+  --sipp-vehicle-donor "$SIPP_FULL"
+  --org-wages-donor "$ORG_WAGES"
+  --ssi-take-up-prior-weight-basis "$SPARSE_SSI_BASIS"
+  --ssi-take-up-prior-weight-basis-sha256 "$SPARSE_SSI_BASIS_SHA"
+  --seed 0
+  --epochs 6000
+  --checkpoint-root "$SPARSE_CHECKPOINTS"
+  --release-id "$SPARSE_RELEASE_ID"
+  --out "$SPARSE_ROOT"
+  --skip-reform-validation
+  --no-staging
+)
+validate_sparse_command_contract
+
 if [ "$DRY_RUN" -eq 1 ]; then
   emit "PRECONDITION PLAN stage=pool poll_seconds=300 need_reclaimable_gib=85 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
   print_command "COMMAND stage=pool" /usr/bin/time -l /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "${POOL_COMMAND[@]}"
   emit "POOL MANIFEST PIN DEFERRED dynamic_output=$POOL_MANIFEST release-wrapper-will-record-and-consume-full-sha256"
   emit "PRECONDITION PLAN stage=release-dense poll_seconds=300 need_reclaimable_gib=85 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
   print_command "COMMAND stage=release-dense" /usr/bin/time -l /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "${DENSE_COMMAND[@]}"
-  stage_sparse_stop
-  emit "DENSE ARTIFACT planned_path=$DENSE_ARTIFACT sha256=pending-stage-2a"
+  emit "PRECONDITION PLAN stage=release-sparse poll_seconds=300 need_reclaimable_gib=85 checks=no-pool-or-release-builder,AC-power,go-marker:$GO_MARKER"
+  print_command "COMMAND stage=release-sparse" /usr/bin/time -l /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "${SPARSE_COMMAND[@]}"
 else
   recheck_code_authority
   if pool_is_complete; then
     emit "STAGE SKIP stage=pool reason=validated-output-and-gates path=$POOL_H5"
   else
     while :; do
-      wait_ready pool 90
+      wait_ready pool 85
       recheck_code_authority
       check_pool_inputs
       recheck_code_authority
@@ -852,16 +1243,16 @@ else
     fi
   fi
 
-  consume_pool_manifest_pin
+  consume_pool_manifest_pin release-dense
   recheck_code_authority
   if dense_is_complete; then
     emit "STAGE SKIP stage=release-dense reason=validated-artifact-and-manifests path=$DENSE_ARTIFACT"
   else
     while :; do
-      wait_ready release-dense 110
+      wait_ready release-dense 85
       recheck_code_authority
       check_dense_inputs
-      consume_pool_manifest_pin
+      consume_pool_manifest_pin release-dense
       recheck_code_authority
       ready_now release-dense 85 && break
     done
@@ -873,20 +1264,47 @@ else
       record_dense_done
     fi
   fi
-  stage_sparse_stop
-  emit "DENSE ARTIFACT path=$DENSE_ARTIFACT sha256=$(sha256_file "$DENSE_ARTIFACT")"
+
+  consume_pool_manifest_pin release-sparse
+  recheck_code_authority
+  if sparse_is_complete; then
+    emit "STAGE SKIP stage=release-sparse reason=validated-artifact-and-manifests path=$SPARSE_ARTIFACT"
+  else
+    while :; do
+      wait_ready release-sparse 85
+      recheck_code_authority
+      check_sparse_inputs
+      consume_pool_manifest_pin release-sparse
+      recheck_code_authority
+      ready_now release-sparse 85 && break
+    done
+    if sparse_is_complete; then
+      emit "STAGE SKIP stage=release-sparse reason=validated-output-completed-while-waiting path=$SPARSE_ARTIFACT"
+    else
+      emit "STAGE START stage=release-sparse release_id=$SPARSE_RELEASE_ID checkpoint_root=$SPARSE_CHECKPOINTS"
+      run_monitored release-sparse "$SPARSE_LOG" "$SPARSE_RSS" "${SPARSE_COMMAND[@]}" || die "sparse stage failed; checkpoints and release id retained for idempotent retry"
+      record_sparse_done
+    fi
+  fi
 fi
 
-emit "SPARSE ARTIFACT not-produced; sparse is pending the owner ruling above"
 emit "INCUMBENT EVIDENCE path=$INCUMBENT_EVIDENCE sha256=$INCUMBENT_EVIDENCE_SHA (evidence only; scorer consumes the H5)"
+if [ "$DRY_RUN" -eq 1 ]; then
+  emit "DRY-RUN COMPLETE no pool/release builder, scorer, publication, promotion, staging, or launchd mutation ran"
+  emit "DENSE ARTIFACT planned_path=$DENSE_ARTIFACT sha256=pending-stage-2a"
+  emit "SPARSE ARTIFACT planned_path=$SPARSE_ARTIFACT sha256=pending-stage-2b"
+else
+  emit "RUN COMPLETE dense and owner-ruling-A sparse legacy candidates built or authenticated"
+  emit "DENSE ARTIFACT path=$DENSE_ARTIFACT sha256=$(sha256_file "$DENSE_ARTIFACT")"
+  emit "SPARSE ARTIFACT path=$SPARSE_ARTIFACT sha256=$(sha256_file "$SPARSE_ARTIFACT")"
+fi
 print_command "SCORER COMMAND dense" /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "$PYTHON" "$SCORER_TOOL" \
   --incumbent "$INCUMBENT_H5" \
   --candidate "$DENSE_ARTIFACT" \
   --ledger-facts "$LEDGER" \
   --out-prefix "$ROOT/scores/dense-head-to-head"
-
-if [ "$DRY_RUN" -eq 1 ]; then
-  emit "DRY-RUN COMPLETE no builder, selection tool, release, scorer, publication, promotion, staging, or launchd mutation ran"
-else
-  emit "RUN COMPLETE dense-only; sparse pending owner ruling"
-fi
+print_command "SCORER COMMAND sparse" /usr/bin/env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST "$PYTHON" "$SCORER_TOOL" \
+  --incumbent "$INCUMBENT_H5" \
+  --candidate "$SPARSE_ARTIFACT" \
+  --ledger-facts "$LEDGER" \
+  --out-prefix "$ROOT/scores/sparse-head-to-head"

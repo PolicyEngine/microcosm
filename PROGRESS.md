@@ -6,13 +6,14 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-Contract tracing is complete against local current-main authority
-`origin/main` at `7b90bb18`. Implementation will replace the deliberate sparse
-STOP with a second, serial legacy release invocation that lets the current
+Contract tracing and the stage-2b implementation are complete against local
+current-main authority `origin/main` at `7b90bb18`. The deliberate sparse STOP
+is replaced by a second, serial legacy release invocation that lets the current
 builder derive support by cold fixed-penalty L0 at its literal default 0.8.
-The release will accept the realized non-exact count and will not supply a
-frozen selection, an exact-count rule, `pi_hi`, Keogh mass protection, or an
-operator exclusion register.
+The release accepts the realized non-exact count and supplies no frozen
+selection, exact-count rule, `pi_hi`, Keogh mass protection, operator exclusion
+register, or tuning override. Static shell validation passes; the implementation
+is ready for its clean-commit dry run.
 
 No pool, release, scorer, publication, promotion, or push has run in this
 round.
@@ -45,11 +46,21 @@ round.
   `--dense-default-dataset` reaches `calibrate_l0_refit`, which records the
   realized `n_nonzero` support rather than enforcing a count
   (`tools/build_us_fiscal_refresh_release.py:10636-10677`).
-- Enumerated the sparse delta from stage 2a: no additional immutable input;
-  reuse the stage-1 H5 and every stage-2a source, give sparse its own output,
-  checkpoint, release-ID, log, RSS, and completion state, omit the dense flag,
-  and use the incumbent's 6,000 epochs. The historical incumbent launcher is
-  the epoch authority at
+- Corrected the initial input enumeration after tracing the SSI retry contract:
+  stage 2b needs exactly one sparse-specific immutable input beyond stage 2a,
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/attempt6_basis_schema3_seed.json`
+  at SHA-256
+  `25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a`.
+  The incumbent launcher supplies this schema-3 seed at
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/scripts/buildp_sparse9.sh:133-134`;
+  current main accepts schema 2/3/4 bases
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py:902-918`)
+  and rejects retry-of-retry current-schema release artifacts at lines 943-959.
+  The launcher authenticates the seed and validates its output provenance.
+- Reused the stage-1 H5 and every common stage-2a source, gave sparse its own
+  output, checkpoint, release-ID, log, RSS, and completion state, omitted the
+  dense flag, and used the incumbent's 6,000 epochs. The historical incumbent
+  launcher is the epoch authority at
   `/Users/maxghenis/PolicyEngine/_buildo-runtime/scripts/buildp_sparse9.sh:123-143`.
 - Adjudicated Keogh-carrier protection as out of scope for ruling A. Current
   parser help says the flag preserves carriers that a protect-swap placed in a
@@ -64,13 +75,34 @@ round.
   path/hash (`tools/build_us_fiscal_refresh_release.py:7922-7949,11258-11290`).
 - Found a pre-existing readiness mismatch: the launcher prints and finally
   rechecks 85 GiB but still initially waits for 90 GiB (pool) and 110 GiB
-  (dense). Stage 2b implementation will make every wait/recheck use the stated
-  85 GiB gate.
+  (dense). The implementation makes every wait/recheck use the stated 85 GiB
+  gate.
+- Replaced `stage_sparse_stop` with owner-ruling-A stage 2b. It runs after the
+  dense release, off-chain and with `--no-staging`, persists the required
+  `populace-us-2024-onesurface-pkg3-legacy-sparse-<sha8>-<ts>` ID, monitors RSS,
+  supports authenticated idempotent skips, and emits the artifact identity and
+  sparse scorer command.
+- Added a lightweight AST/argv preflight which proves the checked-in builder's
+  parser wires the L0 flag to the sole 0.8 constant while proving the sparse
+  command omits the L0 flag itself and every frozen, exact-k, waiver, warm-start,
+  and tuning flag.
+- Added post-build sparse authentication for the release method, non-exact
+  realized support, 6,000 selection/refit epochs, effective L0 penalty,
+  absence of frozen/exact/Keogh paths, code/Ledger/pool pins, schema-3 SSI basis
+  receipt, no staging, and green release/QRF gates.
+- Extended dry-run output through stage 2b and added both candidate scorer
+  commands. `bash -n`, ShellCheck, and `git diff --check` pass on the pending
+  implementation.
+- Found the pre-existing external `candidate-25/code.commit` pin at
+  `8fa966d9` (with no stage-1 artifact). Execute mode still refuses any commit
+  mismatch. Dry-run now reports that conflict without consuming or changing
+  external state, so the new committed command can receive a read-only receipt;
+  owner cleanup or a fresh output-root ruling remains required before execution.
 
 ## Next
 
-1. Implement and commit the guarded, off-chain sparse release stage and keep
-   this journal current after each coherent step.
-2. Run the real `--dry-run`, commit `dry_run_r5.md`, and pass `bash -n`,
-   ShellCheck, and final repository checks.
-3. Write and commit the final outcome to `FINAL_REPORT.md`.
+1. Commit the guarded, off-chain sparse implementation and this journal.
+2. From that clean commit, run `--dry-run` and commit the verbatim
+   `dry_run_r5.md` receipt.
+3. Write and commit the final outcome to `FINAL_REPORT.md`, then verify a clean
+   branch and final checks.
