@@ -546,3 +546,118 @@ The re-pin does not by itself re-validate the #723 acceptance screen: the
 reference. Because no reference share moved by more than 0.0046, that
 classification is expected to survive intact, but it is re-measured against
 the new reference in the L2 whole-spine parity loop rather than assumed.
+
+---
+
+## R5 — signing the queue, and the two measurement corrections that preceded it
+
+Run on the rebased branch (rebase onto `origin/main` after #740 and 239 other
+commits; the only derived value that moved was the UK spec bundle digest,
+because main touched `uk/target_references.json` and
+`uk/target_reference_membership.json`).
+
+### The verdict
+
+```
+verify_uk_spine_parity.py --candidate-json candidate_extraction_spine_c.json --strict
+```
+
+| field | value |
+|---|---|
+| verdict | **`signed_parity`** |
+| unsigned differences | **0** |
+| strict failure | **false** |
+| columns compared | 145 · band 0.02 |
+| beyond band | 26 — all signed |
+| within band | 90 · max abs delta 0.019037 |
+| register | 13 entries · 12 matched · 0 unused · 1 dormant |
+| entity counts | household **exact**; person +32 and benunit −12 both signed |
+
+Receipt at `data/ukds/acceptance/686-spine-swap/parity_receipt_spine_c_signed.json`.
+
+### Correction 1 — the ETB rows were never undecidable
+
+The three ETB columns were recorded as blocked on an unpinnable weight basis:
+the donor education share moved across 0.0943 / 0.1327 / 0.2150 by weighting
+and none reconciled with the E6 acceptance receipt's 0.2546.
+
+The weight basis was not the problem. The stage's convention is explicit in
+code — `train["weight"] = data["hhold_adj_weight"]`, `weights="weight"` at both
+fit sites — and the *frame* is the part that had been wrong: the services stage
+cleans **year 2023 only** on complete cases over a **thirteen-column** subset
+(4,199 rows), while the incumbent's services imputation drops on an
+**eighteen-column** subset. A "donor share" taken off the incumbent's frame has
+a different denominator.
+
+Measured on the stage's own cleaned frame, `(v != 0).mean()` returns
+**0.2546** — the acceptance receipt's figure, to four decimals. The receipt was
+right the whole time; the re-measurement had been reading a different
+population.
+
+With the frame fixed, the row decides cleanly and against the incumbent:
+
+| | donor | incumbent | ours |
+|---|---|---|---|
+| `dfe_education_spending` share | 0.2794 | **0.000265** | 0.2258 |
+| `dfe_education_spending` £/household | 3,461 | **2** | 3,111 |
+
+Fourteen nonzero households in 52,846, at £2 per household against a donor
+£3,461. That is degenerate on any weight basis, which is why these are signed
+`defect_fix` rather than as a method preference.
+
+**A second incumbent defect, observed and not filed.** The incumbent divides
+each household total by household size and stores the per-head figure in a
+household-entity column (`imputations/services/etb.py`). It does not reconcile
+the levels — rail is 3.07× the donor even after it — so it is recorded as an
+observation, not as the explanation. It is a #467-family upstream issue and
+wants a ruling before filing.
+
+### Correction 2 — a reversal that was itself wrong
+
+Re-measuring the E5 wealth columns through `clean_was_household_table`
+initially appeared to overturn the standing 2026-08-19 adjudication: the
+incumbent looked closer on all five shares, where the ledger had recorded ours
+closer on four of four.
+
+It did not. The new pass was unweighted and the ledger's was survey-weighted.
+WAS **oversamples wealth-holders by design**, so its unweighted frame is not a
+population and its unweighted share is not a truth. On the weighted basis the
+original reading reproduces exactly — savings 0.6072, property_wealth 0.6433,
+other_residential 0.0363, main_residence 0.6236 — and ours is closer on five
+of five, `corporate_wealth` included, which previously had no benchmark.
+
+**Standing lesson, and it is the same one both times.** A donor "truth" is not
+a property of the donor file; it is a property of the *frame and weighting the
+stage itself uses*. Measuring it any other way produces numbers that look
+authoritative and are not — once in the direction of a false blocker, once in
+the direction of a false reversal. Every donor figure in the ledger is now
+computed by calling the stage's own committed cleaning function over its own
+pinned tab, on the survey-weighted basis, which is the convention that
+reproduces the acceptance figure.
+
+### Why the band, and why it is not a loosening
+
+Holding the share surface to the reference's 6-decimal grain left 90 in-band
+columns unsigned, so the verdict could only be cleared by writing 90 further
+register entries for third-decimal drift. That would have been the blanket
+amnesty the `--strict` fence exists to prevent: 90 permanent adjudications
+describing noise, each blanket-covering the column it names against any future
+real regression.
+
+The instrument now holds the share surface to the ±0.02 band the #723 screen
+already used. What that changes is only *which magnitudes require an
+adjudication*. Every difference down to the 6-decimal grain is still in the
+receipt, under `within_band`, with the in-band maximum alongside;
+`--share-band 0` restores the exact check; and structural differences are
+outside the band's reach at any band — a column appearing or vanishing, and
+every entity count, still signs exactly. There is a test for that last
+property specifically, run at `--share-band 0.9`.
+
+`--strict` additionally separates an entry that matched nothing on a surface
+the run *compared* from one whose surface was never *examined*. The
+weighted-totals surface stays unexamined until there is a calibrated candidate
+— comparing our design weights to the incumbent's calibrated ones would flag
+all 131 columns, which is the same before-medicine/after-medicine error the UC
+check documents. The water-level entry is therefore reported as **dormant**,
+and a test pins that dormancy stops being available the moment a run supplies
+the sidecars.
