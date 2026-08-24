@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats anything differing that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The register is completed during the whole-spine parity loop: the E4-E8 method classes recorded in the licensed per-increment acceptance receipts, and the columns the #723 screen placed beyond the parity band, are transcribed here as each is re-measured against the re-pinned 1.56.16 reference and scoped to the divergence actually observed, rather than carried across on their prose classification.",
+  "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats any difference beyond the #723 acceptance band that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The twenty-six beyond-band divergences measured against the re-pinned 1.56.16 reference are signed below, each scoped to the divergence actually observed rather than carried across on its prose classification, and each deliberately split so that no entry covers both columns where the spine is closer to its donor and columns where the incumbent is: the direction of the evidence is part of what is being signed. Donor figures quoted as magnitude evidence are survey-weighted shares and population means computed on each stage's own committed cleaning function over its own pinned donor tab, which is the convention that reproduces the E6 acceptance receipt's education figure exactly.",
   "differences": [
     {
       "id": "scottish-water-incumbent-nan-zeroing",
@@ -29,6 +29,181 @@
       "evidence": "experiments/686-uk-spine-swap-receipts.md#r1-scottish-water-and-sewerage-charges-736-item-13",
       "adjudicator": "juaristi22",
       "adjudicated_on": "2026-08-22"
+    },
+    {
+      "id": "lcfs-consumption-regime-gated-incidence",
+      "class": "mechanism_change",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": [
+          "alcohol_and_tobacco_consumption",
+          "communication_consumption",
+          "domestic_energy_consumption",
+          "education_consumption",
+          "electricity_consumption",
+          "gas_consumption",
+          "health_consumption",
+          "household_furnishings_consumption",
+          "miscellaneous_consumption",
+          "restaurants_and_hotels_consumption"
+        ],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "The spine draws LCFS consumption through a regime-gated QRF that carries the donor's zero mass as a modelled incidence, where the incumbent's plain QRF regresses a zero-inflated target toward its conditional mean. On these ten columns the spine's unweighted share is closer to the LCFS 2023-24 survey-weighted donor share than the incumbent's is, on the stage's own cleaned donor frame of 4,202 households: education_consumption donor 0.0476 against incumbent 0.1258 and ours 0.0170; restaurants_and_hotels donor 0.7651 against 0.6305 and 0.7903; miscellaneous donor 0.9728 against 0.8975 and 0.9918; domestic_energy donor 0.9835 against 0.9541 and 0.9953, with its electricity and gas components moving the same way. Population mean per household is closer for the spine on nine of the ten, the exception being communication_consumption at 1.20x the donor against the incumbent's 1.16x; the incumbent runs 1.7x to 5.0x the donor mean on the rest. Every cell is above the disclosure floor, the thinnest being 193 donor carriers on education_consumption.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e6-consumption",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "lcfs-fuel-consumption-incidence-gate",
+      "class": "mechanism_change",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["diesel_spending", "petrol_spending"],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "These two are signed with the evidence pointing the other way on incidence, and that is the point of scoping them apart from the rest of the LCFS class. The spine gates fuel spending on a has_fuel draw, so it places incidence on fewer households than either the donor or the incumbent: petrol donor 0.3911 against incumbent 0.4442 and ours 0.3002, diesel donor 0.2040 against 0.1903 and 0.1580. The incumbent is closer on both shares. On level the ordering reverses decisively — population mean per household is 0.85x the donor for petrol and 0.81x for diesel against the incumbent's 2.06x and 2.29x — so the gate is under-placing incidence while the incumbent is over-stating amounts by roughly a factor of two. Signed as the accepted cost of the fuel gate, not as a claim that the spine is closer here; the incidence rate of the gate is the pre-registered lever if this surface needs to move.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e6-consumption",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "lcfs-transport-aggregate-incidence",
+      "class": "mechanism_change",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["transport_consumption"],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "Scoped alone because the incumbent is marginally closer on this share and the aggregate sits above the fuel columns that the has_fuel gate moves. Donor 0.8702 against incumbent 0.8623 and ours 0.8934: the spine overshoots the donor by 0.0232 where the incumbent undershoots by 0.0079. On level the spine is closer, at 1.37x the donor population mean per household against the incumbent's 1.63x. Signed as an accepted incidence cost of the regime-gated draw, with the direction recorded so it can be re-examined on its own rather than under a class verdict it does not share.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e6-consumption",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "etb-services-regime-gated-incidence",
+      "class": "defect_fix",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["bus_subsidy_spending", "dfe_education_spending"],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "The incumbent's state-education column is degenerate and the spine's is not, which makes this a defect fix on the incumbent side rather than a method preference. Measured on the ETB services stage's own cleaned donor frame — SN 8856, year 2023, complete cases on the thirteen-column services subset, 4,199 rows, weighted by hhold_adj_weight — dfe_education_spending has a donor share of 0.2794 weighted (0.2546 unweighted, which reproduces the E6 acceptance receipt's figure exactly) and a donor population mean of GBP 3,461 per household. The incumbent carries 14 nonzero households out of 52,846, a share of 0.000265 and a population mean of GBP 2 per household; the spine carries 11,934, a share of 0.2258 and GBP 3,111, or 0.90x the donor. bus_subsidy_spending moves the same way: donor share 0.5255 weighted and GBP 87 per household, against incumbent 0.3167 and GBP 114 (1.30x) and ours 0.5554 and GBP 89 (1.02x). The spine is closer on both the share and the level of both columns. This resolves the ETB weight-basis question that was previously recorded as blocking these rows: the stage's convention is the household grossing weight, and the verdict holds on either basis.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e6-consumption",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "was-wealth-qrf-incidence",
+      "class": "qrf_implementation",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": [
+          "corporate_wealth",
+          "main_residence_value",
+          "other_residential_property_value",
+          "property_wealth",
+          "savings"
+        ],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "Carries forward the E5 adjudication of 2026-08-19 — that the wealth stage is not required to reproduce the incumbent's inflated totals — now scoped to the five household columns that actually diverge beyond the band, and re-measured against WAS Round 8 on the stage's own cleaning of the pinned tab (15,128 rows, weighted by R8xshhwgt). The spine is closer than the incumbent on all five survey-weighted donor shares: savings donor 0.6072 against incumbent 0.6621 and ours 0.6107; other_residential_property_value donor 0.0363 against 0.0750 and 0.0367; property_wealth donor 0.6433 against 0.7082 and 0.6607; main_residence_value donor 0.6236 against 0.6761 and 0.6356; corporate_wealth donor 0.7629 against 0.8225 and 0.7792. The level evidence behind the original adjudication reproduces and is the more dramatic surface: population mean per household runs 5.70x the donor for the incumbent's savings against 1.97x for ours, and 6.18x against 1.26x for other residential property. main_residence_value is the one column where the incumbent's level is closer, at 1.02x against our 0.88x. Note that the unweighted donor shares tell the opposite story on incidence, because WAS oversamples wealth-holders by design; the weighted basis is the population one and is the basis quoted here throughout.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e5-wealth",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "was-student-loan-balance-fold",
+      "class": "qrf_implementation",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["student_loan_balance"],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "Scoped apart from the benchmarked wealth columns because it has no donor benchmark to quote: the column is a fold of two WAS aggregates (total loans less total loans excluding Student Loans Company debt) and lands at a different entity grain from the household columns beside it, so no like-for-like donor share exists on the stage's cleaned frame. The observed divergence is +0.0296 on the unweighted share, incumbent 0.0197 against ours 0.0493 — the spine places student debt on about two and a half times as many carriers. Signed under the standing E5 adjudication as part of the same correlated-rank draw, with the absence of a benchmark stated rather than papered over; if the wealth stage is revisited, this is the column whose direction is unevidenced.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e5-wealth",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "spi-channel-qrf-incidence",
+      "class": "qrf_implementation",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": [
+          "employer_pension_contributions",
+          "savings_interest_income",
+          "tax_free_savings_income"
+        ],
+        "entities": ["person"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "The three columns rewritten on the SPI channel, each measured against its own source of truth rather than against one another, which is what closes the open item #717 left. savings_interest_income against the SPI donor INCBBS, FACT-weighted: truth 0.3960, incumbent 0.4250, ours 0.3946. tax_free_savings_income against the raw FRS at the frs_spine stage: truth 0.1540, incumbent 0.1897, ours 0.1352. employer_pension_contributions against the 3x derive at frs_hmrc_spine_leaves: truth 0.2587, incumbent 0.3149, ours 0.2682. The spine is closer on all three, so the divergence #717 recorded as uniformly one-way and unexplained is uniformly toward the source. Attribution is to the last stage that rewrites, not the stage that produces: the first two originate in frs_spine and are rewritten by hmrc_spi_income_spine, and attributing them to their producer would report them as raw-mapping defects, which is the one signature that indicates a genuine port defect.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e7-spi-channel",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "salary-sacrifice-conversion-depth",
+      "class": "mechanism_change",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["employee_pension_contributions"],
+        "entities": ["person"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "Signed at #684 and transcribed here against the re-pinned reference. The spine converts salary-sacrificed pension contributions at the depth the mechanism specifies, where the incumbent's conversion step was inert, so contributions that should have moved out of the employee column stayed in it. Unweighted share 0.2735 for the incumbent against 0.2246 for the spine, a difference of -0.0488 on the person entity. The counterpart column pension_contributions_via_salary_sacrifice sits inside the acceptance band at -0.0035 and is therefore not signed.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#e8-and-entity-counts",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "donor-selection-rng-entity-counts",
+      "class": "rng_stream",
+      "scope": {
+        "surface": "entity_counts",
+        "columns": ["benunit", "person"],
+        "entities": ["benunit", "person"]
+      },
+      "expectation": "count_differs",
+      "magnitude_evidence": "The CGT band-donor selection draws over id-sorted candidate households, so the 270 donors it picks are not the 270 the incumbent picked, and the two sets carry different numbers of people and benefit units. Persons 113,617 in the reference against 113,649 in the spine, a difference of +32; benefit units 61,223 against 61,211, a difference of -12. Households are 52,846 on both sides and match exactly, which is what proves this is a selection difference rather than a miscount: the record-count identity (16,288 raw FRS plus 10,000 SPI) times two for the capital-gains clone, plus 270 band donors, closes on the nose. This entry is deliberately scoped to the two entities that differ rather than written surface-wide, so that any future divergence in the household count is still a defect.",
+      "evidence": "experiments/686-uk-spine-swap-receipts.md#r3-the-rebuilt-spine",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "num-bedrooms-net-new-column",
+      "class": "net_new_column",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["num_bedrooms"],
+        "entities": ["household"]
+      },
+      "expectation": "column_missing_in_reference",
+      "magnitude_evidence": "The spine populates num_bedrooms at the frs_spine stage from the raw household tape; the pinned incumbent does not populate it at all, so the column is present in the candidate and absent from the reference. This is coverage the spine adds rather than a divergence in a shared column, and it cannot be measured as a share difference. Its predictor quality is a separate question tracked on #145, not a parity matter.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#column-coverage",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
+    },
+    {
+      "id": "other-investment-income-net-new-column",
+      "class": "net_new_column",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["other_investment_income"],
+        "entities": ["person"]
+      },
+      "expectation": "column_missing_in_reference",
+      "magnitude_evidence": "The spine populates other_investment_income at the hmrc_spi_income_spine stage. The column is declared by the incumbent's own national restoration but is not populated in the pinned artifact, so the spine is ahead of the reference here rather than diverging from it. Present in the candidate, absent from the reference, and not measurable as a share difference.",
+      "evidence": "experiments/686-uk-spine-comparison-ledger.md#column-coverage",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-24"
     }
   ]
 }
