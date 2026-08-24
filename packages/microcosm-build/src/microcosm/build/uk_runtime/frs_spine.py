@@ -533,15 +533,9 @@ def _add_person_income(
     # weeklyised amount with no derivation: healthy-start vouchers appear on
     # both the adult and child tapes, the three school ones only on the child
     # tape, so absent columns read as zero for adults through `_number`.
-    pe_person["healthy_start_vouchers"] = (
-        _positive(person, "heartval") * WEEKS_IN_YEAR
-    )
-    pe_person["free_school_breakfasts"] = (
-        _positive(person, "fsbval") * WEEKS_IN_YEAR
-    )
-    pe_person["free_school_fruit_veg"] = (
-        _positive(person, "fsfvval") * WEEKS_IN_YEAR
-    )
+    pe_person["healthy_start_vouchers"] = _positive(person, "heartval") * WEEKS_IN_YEAR
+    pe_person["free_school_breakfasts"] = _positive(person, "fsbval") * WEEKS_IN_YEAR
+    pe_person["free_school_fruit_veg"] = _positive(person, "fsfvval") * WEEKS_IN_YEAR
     pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
 
 
@@ -860,6 +854,22 @@ def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
     water_gross = _positive(household, "cwatamt1")
     sewerage_gross = _positive(household, "csewamt1")
     billed = water_gross > 0
+    # The correctness of the discount fallback rests on the domain claim
+    # above: a household with no gross water bill carries no sewerage gross
+    # either, so the fallback factor of 1.0 can never re-introduce the gross
+    # basis this helper exists to avoid. That claim is a property of the
+    # vintage, not of the code — so it is asserted, and a vintage that breaks
+    # it refuses at build time instead of silently paying gross sewerage.
+    undiscountable = ~billed & (sewerage_gross > 0)
+    if bool(undiscountable.any()):
+        raise ValueError(
+            "Scottish water assembly: "
+            f"{int(undiscountable.sum())} household(s) carry a gross sewerage "
+            "charge (CSEWAMT1 > 0) with no gross water bill (CWATAMT1 == 0), "
+            "so no discount factor is observable for them. Adding sewerage at "
+            "gross would silently change the charge's after-discount meaning; "
+            "this vintage needs an adjudicated rule for these households."
+        )
     discount = np.where(billed, water / water_gross.where(billed, 1.0), 1.0)
     return water + sewerage_gross * discount
 

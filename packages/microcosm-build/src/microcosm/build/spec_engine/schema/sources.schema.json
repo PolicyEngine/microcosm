@@ -2239,6 +2239,73 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "low": {
+          "type": "number"
+         },
+         "name": {
+          "type": "string"
+         },
+         "width": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "low",
+         "name",
+         "width"
+        ]
+       }
+      },
+      "draw_key": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "disaggregate_top_coded_ages"
+      },
+      "output": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "salt_streams": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed": {
+       "type": "number"
+      },
+      "top_code": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "bands",
+      "draw_key",
+      "kind",
+      "output",
+      "resource",
+      "salt_streams",
+      "seed",
+      "top_code"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "allocation_flag_columns": {
        "type": "array",
        "items": {
@@ -5813,7 +5880,9 @@
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind"],
+     "required": [
+      "kind"
+     ],
      "properties": {
       "kind": {
        "enum": [
@@ -5826,104 +5895,310 @@
         "zero_when_false"
        ]
       },
-      "age_bands": {"type": "string"},
-      "annualization_weeks": {"type": "number"},
-      "budget_resource": {"type": "string"},
-      "categorical_predictors": {"type": "array", "items": {"type": "string"}},
-      "chain_order": {"type": "array", "items": {"type": "string"}},
-      "columns": {"type": "array", "items": {"type": "string"}},
-      "condition": {"type": "string"},
-      "denominator_key": {"type": "string"},
-      "denominator_resource": {"type": "string"},
-      "donor_weight": {"type": "string"},
-      "exempt": {"type": "array", "items": {"type": "string"}},
-      "fail_loud_on_missing_rate": {"type": "boolean"},
-      "iterations": {"type": "integer", "minimum": 1},
-      "lossy_mappings": {"type": "array", "items": {"type": "string"}},
-      "logged_dropna_row_count": {"type": "boolean"},
-      "margins": {"type": "array", "items": {"type": "string"}},
-      "n_estimators": {"type": "integer", "minimum": 1},
-      "numerator": {"type": "string"},
-      "output": {"type": "string"},
-      "predictors": {"type": "array", "items": {"type": "string"}},
-      "rate_key": {"type": "string"},
-      "range": {"type": "string"},
-      "reduced_rate_share": {"type": "number"},
-      "resource": {"type": "string"},
-      "seed": {"type": "integer"},
-      "source": {"type": "string"},
-      "standard_rate": {"type": "number"},
-      "target": {"type": "string"},
-      "targets": {"type": "array", "items": {"type": "string"}},
-      "top_band_fold_in": {"type": "string"},
-      "weights": {"type": "string"},
-      "weighted": {"type": "boolean"},
-      "year": {"type": ["string", "integer"]},
-      "lowercase_columns": {"type": "boolean"}
+      "age_bands": {
+       "type": "string"
+      },
+      "annualization_weeks": {
+       "type": "number"
+      },
+      "budget_resource": {
+       "type": "string"
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "chain_order": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "condition": {
+       "type": "string"
+      },
+      "denominator_key": {
+       "type": "string"
+      },
+      "denominator_resource": {
+       "type": "string"
+      },
+      "donor_weight": {
+       "type": "string"
+      },
+      "exempt": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "fail_loud_on_missing_rate": {
+       "type": "boolean"
+      },
+      "iterations": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "lossy_mappings": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "logged_dropna_row_count": {
+       "type": "boolean"
+      },
+      "margins": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "numerator": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "rate_key": {
+       "type": "string"
+      },
+      "range": {
+       "type": "string"
+      },
+      "reduced_rate_share": {
+       "type": "number"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "source": {
+       "type": "string"
+      },
+      "standard_rate": {
+       "type": "number"
+      },
+      "target": {
+       "type": "string"
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "top_band_fold_in": {
+       "type": "string"
+      },
+      "weights": {
+       "type": "string"
+      },
+      "weighted": {
+       "type": "boolean"
+      },
+      "year": {
+       "type": [
+        "string",
+        "integer"
+       ]
+      },
+      "lowercase_columns": {
+       "type": "boolean"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "predictors", "targets", "seed"],
+     "required": [
+      "kind",
+      "predictors",
+      "targets",
+      "seed"
+     ],
      "properties": {
-      "kind": {"const": "fit_weighted_qrf"},
-      "predictors": {"type": "array", "items": {"type": "string"}},
-      "targets": {"type": "array", "items": {"type": "string"}},
-      "weights": {"type": "string"},
-      "n_estimators": {"type": "integer", "minimum": 1},
-      "seed": {"type": "integer"},
-      "training_population": {"type": "string"},
-      "target_population": {"type": "string"},
-      "weight_mapping": {"type": "string"},
-      "clamp_minimum": {"type": "number"},
-      "preserve_asked_rows": {"type": "boolean"},
-      "cache": {"type": "boolean"}
+      "kind": {
+       "const": "fit_weighted_qrf"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weights": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "training_population": {
+       "type": "string"
+      },
+      "target_population": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "clamp_minimum": {
+       "type": "number"
+      },
+      "preserve_asked_rows": {
+       "type": "boolean"
+      },
+      "cache": {
+       "type": "boolean"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "predictors", "targets", "seed"],
+     "required": [
+      "kind",
+      "predictors",
+      "targets",
+      "seed"
+     ],
      "properties": {
-      "kind": {"const": "fit_weighted_qrf_chain"},
-      "predictors": {"type": "array", "items": {"type": "string"}},
-      "targets": {"type": "array", "items": {"type": "string"}},
-      "categorical_predictors": {"type": "array", "items": {"type": "string"}},
-      "weights": {"type": "string"},
-      "n_estimators": {"type": "integer", "minimum": 1},
-      "seed": {"type": "integer"}
+      "kind": {
+       "const": "fit_weighted_qrf_chain"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weights": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "seed": {
+       "type": "integer"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "range", "exempt"],
+     "required": [
+      "kind",
+      "range",
+      "exempt"
+     ],
      "properties": {
-      "kind": {"const": "support_clip"},
-      "range": {"type": "string"},
-      "exempt": {"type": "array", "items": {"type": "string"}}
+      "kind": {
+       "const": "support_clip"
+      },
+      "range": {
+       "type": "string"
+      },
+      "exempt": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "predictors", "derived_predictors"],
+     "required": [
+      "kind",
+      "predictors",
+      "derived_predictors"
+     ],
      "properties": {
-      "kind": {"const": "materialize_rules_engine_predictors"},
-      "predictors": {"type": "array", "items": {"type": "string"}},
-      "derived_predictors": {"type": "object", "additionalProperties": {"type": "string"}}
+      "kind": {
+       "const": "materialize_rules_engine_predictors"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "derived_predictors": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "output", "inputs"],
+     "required": [
+      "kind",
+      "output",
+      "inputs"
+     ],
      "properties": {
-      "kind": {"const": "fold_into"},
-      "output": {"type": "string"},
-      "inputs": {"type": "array", "items": {"type": "string"}},
-      "drop_inputs": {"type": "boolean"}
+      "kind": {
+       "const": "fold_into"
+      },
+      "output": {
+       "type": "string"
+      },
+      "inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "drop_inputs": {
+       "type": "boolean"
+      }
      }
     },
     {
@@ -6563,118 +6838,360 @@
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "entity", "copies", "flag_column", "mass_split", "weight_kind_out", "conservation", "id_remapping", "declared_factor", "reason"],
+     "required": [
+      "kind",
+      "entity",
+      "copies",
+      "flag_column",
+      "mass_split",
+      "weight_kind_out",
+      "conservation",
+      "id_remapping",
+      "declared_factor",
+      "reason"
+     ],
      "properties": {
-      "kind": {"const": "clone_records"},
-      "entity": {"type": "string"},
-      "copies": {"type": "integer", "minimum": 2},
-      "flag_column": {"type": "string"},
-      "original_flag": {"type": "boolean"},
-      "clone_flag": {"type": "boolean"},
-      "mass_split": {"type": "number"},
-      "weight_kind_out": {"type": "string"},
-      "conservation": {"type": "string"},
-      "id_remapping": {"type": "string"},
-      "declared_factor": {"type": "number"},
-      "reason": {"type": "string"}
+      "kind": {
+       "const": "clone_records"
+      },
+      "entity": {
+       "type": "string"
+      },
+      "copies": {
+       "type": "integer",
+       "minimum": 2
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "original_flag": {
+       "type": "boolean"
+      },
+      "clone_flag": {
+       "type": "boolean"
+      },
+      "mass_split": {
+       "type": "number"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "conservation": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "declared_factor": {
+       "type": "number"
+      },
+      "reason": {
+       "type": "string"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "resource", "income_proxy_components", "allowance_subtraction", "carrier", "adult_minimum_age", "quantile_points", "spline_degree", "extrapolation", "keep_negative_draws", "seed", "salt"],
+     "required": [
+      "kind",
+      "resource",
+      "income_proxy_components",
+      "allowance_subtraction",
+      "carrier",
+      "adult_minimum_age",
+      "quantile_points",
+      "spline_degree",
+      "extrapolation",
+      "keep_negative_draws",
+      "seed",
+      "salt"
+     ],
      "properties": {
-      "kind": {"const": "draw_capital_gains_prior_from_banded_quantiles"},
-      "resource": {"type": "string"},
-      "income_proxy_components": {"type": "array", "items": {"type": "string"}},
-      "allowance_subtraction": {"type": "boolean"},
-      "carrier": {"type": "string"},
-      "adult_minimum_age": {"type": "integer"},
-      "quantile_points": {"type": "array", "items": {"type": "number"}},
-      "spline_degree": {"type": "integer"},
-      "extrapolation": {"type": "string"},
-      "keep_negative_draws": {"type": "boolean"},
-      "seed": {"type": "integer"},
-      "salt": {"type": "string"}
+      "kind": {
+       "const": "draw_capital_gains_prior_from_banded_quantiles"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "income_proxy_components": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "allowance_subtraction": {
+       "type": "boolean"
+      },
+      "carrier": {
+       "type": "string"
+      },
+      "adult_minimum_age": {
+       "type": "integer"
+      },
+      "quantile_points": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "spline_degree": {
+       "type": "integer"
+      },
+      "extrapolation": {
+       "type": "string"
+      },
+      "keep_negative_draws": {
+       "type": "boolean"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "size_band_resource", "incidence_resource", "minimum_band_lower", "donors_per_band", "expected_band_count", "expected_donor_count", "candidate_order", "draw", "propensity", "seed", "flag_column", "carrier", "initial_weight", "never_zero_weight", "weight_kind_out", "reason"],
+     "required": [
+      "kind",
+      "size_band_resource",
+      "incidence_resource",
+      "minimum_band_lower",
+      "donors_per_band",
+      "expected_band_count",
+      "expected_donor_count",
+      "candidate_order",
+      "draw",
+      "propensity",
+      "seed",
+      "flag_column",
+      "carrier",
+      "initial_weight",
+      "never_zero_weight",
+      "weight_kind_out",
+      "reason"
+     ],
      "properties": {
-      "kind": {"const": "stack_band_donor_households"},
-      "size_band_resource": {"type": "string"},
-      "incidence_resource": {"type": "string"},
-      "minimum_band_lower": {"type": "number"},
-      "donors_per_band": {"type": "integer", "minimum": 1},
-      "expected_band_count": {"type": "integer", "minimum": 1},
-      "expected_donor_count": {"type": "integer", "minimum": 1},
-      "candidate_order": {"type": "string"},
-      "draw": {"type": "string"},
-      "propensity": {"type": "string"},
-      "seed": {"type": "integer"},
-      "flag_column": {"type": "string"},
-      "carrier": {"type": "string"},
-      "initial_weight": {"type": "string"},
-      "never_zero_weight": {"type": "boolean"},
-      "weight_kind_out": {"type": "string"},
-      "reason": {"type": "string"}
+      "kind": {
+       "const": "stack_band_donor_households"
+      },
+      "size_band_resource": {
+       "type": "string"
+      },
+      "incidence_resource": {
+       "type": "string"
+      },
+      "minimum_band_lower": {
+       "type": "number"
+      },
+      "donors_per_band": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "expected_band_count": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "expected_donor_count": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "candidate_order": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "propensity": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "carrier": {
+       "type": "string"
+      },
+      "initial_weight": {
+       "type": "string"
+      },
+      "never_zero_weight": {
+       "type": "boolean"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "resource", "target", "donor_pool", "rate_cap", "move", "seed", "salt", "receipt"],
+     "required": [
+      "kind",
+      "resource",
+      "target",
+      "donor_pool",
+      "rate_cap",
+      "move",
+      "seed",
+      "salt",
+      "receipt"
+     ],
      "properties": {
-      "kind": {"const": "convert_donors_to_target_stock"},
-      "reason": {"type": "string"},
-      "resource": {"type": "string"},
-      "target": {"type": "number"},
-      "donor_pool": {"type": "string"},
-      "rate_cap": {"type": "number"},
-      "move": {"type": "string"},
-      "seed": {"type": "integer"},
-      "salt": {"type": "string"},
-      "receipt": {"type": "string"}
+      "kind": {
+       "const": "convert_donors_to_target_stock"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "target": {
+       "type": "number"
+      },
+      "donor_pool": {
+       "type": "string"
+      },
+      "rate_cap": {
+       "type": "number"
+      },
+      "move": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "year_rule", "start_year_formula", "reported_repayment_test", "reported_country_gate", "plan_1_before", "plan_5_from", "enum_domain", "plan_4_imputation"],
+     "required": [
+      "kind",
+      "year_rule",
+      "start_year_formula",
+      "reported_repayment_test",
+      "reported_country_gate",
+      "plan_1_before",
+      "plan_5_from",
+      "enum_domain",
+      "plan_4_imputation"
+     ],
      "properties": {
-      "kind": {"const": "assign_student_loan_plan_cohorts"},
-      "year_rule": {"type": "string"},
-      "start_year_formula": {"type": "string"},
-      "reported_repayment_test": {"type": "string"},
-      "reported_country_gate": {"type": "boolean"},
-      "plan_1_before": {"type": "integer"},
-      "plan_5_from": {"type": "integer"},
-      "enum_domain": {"type": "array", "items": {"type": "string"}},
-      "plan_4_imputation": {"type": "boolean"}
+      "kind": {
+       "const": "assign_student_loan_plan_cohorts"
+      },
+      "year_rule": {
+       "type": "string"
+      },
+      "start_year_formula": {
+       "type": "string"
+      },
+      "reported_repayment_test": {
+       "type": "string"
+      },
+      "reported_country_gate": {
+       "type": "boolean"
+      },
+      "plan_1_before": {
+       "type": "integer"
+      },
+      "plan_5_from": {
+       "type": "integer"
+      },
+      "enum_domain": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "plan_4_imputation": {
+       "type": "boolean"
+      }
      }
     },
     {
      "type": "object",
      "additionalProperties": false,
-     "required": ["kind", "plan", "priority", "resource", "stock_series", "year_rule", "age_min", "age_max", "cohort_start_min", "eligible_region_exclusions", "highest_education", "seed", "salt"],
+     "required": [
+      "kind",
+      "plan",
+      "priority",
+      "resource",
+      "stock_series",
+      "year_rule",
+      "age_min",
+      "age_max",
+      "cohort_start_min",
+      "eligible_region_exclusions",
+      "highest_education",
+      "seed",
+      "salt"
+     ],
      "properties": {
-      "kind": {"const": "top_up_to_stock"},
-      "reason": {"type": "string"},
-      "plan": {"type": "string"},
-      "priority": {"type": "integer"},
-      "resource": {"type": "string"},
-      "stock_series": {"type": "string"},
-      "year_rule": {"type": "string"},
-      "age_min": {"type": "integer"},
-      "age_max": {"type": "integer"},
-      "cohort_start_min": {"type": "integer"},
-      "cohort_start_max_exclusive": {"type": "integer"},
-      "eligible_region_exclusions": {"type": "array", "items": {"type": "string"}},
-      "highest_education": {"type": "string"},
-      "seed": {"type": "integer"},
-      "salt": {"type": "string"}
+      "kind": {
+       "const": "top_up_to_stock"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "plan": {
+       "type": "string"
+      },
+      "priority": {
+       "type": "integer"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "stock_series": {
+       "type": "string"
+      },
+      "year_rule": {
+       "type": "string"
+      },
+      "age_min": {
+       "type": "integer"
+      },
+      "age_max": {
+       "type": "integer"
+      },
+      "cohort_start_min": {
+       "type": "integer"
+      },
+      "cohort_start_max_exclusive": {
+       "type": "integer"
+      },
+      "eligible_region_exclusions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "highest_education": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
      }
     },
     {

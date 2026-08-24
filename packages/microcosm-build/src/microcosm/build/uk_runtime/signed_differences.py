@@ -86,6 +86,15 @@ SIGNED_DIFFERENCE_EXPECTATIONS = frozenset(
 _ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+#: Surfaces whose ``column_differs`` adjudication also covers a payload-level
+#: value difference on the same column. A share or weighted-total divergence
+#: and a payload value mismatch are one fact measured by two instruments, so
+#: an entry adjudicated on either value surface covers both readings. No other
+#: cross-surface coverage exists: structural expectations (a column appearing
+#: or vanishing, a count moving) never excuse a value difference, and vice
+#: versa.
+_PAYLOAD_BRIDGE_SURFACES = frozenset({"nonzero_shares", "weighted_totals"})
+
 
 @dataclass(frozen=True)
 class UKSignedDifference:
@@ -102,18 +111,35 @@ class UKSignedDifference:
     adjudicator: str
     adjudicated_on: str
 
-    def covers(self, *, surface: str, column: str) -> bool:
-        """Whether this entry signs ``column`` on ``surface``.
+    def covers(self, *, surface: str, column: str, expectation: str) -> bool:
+        """Whether this entry signs the observed difference.
+
+        A difference is observed as ``(surface, column, expectation)`` and an
+        entry signs it only when the expectation matches — an entry adjudicated
+        for a column appearing (``column_missing_in_reference``) never excuses
+        that column's *values* diverging, and vice versa. The expectation is
+        therefore consulted at every lookup, not just validated at load.
 
         An empty ``columns`` tuple is a surface-wide entry (used by
         ``entity_counts``, where the "column" is an entity name).
+
+        One deliberate cross-surface rule: a ``column_differs`` entry on a
+        value-bearing surface (``nonzero_shares``, ``weighted_totals``) also
+        covers a ``payload_column`` value mismatch on the same column, because
+        both readings measure the same adjudicated fact.
         """
 
-        if surface != self.surface:
+        if expectation != self.expectation:
             return False
-        if not self.columns:
-            return True
-        return column in self.columns
+        if surface == self.surface:
+            return not self.columns or column in self.columns
+        if (
+            surface == "payload_column"
+            and expectation == "column_differs"
+            and self.surface in _PAYLOAD_BRIDGE_SURFACES
+        ):
+            return not self.columns or column in self.columns
+        return False
 
 
 @dataclass(frozen=True)
@@ -140,11 +166,15 @@ class UKSignedDifferenceRegister:
                 return difference
         return None
 
-    def matching(self, *, surface: str, column: str) -> UKSignedDifference | None:
-        """The entry signing ``column`` on ``surface``, if any."""
+    def matching(
+        self, *, surface: str, column: str, expectation: str
+    ) -> UKSignedDifference | None:
+        """The entry signing the observed difference, if any."""
 
         for difference in self.differences:
-            if difference.covers(surface=surface, column=column):
+            if difference.covers(
+                surface=surface, column=column, expectation=expectation
+            ):
                 return difference
         return None
 

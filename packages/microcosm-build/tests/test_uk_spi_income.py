@@ -298,7 +298,11 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
         HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
     )
-    assert result.person.loc[base_people, list(unavailable_on_frs)].isna().all().all()
+    # These full concepts are unmeasured on the FRS instrument, so the FRS
+    # channel carries the adjudicated stage-time zero rather than NaN — the
+    # artifact must load through an engine that refuses NaN inputs, and the
+    # calibration seam's finiteness fence stays fail-loud because of it.
+    assert result.person.loc[base_people, list(unavailable_on_frs)].eq(0.0).all().all()
 
     expected_employed = (
         np.maximum(
@@ -395,7 +399,10 @@ def test_spi_stage2_does_not_require_frs_other_investment_income(
 
     channel = support_channel_column("person")
     spi_people = result.person[channel] == "spi"
-    assert result.person.loc[~spi_people, "other_investment_income"].isna().all()
+    # The FRS channel carries the stage-time zero, not NaN: the column is a
+    # full concept the FRS instrument does not measure, and the artifact has
+    # to load through an engine that refuses NaN inputs.
+    assert result.person.loc[~spi_people, "other_investment_income"].eq(0.0).all()
     assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
 
 
@@ -629,3 +636,47 @@ def test_spi_qrf_requires_current_donor_filename(tmp_path) -> None:
 
     with pytest.raises(ValueError, match=SPI_DONOR_FILENAME):
         impute_uk_spi_income_support(support, donor_path)
+
+
+def test_the_spi_channel_ships_no_structural_nan_on_the_frs_channel(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The FRS channel carries stage-time zero, never NaN (#747).
+
+    The SPI stage populates full-concept income columns the FRS instrument
+    does not measure. Shipping NaN on the FRS rows was assessment-era
+    honesty that made the artifact unloadable: the engine's ``validate()``
+    refuses NaN inputs, and the calibration seam's finiteness fence refuses
+    the frame — so the first armed campaign had to zero-fill twelve person
+    columns outside the build before it could calibrate at all. Zero is the
+    adjudicated stage-time semantics, and the auxiliary-crosswalk guard
+    already stops the QRF mistaking the fill for measured data.
+    """
+
+    pytest.importorskip("policyengine_uk")
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    result = impute_uk_spi_income_support(
+        support,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+    )
+
+    person = result.person
+    nan_columns = sorted(
+        column
+        for column in person.columns
+        if person[column].dtype.kind == "f" and bool(person[column].isna().any())
+    )
+    assert nan_columns == [], (
+        f"the SPI stage left NaN in {nan_columns}; the artifact must ship "
+        "stage-time zeros so the engine can load it and the calibration "
+        "seam's finiteness fence can stay fail-loud"
+    )

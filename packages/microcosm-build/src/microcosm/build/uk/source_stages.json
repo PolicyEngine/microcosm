@@ -2793,6 +2793,58 @@
    "notes": "Reported PAYE repayers are classified without a country gate. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year; PLAN_4 is never imputed."
   },
   {
+   "stage": "age_tail",
+   "survey": "Family Resources Survey 2024-25 and ONS mid-year population estimates",
+   "source": "Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).",
+   "grain": "person",
+   "artifacts": [
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "ons_age_tail_band_populations.json",
+     "role": "age_tail_band_populations",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "bands": [
+      {
+       "low": 80,
+       "name": "80_84",
+       "width": 5
+      },
+      {
+       "low": 85,
+       "name": "85_89",
+       "width": 5
+      },
+      {
+       "low": 90,
+       "name": "90_plus",
+       "width": 8
+      }
+     ],
+     "draw_key": "person_source_id",
+     "kind": "disaggregate_top_coded_ages",
+     "output": "age",
+     "reason": "Age disaggregation rewrites an existing person column in place; no rows move, no weights change, and total household mass is conserved.",
+     "resource": "ons_age_tail_band_populations.json",
+     "salt_streams": [
+      "band",
+      "within"
+     ],
+     "seed": 0,
+     "top_code": 80
+    }
+   ],
+   "outputs": [],
+   "notes": "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_source_id so a household and its capital-gains clone twin receive the same age. Runs after student_loans \u2014 downstream of every stage that conditions on age, the position the",
+   "rewrites": [
+    "age"
+   ]
+  },
+  {
    "stage": "frs_hmrc_retained_leaves",
    "survey": "Family Resources Survey 2024-25",
    "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",

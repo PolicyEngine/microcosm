@@ -93,9 +93,27 @@ def _paths_alias(left: Path, right: Path) -> bool:
 
 
 def _candidate_identity(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The candidate's declared source identity, required to be present.
+
+    The anti-self-comparison fence works by comparing this identity against
+    the pinned reference's, so an extraction that omits it would pass the
+    fence vacuously. Absence is therefore a refusal, not an empty dict.
+    """
+
     source = payload.get("source")
     if not isinstance(source, Mapping):
-        return {}
+        raise ValueError(
+            "candidate extraction carries no 'source' identity block; "
+            "the aliasing fence cannot run against an anonymous candidate. "
+            "Re-extract with build_uk_efrs_parity_reference.py "
+            "--candidate-h5 --emit-candidate-json."
+        )
+    sha256 = source.get("sha256")
+    if not isinstance(sha256, str) or len(sha256) != 64:
+        raise ValueError(
+            "candidate extraction's source identity carries no sha256; "
+            "the aliasing fence cannot run without it."
+        )
     return {
         key: source.get(key)
         for key in ("filename", "sha256", "size_bytes", "vintage", "period")
@@ -116,7 +134,9 @@ def _compare_entity_counts(
         equal = expected == observed
         entry = {"reference": expected, "candidate": observed, "equal": equal}
         if not equal:
-            signed = register.matching(surface="entity_counts", column=entity)
+            signed = register.matching(
+                surface="entity_counts", column=entity, expectation="count_differs"
+            )
             entry["signed_id"] = signed.id if signed else None
             if signed is None:
                 unsigned.append(entity)
@@ -147,7 +167,9 @@ def _compare_shares(
             "candidate": observed,
             "delta": delta,
         }
-        signed = register.matching(surface="nonzero_shares", column=column)
+        signed = register.matching(
+            surface="nonzero_shares", column=column, expectation="column_differs"
+        )
         if abs(delta) <= band:
             # Reported, never dropped: the band decides what must be
             # adjudicated, not what the reader is allowed to see.
@@ -162,7 +184,9 @@ def _compare_shares(
     def _missing(names: list[str], expectation: str) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for column in sorted(names):
-            signed = register.matching(surface="nonzero_shares", column=column)
+            signed = register.matching(
+                surface="nonzero_shares", column=column, expectation=expectation
+            )
             out[column] = {
                 "entity": entities.get(column),
                 "signed_id": signed.id if signed else None,
@@ -207,16 +231,21 @@ def _compare_weighted_totals(
         observed = float(candidate_totals[column])
         if expected == 0.0 and observed == 0.0:
             continue
-        if expected == 0.0:
-            relative = float("inf")
-        else:
-            relative = (observed - expected) / expected
-        if abs(relative) <= TOTALS_EPSILON:
+        # A zero reference total has no finite relative delta; report the
+        # fact as a flag rather than as float("inf"), which the JSON encoder
+        # (allow_nan=False) would refuse — turning a real divergence into
+        # "no verdict possible" instead of a verdict.
+        reference_zero = expected == 0.0
+        relative = None if reference_zero else (observed - expected) / expected
+        if relative is not None and abs(relative) <= TOTALS_EPSILON:
             continue
-        signed = register.matching(surface="weighted_totals", column=column)
+        signed = register.matching(
+            surface="weighted_totals", column=column, expectation="column_differs"
+        )
         # Deltas only: the absolute totals are licensed and stay outside.
         differing[column] = {
             "relative_delta": relative,
+            "reference_total_zero": reference_zero,
             "signed_id": signed.id if signed else None,
         }
         if signed is None:
@@ -249,7 +278,7 @@ def verify_uk_spine_parity(
     candidate_identity = _candidate_identity(candidate)
     # The reference side must never be derived from the candidate: a copied
     # reference would make this pass by construction.
-    if candidate_identity.get("sha256") == reference.source.sha256:
+    if candidate_identity["sha256"] == reference.source.sha256:
         raise ValueError(
             "the candidate extraction names the pinned incumbent's own sha256; "
             "the reference side must be independent of the candidate."
@@ -289,6 +318,11 @@ def verify_uk_spine_parity(
     }
     for section in (
         shares_report["differing"],
+        # A signed column whose divergence has since shrunk under the band is
+        # a matched entry, not register rot: the difference it adjudicates is
+        # still real and still reported. --strict exists to catch entries
+        # matching nothing at all.
+        shares_report["within_band"],
         shares_report["missing_in_candidate"],
         shares_report["extra_in_candidate"],
     ):

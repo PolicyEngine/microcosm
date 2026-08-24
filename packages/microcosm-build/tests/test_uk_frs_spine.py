@@ -1678,6 +1678,17 @@ class TestScottishWaterAndSewerage:
         frame.columns = [c.lower() for c in frame.columns]
         assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(3.0)
 
+    def test_sewerage_without_an_observable_discount_is_refused(self) -> None:
+        # The domain claim in the docstring — that a household with no gross
+        # water bill also carries no gross sewerage — is what makes the 1.0
+        # fallback safe. A vintage refresh that breaks it must refuse at build
+        # time rather than silently pay sewerage at gross, which would flow
+        # into council_tax through the netting.
+        frame = self._frame(CWATAMTD=3.0, CWATAMT1=0.0, CSEWAMT1=5.0)
+        frame.columns = [c.lower() for c in frame.columns]
+        with pytest.raises(ValueError, match="no discount factor is observable"):
+            scottish_water_and_sewerage_weekly(frame)
+
     def test_household_without_council_tax_cells_is_zero(self) -> None:
         # 21 Scottish households carry no council-tax cells at all.
         frame = self._frame(CWATAMTD="", CWATAMT1="", CSEWAMT1="")

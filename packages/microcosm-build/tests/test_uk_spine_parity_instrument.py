@@ -625,3 +625,148 @@ class TestAcceptanceBand:
                 )
                 == 2
             )
+
+
+class TestReviewFindings:
+    """Regressions for the review findings on the proof machinery (#747).
+
+    Each of these let the instrument reach a wrong verdict — or no verdict —
+    for reasons unrelated to whether the spine's data is right.
+    """
+
+    def test_a_candidate_without_a_source_identity_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        # The anti-self-comparison fence compares identities, so an anonymous
+        # candidate would pass it vacuously.
+        payload = _candidate_from_reference()
+        del payload["source"]
+        candidate = _write(tmp_path / "c.json", payload)
+        assert (
+            tool_main := _load_tool().main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                ]
+            )
+        ) == 2, tool_main
+
+    def test_a_candidate_without_a_sha256_is_refused(self, tmp_path: Path) -> None:
+        payload = _candidate_from_reference()
+        payload["source"] = {"filename": "microcosm_uk_2024.h5"}
+        candidate = _write(tmp_path / "c.json", payload)
+        assert (
+            _load_tool().main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                ]
+            )
+            == 2
+        )
+
+    def test_a_zero_reference_total_still_reaches_a_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        # A new-in-candidate column with a nonzero weighted total has no
+        # finite relative delta; reporting float("inf") made json.dumps
+        # refuse the receipt and turned a real divergence into "no verdict".
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(tmp_path / "ref.json", {"identity": {}, "totals": {"col": 0.0}})
+        right = _write(
+            tmp_path / "cand.json", {"identity": {}, "totals": {"col": 125.0}}
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(_register(tmp_path)),
+                "--reference-weighted-totals",
+                str(left),
+                "--candidate-weighted-totals",
+                str(right),
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        entry = report["weighted_totals"]["differing"]["col"]
+        assert entry["reference_total_zero"] is True
+        assert entry["relative_delta"] is None
+
+    def test_strict_accepts_an_entry_matching_a_within_band_column(
+        self, tmp_path: Path
+    ) -> None:
+        # A signed column whose divergence has since shrunk under the band is
+        # still a matched entry: the difference it adjudicates is real and
+        # reported. --strict exists to catch entries matching nothing at all.
+        tool = _load_tool()
+        column = _first_household_column()
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] += 0.01
+        candidate = _write(tmp_path / "c.json", payload)
+        register = _register(
+            tmp_path,
+            _entry("shrunk-since-signing", surface="nonzero_shares", columns=[column]),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(register),
+                "--strict",
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 0
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["strict_failure"] is False
+        assert report["register"]["unused_ids"] == []
+        assert report["register"]["matched_ids"] == ["shrunk-since-signing"]
+        assert column in report["nonzero_shares"]["within_band"]
+
+    def test_a_structural_expectation_does_not_sign_a_value_divergence(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        column = _first_household_column()
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] += 0.25
+        candidate = _write(tmp_path / "c.json", payload)
+        register = _register(
+            tmp_path,
+            _entry(
+                "net-new-only",
+                surface="nonzero_shares",
+                columns=[column],
+                expectation="column_missing_in_reference",
+            ),
+        )
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(register),
+                ]
+            )
+            == 1
+        )
