@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
+from microcosm.calibrate import TargetRegistry, TargetSpec
+
+
+def _load_driver_module():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "calibrate_uk_national_dataset.py"
+    spec = importlib.util.spec_from_file_location("calibrate_uk_national_dataset", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _registry():
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households",
+                entity="benunit",
+                measure="dwp/uc/households",
+                value=1.0,
+                source="test",
+                metadata={"contract_target_id": "dwp.uc.households"},
+            )
+        ],
+        country="uk",
+    )
+
+
+def _args(tmp_path: Path) -> list[str]:
+    paths = {
+        "input": tmp_path / "input.h5",
+        "ledger": tmp_path / "ledger",
+        "staging": tmp_path / "staging.h5",
+        "diagnostics": tmp_path / "diagnostics.json",
+        "record": tmp_path / "record.json",
+    }
+    paths["ledger"].mkdir(exist_ok=True)
+    for key, path in paths.items():
+        if key != "ledger":
+            path.write_bytes(key.encode())
+    return [
+        "--input-h5",
+        str(paths["input"]),
+        "--input-sha256",
+        "a" * 64,
+        "--ledger-facts",
+        str(paths["ledger"]),
+        "--ledger-facts-sha256",
+        "b" * 64,
+        "--ledger-manifest-sha256",
+        "c" * 64,
+        "--staging-h5",
+        str(paths["staging"]),
+        "--diagnostics-json",
+        str(paths["diagnostics"]),
+        "--build-record-json",
+        str(paths["record"]),
+        "--release-id",
+        "dev-calibration",
+    ]
+
+
+def test_driver_refuses_release_candidate_with_each_override(tmp_path: Path):
+    driver = _load_driver_module()
+    override_flags = [
+        ["--epochs", "128"],
+        ["--target-weight-rule", "family_equal"],
+        ["--learning-rate", "0.01"],
+        ["--target-loss-cap", "5"],
+    ]
+    for flag in override_flags:
+        with pytest.raises(SystemExit):
+            driver._parse_args(_args(tmp_path) + ["--release-candidate", *flag])
+
+
+def test_driver_refuses_bad_sha_and_path_alias(tmp_path: Path):
+    driver = _load_driver_module()
+    base_args = _args(tmp_path)
+    with pytest.raises(SystemExit):
+        driver._parse_args([*base_args[:3], "not-a-sha", *base_args[4:]])
+
+    args = _args(tmp_path)
+    staging_index = args.index("--staging-h5") + 1
+    args[staging_index] = args[args.index("--input-h5") + 1]
+    with pytest.raises(SystemExit, match="distinct paths"):
+        driver._parse_args(args)
+
+
+def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, tmp_path, capsys):
+    driver = _load_driver_module()
+    calls = []
+    registry = _registry()
+    artifact = SimpleNamespace(
+        path=tmp_path / "ledger",
+        facts=({"fact": 1},),
+        facts_sha256="b" * 64,
+        manifest_sha256="c" * 64,
+    )
+    artifact.path.mkdir()
+    (artifact.path / "consumer_facts.jsonl").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact)
+    monkeypatch.setattr(
+        driver,
+        "compile_uk_target_registry",
+        lambda facts, target_period: UKLedgerTargetCompilation(registry, ()),
+    )
+    monkeypatch.setattr(
+        driver,
+        "load_uk_frs_release",
+        lambda: SimpleNamespace(calibration_year=2025),
+    )
+    monkeypatch.setattr(driver, "load_uk_calibration_measure_exclusions", lambda path: ())
+    monkeypatch.setattr(
+        driver,
+        "apply_uk_calibration_measure_exclusions",
+        lambda reg, exclusions: (reg, {"excluded": "reviewed"}),
+    )
+
+    class FakeResolver:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(driver, "UKMeasureResolver", FakeResolver)
+
+    def fake_run(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            staging_sha256="1" * 64,
+            diagnostics_sha256="2" * 64,
+            terminal_gate_sha256="3" * 64,
+            build_record_sha256="4" * 64,
+            build_record={"gate_summary": {"uk_target_fit": "passed"}},
+        )
+
+    monkeypatch.setattr(driver, "run_uk_calibration", fake_run)
+
+    argv = _args(tmp_path)
+    # The driver verifies the input pin before the resolver reads the H5, so
+    # the threading test must pin the fixture file's real digest.
+    argv[argv.index("--input-sha256") + 1] = driver._sha256_file(
+        Path(argv[argv.index("--input-h5") + 1])
+    )
+    result = driver.main(argv + ["--epochs", "128"])
+
+    assert result == 0
+    call = calls[0]
+    assert call["register_registry"] is registry
+    assert call["calibration_year"] == 2025
+    assert call["exclusion_receipt"] == {"excluded": "reviewed"}
+    assert call["doctrine"].epochs == 128
+    assert call["doctrine_overrides"] == {"epochs": {"default": 256, "effective": 128}}
+    assert isinstance(call["measure_resolver"], FakeResolver)
+    assert call["measure_resolver"].kwargs["simulation_source"] == call["paths"].input_h5
+    assert call["source_pins"]["ledger_facts"] == {"sha256": "b" * 64, "size_bytes": 2}
+    assert "uk_target_fit" in capsys.readouterr().out
