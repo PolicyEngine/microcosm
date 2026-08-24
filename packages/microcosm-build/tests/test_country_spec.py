@@ -393,7 +393,7 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 397
+        assert len(references) == 408
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "calendar_year_average"
