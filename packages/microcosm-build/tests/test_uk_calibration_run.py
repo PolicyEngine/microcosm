@@ -108,6 +108,7 @@ def test_import_hygiene_does_not_load_national_build_in_fresh_subprocess():
 
 
 def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: Path):
+    pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
         calibration_run,
         "_aggregate_admin_totals",
@@ -164,6 +165,7 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
 
 
 def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
+    pytest.importorskip("tables")  # pandas HDF backend
     input_h5 = tmp_path / "input.h5"
     write_uk_national_frame(_frame(), input_h5)
     paths = UKCalibrationRunPaths(
@@ -202,6 +204,8 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
     byte-identical to the input; only the household weights, the weight
     kind, and exactly one appended mass record may differ.
     """
+
+    pytest.importorskip("tables")  # pandas HDF backend
 
     monkeypatch.setattr(
         calibration_run,
