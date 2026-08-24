@@ -369,9 +369,10 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "is_disabled",
             "is_full_time_college_student",
             "is_pregnant",
-            # WICYN's adult-female reporter is only a physical carrier for an
-            # SPM-unit receipt fact. Engine consumers are separately guarded
-            # to aggregate receives_wic at SPM-unit grain (microcosm#591).
+            # WICYN's adult-female reporter is the physical carrier for this
+            # source receipt fact. The consumer-source index separately pins
+            # every engine receiver and aggregation entity so new or regrouped
+            # receives_wic consumers require explicit review (microcosm#591).
             "receives_wic",
         ),
         "model_required_discrete": ("own_children_in_household",),
@@ -397,8 +398,8 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
         # takes_up_* leaves are runtime-owned draws and are not donor targets.
         "benefit_participation": ("takes_up_housing_assistance_if_eligible",),
         # Reported TANF/SNAP receipt is produced from annual ASEC amounts before
-        # cloning and transferred like the person-level required booleans.
-        "model_required_boolean": ("is_tanf_enrolled", "receives_snap"),
+        # cloning and transferred with the other model-required booleans.
+        "model_required_boolean": ("receives_snap", "receives_tanf"),
         "model_required_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
     },
 }

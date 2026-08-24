@@ -46,6 +46,7 @@ from microcosm.build.us_runtime import (
     us_release_reform_coverage_probes,
 )
 from microcosm.build.us_runtime.release_input_coverage import (
+    REFERENCE_ECPS_LAYER_RENAMES,
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
 )
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
@@ -750,6 +751,14 @@ class TestShippedManifest:
             "has_marketplace_health_coverage_at_interview" in manifest.required_columns
         )
 
+    def test_reference_wic_layer_projects_verified_successor(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert REFERENCE_ECPS_LAYER_RENAMES == {
+            "would_claim_wic": "takes_up_wic_if_eligible"
+        }
+        assert "would_claim_wic" not in manifest.declared_columns
+        assert "takes_up_wic_if_eligible" in manifest.required_columns
+
     def test_ssi_assets_are_required_without_exclusion(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for asset in SSI_COUNTABLE_RESOURCE_ASSETS:
@@ -989,16 +998,18 @@ class TestShippedManifest:
         assert probe.budget_measure == "tax_unit_earned_income_last_year"
         assert probe.effect_direction == "baseline_minus_reform"
 
-    def test_weeks_unemployed_is_required_without_a_false_policy_probe(self) -> None:
+    def test_weeks_unemployed_is_required_without_a_self_referential_probe(
+        self,
+    ) -> None:
         manifest = load_release_input_coverage_manifest()
         column = "weeks_unemployed"
 
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
-        # PolicyEngine-US 1.764.6 consumes this leaf only through Pennsylvania
-        # UC, whose other monetary-eligibility inputs remain default-zero. A
-        # direct neutralization would test the column against itself, not a
-        # budget-policy path, so this family deliberately adds no such probe.
+        # PolicyEngine-US 1.819.0 consumes this leaf through the AL, NY, OK,
+        # and PA unemployment-benefit formulas. A direct neutralization would
+        # test the column against itself rather than an independent policy
+        # path, so this family deliberately adds no such probe.
         assert all(
             column not in probe.binding_inputs and probe.neutralized_variable != column
             for probe in manifest.probes

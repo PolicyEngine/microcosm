@@ -208,6 +208,7 @@ _TAKE_UP_OPERATOR_OUTPUTS: Mapping[str, frozenset[str]] = {
             "takes_up_ssi_if_eligible",
             "takes_up_head_start_if_eligible",
             "takes_up_early_head_start_if_eligible",
+            "takes_up_wic_if_eligible",
         }
     ),
     "tax_unit": frozenset(
@@ -215,6 +216,9 @@ _TAKE_UP_OPERATOR_OUTPUTS: Mapping[str, frozenset[str]] = {
             "takes_up_eitc",
             "takes_up_dc_ptc",
             "takes_up_aca_if_eligible",
+            "takes_up_ca_premium_subsidy_if_eligible",
+            "takes_up_co_premium_assistance_if_eligible",
+            "takes_up_nm_premium_assistance_if_eligible",
         }
     ),
     "spm_unit": frozenset(

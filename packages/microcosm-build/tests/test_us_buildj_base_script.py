@@ -37,4 +37,4 @@ def test_cache_rejects_bases_predating_measured_medicare_take_up() -> None:
     assert "investment_interest_expense" in required["person"]
     assert "takes_up_medicare_if_eligible" in required["person"]
     assert "workers_compensation" in required["person"]
-    assert "would_claim_wic" in required["person"]
+    assert "takes_up_wic_if_eligible" in required["person"]

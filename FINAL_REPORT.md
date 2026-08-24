@@ -1,162 +1,119 @@
-# Final report: US release replacement scorecard
+# Final report: PolicyEngine-US 1.819.0 lock bump
 
 ## Outcome
 
-The replacement yardstick is complete and the live US incumbent is scored.
-`tools/score_us_release_head_to_head.py` accepts the incumbent H5 and an
-optional candidate H5 or authenticated pool, normalizes each through one
-role-neutral loader API, and sends both through the same scoring function
-(`tools/score_us_release_head_to_head.py:495-515,1398-1536,1670-1721`). Its
-deterministic JSON contains every compiled fiscal target and every nominal
-terminal-battery scalar leg; its Markdown twin is the readable scorecard.
+The branch is ready for the owner to open the PR. `uv.lock` now resolves
+`policyengine-us==1.819.0` and `policyengine-core==3.31.0`; the complete
+resolver version movement is exactly:
 
-The scorer compiles the sole US fiscal registry once, then materializes and
-scores fixed registry chunks across fixed household slices
-(`tools/score_us_release_head_to_head.py:518-579,675-852`). Every slice must
-match the target, scale, diagnostic-name, and scored-column contracts; the two
-artifacts must also have identical final scored-column contracts, so a missing
-candidate measure cannot disappear silently
-(`tools/score_us_release_head_to_head.py:858-938,1539-1553`).
+```text
+policyengine-core 3.26.11 -> 3.31.0
+policyengine-us   1.764.6 -> 1.819.0
+```
 
-No gate, threshold, tolerance, or band decides the replacement. When a
-candidate is present, the output reports its weighted-loss delta, the exact
-per-target balance of lower/equal/higher absolute relative errors, and each
-side's battery evidence, then leaves the flip to the owner
-(`tools/score_us_release_head_to_head.py:1571-1667`).
+NumPy remains 2.4.6 and Torch remains 2.12.0. The lock binds the official
+PE-US 1.819.0 wheel SHA-256
+`525bdf8b238c3eb11cd60c5f4f7a7b0c57bc7eea5c1cf4346c261241b061be45`
+(`uv.lock:1366-1421`). The required upgraded
+`uv sync --all-packages --extra us` completed for all five workspace packages
+from that lock and task-local official PyPI artifacts.
 
-## Frozen incumbent and yardstick
+## Compatibility repairs
 
-The current PolicyEngine.py `5.0.3` bundle resolves the US default dataset as:
+- WIC's upstream input is now `takes_up_wic_if_eligible`; Microcosm writes
+  that verified successor while retaining the historical draw salt, and the
+  six current cross-entity consumers are frozen with direct-receiver and
+  aggregation ownership
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/wic_claim.py:106-109,392-409`;
+  `packages/microcosm-frame/src/microcosm/frame/adapters/_policyengine_us_source_index.py:1694-1731,2004-2090`;
+  `packages/microcosm-build/tests/test_us_pool_input_consumers.py:235-359`).
+- Reported TANF now writes the verified input successor `receives_tanf`, since
+  PE-US owns `is_tanf_enrolled` as a formula
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:127-160,266-289,485-500`).
+- New CA, CO, and NM premium-assistance take-up leaves remain explicit
+  `engine_default`/`rate_unsourced` inputs because Microcosm has no reviewed
+  participation source; no rate was invented
+  (`packages/microcosm-build/src/microcosm/build/us/spec/take_up.yaml:507-563`).
+- Mortgage-interest, Oklahoma pension, SNAP proration/missing-hours, and the
+  expanded AL/NY/OK/PA `weeks_unemployed` consumers were updated or guarded
+  against the installed graph
+  (`packages/microcosm-build/tests/test_us_pool_input_consumers.py:491-575`;
+  `packages/microcosm-build/tests/test_us_child_support.py:448-489`;
+  `packages/microcosm-build/tests/test_us_weeks_unemployed.py:695-751`).
+- The published US dataset remains certified for the prior engine lock.
+  Certified loading still fails closed before construction on model/core
+  mismatch; only the live smoke test recognizes that specific typed mismatch
+  as an expected skip under this new development lock
+  (`packages/microcosm-data/src/microcosm/data/loader.py:63-64,425-445`;
+  `packages/microcosm-data/tests/test_loader.py:326-356,403-419`).
 
-- repository: `policyengine/populace-us` (Hugging Face dataset);
-- revision/build:
-  `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`;
-- filename: `populace_us_2024.h5`;
-- resolved Hugging Face commit:
-  `26dcad66867687f15735dc4926523e3741920836`;
-- artifact SHA-256:
-  `48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e`;
-- PolicyEngine.py source commit:
-  `cfdd128fc316e07ef54c182f2149fac217e8706f`, certified for
-  `policyengine-us==1.764.6`.
+No pool-consumed upstream variable was genuinely removed without a successor,
+so the owner-question stop condition did not trigger. The full installed-input
+audit and mechanism-by-mechanism code citations are in `_LANE-NOTES.md` under
+“verified upstream compatibility repairs.”
 
-That identity comes from PolicyEngine.py `5.0.3`'s bundle manifest
-(`src/policyengine/data/bundle/manifest.json:113-140,156-160,181-189`), with
-resolution at
-`src/policyengine/provenance/manifest.py:180-187,270-299,301-318,540-560`,
-Hugging Face handling at
-`src/policyengine/provenance/dataset_sources.py:57-74,77-117`, and the US model
-selection at `src/policyengine/tax_benefit_models/us/model.py:423-462`. The
-charter's enhanced-CPS assumption is historical; it is not the dataset the
-current package resolves. The scorer independently hash-matched the cached
-bytes before attaching this identity
-(`tools/score_us_release_head_to_head.py:120-138,399-405,448-492`).
+## Identities and compatibility note
 
-The frozen yardstick is registry `c4ac617743f2`: 32,842 targets compiled from
-Ledger facts SHA-256
-`b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
-The production loss weights use square-root target magnitude, semantic-concept
-budgets, equal amount/count budgets, and final mean normalization; the
-aggregate is the weighted mean of capped target-scaled absolute errors, with
-no family multipliers
-(`tools/build_us_fiscal_refresh_release.py:344-348,481-516,5781-5814,6214-6290`;
-`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537,576-600`).
+Repository generators refreshed every affected raw-resource, generated-source,
+engine-ABI, remaining-input, field-usage, inventory, seed-protocol, authority,
+spec, coverage, and golden identity. Source bytes are part of the attested seed
+protocol, so those module edits legitimately move dependent identities even
+though NumPy and Torch did not move
+(`packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:320-367`;
+`packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py:114-152`).
+The final US spec is
+`3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62`.
 
-## Incumbent evidence
+`_LANE-NOTES.md`, under “final tool-generated identities,” records all 46 final
+values by mechanism. The compatibility commit body records every full old-to-
+new digest mapping, including the four lock artifact hashes.
 
-The committed results are:
-
-- `experiments/replacement_scorecard/incumbent_48b9d479.json` — complete
-  32,842-row machine-readable evidence, SHA-256
-  `b2ad1a07f9668bc5d796cc9de99ef12da781b1ee8163ea65781871a20da441c8`;
-- `experiments/replacement_scorecard/incumbent_48b9d479.md` — human scorecard,
-  SHA-256
-  `3f9171b8f63fcef61518a4af1c18a8555c4f449ac62e9283e41ac2fe9c779021`.
-
-The incumbent weighted loss is `0.11462448275649702`; its fraction of targets
-within 10% is `0.2669143170330674`; all 57,240 household weights are nonzero.
-The Markdown summary records these values and the exact identity at
-`experiments/replacement_scorecard/incumbent_48b9d479.md:5-18`.
-
-The terminal battery is entirely by-origin: its canonical surface is 131
-single-column comparisons plus one joint comparison, normalized to 369 scalar
-legs (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3011-3025,11644-11709,11824-11832,11948-12154`). The incumbent has 120,261
-positive-weight clone-0 ASEC rows and zero ACS rows, so all 132 comparisons and
-all 369 scalar legs are explicitly **inapplicable**. No zero, pass, or failure
-was synthesized for the absent side; the human receipt is at
-`experiments/replacement_scorecard/incumbent_48b9d479.md:97-104`.
-
-A finished candidate H5 with both origins computes the same canonical formulas
-while explicitly marking the production assembly/tail receipt unauthenticated
-(`tools/score_us_release_head_to_head.py:1077-1358`;
-`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11474-11492,11530-11898`). A pool candidate instead consumes its authenticated
-terminal receipt. The scoring-only pool loader may authenticate the exact
-current `gate_failed`/`simulation_ready=false` publication pair without
-weakening or reusing the separate production-ready loader
-(`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:371-588,691-869`;
-`tools/score_us_release_head_to_head.py:1361-1395`).
-
-## Owner handoff
-
-`_LANE-NOTES.md`, under “Owner command when the 25% candidate exists,” contains
-the exact dense-pool and sparse-57k commands, including the required host-side
-builder-process check and manifest hash pin. “Better than the incumbent” means
-comparing each candidate view against the exact incumbent weighted loss and
-the target-by-target lower/equal/higher error balance, while separately
-inspecting every candidate battery leg that is computable. There is no invented
-threshold or automatic conjunction; the owner decides whether the dense and
-sparse evidence warrants the flip.
-
-The candidate does not yet exist, so the incumbent-only JSON correctly leaves
-`artifacts.candidate` and `comparison` null. This is the only external work
-remaining.
+The requested short release-range note is in `_LANE-NOTES.md` under
+“compatibility note for 1.764.6 through 1.819.0.” It flags receipt/take-up and
+SNAP changes, OBBBA follow-through, major cash/health/housing and tax formula
+changes, school-meal child-support treatment, and newly added state programs.
+It is intentionally an owner-facing plausibility scan, not an exhaustive
+policy audit.
 
 ## Verification
 
-- Environment sync completed with
-  `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv sync --all-packages --extra us`.
-- Full workspace suite:
-  `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv run python -m pytest` —
-  **7,028 passed, 76 skipped, 0 failed** in 1:39:56. The `python -m` form avoids
-  a copied virtualenv console-script shebang that pointed at a sibling
-  worktree.
-- Repository-wide `ruff check .`: green. All six Python files changed by this
-  branch pass `ruff format --check`; the whole-tree format audit names 69
-  pre-existing mainline files and was not used to rewrite unrelated code.
-- `py_compile` for the scorer and `git diff --check`: green.
-- Contract and loader-symmetry tests are at
-  `packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py:415-499`;
-  deterministic fixture end-to-end coverage at `:502-569`; chunked/one-shot
-  equivalence at `:575-678`; scalar-leg completeness at `:285-378`; failed-pool
-  authentication at
-  `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1017-1085`;
-  and finished-H5 canonical battery equivalence at
-  `packages/microcosm-build/tests/test_us_stacked_spine.py:6929-6966`.
-- The real incumbent run exited zero at 18.666 GiB peak RSS, below the binding
-  20 GiB limit. Its five registry chunks used twelve household slices apiece;
-  the scorer enforces the RSS ceiling after loading, after every chunk, and
-  after releasing each side
-  (`tools/score_us_release_head_to_head.py:332-352,653-852,1398-1463,1670-1715`).
+- `microcosm-calibrate`: 203 passed; peak RSS 462,896 KiB.
+- `microcosm-data`: 318 passed / 2 skipped; peak RSS 769,408 KiB.
+- `microcosm-fit`: 93 passed; peak RSS 872,432 KiB.
+- `microcosm-frame`: 295 passed / 36 skipped; peak RSS 6,904,032 KiB.
+- `microcosm-build`: exact complete inventory, 6,304 passed / 39 skipped. A
+  canonical one-process run was green but retained 18,548,960 KiB and was not
+  accepted under the 15 GiB ceiling. The exact 6,341 collected items were
+  proven as disjoint 4,161-item and 2,180-item serial fresh-process partitions:
+  4,127 passed / 36 skipped at 12,596,384 KiB, then 2,177 passed / 3 skipped at
+  13,363,984 KiB. This follows the repository's documented fresh-process shard
+  rationale (`.github/workflows/test.yml:24-34`) and changes no test assertion
+  or model behavior.
 
-The sandbox denied `ps`, `pgrep`, and `top`. Before scoring, the permitted
-`lsof` process and open-file audits found no build-runtime process or open pool,
-checkpoint, manifest, or build file. This lane started no pool build. It also
-made no push and changed no gate, threshold, tolerance, or band.
+Accepted total: **7,213 passed / 77 skipped / 0 failed**, with every accepted
+process below 15 GiB RSS.
 
-## Commits
+Final generated checks are green:
 
-- `fd7d5515` — start the replacement-scorecard lane and committed progress log.
-- `de5ca6aa` — document the yardstick audit.
-- `256165e2` — correct the live incumbent identity.
-- `90fe2364` — add the common head-to-head scorer.
-- `758aa0c4` — preserve H5 snapshot identity across cache symlinks.
-- `eebd1d6f` — make scoring chunked and memory-bounded.
-- `8226f376` — complete artifact battery evidence and pool authentication.
-- `34d93846` — merge the current `origin/main` before scoring.
-- `e834baad` — record the merge and pre-score queue audit.
-- `d876c971` — commit the live incumbent scorecard.
-- `8d2ba34c` — document the exact candidate handoff.
-- `6847d245` — keep the journal within the source-hygiene contract.
-- Final progress, validation, and this report — the commit containing this file.
+- release-input manifest: 163 required, 7 reviewed exclusions, 41 reform
+  probes;
+- target parity: 32 compiled, 52 reviewed exclusions;
+- `tools/generate_us_bundle_from_constants.py --check`: US spec SHA above;
+- `tools/spec_engine_coverage.py --check`: 42,096/42,096 configuration fields
+  and 40/40 inventory checks. Both check paths reject stale bytes rather than
+  using a tolerance
+  (`tools/generate_us_bundle_from_constants.py:355-367,410-437`;
+  `tools/spec_engine_coverage.py:378-398`).
 
-Nothing was pushed, and no pool build or publication was performed.
+Repository-wide `ruff check .` and `git diff --check` are green. No gate,
+threshold, tolerance, or band was tuned. No pool or release build ran, no PR
+was opened, and nothing was pushed.
+
+## Commits and handoff
+
+- `514964d4` — start the PolicyEngine-US 1.819.0 bump lane and commit the
+  standing progress journal.
+- The compatibility commit containing this report — lock bump, verified
+  repairs, generated identities, complete digest mapping, and green receipts.
+
+Next: the owner opens the PR from `bump-policyengine-us`.

@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_252
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_219
-EXPECTED_CONFIGURATION_FIELD_COUNT = 41_471
+EXPECTED_AUTHORED_FIELD_COUNT = 32_331
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_765
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_096
 
 
 class FieldUsageError(AssertionError):
@@ -293,8 +293,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        782,
-        "2f33926b12e14d82b3280b56b66eb093947491790f3ed46bbc8bec812f36b92d",
+        797,
+        "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
     ),
     "bundle_country": (
         1,
@@ -317,8 +317,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
     ),
     "catalog_columns": (
-        1_646,
-        "a1cf4881bf6de997041e61722d424bf26bb1a937fe4e16843eb9b28c2d294cb0",
+        1_673,
+        "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
     ),
     "catalog_metadata_waivers": (
         5,
@@ -329,8 +329,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "cbbda6d2d245f04325c0b5a7b986cb71d24d6e3c81a7a3af1544de7f75be2a1f",
     ),
     "generated_authorities": (
-        8_060,
-        "eaa9eb5f5d4d4e4e4da624f50aeafe2a085a60dcaac0673d4b1946760f0fde35",
+        8_606,
+        "3f20975597d93f7313583a944eeb9d6437651c4ff20e67628bf6bf4c5aa9f004",
     ),
     "geography": (
         26,
@@ -346,7 +346,7 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "imputation_family_concept_validation": (
         52,
-        "cbdec1074f0b38d4a57d46be9b6243d0d6c04db18958b6d044d98028d4781c26",
+        "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
     ),
     "imputation_family_execution": (
         1_769,
@@ -378,7 +378,7 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "imputation_waiver_records": (
         70,
-        "a8877f222a6685f29f88d3bcb1e416ab42f4abc64e9dc0dc91aab88cd5094704",
+        "8075fc95d112a7442fa1d9e0f5a6a6d27ad081039147569d635993219eeac92a",
     ),
     "publication_attempts": (
         4,
@@ -473,8 +473,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d0de9c71fb388104cbd2fad9889b1eb18dd0b844c7344fd8a75ffda9d3cb9814",
     ),
     "take_up": (
-        291,
-        "54e2e4db55209f24d85aee057221882965f180191568521017e4e7f6ac6db3bb",
+        328,
+        "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
     ),
     "vintage_records": (
         105,

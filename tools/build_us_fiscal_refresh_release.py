@@ -3319,7 +3319,7 @@ def _ssi_person_uncapped_amount(
     """December person-level potential federal SSI, batched like Medicaid.
 
     SSA's age-band recipient counts are December 2024 point-in-time stocks.
-    ``uncapped_ssi > 0`` is the PolicyEngine-US 1.764.6 current-benefit
+    ``uncapped_ssi > 0`` is the PolicyEngine-US 1.819.0 current-benefit
     candidate mask and does not depend on the take-up input being assigned.
     """
 

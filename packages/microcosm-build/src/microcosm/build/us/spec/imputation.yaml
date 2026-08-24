@@ -267,13 +267,13 @@ waiver_records:
   - has_other_means_tested_health_coverage_at_interview
   - has_tricare_health_coverage_at_interview
   - has_va_health_coverage_at_interview
-  - is_tanf_enrolled
   - receives_housing_assistance
   - receives_snap
+  - receives_tanf
   - receives_wic
   - takes_up_housing_assistance_if_eligible
   - takes_up_medicare_if_eligible
-  - would_claim_wic
+  - takes_up_wic_if_eligible
   requires_concepts:
   - american_indian_status
   - citizenship_status
@@ -318,15 +318,15 @@ waiver_records:
     has_va_health_coverage_at_interview:
     - veteran_status
     - military_coverage_context
-    is_tanf_enrolled:
-    - dependent_child_status
-    - household_income_eligibility
     receives_housing_assistance:
     - household_income_eligibility
     - housing_need
     receives_snap:
     - dependent_child_status
     - disability_status
+    - household_income_eligibility
+    receives_tanf:
+    - dependent_child_status
     - household_income_eligibility
     receives_wic:
     - dependent_child_status
@@ -338,7 +338,7 @@ waiver_records:
     takes_up_medicare_if_eligible:
     - disability_status
     - medicare_coverage_context
-    would_claim_wic:
+    takes_up_wic_if_eligible:
     - dependent_child_status
     - pregnancy_status
 transfer_execution:
@@ -1195,20 +1195,6 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_early
   targets:
-  - name: is_tanf_enrolled
-    entity: spm_unit
-    value_kind: flag
-    dtype: bool
-    period: month
-    requires_concepts:
-    - dependent_child_status
-    - household_income_eligibility
-    waiver: f_p_eligibility_concepts_absent
-    producer_binding:
-      operator: derive_us_cps_carried_inputs
-      order_index: 0
-      execution_scope: cps_source
-      stage: prepare_multispine_source_inputs_for_clone
   - name: receives_snap
     entity: spm_unit
     value_kind: flag
@@ -1217,6 +1203,20 @@ families:
     requires_concepts:
     - dependent_child_status
     - disability_status
+    - household_income_eligibility
+    waiver: f_p_eligibility_concepts_absent
+    producer_binding:
+      operator: derive_us_cps_carried_inputs
+      order_index: 0
+      execution_scope: cps_source
+      stage: prepare_multispine_source_inputs_for_clone
+  - name: receives_tanf
+    entity: spm_unit
+    value_kind: flag
+    dtype: bool
+    period: month
+    requires_concepts:
+    - dependent_child_status
     - household_income_eligibility
     waiver: f_p_eligibility_concepts_absent
     producer_binding:
@@ -2615,7 +2615,7 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
-  - name: would_claim_wic
+  - name: takes_up_wic_if_eligible
     entity: person
     value_kind: flag
     dtype: bool
@@ -13552,7 +13552,7 @@ producer_graph:
       entity: person
       temporary: true
       validation_only: true
-    - column: would_claim_wic
+    - column: takes_up_wic_if_eligible
       coverage_scope: asec_source
       entity: person
       temporary: false
@@ -30213,6 +30213,15 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: takes_up_wic_if_eligible
+          entity: person
+          value_kind: non_null
+      column: takes_up_wic_if_eligible
+      entity: person
+      producing_stage: source:with_us_wic_claim_input
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: tax_exempt_interest_income
           entity: person
           value_kind: finite_numeric
@@ -30247,15 +30256,6 @@ producer_graph:
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: would_claim_wic
-          entity: person
-          value_kind: non_null
-      column: would_claim_wic
-      entity: person
-      producing_stage: source:with_us_wic_claim_input
-      required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
       - - column: spm_unit_id
@@ -30389,7 +30389,7 @@ producer_graph:
             entity: person
             family: source_operator_wic_claim
             ordered_targets:
-            - would_claim_wic
+            - takes_up_wic_if_eligible
   - id: transfer:person/source_operator_workers_compensation
     name: transfer:person/source_operator_workers_compensation
     kind: late_transfer

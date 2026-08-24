@@ -2,46 +2,55 @@
 
 ## State
 
-The `bump-policyengine-us` lane is active from `origin/main` at `31640b91`.
-The required pre-bump US-extra environment sync is complete against the
-unchanged lock (`policyengine-us==1.764.6`). No lock or source change has been
-made yet.
+Complete and ready for the owner to open the PR. The lock resolves
+`policyengine-us==1.819.0` and `policyengine-core==3.31.0`; all required
+compatibility repairs, generated contracts, attested identities, package test
+shards, generator checks, and Ruff are green. The code-cited mechanism audit,
+identity inventory, compatibility note, and validation receipts are in
+`_LANE-NOTES.md`.
 
-The managed sandbox cannot write the user-wide uv cache and has no DNS. The
-existing exact-lock `microcosm-scorecard` environment was therefore cloned
-copy-on-write, then all five editable Microcosm packages were rebuilt and
-relinked to this worktree with the prior lane's writable Hatch build cache.
-This is an environment bootstrap only; `.venv` is untracked.
-
-No pool or release build, push, gate change, threshold change, or band change
-has occurred.
+No pool-consumed variable was removed without a verified successor, so no
+owner question is pending. No pool/release build, push, gate change, threshold
+change, tolerance change, or band change occurred.
 
 ## Done
 
-- Read `CLAUDE.md` and recorded the PR-CI/certification boundary and required
-  one-process-per-shard test shape.
-- Attempted `uv sync --all-packages --extra us` first as ordered. The default
-  cache failed before resolution because the sandbox cannot initialize
-  `/Users/maxghenis/.cache/uv`; an empty writable cache then reached PyPI but
-  could not resolve DNS.
-- Completed the equivalent unchanged-lock sync offline with
-  `UV_CACHE_DIR=/private/tmp/microcosm-scorecard-uv.0rntvY/cache uv sync
-  --offline --all-packages --extra us` after cloning the exact-lock Python
-  3.14 environment. The sync rebuilt and relinked every workspace package to
-  this worktree.
-- Selected the GitNexus debugging workflow for the expected compatibility
-  failures. Its query/context tools are not exposed in this session, so the
-  recorded fallback is repository-wide search, direct installed-package
-  inspection, and focused tests.
+- Started and committed this standing progress log at `514964d4` after
+  rebasing the lane start onto current `origin/main`.
+- Ran the ordered initial sync attempt, documented the sandbox cache/network
+  limits, and completed the unchanged-lock and upgraded-lock all-package US
+  syncs from exact official artifacts in a task-local cache.
+- Ran `uv lock --upgrade-package policyengine-us`. The complete version
+  movement is exactly `policyengine-core 3.26.11 -> 3.31.0` and
+  `policyengine-us 1.764.6 -> 1.819.0`; NumPy 2.4.6 and Torch 2.12.0 did not
+  move.
+- Verified upstream variable reality in the installed PE-US 1.819.0 package,
+  adapted Microcosm's input ownership and consumer guards, and retained
+  fail-closed certified-dataset version checks. Each mechanism is cited in
+  `_LANE-NOTES.md` under “verified upstream compatibility repairs.”
+- Regenerated the release-input, parity, source/take-up, engine-ABI, spec,
+  seed, coverage, and golden identities with repository tools. The final
+  46-value inventory is in `_LANE-NOTES.md`; the final commit body carries the
+  exhaustive old-to-new mapping.
+- Added the requested owner-facing PE-US 1.764.6-to-1.819.0 compatibility note
+  from the installed release changelog, including major SNAP, receipt,
+  OBBBA-follow-through, cash/health/housing, tax, and new-program changes.
+- Passed every package test: 7,213 passed / 77 skipped / 0 failed. Calibrate,
+  data, fit, and frame ran as individual package shards. The build inventory
+  was proven as a complete disjoint 4,161-item + 2,180-item partition after
+  the otherwise-green single process retained more than the binding memory
+  ceiling; accepted peaks were 12,596,384 and 13,363,984 KiB, both below 15
+  GiB. This uses the repository's fresh-process shard rationale
+  (`.github/workflows/test.yml:24-34`) without changing any assertion or model
+  behavior.
+- Reproduced 163 required release inputs / 7 reviewed exclusions / 41 reform
+  probes; 32 compiled parity targets / 52 reviewed exclusions; US spec SHA-256
+  `3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62`;
+  and 42,096/42,096 configuration fields plus 40/40 inventory checks.
+- Passed repository-wide Ruff and `git diff --check`; wrote the final handoff
+  to `FINAL_REPORT.md`.
 
 ## Next
 
-1. Validate and commit this lane-start journal checkpoint.
-2. Run `uv lock --upgrade-package policyengine-us`, record every resolved
-   version movement in `_LANE-NOTES.md`, and sync the upgraded US-extra
-   environment.
-3. Run each package test shard separately, repair verified upstream ownership
-   and consumer changes, and re-pin legitimate spec/seed identities with the
-   repository's own tools.
-4. Scan the PolicyEngine-US changelog from 1.764.6 through 1.819.0, record the
-   compatibility note, rerun every shard plus Ruff, and write `FINAL_REPORT.md`.
+The owner opens the PR. No push or additional build is required from this
+lane.

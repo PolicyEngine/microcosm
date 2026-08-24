@@ -339,8 +339,8 @@ by_origin_battery
    boundaries.
 8. A fresh `us_stacked_completeness` gate proves every declared input is
    observed or has exact source-by-role absence authority. The terminal
-   `us_by_origin_battery` then evaluates all 131 declared targets (114 person,
-   9 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
+   `us_by_origin_battery` then evaluates all 134 declared targets (114 person,
+   12 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
    immutable live-digested per-column metric registry. Metric choice never
    dispatches from physical dtype. A digest-bound structural-absence rule may
    remove only its exact proven cells from a comparison's applicability scope;
@@ -734,7 +734,7 @@ finalizer applies the same rule to each of its sixteen source-receipt inputs.
 | `person/source_operator_retirement_contributions` | `roth_401k_contributions_desired`, `roth_ira_contributions_desired`, `traditional_401k_contributions_desired` | — | all from `with_us_retirement_contribution_inputs` |
 | `person/source_operator_retirement_distributions` | `keogh_distributions`, `tax_exempt_ira_distributions`, `taxable_401k_distributions`, `taxable_403b_distributions`, `taxable_sep_distributions` | — | all from `with_us_retirement_distribution_inputs` |
 | `person/source_operator_weeks_unemployed` | `weeks_unemployed` | — | from `with_us_weeks_unemployed` |
-| `person/source_operator_wic_claim` | `would_claim_wic` | — | from `with_us_wic_claim_input` |
+| `person/source_operator_wic_claim` | `takes_up_wic_if_eligible` | — | from `with_us_wic_claim_input` |
 | `person/source_operator_workers_compensation` | `workers_compensation` | — | from `with_us_workers_compensation` |
 | `tax_unit/puf_tax_itemization` | `domestic_production_ald`, `unrecaptured_section_1250_gain`, `first_home_mortgage_balance`, `first_home_mortgage_interest`, `first_home_mortgage_origination_year`, `health_savings_account_ald` | all targets | — |
 | `spm_unit/source_operator_energy_subsidy` | `spm_unit_energy_subsidy` | — | from `with_us_energy_subsidy_input` |
@@ -837,7 +837,7 @@ The remaining 19 edges are:
 | `with_us_retirement_contribution_inputs` | `transfer:person/source_operator_retirement_contributions` | three contribution outputs listed above |
 | `with_us_retirement_distribution_inputs` | `transfer:person/source_operator_retirement_distributions` | five distribution outputs listed above |
 | `with_us_weeks_unemployed` | `transfer:person/source_operator_weeks_unemployed` | `weeks_unemployed` |
-| `with_us_wic_claim_input` | `transfer:person/source_operator_wic_claim` | `would_claim_wic` |
+| `with_us_wic_claim_input` | `transfer:person/source_operator_wic_claim` | `takes_up_wic_if_eligible` |
 | `with_us_workers_compensation` | `transfer:person/source_operator_workers_compensation` | `workers_compensation` |
 | `transfer:person/puf_tax_itemization__batch_2` | `with_us_education_inputs` | `qualified_tuition_expenses` |
 | `transfer:person/puf_tax_itemization__batch_5` | `with_us_adult_care_inputs` | `sstb_self_employment_income_before_lsr` |
@@ -906,8 +906,8 @@ and valid. Neither receipt authorizes an upstream null.
 | Take-up seed | Every administratively seeded variable completes; transfer-owned take-up cannot use a default; only explicitly non-transfer-owned inputs may use receipted engine defaults. | Seed kernels, the complete transfer surface, and declared defaults. | Transfer-owned residuals fail. A declared default is a separate modeled state, not an insufficient-support receipt. |
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
 | Simulated checkpoint pair and resume | The persistent input-only frame and temporary evaluation frame must share exact assembly provenance; SSI exists only on the evaluation half. The live QBI receipt must authenticate the persistent frame at emission, durable write/load, and resume. | Derived/seeded persistent inputs plus the separately materialized SSI evaluation output. | No. A forged QBI receipt, altered persistent value, invalid SSI binding, or mismatched pair invalidates the simulated checkpoint and falls back only to an independently valid earlier stage. |
-| Terminal completeness | All 131 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 131-target terminal surface. |
-| By-origin battery | All 131 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
+| Terminal completeness | All 134 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 134-target terminal surface. |
+| By-origin battery | All 134 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
 | Manifest construction and canonical publication closure | Legacy and stacked builders reauthenticate QBI live output, canonical stacked authority, terminal-gate receipts, H5/diagnostics run IDs, and artifact digests before readiness can be asserted. | The validated persistent pool, immutable stage receipts, terminal gate snapshot, and atomically staged publication files. | No. Construction rejects forged or wrong-route receipts; publication begins with a non-ready tombstone, and only one fully authenticated run can replace it with a ready manifest. |
 
 The audit leaves no generic “receipted but null” path into a hard consumer.
@@ -1066,7 +1066,7 @@ source ingestion and faithful schema harmonization
     -> derive
     -> seed take-up and other stochastic inputs
     -> simulate
-    -> completeness gate plus 131-target by-origin battery
+    -> completeness gate plus 134-target by-origin battery
     -> emit input-only pool, receipts, and terminal Logbook row
 ```
 

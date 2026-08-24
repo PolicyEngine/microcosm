@@ -326,28 +326,28 @@ class PoolEngineInputProjectionContract:
 
 
 POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
-    engine_version="1.764.6",
+    engine_version="1.819.0",
     root="ssi",
     input_leaf_count=55,
-    formula_node_count=62,
-    edge_count=186,
-    sha256="e3351cdedbe592456b637286ecd04b7079746e1c409e594fbca60a7d28666838",
+    formula_node_count=63,
+    edge_count=187,
+    sha256="e0a23d961c36526a10e56d80d51ca46760e92b4ea3653734014469da2394f702",
 )
 """Exact static graph consumed by the terminal SSI agreement simulation."""
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
-    engine_version="1.764.6",
-    input_count=863,
-    default_count=863,
-    sha256="67a66b018c6261a03a88852cce5c5a4cbe9f5595735d17f2f7666e19e464dfbf",
-    defaults_sha256="87f508fbb382036946aa5e225d339e1b593a464ee6cfc644d7d710540b00a9a7",
+    engine_version="1.819.0",
+    input_count=924,
+    default_count=924,
+    sha256="b4b2041d221b6322a3143dd2d54dc95eb1b20d5f33f4a60908055d735ba07930",
+    defaults_sha256="8718854d455ca536dba2e712aed3b2010becf909b8c61210f0456bcf732ec68c",
 )
 """Exact installed input registry scanned by the disposable projection."""
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+    "98231086a18676778346fc3219bb9450f7eb85eb77791640598cba7a5ae66ef6"
 )
-"""Pinned content digest of all 993 post-transfer consumer/input rows."""
+"""Pinned content digest of all 1,058 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -1114,7 +1114,7 @@ def pool_remaining_stage_input_manifest(
     """Enumerate and statically provision every remaining-stage data read.
 
     The manifest starts at a validated ``transferred`` checkpoint and covers
-    tail preparation, both derive kernels, all thirteen seed-program branches,
+    tail preparation, both derive kernels, all seventeen seed-program branches,
     and the terminal SSI simulation.  Simulation leaves come from the pinned
     source-index graph rather than a handwritten dependency list.
     """
@@ -1569,14 +1569,14 @@ def pool_remaining_stage_input_manifest(
         )
 
     expected_projection_provisions = {
-        "materialized_pool_input_surface": 123,
-        "seed_stage_program_contract": 13,
+        "materialized_pool_input_surface": 122,
+        "seed_stage_program_contract": 17,
         "declared_deferred_null_input": 3,
         "assembled_native_engine_input": 5,
         "frame_structural_engine_input": 10,
         "preserved_stacked_engine_input": 4,
         "derived_schedule_d_input": 1,
-        "declared_absent_engine_input": 704,
+        "declared_absent_engine_input": 762,
     }
     if projection_provisions != expected_projection_provisions:
         raise ValueError(

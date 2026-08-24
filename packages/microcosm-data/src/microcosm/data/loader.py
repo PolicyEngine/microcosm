@@ -60,6 +60,10 @@ class _CertifiedRelease:
     core: _PackageCertification
 
 
+class _CertifiedPackageCompatibilityError(ValueError):
+    """Installed package versions do not satisfy a release certificate."""
+
+
 def available() -> list[tuple[str, int]]:
     """Every published ``(country, year)``, sorted without variant duplicates."""
     return sorted({(country, year) for country, year, _ in REGISTRY})
@@ -433,7 +437,7 @@ def _enforce_package_compatibility(
     if any(installed in SpecifierSet(item) for item in certification.specifiers):
         return
     required = " or ".join(certification.specifiers)
-    raise ValueError(
+    raise _CertifiedPackageCompatibilityError(
         f"Certified release {release_id!r} is incompatible with installed "
         f"{certification.name} {installed_text}; release certification requires "
         f"{required}. Install the certified version with: pip install "
