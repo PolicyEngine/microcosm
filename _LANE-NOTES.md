@@ -1,4 +1,44 @@
-# PolicyEngine-US 1.819.0 lock-bump lane notes
+# Stacked-pool to release CD-vintage provenance lane notes
+
+## 2026-08-24 — lane start and environment
+
+- Branch `pool-cd-vintage-provenance` starts at `origin/main` commit
+  `7b90bb18`. This lane is limited to the authenticated producer/consumer
+  contract described in the candidate-chain defect report: post-assembly
+  household-CD assignment, checkpoint/manifest provenance, atomic nullable-H5
+  attributes, format-aware release preflight, and a real tiny integration
+  test (`tools/build_us_multispine_pool.py:441-577,3477-3786`;
+  `tools/build_us_fiscal_refresh_release.py:2565-2661`).
+- The ordered first `uv sync --all-packages --extra us` could not initialize
+  the sandbox-inaccessible user cache. A writable-cache retry reached the
+  locked Jinja2 URL but DNS is disabled. The exact recovery cloned the
+  completed Python 3.14 environment from the merged PolicyEngine-US 1.819.0
+  bump lane copy-on-write, then completed
+  `UV_CACHE_DIR=/private/tmp/microcosm-scorecard-uv.0rntvY/cache uv sync
+  --offline --all-packages --extra us`. uv rebuilt all five workspace wheels
+  and replaced their sibling-worktree editable origins with this worktree.
+- The GitNexus debugging skill applies to this cross-surface defect. No
+  GitNexus query, context, graph, or resource tools are exposed in this
+  session, so the fallback is direct source tracing, repository generators,
+  and focused plus suite-wide tests.
+- The producer must assign after the source boundary checks: preassembled
+  `congressional_district_geoid` is an operator output and is rejected
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-353,372-406`;
+  `tools/build_us_multispine_pool.py:4566-4584`). The release check remains
+  unconditional and must continue to require matching crosswalk SHA, target
+  vintage, and positive household support
+  (`tools/build_us_fiscal_refresh_release.py:2565-2613,8571-8590`).
+- No build, release, push, release-guard weakening, operator-boundary
+  weakening, or `logbook-pending-chain.txt` access occurred at lane start.
+- The pre-change suite is green. Fresh-process receipts are: calibrate 203
+  passed; data 318 passed / 2 skipped; fit 93 passed; frame 295 passed / 36
+  skipped; build partition excluding `test_us_[n-z]*.py` 4,127 passed / 36
+  skipped; complementary build partition 2,177 passed / 3 skipped. Combined:
+  7,213 passed / 77 skipped / 0 failed. The build split follows the CI
+  fresh-process rationale (`.github/workflows/test.yml:24-34`) and the same
+  previously accepted local partition; no assertion or behavior changed.
+
+# Historical lane notes: PolicyEngine-US 1.819.0 lock bump
 
 ## 2026-08-23 — lane start and unchanged-lock environment
 
