@@ -661,3 +661,36 @@ all 131 columns, which is the same before-medicine/after-medicine error the UC
 check documents. The water-level entry is therefore reported as **dormant**,
 and a test pins that dormancy stops being available the moment a run supplies
 the sidecars.
+
+### Correction 3 — the incumbent side was measured on the wrong artifact
+
+Caught by a cross-check that compared every number quoted in a register entry
+against the measured source. The only full incumbent H5 on disk is
+`populace-723/.codex-work/licensed/enhanced_frs_2024_25.h5`, 126,579,434 bytes,
+sha256 `97a07f9c…` — that is the **1.56.14** artifact staged during #723's
+phase-0, not the re-pinned **1.56.16** one (126,553,300 bytes, sha256
+`e433e532…`). Every incumbent share and level in the first pass came from it.
+
+The pinned artifact was fetched from the private model repo at revision
+`a9e52499` and digest-verified before re-measuring. Across the nineteen E5/E6
+columns the two vintages differ by at most **0.0045**, on
+`transport_consumption` — consistent with R0's "no reference share moved by
+more than 0.0046".
+
+Small, but not harmless: it flipped one verdict.
+`alcohol_and_tobacco_consumption` reads donor 0.5383 · incumbent 0.5630 · ours
+0.5150 at 1.56.14, where ours is nearer, and donor 0.5383 · incumbent 0.5603 ·
+ours 0.5150 at the pin, where the incumbent is nearer by 0.0013. The column
+moved out of `lcfs-consumption-regime-gated-incidence` and into a two-column
+entry with `transport_consumption`, which shares its evidence shape exactly —
+incumbent closer on share, spine closer on level.
+
+Level ratios moved in the third digit throughout (education 5.00× → 4.80×,
+savings 5.70× → 5.66×, owned_land 9.28× → 9.19×); no other verdict changed.
+
+**Standing lesson.** The parity instrument could not have caught this: it reads
+the *committed reference*, which was always at the correct pin, so its verdict
+was right the whole time. What was wrong was the side evidence measured by hand
+outside the instrument. **A file on disk with the right name is not the pinned
+artifact — check the digest before measuring against it**, exactly as the
+instrument does before comparing against it.
