@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 ENGINE_ABI_LOCK_FILENAME = "engine_abi.lock.json"
 ENGINE_ABI_LOCK_SCHEMA_ID = "locks.schema.json#/$defs/engine_abi_lock"
 POLICYENGINE_US_PACKAGE = "policyengine-us"
-US_TAKE_UP_PROGRAM_COUNT = 13
+US_TAKE_UP_PROGRAM_COUNT = 17
 _ENGINE_VERSION_REF: Mapping[str, str] = {
     "kind": "engine_abi_lock",
     "pointer": "/engine/version",

@@ -406,6 +406,9 @@ def build_uk_national_dataset(
         )
     if brma_domain is not None:
         artifacts["brma_enum_domain"] = brma_domain
+    student_loan_plan_domain = _engine_enum_domain(engine, "student_loan_plan")
+    if student_loan_plan_domain is not None:
+        artifacts["student_loan_plan_enum_domain"] = student_loan_plan_domain
     fit_weight_records = _stage_fit_weight_records(materialized_stages)
     if fit_weight_records is not None:
         artifacts["fit_weight_records"] = fit_weight_records
@@ -757,11 +760,15 @@ def _stage_parity_evidence(
 
 
 def _brma_enum_domain(engine: object) -> tuple[str, ...] | None:
+    return _engine_enum_domain(engine, "brma")
+
+
+def _engine_enum_domain(engine: object, variable_name: str) -> tuple[str, ...] | None:
     variable_getter = getattr(engine, "_variable", None)
     if not callable(variable_getter):
         return None
     try:
-        variable = variable_getter("brma")
+        variable = variable_getter(variable_name)
     except Exception:
         return None
     possible_values = getattr(variable, "possible_values", None)

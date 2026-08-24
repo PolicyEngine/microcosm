@@ -208,6 +208,7 @@
           "household.gas_consumption",
           "household.has_fuel_consumption",
           "household.household_is_capital_gains_clone",
+          "household.household_is_cgt_band_donor",
           "household.household_is_spi_synthetic",
           "household.la_code_oa",
           "household.lsoa_code",
@@ -276,6 +277,18 @@
         ]
       },
       "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
+    },
+    {
+      "id": "uk_student_loan_plan_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "student_loan_plan"
+        ]
+      },
+      "notes": "The person student-loan plan assignment must remain inside the PolicyEngine-UK StudentLoanPlan enum domain."
     },
     {
       "id": "uk_calibration_reference_coverage",

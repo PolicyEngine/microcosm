@@ -371,7 +371,7 @@ def test_signal_gate_requires_exact_zero_asec_and_sparse_nonzero_puf() -> None:
 def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     system = CountryTaxBenefitSystem()
     variable = system.variables["educator_expense"]
 

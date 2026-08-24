@@ -119,6 +119,11 @@ def test_uk_stage_implementations_names_whole_stage_transforms() -> None:
         lcfs_consumption_transform=retained,
         etb_vat_transform=hmrc,
         etb_services_transform=retained,
+        cgt_incidence_clone_transform=retained,
+        cgt_band_donors_transform=hmrc,
+        hmrc_cgt_gains_spine_transform=retained,
+        salary_sacrifice_transform=hmrc,
+        student_loans_transform=retained,
     ) == {
         "frs_hmrc_retained_leaves": retained,
         "hmrc_spi_income": hmrc,
@@ -127,6 +132,11 @@ def test_uk_stage_implementations_names_whole_stage_transforms() -> None:
         "lcfs_consumption": retained,
         "etb_vat": hmrc,
         "etb_services": retained,
+        "cgt_incidence_clone": retained,
+        "cgt_band_donors": hmrc,
+        "hmrc_cgt_gains_spine": retained,
+        "salary_sacrifice": hmrc,
+        "student_loans": retained,
     }
 
 

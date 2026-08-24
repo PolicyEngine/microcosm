@@ -185,7 +185,7 @@ _BOOLEAN_LATE_TARGETS = frozenset(
         "is_enrolled_at_least_half_time_for_american_opportunity_credit",
         "is_pursuing_credential_for_american_opportunity_credit",
         "takes_up_medicare_if_eligible",
-        "would_claim_wic",
+        "takes_up_wic_if_eligible",
     }
 )
 

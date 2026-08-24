@@ -23,6 +23,7 @@ import pytest
 
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
+import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.gates import GateReport, GateResult
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
@@ -914,10 +915,187 @@ def _noncanonical_post_puf_authority_receipt() -> dict[str, object]:
     return stacked_spine_module._authority_receipt(test_authority)
 
 
+def _canonical_late_calibration_owner_receipt(
+    spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
+    *,
+    frame: Frame | None = None,
+) -> dict[str, object]:
+    if frame is not None:
+        table = frame.table(spec.entity)
+        channel = table[support_channel_column(spec.entity)].astype(str)
+        clone_index = pd.to_numeric(
+            table[support_clone_index_column(spec.entity)],
+            errors="raise",
+        )
+        reference = (channel.eq("asec") & clone_index.eq(0)).to_numpy(dtype=bool)
+        recipient = (channel.eq("acs") & clone_index.eq(0)).to_numpy(dtype=bool)
+        constrained = spec.special_constraint != "none"
+        application = post_transfer_calibration_runtime.apply_post_transfer_calibration(
+            frame,
+            entity=spec.entity,
+            family=spec.family,
+            target=spec.target,
+            reference_rows=reference,
+            recipient_rows=recipient,
+            mutable_rows=recipient,
+            allowed_carrier_rows=recipient if constrained else None,
+            addition_candidate_rows=recipient if constrained else None,
+        )
+        before_values = table[spec.target].to_numpy(copy=False)
+        after_values = application.frame.table(spec.entity)[spec.target].to_numpy(
+            copy=False
+        )
+        if not np.array_equal(
+            before_values.view(np.uint64),
+            after_values.view(np.uint64),
+        ):
+            raise AssertionError(
+                f"Live calibration fixture unexpectedly changed {spec.key}."
+            )
+        calibration = application.receipt
+        scope = calibration["scope"]
+        constraint: dict[str, object] = {"constraint": spec.special_constraint}
+        if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+            constraint.update(
+                {
+                    "qualifying_mutable_rows": scope["allowed_carrier_rows"],
+                    "one_per_empty_tax_unit_addition_candidates": scope[
+                        "addition_candidate_rows"
+                    ],
+                }
+            )
+        elif (
+            spec.special_constraint
+            == "weeks_requires_positive_unemployment_compensation"
+        ):
+            constraint["positive_unemployment_mutable_rows"] = scope[
+                "allowed_carrier_rows"
+            ]
+        owner: dict[str, object] = {
+            "stage": "late_transfer",
+            "reference_selection": "asec_origin_clone_0",
+            "recipient_selection": "acs_origin_clone_0",
+            "mutable_selection": "recipient_null_before_nonnull_after",
+            "reference_rows": scope["reference_rows"],
+            "recipient_rows": scope["recipient_rows"],
+            "mutable_rows": scope["mutable_rows"],
+            "constraint": constraint,
+            "context_binding": (
+                stacked_spine_module._post_transfer_calibration_context_binding(
+                    frame,
+                    application.frame,
+                    entity=spec.entity,
+                    target=spec.target,
+                    reference_rows=reference,
+                    recipient_rows=recipient,
+                    mutable_rows=recipient,
+                    allowed_carrier_rows=recipient,
+                    addition_candidate_rows=recipient,
+                )
+            ),
+            "calibration": calibration,
+        }
+        if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+            owner["post_reconciliation"] = {"status": "verified_no_op"}
+        return owner
+
+    values = np.asarray(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+    )
+    weights = np.asarray([2.0, 3.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+    reference = np.asarray([True] * 5 + [False] * 5)
+    recipient = ~reference
+    constrained = spec.special_constraint != "none"
+    calibration_result = (
+        post_transfer_calibration_runtime.calibrate_post_transfer_values(
+            values,
+            weights,
+            np.arange(1, len(values) + 1),
+            spec=spec,
+            reference_rows=reference,
+            recipient_rows=recipient,
+            mutable_rows=recipient,
+            allowed_carrier_rows=recipient if constrained else None,
+            addition_candidate_rows=recipient if constrained else None,
+        )
+    )
+    calibration = calibration_result.receipt
+    scope = calibration["scope"]
+    constraint: dict[str, object] = {"constraint": spec.special_constraint}
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        constraint.update(
+            {
+                "qualifying_mutable_rows": scope["allowed_carrier_rows"],
+                "one_per_empty_tax_unit_addition_candidates": scope[
+                    "addition_candidate_rows"
+                ],
+            }
+        )
+    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
+        constraint["positive_unemployment_mutable_rows"] = scope["allowed_carrier_rows"]
+    owner: dict[str, object] = {
+        "stage": "late_transfer",
+        "reference_selection": "asec_origin_clone_0",
+        "recipient_selection": "acs_origin_clone_0",
+        "mutable_selection": "recipient_null_before_nonnull_after",
+        "reference_rows": scope["reference_rows"],
+        "recipient_rows": scope["recipient_rows"],
+        "mutable_rows": scope["mutable_rows"],
+        "constraint": constraint,
+        "context_binding": {
+            "scope": dict(scope),
+            "weights_sha256": calibration["weights"]["sha256"],
+            "live_output": {
+                "reference_rows": int(reference.sum()),
+                "recipient_rows": int(recipient.sum()),
+                "reference_entity_ids_sha256": (
+                    stacked_spine_module._post_transfer_entity_ids_sha256(
+                        np.arange(1, len(values) + 1)[reference]
+                    )
+                ),
+                "recipient_entity_ids_sha256": (
+                    stacked_spine_module._post_transfer_entity_ids_sha256(
+                        np.arange(1, len(values) + 1)[recipient]
+                    )
+                ),
+                "reference_output_values_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        calibration_result.values[reference],
+                        boundary="synthetic reference calibration output",
+                    )
+                ),
+                "recipient_output_values_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        calibration_result.values[recipient],
+                        boundary="synthetic recipient calibration output",
+                    )
+                ),
+                "reference_weights_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        weights[reference],
+                        boundary="synthetic reference calibration weights",
+                    )
+                ),
+                "recipient_weights_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        weights[recipient],
+                        boundary="synthetic recipient calibration weights",
+                    )
+                ),
+            },
+        },
+        "calibration": calibration,
+    }
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        owner["post_reconciliation"] = {"status": "verified_no_op"}
+    return owner
+
+
 def _canonical_late_transfer_receipt(
     pool_tool: ModuleType,
     *,
     authority: Mapping[str, object] | None = None,
+    frame: Frame | None = None,
 ) -> dict[str, object]:
     canonical_family = {
         (entity, target): family
@@ -929,15 +1107,43 @@ def _canonical_late_transfer_receipt(
     }
     groups: dict[str, object] = {}
     targets: dict[str, object] = {}
+    late_specs = {
+        spec.key: spec
+        for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        if spec.stage == "late_transfer"
+    }
+    policy_sha256 = (
+        post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()[
+            "sha256"
+        ]
+    )
     for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS:
         group_targets = {
-            f"{group.entity}/{group.family}/{target}": {"residual_null_rows": 0}
+            f"{group.entity}/{group.family}/{target}": {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            }
             for target in group.targets
         }
+        calibrated_keys = sorted(set(group_targets) & set(late_specs))
+        for key in calibrated_keys:
+            group_targets[key]["post_transfer_calibration"] = (
+                _canonical_late_calibration_owner_receipt(
+                    late_specs[key],
+                    frame=frame,
+                )
+            )
         groups[group.name] = {
             "producer": group.name,
             "ordered_targets": list(group.targets),
             "targets": group_targets,
+            "post_transfer_calibration": {
+                "policy_sha256": policy_sha256,
+                "target_count": len(calibrated_keys),
+                "targets": calibrated_keys,
+            },
         }
         for target in group.targets:
             targets[
@@ -974,6 +1180,7 @@ def _canonical_late_dag_receipt(
     *,
     authority: Mapping[str, object] | None = None,
     output_frame_sha256: str = "f" * 64,
+    frame: Frame | None = None,
 ) -> dict[str, object]:
     schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
     schedule_receipt = pool_tool._json_ready(
@@ -1016,6 +1223,7 @@ def _canonical_late_dag_receipt(
     transfer = _canonical_late_transfer_receipt(
         pool_tool,
         authority=authority,
+        frame=frame,
     )
     input_frame_sha256 = "e" * 64
     previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
@@ -1239,10 +1447,50 @@ def _authorized_late_impute_fixture(
 ) -> tuple[Frame, dict[str, object], str]:
     """Bind one structurally signed synthetic DAG proof to a live fixture frame."""
 
+    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    for entity, table in tables.items():
+        if support_channel_column(entity) not in table:
+            table[support_channel_column(entity)] = np.resize(
+                np.asarray(["asec", "acs"], dtype=object),
+                len(table),
+            )
+        if support_clone_index_column(entity) not in table:
+            table[support_clone_index_column(entity)] = np.zeros(
+                len(table), dtype=np.int64
+            )
+    for (
+        spec
+    ) in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values():
+        if spec.stage == "late_transfer" and spec.target not in tables[spec.entity]:
+            tables[spec.entity][spec.target] = np.ones(
+                len(tables[spec.entity]), dtype=np.float64
+            )
+    person = tables["person"]
+    person["unemployment_compensation"] = np.ones(len(person), dtype=np.float64)
+    person["is_incapable_of_self_care"] = pd.Series(
+        True,
+        index=person.index,
+        dtype="boolean",
+    )
+    person["tax_unit_role_input"] = pd.Series(
+        "DEPENDENT",
+        index=person.index,
+        dtype="string",
+    )
+    tables.update({name: frame.link(name) for name in frame.links})
+    frame = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
     dag = _canonical_late_dag_receipt(
         pool_tool,
         authority=authority,
         output_frame_sha256=stacked_spine_module._late_frame_content_sha256(frame),
+        frame=frame,
     )
     authorized, transition_authority_sha256 = (
         stacked_spine_module._bind_late_producer_transition_authority(frame, dag)
@@ -1477,16 +1725,64 @@ def _install_stacked_entrypoint_stubs(
                 "family": group.family,
                 "ordered_targets": list(group.targets),
             }
+        late_tables = {
+            entity: primary_puf_result.frame.table(entity).copy(deep=True)
+            for entity in primary_puf_result.frame.entities
+        }
+        for (
+            spec
+        ) in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values():
+            if (
+                spec.stage == "late_transfer"
+                and spec.target not in late_tables[spec.entity]
+            ):
+                late_tables[spec.entity][spec.target] = np.ones(
+                    len(late_tables[spec.entity]),
+                    dtype=np.float64,
+                )
+        late_person = late_tables["person"]
+        late_person["unemployment_compensation"] = np.ones(
+            len(late_person),
+            dtype=np.float64,
+        )
+        late_person["is_incapable_of_self_care"] = pd.Series(
+            True,
+            index=late_person.index,
+            dtype="boolean",
+        )
+        late_person["tax_unit_role_input"] = pd.Series(
+            "DEPENDENT",
+            index=late_person.index,
+            dtype="string",
+        )
+        late_tables.update(
+            {
+                name: primary_puf_result.frame.link(name)
+                for name in primary_puf_result.frame.links
+            }
+        )
+        late_frame = Frame(
+            late_tables,
+            primary_puf_result.frame.schema,
+            {
+                entity: primary_puf_result.frame.weights_for(entity)
+                for entity in primary_puf_result.frame.weighted_entities
+            },
+            primary_puf_result.frame.strata,
+            mass_log=primary_puf_result.frame.mass_log,
+            metadata=primary_puf_result.frame.metadata,
+        )
         dag_receipt = _canonical_late_dag_receipt(
             pool_tool,
             authority=post_puf_authority,
             output_frame_sha256=stacked_spine_module._late_frame_content_sha256(
-                primary_puf_result.frame
+                late_frame
             ),
+            frame=late_frame,
         )
         authorized_frame, transition_authority_sha256 = (
             stacked_spine_module._bind_late_producer_transition_authority(
-                primary_puf_result.frame,
+                late_frame,
                 dag_receipt,
             )
         )
@@ -1719,10 +2015,20 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         published_dag = manifest["stage_receipts"]["impute"][
             "stacked_late_producer_dag"
         ]
-        assert published_dag == _canonical_late_dag_receipt(
-            pool_tool,
-            output_frame_sha256=published_dag["output_frame_sha256"],
-        )
+        published_transfer = published_dag["post_puf_transfer"]
+        assert published_transfer["completion"] == {
+            "status": "complete",
+            "group_count": 19,
+            "target_count": 70,
+            "residual_null_rows": 0,
+        }
+        calibrated = [
+            target["post_transfer_calibration"]
+            for target in published_transfer["targets"].values()
+            if "post_transfer_calibration" in target
+        ]
+        assert len(calibrated) == 7
+        assert all(owner["context_binding"]["live_output"] for owner in calibrated)
         expected_late_authority_sha256 = (
             stacked_spine_module._late_producer_transition_authority_receipt(
                 published_dag
@@ -1903,7 +2209,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "586491f0866180f7a8f1e01530af5c2a3f2ebc18ad289ac1a3385d1897e79626",
+            "spec_sha256": "3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62",
         },
     }
 
@@ -2106,7 +2412,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "586491f0866180f7a8f1e01530af5c2a3f2ebc18ad289ac1a3385d1897e79626",
+        "spec_sha256": "3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -2354,6 +2660,127 @@ def test_late_dag_validator_rejects_forged_execution_row(
         pool_tool.validate_stacked_late_producer_receipt(
             receipt,
             boundary="forged execution regression",
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    (
+        (
+            "stripped_group_summary",
+            "stripped or misbound calibration summary evidence",
+        ),
+        ("stripped_target_evidence", "calibration evidence is absent"),
+        ("malformed_target_evidence", "calibration receipt digest is invalid"),
+        ("deleted_target_receipt", "target surface is non-canonical"),
+        ("extra_target_receipt", "target surface is non-canonical"),
+        ("stripped_owner_count", "reference_rows evidence is misbound"),
+        ("stripped_live_output", "live-output binding is absent"),
+    ),
+)
+def test_late_transfer_validator_rejects_stripped_calibration_evidence(
+    pool_tool: ModuleType,
+    mutation: str,
+    error_match: str,
+) -> None:
+    receipt = _canonical_late_transfer_receipt(pool_tool)
+    stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+        receipt,
+        boundary="canonical calibration evidence control",
+    )
+    forged = copy.deepcopy(receipt)
+    group_receipt = next(
+        group
+        for group in forged["groups"].values()
+        if group["post_transfer_calibration"]["target_count"] > 0
+    )
+    if mutation == "stripped_group_summary":
+        group_receipt.pop("post_transfer_calibration")
+    else:
+        target_key = group_receipt["post_transfer_calibration"]["targets"][0]
+        if mutation == "deleted_target_receipt":
+            group_receipt["targets"].pop(target_key)
+        elif mutation == "extra_target_receipt":
+            group_receipt["targets"]["person/forged/extra_target"] = {}
+        elif mutation == "stripped_owner_count":
+            group_receipt["targets"][target_key]["post_transfer_calibration"].pop(
+                "reference_rows"
+            )
+        elif mutation == "stripped_live_output":
+            group_receipt["targets"][target_key]["post_transfer_calibration"][
+                "context_binding"
+            ].pop("live_output")
+        elif mutation == "stripped_target_evidence":
+            target_receipt = group_receipt["targets"][target_key]
+            target_receipt.pop("post_transfer_calibration")
+        else:
+            target_receipt = group_receipt["targets"][target_key]
+            target_receipt["post_transfer_calibration"]["calibration"]["sha256"] = (
+                "0" * 64
+            )
+
+    with pytest.raises(ValueError, match=error_match):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            forged,
+            boundary=f"{mutation} regression",
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "constraint_column", "replacement", "error_match"),
+    (
+        (
+            "weeks_unemployed",
+            "unemployment_compensation",
+            0.0,
+            "positive weeks-unemployed carriers lack positive unemployment",
+        ),
+        (
+            "pre_subsidy_care_expenses",
+            "is_incapable_of_self_care",
+            False,
+            "live adult-care carriers violate qualifying-person",
+        ),
+    ),
+)
+def test_late_transfer_validator_recomputes_live_coupled_constraints(
+    pool_tool: ModuleType,
+    target: str,
+    constraint_column: str,
+    replacement: object,
+    error_match: str,
+) -> None:
+    frame, impute, _transition = _authorized_late_impute_fixture(
+        pool_tool,
+        _source_frame(),
+    )
+    receipt = impute["stacked_post_puf_transfer"]
+    stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+        receipt,
+        boundary="live coupled-constraint control",
+        frame=frame,
+    )
+    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    person = tables["person"]
+    recipient = person[support_channel_column("person")].astype(str).eq("acs")
+    carrier = recipient & pd.to_numeric(person[target], errors="raise").gt(0.0)
+    assert carrier.any()
+    person.loc[person.index[carrier][0], constraint_column] = replacement
+    tables.update({name: frame.link(name) for name in frame.links})
+    corrupted = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+    with pytest.raises(ValueError, match=error_match):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            receipt,
+            boundary="live coupled-constraint mutation",
+            frame=corrupted,
         )
 
 
@@ -2804,7 +3231,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     current = identity()
     pool_code = current["pool_code"]
     assert current["materializer_version"] == 11
-    assert current["stacked_authority"]["version"] == 10
+    assert current["stacked_authority"]["version"] == 11
     assert pool_code["operator_order"] == [
         "assemble_stacked_spine",
         "prepare_multispine_source_inputs_for_clone",
@@ -2922,6 +3349,19 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
         )
         stale_late_schedule = identity()
     with monkeypatch.context() as changed:
+        calibration_authority = copy.deepcopy(
+            pool_tool.stacked_spine_authority_receipt()
+        )
+        calibration_authority["components"]["post_transfer_calibration"]["identity"][
+            "scope"
+        ]["reference"] = "forged_reference_scope"
+        changed.setattr(
+            pool_tool,
+            "stacked_spine_authority_receipt",
+            lambda: calibration_authority,
+        )
+        stale_post_transfer_calibration = identity()
+    with monkeypatch.context() as changed:
         source_stage_binding = stacked_spine_module._late_source_stage_spec_binding
 
         def changed_source_stage_binding(
@@ -2953,10 +3393,11 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
             stale_remaining_manifest,
             stale_tail_contract,
             stale_late_schedule,
+            stale_post_transfer_calibration,
             stale_source_asset,
         )
     }
-    assert len(digests) == 9
+    assert len(digests) == 10
 
     # Positive control: discovery accepts the exact current semantic identity
     # under the same fixture engine version used to construct it.
@@ -3677,9 +4118,9 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # Exact pre-#653 schema-4/materializer-3 publication bytes from
-        # preserved #652 commit 54d2dee6.
-        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
+        # The PE-US 1.819.0 compatibility edits legitimately move the pool-code
+        # checkpoint identities embedded in the otherwise legacy publication.
+        "manifest": "63c6e6973079f0b793d5435113aaae66184564b70271f8af120fecdbb5015f63",
     }
 
 
@@ -4038,6 +4479,33 @@ def test_atomic_json_fsyncs_parent_directory_after_rename(
         ("replace", output.name),
         ("fsync", "directory"),
     ]
+
+
+def test_json_ready_omits_empty_opt_in_transfer_pattern_regimes(
+    pool_tool: ModuleType,
+) -> None:
+    pattern = acs_transfer_module.AcsTransferPattern(
+        name="fixture",
+        observed_optional_predictors=(),
+        predictors=("age",),
+        seed=1,
+        weight_kind="source",
+        donor_rows=2,
+        recipient_rows=1,
+    )
+
+    legacy = pool_tool._json_ready(pattern)
+    selected = pool_tool._json_ready(
+        replace(
+            pattern,
+            target_regimes=(("fixture_target", "positive_only"),),
+        )
+    )
+
+    assert isinstance(legacy, dict)
+    assert "target_regimes" not in legacy
+    assert isinstance(selected, dict)
+    assert selected["target_regimes"] == [["fixture_target", "positive_only"]]
 
 
 def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(

@@ -5,7 +5,7 @@ covers TANF/AFDC *and* other cash welfare (general assistance), and the
 official dictionaries split the program with ``PAW_TYP`` (1 = TANF/AFDC,
 2 = other, 3 = both).  In the 2023 ASEC (income year 2022), 271 of 682
 PAW-positive SPM units — 39.7% unweighted, 42.6% SPM-weighted — have no
-member reporting a TANF type, so gating ``is_tanf_enrolled`` on
+member reporting a TANF type, so gating the ``receives_tanf`` input on
 ``PAW_VAL > 0`` alone would mark non-TANF cash welfare as TANF enrollment.
 
 The frozen ``census_cps_*.h5`` inputs microcosm builds from never carried

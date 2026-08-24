@@ -8995,6 +8995,25 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.band_a",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_a",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_a",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_a",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "voa.council_tax_stock.band_b",
       "ledger_selector": {
         "source_name": "voa",
@@ -9011,6 +9030,25 @@
         "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2025-03",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.band_b",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_b",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_b",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_b",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
     },
     {
@@ -9033,6 +9071,25 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.band_c",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_c",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_c",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_c",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "voa.council_tax_stock.band_d",
       "ledger_selector": {
         "source_name": "voa",
@@ -9049,6 +9106,25 @@
         "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2025-03",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.band_d",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_d",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_d",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_d",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
     },
     {
@@ -9071,6 +9147,25 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.band_e",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_e",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_e",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_e",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "voa.council_tax_stock.band_f",
       "ledger_selector": {
         "source_name": "voa",
@@ -9087,6 +9182,25 @@
         "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2025-03",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.band_f",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_f",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_f",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_f",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
     },
     {
@@ -9109,6 +9223,25 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.band_g",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_g",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_g",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_g",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "voa.council_tax_stock.band_h",
       "ledger_selector": {
         "source_name": "voa",
@@ -9128,6 +9261,25 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.band_h",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_h",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.band_h",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "voa.council_tax_stock.total",
       "ledger_selector": {
         "source_name": "voa",
@@ -9144,6 +9296,25 @@
         "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2025-03",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.total",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "total",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "voa/council_tax/SCOTLAND/total",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.total",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
     },
     {

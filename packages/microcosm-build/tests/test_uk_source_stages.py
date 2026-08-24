@@ -46,6 +46,13 @@ E7_STAGE_NAMES = [
     "spi_support_channel",
     "hmrc_spi_income_spine",
 ]
+E8_STAGE_NAMES = [
+    "cgt_incidence_clone",
+    "cgt_band_donors",
+    "hmrc_cgt_gains_spine",
+    "salary_sacrifice",
+    "student_loans",
+]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
@@ -53,6 +60,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
+    *E8_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
 ]
@@ -62,6 +70,7 @@ UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES = [
     *E4_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
+    *E8_STAGE_NAMES,
 ]
 FROZEN_SOURCE_STAGES_SHA256 = (
     "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea"
@@ -123,11 +132,20 @@ class TestUKSourceStagesManifest:
             == E6_STAGE_NAMES
         )
 
-    def test_e7_block_is_contiguous_before_certified_pair(self) -> None:
+    def test_e7_block_sits_between_e6_and_e8(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert names[-5:-2] == E7_STAGE_NAMES
+        assert (
+            names[names.index("etb_services") + 1 : names.index("cgt_incidence_clone")]
+            == E7_STAGE_NAMES
+        )
+
+    def test_e8_block_is_contiguous_before_certified_pair(self) -> None:
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+
+        assert names[-7:-2] == E8_STAGE_NAMES
         assert names[-2:] == ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
 
     def test_copy_is_lockstep_with_frozen_original_except_citation_rewrites(
@@ -208,7 +226,7 @@ class TestUKSourceStagesManifest:
             "hmrc_spi_income",
         ]
 
-    def test_country_stage_plan_assembles_fourteen_stage_spine_plan(self) -> None:
+    def test_country_stage_plan_assembles_spine_plan(self) -> None:
         spec = load_country_spec("uk")
         implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
         plan = country_stage_plan(
@@ -246,6 +264,11 @@ class TestUKSourceStagesManifest:
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
                     "hmrc_spi_income_spine": _identity,
+                    "cgt_incidence_clone": _identity,
+                    "cgt_band_donors": _identity,
+                    "hmrc_cgt_gains_spine": _identity,
+                    "salary_sacrifice": _identity,
+                    "student_loans": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -422,6 +445,33 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert income.rewrites == UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
         assert not (set(income.outputs) & set(income.rewrites))
 
+    def test_e8_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
+        from microcosm.build.uk_runtime.cgt_structure import (
+            HOUSEHOLD_IS_CGT_BAND_DONOR,
+            HOUSEHOLD_IS_CGT_CLONE,
+        )
+        from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
+
+        stages = load_country_spec("uk").sources.stage_map()
+
+        assert stages["cgt_incidence_clone"].outputs == (
+            HOUSEHOLD_IS_CGT_CLONE,
+            "capital_gains",
+        )
+        assert stages["cgt_incidence_clone"].rewrites == ("capital_gains",)
+        assert stages["cgt_band_donors"].outputs == (
+            HOUSEHOLD_IS_CGT_BAND_DONOR,
+            "capital_gains",
+        )
+        assert stages["cgt_band_donors"].rewrites == ("capital_gains",)
+        assert stages["hmrc_cgt_gains_spine"].outputs == ("capital_gains",)
+        assert stages["hmrc_cgt_gains_spine"].rewrites == ("capital_gains",)
+        assert stages["salary_sacrifice"].outputs == (
+            SALSAC_OUTPUT,
+            "employee_pension_contributions",
+        )
+        assert stages["student_loans"].outputs == ("student_loan_plan",)
+
 
 class TestE3ManifestLockstep:
     def test_e3_raw_tab_pins_match_spine_artifacts(self) -> None:
@@ -556,6 +606,31 @@ class TestE3ManifestLockstep:
             "materialize_hmrc_income_bands_fail_closed",
             "classify_hmrc_income_facts_with_reviewed_fences",
             "gate_distributional_effective_mass",
+        ]
+        assert [op.kind for op in stages["cgt_incidence_clone"].operations] == [
+            "clone_records",
+            "draw_capital_gains_prior_from_banded_quantiles",
+        ]
+        assert [op.kind for op in stages["cgt_band_donors"].operations] == [
+            "stack_band_donor_households"
+        ]
+        assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
+            "verify_pinned_cgt_ods",
+            "taxable_income_proxy",
+            "rank_preserving_allocation",
+            "within_band_draws",
+            "sub_aea_remainder",
+            "record_mass_conservation_receipt",
+            "classify_cgt_band_facts_with_reviewed_fence",
+        ]
+        assert [op.kind for op in stages["salary_sacrifice"].operations] == [
+            "fit_weighted_qrf",
+            "convert_donors_to_target_stock",
+        ]
+        assert [op.kind for op in stages["student_loans"].operations] == [
+            "assign_student_loan_plan_cohorts",
+            "top_up_to_stock",
+            "top_up_to_stock",
         ]
 
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
@@ -734,6 +809,21 @@ class TestE3ManifestLockstep:
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
+
+    def test_e8_declared_seed_lockstep(self) -> None:
+        stages = load_country_spec("uk").sources.stage_map()
+
+        assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
+        assert stages["cgt_band_donors"].operations[0].parameters["seed"] == 1
+        assert (
+            stages["hmrc_cgt_gains_spine"].operations[3].parameters["seed_base"] == 552
+        )
+        assert stages["salary_sacrifice"].operations[0].parameters["seed"] == 42
+        assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 2024
+        assert [
+            operation.parameters["seed"]
+            for operation in stages["student_loans"].operations[1:]
+        ] == [42, 42]
 
     def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
         spec = load_country_spec("uk")

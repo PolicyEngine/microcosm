@@ -52,22 +52,22 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert_coverage_complete(coverage_report)
     assert coverage_report["status"] == "pass"
     fields = coverage_report["field_usage"]
-    assert fields["configuration_field_count"] == 41_379
-    assert fields["authored_normative_field_count"] == 32_160
-    assert fields["resolved_binding_field_count"] == 9_219
-    assert fields["consumed_field_count"] == 41_379
+    assert fields["configuration_field_count"] == 42_096
+    assert fields["authored_normative_field_count"] == 32_331
+    assert fields["resolved_binding_field_count"] == 9_765
+    assert fields["consumed_field_count"] == 42_096
     assert fields["unused_field_count"] == 0
     assert fields["multiple_primary_use_field_count"] == 0
     assert fields["claim_count"] == 47
     assert fields["mode_counts"] == {
-        "legacy_behavior": 13_244,
-        "compiler_semantic": 27_661,
+        "legacy_behavior": 13_934,
+        "compiler_semantic": 27_688,
         "front_end_validation": 346,
         "identity_only": 128,
     }
     assert fields["generation0_effect_counts"] == {
-        "legacy_behavior": 37_717,
-        "no_generation0_effect": 3_662,
+        "legacy_behavior": 38_407,
+        "no_generation0_effect": 3_689,
     }
 
     inventory = coverage_report["inventory_coverage"]

@@ -47,6 +47,7 @@ EXPECTED_AUTHORITY_COMPONENTS = (
     "support_profile",
     "puf_capital_gains_tail_support_contract",
     "late_producer_schedule",
+    "post_transfer_calibration",
 )
 
 EXPECTED_CHECKPOINT_TOP_LEVEL = frozenset(
@@ -106,7 +107,11 @@ EXPECTED_PROGRAM_IDS = (
     "head_start",
     "early_head_start",
     "housing_assistance",
+    "wic",
     "aca",
+    "ca_premium_subsidy",
+    "co_premium_assistance",
+    "nm_premium_assistance",
 )
 
 EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
@@ -142,6 +147,7 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         ("measured_map", "imputed_transfer"),
         "out_of_scope",
     ),
+    "wic": ("modeled", ("probability_seed",), "out_of_scope"),
     "aca": (
         "modeled",
         (
@@ -154,6 +160,17 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
             "count_calibration",
         ),
         "out_of_scope",
+    ),
+    "ca_premium_subsidy": ("engine", ("engine_default",), "rate_unsourced"),
+    "co_premium_assistance": (
+        "engine",
+        ("engine_default",),
+        "rate_unsourced",
+    ),
+    "nm_premium_assistance": (
+        "engine",
+        ("engine_default",),
+        "rate_unsourced",
     ),
 }
 
@@ -330,20 +347,20 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d",
-    "early_families": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
-    "full_checkpoint": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8",
-    "gap_fill_schedule": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10",
-    "graph_nodes": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864",
-    "late_families": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",
-    "late_resource_semantics": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee",
-    "late_schedule": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5",
+    "authority": "3a980927227704d0589f246eef9cd825c2ae84f3a4134ac835e0e5ed39a563ac",
+    "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
+    "full_checkpoint": "b6a47fac54d7de7aa42ce59dc1950c0765b7a67034f0174ad1531d5bbb06ceef",
+    "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
+    "graph_nodes": "7125ad28ae2c69f22094a574bbf6ed2ddf1682a2c2c3b416f8f49304b7016ce7",
+    "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
+    "late_resource_semantics": "3850554eb804fde5e4f86a34ac1bb8a7a07aafff7e8b48396a3d5fca844798e8",
+    "late_schedule": "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
-    "seed_map": "96140220b6b248c1b3a3567dc0c97df6c08176e6745d8dd55786053f26c43a32",
-    "seed_protocol": "6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec",
-    "source_manifest": "16f64b9cf3aea326737accca64c742a1edaa30a3a499432efd7567942f38a6c7",
-    "take_up": "495dc6ed195eae372a6ba098c6fb894323638a4a7dce1b4fe7efaaf6beb69446",
+    "seed_map": "36a9d819ef196c312888591936d49c025b0407df9928440cceefabc5458f72af",
+    "seed_protocol": "15840b380329410a7094f60b0f1dad453457fc785859f0c372f2c8e2d59b0246",
+    "source_manifest": "cd5ba8924d64da5425ee14cca82a774e3f4b2bb5aabe06df291cc3cc457287a9",
+    "take_up": "fa186daea0f8dd641cc470e41d1a2953f887d45282ec990201298f47bedf8d4d",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }
 
@@ -396,7 +413,7 @@ EXPECTED_INVENTORY_ITEMS = frozenset(
 
 EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "adapter_surfaces": 13,
-    "authority_components": 8,
+    "authority_components": 9,
     "early_families": 13,
     "early_targets": 48,
     "itemization_batches": 5,
@@ -413,7 +430,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 318,
+    "resolved_references": 325,
     "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
     "seed_sites": 53,
@@ -424,10 +441,10 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 9,
     "tail_control_fields": 934,
-    "take_up_pipeline_steps": 24,
-    "take_up_programs": 13,
+    "take_up_pipeline_steps": 28,
+    "take_up_programs": 17,
     "typed_artifacts": 84,
-    "typed_columns": 173,
+    "typed_columns": 176,
     "typed_entities": 8,
     "typed_scopes": 7,
 }
@@ -470,8 +487,7 @@ def _without_operational_bindings(value: object) -> object:
         return {
             key: _without_operational_bindings(item)
             for key, item in value.items()
-            if key != "worker_execution"
-            and not (drop_self_hash and key == "sha256")
+            if key != "worker_execution" and not (drop_self_hash and key == "sha256")
         }
     if isinstance(value, list):
         return [_without_operational_bindings(item) for item in value]
@@ -1220,7 +1236,7 @@ def build_inventory_coverage(
         "take_up_program_order_exact",
         clauses={
             "program order differs": program_ids == EXPECTED_PROGRAM_IDS,
-            "legacy program count differs": len(legacy_programs) == 13,
+            "legacy program count differs": len(legacy_programs) == 17,
             "legacy variable order differs": [
                 _mapping(value, "legacy program")["variable"]
                 for value in legacy_programs
@@ -1243,7 +1259,7 @@ def build_inventory_coverage(
             "pipeline step count differs": sum(
                 len(value) for value in step_map.values()
             )
-            == 24,
+            == 28,
             "legacy contract differs from typed projection": _json_equal(
                 actual_take_up, expected_take_up
             ),
@@ -1255,7 +1271,7 @@ def build_inventory_coverage(
             "by_program": {key: list(value) for key, value in step_map.items()},
         },
         expected={
-            "steps": 24,
+            "steps": 28,
             "by_program": {
                 key: list(value[1])
                 for key, value in EXPECTED_TAKE_UP_MECHANISMS.items()
@@ -1520,9 +1536,9 @@ def build_inventory_coverage(
             full_resource_semantics.get("producers"),
             "full checkpoint resource-semantics producers",
         )
-        if _mapping(
-            value, "full checkpoint resource-semantics producer"
-        ).get("producer")
+        if _mapping(value, "full checkpoint resource-semantics producer").get(
+            "producer"
+        )
         == "primary_puf_qrf"
     ]
     primary_resource_row = (
@@ -1558,9 +1574,7 @@ def build_inventory_coverage(
                 "alpha": {"sha256": "a" * 64, "size_bytes": 17},
                 "zeta": {"sha256": "b" * 64, "size_bytes": 23},
             },
-            "full checkpoint sampling vector differs": full_checkpoint.get(
-                "sampling"
-            )
+            "full checkpoint sampling vector differs": full_checkpoint.get("sampling")
             == {
                 "sample_fraction": 0.25,
                 "fraction_token": "f025",
@@ -1592,9 +1606,7 @@ def build_inventory_coverage(
         observed={
             "sha256": _operational_free_sha256(full_checkpoint),
             "field_names": sorted(full_checkpoint),
-            "input_roles": list(
-                _mapping(full_checkpoint["inputs"], "full inputs")
-            ),
+            "input_roles": list(_mapping(full_checkpoint["inputs"], "full inputs")),
             "fraction_token": _mapping(
                 full_checkpoint["sampling"], "full sampling"
             ).get("fraction_token"),
@@ -1963,8 +1975,10 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
         ):
             failures.append("inventory spec_binding contract differs")
         spec_sha256 = binding.get("spec_sha256")
-        if not isinstance(spec_sha256, str) or len(spec_sha256) != 64 or any(
-            character not in "0123456789abcdef" for character in spec_sha256
+        if (
+            not isinstance(spec_sha256, str)
+            or len(spec_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in spec_sha256)
         ):
             failures.append("inventory spec_binding SHA-256 is invalid")
 
@@ -1972,13 +1986,16 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
     if not isinstance(compiler_abi, Mapping):
         failures.append("inventory compiler_ir_abi is missing")
     else:
-        if set(compiler_abi) != {"version", "sha256"} or compiler_abi.get(
-            "version"
-        ) != 1:
+        if (
+            set(compiler_abi) != {"version", "sha256"}
+            or compiler_abi.get("version") != 1
+        ):
             failures.append("inventory compiler IR ABI contract differs")
         abi_sha256 = compiler_abi.get("sha256")
-        if not isinstance(abi_sha256, str) or len(abi_sha256) != 64 or any(
-            character not in "0123456789abcdef" for character in abi_sha256
+        if (
+            not isinstance(abi_sha256, str)
+            or len(abi_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in abi_sha256)
         ):
             failures.append("inventory compiler IR ABI SHA-256 is invalid")
 
@@ -2028,8 +2045,7 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
             not isinstance(homes, list)
             or not homes
             or any(
-                not isinstance(home, str) or not home.startswith("/")
-                for home in homes
+                not isinstance(home, str) or not home.startswith("/") for home in homes
             )
         ):
             failures.append(f"{name}: bundle_homes are malformed or empty")
@@ -2059,8 +2075,7 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
     recomputed_covered = recomputed_required - len(recomputed_missing)
     if recomputed_missing:
         failures.append(
-            "inventory has missing required items: "
-            + ", ".join(recomputed_missing)
+            "inventory has missing required items: " + ", ".join(recomputed_missing)
         )
     expected_summaries = {
         "required_item_count": recomputed_required,

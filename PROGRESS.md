@@ -1,65 +1,56 @@
-# Progress: one US target surface
+# Progress: PolicyEngine-US 1.819.0 lock bump
 
 ## State
 
-Surface unification and scale-identity enforcement are complete on
-`one-target-surface`: every US entrypoint
-now compiles one national + state + congressional-district target registry,
-and the CLI/config switches that could delete CD or JCT target rows are gone.
-Parity doctrine now protects that family as a red-line compile. Sparse and dense
-artifacts may differ in record count, never target membership.
+Complete and ready for the owner to open the PR. The lock resolves
+`policyengine-us==1.819.0` and `policyengine-core==3.31.0`; all required
+compatibility repairs, generated contracts, attested identities, package test
+shards, generator checks, and Ruff are green. The code-cited mechanism audit,
+identity inventory, compatibility note, and validation receipts are in
+`_LANE-NOTES.md`.
+
+No pool-consumed variable was removed without a verified successor, so no
+owner question is pending. No pool/release build, push, gate change, threshold
+change, tolerance change, or band change occurred.
 
 ## Done
 
-- Read `CLAUDE.md`, the target-parity declaration, the fiscal compiler and its
-  never-controls doctrine, the current CD opt-in tests, and
-  [microcosm#449](https://github.com/PolicyEngine/microcosm/issues/449) /
-  [microcosm#569](https://github.com/PolicyEngine/microcosm/issues/569).
-- Attempted the required `uv sync --all-packages --extra us`. The managed
-  sandbox denied writes to the default uv cache, then its network restriction
-  prevented a clean-cache download of `pyvis`. A byte-identical-lock sibling
-  environment was cloned copy-on-write; tests use that complete environment
-  with this worktree's package sources first on `PYTHONPATH` because an offline
-  editable reinstall still requires unavailable build-isolation metadata.
-- Attempted the GitNexus refactoring impact workflow. Local indexing completed,
-  but GitNexus could not register the index because the sandbox forbids writing
-  `~/.gitnexus/registry.json`; a direct source/call-site audit is the fallback.
-- Confirmed the starting worktree was clean and no build or push was run.
-- Ran the workspace suite for 1,137 seconds with no failure before interrupting
-  it inside the unrelated PUF-QRF stale-checkpoint subprocess regression; the
-  affected US target/compiler shard is the per-commit validation boundary, with
-  a complete workspace run reserved for the final tree. Ruff is green.
-- Established a green 10-file affected-suite baseline covering target
-  compilation, parity, the release builder/scorers, CD vintage translation,
-  Ledger profiles, and the generated calibration contract (100% in 349.59s).
-- Removed the congressional-district compilation option throughout the fiscal
-  compiler, builder, fiscal scorer, state-file scorer, ACS local tool, aging
-  diff, experiments, tests, docs, and generated contract. The canonical CD
-  crosswalk is now the default at each production entrypoint.
-- Removed the diagnostic JCT target-deletion option and its release-gate bypass;
-  diagnostic tools now score the same registry as releases.
-- Removed the parity generator's CD regime switch and regenerated the pinned
-  manifest to 32 compiled / 52 reviewed families. The generated calibration
-  contract declares all three geography layers and has no default-layer split.
-- The 10-file affected suite reaches 100% with exit 0 after the runtime change;
-  Ruff, byte compilation, and `git diff --check` pass.
-- Promoted the CD family into the parity anti-rot red-line set, pinned the
-  manifest's 32/52 header counts to parsed family counts, and asserted that its
-  compiled entry carries no exclusion fields or fence.
-- Strengthened the fiscal invariant: the CD aggregate is present in the
-  compiled registry while the taxable-interest rebase still refuses it as a
-  national control. The standard 10-file affected suite reaches 100% with exit
-  0 after the parity-doctrine change.
-- Removed the compiler's per-run support-exclusion parameter, the release CLI
-  and loader that populated it, its provenance branch, both experiment callers,
-  and the obsolete sparse Build-J exclusion JSON.
-- Added exact signature locks for the compiler, release builder, fiscal scorer,
-  and state scorer; legacy membership flags are parser-rejected.
-- Added a CD-bearing registry identity test across nominal 57,240-record sparse
-  and 337,704-record dense artifacts. Specs and content-addressed registry
-  version are identical. The standard affected suite reaches 100% with exit 0.
+- Started and committed this standing progress log at `514964d4` after
+  rebasing the lane start onto current `origin/main`.
+- Ran the ordered initial sync attempt, documented the sandbox cache/network
+  limits, and completed the unchanged-lock and upgraded-lock all-package US
+  syncs from exact official artifacts in a task-local cache.
+- Ran `uv lock --upgrade-package policyengine-us`. The complete version
+  movement is exactly `policyengine-core 3.26.11 -> 3.31.0` and
+  `policyengine-us 1.764.6 -> 1.819.0`; NumPy 2.4.6 and Torch 2.12.0 did not
+  move.
+- Verified upstream variable reality in the installed PE-US 1.819.0 package,
+  adapted Microcosm's input ownership and consumer guards, and retained
+  fail-closed certified-dataset version checks. Each mechanism is cited in
+  `_LANE-NOTES.md` under “verified upstream compatibility repairs.”
+- Regenerated the release-input, parity, source/take-up, engine-ABI, spec,
+  seed, coverage, and golden identities with repository tools. The final
+  46-value inventory is in `_LANE-NOTES.md`; the final commit body carries the
+  exhaustive old-to-new mapping.
+- Added the requested owner-facing PE-US 1.764.6-to-1.819.0 compatibility note
+  from the installed release changelog, including major SNAP, receipt,
+  OBBBA-follow-through, cash/health/housing, tax, and new-program changes.
+- Passed every package test: 7,213 passed / 77 skipped / 0 failed. Calibrate,
+  data, fit, and frame ran as individual package shards. The build inventory
+  was proven as a complete disjoint 4,161-item + 2,180-item partition after
+  the otherwise-green single process retained more than the binding memory
+  ceiling; accepted peaks were 12,596,384 and 13,363,984 KiB, both below 15
+  GiB. This uses the repository's fresh-process shard rationale
+  (`.github/workflows/test.yml:24-34`) without changing any assertion or model
+  behavior.
+- Reproduced 163 required release inputs / 7 reviewed exclusions / 41 reform
+  probes; 32 compiled parity targets / 52 reviewed exclusions; US spec SHA-256
+  `3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62`;
+  and 42,096/42,096 configuration fields plus 40/40 inventory checks.
+- Passed repository-wide Ruff and `git diff --check`; wrote the final handoff
+  to `FINAL_REPORT.md`.
 
 ## Next
 
-- Quantify the target-row delta and existing 25% timing evidence, run final
-  verification, then write `FINAL_REPORT.md`.
+The owner opens the PR. No push or additional build is required from this
+lane.

@@ -44,7 +44,8 @@ from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
 )
-from microcosm.fit import QRFChainState
+from microcosm.fit import DEFAULT_ZERO_ATOL, QRFChainState
+from microcosm.fit.qrf import detect_regime
 from microcosm.frame import EntitySchema, Frame, Weights
 
 QRF: Any | None = None
@@ -67,6 +68,7 @@ __all__ = [
     "TargetFamilies",
     "acs_transfer_donor_requirements",
     "acs_transfer_execution_contract_identity",
+    "acs_adult_care_qualifying_rows",
     "assert_acs_transfer_targets_are_input_leaves",
     "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
@@ -367,9 +369,10 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "is_disabled",
             "is_full_time_college_student",
             "is_pregnant",
-            # WICYN's adult-female reporter is only a physical carrier for an
-            # SPM-unit receipt fact. Engine consumers are separately guarded
-            # to aggregate receives_wic at SPM-unit grain (microcosm#591).
+            # WICYN's adult-female reporter is the physical carrier for this
+            # source receipt fact. The consumer-source index separately pins
+            # every engine receiver and aggregation entity so new or regrouped
+            # receives_wic consumers require explicit review (microcosm#591).
             "receives_wic",
         ),
         "model_required_discrete": ("own_children_in_household",),
@@ -395,8 +398,8 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
         # takes_up_* leaves are runtime-owned draws and are not donor targets.
         "benefit_participation": ("takes_up_housing_assistance_if_eligible",),
         # Reported TANF/SNAP receipt is produced from annual ASEC amounts before
-        # cloning and transferred like the person-level required booleans.
-        "model_required_boolean": ("is_tanf_enrolled", "receives_snap"),
+        # cloning and transferred with the other model-required booleans.
+        "model_required_boolean": ("receives_snap", "receives_tanf"),
         "model_required_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
     },
 }
@@ -413,6 +416,10 @@ class AcsTransferPattern:
     weight_kind: str
     donor_rows: int
     recipient_rows: int
+    #: Ordered ``(model_target, regime)`` pairs explicitly requested by the
+    #: transfer owner and detected from this pattern's exact encoded donors.
+    #: Ordinary callers opt out, preserving the legacy provenance surface.
+    target_regimes: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -651,6 +658,32 @@ def derive_acs_schedule_d_capital_gain_distributions(
     return values.astype(np.float64), provenance
 
 
+def acs_adult_care_qualifying_rows(person: pd.DataFrame) -> pd.Series:
+    """Return the section 21 qualifying-person mask for ACS adult care.
+
+    An incapable dependent qualifies directly.  An incapable tax-unit head or
+    spouse qualifies only when the unit contains a spouse row.  Missing input
+    columns fail closed so callers cannot silently broaden the carrier set.
+    """
+
+    required = {_ADULT_CARE_FLAG, _ADULT_CARE_ROLE, _ADULT_CARE_UNIT}
+    missing = sorted(required - set(person.columns))
+    if missing:
+        raise ValueError(
+            "ACS adult-care qualification is missing required person "
+            f"columns: {missing}."
+        )
+
+    flag = person[_ADULT_CARE_FLAG].fillna(False).astype(bool)
+    role = person[_ADULT_CARE_ROLE].astype(str)
+    units = person[_ADULT_CARE_UNIT]
+    is_dependent = role.eq("DEPENDENT")
+    is_head = role.eq("HEAD")
+    is_spouse = role.eq("SPOUSE")
+    unit_married = is_spouse.groupby(units).transform("any")
+    return flag & (is_dependent | ((is_head | is_spouse) & unit_married))
+
+
 def reconcile_acs_adult_care(
     person: pd.DataFrame,
     *,
@@ -670,7 +703,6 @@ def reconcile_acs_adult_care(
     introducing an additional carrier.
     """
 
-    flag = person[_ADULT_CARE_FLAG].fillna(False).astype(bool)
     raw_expenses = pd.to_numeric(person[_ADULT_CARE_EXPENSE], errors="coerce")
     expenses = raw_expenses.fillna(0.0)
     if mutable_rows is None:
@@ -682,13 +714,8 @@ def reconcile_acs_adult_care(
                 "mutable_rows must be a one-dimensional mask aligned to person."
             )
         mutable = pd.Series(mutable_array, index=person.index)
-    role = person[_ADULT_CARE_ROLE].astype(str)
     units = person[_ADULT_CARE_UNIT]
-    is_dependent = role.eq("DEPENDENT")
-    is_head = role.eq("HEAD")
-    is_spouse = role.eq("SPOUSE")
-    unit_married = is_spouse.groupby(units).transform("any")
-    qualifying = flag & (is_dependent | ((is_head | is_spouse) & unit_married))
+    qualifying = acs_adult_care_qualifying_rows(person)
 
     mutable_positive = mutable & (expenses > 0.0)
     cleared_ineligible_mask = mutable_positive & ~qualifying
@@ -890,6 +917,7 @@ def transfer_acs_inputs(
     target_bank: AcsTransferTargetBank | None = None,
     derive_schedule_d: bool = True,
     execution_contract: Mapping[str, object] | None = None,
+    regime_evidence_targets: Iterable[tuple[str, str]] = (),
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -916,6 +944,11 @@ def transfer_acs_inputs(
     after each ordered model target, so a retry can continue without changing
     the monolithic chained-QRF result. The ordinary in-memory fit remains the
     default for library callers that do not request durable banking.
+
+    ``regime_evidence_targets`` is an explicit ``(entity, target)`` audit
+    selection. Only those targets incur donor-regime detection, fitted-result
+    verification, and pattern provenance. The default is empty so an owner
+    cannot accidentally broaden every transfer's runtime or receipt contract.
     """
 
     _validate_frames(recipient, donor)
@@ -939,6 +972,13 @@ def transfer_acs_inputs(
     requested = _split_large_target_families(
         requested,
         max_targets_per_fit=max_targets_per_fit,
+    )
+    requested_target_keys = frozenset(
+        (entity, target) for entity, _family, targets in requested for target in targets
+    )
+    selected_regime_evidence = _normalize_regime_evidence_targets(
+        regime_evidence_targets,
+        requested=requested_target_keys,
     )
     if not requested:
         return AcsTransferResult(
@@ -965,6 +1005,25 @@ def transfer_acs_inputs(
     assert_acs_transfer_targets_are_input_leaves(all_targets)
 
     active = _missing_target_families(requested, recipient=recipient)
+    if selected_regime_evidence:
+        requested_families = {
+            (entity, family): targets for entity, family, targets in requested
+        }
+        active = [
+            (
+                entity,
+                family,
+                (
+                    requested_families[(entity, family)]
+                    if all(
+                        (entity, target) in selected_regime_evidence
+                        for target in requested_families[(entity, family)]
+                    )
+                    else active_targets
+                ),
+            )
+            for entity, family, active_targets in active
+        ]
     if not active:
         return AcsTransferResult(
             frame=canonicalize_frame_string_dtypes(
@@ -990,6 +1049,9 @@ def transfer_acs_inputs(
     bank_target_indexes = {key: index for index, key in enumerate(ordered_bank_targets)}
 
     for entity, family, targets in active:
+        family_regime_evidence_targets = tuple(
+            target for target in targets if (entity, target) in selected_regime_evidence
+        )
         recipient_table = recipient.table(entity)
         target_missing = {
             target: (
@@ -1009,6 +1071,7 @@ def transfer_acs_inputs(
                 target_missing=target_missing,
                 seed=seed,
                 n_estimators=n_estimators,
+                regime_evidence_targets=family_regime_evidence_targets,
             )
         else:
             fitted = _fit_family_patterns_banked(
@@ -1026,7 +1089,13 @@ def transfer_acs_inputs(
                     for model_target in _model_target_names(targets)
                 },
                 total_targets=len(ordered_bank_targets),
+                regime_evidence_targets=family_regime_evidence_targets,
             )
+        patterns_without_regimes = (
+            tuple(replace(pattern, target_regimes=()) for pattern in fitted.patterns)
+            if family_regime_evidence_targets
+            else fitted.patterns
+        )
         for target in targets:
             predicted = _prediction_values(
                 fitted.predictions[target],
@@ -1054,7 +1123,11 @@ def transfer_acs_inputs(
                     predictors=fitted.predictors,
                     seed=fitted.family_seed,
                     weight_kind=fitted.weight_kind,
-                    patterns=fitted.patterns,
+                    patterns=(
+                        fitted.patterns
+                        if target in family_regime_evidence_targets
+                        else patterns_without_regimes
+                    ),
                     imputed_recipient_rows=int(imputed.sum()),
                     unmodeled_recipient_rows=int((missing_rows & ~imputed).sum()),
                 )
@@ -1244,6 +1317,127 @@ def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:
     return tuple(model_targets)
 
 
+def _selected_model_target_names(
+    family_targets: Sequence[str],
+    selected_targets: Sequence[str],
+) -> tuple[str, ...]:
+    """Resolve an exported-target subset against the full family codec."""
+
+    family = tuple(family_targets)
+    family_set = set(family)
+    selected = set(selected_targets)
+    unknown = sorted(selected - family_set)
+    if unknown:
+        raise ValueError(
+            f"Selected ACS regime-evidence targets are outside the family: {unknown}."
+        )
+    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
+    selected_model_targets = {
+        (
+            _IMMIGRATION_STATUS_MODEL_TARGET
+            if target in immigration_pair and immigration_pair.issubset(family_set)
+            else target
+        )
+        for target in selected
+    }
+    return tuple(
+        target
+        for target in _model_target_names(family)
+        if target in selected_model_targets
+    )
+
+
+def _regime_evidence_model_targets(
+    *,
+    model_targets: Sequence[str],
+    target_encodings: Mapping[str, _TargetEncoding],
+    regime_evidence_targets: Sequence[str],
+) -> tuple[str, ...]:
+    """Project selected exported leaves onto the fitted model-target order."""
+
+    selected = {
+        target_encodings[target].model_target for target in regime_evidence_targets
+    }
+    return tuple(target for target in model_targets if target in selected)
+
+
+def _model_target_regimes(
+    model_frame: Frame,
+    *,
+    entity: str,
+    model_targets: Sequence[str],
+    zero_atol: float,
+) -> tuple[tuple[str, str], ...]:
+    """Detect ordered regimes on the exact encoded donor fit surface."""
+
+    table = model_frame.table(entity)
+    return tuple(
+        (
+            target,
+            detect_regime(
+                table[target].to_numpy(dtype=np.float64),
+                zero_atol=zero_atol,
+            ),
+        )
+        for target in model_targets
+    )
+
+
+def _verify_fitted_target_regimes(
+    fitted: object,
+    *,
+    expected: tuple[tuple[str, str], ...],
+    entity: str,
+    family: str,
+    pattern: str,
+) -> None:
+    """Verify a fitted QRF's reported regimes when its API exposes them."""
+
+    if not expected:
+        return
+    regimes = getattr(fitted, "regimes", None)
+    if not callable(regimes):
+        # Lightweight test doubles need only implement the fit/predict surface.
+        return
+    reported = regimes()
+    if not isinstance(reported, Mapping):
+        raise TypeError(
+            f"ACS transfer {entity!r}/{family!r}/{pattern!r} QRF regimes "
+            "must be a mapping."
+        )
+    expected_targets = tuple(target for target, _regime in expected)
+    actual = tuple((target, reported.get(target)) for target in expected_targets)
+    if any(target not in reported for target in expected_targets) or actual != expected:
+        raise RuntimeError(
+            f"ACS transfer {entity!r}/{family!r}/{pattern!r} QRF reported "
+            f"regimes {actual!r}, expected exact donor-support regimes "
+            f"{expected!r}."
+        )
+
+
+def _verify_chain_target_regime(
+    result: object,
+    *,
+    expected: str,
+    entity: str,
+    family: str,
+    pattern: str,
+    model_target: str,
+) -> None:
+    """Verify one targetwise chain result when it exposes regime evidence."""
+
+    reported = getattr(result, "regime", None)
+    if reported is None:
+        # Lightweight bank-path test doubles may omit QRF diagnostics.
+        return
+    if reported != expected:
+        raise RuntimeError(
+            f"ACS transfer {entity!r}/{family!r}/{pattern!r} target "
+            f"{model_target!r} reported regime {reported!r}, expected exact "
+            f"donor-support regime {expected!r}."
+        )
+
+
 def _fit_family_patterns(
     donor: Frame,
     recipient: Frame,
@@ -1254,6 +1448,7 @@ def _fit_family_patterns(
     target_missing: Mapping[str, np.ndarray],
     seed: int,
     n_estimators: int,
+    regime_evidence_targets: tuple[str, ...],
 ) -> _FamilyFit:
     _validate_donor_targets(donor, entity=entity, targets=targets)
     donor_table = donor.table(entity)
@@ -1269,6 +1464,11 @@ def _fit_family_patterns(
         complete=target_complete,
     )
     model_targets = _model_target_names(targets)
+    evidence_model_targets = _regime_evidence_model_targets(
+        model_targets=model_targets,
+        target_encodings=target_encodings,
+        regime_evidence_targets=regime_evidence_targets,
+    )
     surface = _transfer_feature_surface(
         donor,
         recipient,
@@ -1338,7 +1538,18 @@ def _fit_family_patterns(
             mask=donor_mask,
         )
         resolved_kind = model_frame.resolve_weights(entity).kind.value
-        fitted = _qrf()(n_estimators=n_estimators, seed=pattern_seed).fit(
+        model = _qrf()(n_estimators=n_estimators, seed=pattern_seed)
+        target_regimes = (
+            _model_target_regimes(
+                model_frame,
+                entity=entity,
+                model_targets=evidence_model_targets,
+                zero_atol=float(getattr(model, "zero_atol", DEFAULT_ZERO_ATOL)),
+            )
+            if evidence_model_targets
+            else ()
+        )
+        fitted = model.fit(
             model_frame,
             list(predictors),
             list(model_targets),
@@ -1349,6 +1560,14 @@ def _fit_family_patterns(
                 f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
                 f"weight kind {fitted.weight_kind!r}, expected the donor "
                 f"Frame's {resolved_kind!r}."
+            )
+        if target_regimes:
+            _verify_fitted_target_regimes(
+                fitted,
+                expected=target_regimes,
+                entity=entity,
+                family=family,
+                pattern=pattern_name,
             )
 
         recipient_pattern = _encoded_predictor_frame(
@@ -1376,6 +1595,7 @@ def _fit_family_patterns(
             weight_kind=fitted.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
+            target_regimes=target_regimes,
         )
         pattern_records.append(pattern_record)
         fit_records.append(
@@ -1421,6 +1641,7 @@ def _fit_family_patterns_banked(
     target_bank: AcsTransferTargetBank,
     target_indexes: Mapping[str, int],
     total_targets: int,
+    regime_evidence_targets: tuple[str, ...],
 ) -> _FamilyFit:
     """Fit one family targetwise, resuming exact raw chained draws."""
 
@@ -1445,6 +1666,11 @@ def _fit_family_patterns_banked(
         raise AssertionError(
             "ACS transfer model-target ordering changed during encode."
         )
+    evidence_model_targets = _regime_evidence_model_targets(
+        model_targets=model_targets,
+        target_encodings=target_encodings,
+        regime_evidence_targets=regime_evidence_targets,
+    )
 
     surface = _transfer_feature_surface(
         donor,
@@ -1511,6 +1737,16 @@ def _fit_family_patterns_banked(
         )
         resolved_kind = model_frame.resolve_weights(entity).kind.value
         model = _qrf()(n_estimators=n_estimators, seed=pattern_seed)
+        target_regimes = (
+            _model_target_regimes(
+                model_frame,
+                entity=entity,
+                model_targets=evidence_model_targets,
+                zero_atol=float(getattr(model, "zero_atol", DEFAULT_ZERO_ATOL)),
+            )
+            if evidence_model_targets
+            else ()
+        )
         if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
             raise TypeError(
                 "Banked ACS transfer requires a QRF with start_chain and "
@@ -1536,6 +1772,7 @@ def _fit_family_patterns_banked(
             weight_kind=state.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
+            target_regimes=target_regimes,
         )
         contexts.append(
             _BankPatternContext(
@@ -1615,6 +1852,16 @@ def _fit_family_patterns_banked(
                         f"ACS transfer {entity!r}/{family!r}/{pattern.name!r} "
                         f"resolved weight kind {result.weight_kind!r}, expected "
                         f"{pattern.weight_kind!r}."
+                    )
+                expected_regime = dict(pattern.target_regimes).get(model_target)
+                if expected_regime is not None:
+                    _verify_chain_target_regime(
+                        result,
+                        expected=expected_regime,
+                        entity=entity,
+                        family=family,
+                        pattern=pattern.name,
+                        model_target=model_target,
                     )
                 raw_draw[context.recipient_positions] = result.raw_draw
                 _validate_prediction_values(
@@ -2263,6 +2510,47 @@ def _validate_fit_options(
             "max_targets_per_fit must be a positive integer, got "
             f"{max_targets_per_fit!r}."
         )
+
+
+def _normalize_regime_evidence_targets(
+    targets: Iterable[tuple[str, str]],
+    *,
+    requested: frozenset[tuple[str, str]],
+) -> frozenset[tuple[str, str]]:
+    """Validate an explicit owner selection against the requested surface."""
+
+    if isinstance(targets, (str, bytes)):
+        raise TypeError(
+            "regime_evidence_targets must contain (entity, target) pairs, not a string."
+        )
+    try:
+        items = tuple(targets)
+    except TypeError as exc:
+        raise TypeError(
+            "regime_evidence_targets must be an iterable of (entity, target) pairs."
+        ) from exc
+    malformed = [
+        item
+        for item in items
+        if (
+            not isinstance(item, tuple)
+            or len(item) != 2
+            or any(not isinstance(value, str) or not value for value in item)
+        )
+    ]
+    if malformed:
+        raise TypeError(
+            "regime_evidence_targets contains malformed (entity, target) "
+            f"pair(s): {malformed!r}."
+        )
+    selected = frozenset(items)
+    unknown = sorted(selected - requested)
+    if unknown:
+        raise ValueError(
+            "regime_evidence_targets names target(s) outside the requested "
+            f"transfer surface: {unknown}."
+        )
+    return selected
 
 
 def _normalize_target_families(

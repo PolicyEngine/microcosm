@@ -32,6 +32,11 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
+from microcosm.build.uk_runtime.cgt_structure import (
+    UKCGTBandDonorStageTransform,
+    UKCGTIncidenceCloneStageTransform,
+)
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
@@ -69,11 +74,13 @@ from microcosm.build.uk_runtime.national_sampling import (
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
+from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
+from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -102,6 +109,11 @@ _STAGE_NAMES = (
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
     "hmrc_spi_income_spine",
+    "cgt_incidence_clone",
+    "cgt_band_donors",
+    "hmrc_cgt_gains_spine",
+    "salary_sacrifice",
+    "student_loans",
 )
 
 
@@ -152,6 +164,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help="Pinned local HMRC collated ODS path.",
+    )
+    parser.add_argument(
+        "--cgt-ods",
+        type=Path,
+        help="Pinned local HMRC Capital Gains Tax Table 3 ODS path.",
     )
     parser.add_argument(
         "--checkpoint-dir",
@@ -230,6 +247,11 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError(f"--hmrc-ods must be an existing file: {args.hmrc_ods}")
     if args.hmrc_ods.suffix.lower() != ".ods":
         raise ValueError("--hmrc-ods must end with '.ods'.")
+    if args.cgt_ods is not None:
+        if not args.cgt_ods.is_file():
+            raise ValueError(f"--cgt-ods must be an existing file: {args.cgt_ods}")
+        if args.cgt_ods.suffix.lower() != ".ods":
+            raise ValueError("--cgt-ods must end with '.ods'.")
     paths = {
         "spine_h5": args.spine_h5,
         "build_sidecar": args.spine_h5.with_suffix(".build.json"),
@@ -382,6 +404,8 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
         for operation in stage.operations:
             output = operation.parameters.get("output")
             seed = operation.parameters.get("seed")
+            if seed is None:
+                seed = operation.parameters.get("seed_base")
             if isinstance(output, str) and isinstance(seed, int):
                 stage_seeds[output] = seed
             elif isinstance(seed, int):
@@ -405,6 +429,16 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "fit_weighted_qrf":
                     stage_seeds[stage.stage] = seed
+                elif operation.kind == "draw_capital_gains_prior_from_banded_quantiles":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind == "stack_band_donor_households":
+                    stage_seeds["stack_band_donor_households"] = seed
+                elif operation.kind == "within_band_draws":
+                    stage_seeds["within_band_draws"] = seed
+                elif operation.kind == "convert_donors_to_target_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind == "top_up_to_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
     return declared
@@ -633,6 +667,10 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("UK country spec has no source stages.")
         stages_by_name = spec.sources.stage_map()
         stage_names = tuple(name for name in _STAGE_NAMES if name in stages_by_name)
+        if "hmrc_cgt_gains_spine" in stage_names and args.cgt_ods is None:
+            raise ValueError(
+                "--cgt-ods is required when hmrc_cgt_gains_spine is scheduled."
+            )
         if "was_wealth" in stage_names and args.was_tab is None:
             raise ValueError(
                 "--was-tab is required when the was_wealth stage is scheduled."
@@ -780,6 +818,28 @@ def main(argv: list[str] | None = None) -> int:
             sample_fraction=args.sample_fraction,
         )
         implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+        if "cgt_incidence_clone" in stage_names:
+            implementations["cgt_incidence_clone"] = UKCGTIncidenceCloneStageTransform(
+                stage=stages_by_name["cgt_incidence_clone"]
+            )
+        if "cgt_band_donors" in stage_names:
+            implementations["cgt_band_donors"] = UKCGTBandDonorStageTransform(
+                stage=stages_by_name["cgt_band_donors"]
+            )
+        if "hmrc_cgt_gains_spine" in stage_names:
+            implementations["hmrc_cgt_gains_spine"] = uk_cgt_spine_stage_transform(
+                stages_by_name["hmrc_cgt_gains_spine"],
+                args.cgt_ods,
+            )
+        if "salary_sacrifice" in stage_names:
+            implementations["salary_sacrifice"] = UKSalarySacrificeStageTransform(
+                stage=stages_by_name["salary_sacrifice"]
+            )
+        if "student_loans" in stage_names:
+            implementations["student_loans"] = UKStudentLoansStageTransform(
+                stage=stages_by_name["student_loans"],
+                calibration_year=frs_release.calibration_year,
+            )
         plan = country_stage_plan(
             spec,
             implementations,
@@ -824,6 +884,23 @@ def main(argv: list[str] | None = None) -> int:
             frs_vintage=frs_release.vintage,
             sampling=sampling,
         )
+        # E8 executed-effect receipts (#730/#684 two-arm rule, arm 2): the
+        # clone/donor/salsac/student-loan transforms record their receipts on
+        # last_result; persist them beside the declared seeds so the sidecar
+        # carries evidence that every declared parameter shaped the output.
+        e8_stage_evidence: dict[str, object] = {}
+        for e8_stage_name in (
+            "cgt_incidence_clone",
+            "cgt_band_donors",
+            "salary_sacrifice",
+            "student_loans",
+        ):
+            e8_implementation = implementations.get(e8_stage_name)
+            e8_last_result = getattr(e8_implementation, "last_result", None)
+            if e8_last_result is not None:
+                e8_stage_evidence[e8_stage_name] = e8_last_result.evidence()
+        if e8_stage_evidence:
+            sidecar["stage_evidence"] = e8_stage_evidence
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:

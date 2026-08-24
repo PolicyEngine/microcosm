@@ -348,7 +348,7 @@ def test_engine_incompatibility_raises_before_dataset_construction(
     )
 
     with pytest.raises(
-        ValueError,
+        loader._CertifiedPackageCompatibilityError,
         match=rf"{package}.*{installed}.*{required}.*pip install",
     ):
         load("us", 2024)
@@ -407,6 +407,8 @@ def test_live_load_builds_a_simulation_with_a_sane_population() -> None:
 
     try:
         dataset = load("us", 2024)
+    except loader._CertifiedPackageCompatibilityError as exc:
+        pytest.skip(f"Published release is certified for another engine lock: {exc}")
     except Exception as exc:  # live network/release availability
         if _is_offline_error(exc):
             pytest.skip(f"Hugging Face dataset unavailable offline: {exc}")

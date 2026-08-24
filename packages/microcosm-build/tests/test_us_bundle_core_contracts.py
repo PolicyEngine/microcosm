@@ -128,7 +128,7 @@ def test_source_surface_classification_is_complete() -> None:
     }
     assert normative["stage_asset"] == {
         "id": "source_stages",
-        "sha256": "a3e9ca87f43d74b3d83320ca77559f28452036cf60dfc16bee10a22d4784f672",
+        "sha256": "dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097",
     }
     assert operational["stage_asset"] == {
         "path": "microcosm.build.us/source_stages.json"
@@ -404,8 +404,8 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
     pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     catalog = build_catalogs()
     columns = catalog["columns"]
-    assert len(columns) == 173
-    assert len({row["key"] for row in columns}) == 173
+    assert len(columns) == 176
+    assert len({row["key"] for row in columns}) == 176
     assert catalog["metadata_waivers"] == [
         {
             "id": "policyengine_us_unit_unavailable",
@@ -431,7 +431,7 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
             assert "unit_waiver" not in contract
     assert Counter(row["contract"]["unit"] for row in columns) == {
         "unit_not_declared_by_engine_metadata": 89,
-        "boolean": 48,
+        "boolean": 51,
         "count": 27,
         "categorical": 9,
     }
@@ -456,7 +456,7 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
             "catalogs": catalog,
         }
     )
-    assert len(resolved.columns) == 173
+    assert len(resolved.columns) == 176
     by_key = {row["key"]: row["contract"] for row in columns}
     for column in resolved.columns:
         contract = by_key[column.key]

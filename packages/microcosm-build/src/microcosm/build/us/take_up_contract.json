@@ -5,7 +5,7 @@
   "asserted_engine": {
     "package": "policyengine-us",
     "constraint": ">=1.745.0,<2",
-    "inventory_built_against": "1.752.2",
+    "inventory_built_against": "1.819.0",
     "note": "engine_class, entity, value_type, and default below are asserted against the installed engine by test. inventory_built_against records the version the curated treatments were reviewed against; the pin constraint is the contract the build honors."
   },
   "doctrine": {
@@ -193,6 +193,18 @@
       "notes": "The source stage preserves every ASEC SPM_CAPHOUSESUB reporter and sets take-up exactly equal to receipt on both support channels. The retired 0.50 parameter was an ad hoc benchmark adjustment. The archived HUD ETL instead reads household-grain state counts from a live workbook, which cannot identify SPM-unit recipients in the hermetic build; Populace therefore does not allocate extra recipients. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
+      "variable": "takes_up_wic_if_eligible",
+      "engine_class": "data_seeded",
+      "entity": "person",
+      "value_type": "bool",
+      "default": true,
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "wic_claim_input source stage (USDA FNS CY2022 category-rate assignment)",
+      "consumed_via": "wic (defined_for takes_up_wic_if_eligible; adds wic_if_takes_up)",
+      "rate": {"status": "sourced_administrative"},
+      "notes": "PolicyEngine-US 1.777.0 renamed would_claim_wic to takes_up_wic_if_eligible and made WIC consume the successor. The existing source stage already assigns the reviewed USDA FNS CY2022 category-specific participation rates, so the runtime output is renamed without inventing a new rate or changing its ownership. out_of_scope means out of scope for the generic Bernoulli seeder, not unseeded."
+    },
+    {
       "variable": "takes_up_aca_if_eligible",
       "engine_class": "data_seeded",
       "entity": "tax_unit",
@@ -201,7 +213,43 @@
       "populace_treatment": "out_of_scope",
       "scope_owner": "populace ACA family #70/#74/#75/#76/#168",
       "rate": {"value": 0.672, "source": "KFF", "status": "owned_by_aca_workstream"},
-      "engine_state_note": "As of pinned 1.752.2 the engine carries NO aca_take_up_seed and no formula on this flag, so by pure engine facts it is data_seeded, not model_simulated. The spec anticipated PE-US #76's model-side take-up migration (aca_take_up_seed); that migration has NOT landed in the pinned engine. populace already carries a native ACA take-up stage in source_stages.json (assign_binary_from_rate + calibrate_binary_assignment anchored on reported Marketplace coverage). This issue does not touch ACA flag-seeding per its scope boundary; the engine-vs-spec discrepancy is flagged for the ACA workstream and #313."
+      "engine_state_note": "As of pinned 1.819.0 the engine carries NO aca_take_up_seed and no formula on this flag, so by pure engine facts it is data_seeded, not model_simulated. The spec anticipated PE-US #76's model-side take-up migration (aca_take_up_seed); that migration has NOT landed in the pinned engine. Microcosm already carries a native ACA take-up stage in source_stages.json (assign_binary_from_rate + calibrate_binary_assignment anchored on reported Marketplace coverage). This issue does not touch ACA flag-seeding per its scope boundary; the engine-vs-spec discrepancy is flagged for the ACA workstream and #313."
+    },
+    {
+      "variable": "takes_up_ca_premium_subsidy_if_eligible",
+      "engine_class": "data_seeded",
+      "entity": "tax_unit",
+      "value_type": "bool",
+      "default": true,
+      "populace_treatment": "rate_unsourced",
+      "consumed_via": "assigned_ca_premium_subsidy",
+      "rate": {"status": "no_source"},
+      "followup": "Source a California Premium Subsidy participation rate or enrollment-count authority before assigning this flag below the engine default.",
+      "notes": "PolicyEngine-US added this input leaf to gate the assigned California Premium Subsidy. No reviewed Microcosm source supplies its participation, so it remains at the disclosed default rather than receiving an invented rate."
+    },
+    {
+      "variable": "takes_up_co_premium_assistance_if_eligible",
+      "engine_class": "data_seeded",
+      "entity": "tax_unit",
+      "value_type": "bool",
+      "default": true,
+      "populace_treatment": "rate_unsourced",
+      "consumed_via": "assigned_co_premium_assistance",
+      "rate": {"status": "no_source"},
+      "followup": "Source a Colorado Premium Assistance participation rate or enrollment-count authority before assigning this flag below the engine default.",
+      "notes": "PolicyEngine-US added this input leaf to gate assigned Colorado Premium Assistance. No reviewed Microcosm source supplies its participation, so it remains at the disclosed default rather than receiving an invented rate."
+    },
+    {
+      "variable": "takes_up_nm_premium_assistance_if_eligible",
+      "engine_class": "data_seeded",
+      "entity": "tax_unit",
+      "value_type": "bool",
+      "default": true,
+      "populace_treatment": "rate_unsourced",
+      "consumed_via": "assigned_nm_premium_assistance",
+      "rate": {"status": "no_source"},
+      "followup": "Source a New Mexico Premium Assistance participation rate or enrollment-count authority before assigning this flag below the engine default.",
+      "notes": "PolicyEngine-US added this input leaf to gate assigned New Mexico Premium Assistance. No reviewed Microcosm source supplies its participation, so it remains at the disclosed default rather than receiving an invented rate."
     }
   ]
 }

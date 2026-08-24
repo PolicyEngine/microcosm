@@ -81,7 +81,7 @@
           "FFINVAL": {"entity": "family", "label": "Financial assistance amount - Family"}
         },
         "policyengine_variable": {
-          "version": "1.764.6",
+          "version": "1.819.0",
           "entity": "person",
           "definition_period": "year",
           "documentation": "Cash financial assistance from outside the household."
@@ -247,7 +247,7 @@
           "scope": "all participant categories"
         },
         "policyengine_variable": {
-          "version": "1.764.6",
+          "version": "1.819.0",
           "entity": "person",
           "definition_period": "month",
           "value_type": "bool",
@@ -321,7 +321,7 @@
           "household": ["HSURVAL", "HSUR_YN"]
         },
         "policyengine_variable": {
-          "version": "1.764.6",
+          "version": "1.819.0",
           "entity": "person",
           "definition_period": "year",
           "documentation": "Survivor benefits other than Social Security survivor benefits."
@@ -410,7 +410,7 @@
           "SPM_STTAX": "SPM unit's state tax"
         },
         "policyengine_variable": {
-          "version": "1.764.6",
+          "version": "1.819.0",
           "entity": "tax_unit",
           "definition_period": "year",
           "value_type": "bool",
@@ -457,7 +457,7 @@
       }
     },
     "takes_up_early_head_start_if_eligible": {
-      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 1.764.6 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 1.819.0 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
       "issue": "PolicyEngine/microcosm#312",
       "evidence": {
         "classification": "source_unavailability",
@@ -482,7 +482,7 @@
           "key": "takes_up_early_head_start_if_eligible"
         },
         "policyengine_variable": {
-          "version": "1.764.6",
+          "version": "1.819.0",
           "entity": "person",
           "definition_period": "year",
           "value_type": "bool",

@@ -567,7 +567,7 @@ _SOURCE_ABSENT_US_DATA_FAMILIES: dict[str, tuple[str, str, dict[str, str]]] = {
     "wic.national_summary": (
         "USDA WIC national annual summary the retired pipeline calibrated "
         "(WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE). The pinned feed carries no WIC "
-        "fact; WIC receipt is modeled via the would_claim_wic input.",
+        "fact; WIC receipt is modeled via the takes_up_wic_if_eligible input.",
         "retired us-data pipeline (archived) db/etl_national_targets.py "
         "WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE; feed carries no 'wic' source",
         _fence(
@@ -577,7 +577,7 @@ _SOURCE_ABSENT_US_DATA_FAMILIES: dict[str, tuple[str, str, dict[str, str]]] = {
             purpose="anchor WIC participation to the USDA national summary.",
             verdict_basis=(
                 "source-absent: no WIC ledger fact in the feed. WIC receipt is "
-                "modeled via the would_claim_wic take-up input, not a target here."
+                "modeled via the takes_up_wic_if_eligible take-up input, not a target here."
             ),
         ),
     ),

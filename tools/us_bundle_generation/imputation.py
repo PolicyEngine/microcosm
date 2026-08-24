@@ -106,13 +106,13 @@ _PARTICIPATION_TARGETS = frozenset(
         "has_other_means_tested_health_coverage_at_interview",
         "has_tricare_health_coverage_at_interview",
         "has_va_health_coverage_at_interview",
-        "is_tanf_enrolled",
+        "receives_tanf",
         "receives_housing_assistance",
         "receives_snap",
         "receives_wic",
         "takes_up_housing_assistance_if_eligible",
         "takes_up_medicare_if_eligible",
-        "would_claim_wic",
+        "takes_up_wic_if_eligible",
     }
 )
 
@@ -193,7 +193,7 @@ _PARTICIPATION_TARGET_CONCEPTS: dict[str, tuple[str, ...]] = {
         "veteran_status",
         "military_coverage_context",
     ),
-    "is_tanf_enrolled": (
+    "receives_tanf": (
         "dependent_child_status",
         "household_income_eligibility",
     ),
@@ -219,7 +219,7 @@ _PARTICIPATION_TARGET_CONCEPTS: dict[str, tuple[str, ...]] = {
         "disability_status",
         "medicare_coverage_context",
     ),
-    "would_claim_wic": (
+    "takes_up_wic_if_eligible": (
         "dependent_child_status",
         "pregnancy_status",
     ),
@@ -264,6 +264,125 @@ def _canonical_sha256(value: object) -> str:
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _post_draw_calibration_policy() -> dict[str, object]:
+    """Author the constants-era post-transfer policy without importing it."""
+
+    payload: dict[str, object] = {
+        "artifact_kind": "microcosm_us_post_transfer_calibration_policy",
+        "schema_version": 1,
+        "scope": {
+            "reference": "asec_origin_clone_0",
+            "recipient": "acs_origin_clone_0",
+            "mutable": "caller_supplied_target_cells",
+            "provenance_masks": "caller_supplied_no_internal_inference",
+            "constraint_masks": "caller_supplied_hash_bound",
+            "value_dtype": "float64_byte_contract",
+            "zero_weight_rows": "byte_exact",
+        },
+        "quantiles": [0.10, 0.25, 0.50, 0.75, 0.90],
+        "carrier_selection": {
+            "match_reference": "weighted_positive_prevalence_nearest_prefix",
+            "removal_order": "positive_amount_descending_then_entity_id",
+            "addition_order": "entity_id",
+            "equal_distance": "lower_mass",
+        },
+        "amount_mapping": {
+            "leg": "positive",
+            "recipient_rank": "weighted_full_recipient_positive_upper_cdf",
+            "inverse_cdf": "left",
+            "exact_quantile_anchors": [0.10, 0.25, 0.50, 0.75, 0.90],
+            "infeasible_anchor_handling": "frame_owner_fail_closed",
+            "output_support": "reference_positive_values_only",
+        },
+        "targets": [
+            {
+                "entity": "person",
+                "family": "adult_care",
+                "target": "pre_subsidy_care_expenses",
+                "stage": "late_transfer",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": ("adult_care_qualifying_one_per_tax_unit"),
+            },
+            {
+                "entity": "person",
+                "family": "model_required_numeric",
+                "target": "unemployment_compensation",
+                "stage": "early_gap_fill",
+                "carrier_mode": "preserve_recipient",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+            {
+                "entity": "person",
+                "family": "source_operator_child_support",
+                "target": "child_support_expense",
+                "stage": "late_transfer",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+            {
+                "entity": "person",
+                "family": "source_operator_child_support",
+                "target": "child_support_received",
+                "stage": "late_transfer",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+            {
+                "entity": "person",
+                "family": "source_operator_disability_benefits",
+                "target": "disability_benefits",
+                "stage": "late_transfer",
+                "carrier_mode": "preserve_recipient",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+            {
+                "entity": "person",
+                "family": "source_operator_prior_year_income",
+                "target": "self_employment_income_last_year",
+                "stage": "early_gap_fill",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+            {
+                "entity": "person",
+                "family": "source_operator_weeks_unemployed",
+                "target": "weeks_unemployed",
+                "stage": "late_transfer",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": (
+                    "weeks_requires_positive_unemployment_compensation"
+                ),
+            },
+            {
+                "entity": "person",
+                "family": "source_operator_workers_compensation",
+                "target": "workers_compensation",
+                "stage": "late_transfer",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+            {
+                "entity": "spm_unit",
+                "family": "source_operator_energy_subsidy",
+                "target": "spm_unit_energy_subsidy",
+                "stage": "late_transfer",
+                "carrier_mode": "match_reference",
+                "negative_leg": "byte_exact",
+                "special_constraint": "none",
+            },
+        ],
+    }
+    return {**payload, "sha256": _canonical_sha256(payload)}
 
 
 def _without_sha256(value: Mapping[str, object]) -> dict[str, object]:
@@ -1000,8 +1119,7 @@ def _normalise_virtual_resource(
             clone_attachment.get("fraction") != _LEGACY_CLONE_ATTACHMENT_FRACTION
             or clone_attachment.get("seed") != _LEGACY_CLONE_ATTACHMENT_SEED
             or clone_attachment.get("puf_clone_index") != 1
-            or clone_attachment.get("support_channels")
-            != ["asec", "puf_tax_detail"]
+            or clone_attachment.get("support_channels") != ["asec", "puf_tax_detail"]
         ):
             raise RuntimeError(
                 "Primary clone attachment differs from the spine-owned contract."
@@ -1240,8 +1358,7 @@ def _assert_family_node_kinds(
     )
     if unlinked:
         raise RuntimeError(
-            "Modeled producer nodes must resolve exactly one family: "
-            f"{unlinked!r}."
+            f"Modeled producer nodes must resolve exactly one family: {unlinked!r}."
         )
 
 
@@ -1307,9 +1424,7 @@ def _compile_node_outputs(
         raise RuntimeError("Producer graph must be the document's authored graph.")
     return {
         producer: [deepcopy(dict(row)) for row in rows]
-        for producer, rows in compile_producer_outputs(
-            {"imputation": document}
-        ).items()
+        for producer, rows in compile_producer_outputs({"imputation": document}).items()
     }
 
 
@@ -1733,9 +1848,7 @@ def _spine_support_role(
         if _mapping_like(value, "spine support role").get("id") == role_id
     ]
     if len(matches) != 1:
-        raise RuntimeError(
-            f"Spine must declare exactly one support role {role_id!r}."
-        )
+        raise RuntimeError(f"Spine must declare exactly one support role {role_id!r}.")
     return matches[0]
 
 
@@ -1906,6 +2019,7 @@ def derive_primary_effective_predictor_tuples(
 
     return _derive_primary_effective_predictor_tuples(document)
 
+
 def project_imputation_legacy_payloads(
     document: Mapping[str, object],
     *,
@@ -1921,6 +2035,7 @@ def project_imputation_legacy_payloads(
         spine_document=spine_document,
         bundle_document=bundle_document,
     )
+
 
 def _split_after() -> list[dict[str, object]]:
     late_batches = [
@@ -2102,15 +2217,13 @@ def _assert_invariants(
         spine_document,
         role_id=_PUF_ATTACHMENT_REF["support_role"],
     )
-    attachment = _mapping_like(
-        attachment_role["attachment"], "spine PUF attachment"
-    )
+    attachment = _mapping_like(attachment_role["attachment"], "spine PUF attachment")
     attachment_fraction = _mapping_like(
         attachment["fraction"], "spine PUF attachment fraction"
     )["default"]
-    attachment_seed = _mapping_like(
-        attachment["seed"], "spine PUF attachment seed"
-    )["default"]
+    attachment_seed = _mapping_like(attachment["seed"], "spine PUF attachment seed")[
+        "default"
+    ]
     build_model_seed = _build_model_seed_default(
         _mapping_like(
             _mapping_like(
@@ -2221,6 +2334,7 @@ def build_imputation() -> dict[str, object]:
                     "max_samples_leaf": None,
                     "zero_atol": DEFAULT_ZERO_ATOL,
                 },
+                "post_draw_calibration": _post_draw_calibration_policy(),
             }
         },
         "chaining": {

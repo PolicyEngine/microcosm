@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029.",
+    "url": "https://www.gov.uk/government/publications/salary-sacrifice-reform-for-pension-contributions-effective-from-6-april-2029/salary-sacrifice-reform-for-pension-contributions",
+    "published_year": 2025,
+    "raw_artifact_sha256": "0b966220ca665c4d08307080329e1f912bd5ebd78b60796d70a6ad52e3c68f7b",
+    "base_year": 2024,
+    "annual_growth": 0.024,
+    "growth_note": "The incumbent projects users at 2.4 percent annually from 2024; the committed 2024 anchor itself is HMRC's 7.7 million estimate."
+  },
+  "hmrc_anchor": {
+    "total_users": 7700000,
+    "above_2000": 3300000,
+    "below_2000": 4300000
+  },
+  "derived": {
+    "staging_ratio": 0.7012987012987013,
+    "stage_target": 5400000
+  },
+  "notes": [
+    "The 5.4 million stage target is a deliberate support-staging fraction, not a published target.",
+    "The incumbent obr/ naming is a misattribution: the 7.7 million total and 3.3/4.3 million split come from HMRC."
+  ]
+}

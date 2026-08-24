@@ -91,6 +91,105 @@ models:
       n_estimators: 100
       max_samples_leaf: null
       zero_atol: 1.0e-06
+    post_draw_calibration:
+      artifact_kind: microcosm_us_post_transfer_calibration_policy
+      schema_version: 1
+      scope:
+        reference: asec_origin_clone_0
+        recipient: acs_origin_clone_0
+        mutable: caller_supplied_target_cells
+        provenance_masks: caller_supplied_no_internal_inference
+        constraint_masks: caller_supplied_hash_bound
+        value_dtype: float64_byte_contract
+        zero_weight_rows: byte_exact
+      quantiles:
+      - 0.1
+      - 0.25
+      - 0.5
+      - 0.75
+      - 0.9
+      carrier_selection:
+        match_reference: weighted_positive_prevalence_nearest_prefix
+        removal_order: positive_amount_descending_then_entity_id
+        addition_order: entity_id
+        equal_distance: lower_mass
+      amount_mapping:
+        leg: positive
+        recipient_rank: weighted_full_recipient_positive_upper_cdf
+        inverse_cdf: left
+        exact_quantile_anchors:
+        - 0.1
+        - 0.25
+        - 0.5
+        - 0.75
+        - 0.9
+        infeasible_anchor_handling: frame_owner_fail_closed
+        output_support: reference_positive_values_only
+      targets:
+      - entity: person
+        family: adult_care
+        target: pre_subsidy_care_expenses
+        stage: late_transfer
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: adult_care_qualifying_one_per_tax_unit
+      - entity: person
+        family: model_required_numeric
+        target: unemployment_compensation
+        stage: early_gap_fill
+        carrier_mode: preserve_recipient
+        negative_leg: byte_exact
+        special_constraint: none
+      - entity: person
+        family: source_operator_child_support
+        target: child_support_expense
+        stage: late_transfer
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: none
+      - entity: person
+        family: source_operator_child_support
+        target: child_support_received
+        stage: late_transfer
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: none
+      - entity: person
+        family: source_operator_disability_benefits
+        target: disability_benefits
+        stage: late_transfer
+        carrier_mode: preserve_recipient
+        negative_leg: byte_exact
+        special_constraint: none
+      - entity: person
+        family: source_operator_prior_year_income
+        target: self_employment_income_last_year
+        stage: early_gap_fill
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: none
+      - entity: person
+        family: source_operator_weeks_unemployed
+        target: weeks_unemployed
+        stage: late_transfer
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: weeks_requires_positive_unemployment_compensation
+      - entity: person
+        family: source_operator_workers_compensation
+        target: workers_compensation
+        stage: late_transfer
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: none
+      - entity: spm_unit
+        family: source_operator_energy_subsidy
+        target: spm_unit_energy_subsidy
+        stage: late_transfer
+        carrier_mode: match_reference
+        negative_leg: byte_exact
+        special_constraint: none
+      sha256: ff609afd95d8a1443a5c32b08dc9d444c439d802a77972158c355afc56955332
 chaining:
   order: declared
   splits: declared_only
@@ -168,13 +267,13 @@ waiver_records:
   - has_other_means_tested_health_coverage_at_interview
   - has_tricare_health_coverage_at_interview
   - has_va_health_coverage_at_interview
-  - is_tanf_enrolled
   - receives_housing_assistance
   - receives_snap
+  - receives_tanf
   - receives_wic
   - takes_up_housing_assistance_if_eligible
   - takes_up_medicare_if_eligible
-  - would_claim_wic
+  - takes_up_wic_if_eligible
   requires_concepts:
   - american_indian_status
   - citizenship_status
@@ -219,15 +318,15 @@ waiver_records:
     has_va_health_coverage_at_interview:
     - veteran_status
     - military_coverage_context
-    is_tanf_enrolled:
-    - dependent_child_status
-    - household_income_eligibility
     receives_housing_assistance:
     - household_income_eligibility
     - housing_need
     receives_snap:
     - dependent_child_status
     - disability_status
+    - household_income_eligibility
+    receives_tanf:
+    - dependent_child_status
     - household_income_eligibility
     receives_wic:
     - dependent_child_status
@@ -239,7 +338,7 @@ waiver_records:
     takes_up_medicare_if_eligible:
     - disability_status
     - medicare_coverage_context
-    would_claim_wic:
+    takes_up_wic_if_eligible:
     - dependent_child_status
     - pregnancy_status
 transfer_execution:
@@ -1096,20 +1195,6 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_early
   targets:
-  - name: is_tanf_enrolled
-    entity: spm_unit
-    value_kind: flag
-    dtype: bool
-    period: month
-    requires_concepts:
-    - dependent_child_status
-    - household_income_eligibility
-    waiver: f_p_eligibility_concepts_absent
-    producer_binding:
-      operator: derive_us_cps_carried_inputs
-      order_index: 0
-      execution_scope: cps_source
-      stage: prepare_multispine_source_inputs_for_clone
   - name: receives_snap
     entity: spm_unit
     value_kind: flag
@@ -1118,6 +1203,20 @@ families:
     requires_concepts:
     - dependent_child_status
     - disability_status
+    - household_income_eligibility
+    waiver: f_p_eligibility_concepts_absent
+    producer_binding:
+      operator: derive_us_cps_carried_inputs
+      order_index: 0
+      execution_scope: cps_source
+      stage: prepare_multispine_source_inputs_for_clone
+  - name: receives_tanf
+    entity: spm_unit
+    value_kind: flag
+    dtype: bool
+    period: month
+    requires_concepts:
+    - dependent_child_status
     - household_income_eligibility
     waiver: f_p_eligibility_concepts_absent
     producer_binding:
@@ -2516,7 +2615,7 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
-  - name: would_claim_wic
+  - name: takes_up_wic_if_eligible
     entity: person
     value_kind: flag
     dtype: bool
@@ -13453,7 +13552,7 @@ producer_graph:
       entity: person
       temporary: true
       validation_only: true
-    - column: would_claim_wic
+    - column: takes_up_wic_if_eligible
       coverage_scope: asec_source
       entity: person
       temporary: false
@@ -30114,6 +30213,15 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: takes_up_wic_if_eligible
+          entity: person
+          value_kind: non_null
+      column: takes_up_wic_if_eligible
+      entity: person
+      producing_stage: source:with_us_wic_claim_input
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: tax_exempt_interest_income
           entity: person
           value_kind: finite_numeric
@@ -30148,15 +30256,6 @@ producer_graph:
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: would_claim_wic
-          entity: person
-          value_kind: non_null
-      column: would_claim_wic
-      entity: person
-      producing_stage: source:with_us_wic_claim_input
-      required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
       - - column: spm_unit_id
@@ -30290,7 +30389,7 @@ producer_graph:
             entity: person
             family: source_operator_wic_claim
             ordered_targets:
-            - would_claim_wic
+            - takes_up_wic_if_eligible
   - id: transfer:person/source_operator_workers_compensation
     name: transfer:person/source_operator_workers_compensation
     kind: late_transfer

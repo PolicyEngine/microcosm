@@ -1,0 +1,1 @@
+Declare the US post-transfer calibration policy in the authored F0 imputation spec as a closed, typed exact variant of the regime-gated QRF model, projected as a stacked-authority component and held byte-equal to the runtime policy identity.

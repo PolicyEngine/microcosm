@@ -31,6 +31,8 @@ __all__ = [
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
+    "US_REPORTED_COVERAGE_PERSON_INPUTS",
+    "US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS",
     "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
@@ -49,6 +51,26 @@ CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
 WIC_CARRIER_ADJUDICATION_URL = (
     "https://github.com/PolicyEngine/microcosm/issues/591#issuecomment-5160668979"
 )
+
+# The nine reported-coverage person inputs _fill_health_coverage_inputs derives
+# from the ASEC NOW_* at-interview recodes (microcosm #720).
+US_REPORTED_COVERAGE_PERSON_INPUTS: tuple[str, ...] = (
+    "has_champva_health_coverage_at_interview",
+    "has_esi",
+    "has_indian_health_service_coverage_at_interview",
+    "has_marketplace_health_coverage_at_interview",
+    "has_medicaid_health_coverage_at_interview",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+    "has_other_means_tested_health_coverage_at_interview",
+    "has_tricare_health_coverage_at_interview",
+    "has_va_health_coverage_at_interview",
+)
+
+# Below this row count a vintage is a smoke pool and zero reporters for a rare
+# flag is sampling noise; at or above it, a zero is a missing-source symptom
+# (the rarest flag, CHAMPVA at ~0.3% of persons, is expected ~15 times in
+# 5,000 rows).
+US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS = 5_000
 
 CPS_CARRIED_FORMULA_OWNED_COLUMNS = frozenset(
     {
@@ -104,7 +126,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
 
 CPS_CARRIED_SPM_UNIT_INPUTS = frozenset(
     {
-        "is_tanf_enrolled",
+        "receives_tanf",
         "receives_snap",
         "spm_unit_pre_subsidy_childcare_expenses",
     }
@@ -123,13 +145,13 @@ def derive_us_cps_carried_inputs(
     formula-owned aggregate variables.
 
     ``PAW_VAL``, ``SPM_SNAPSUB``, and ``WICYN`` are annual reported facts,
-    while the engine's ``is_tanf_enrolled``, ``receives_snap``, and
+    while the engine's ``receives_tanf``, ``receives_snap``, and
     ``receives_wic`` leaves are monthly booleans. An annual receipt report is
     therefore broadcast to all 12 modeled months. The annual source cannot
     reveal entry or exit timing, and ``PAW_VAL > 0`` misses enrolled TANF
     units receiving zero dollars, including sanctioned cases.
 
-    ``is_tanf_enrolled`` is additionally gated on ``PAW_TYP`` because
+    ``receives_tanf`` is additionally gated on ``PAW_TYP`` because
     ``PAW_VAL`` alone conflates TANF with other cash welfare; see
     :func:`reported_tanf_enrollment_by_spm_unit`. When the frame does not
     already carry ``PAW_TYP`` (the frozen census_cps inputs never did),
@@ -252,10 +274,10 @@ def reported_tanf_enrollment_by_spm_unit(
     TANF/AFDC (``PAW_TYP`` 1) or both TANF/AFDC and other assistance
     (``PAW_TYP`` 3). ``PAW_TYP`` 2 (other cash welfare, e.g. general
     assistance) and unreported-type PAW recipients are NOT marked
-    TANF-enrolled: the engine's ``is_tanf_enrolled`` variable is
-    TANF-specific, and conflating other cash welfare with TANF would poison
-    its 13 cycle-safe TANF helper consumers (microcosm#591). The conflation
-    is material — in the 2023 ASEC (income year 2022), 271 of 682
+    receiving TANF: the engine's ``receives_tanf`` input is TANF-specific,
+    and conflating other cash welfare with TANF would poison the downstream
+    ``is_tanf_enrolled`` formula and its TANF helpers (microcosm#591). The
+    conflation is material — in the 2023 ASEC (income year 2022), 271 of 682
     PAW-positive SPM units (39.7% unweighted, 42.6% SPM-weighted) have no
     member reporting a TANF type.
 
@@ -333,9 +355,10 @@ def reported_wic_receipt_carrier(person: pd.DataFrame) -> np.ndarray:
     Census asks ``WICYN`` only of adult women, and a woman may report receipt
     for herself or for a child beneficiary. ``receives_wic`` therefore remains
     stored on that reporting adult solely as the carrier for her SPM unit's
-    receipt fact; it does not identify the person who received WIC. Unit-level
-    aggregation is the ONLY supported consumption grain. Any person-grain use
-    requires re-adjudication under microcosm#591:
+    receipt fact; it does not identify the person who received WIC. A direct
+    person-grain consumer therefore applies only to that carrier, while a
+    group aggregation applies only to the carrier's group. Every new or
+    changed consumer requires explicit re-adjudication under microcosm#591:
     https://github.com/PolicyEngine/microcosm/issues/591#issuecomment-5160668979
     """
 
@@ -468,12 +491,12 @@ def _fill_spm_unit_reported_enrollment_inputs(
 ) -> None:
     """Carry annual reported TANF and SNAP receipt onto monthly leaves."""
 
-    if "is_tanf_enrolled" not in spm_unit.columns:
+    if "receives_tanf" not in spm_unit.columns:
         tanf = reported_tanf_enrollment_by_spm_unit(
             person,
             public_assistance_type_source,
         )
-        spm_unit["is_tanf_enrolled"] = (
+        spm_unit["receives_tanf"] = (
             tanf.reindex(spm_unit["spm_unit_id"]).fillna(False).to_numpy(dtype=bool)
         )
 
