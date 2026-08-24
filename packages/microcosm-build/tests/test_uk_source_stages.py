@@ -53,6 +53,13 @@ E8_STAGE_NAMES = [
     "salary_sacrifice",
     "student_loans",
 ]
+# Spine stages that land after the E8 block. `age_tail` rewrites `age` and so
+# must run downstream of every stage that conditions on it — student_loans
+# reads it for cohort start years, the CGT stages for the adult carrier — which
+# is the position the #623 calibration campaign exercised.
+POST_E8_STAGE_NAMES = [
+    "age_tail",
+]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
@@ -61,6 +68,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
     *E8_STAGE_NAMES,
+    *POST_E8_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
 ]
@@ -71,6 +79,7 @@ UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES = [
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
     *E8_STAGE_NAMES,
+    *POST_E8_STAGE_NAMES,
 ]
 FROZEN_SOURCE_STAGES_SHA256 = (
     "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea"
@@ -141,12 +150,20 @@ class TestUKSourceStagesManifest:
             == E7_STAGE_NAMES
         )
 
-    def test_e8_block_is_contiguous_before_certified_pair(self) -> None:
+    def test_e8_block_is_contiguous_and_the_certified_pair_stays_last(self) -> None:
+        # Two invariants, and only two: the E8 stages stay contiguous, and the
+        # certified pair stays at [-2:] (the frozen-copy lockstep test reads
+        # them from there). E8 being the *final* spine block was an artifact
+        # of it having been the last increment — the spine may grow a tail
+        # after it, as `age_tail` does, without either invariant moving.
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert names[-7:-2] == E8_STAGE_NAMES
         assert names[-2:] == ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
+        spine = names[:-2]
+        start = spine.index(E8_STAGE_NAMES[0])
+        assert spine[start : start + len(E8_STAGE_NAMES)] == E8_STAGE_NAMES
+        assert spine[start + len(E8_STAGE_NAMES) :] == POST_E8_STAGE_NAMES
 
     def test_copy_is_lockstep_with_frozen_original_except_citation_rewrites(
         self,
@@ -269,6 +286,7 @@ class TestUKSourceStagesManifest:
                     "hmrc_cgt_gains_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
+                    "age_tail": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
