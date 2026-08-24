@@ -1307,10 +1307,10 @@ def test_writer_emits_strict_json_and_refuses_nan(tmp_path: Path) -> None:
 
 
 @requires_us
-def test_policyengine_us_1_764_6_take_up_flag_controls_positive_ssi() -> None:
+def test_policyengine_us_1_819_0_take_up_flag_controls_positive_ssi() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"

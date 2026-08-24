@@ -899,7 +899,7 @@ def build_vintages() -> dict[str, Any]:
 def build_catalogs() -> dict[str, Any]:
     """Build the complete physical column contract catalog.
 
-    PolicyEngine metadata covers the 139 modeled inputs.  The producer graph
+    PolicyEngine metadata covers the 142 modeled inputs.  The producer graph
     additionally emits generation-0 Frame structure, linkage, support
     provenance, and resolved weights which are deliberately outside the engine
     variable index; those contracts are derived from the canonical producer
@@ -1052,8 +1052,8 @@ def build_catalogs() -> dict[str, Any]:
         seen.add(key)
     if not deferred <= {key.split(".", 1)[1] for key in seen}:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
-    if len(seen) != 173:
-        raise ValueError(f"Closed US catalog must contain 173 keys, got {len(seen)}.")
+    if len(seen) != 176:
+        raise ValueError(f"Closed US catalog must contain 176 keys, got {len(seen)}.")
     return {
         "metadata_waivers": [
             {

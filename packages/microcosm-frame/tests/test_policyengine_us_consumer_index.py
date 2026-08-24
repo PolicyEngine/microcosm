@@ -121,6 +121,68 @@ def test_self_exclusion_is_structural_and_same_name_external_helper_counts(
     assert len(receipts) == 2
     assert all(receipt.line > 0 for receipt in receipts)
     assert all(receipt.path != "variables/target.py" for receipt in receipts)
+    assert {receipt.receiver_entity for receipt in receipts} == {"person"}
+
+
+def test_consumer_receipts_capture_the_reference_receiver_entity(
+    tmp_path: Path,
+) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "consumer.py": _clean(
+                """
+                class mixed_grain_consumer(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        tax_unit = person.tax_unit
+                        return person("direct_leaf", period) + add(
+                            tax_unit, period, ["aggregated_leaf"]
+                        )
+
+                class grouped_consumer(Variable):
+                    value_type = bool
+                    entity = SPMUnit
+                    definition_period = YEAR
+
+                    def formula(spm_unit, period, parameters):
+                        person = spm_unit.members
+                        return spm_unit.any(person("grouped_leaf", period))
+                """
+            ),
+            "leaves.py": _variables(
+                "direct_leaf",
+                "aggregated_leaf",
+                "grouped_leaf",
+            ),
+        },
+    )
+
+    direct, = index.consumers["direct_leaf"]
+    aggregated, = index.consumers["aggregated_leaf"]
+    grouped, = index.consumers["grouped_leaf"]
+    assert (direct.kind, direct.receiver_entity, direct.aggregation_entity) == (
+        "entity_call",
+        "person",
+        "",
+    )
+    assert (
+        aggregated.kind,
+        aggregated.receiver_entity,
+        aggregated.aggregation_entity,
+    ) == (
+        "add",
+        "tax_unit",
+        "tax_unit",
+    )
+    assert (grouped.kind, grouped.receiver_entity, grouped.aggregation_entity) == (
+        "entity_call",
+        "person",
+        "spm_unit",
+    )
 
 
 def test_exact_map_items_and_subscript_do_not_widen_receipts(tmp_path: Path) -> None:

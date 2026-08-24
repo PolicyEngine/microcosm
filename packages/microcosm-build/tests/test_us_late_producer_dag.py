@@ -1345,7 +1345,7 @@ def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string()
         "is_enrolled_at_least_half_time_for_american_opportunity_credit",
         "is_pursuing_credential_for_american_opportunity_credit",
         "takes_up_medicare_if_eligible",
-        "would_claim_wic",
+        "takes_up_wic_if_eligible",
     }
     observed: dict[str, set[str]] = {}
     for group in CANONICAL_US_LATE_TRANSFER_GROUPS:

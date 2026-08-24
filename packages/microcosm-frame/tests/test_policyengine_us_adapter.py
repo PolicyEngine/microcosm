@@ -111,7 +111,8 @@ class TestVariableMetadata:
                 "employment_income_before_lsr",
             ]
         )
-        assert defaults["weekly_hours_worked_before_lsr"] == 40
+        # PE-US 1.794.3 changed the missing-hours input default from 40 to 0.
+        assert defaults["weekly_hours_worked_before_lsr"] == 0
         assert defaults["takes_up_snap_if_eligible"] is True
         # Enum defaults come back as the stored member name.
         assert defaults["ssn_card_type"] == "CITIZEN"

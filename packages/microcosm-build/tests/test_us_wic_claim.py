@@ -55,7 +55,7 @@ requires_us = pytest.mark.skipif(
     reason="requires the policyengine-us [us] extra (build environment)",
 )
 
-_OUTPUT = "would_claim_wic"
+_OUTPUT = "takes_up_wic_if_eligible"
 _RATES = {
     "pregnant": 0.456,
     "postpartum": 0.689,
@@ -517,7 +517,7 @@ def test_policyengine_contract_and_live_wic_neutralization() -> None:
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     system = CountryTaxBenefitSystem()
     variable = system.variables[_OUTPUT]
     assert variable.is_input_variable()

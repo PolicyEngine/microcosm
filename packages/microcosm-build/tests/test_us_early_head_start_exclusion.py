@@ -377,14 +377,14 @@ def test_take_up_contract_retains_source_unavailable_treatment() -> None:
 
 
 @requires_us
-def test_policyengine_1_764_6_requires_under_3_or_pregnant_person_input() -> None:
+def test_policyengine_1_819_0_requires_under_3_or_pregnant_person_input() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     system = CountryTaxBenefitSystem()
     evidence = _entry()["evidence"]["policyengine_variable"]
     assert evidence == {
-        "version": "1.764.6",
+        "version": "1.819.0",
         "entity": "person",
         "definition_period": "year",
         "value_type": "bool",

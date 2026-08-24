@@ -98,7 +98,7 @@ def test_imputation_projector_matches_live_plans_and_graph_receipts(
     for key, expected in live.items():
         assert canonical_json_bytes(projected[key]) == canonical_json_bytes(expected)
     assert projected["late_producer_schedule_receipt"]["schedule_sha256"] == (
-        "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+        "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
     )
     assert projected["overlap_ownership"]["sha256"] == (
         "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
