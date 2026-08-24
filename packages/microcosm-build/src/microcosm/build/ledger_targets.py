@@ -1222,7 +1222,7 @@ def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
         normalized = normalized[len("month") :]
-    if normalized[:2] in {"ty", "cy", "fy"}:
+    if normalized[:2] in {"ty", "cy", "fy", "ay"}:
         normalized = normalized[2:]
     parts = normalized.split("_", maxsplit=1)
     if len(parts) == 2 and all(part.isdigit() for part in parts):

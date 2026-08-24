@@ -3,11 +3,11 @@
   "target_period": 2025,
   "candidate_count": 417,
   "contract_target_count": 189,
-  "active_reference_count": 397,
+  "active_reference_count": 408,
   "status_counts": {
-    "active": 397,
+    "active": 408,
     "multi_fact": 1,
-    "no_fact_at_or_before_period": 18,
+    "no_fact_at_or_before_period": 7,
     "signed_excluded": 1
   },
   "geography_pins": {
@@ -677,7 +677,7 @@
     },
     "scotgov.scottish_child_payment_spending": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "ons.savings_interest_income": {
       "geography_level": "country",
@@ -725,43 +725,43 @@
     },
     "slc.borrowers.plan_2_above_threshold": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.borrowers.plan_2_liable": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.borrowers.plan_5_above_threshold": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.borrowers.plan_5_liable": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.support.maintenance_loan_recipients": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.support.maintenance_loan_spend": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.support.parents_learning_allowance_recipients": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.support.parents_learning_allowance_spend": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.support.adult_dependants_grant_recipients": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "slc.support.adult_dependants_grant_spend": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "E92000001"
     },
     "dwp.uc.households": {
       "geography_level": "country",
@@ -2614,6 +2614,36 @@
     },
     {
       "name": "slc.repayments.england_plan_5",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.support.maintenance_loan_recipients",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.support.maintenance_loan_spend",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.support.parents_learning_allowance_recipients",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.support.parents_learning_allowance_spend",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.support.adult_dependants_grant_recipients",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "slc.support.adult_dependants_grant_spend",
       "from": "2024",
       "to": "2025"
     },
@@ -7371,14 +7401,17 @@
       ]
     },
     "scotgov.scottish_child_payment_spending": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.scottish_child_payment_spending",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 471000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_20b43b0f8f61e448f28895cf"
         }
       ]
     },
@@ -7545,122 +7578,152 @@
       ]
     },
     "slc.borrowers.plan_2_above_threshold": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.borrowers.plan_2_above_threshold",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 4460000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_02288c19caeae900fdaf1e0d"
         }
       ]
     },
     "slc.borrowers.plan_2_liable": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.borrowers.plan_2_liable",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 9710000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_37387933e73bcc8c1e04cf78"
         }
       ]
     },
     "slc.borrowers.plan_5_above_threshold": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.borrowers.plan_5_above_threshold",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 35000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dd16b085f81ef7708a00511e"
         }
       ]
     },
     "slc.borrowers.plan_5_liable": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.borrowers.plan_5_liable",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 230000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_73ff136d820950ea404ddb6b"
         }
       ]
     },
     "slc.support.maintenance_loan_recipients": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.support.maintenance_loan_recipients",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1159761.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f03bd7a10d0eee9917a3a199"
         }
       ]
     },
     "slc.support.maintenance_loan_spend": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.support.maintenance_loan_spend",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 8591659718.080004,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2900e25d7ee90f79fb3b87b9"
         }
       ]
     },
     "slc.support.parents_learning_allowance_recipients": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.support.parents_learning_allowance_recipients",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 99645.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d5df1c69846ab2fd3d0e50e1"
         }
       ]
     },
     "slc.support.parents_learning_allowance_spend": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.support.parents_learning_allowance_spend",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 181421659.32,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_72028ce00b9569deec79d6e6"
         }
       ]
     },
     "slc.support.adult_dependants_grant_recipients": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.support.adult_dependants_grant_recipients",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 18611.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_adc83b5d137ecb48fed77064"
         }
       ]
     },
     "slc.support.adult_dependants_grant_spend": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "slc.support.adult_dependants_grant_spend",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "resolved_period": 2025,
+          "resolved_value": 55364916.81,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5d42660596c9088248e41e90"
         }
       ]
     },

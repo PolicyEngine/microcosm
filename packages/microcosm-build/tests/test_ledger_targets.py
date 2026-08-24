@@ -648,6 +648,72 @@ def test__given_period_bearing_groupby_value__then_latest_source_period_is_used(
     assert registry.specs[0].value == 65_900_000_000
 
 
+def test__given_academic_year_record_sets__then_latest_source_period_is_used() -> None:
+    """The SLC series key one record set per academic year (…ay2023, …ay2024).
+
+    The ay-prefixed token must normalize away like ty/fy tokens do, so the
+    per-year record sets collapse to one period-invariant series and the
+    resolver can take the latest fact at or before the target period instead
+    of refusing with multi_fact.
+    """
+    reference = LedgerTargetReference(
+        name="latest maintenance-loan recipients",
+        ledger_selector={
+            "source_name": "slc",
+            "source_concept": "slc.maintenance_loan_recipients",
+            "geography_level": "country",
+            "geography_id": "E92000001",
+        },
+        entity="person",
+        measure="slc/maintenance_loan_recipients",
+        period=2025,
+        family="slc_student_support",
+    )
+    older = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:slc-2023",
+        legacy_fact_key="ledger.fact.v1:slc-2023",
+        value=1_100_000,
+        source={"source_name": "slc"},
+        observed_measure={
+            "source_name": "slc",
+            "source_measure_id": "maintenance_loan_recipients",
+            "source_concept": "slc.maintenance_loan_recipients",
+            "unit": "count",
+        },
+        period={"type": "academic_year", "value": 2023},
+        geography={"level": "country", "id": "E92000001"},
+        entity={"name": "person"},
+        dimensions={},
+        layout={
+            "record_set_id": "slc.support.table_3a.recipients.ay2023",
+            "groupby_dimension": "slc.support_line",
+            "groupby_value_id": "maintenance_loan",
+            "measure_id": "maintenance_loan_recipients",
+        },
+    )
+    newer = _consumer_fact_row(
+        **{
+            **older,
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:slc-2024",
+            "legacy_fact_key": "ledger.fact.v1:slc-2024",
+            "value": 1_159_761,
+            "period": {"type": "academic_year", "value": 2024},
+            "layout": {
+                "record_set_id": "slc.support.table_3a.recipients.ay2024",
+                "groupby_dimension": "slc.support_line",
+                "groupby_value_id": "maintenance_loan",
+                "measure_id": "maintenance_loan_recipients",
+            },
+        }
+    )
+
+    registry = compile_ledger_target_references(
+        [older, newer], [reference], country="uk"
+    )
+
+    assert registry.specs[0].value == 1_159_761
+
+
 def test__given_selector_matches_future_year__then_latest_eligible_period_is_used() -> (
     None
 ):
