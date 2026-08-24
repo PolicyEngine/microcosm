@@ -177,7 +177,9 @@ class TestLookup:
     def test_matching_finds_the_signing_entry(self) -> None:
         register = load_uk_spine_swap_signed_differences()
         found = register.matching(
-            surface="nonzero_shares", column="water_and_sewerage_charges"
+            surface="nonzero_shares",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
         )
         assert found is not None
         assert found.id == "scottish-water-incumbent-nan-zeroing"
@@ -187,16 +189,29 @@ class TestLookup:
         # the nonzero share, and the share entry is a different adjudication.
         register = load_uk_spine_swap_signed_differences()
         weighted = register.matching(
-            surface="weighted_totals", column="water_and_sewerage_charges"
+            surface="weighted_totals",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
         )
         assert weighted is not None
         assert weighted.id == "scottish-water-sewerage-successor-level"
-        assert register.matching(surface="entity_counts", column="household") is None
+        assert (
+            register.matching(
+                surface="entity_counts",
+                column="household",
+                expectation="column_differs",
+            )
+            is None
+        )
 
     def test_unsigned_column_returns_none(self) -> None:
         register = load_uk_spine_swap_signed_differences()
         assert (
-            register.matching(surface="nonzero_shares", column="employment_income")
+            register.matching(
+                surface="nonzero_shares",
+                column="employment_income",
+                expectation="column_differs",
+            )
             is None
         )
 
@@ -213,9 +228,108 @@ class TestLookup:
             adjudicator="juaristi22",
             adjudicated_on="2026-08-22",
         )
-        assert entry.covers(surface="entity_counts", column="person")
-        assert entry.covers(surface="entity_counts", column="benunit")
-        assert not entry.covers(surface="nonzero_shares", column="person")
+        assert entry.covers(
+            surface="entity_counts", column="person", expectation="count_differs"
+        )
+        assert entry.covers(
+            surface="entity_counts", column="benunit", expectation="count_differs"
+        )
+        assert not entry.covers(
+            surface="nonzero_shares", column="person", expectation="count_differs"
+        )
+
+
+class TestExpectationAwareCoverage:
+    """The expectation is consulted at lookup, not merely validated at load.
+
+    Without this, an entry adjudicated for a column *appearing* would also
+    sign an arbitrarily large *value* divergence in that same column — the
+    register's own scope note names that failure mode.
+    """
+
+    def _entry(self, *, surface: str, expectation: str) -> UKSignedDifference:
+        return UKSignedDifference(
+            id="entry",
+            difference_class="net_new_column",
+            surface=surface,
+            expectation=expectation,
+            columns=("num_bedrooms",),
+            entities=("household",),
+            magnitude_evidence="evidence",
+            evidence="experiments/686-uk-spine-swap-receipts.md",
+            adjudicator="juaristi22",
+            adjudicated_on="2026-08-22",
+        )
+
+    def test_a_net_new_entry_does_not_sign_a_value_divergence(self) -> None:
+        entry = self._entry(
+            surface="nonzero_shares", expectation="column_missing_in_reference"
+        )
+        assert entry.covers(
+            surface="nonzero_shares",
+            column="num_bedrooms",
+            expectation="column_missing_in_reference",
+        )
+        assert not entry.covers(
+            surface="nonzero_shares",
+            column="num_bedrooms",
+            expectation="column_differs",
+        )
+
+    def test_a_value_entry_does_not_sign_a_structural_difference(self) -> None:
+        entry = self._entry(surface="nonzero_shares", expectation="column_differs")
+        assert not entry.covers(
+            surface="nonzero_shares",
+            column="num_bedrooms",
+            expectation="column_missing_in_reference",
+        )
+
+    def test_a_share_entry_bridges_to_the_payload_surface(self) -> None:
+        # The share instrument and the payload comparator read the same
+        # adjudicated fact through different measurements, so one signature
+        # covers both — this is what lets --structure-only reach a verdict.
+        entry = self._entry(surface="nonzero_shares", expectation="column_differs")
+        assert entry.covers(
+            surface="payload_column",
+            column="num_bedrooms",
+            expectation="column_differs",
+        )
+
+    def test_the_bridge_does_not_reach_structural_surfaces(self) -> None:
+        entry = self._entry(
+            surface="nonzero_shares", expectation="column_missing_in_reference"
+        )
+        assert not entry.covers(
+            surface="payload_column",
+            column="num_bedrooms",
+            expectation="column_missing_in_reference",
+        )
+        counts = self._entry(surface="entity_counts", expectation="count_differs")
+        assert not counts.covers(
+            surface="payload_column",
+            column="num_bedrooms",
+            expectation="count_differs",
+        )
+
+    def test_the_committed_register_covers_the_payload_surface(self) -> None:
+        # Every committed value adjudication must be reachable from the
+        # payload comparator, or --structure-only can never pass.
+        register = load_uk_spine_swap_signed_differences()
+        for difference in register.differences:
+            if (
+                difference.surface != "nonzero_shares"
+                or difference.expectation != "column_differs"
+            ):
+                continue
+            for column in difference.columns:
+                assert (
+                    register.matching(
+                        surface="payload_column",
+                        column=column,
+                        expectation="column_differs",
+                    )
+                    is not None
+                )
 
 
 class TestValidation:

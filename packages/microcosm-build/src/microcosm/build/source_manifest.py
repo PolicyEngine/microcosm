@@ -71,6 +71,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_childcare_inputs",
         "derive_child_support_inputs",
         "derive_disability_benefits",
+        "disaggregate_top_coded_ages",
         "derive_energy_subsidy",
         "derive_education_inputs",
         "derive_eligibility_inputs",

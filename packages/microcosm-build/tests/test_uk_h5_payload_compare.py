@@ -280,12 +280,18 @@ def _register(tmp_path: Path, *entries: dict) -> Path:
     return path
 
 
-def _entry(identifier: str, *, surface: str, columns: list[str]) -> dict:
+def _entry(
+    identifier: str,
+    *,
+    surface: str,
+    columns: list[str],
+    expectation: str = "column_differs",
+) -> dict:
     return {
         "id": identifier,
         "class": "mechanism_change",
         "scope": {"surface": surface, "columns": columns, "entities": ["household"]},
-        "expectation": "column_differs",
+        "expectation": expectation,
         "magnitude_evidence": "disclosure-safe magnitude statement",
         "evidence": "experiments/686-uk-spine-swap-receipts.md#r0",
         "adjudicator": "juaristi22",
@@ -452,3 +458,99 @@ class TestStructureOnlyVerdict:
         assert report["signed"]["unsigned_root_attrs"] == [
             "populace_household_weight_kind"
         ]
+
+
+class TestRegisterSurfaceBridge:
+    """The register's real entries must reach this comparator (#747 review).
+
+    Every committed entry is scoped to a share, totals or counts surface, so
+    a payload_column-only lookup matched nothing and --structure-only — the
+    swap-acceptance verdict — could only ever exit 1.
+    """
+
+    def test_a_share_scoped_entry_signs_a_payload_value_difference(
+        self, tmp_path: Path
+    ) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables(weight_two=SENTINEL_VALUE))
+        register = _register(
+            tmp_path,
+            _entry(
+                "share-scoped",
+                surface="nonzero_shares",
+                columns=["household_weight"],
+            ),
+        )
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(register),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 0
+        assert report["structure_only_ok"] is True
+        assert report["signed"]["matched_ids"] == ["share-scoped"]
+        assert report["signed"]["unsigned_columns"] == []
+
+    def test_the_committed_register_signs_a_real_adjudicated_column(
+        self, tmp_path: Path
+    ) -> None:
+        # The end-to-end shape of the finding, against the real committed
+        # register: `savings` is adjudicated on the share surface, so a
+        # payload value difference in it must reach a signed verdict.
+        pytest.importorskip("tables")
+        left_tables = _tables()
+        right_tables = _tables()
+        left_tables["household"]["savings"] = [1000.0, 2000.0]
+        right_tables["household"]["savings"] = [1000.0, SENTINEL_VALUE]
+        left = _write(tmp_path / "left.h5", left_tables)
+        right = _write(tmp_path / "right.h5", right_tables)
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [str(left), str(right), "--structure-only", "--json-out", str(out)]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert report["signed"]["unsigned_columns"] == []
+        assert "was-wealth-qrf-incidence" in report["signed"]["matched_ids"]
+        assert code == 0
+
+    def test_a_structural_expectation_does_not_sign_a_value_difference(
+        self, tmp_path: Path
+    ) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables(weight_two=SENTINEL_VALUE))
+        register = _register(
+            tmp_path,
+            _entry(
+                "net-new-only",
+                surface="nonzero_shares",
+                columns=["household_weight"],
+                expectation="column_missing_in_reference",
+            ),
+        )
+
+        assert (
+            COMPARATOR.main(
+                [
+                    str(left),
+                    str(right),
+                    "--structure-only",
+                    "--signed-differences",
+                    str(register),
+                ]
+            )
+            == 1
+        )

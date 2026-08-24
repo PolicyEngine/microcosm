@@ -335,7 +335,12 @@ def apply_structure_only_verdict(
     The swap comparison expects the control and candidate artifacts to have
     an identical surface and to differ only where a difference is signed, so
     this keeps every structural predicate strict and requires each differing
-    column and root attribute to name a register entry.
+    column and root attribute to name a register entry. Lookup is
+    expectation-aware: a value mismatch is covered by a ``column_differs``
+    entry on ``payload_column`` or, through the register's payload bridge, on
+    a value-bearing surface (``nonzero_shares``, ``weighted_totals``) — the
+    share instrument and this one read the same adjudicated fact. Structural
+    expectations never excuse a value difference.
 
     ``payload_identical`` is left exactly as computed, so a structure-only
     receipt stays comparable with a full-mode one.
@@ -346,7 +351,9 @@ def apply_structure_only_verdict(
     for key, table in report["tables"].items():
         signed_ids: dict[str, str | None] = {}
         for column in sorted(table["value_mismatch_rows_by_column"]):
-            entry = register.matching(surface="payload_column", column=column)
+            entry = register.matching(
+                surface="payload_column", column=column, expectation="column_differs"
+            )
             signed_ids[column] = entry.id if entry else None
             if entry is None:
                 unsigned_columns.append(f"{key}.{column}")
@@ -357,7 +364,9 @@ def apply_structure_only_verdict(
     unsigned_attrs: list[str] = []
     attr_signed: dict[str, str | None] = {}
     for name in report["root_attrs"]["attrs_with_differing_values"]:
-        entry = register.matching(surface="root_attr", column=name)
+        entry = register.matching(
+            surface="root_attr", column=name, expectation="column_differs"
+        )
         attr_signed[name] = entry.id if entry else None
         if entry is None:
             unsigned_attrs.append(name)

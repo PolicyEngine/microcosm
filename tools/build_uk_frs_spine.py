@@ -32,6 +32,7 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
@@ -114,6 +115,7 @@ _STAGE_NAMES = (
     "hmrc_cgt_gains_spine",
     "salary_sacrifice",
     "student_loans",
+    "age_tail",
 )
 
 
@@ -840,6 +842,10 @@ def main(argv: list[str] | None = None) -> int:
                 stage=stages_by_name["student_loans"],
                 calibration_year=frs_release.calibration_year,
             )
+        if "age_tail" in stage_names:
+            implementations["age_tail"] = UKAgeTailStageTransform(
+                stage=stages_by_name["age_tail"]
+            )
         plan = country_stage_plan(
             spec,
             implementations,
@@ -894,11 +900,18 @@ def main(argv: list[str] | None = None) -> int:
             "cgt_band_donors",
             "salary_sacrifice",
             "student_loans",
+            "age_tail",
         ):
             e8_implementation = implementations.get(e8_stage_name)
             e8_last_result = getattr(e8_implementation, "last_result", None)
             if e8_last_result is not None:
-                e8_stage_evidence[e8_stage_name] = e8_last_result.evidence()
+                # age_tail's receipt is already the evidence mapping; the E8
+                # transforms carry a result object that produces one.
+                e8_stage_evidence[e8_stage_name] = (
+                    e8_last_result
+                    if isinstance(e8_last_result, dict)
+                    else e8_last_result.evidence()
+                )
         if e8_stage_evidence:
             sidecar["stage_evidence"] = e8_stage_evidence
         atomic_write_json(sidecar_path, sidecar)

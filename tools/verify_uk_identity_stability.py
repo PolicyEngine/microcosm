@@ -514,22 +514,40 @@ def e7_identity_receipt(
         person_out = pd.DataFrame(index=person_t["person_id"].to_numpy())
         benunit_out = pd.DataFrame(index=benunit_t["benunit_id"].to_numpy())
 
+        # An artifact without the synthetic flag carries no E7 layer, so
+        # there is nothing this receipt could certify about it. Returning an
+        # empty receipt here would report a vacuous pass — the mismatch loops
+        # never run over an empty recomputation — which is the one outcome a
+        # receipt must never produce. Refuse instead.
         if "household_is_spi_synthetic" not in household_t.columns:
-            return {}
+            raise ValueError(
+                "e7 identity receipt: the artifact carries no "
+                "household_is_spi_synthetic column, so the E7 support-channel "
+                "layer is absent and there is nothing to receipt. Run the "
+                "check against an artifact built with the SPI channel, or "
+                "drop --check e7 for this artifact."
+            )
         synthetic = household_t["household_is_spi_synthetic"].astype(bool).to_numpy()
         channel = np.where(synthetic, "spi", "frs")
         household_out["household_support_channel"] = channel
         household_out["household_support_clone_index"] = np.where(synthetic, 1, 0)
 
-        if {"source_year", "source_household_id"} <= set(household_t.columns):
-            household_out["source_household_key"] = [
-                f"{int(year)}:{int(source)}"
-                for year, source in zip(
-                    household_t["source_year"].to_numpy(),
-                    household_t["source_household_id"].to_numpy(),
-                    strict=True,
-                )
-            ]
+        missing_keys = {"source_year", "source_household_id"} - set(household_t.columns)
+        if missing_keys:
+            raise ValueError(
+                "e7 identity receipt: the artifact carries the synthetic flag "
+                f"but not {sorted(missing_keys)}; the source key cannot be "
+                "recomputed, and skipping it would silently shrink the "
+                "receipt's coverage."
+            )
+        household_out["source_household_key"] = [
+            f"{int(year)}:{int(source)}"
+            for year, source in zip(
+                household_t["source_year"].to_numpy(),
+                household_t["source_household_id"].to_numpy(),
+                strict=True,
+            )
+        ]
 
         # The channel is a household property; persons and benefit units
         # inherit it through membership, never redraw it.
@@ -580,7 +598,11 @@ def e7_identity_receipt(
             ):
                 mismatches.setdefault(entity, []).append(column)
             stored_table = stored_tables[entity]
-            if column in stored_table.columns:
+            if column not in stored_table.columns:
+                # The store not carrying a column this receipt certifies is a
+                # failed comparison, not a narrower one.
+                stored_mismatches.setdefault(entity, []).append(column)
+            else:
                 kept = stored_table[column].reindex(left.index)
                 if not np.array_equal(
                     left.to_numpy().astype(str), kept.to_numpy().astype(str)
@@ -589,6 +611,9 @@ def e7_identity_receipt(
     return {
         "check": "uk_e7_identity_stability",
         "permutation_seed": permutation_seed,
+        "columns_compared": {
+            entity: sorted(values.columns) for entity, values in original.items()
+        },
         "identical_under_permutation": not mismatches,
         "permutation_mismatches": mismatches,
         "matches_stored_columns": not stored_mismatches,
@@ -855,9 +880,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-h5", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument(
-        "--check", choices=("e4", "e5", "e6", "e7", "e8"), default="e4"
-    )
+    parser.add_argument("--check", choices=("e4", "e5", "e6", "e7", "e8"), default="e4")
     parser.add_argument("--permutation-seed", type=int, default=123)
     args = parser.parse_args()
 
