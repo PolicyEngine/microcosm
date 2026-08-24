@@ -1,4 +1,4 @@
-# Progress: candidate 25% stage 2b, owner ruling A
+# Progress: candidate-chain smoke CD-vintage provenance defect
 
 Date: 2026-08-24
 
@@ -6,134 +6,33 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-Contract tracing, the stage-2b implementation, and its clean-commit dry run are
-complete against local current-main authority `origin/main` at `7b90bb18`. The
-deliberate sparse STOP is replaced by a second, serial legacy release invocation
-that lets the current builder derive support by cold fixed-penalty L0 at its
-literal default 0.8. The release accepts the realized non-exact count and
-supplies no frozen selection, exact-count rule, `pi_hi`, Keogh mass protection,
-operator exclusion register, or tuning override. Round 5 passed from committed
-launcher `52a2bcfb`; its receipt is committed at `175a607a`. The required
-`FINAL_REPORT.md` is complete and all final static checks pass.
+Investigation started from the clean requested branch head `7c14a3ba` with the
+PolicyEngine-US 1.819.0 lock. The failed 1% smoke pool and release state are
+external evidence only until the congressional-district vintage provenance
+path has been traced end to end. No runbook change or smoke rerun has occurred.
 
-No pool, release, scorer, publication, promotion, or push was run by this task.
+The authorized decision boundary is strict: patch only supported stage-1 or
+stage-2a runbook wiring. If current main provides no supported way to satisfy
+the release guard, stop and report the missing main-branch wiring instead of
+weakening the guard or changing the vintage module.
 
 ## Done
 
-- Read `CLAUDE.md` and the GitNexus exploration skill before task actions.
-- Confirmed the worktree was clean on `candidate-25pct-runbook` at
-  `b8176985`.
-- Confirmed the branch contains the `origin/main` PolicyEngine-US 1.819.0 lock
-  merge and identified `origin/main` commit `7b90bb18` as the current-main code
-  authority available locally.
-- Tried the skill's GitNexus resource discovery. Its graph server/tools are not
-  exposed in this session, so contract tracing will use direct source, tests,
-  parser help, and committed/host receipts.
-- Started independent read-only reviews of the legacy sparse builder contract,
-  current launcher conventions, and required validation surface.
-- Read the required `FINAL_REPORT.md`,
-  `experiments/candidate_25pct/input_audit_r3.md`,
-  `experiments/candidate_25pct/dry_run_r4.md`, and the complete 892-line
-  launcher.
-- Verified the release builder, its parser tests, and the informed-selection
-  design are byte-identical to `origin/main` at `7b90bb18`.
-- Traced the cold legacy branch: `DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8`
-  (`tools/build_us_fiscal_refresh_release.py:437`), the parser installs that
-  default and describes the fixed penalty
-  (`tools/build_us_fiscal_refresh_release.py:1132-1140`), the effective penalty
-  is `share / candidate_households`
-  (`tools/build_us_fiscal_refresh_release.py:10436-10450`), and omitting
-  `--dense-default-dataset` reaches `calibrate_l0_refit`, which records the
-  realized `n_nonzero` support rather than enforcing a count
-  (`tools/build_us_fiscal_refresh_release.py:10636-10677`).
-- Corrected the initial input enumeration after tracing the SSI retry contract:
-  stage 2b needs exactly one sparse-specific immutable input beyond stage 2a,
-  `/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/attempt6_basis_schema3_seed.json`
-  at SHA-256
-  `25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a`.
-  The incumbent launcher supplies this schema-3 seed at
-  `/Users/maxghenis/PolicyEngine/_buildo-runtime/scripts/buildp_sparse9.sh:133-134`;
-  current main accepts schema 2/3/4 bases
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py:902-918`)
-  and rejects retry-of-retry current-schema release artifacts at lines 943-959.
-  The launcher authenticates the seed and validates its output provenance.
-- Reused the stage-1 H5 and every common stage-2a source, gave sparse its own
-  output, checkpoint, release-ID, log, RSS, and completion state, omitted the
-  dense flag, and used the incumbent's 6,000 epochs. The historical incumbent
-  launcher is the epoch authority at
-  `/Users/maxghenis/PolicyEngine/_buildo-runtime/scripts/buildp_sparse9.sh:123-143`.
-- Adjudicated Keogh-carrier protection as out of scope for ruling A. Current
-  parser help says the flag preserves carriers that a protect-swap placed in a
-  *frozen selection* (`tools/build_us_fiscal_refresh_release.py:927-938`), and
-  the implementation doctrine repeats that provenance at lines 2001-2016.
-  The incumbent's 6,000-epoch run was frozen-support dense polish, so its use
-  of the flag is not evidence that cold legacy L0 owns it.
-- Chose omission for zero operator waivers. Current main rejects the retired
-  `--zero-support-exclusions` flag
-  (`packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:52-93`),
-  while omitting the optional QRF-tail register loads `{}` and records a null
-  path/hash (`tools/build_us_fiscal_refresh_release.py:7922-7949,11258-11290`).
-- Found a pre-existing readiness mismatch: the launcher prints and finally
-  rechecks 85 GiB but still initially waits for 90 GiB (pool) and 110 GiB
-  (dense). The implementation makes every wait/recheck use the stated 85 GiB
-  gate.
-- Replaced `stage_sparse_stop` with owner-ruling-A stage 2b. It runs after the
-  dense release, off-chain and with `--no-staging`, persists the required
-  `populace-us-2024-onesurface-pkg3-legacy-sparse-<sha8>-<ts>` ID, monitors RSS,
-  supports authenticated idempotent skips, and emits the artifact identity and
-  sparse scorer command.
-- Added a lightweight AST/argv preflight which proves the checked-in builder's
-  parser wires the L0 flag to the sole 0.8 constant while proving the sparse
-  command omits the L0 flag itself and every frozen, exact-k, waiver, warm-start,
-  and tuning flag.
-- Added post-build sparse authentication for the release method, non-exact
-  realized support, 6,000 selection/refit epochs, effective L0 penalty,
-  absence of frozen/exact/Keogh paths, code/Ledger/pool pins, schema-3 SSI basis
-  receipt, no staging, and green release/QRF gates.
-- Extended dry-run output through stage 2b and added both candidate scorer
-  commands. `bash -n`, ShellCheck, and `git diff --check` pass on the pending
-  implementation.
-- Found the pre-existing external `candidate-25/code.commit` pin at
-  `8fa966d9` (with no stage-1 artifact). Execute mode still refuses any commit
-  mismatch. Dry-run now reports that conflict without consuming or changing
-  external state, so the new committed command can receive a read-only receipt;
-  owner cleanup or a fresh output-root ruling remains required before execution.
-- Ran the clean `24d9ff18` launcher in dry-run mode: it exited 0, authenticated
-  all inputs, printed the complete stage-2b command, and did not create the
-  sparse root. An independent post-run schema audit found that the builder
-  records the L0 realized count but does not guarantee a strict subset. The
-  pending correction therefore allows `selected == candidate` while still
-  requiring `selected <= candidate` and `exported == selected`; this preserves
-  owner ruling A instead of inventing another cardinality rule.
-- Tightened the lightweight command preflight to reject any option absent from
-  the current parser and to prohibit remaining gate-tolerance, target-aging,
-  reform-smoke, and other tuning/waiver switches.
-- Committed the non-exact validation correction as `52a2bcfb`, then reran the
-  canonical launcher with `--dry-run`. It exited 0, authenticated every pinned
-  input, emitted the 85-GiB plans and complete pool/dense/sparse/scorer commands,
-  and printed the owner-ruling contract receipt.
-- Verified after round 5 that the external pool directory remained empty,
-  `release-sparse/` remained absent, and the candidate code pin, main log,
-  launcher, and dense release-ID control files were unchanged. Recorded the
-  independently changing pre-existing `smoke/pool.log` without attributing it
-  to this launcher.
-- Created `experiments/candidate_25pct/dry_run_r5.md` with the tested commit,
-  launcher hash, verbatim stdout, exit status, stale-pin observation, and
-  side-effect checks.
-- Committed the round-5 receipt and journal as `175a607a`.
-- Replaced the obsolete round-4 sparse STOP report with the final owner-ruling-A
-  contract trace, exact sparse input delta, Keogh/waiver adjudication,
-  implementation/validation summary, and external stale-pin prerequisite in
-  `FINAL_REPORT.md`.
-- Re-ran `bash -n`, ShellCheck, the lightweight owner-ruling contract preflight,
-  and `git diff --check`; all pass. The launcher remains executable and its
-  tested SHA-256 is
-  `484874a22d63e8a0faf16f3eb504eed152a0a2d5993d9b6db5d5e18aeee69838`.
+- Read `CLAUDE.md`, including the PR-CI/certification boundary and root-journal
+  conventions.
+- Read the GitNexus debugging and exploration skill instructions selected for
+  this code-path investigation.
+- Confirmed the worktree is clean on `candidate-25pct-runbook` at
+  `7c14a3ba1186dc2a2ba6125ee0d3000aaf140345`.
+- Identified `FINAL_REPORT.md` as the existing repository output report for
+  this branch; it will be replaced only after the investigation is resolved.
 
 ## Next
 
-1. Owner decides how to reconcile the pre-existing external `candidate-25`
-   root pinned to `8fa966d9` (or authorizes a fresh output-root policy) before
-   any execute-mode launch.
-2. After that explicit external-state decision, launch the committed runbook;
-   no further repository implementation is pending.
+1. Discover or attempt the GitNexus graph workflow, then trace the release CD
+   path, pool writers, current tests, and #733/#735/#741-era history in source.
+2. Decide whether supported runbook wiring exists; either implement and test it
+   or stop with an exact code-cited main-branch defect report.
+3. If supported, rerun only the authorized 1% smoke stages, commit
+   `experiments/candidate_25pct/smoke_r2.md`, and finalize this journal and
+   `FINAL_REPORT.md`.
