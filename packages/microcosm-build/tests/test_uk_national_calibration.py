@@ -19,7 +19,9 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_SOLVE_DOCTRINE,
     UK_NATIONAL_SOLVE_EPOCHS,
     UK_NATIONAL_TARGET_LOSS_CAP,
+    UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
+    uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
@@ -548,9 +550,34 @@ def test_national_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_NATIONAL_TARGET_LOSS_CAP == 10.0
     assert UK_NATIONAL_L0_LAMBDA == 0.0
     assert UK_NATIONAL_MASS_RULE == "free"
+    # María's ruling (2026-08-24): family_equal is vocabulary, never the
+    # default — she passes it as an explicit per-run override.
+    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "uniform"
     assert UK_NATIONAL_SOLVE_DOCTRINE == UKNationalSolveDoctrine()
     assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
     assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
+    assert UKNationalSolveDoctrine(target_weight_rule="family_equal")
+
+
+def test_family_equal_gives_each_family_one_equal_share() -> None:
+    weights = uk_national_target_loss_weights(
+        ["hmrc"] * 3 + ["obr"], rule="family_equal"
+    )
+    assert weights is not None
+    assert weights.sum() == pytest.approx(1.0)
+    # Three hmrc rows share half the objective; the single obr row holds the
+    # other half, so an over-supplied family cannot outvote by count.
+    assert weights[:3].sum() == pytest.approx(0.5)
+    assert weights[3] == pytest.approx(0.5)
+
+
+def test_uniform_rule_defers_to_the_kernel_default() -> None:
+    assert uk_national_target_loss_weights(["hmrc", "obr"], rule="uniform") is None
+
+
+def test_family_equal_refuses_an_undeclared_family() -> None:
+    with pytest.raises(ValueError, match="must declare a family"):
+        uk_national_target_loss_weights(["hmrc", ""], rule="family_equal")
 
 
 def test_national_doctrine_rejects_tampered_bounds() -> None:
@@ -572,3 +599,47 @@ def test_national_doctrine_rejects_tampered_bounds() -> None:
         UKNationalSolveDoctrine(mass_rule="conserve")
     with pytest.raises(ValueError, match="l0_lambda"):
         UKNationalSolveDoctrine(l0_lambda=-0.1)
+
+
+@pytest.mark.parametrize(
+    ("rule", "expected"),
+    [("uniform", None), ("family_equal", [1.0])],
+)
+def test_doctrine_target_weight_rule_reaches_the_solver(
+    monkeypatch, rule, expected
+) -> None:
+    """The declared rule must reach calibrate(), not just the manifest echo.
+
+    First-armed-run finding (2026-08-23): the doctrine declared a
+    target_weight_rule the stage never passed to the kernel, so the solve
+    silently ran uniform whatever the doctrine said. The doctrine vector now
+    travels explicitly; "uniform" maps to None — the kernel's own default —
+    so the shipped identity is unchanged under the default rule.
+    """
+
+    from microcosm.calibrate import calibrate as real_calibrate
+
+    captured: dict[str, object] = {}
+
+    def capturing_calibrate(*args, **kwargs):
+        captured["target_loss_weights"] = kwargs["target_loss_weights"]
+        return real_calibrate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.national_calibration.calibrate",
+        capturing_calibrate,
+    )
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5, target_weight_rule=rule),
+    )
+
+    stage(_frame())
+
+    weights = captured["target_loss_weights"]
+    if expected is None:
+        assert weights is None
+    else:
+        assert weights is not None
+        assert weights.tolist() == expected

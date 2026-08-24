@@ -315,7 +315,9 @@ from microcosm.build.uk_runtime.national_doctrine import (
     UK_NATIONAL_SOLVE_DOCTRINE,
     UK_NATIONAL_SOLVE_EPOCHS,
     UK_NATIONAL_TARGET_LOSS_CAP,
+    UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
+    uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import (
     UK_NATIONAL_SCHEMA,
@@ -663,6 +665,8 @@ __all__ = [
     "UK_NATIONAL_SOLVE_DOCTRINE",
     "UK_NATIONAL_SOLVE_EPOCHS",
     "UK_NATIONAL_TARGET_LOSS_CAP",
+    "UK_NATIONAL_TARGET_WEIGHT_RULE",
+    "uk_national_target_loss_weights",
     "UKNationalStage",
     "UKRowwiseDatasetResult",
     "UKReleaseInputColumn",

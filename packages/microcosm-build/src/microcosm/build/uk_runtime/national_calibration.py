@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
 from microcosm.build.uk_runtime.national_doctrine import (
     UK_NATIONAL_SOLVE_DOCTRINE,
     UKNationalSolveDoctrine,
+    uk_national_target_loss_weights,
 )
 from microcosm.calibrate import (
     CalibrationResult,
@@ -89,6 +90,13 @@ class UKNationalCalibrationStage:
             spec.family for spec in self.registry.specs
         )
         mass_log_records_before_calibration = len(frame.mass_log)
+        # Target-set rows follow registry spec order, so the doctrine weight
+        # vector aligns positionally; under the default "uniform" rule this
+        # is None — the kernel's own equal weighting.
+        target_loss_weights = uk_national_target_loss_weights(
+            [spec.family for spec in self.registry.specs],
+            rule=self.doctrine.target_weight_rule,
+        )
         result = calibrate(
             prepared,
             self.registry.to_target_set(),
@@ -101,6 +109,7 @@ class UKNationalCalibrationStage:
             seed=self.doctrine.seed,
             l0_lambda=self.doctrine.l0_lambda,
             target_loss_cap=self.doctrine.target_loss_cap,
+            target_loss_weights=target_loss_weights,
         )
         if result.skipped or len(result.problem.names) != declared:
             skipped = [item.name for item in result.skipped]
