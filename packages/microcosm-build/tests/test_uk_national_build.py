@@ -1597,7 +1597,7 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
     monkeypatch, tmp_path
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
+    from microcosm.build.uk_runtime import national_frame
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -1609,10 +1609,10 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
         Path(path).write_bytes(b"partial")
         raise OSError("simulated HDF write failure")
 
-    monkeypatch.setattr(national_build.pd, "HDFStore", fail_store)
+    monkeypatch.setattr(national_frame.pd, "HDFStore", fail_store)
 
     with pytest.raises(OSError, match="simulated HDF write failure"):
-        national_build.write_uk_national_frame(frame, staging_h5)
+        national_frame.write_uk_national_frame(frame, staging_h5)
 
     assert staging_h5.read_bytes() == b"previous-good-artifact"
     assert list(tmp_path.glob(".staging.h5.*.tmp.h5")) == []
