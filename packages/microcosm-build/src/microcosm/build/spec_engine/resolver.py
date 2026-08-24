@@ -110,6 +110,7 @@ F0_IMPLEMENTED_KERNEL_IDS = frozenset(
         "joint_count_calibration",
         "load_acs_2022_rent_donor",
         "load_asec_raw_stage_checkpoint",
+        "load_congressional_district_vintage_crosswalk",
         "load_puf_tax_unit_donor",
         "load_us_puma_ladder",
         "marketplace_assignment",

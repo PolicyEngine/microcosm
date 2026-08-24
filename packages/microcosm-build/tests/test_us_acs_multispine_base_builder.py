@@ -97,14 +97,20 @@ def test_nullable_writer_round_trips_fixed_tables_and_caller_artifact_kind(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
     frame = _frame()
     output = tmp_path / "pool.h5"
+    root_attributes = {
+        "populace_congressional_district_vintage_crosswalk_sha256": "a" * 64,
+        "populace_congressional_district_vintage_target": "119th_congress",
+    }
 
     write_nullable_us_h5(
         frame,
         output,
         period=2024,
         artifact_kind="nullable_multispine_pool_h5",
+        root_attributes=root_attributes,
     )
 
     with pd.HDFStore(output, mode="r") as store:
@@ -113,6 +119,14 @@ def test_nullable_writer_round_trips_fixed_tables_and_caller_artifact_kind(
         assert pd.isna(store["person"]["is_snap_abawd_discretionary_exempt"].iloc[1])
         assert store["household"]["household_weight"].tolist() == [40.0, 60.0]
         assert store["_time_period"].tolist() == [2024]
+        stored_root_attributes = store.get_node("/")._v_attrs
+        assert {
+            key: str(stored_root_attributes[key]) for key in root_attributes
+        } == root_attributes
+    with h5py.File(output, mode="r") as h5:
+        assert {
+            key: h5.attrs[key].decode() for key in root_attributes
+        } == root_attributes
     assert _stored_metadata(output) == {
         "artifact_kind": "nullable_multispine_pool_h5",
         "entity_hdf_format": "fixed_nullable",
@@ -127,22 +141,60 @@ def test_nullable_writer_keeps_existing_bytes_when_verification_fails(
     pytest.importorskip("tables")
     output = tmp_path / "existing.h5"
     output.write_bytes(b"existing-artifact")
+    original_write = h5_io._write_nullable_us_h5_file
 
-    def fail_verification(*_args, **_kwargs):
-        raise RuntimeError("injected verification failure")
+    def omit_root_attributes(*args, **kwargs):
+        kwargs["root_attributes"] = ()
+        original_write(*args, **kwargs)
 
-    monkeypatch.setattr(h5_io, "_verify_nullable_us_h5", fail_verification)
+    monkeypatch.setattr(
+        h5_io,
+        "_write_nullable_us_h5_file",
+        omit_root_attributes,
+    )
 
-    with pytest.raises(RuntimeError, match="injected verification failure"):
+    with pytest.raises(RuntimeError, match="omitted root attribute"):
         write_nullable_us_h5(
             _frame(),
             output,
             period=2024,
             artifact_kind="fixture",
+            root_attributes={"fixture_provenance": "verified-before-replace"},
         )
 
     assert output.read_bytes() == b"existing-artifact"
     assert list(tmp_path.glob(f".{output.name}.*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    ("root_attributes", "expected_error"),
+    [
+        ([("fixture", "value")], TypeError),
+        ({1: "value"}, TypeError),
+        ({"bad-name": "value"}, ValueError),
+        ({"CLASS": "value"}, ValueError),
+        ({"fixture": 1}, TypeError),
+        ({"fixture": ""}, ValueError),
+    ],
+)
+def test_nullable_writer_rejects_invalid_root_attributes_before_writing(
+    root_attributes,
+    expected_error,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    output = tmp_path / "invalid-root-attrs.h5"
+
+    with pytest.raises(expected_error):
+        write_nullable_us_h5(
+            _frame(),
+            output,
+            period=2024,
+            artifact_kind="fixture",
+            root_attributes=root_attributes,
+        )
+
+    assert not output.exists()
 
 
 def test_shim_preserves_legacy_write_signature_and_default(

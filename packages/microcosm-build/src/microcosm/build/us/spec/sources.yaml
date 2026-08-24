@@ -84,6 +84,18 @@ sources:
   - id: puma_2020
     kind: geography_vintage
     value: 2020_puma
+- id: us_congressional_district_vintage_crosswalk_117_to_119
+  role: congressional_district_vintage_crosswalk
+  sha256: c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec
+  byte_size: 77935
+  loader: kernel:load_congressional_district_vintage_crosswalk
+  vintages:
+  - vintage:cd_117
+  - vintage:cd_119
+  vintage_authorities:
+  - id: cd_117
+    kind: geography_vintage
+    value: 117th_congress
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json

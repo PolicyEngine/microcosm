@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_331
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_765
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_096
+EXPECTED_AUTHORED_FIELD_COUNT = 32_351
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_769
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_120
 
 
 class FieldUsageError(AssertionError):
@@ -204,6 +204,58 @@ def _claim_rows(
         return [row for row in rows if not is_concept_validation(row[0])]
     if claim.pointer_class == "family_concept_validation":
         return [row for row in rows if is_concept_validation(row[0])]
+
+    def is_stacked_geography_source_identity(pointer: str) -> bool:
+        if not isinstance(subtree, (list, tuple)):
+            return False
+        relative = pointer.removeprefix(claim.source_prefix).removeprefix("/")
+        tokens = relative.split("/")
+        if len(tokens) < 2:
+            return False
+        try:
+            source_index = int(tokens[0])
+        except ValueError:
+            return False
+        if source_index < 0 or source_index >= len(subtree):
+            return False
+        source = subtree[source_index]
+        if not isinstance(source, Mapping):
+            return False
+        source_id = source.get("id")
+        vintage_id = {
+            "us_puma_ladder_2020": "cd_119",
+            "us_congressional_district_vintage_crosswalk_117_to_119": "cd_117",
+        }.get(source_id)
+        if vintage_id is None:
+            return False
+        if len(tokens) == 2:
+            return tokens[1] in {"id", "sha256"}
+        if len(tokens) != 4 or tokens[1] != "vintage_authorities":
+            return False
+        try:
+            vintage_index = int(tokens[2])
+        except ValueError:
+            return False
+        authorities = source.get("vintage_authorities")
+        if not isinstance(authorities, (list, tuple)) or not (
+            0 <= vintage_index < len(authorities)
+        ):
+            return False
+        authority = authorities[vintage_index]
+        return (
+            isinstance(authority, Mapping)
+            and authority.get("id") == vintage_id
+            and tokens[3] in {"id", "value"}
+        )
+
+    if claim.pointer_class == "stacked_geography_source_identity":
+        return [
+            row for row in rows if is_stacked_geography_source_identity(row[0])
+        ]
+    if claim.pointer_class == "source_validation":
+        return [
+            row for row in rows if not is_stacked_geography_source_identity(row[0])
+        ]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -332,9 +384,13 @@ _PINS: dict[str, tuple[int, str]] = {
         8_606,
         "3f20975597d93f7313583a944eeb9d6437651c4ff20e67628bf6bf4c5aa9f004",
     ),
-    "geography": (
-        26,
-        "d07260bec0a904155b3786234b878f4010dc9a6cf05882eef8c6417dfe283156",
+    "geography_assignment": (
+        28,
+        "1eb3eaedce22de09799d9a23cc9034f0c048d7b5cc59d76b96b83c5bb49e1508",
+    ),
+    "geography_phase": (
+        1,
+        "e6f1851db8754554dcbab4b09ca911a63ddba82fdd9743a7af542f216037bf9d",
     ),
     "imputation_chaining": (
         20,
@@ -409,16 +465,20 @@ _PINS: dict[str, tuple[int, str]] = {
         "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
     ),
     "resolved_vintage_authorities": (
-        59,
-        "f9cde9945a03fa6b98685cafbda71efd947dc42f706e047f1d693e0750b85a7a",
+        63,
+        "5f2edfe9826e1200e2b8706780c9f53b7c61f01aad8cab5907f08c37a0b1ead2",
     ),
     "selection": (
         87,
         "a1e8d271197566eb3cf23b309156c2efb563ae10fe21968a3cfe9b9d827da2db",
     ),
+    "source_geography_identity": (
+        8,
+        "364a30f79a717a3627ae5e972c753d98a7727ec30d41682ac5b3f5d8027b6274",
+    ),
     "source_pins": (
-        72,
-        "6daa8c007103e65f4485b5ab22c5579876e09da9ba9d182fbf1bbd854f29240e",
+        74,
+        "a6100cd55d2e4f450208b6b0d3513f3d56c5068f74a54dfe62705d9a5f33ef07",
     ),
     "source_stage_asset": (
         2,
@@ -450,7 +510,7 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "spine_pipeline_contract": (
         88,
-        "c6e63034c73b2b3ad06df26d03fbf7d63d52aec3a7c3a176b228bacf08d18975",
+        "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
     ),
     "spine_sampling": (
         17,
@@ -477,8 +537,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
     ),
     "vintage_records": (
-        105,
-        "6c3b9c137149c764eae5ca925e3b789ba3f6f589cd25fbc1da58d21a081c7b5e",
+        112,
+        "c69a923e893fde8a929ca087d29ded607fa9c04fd14a39d0a401ad1db845e6de",
     ),
 }
 
@@ -608,15 +668,26 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
             "catalog_columns",
         ),
         _claim(
-            "geography",
-            f"{_A}/spec~1geography.yaml",
+            "geography_phase",
+            f"{_A}/spec~1geography.yaml/phase",
             UsageMode.IDENTITY_ONLY,
             _NO_EFFECT,
-            "spec_binding.geography_contract",
+            "spec_binding.geography_phase",
             "identity",
             rationale=(
-                "F0 normalizes the phase=legacy geography contract but the "
-                "constants-era executor retains today's PUMA-ladder authority until F1"
+                "the migration phase labels the mirrored contract but does not "
+                "change the generation-0 stacked geography executor"
+            ),
+        ),
+        _claim(
+            "geography_assignment",
+            f"{_A}/spec~1geography.yaml/assignment",
+            UsageMode.LEGACY_BEHAVIOR,
+            _LEGACY,
+            "legacy_adapter.stacked_checkpoint_static_components.geography_assignment",
+            "legacy",
+            legacy_sinks=(
+                "/stacked_checkpoint_static_components/geography_assignment",
             ),
         ),
     ]
@@ -729,12 +800,25 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
                 ),
             ),
             _claim(
+                "source_geography_identity",
+                f"{_A}/spec~1sources.yaml/sources",
+                UsageMode.LEGACY_BEHAVIOR,
+                _LEGACY,
+                "legacy_adapter.stacked_checkpoint_static_components.geography_assignment",
+                "legacy",
+                legacy_sinks=(
+                    "/stacked_checkpoint_static_components/geography_assignment",
+                ),
+                pointer_class="stacked_geography_source_identity",
+            ),
+            _claim(
                 "source_pins",
                 f"{_A}/spec~1sources.yaml/sources",
                 UsageMode.FRONT_END_VALIDATION,
                 _NO_EFFECT,
                 "loader.sources_schema_and_resolver.source_registry",
                 "source_pins",
+                pointer_class="source_validation",
             ),
             _claim(
                 "source_stage_asset",

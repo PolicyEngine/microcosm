@@ -92,22 +92,22 @@ def _mutated_bundle(
 
 
 def test_exact_complete_ledger_has_one_primary_mode_per_pointer(field_ledger) -> None:
-    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_096
+    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_120
     assert field_ledger.source_counts == {
-        "authored": 32_331,
-        "resolved_bindings": 9_765,
+        "authored": 32_351,
+        "resolved_bindings": 9_769,
     }
     assert field_ledger.mode_counts == {
-        "legacy_behavior": 13_934,
-        "compiler_semantic": 27_688,
-        "front_end_validation": 346,
-        "identity_only": 128,
+        "legacy_behavior": 13_970,
+        "compiler_semantic": 27_699,
+        "front_end_validation": 348,
+        "identity_only": 103,
     }
     assert field_ledger.generation0_effect_counts == {
-        "legacy_behavior": 38_407,
-        "no_generation0_effect": 3_689,
+        "legacy_behavior": 38_443,
+        "no_generation0_effect": 3_677,
     }
-    assert len({field.pointer for field in field_ledger.fields}) == 42_096
+    assert len({field.pointer for field in field_ledger.fields}) == 42_120
 
 
 def test_eligibility_concepts_are_validation_not_generation0_behavior(
@@ -137,6 +137,24 @@ def test_source_pins_channels_and_dtype_policy_are_honest_validation_routes(
         field = field_ledger.field(pointer)
         assert field.mode is UsageMode.FRONT_END_VALIDATION
         assert field.generation0_effect is Generation0Effect.NO_GENERATION0_EFFECT
+
+
+def test_stacked_geography_authority_fields_name_the_checkpoint_sink(
+    field_ledger,
+) -> None:
+    pointers = (
+        "/authored/spec~1geography.yaml/assignment/draw/asec/weight",
+        "/authored/spec~1sources.yaml/sources/6/sha256",
+        "/authored/spec~1sources.yaml/sources/7/vintage_authorities/0/value",
+    )
+    for pointer in pointers:
+        field = field_ledger.field(pointer)
+        assert field.mode is UsageMode.LEGACY_BEHAVIOR
+        assert field.generation0_effect is Generation0Effect.LEGACY_BEHAVIOR
+        assert (
+            "/stacked_checkpoint_static_components/geography_assignment"
+            in field.sink_pointers
+        )
 
 
 def test_spine_assembly_mass_share_fields_name_exact_adapter_sinks(
@@ -348,3 +366,78 @@ def test_mass_share_mutation_changes_the_named_adapter_surface(
             f"/spine_assembly/household_mass_shares/{channel}"
             in field.sink_pointers
         )
+
+
+def test_geography_declaration_mutation_changes_checkpoint_identity(
+    tmp_path: Path,
+    resolved_us: ResolvedSpec,
+    legacy_us: dict[str, object],
+) -> None:
+    def mutate(document: dict[str, object]) -> None:
+        assignment = _mapping(document["assignment"])
+        draw = _mapping(assignment["draw"])
+        asec = _mapping(draw["asec"])
+        asec["weight"] = "mutated_population_weight"
+
+    mutated = _mutated_bundle(
+        resolved_us,
+        tmp_path,
+        ResourceKind.GEOGRAPHY,
+        mutate,
+    )
+    mutated_legacy = compile_to_legacy_payload(mutated)
+    diff_paths = {
+        difference.path
+        for difference in diff_legacy_payloads(legacy_us, mutated_legacy)
+    }
+    pointer = "/authored/spec~1geography.yaml/assignment/draw/asec/weight"
+    assert (
+        "/stacked_checkpoint_static_components/geography_assignment/"
+        "declaration/draw/asec/weight"
+    ) in diff_paths
+    field = build_field_usage_ledger(
+        mutated,
+        legacy_payload=mutated_legacy,
+    ).field(pointer)
+    assert field.claim_id == "geography_assignment"
+    assert field.mode is UsageMode.LEGACY_BEHAVIOR
+
+
+def test_geography_source_pin_mutation_changes_checkpoint_identity(
+    tmp_path: Path,
+    resolved_us: ResolvedSpec,
+    legacy_us: dict[str, object],
+) -> None:
+    def mutate(document: dict[str, object]) -> None:
+        sources = document["sources"]
+        assert isinstance(sources, list)
+        crosswalk = next(
+            source
+            for source in sources
+            if isinstance(source, dict)
+            and source.get("id")
+            == "us_congressional_district_vintage_crosswalk_117_to_119"
+        )
+        crosswalk["sha256"] = "b" * 64
+
+    mutated = _mutated_bundle(
+        resolved_us,
+        tmp_path,
+        ResourceKind.SOURCES,
+        mutate,
+    )
+    mutated_legacy = compile_to_legacy_payload(mutated)
+    diff_paths = {
+        difference.path
+        for difference in diff_legacy_payloads(legacy_us, mutated_legacy)
+    }
+    assert (
+        "/stacked_checkpoint_static_components/geography_assignment/authorities/"
+        "congressional_district_vintage_crosswalk/sha256"
+    ) in diff_paths
+    field = build_field_usage_ledger(
+        mutated,
+        legacy_payload=mutated_legacy,
+    ).field("/authored/spec~1sources.yaml/sources/7/sha256")
+    assert field.claim_id == "source_geography_identity"
+    assert field.mode is UsageMode.LEGACY_BEHAVIOR

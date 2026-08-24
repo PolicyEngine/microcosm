@@ -6,8 +6,8 @@
   "country": "us",
   "documentation_sha256": "4b39450dbdb8dafb83c3b627123b8026c6f82c660b66fe76f341a67c4f37c77b",
   "field_usage": {
-    "authored_normative_field_count": 32331,
-    "claim_count": 47,
+    "authored_normative_field_count": 32351,
+    "claim_count": 49,
     "claims": [
       {
         "consumer": "loader.typed_resource_manifest",
@@ -144,18 +144,34 @@
         "verifier": "catalog_columns"
       },
       {
-        "consumer": "spec_binding.geography_contract",
+        "consumer": "spec_binding.geography_phase",
         "generation0_effect": "no_generation0_effect",
-        "id": "geography",
+        "id": "geography_phase",
         "legacy_sinks": [],
         "mode": "identity_only",
         "pointer_class": "all",
-        "pointer_count": 26,
-        "pointer_sha256": "d07260bec0a904155b3786234b878f4010dc9a6cf05882eef8c6417dfe283156",
-        "rationale": "F0 normalizes the phase=legacy geography contract but the constants-era executor retains today's PUMA-ladder authority until F1",
+        "pointer_count": 1,
+        "pointer_sha256": "e6f1851db8754554dcbab4b09ca911a63ddba82fdd9743a7af542f216037bf9d",
+        "rationale": "the migration phase labels the mirrored contract but does not change the generation-0 stacked geography executor",
         "relative_sink_prefix": null,
-        "source_prefix": "/authored/spec~1geography.yaml",
+        "source_prefix": "/authored/spec~1geography.yaml/phase",
         "verifier": "identity"
+      },
+      {
+        "consumer": "legacy_adapter.stacked_checkpoint_static_components.geography_assignment",
+        "generation0_effect": "legacy_behavior",
+        "id": "geography_assignment",
+        "legacy_sinks": [
+          "/stacked_checkpoint_static_components/geography_assignment"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 28,
+        "pointer_sha256": "1eb3eaedce22de09799d9a23cc9034f0c048d7b5cc59d76b96b83c5bb49e1508",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1geography.yaml/assignment",
+        "verifier": "legacy"
       },
       {
         "consumer": "legacy_adapter.imputation",
@@ -427,14 +443,30 @@
         "verifier": "identity"
       },
       {
+        "consumer": "legacy_adapter.stacked_checkpoint_static_components.geography_assignment",
+        "generation0_effect": "legacy_behavior",
+        "id": "source_geography_identity",
+        "legacy_sinks": [
+          "/stacked_checkpoint_static_components/geography_assignment"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "stacked_geography_source_identity",
+        "pointer_count": 8,
+        "pointer_sha256": "364a30f79a717a3627ae5e972c753d98a7727ec30d41682ac5b3f5d8027b6274",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1sources.yaml/sources",
+        "verifier": "legacy"
+      },
+      {
         "consumer": "loader.sources_schema_and_resolver.source_registry",
         "generation0_effect": "no_generation0_effect",
         "id": "source_pins",
         "legacy_sinks": [],
         "mode": "front_end_validation",
-        "pointer_class": "all",
-        "pointer_count": 72,
-        "pointer_sha256": "6daa8c007103e65f4485b5ab22c5579876e09da9ba9d182fbf1bbd854f29240e",
+        "pointer_class": "source_validation",
+        "pointer_count": 74,
+        "pointer_sha256": "a6100cd55d2e4f450208b6b0d3513f3d56c5068f74a54dfe62705d9a5f33ef07",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1sources.yaml/sources",
@@ -499,7 +531,7 @@
         "mode": "legacy_behavior",
         "pointer_class": "all",
         "pointer_count": 88,
-        "pointer_sha256": "c6e63034c73b2b3ad06df26d03fbf7d63d52aec3a7c3a176b228bacf08d18975",
+        "pointer_sha256": "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract",
@@ -673,8 +705,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 105,
-        "pointer_sha256": "6c3b9c137149c764eae5ca925e3b789ba3f6f589cd25fbc1da58d21a081c7b5e",
+        "pointer_count": 112,
+        "pointer_sha256": "c69a923e893fde8a929ca087d29ded607fa9c04fd14a39d0a401ad1db845e6de",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1vintages.yaml",
@@ -732,29 +764,29 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 59,
-        "pointer_sha256": "f9cde9945a03fa6b98685cafbda71efd947dc42f706e047f1d693e0750b85a7a",
+        "pointer_count": 63,
+        "pointer_sha256": "5f2edfe9826e1200e2b8706780c9f53b7c61f01aad8cab5907f08c37a0b1ead2",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/vintage_authorities",
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42096,
-    "consumed_field_count": 42096,
+    "configuration_field_count": 42120,
+    "consumed_field_count": 42120,
     "generation0_effect_counts": {
-      "legacy_behavior": 38407,
-      "no_generation0_effect": 3689
+      "legacy_behavior": 38443,
+      "no_generation0_effect": 3677
     },
     "mode_counts": {
-      "compiler_semantic": 27688,
-      "front_end_validation": 346,
-      "identity_only": 128,
-      "legacy_behavior": 13934
+      "compiler_semantic": 27699,
+      "front_end_validation": 348,
+      "identity_only": 103,
+      "legacy_behavior": 13970
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "6d7353c6c42a6e1dbc6e3a227848e36864526fdc9533d5b284aa469c87dc064f",
-    "resolved_binding_field_count": 9765,
+    "pointer_inventory_sha256": "bc4a948ab632191954600da8474c5b011f977a65e24c399d126f3dc4a79f23e5",
+    "resolved_binding_field_count": 9769,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -782,16 +814,16 @@
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
-      "resolved_references": 325,
+      "resolved_references": 334,
       "seed_owner_bindings": 112,
       "seed_owner_rows": 54,
       "seed_sites": 53,
       "seed_streams": 14,
       "source_operators": 16,
       "source_stages": 37,
-      "stacked_checkpoint_full_components": 12,
+      "stacked_checkpoint_full_components": 13,
       "stacked_checkpoint_pool_code_components": 19,
-      "stacked_checkpoint_static_components": 9,
+      "stacked_checkpoint_static_components": 10,
       "tail_control_fields": 934,
       "take_up_pipeline_steps": 28,
       "take_up_programs": 17,
@@ -800,7 +832,7 @@
       "typed_entities": 8,
       "typed_scopes": 7
     },
-    "covered_item_count": 40,
+    "covered_item_count": 41,
     "items": {
       "acs_group_predictors_exact": {
         "bundle_home_match_counts": {
@@ -1838,6 +1870,7 @@
           "field_names": [
             "artifact_kind",
             "clone_attachment",
+            "geography_assignment",
             "inputs",
             "materializer_version",
             "model_seed",
@@ -1854,13 +1887,14 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b6a47fac54d7de7aa42ce59dc1950c0765b7a67034f0174ad1531d5bbb06ceef"
+          "sha256": "a128a85f877fb32def9382b841b8b340f974e8a9148ac029c1f04becdc956c18"
         },
         "failures": [],
         "observed": {
           "field_names": [
             "artifact_kind",
             "clone_attachment",
+            "geography_assignment",
             "inputs",
             "materializer_version",
             "model_seed",
@@ -1877,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b6a47fac54d7de7aa42ce59dc1950c0765b7a67034f0174ad1531d5bbb06ceef"
+          "sha256": "a128a85f877fb32def9382b841b8b340f974e8a9148ac029c1f04becdc956c18"
         },
         "status": "covered"
       },
@@ -1941,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "044d8a45c4fe42eec9f72f9bedbf403536b9734cf74d8d65b72caf3c6c1d60b7"
+          "sha256": "91c65a9ff36839d575036264c4bf57ffde6457e8fd180a0856f9be712ada371d"
         },
         "status": "covered"
       },
@@ -1962,6 +1996,7 @@
         "expected": {
           "field_names": [
             "artifact_kind",
+            "geography_assignment",
             "materializer_version",
             "model_seed",
             "period",
@@ -1976,6 +2011,7 @@
         "observed": {
           "field_names": [
             "artifact_kind",
+            "geography_assignment",
             "materializer_version",
             "model_seed",
             "period",
@@ -1985,6 +2021,41 @@
             "schema_version",
             "stacked_authority"
           ]
+        },
+        "status": "covered"
+      },
+      "stacked_geography_assignment_exact": {
+        "bundle_home_match_counts": {
+          "/geography/assignment": 1,
+          "/sources/sources": 1,
+          "/spine/seed_site_bindings": 1,
+          "/vintages/records": 1
+        },
+        "bundle_homes": [
+          "/geography/assignment",
+          "/sources/sources",
+          "/vintages/records",
+          "/spine/seed_site_bindings"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.stacked_checkpoint_static_components.geography_assignment"
+        ],
+        "expected": {
+          "authority_roles": [
+            "congressional_district_vintage_crosswalk",
+            "puma_ladder"
+          ],
+          "sha256": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
+          "target_vintage": "119th_congress"
+        },
+        "failures": [],
+        "observed": {
+          "authority_roles": [
+            "congressional_district_vintage_crosswalk",
+            "puma_ladder"
+          ],
+          "sha256": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
+          "target_vintage": "119th_congress"
         },
         "status": "covered"
       },
@@ -2521,14 +2592,14 @@
     "missing_item_count": 0,
     "missing_items": [],
     "report_schema_version": 1,
-    "required_item_count": 40,
+    "required_item_count": 41,
     "spec_binding": {
       "attestation": "mirror-attested",
       "canonicalizer_version": 1,
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62"
+      "spec_sha256": "5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e"
     }
   },
   "report_schema_version": 3,
@@ -2538,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62"
+    "spec_sha256": "5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e"
   },
   "status": "pass"
 }

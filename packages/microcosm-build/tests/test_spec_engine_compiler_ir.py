@@ -145,7 +145,7 @@ def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -
     assert len(inventory["columns"]) == 176
     assert len(inventory["artifacts"]) == 84
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 325
+    assert len(inventory["references"]) == 334
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {

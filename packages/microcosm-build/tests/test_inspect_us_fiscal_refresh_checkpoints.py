@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pandas as pd
+
 
 def _load_inspector_module():
     root = Path(__file__).resolve().parents[3]
@@ -179,6 +181,51 @@ def test__given_default_reader_gets_invalid_h5__then_payload_reports_read_error(
     assert result["readable"] is False
     assert result["read_error_kind"] == "h5_read_error"
     assert "Could not read H5 file" in result["error"]
+
+
+def test__given_fixed_household_frame__then_default_reader_finds_cd_support(
+    tmp_path,
+) -> None:
+    inspector = _load_inspector_module()
+    support_h5 = tmp_path / "support.h5"
+
+    with pd.HDFStore(support_h5, mode="w") as store:
+        store.put(
+            "household",
+            pd.DataFrame({"congressional_district_geoid": [0, 101, 101, 202]}),
+            format="fixed",
+        )
+        assert store.get_storer("household").is_table is False
+        attrs = store.get_node("/")._v_attrs
+        attrs[inspector.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = (
+            "crosswalk-sha"
+        )
+        attrs[inspector.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+            inspector.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+        )
+
+    result = inspector.read_h5_provenance(support_h5)
+
+    assert result == {
+        "readable": True,
+        "attrs": {
+            inspector.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                "crosswalk-sha"
+            ),
+            inspector.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                inspector.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+        },
+        "household_congressional_district_geoid": {
+            "exists": True,
+            "table": "household",
+            "column": "congressional_district_geoid",
+            "rows": 4,
+            "positive_unique_count": 2,
+        },
+        "read_error_kind": None,
+        "error": None,
+    }
 
 
 def test__given_missing_crosswalk__then_support_status_says_requested_missing(
