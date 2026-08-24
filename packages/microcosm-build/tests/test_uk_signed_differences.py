@@ -8,6 +8,7 @@ scoping, and the committed file has to stay internally coherent.
 from __future__ import annotations
 
 import json
+import re
 from importlib.resources import files
 from pathlib import Path
 
@@ -50,6 +51,24 @@ def _write(tmp_path: Path, payload: object) -> str:
     return str(path)
 
 
+def _github_anchors(path: Path) -> set[str]:
+    """The fragment ids GitHub derives from a Markdown file's headings.
+
+    Lower-case, punctuation dropped, whitespace to hyphens — so an em-dash
+    surrounded by spaces yields a doubled hyphen, which is the detail that
+    makes hand-written anchors get this wrong.
+    """
+
+    anchors: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        matched = re.match(r"^#{1,6}\s+(.*?)\s*$", line)
+        if matched is None:
+            continue
+        text = re.sub(r"[^\w\s-]", "", matched.group(1).lower())
+        anchors.add(re.sub(r"\s", "-", text))
+    return anchors
+
+
 class TestCommittedRegister:
     def test_committed_register_loads(self) -> None:
         register = load_uk_spine_swap_signed_differences()
@@ -75,6 +94,24 @@ class TestCommittedRegister:
             relative = difference.evidence.split("#", 1)[0]
             assert (REPO_ROOT / relative).is_file(), (
                 f"{difference.id} cites missing evidence file {relative}"
+            )
+
+    def test_committed_evidence_anchors_resolve_to_a_real_heading(self) -> None:
+        # The evidence pointer is what makes an adjudication auditable. A
+        # fragment that no longer resolves fails silently in a browser, so the
+        # rot only shows up when a reviewer clicks and lands nowhere.
+        register = load_uk_spine_swap_signed_differences()
+        headings: dict[str, set[str]] = {}
+        for difference in register.differences:
+            relative, _, fragment = difference.evidence.partition("#")
+            if not fragment:
+                continue
+            if relative not in headings:
+                headings[relative] = _github_anchors(REPO_ROOT / relative)
+            assert fragment in headings[relative], (
+                f"{difference.id} cites {relative}#{fragment}, which is not a "
+                f"heading in that file. Available: "
+                f"{sorted(headings[relative])}"
             )
 
     def test_every_signed_column_exists_on_the_surface_it_signs(self) -> None:
