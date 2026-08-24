@@ -335,6 +335,17 @@ for node in ast.walk(tree):
 
 argv = sys.argv[2:]
 present = set(argv)
+declared_options = {
+    argument.value
+    for node in ast.walk(tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    for argument in node.args
+    if isinstance(argument, ast.Constant)
+    and isinstance(argument.value, str)
+    and argument.value.startswith("--")
+}
 
 failures = []
 if constant_values != [0.8]:
@@ -360,6 +371,8 @@ prohibited = {
     "--evidence-failure-owners",
     "--exact-k",
     "--exact-k-pi-hi",
+    "--input-mass-minimum-reference-total",
+    "--input-mass-relative-tolerance",
     "--l0-refit-lambda-share",
     "--l2-lambda",
     "--learning-rate",
@@ -374,13 +387,20 @@ prohibited = {
     "--selection-join-key",
     "--selection-source-h5",
     "--selection-source-manifest",
+    "--skip-reform-coverage-smoke",
     "--target-family-loss-multiplier",
     "--warm-start-calibration-npz",
     "--zero-support-exclusions",
+    "--no-age-targets",
 }
 unexpected = sorted(present & prohibited)
 if unexpected:
     failures.append(f"sparse command enters a prohibited/tuned path: {unexpected}")
+unknown = sorted(
+    token for token in present if token.startswith("--") and token not in declared_options
+)
+if unknown:
+    failures.append(f"sparse command uses options absent from the current parser: {unknown}")
 
 for flag, value in (("--seed", "0"), ("--epochs", "6000")):
     if argv.count(flag) != 1:
@@ -1002,9 +1022,10 @@ for label, value in (
 ):
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise SystemExit(f"sparse {label} household count is invalid: {value!r}")
-if not selected_count < candidate_count:
+if selected_count > candidate_count:
     raise SystemExit(
-        f"legacy L0 did not realize sparse support: selected={selected_count} candidate={candidate_count}"
+        f"legacy L0 selected more than its candidate pool: "
+        f"selected={selected_count} candidate={candidate_count}"
     )
 if exported_count != selected_count:
     raise SystemExit(

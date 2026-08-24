@@ -98,11 +98,21 @@ round.
   mismatch. Dry-run now reports that conflict without consuming or changing
   external state, so the new committed command can receive a read-only receipt;
   owner cleanup or a fresh output-root ruling remains required before execution.
+- Ran the clean `24d9ff18` launcher in dry-run mode: it exited 0, authenticated
+  all inputs, printed the complete stage-2b command, and did not create the
+  sparse root. An independent post-run schema audit found that the builder
+  records the L0 realized count but does not guarantee a strict subset. The
+  pending correction therefore allows `selected == candidate` while still
+  requiring `selected <= candidate` and `exported == selected`; this preserves
+  owner ruling A instead of inventing another cardinality rule.
+- Tightened the lightweight command preflight to reject any option absent from
+  the current parser and to prohibit remaining gate-tolerance, target-aging,
+  reform-smoke, and other tuning/waiver switches.
 
 ## Next
 
-1. Commit the guarded, off-chain sparse implementation and this journal.
-2. From that clean commit, run `--dry-run` and commit the verbatim
+1. Commit the non-exact-count validation correction and this journal.
+2. From that final clean implementation commit, rerun `--dry-run` and commit the verbatim
    `dry_run_r5.md` receipt.
 3. Write and commit the final outcome to `FINAL_REPORT.md`, then verify a clean
    branch and final checks.
