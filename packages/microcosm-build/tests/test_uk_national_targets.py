@@ -278,9 +278,11 @@ def test_uk_national_targets_declare_chronicle_loader_guarantees():
                 "gate_comparison",
             } <= set(binding), target["target_id"]
         elif kind == "baseline_flag_crosstab":
-            assert {"affected_flag_variable", "count_of"} <= set(binding), target[
-                "target_id"
-            ]
+            assert "affected_flag_variable" in binding, target["target_id"]
+            # The two-child-limit rebinding counts a real value_variable per
+            # record; count_of survives as the legacy spelling the provider
+            # still accepts. Either key must name the counted column.
+            assert {"value_variable", "count_of"} & set(binding), target["target_id"]
 
         if "reduce" in binding:
             assert binding["reduce"] in BINDING_REDUCERS, target["target_id"]
