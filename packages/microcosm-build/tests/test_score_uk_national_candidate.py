@@ -85,8 +85,12 @@ def test_score_uk_national_candidate_scores_synthetic_twins(tmp_path) -> None:
     assert score["candidate_full_loss"] == pytest.approx(0.25)
     assert score["incumbent_full_loss"] == pytest.approx(0.1)
     assert score["candidate_train_loss"] == score["candidate_full_loss"]
-    assert score["candidate_holdout_loss"] == score["candidate_full_loss"]
+    # With no declared split, the holdout keys report absence rather than
+    # repeating the fitted loss under a name that means generalization.
+    assert score["candidate_holdout_loss"] is None
+    assert score["incumbent_holdout_loss"] is None
     assert score["holdout_basis"] == "none_declared"
+    assert score["loss"]["train_equals_full"] is True
     assert score["candidate_target_wins"] == 1
     assert score["incumbent_target_wins"] == 1
     assert score["target_wins_by_family"] == {
@@ -140,5 +144,13 @@ def test_score_uk_national_candidate_cli_writes_score_block(tmp_path) -> None:
     )
 
     payload = json.loads(output_json.read_text(encoding="utf-8"))
-    assert payload["score_vs_enhanced_frs"]["holdout_basis"] == "none_declared"
+    score = payload["score_vs_enhanced_frs"]
+    assert score["holdout_basis"] == "none_declared"
+    # An undeclared holdout reports absence, never the fitted loss wearing a
+    # holdout name: June's fixture holds a genuinely different holdout value,
+    # so a copied one would read as generalization that was never measured.
+    assert score["candidate_holdout_loss"] is None
+    assert score["incumbent_holdout_loss"] is None
+    assert isinstance(score["candidate_train_loss"], float)
+    assert isinstance(score["incumbent_full_loss"], float)
     assert _load_registry(registry_json).version == _registry().version

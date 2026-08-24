@@ -7,10 +7,30 @@ import json
 from pathlib import Path
 from typing import Any
 
-from microcosm.build.uk_runtime.national_build import load_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.calibrate import TargetRegistry, TargetSpec, score_targets
 
 UK_SCORE_LOSS_CAP = 10.0
+UK_SCORE_HOLDOUT_BASIS = "none_declared"
+
+
+def _holdout_loss(basis: str) -> float | None:
+    """The holdout loss for a declared basis, or None when none exists.
+
+    June's frozen fixture carries a genuinely different holdout value
+    (0.1239 against a 0.0159 train loss) because it held rows out. This
+    register declares no split, so the holdout keys report absence rather
+    than the fitted loss wearing a holdout name — a copied value reads
+    downstream as perfect generalization from a measurement never made.
+    Declaring a basis without computing its split fails loudly here rather
+    than falling back to the fitted loss.
+    """
+
+    if basis == "none_declared":
+        return None
+    raise NotImplementedError(
+        f"holdout basis {basis!r} declares a split this scorer does not compute."
+    )
 
 
 def score_uk_national_candidate(
@@ -49,14 +69,14 @@ def score_uk_national_candidate(
     wins = _target_wins(candidate_errors, incumbent_errors)
     return {
         "candidate_train_loss": float(candidate.final_loss),
-        "candidate_holdout_loss": float(candidate.final_loss),
+        "candidate_holdout_loss": _holdout_loss(UK_SCORE_HOLDOUT_BASIS),
         "candidate_full_loss": float(candidate.final_loss),
         "incumbent_train_loss": float(incumbent.final_loss),
-        "incumbent_holdout_loss": float(incumbent.final_loss),
+        "incumbent_holdout_loss": _holdout_loss(UK_SCORE_HOLDOUT_BASIS),
         "incumbent_full_loss": float(incumbent.final_loss),
         "candidate_target_wins": wins["candidate"],
         "incumbent_target_wins": wins["incumbent"],
-        "holdout_basis": "none_declared",
+        "holdout_basis": UK_SCORE_HOLDOUT_BASIS,
         "loss": {
             "objective": "relative_error_loss",
             "target_loss_cap": UK_SCORE_LOSS_CAP,

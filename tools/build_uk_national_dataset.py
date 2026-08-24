@@ -463,10 +463,10 @@ def _ledger_facts_pin(ledger_artifact: object) -> dict[str, object]:
     over a multi-hundred-megabyte file.
     """
 
-    path = Path(getattr(ledger_artifact, "path"))
+    path = Path(ledger_artifact.path)
     facts_path = path / "consumer_facts.jsonl" if path.is_dir() else path
     return {
-        "sha256": str(getattr(ledger_artifact, "facts_sha256")),
+        "sha256": str(ledger_artifact.facts_sha256),
         "size_bytes": int(facts_path.stat().st_size),
     }
 
@@ -1220,7 +1220,6 @@ def _aggregate_build_record(
     source_vintages["frs"] = load_uk_frs_release().vintage
     if ledger_artifact_provenance is not None:
         source_vintages["ledger_facts"] = ledger_artifact_provenance
-    source_vintages["frs"] = load_uk_frs_release().vintage
     return {
         "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",

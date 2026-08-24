@@ -849,6 +849,17 @@ def _validate_certified_candidate_identity(
         identity.size_bytes,
     )
     if identity.tier == STAGING_CANDIDATE_TIER:
+        # A declared staging-candidate input is deliberately not the certified
+        # artifact, so the certified-pin equality below cannot apply. The bytes
+        # are still bound, by the two checks above rather than by this branch:
+        # the verification token is a module-private sentinel that only
+        # verify_certified_uk_candidate and verify_staging_candidate_uk_input
+        # stamp, and the latter hashes the file against a mandatory declared
+        # sha256 (re-reading the fingerprint to catch a mid-read swap) and
+        # refuses on mismatch; the source-file fingerprint is required of both
+        # tiers. What this tier declares is "the file the operator named", and
+        # the build record labels it non_certified_staging_candidate while
+        # --staging-candidate-input-sha256 is refused for release candidates.
         if identity.revision != STAGING_CANDIDATE_REVISION:
             raise ValueError(
                 "UK staging-candidate input identity has an invalid revision "
