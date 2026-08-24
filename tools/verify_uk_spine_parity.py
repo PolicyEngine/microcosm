@@ -349,8 +349,7 @@ def verify_uk_spine_parity(
     unused = sorted(
         difference.id
         for difference in register.differences
-        if difference.id not in matched_ids
-        and difference.surface in compared_surfaces
+        if difference.id not in matched_ids and difference.surface in compared_surfaces
     )
     dormant = sorted(
         difference.id

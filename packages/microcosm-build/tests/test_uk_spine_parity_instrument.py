@@ -528,9 +528,9 @@ class TestAcceptanceBand:
         # Reported, not dropped: the reader still sees the movement.
         assert column in report["nonzero_shares"]["within_band"]
         assert column not in report["nonzero_shares"]["differing"]
-        assert report["nonzero_shares"]["within_band"][column]["delta"] == pytest.approx(
-            0.01
-        )
+        assert report["nonzero_shares"]["within_band"][column][
+            "delta"
+        ] == pytest.approx(0.01)
         assert report["nonzero_shares"]["within_band_max_abs_delta"] == pytest.approx(
             0.01
         )
