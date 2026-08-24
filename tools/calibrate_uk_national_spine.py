@@ -526,6 +526,7 @@ def _score_block(
     scorer: Any,
     candidate_inputs: dict,
     incumbent_inputs: dict,
+    candidate_name: str,
 ) -> dict[str, Any]:
     """The #578 rule-1 block, on frames instead of H5 paths.
 
@@ -564,7 +565,10 @@ def _score_block(
             "n_specs": len(registry.specs),
         },
         "artifacts": {
-            "candidate": "populace_uk_2023",
+            # Named from the artifact actually written, so the label cannot
+            # drift away from the bytes it describes the way the hardcoded
+            # legacy name did.
+            "candidate": candidate_name,
             "incumbent": "enhanced_frs_2024_25",
         },
         "signed_asymmetries": [
@@ -978,6 +982,7 @@ def main(argv: list[str] | None = None) -> int:
         scorer,
         candidate_inputs,
         incumbent_inputs,
+        args.staging_h5.stem,
     )
     append_phase(state, "scored_vs_incumbent")
 
