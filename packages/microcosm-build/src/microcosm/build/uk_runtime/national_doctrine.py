@@ -1,16 +1,18 @@
 """UK national calibration doctrine: reviewed solve constants for #623.
 
-The national release path exposes no calibration knobs. Every solver option
-that the first Ledger-backed national calibration currently inherits is
-declared here so a future change must edit this module and its pinned tests,
-forcing review before any armed run.
+The national release path exposes calibration knobs only as receipted per-run
+overrides on the calibration seam driver; defaults remain the reviewed
+constants. Every solver option that the first Ledger-backed national
+calibration currently inherits is declared here so a future default change
+must edit this module and its pinned tests, forcing review before any armed
+run.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 
 import numpy as np
 
@@ -24,6 +26,7 @@ __all__ = [
     "UK_NATIONAL_SOLVE_EPOCHS",
     "UK_NATIONAL_TARGET_LOSS_CAP",
     "UK_NATIONAL_TARGET_WEIGHT_RULE",
+    "uk_doctrine_with_overrides",
     "uk_national_target_loss_weights",
     "UKNationalSolveDoctrine",
 ]
@@ -56,6 +59,9 @@ _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
 # carrying 5.5x the per-reference weight of a 50-member one).
 _ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "family_equal")
 _ALLOWED_MASS_RULES = ("free",)
+_OVERRIDABLE_FIELDS = frozenset(
+    {"epochs", "learning_rate", "target_weight_rule", "target_loss_cap"}
+)
 
 
 @dataclass(frozen=True)
@@ -148,6 +154,34 @@ class UKNationalSolveDoctrine:
 
 
 UK_NATIONAL_SOLVE_DOCTRINE = UKNationalSolveDoctrine()
+
+
+def uk_doctrine_with_overrides(
+    **overrides: object,
+) -> tuple[UKNationalSolveDoctrine, dict[str, dict[str, object]]]:
+    """Return the national doctrine plus a receipt of effective overrides."""
+
+    fields_by_name = {field.name for field in fields(UKNationalSolveDoctrine)}
+    unknown = sorted(set(overrides) - fields_by_name)
+    if unknown:
+        raise ValueError(
+            "unknown UK national doctrine field(s) "
+            f"{unknown}; frozen fields are {sorted(fields_by_name)}."
+        )
+    frozen = sorted(set(overrides) - _OVERRIDABLE_FIELDS)
+    if frozen:
+        raise ValueError(
+            "UK national doctrine field(s) are reviewed constants, not knobs: "
+            f"{frozen}; overridable fields are {sorted(_OVERRIDABLE_FIELDS)}."
+        )
+    doctrine = replace(UK_NATIONAL_SOLVE_DOCTRINE, **overrides)
+    receipt: dict[str, dict[str, object]] = {}
+    for name in sorted(_OVERRIDABLE_FIELDS):
+        default = getattr(UK_NATIONAL_SOLVE_DOCTRINE, name)
+        effective = getattr(doctrine, name)
+        if effective != default:
+            receipt[name] = {"default": default, "effective": effective}
+    return doctrine, receipt
 
 
 def uk_national_target_loss_weights(

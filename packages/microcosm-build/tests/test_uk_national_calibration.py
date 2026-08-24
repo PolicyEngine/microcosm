@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_TARGET_LOSS_CAP,
     UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
+    uk_doctrine_with_overrides,
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
@@ -114,6 +115,48 @@ def _frame() -> Frame:
         {"household": Weights(np.full(4, 10.0), WeightKind.DESIGN)},
         metadata={"time_period": "2023"},
     )
+
+
+def _frame_without_uc_column() -> Frame:
+    frame = _frame()
+    return Frame(
+        {
+            "person": frame.table("person"),
+            "benunit": frame.table("benunit").drop(columns=["universal_credit"]),
+            "household": frame.table("household"),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+class StubMeasureResolver:
+    contract_targets = {
+        "dwp.uc.households": {
+            "bindings": {
+                "policyengine": {
+                    "from_entity": "benunit",
+                    "value_variable": "universal_credit",
+                }
+            }
+        }
+    }
+
+    def __init__(self):
+        self.calls = []
+
+    def knows(self, entity, variable):
+        return (entity, variable) == ("benunit", "universal_credit")
+
+    def compute(self, entity, variable):
+        self.calls.append((entity, variable))
+        return np.array([1.0, 1.0, 0.0, 0.0]), "stub_uc"
+
+    def receipt(self):
+        return {"provider": "stub_uc"}
 
 
 def _nested_frame() -> Frame:
@@ -265,6 +308,42 @@ def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() 
     assert stage.diagnostics[0]["target"] == 60.0
     assert stage.diagnostics[0]["estimate"] == pytest.approx(60.0)
     validate_uk_national_frame(result)
+
+
+def test_stage_measure_resolver_injects_columns_then_restores_pristine_output() -> None:
+    frame = _frame_without_uc_column()
+    resolver = StubMeasureResolver()
+    original_columns = {entity: set(frame.table(entity).columns) for entity in frame.entities}
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        measure_resolver=resolver,
+    )
+
+    result = stage(frame)
+
+    assert resolver.calls == [("benunit", "universal_credit")]
+    assert stage.manifest["measure_resolution"]["provider"] == {"provider": "stub_uc"}
+    assert stage.manifest["measure_resolution"]["attached"] == {
+        "benunit.universal_credit": "stub_uc"
+    }
+    for entity in frame.entities:
+        assert set(result.table(entity).columns) == original_columns[entity]
+    assert "universal_credit" not in result.table("benunit")
+    validate_uk_national_frame(result)
+
+
+def test_stage_manifest_omits_measure_resolution_without_resolver() -> None:
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+    )
+
+    stage(_frame())
+
+    assert "measure_resolution" not in stage.manifest
 
 
 def test_activated_unresolvable_compiled_reference_aborts_loudly() -> None:
@@ -557,6 +636,47 @@ def test_national_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
     assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
     assert UKNationalSolveDoctrine(target_weight_rule="family_equal")
+
+
+def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
+    doctrine, receipt = uk_doctrine_with_overrides()
+    assert doctrine == UK_NATIONAL_SOLVE_DOCTRINE
+    assert receipt == {}
+
+    doctrine, receipt = uk_doctrine_with_overrides(
+        epochs=UK_NATIONAL_SOLVE_EPOCHS,
+        target_weight_rule=UK_NATIONAL_TARGET_WEIGHT_RULE,
+    )
+    assert doctrine == UK_NATIONAL_SOLVE_DOCTRINE
+    assert receipt == {}
+
+    doctrine, receipt = uk_doctrine_with_overrides(
+        epochs=128,
+        learning_rate=0.01,
+        target_weight_rule="family_equal",
+        target_loss_cap=5.0,
+    )
+    assert doctrine.epochs == 128
+    assert doctrine.learning_rate == 0.01
+    assert doctrine.target_weight_rule == "family_equal"
+    assert doctrine.target_loss_cap == 5.0
+    assert receipt == {
+        "epochs": {"default": 256, "effective": 128},
+        "learning_rate": {"default": 0.02, "effective": 0.01},
+        "target_loss_cap": {"default": 10.0, "effective": 5.0},
+        "target_weight_rule": {"default": "uniform", "effective": "family_equal"},
+    }
+
+
+def test_uk_doctrine_with_overrides_refuses_invalid_or_frozen_fields() -> None:
+    with pytest.raises(ValueError, match="target_weight_rule"):
+        uk_doctrine_with_overrides(target_weight_rule="per_target")
+    with pytest.raises(ValueError, match="epochs"):
+        uk_doctrine_with_overrides(epochs=0)
+    with pytest.raises(ValueError, match="reviewed constants"):
+        uk_doctrine_with_overrides(seed=1)
+    with pytest.raises(ValueError, match="unknown"):
+        uk_doctrine_with_overrides(not_a_field=1)
 
 
 def test_family_equal_gives_each_family_one_equal_share() -> None:

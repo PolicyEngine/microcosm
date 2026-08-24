@@ -8,6 +8,10 @@ from typing import Any
 import numpy as np
 
 from microcosm.build.plan import Stage
+from microcosm.build.target_materialization import (
+    MeasureResolution,
+    resolve_target_measures,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
@@ -43,6 +47,7 @@ class UKNationalCalibrationStage:
         *,
         period: int,
         doctrine: UKNationalSolveDoctrine = UK_NATIONAL_SOLVE_DOCTRINE,
+        measure_resolver: object | None = None,
     ) -> None:
         self.compilation = (
             registry
@@ -59,6 +64,7 @@ class UKNationalCalibrationStage:
             )
         self.period = period
         self.doctrine = doctrine
+        self.measure_resolver = measure_resolver
         self.manifest: dict[str, object] | None = None
         self.diagnostics: tuple[dict[str, object], ...] = ()
         self.solve_result: CalibrationResult | None = None
@@ -74,6 +80,12 @@ class UKNationalCalibrationStage:
                 f"unsupported={self.compilation.unsupported!r}."
             )
         adapter = _CalibrationFrameAdapter(frame)
+        original_columns = {
+            entity: set(table.columns) for entity, table in adapter.tables.items()
+        }
+        measure_resolution = self._resolve_measures(frame)
+        if measure_resolution is not None:
+            _inject_measure_inputs(adapter, measure_resolution.measure_inputs)
         materialized = materialize_uk_ledger_targets(
             adapter,
             self.registry,
@@ -84,6 +96,12 @@ class UKNationalCalibrationStage:
             raise RuntimeError(
                 "UK national calibration could not materialize every activated "
                 f"target reference: skipped={skipped}."
+            )
+        if measure_resolution is not None:
+            _drop_injected_measure_inputs(
+                adapter,
+                measure_resolution.measure_inputs,
+                original_columns,
             )
         prepared = adapter.prepared_frame()
         mass_reason = national_calibration_mass_reason(
@@ -139,7 +157,7 @@ class UKNationalCalibrationStage:
         new_total = float(calibration_record.new_total)
         before_kind = frame.weights_for("household").kind
         after_kind = clean_frame.weights_for("household").kind
-        self.manifest = {
+        manifest = {
             "activated_reference_count": declared,
             "resolved_reference_count": resolved,
             "matrix_target_count": len(result.problem.names),
@@ -176,8 +194,28 @@ class UKNationalCalibrationStage:
             },
             "parameters": {"doctrine": _doctrine_bounds(self.doctrine)},
         }
+        if measure_resolution is not None:
+            manifest["measure_resolution"] = dict(measure_resolution.receipt)
+        self.manifest = manifest
         self.output_content_identity = uk_frame_content_identity(clean_frame)
         return clean_frame
+
+    def _resolve_measures(self, frame: Frame) -> MeasureResolution | None:
+        if self.measure_resolver is None:
+            return None
+        resolve = getattr(self.measure_resolver, "resolve", None)
+        if callable(resolve):
+            return resolve(
+                lambda: _CalibrationFrameAdapter(frame),
+                self.registry,
+                period=self.period,
+            )
+        return resolve_target_measures(
+            lambda: _CalibrationFrameAdapter(frame),
+            self.registry,
+            self.measure_resolver,
+            period=self.period,
+        )
 
     def checkpoint_metadata(self) -> Mapping[str, object]:
         if self.manifest is None:
@@ -290,6 +328,24 @@ def _doctrine_bounds(doctrine: UKNationalSolveDoctrine) -> dict[str, object]:
         "mass_rule": doctrine.mass_rule,
         "l0_lambda": doctrine.l0_lambda,
     }
+
+
+def _inject_measure_inputs(
+    adapter: UKFrameTargetAdapter,
+    measure_inputs: Mapping[tuple[str, str], np.ndarray],
+) -> None:
+    for (entity, variable), values in measure_inputs.items():
+        adapter.tables[entity][variable] = values
+
+
+def _drop_injected_measure_inputs(
+    adapter: UKFrameTargetAdapter,
+    measure_inputs: Mapping[tuple[str, str], np.ndarray],
+    original_columns: Mapping[str, set[str]],
+) -> None:
+    for entity, variable in measure_inputs:
+        if variable not in original_columns[entity]:
+            adapter.tables[entity].drop(columns=[variable], inplace=True)
 
 
 class _CalibrationFrameAdapter(UKFrameTargetAdapter):

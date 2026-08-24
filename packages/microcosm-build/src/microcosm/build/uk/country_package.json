@@ -68,6 +68,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "calibration_measure_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_income_release_gate_report.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
