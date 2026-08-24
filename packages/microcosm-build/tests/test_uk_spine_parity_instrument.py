@@ -300,6 +300,81 @@ class TestFences:
             == 0
         )
 
+    def test_strict_treats_a_dormant_surface_entry_as_dormant_not_unused(
+        self, tmp_path: Path
+    ) -> None:
+        # The weighted-totals surface stays unexamined until there is a
+        # calibrated candidate, so an entry scoped to it has had no chance to
+        # match. Failing --strict for that would make the swap-acceptance
+        # posture impossible to satisfy before calibration.
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        register = _register(
+            tmp_path,
+            _entry("totals-only", surface="weighted_totals", columns=["col"]),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(register),
+                    "--strict",
+                    "--receipt-json",
+                    str(receipt),
+                ]
+            )
+            == 0
+        )
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["strict_failure"] is False
+        assert report["register"]["unused_ids"] == []
+        assert report["register"]["dormant_ids"] == ["totals-only"]
+        assert "weighted_totals" not in report["register"]["compared_surfaces"]
+
+    def test_dormancy_is_not_a_loophole_once_the_surface_is_compared(
+        self, tmp_path: Path
+    ) -> None:
+        # Same entry, same register — but this run supplies the sidecars, so
+        # the surface is examined and a signature that matches nothing on it is
+        # register rot again.
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(tmp_path / "ref.json", {"identity": {}, "totals": {"col": 100.0}})
+        right = _write(
+            tmp_path / "cand.json", {"identity": {}, "totals": {"col": 100.0}}
+        )
+        register = _register(
+            tmp_path,
+            _entry("totals-only", surface="weighted_totals", columns=["col"]),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(register),
+                    "--reference-weighted-totals",
+                    str(left),
+                    "--candidate-weighted-totals",
+                    str(right),
+                    "--strict",
+                    "--receipt-json",
+                    str(receipt),
+                ]
+            )
+            == 1
+        )
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["register"]["unused_ids"] == ["totals-only"]
+        assert report["register"]["dormant_ids"] == []
+
     def test_one_sided_weighted_totals_is_refused(self, tmp_path: Path) -> None:
         tool = _load_tool()
         candidate = _write(tmp_path / "c.json", _candidate_from_reference())
@@ -422,3 +497,131 @@ class TestWeightedTotals:
             )
             == 1
         )
+
+
+class TestAcceptanceBand:
+    """The band decides what must be adjudicated, never what is reported."""
+
+    def test_an_in_band_difference_needs_no_signature(self, tmp_path: Path) -> None:
+        tool = _load_tool()
+        column = _first_household_column()
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] += 0.01
+        candidate = _write(tmp_path / "c.json", payload)
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(_register(tmp_path)),
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 0
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "parity"
+        assert report["unsigned_differences"] == []
+        # Reported, not dropped: the reader still sees the movement.
+        assert column in report["nonzero_shares"]["within_band"]
+        assert column not in report["nonzero_shares"]["differing"]
+        assert report["nonzero_shares"]["within_band"][column]["delta"] == pytest.approx(
+            0.01
+        )
+        assert report["nonzero_shares"]["within_band_max_abs_delta"] == pytest.approx(
+            0.01
+        )
+
+    def test_a_difference_just_beyond_the_band_still_signs(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        column = _first_household_column()
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] += 0.021
+        candidate = _write(tmp_path / "c.json", payload)
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                ]
+            )
+            == 1
+        )
+
+    def test_a_zero_band_restores_the_exact_grain_check(self, tmp_path: Path) -> None:
+        tool = _load_tool()
+        column = _first_household_column()
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] += 0.01
+        candidate = _write(tmp_path / "c.json", payload)
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                    "--share-band",
+                    "0",
+                ]
+            )
+            == 1
+        )
+
+    def test_the_band_never_covers_a_structural_difference(
+        self, tmp_path: Path
+    ) -> None:
+        # A column that appears or vanishes is not a magnitude, so no band can
+        # absorb it; nor can one absorb an entity-count difference.
+        tool = _load_tool()
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"]["a_column_the_incumbent_never_had"] = 0.000001
+        payload["entity_stats"]["household"]["records"] += 1
+        candidate = _write(tmp_path / "c.json", payload)
+        receipt = tmp_path / "receipt.json"
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                    "--share-band",
+                    "0.9",
+                    "--receipt-json",
+                    str(receipt),
+                ]
+            )
+            == 1
+        )
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert "a_column_the_incumbent_never_had" in report["unsigned_differences"]
+        assert "household" in report["unsigned_differences"]
+
+    def test_an_out_of_range_band_yields_no_verdict(self, tmp_path: Path) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        for bad in ("-0.01", "1.0", "5"):
+            assert (
+                tool.main(
+                    [
+                        "--candidate-json",
+                        str(candidate),
+                        "--register",
+                        str(_register(tmp_path)),
+                        "--share-band",
+                        bad,
+                    ]
+                )
+                == 2
+            )

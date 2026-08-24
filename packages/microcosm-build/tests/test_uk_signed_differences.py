@@ -8,6 +8,7 @@ scoping, and the committed file has to stay internally coherent.
 from __future__ import annotations
 
 import json
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,53 @@ class TestCommittedRegister:
             assert (REPO_ROOT / relative).is_file(), (
                 f"{difference.id} cites missing evidence file {relative}"
             )
+
+    def test_every_signed_column_exists_on_the_surface_it_signs(self) -> None:
+        # A typo in a column name is the quiet failure mode here: the entry
+        # matches nothing, the real divergence stays unsigned, and the only
+        # symptom is a defect verdict nobody can trace back to the typo.
+        reference = json.loads(
+            files("microcosm.build.uk")
+            .joinpath("efrs_parity_reference.json")
+            .read_text(encoding="utf-8")
+        )
+        known = set(reference["nonzero_shares"])
+        entities = set(reference["entity_stats"])
+        # Columns the spine adds are signed precisely because the reference
+        # does not carry them, so they are checked against the expectation
+        # rather than against the reference's column set.
+        net_new = {
+            column
+            for difference in load_uk_spine_swap_signed_differences().differences
+            if difference.expectation == "column_missing_in_reference"
+            for column in difference.columns
+        }
+        for difference in load_uk_spine_swap_signed_differences().differences:
+            for column in difference.columns:
+                if difference.surface == "entity_counts":
+                    assert column in entities, (
+                        f"{difference.id} signs entity {column!r}, which the "
+                        "reference does not carry."
+                    )
+                elif difference.surface == "nonzero_shares" and column not in net_new:
+                    assert column in known, (
+                        f"{difference.id} signs column {column!r}, which is not "
+                        "on the reference share surface — likely a typo, which "
+                        "would leave the real divergence unsigned."
+                    )
+
+    def test_the_register_signs_no_column_twice(self) -> None:
+        # Two entries covering one column on one surface make the adjudication
+        # ambiguous: the reader cannot tell which rationale is the live one.
+        seen: dict[tuple[str, str], str] = {}
+        for difference in load_uk_spine_swap_signed_differences().differences:
+            for column in difference.columns:
+                key = (difference.surface, column)
+                assert key not in seen, (
+                    f"{column!r} on {difference.surface} is signed by both "
+                    f"{seen[key]} and {difference.id}."
+                )
+                seen[key] = difference.id
 
     def test_no_committed_entry_expires(self) -> None:
         payload = json.loads(

@@ -10,9 +10,10 @@ Three surfaces are compared:
 
 * ``entity_counts`` — the record-count identity, exactly. The spine and the
   pinned incumbent are both pre-clone, so these must match to the row.
-* ``nonzero_shares`` — per-column unweighted owning-entity nonzero share, at the
-  reference's own 6-decimal grain, plus the column-set difference in both
-  directions.
+* ``nonzero_shares`` — per-column unweighted owning-entity nonzero share,
+  plus the column-set difference in both directions. Magnitudes are held to the
+  #723 acceptance band: every difference down to the reference's own 6-decimal
+  grain is reported, and those beyond the band are the ones that must be signed.
 * ``weighted_totals`` — optional, and licensed. Supplied as the two register
   sidecars, compared as relative deltas only.
 
@@ -20,7 +21,10 @@ Two fences protect the verdict from being manufactured. The reference side is
 always the committed instrument, never anything derived from the candidate; and
 the tool refuses inputs that alias each other, so a candidate cannot be compared
 against itself. Under ``--strict`` an unused register entry is also a failure,
-so the register cannot rot into a blanket amnesty as the spine changes.
+so the register cannot rot into a blanket amnesty as the spine changes — an
+entry counts as unused only on a surface this run actually compared, so entries
+scoped to the optional weighted-totals surface are reported as dormant rather
+than failing a run that did not supply it.
 
 Disclosure control: output is column names, counts, shares already carried by
 the committed reference, and relative deltas — never unit-record values. The
@@ -55,6 +59,15 @@ from microcosm.build.uk_runtime.signed_differences import (  # noqa: E402
 #: The reference records shares rounded to six decimals, so a candidate
 #: extracted by the same producer agrees to that grain or it genuinely differs.
 SHARE_EPSILON = 1e-6
+
+#: The acceptance band the UK parity screen has used on this surface since
+#: #723. A share difference inside it is reported but does not require a
+#: signature: the spine re-runs every stochastic stage, so demanding a
+#: permanent adjudication for third-decimal drift would fill the register with
+#: entries that describe noise and blanket-cover the columns they name. The
+#: band applies only to magnitudes on the share surface — a column appearing or
+#: vanishing, and every entity count, is structural and still signs exactly.
+SHARE_PARITY_BAND = 0.02
 
 #: Weighted totals ride calibrated weights; a relative delta below this is
 #: numerical noise rather than a divergence to sign.
@@ -116,23 +129,33 @@ def _compare_shares(
     candidate_shares: Mapping[str, float],
     entities: Mapping[str, str],
     register: UKSignedDifferenceRegister,
+    band: float = SHARE_PARITY_BAND,
 ) -> tuple[dict[str, Any], list[str]]:
     unsigned: list[str] = []
     differing: dict[str, Any] = {}
+    within_band: dict[str, Any] = {}
     compared = sorted(set(reference_shares) & set(candidate_shares))
     for column in compared:
         expected = float(reference_shares[column])
         observed = float(candidate_shares[column])
-        if abs(observed - expected) <= SHARE_EPSILON:
+        delta = observed - expected
+        if abs(delta) <= SHARE_EPSILON:
             continue
-        signed = register.matching(surface="nonzero_shares", column=column)
-        differing[column] = {
+        record = {
             "entity": entities.get(column),
             "reference": expected,
             "candidate": observed,
-            "delta": observed - expected,
-            "signed_id": signed.id if signed else None,
+            "delta": delta,
         }
+        signed = register.matching(surface="nonzero_shares", column=column)
+        if abs(delta) <= band:
+            # Reported, never dropped: the band decides what must be
+            # adjudicated, not what the reader is allowed to see.
+            record["signed_id"] = signed.id if signed else None
+            within_band[column] = record
+            continue
+        record["signed_id"] = signed.id if signed else None
+        differing[column] = record
         if signed is None:
             unsigned.append(column)
 
@@ -151,7 +174,14 @@ def _compare_shares(
 
     report = {
         "compared": len(compared),
+        "band": band,
         "differing": differing,
+        "within_band": within_band,
+        "within_band_max_abs_delta": (
+            max(abs(entry["delta"]) for entry in within_band.values())
+            if within_band
+            else 0.0
+        ),
         "missing_in_candidate": _missing(
             list(set(reference_shares) - set(candidate_shares)),
             "column_missing_in_candidate",
@@ -209,6 +239,7 @@ def verify_uk_spine_parity(
     reference_weighted_totals: Path | None = None,
     candidate_weighted_totals: Path | None = None,
     strict: bool = False,
+    share_band: float = SHARE_PARITY_BAND,
 ) -> dict[str, Any]:
     """Compare a candidate extraction against the committed reference."""
 
@@ -250,6 +281,7 @@ def verify_uk_spine_parity(
         {name: float(value) for name, value in candidate_shares.items()},
         reference.input_entities,
         register,
+        band=share_band,
     )
 
     matched_ids = {
@@ -307,16 +339,32 @@ def verify_uk_spine_parity(
             if entry.get("signed_id")
         )
 
+    # An entry can only rot on a surface this run actually looked at. The
+    # weighted-totals surface is optional and stays unexamined until there is a
+    # calibrated candidate to compare — an entry scoped to it is dormant then,
+    # not unused, and --strict must not read the two as the same thing.
+    compared_surfaces = {"entity_counts", "nonzero_shares"}
+    if "weighted_totals" in report:
+        compared_surfaces.add("weighted_totals")
     unused = sorted(
         difference.id
         for difference in register.differences
         if difference.id not in matched_ids
+        and difference.surface in compared_surfaces
+    )
+    dormant = sorted(
+        difference.id
+        for difference in register.differences
+        if difference.id not in matched_ids
+        and difference.surface not in compared_surfaces
     )
     report["register"] = {
         "resource": "spine_swap_signed_differences.json",
         "entries": len(register.differences),
+        "compared_surfaces": sorted(compared_surfaces),
         "matched_ids": sorted(matched_ids),
         "unused_ids": unused,
+        "dormant_ids": dormant,
     }
     report["unsigned_differences"] = sorted(set(unsigned))
 
@@ -370,6 +418,17 @@ def _parser() -> argparse.ArgumentParser:
         help="Licensed weighted-totals sidecar for the candidate spine.",
     )
     parser.add_argument(
+        "--share-band",
+        type=float,
+        default=SHARE_PARITY_BAND,
+        help=(
+            "Acceptance band on the nonzero-share surface (default "
+            f"{SHARE_PARITY_BAND}). Differences inside it are reported under "
+            "'within_band' and need no signature; pass 0 to require one for "
+            "every difference at the reference's six-decimal grain."
+        ),
+    )
+    parser.add_argument(
         "--strict",
         action="store_true",
         help=(
@@ -389,6 +448,13 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+
+    if not 0.0 <= args.share_band < 1.0:
+        print(
+            "error: --share-band must be a share magnitude in [0, 1).",
+            file=sys.stderr,
+        )
+        return 2
 
     totals = (args.reference_weighted_totals, args.candidate_weighted_totals)
     if any(totals) and not all(totals):
@@ -422,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
             reference_weighted_totals=args.reference_weighted_totals,
             candidate_weighted_totals=args.candidate_weighted_totals,
             strict=args.strict,
+            share_band=args.share_band,
         )
         rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
     except Exception as error:  # noqa: BLE001 - message is ours, not the data's
