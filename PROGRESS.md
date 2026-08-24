@@ -6,14 +6,14 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-Contract tracing and the stage-2b implementation are complete against local
-current-main authority `origin/main` at `7b90bb18`. The deliberate sparse STOP
-is replaced by a second, serial legacy release invocation that lets the current
-builder derive support by cold fixed-penalty L0 at its literal default 0.8.
-The release accepts the realized non-exact count and supplies no frozen
-selection, exact-count rule, `pi_hi`, Keogh mass protection, operator exclusion
-register, or tuning override. Static shell validation passes; the implementation
-is ready for its clean-commit dry run.
+Contract tracing, the stage-2b implementation, and its clean-commit dry run are
+complete against local current-main authority `origin/main` at `7b90bb18`. The
+deliberate sparse STOP is replaced by a second, serial legacy release invocation
+that lets the current builder derive support by cold fixed-penalty L0 at its
+literal default 0.8. The release accepts the realized non-exact count and
+supplies no frozen selection, exact-count rule, `pi_hi`, Keogh mass protection,
+operator exclusion register, or tuning override. Round 5 passed from committed
+launcher `52a2bcfb`; its receipt is ready to commit.
 
 No pool, release, scorer, publication, promotion, or push has run in this
 round.
@@ -108,11 +108,21 @@ round.
 - Tightened the lightweight command preflight to reject any option absent from
   the current parser and to prohibit remaining gate-tolerance, target-aging,
   reform-smoke, and other tuning/waiver switches.
+- Committed the non-exact validation correction as `52a2bcfb`, then reran the
+  canonical launcher with `--dry-run`. It exited 0, authenticated every pinned
+  input, emitted the 85-GiB plans and complete pool/dense/sparse/scorer commands,
+  and printed the owner-ruling contract receipt.
+- Verified after round 5 that the external pool directory remained empty,
+  `release-sparse/` remained absent, and the candidate code pin, main log,
+  launcher, and dense release-ID control files were unchanged. Recorded the
+  independently changing pre-existing `smoke/pool.log` without attributing it
+  to this launcher.
+- Created `experiments/candidate_25pct/dry_run_r5.md` with the tested commit,
+  launcher hash, verbatim stdout, exit status, stale-pin observation, and
+  side-effect checks.
 
 ## Next
 
-1. Commit the non-exact-count validation correction and this journal.
-2. From that final clean implementation commit, rerun `--dry-run` and commit the verbatim
-   `dry_run_r5.md` receipt.
-3. Write and commit the final outcome to `FINAL_REPORT.md`, then verify a clean
+1. Commit `dry_run_r5.md` and this journal.
+2. Write and commit the final outcome to `FINAL_REPORT.md`, then verify a clean
    branch and final checks.
