@@ -48,6 +48,9 @@ from microcosm.build.us_runtime.acs_transfer import (
     resolve_acs_donor_channel,
 )
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.multispine_pool import (
+    pool_pre_clone_gap_fill_target_families,
+)
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
@@ -74,6 +77,56 @@ _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
 _PACKAGED_MANIFEST_REFERENCE = (
     "package:microcosm.build.us_runtime/acs_2024_1yr_sources.json"
 )
+_LOCAL_HOURS_TRANSFER_ENTITY = "person"
+_LOCAL_HOURS_TRANSFER_FAMILY = "source_operator_hours_worked"
+_LOCAL_HOURS_TRANSFER_TARGETS = ("weekly_hours_worked_before_lsr",)
+
+
+def local_acs_transfer_target_families() -> TargetFamilies:
+    """Extend the generic ACS plan with the national hours-transfer family.
+
+    The generic declaration intentionally omits runtime-owned source outputs.
+    This local-release lane starts from a completed national donor, so it can
+    reuse the national pre-clone QRF family for the persisted weekly-hours
+    leaf. Copying the plan keeps the shared declaration immutable, while the
+    exact target assertion makes national/local ownership drift fail closed.
+    """
+
+    plan: dict[str, dict[str, tuple[str, ...]]] = {
+        entity: {family: tuple(targets) for family, targets in families.items()}
+        for entity, families in declared_acs_transfer_target_families().items()
+    }
+    national = pool_pre_clone_gap_fill_target_families()
+    try:
+        hours_targets = tuple(
+            national[_LOCAL_HOURS_TRANSFER_ENTITY][_LOCAL_HOURS_TRANSFER_FAMILY]
+        )
+    except KeyError as exc:
+        raise RuntimeError(
+            "National pre-clone transfer plan no longer owns the local "
+            "hours-worked family."
+        ) from exc
+    if hours_targets != _LOCAL_HOURS_TRANSFER_TARGETS:
+        raise RuntimeError(
+            "National hours-worked transfer targets drifted: expected "
+            f"{list(_LOCAL_HOURS_TRANSFER_TARGETS)}, got {list(hours_targets)}."
+        )
+
+    duplicate_owners = [
+        (entity, family)
+        for entity, families in plan.items()
+        for family, targets in families.items()
+        if _LOCAL_HOURS_TRANSFER_TARGETS[0] in targets
+    ]
+    person_families = plan.setdefault(_LOCAL_HOURS_TRANSFER_ENTITY, {})
+    if duplicate_owners or _LOCAL_HOURS_TRANSFER_FAMILY in person_families:
+        raise RuntimeError(
+            "Local ACS transfer plan already owns the national hours-worked "
+            f"surface: target owners={duplicate_owners}, family present="
+            f"{_LOCAL_HOURS_TRANSFER_FAMILY in person_families}."
+        )
+    person_families[_LOCAL_HOURS_TRANSFER_FAMILY] = hours_targets
+    return plan
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -223,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     donor_release = _donor_release_identity(args.donor_release_manifest, base_sha256)
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
-    transfer_plan = declared_acs_transfer_target_families()
+    transfer_plan = local_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
         donor_channel=args.donor_channel,
@@ -355,7 +408,7 @@ def _require_dense_donor_coverage(
 
         engine = PolicyEngineUSEngine()
     selected, resolved_channel = _coverage_donor_channel(base, donor_channel)
-    plan = target_families or declared_acs_transfer_target_families()
+    plan = target_families or local_acs_transfer_target_families()
     try:
         requirements = acs_transfer_donor_requirements(selected, plan)
     except ValueError as exc:

@@ -95,6 +95,37 @@
   that every collected build test passes while preserving the occupied-host
   timeout evidence. No data/artifact build driver was invoked.
 
+## 2026-08-25 — local transfer extension
+
+- Added `local_acs_transfer_target_families`, which copies the generic ACS
+  declaration and grafts the exact national pre-clone
+  `person/source_operator_hours_worked` family. The helper pins the singleton
+  to `weekly_hours_worked_before_lsr` and fails on missing/drifted national
+  ownership or duplicate local ownership
+  (`tools/_legacy/build_us_acs_multispine_base.py:80-129`).
+- The staging driver now resolves that one local plan before donor checks and
+  passes the identical object through donor-consumption coverage, the shared
+  QRF transfer, and post-transfer recipient coverage
+  (`tools/_legacy/build_us_acs_multispine_base.py:267-317,398-418`). This is the
+  existing ACS QRF path, whose provenance already records the family seed and
+  each availability-pattern seed; the implementation adds no draw site and
+  does not alter the authored imputation family already checked in for this
+  national singleton
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1507-1627`;
+  `packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:1021-1053`).
+- Anti-rot tests prove that the generic declaration remains unchanged, the
+  local addition is byte-for-byte the national singleton, national drift fails
+  closed, and main uses the extended plan
+  (`packages/microcosm-build/tests/test_us_acs_multispine_legacy_builder.py:166-206,323-333`).
+  A fixture-level build runs the real QRF path and proves ACS-spine persons get
+  non-null, non-default weekly hours with family and pattern seed provenance
+  (`packages/microcosm-build/tests/test_us_acs_multispine.py:290-340,425-438`).
+- Transfer-step receipts: the two affected builder/fixture modules passed 32
+  tests in 100.70 seconds; the ACS declaration, generated spec bundle, spine
+  agreement, and national-plan anti-rot slice passed 104 tests in 1,655.35
+  seconds; repository-wide Ruff and `git diff --check` passed. No data/artifact
+  build driver was invoked.
+
 # Historical lane notes: stacked-pool to release CD-vintage provenance
 
 ## 2026-08-24 — lane start and environment

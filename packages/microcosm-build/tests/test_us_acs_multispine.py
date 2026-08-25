@@ -287,6 +287,59 @@ def test__given_tiny_frames__then_mapping_transfer_and_pool_interoperate(
     assert result.fit_records[0].weight_kind == "design"
 
 
+def test__given_tiny_frames__then_weekly_hours_uses_seeded_national_qrf_family(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    base = _base_donor_frame()
+    raw_acs = _raw_acs_frame()
+    source = AcsPumsSource(
+        tmp_path / "csv_hus.zip",
+        tmp_path / "csv_pus.zip",
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (
+            raw_acs,
+            {
+                "spine": "acs_2024_1yr",
+                "vintage": actual_source.vintage,
+                "chunksize": chunksize,
+            },
+        ),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        source,
+        chunksize=2,
+        acs_share=0.25,
+        target_families={
+            "person": {
+                "source_operator_hours_worked": ("weekly_hours_worked_before_lsr",),
+            }
+        },
+        seed=4,
+        n_estimators=2,
+    )
+
+    person = result.frame.table("person")
+    acs_people = person[person[spine_column("person")] == "acs_2024_1yr"]
+    modeled = acs_people["weekly_hours_worked_before_lsr"]
+    assert modeled.notna().all()
+    assert not modeled.eq(40.0).all()
+    assert modeled.between(0.0, 42.0).all()
+
+    [imputed] = result.provenance["imputed_inputs"]
+    assert imputed["column"] == "weekly_hours_worked_before_lsr"
+    assert imputed["family"] == "source_operator_hours_worked"
+    assert isinstance(imputed["seed"], int)
+    assert imputed["patterns"]
+    assert all(isinstance(pattern["seed"], int) for pattern in imputed["patterns"])
+    assert result.fit_records
+
+
 def test__given_ladder__then_multispine_records_geography_assignment(
     monkeypatch,
     tmp_path,
@@ -381,6 +434,7 @@ def _base_donor_frame() -> Frame:
             "age": [42.0, 38.0, 65.0, 12.0],
             "is_female": [False, True, True, False],
             "qualified_dividend_income": [100.0, 20.0, 2_000.0, 0.0],
+            "weekly_hours_worked_before_lsr": [42.0, 36.0, 0.0, 0.0],
         }
     )
     return Frame(

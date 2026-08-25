@@ -4,10 +4,12 @@
 
 The issue trace and all three claimed mechanism links have been verified in
 source on branch `local-hours-transfer-765` at the post-#763 `origin/main`
-base. The pre-change test surface is green in fresh, serial processes,
-including isolated green reruns of five subprocess-timeout cases from the
-occupied-host build shard. No data build, release, push, gate/threshold tuning,
-or production-artifact mutation has occurred.
+base. The local staging transfer now grafts the exact national
+`source_operator_hours_worked` singleton into the generic ACS plan, uses that
+one extended plan for donor coverage, QRF transfer, and recipient coverage,
+and fails closed if the national ownership surface drifts. The transfer step
+is focused-, ownership-, spec-, and lint-green. No data build, release, push,
+gate/threshold tuning, or production-artifact mutation has occurred.
 
 The required US-extra dependency sync is complete from the exact lock. Direct
 shell access to GitHub and host process enumeration are blocked by the managed
@@ -48,15 +50,27 @@ the worktree has been reconciled to this session's observed receipts.
   passed 2,172 / skipped 3 while five child-process tests timed out under the
   occupied-host load; all five passed together in a fresh isolated rerun in
   403.92 seconds. Thus every collected build test passed before source edits.
+- Extended the local ACS staging plan with the national pre-clone
+  `person/source_operator_hours_worked` family. It owns exactly
+  `weekly_hours_worked_before_lsr`, copies rather than mutates the generic ACS
+  declaration, rejects duplicate ownership, and rejects national target drift.
+- Routed the extended plan through the staging driver's donor-consumption
+  gate, transfer call, and post-transfer coverage audit. The existing ACS QRF
+  implementation therefore supplies the already-ledgered family, pattern, and
+  fit/draw seed evidence without adding an RNG site or changing the authored
+  imputation bundle.
+- Added local-plan anti-rot coverage and a real tiny-frame transfer fixture
+  proving ACS rows receive non-default weekly hours plus family/pattern seed
+  provenance. Receipts: 32 focused tests passed in 100.70 seconds; 104
+  ownership/spec tests passed in 1,655.35 seconds; repository-wide Ruff and
+  `git diff --check` passed.
 
 ## Next
 
-1. Commit this reconciled task journal and green baseline receipt.
-2. Extend the local transfer with seed-ledger and authored-surface anti-rot
-   coverage, then commit with a green suite.
-3. Wire the existing hours gate into local finalize, add the exact defaulted-
+1. Commit the green local-transfer implementation and test receipts.
+2. Wire the existing hours gate into local finalize, add the exact defaulted-
    column regression, and commit with a green suite.
-4. Finish `_LANE-NOTES.md` with the serial-queue build command and David-ready
+3. Finish `_LANE-NOTES.md` with the serial-queue build command and David-ready
    summary; write the final report to `FINAL_REPORT.md`.
 
 # Historical progress: stacked-pool to release CD-vintage provenance

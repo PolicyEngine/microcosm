@@ -163,6 +163,49 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert custom.donor_channel == "benefit_support"
 
 
+def test_local_transfer_plan_grafts_exact_national_hours_family() -> None:
+    builder = _load_builder_module()
+
+    generic = builder.declared_acs_transfer_target_families()
+    national = builder.pool_pre_clone_gap_fill_target_families()
+    local = builder.local_acs_transfer_target_families()
+
+    assert "source_operator_hours_worked" not in generic["person"]
+    assert (
+        local["person"]["source_operator_hours_worked"]
+        == national["person"]["source_operator_hours_worked"]
+    )
+    assert local["person"]["source_operator_hours_worked"] == (
+        "weekly_hours_worked_before_lsr",
+    )
+    assert {
+        entity: {
+            family: targets
+            for family, targets in families.items()
+            if family != "source_operator_hours_worked"
+        }
+        for entity, families in local.items()
+    } == generic
+
+
+def test_local_transfer_plan_fails_closed_when_national_hours_family_drifts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder,
+        "pool_pre_clone_gap_fill_target_families",
+        lambda: {
+            "person": {
+                "source_operator_hours_worked": ("hours_worked_last_week",),
+            }
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="targets drifted"):
+        builder.local_acs_transfer_target_families()
+
+
 def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -285,7 +328,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     )
     monkeypatch.setattr(
         builder,
-        "declared_acs_transfer_target_families",
+        "local_acs_transfer_target_families",
         lambda: transfer_plan,
     )
     monkeypatch.setattr(
