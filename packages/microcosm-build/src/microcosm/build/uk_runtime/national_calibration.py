@@ -394,3 +394,42 @@ class _CalibrationFrameAdapter(UKFrameTargetAdapter):
             mass_log=calibrated.mass_log,
             metadata=calibrated.metadata,
         )
+
+
+def prepare_uk_target_frame(
+    frame: Frame,
+    registry: TargetRegistry,
+    *,
+    period: int | str,
+    measure_resolver: object | None,
+) -> tuple[Frame, Mapping[str, Any] | None]:
+    """Materialize a registry's measures onto a frame, for scoring.
+
+    The same resolve-inject-materialize route the calibration stage takes,
+    without the solve: scoring a UK register against a raw exported H5 cannot
+    work, because every packaged reference binds a slash-named prepared
+    measure that calibration deliberately strips before export. A skipped
+    target refuses rather than quietly shrinking the surface both sides are
+    compared on.
+    """
+
+    resolution = None
+    if measure_resolver is not None:
+        resolution = resolve_target_measures(
+            lambda: _CalibrationFrameAdapter(frame),
+            registry,
+            measure_resolver,
+            period=period,
+        )
+    adapter = _CalibrationFrameAdapter(frame)
+    if resolution is not None:
+        _inject_measure_inputs(adapter, resolution.measure_inputs)
+    materialized = materialize_uk_ledger_targets(adapter, registry, period=period)
+    if materialized.skipped:
+        raise RuntimeError(
+            "target measures did not materialize for scoring: "
+            f"{[skip.__dict__ for skip in materialized.skipped]}."
+        )
+    return adapter.prepared_frame(), (
+        None if resolution is None else dict(resolution.receipt)
+    )

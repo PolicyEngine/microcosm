@@ -798,3 +798,66 @@ def test_doctrine_target_weight_rule_reaches_the_solver(
     else:
         assert weights is not None
         assert weights.tolist() == expected
+
+
+def test_measure_resolution_never_touches_the_source_frame() -> None:
+    """Injection lands on adapter table copies, not on the caller's frame.
+
+    A test that inspects the frame after ``restore`` would pass either way,
+    so this one holds the property where it actually lives: the source frame
+    gains no column while the resolution loop probes round after round.
+    """
+
+    from microcosm.build.target_materialization import resolve_target_measures
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    frame = _materialization_binding_frame()
+    before = {
+        entity: list(frame.table(entity).columns) for entity in frame.entities
+    }
+
+    class ProbeResolver:
+        contract_targets = {
+            "probe.target": {
+                "bindings": {
+                    "policyengine": {
+                        "from_entity": "household",
+                        "value_variable": "probe_measure",
+                    }
+                }
+            }
+        }
+
+        def knows(self, entity, variable):
+            return (entity, variable) == ("household", "probe_measure")
+
+        def compute(self, entity, variable):
+            return np.array([1.0, 2.0, 3.0]), "probe"
+
+        def receipt(self):
+            return {"provider": "probe"}
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="probe.target",
+                entity="household",
+                measure="probe/measure",
+                value=6.0,
+                source="test",
+                metadata={"contract_target_id": "probe.target"},
+            )
+        ],
+        country="uk",
+    )
+
+    resolution = resolve_target_measures(
+        lambda: UKFrameTargetAdapter(frame),
+        registry,
+        ProbeResolver(),
+        period=2025,
+    )
+
+    assert ("household", "probe_measure") in resolution.measure_inputs
+    for entity in frame.entities:
+        assert list(frame.table(entity).columns) == before[entity]

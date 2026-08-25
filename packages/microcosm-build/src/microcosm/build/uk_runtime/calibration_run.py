@@ -504,6 +504,10 @@ def _aggregate_admin_totals(
         if entity == "household":
             weights = household_weights
         elif entity == "person":
+            # `household_id` is a group-table id column, which the Frame
+            # kernel validates unique before any frame exists, and the CGT
+            # clone stage offsets its clones' ids for exactly that reason —
+            # so this lookup cannot silently drop a duplicate key.
             person = frame.table("person")
             lookup = dict(
                 zip(

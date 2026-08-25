@@ -132,7 +132,12 @@ def resolve_target_measures(
     ``adapter_factory`` must return a fresh adapter over the same frame each
     round. Previously resolved values are injected into those probe adapters'
     table copies only, then the shared target-binding interpreter is retried.
-    The source frame is never mutated.
+
+    The source frame is never mutated — the guarantee rests on the adapter
+    copying each entity table at construction (``UKFrameTargetAdapter``
+    does), not on the later ``restore``. Any adapter passed here must copy;
+    ``test_uk_national_calibration.py`` holds that property directly, on the
+    source frame rather than on the restored output.
     """
 
     contract = _measure_resolution_contract(

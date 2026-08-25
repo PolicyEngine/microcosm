@@ -710,12 +710,25 @@ def _stage_parity_evidence(
     frame: Frame,
     parity_reference: EfrsParityReference | None,
 ) -> object | None:
-    """Build the parity-trio evidence from independently sourced sides.
+    """Build the parity-trio evidence, side by side, never aliased.
 
-    The candidate side comes from the staged frame and the solve diagnostics;
-    the reference side comes from the frozen parity instrument and the
-    declared registry. The two sides must never alias each other — a copied
-    reference would make the trio pass by construction.
+    Two different comparisons travel in one object, and they are not equally
+    strong:
+
+    * The **column** surfaces are independently sourced — the candidate's from
+      the staged frame, the reference's from the frozen parity instrument's
+      declared input entities.
+    * The **target** surfaces are not. The parity instrument carries source
+      identity and incumbent input-column shares only; it holds no incumbent
+      target surface. So the reference side is the declared registry and the
+      candidate side is the solve's realized diagnostics — which proves that
+      the solve bound every declared target at the declared period, and does
+      **not** prove agreement with any incumbent-derived surface.
+
+    Neither side is ever copied from the other; a copied reference would make
+    the trio pass by construction. Sourcing the target side from an
+    incumbent-bound instrument needs an instrument that carries one, which is
+    release-cut work (#757).
     """
 
     for stage in stages:

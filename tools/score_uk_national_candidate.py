@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.uk_runtime.national_calibration import prepare_uk_target_frame
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
-from microcosm.calibrate import TargetRegistry, TargetSpec, score_targets
+from microcosm.calibrate import TargetRegistry, score_targets
 
 UK_SCORE_LOSS_CAP = 10.0
 UK_SCORE_HOLDOUT_BASIS = "none_declared"
@@ -37,16 +40,32 @@ def score_uk_national_candidate(
     *,
     candidate_h5: str | Path,
     incumbent_h5: str | Path,
+    candidate_sha256: str,
+    incumbent_sha256: str,
     target_registry: TargetRegistry,
+    calibration_year: int,
+    measure_resolver_factory: Callable[[Path, Any], Any] | None = None,
     candidate_label: str = "populace_uk_2023",
     incumbent_label: str = "enhanced_frs_2024_25",
 ) -> dict[str, Any]:
-    """Return the #578 rule-1 score block on a shared target registry."""
+    """Return the #578 rule-1 score block on a shared target registry.
+
+    Both artifacts are verified against their declared digests before a byte
+    is read, and both sides are materialized through the same route the
+    calibration seam uses, so the score names the artifacts it actually
+    measured rather than two labels supplied on the command line.
+    """
 
     if target_registry.country != "uk" or not target_registry.specs:
         raise ValueError("UK candidate scoring requires a non-empty UK registry.")
-    candidate_frame, _candidate_provenance = load_uk_national_frame(candidate_h5)
-    incumbent_frame, _incumbent_provenance = load_uk_national_frame(incumbent_h5)
+    candidate_pin = _verify_artifact("candidate", candidate_h5, candidate_sha256)
+    incumbent_pin = _verify_artifact("incumbent", incumbent_h5, incumbent_sha256)
+    candidate_frame, candidate_resolution = _scored_frame(
+        candidate_h5, target_registry, calibration_year, measure_resolver_factory
+    )
+    incumbent_frame, incumbent_resolution = _scored_frame(
+        incumbent_h5, target_registry, calibration_year, measure_resolver_factory
+    )
     candidate = score_targets(
         candidate_frame,
         target_registry.to_target_set(),
@@ -88,9 +107,16 @@ def score_uk_national_candidate(
             "n_specs": len(target_registry),
         },
         "artifacts": {
-            "candidate": candidate_label,
-            "incumbent": incumbent_label,
+            "candidate": {"label": candidate_label, **candidate_pin},
+            "incumbent": {"label": incumbent_label, **incumbent_pin},
         },
+        "measure_resolution": {
+            "candidate": candidate_resolution,
+            "incumbent": incumbent_resolution,
+        },
+        "target_drift": _target_drift(
+            target_registry, candidate_errors, incumbent_errors
+        ),
         "signed_asymmetries": [
             {
                 "id": "incumbent_own_registry",
@@ -162,19 +188,94 @@ def _target_wins_by_family(
 
 
 def _load_registry(path: str | Path) -> TargetRegistry:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if isinstance(payload, dict):
-        specs_payload = payload.get("specs")
-        country = str(payload.get("country", "uk"))
-    else:
-        specs_payload = payload
-        country = "uk"
-    if not isinstance(specs_payload, list):
-        raise ValueError("target registry JSON must contain a specs list.")
-    return TargetRegistry(
-        (TargetSpec(**item) for item in specs_payload),
-        country=country,
+    """Load the frozen register through its own validating loader.
+
+    ``TargetRegistry.from_json`` checks the format revision and re-derives the
+    content hash, so a hand-edited or drifted register refuses here instead of
+    silently deciding rule 1 on a surface nobody reviewed.
+    """
+
+    return TargetRegistry.from_json(path)
+
+
+def _sha256_file(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_artifact(role: str, path: str | Path, expected: str) -> dict[str, object]:
+    measured = _sha256_file(path)
+    if measured != expected:
+        raise ValueError(
+            f"{role} artifact sha mismatch: measured {measured}, pinned {expected}"
+        )
+    return {
+        "path": str(path),
+        "sha256": measured,
+        "size_bytes": Path(path).stat().st_size,
+    }
+
+
+def _scored_frame(
+    h5_path: str | Path,
+    registry: TargetRegistry,
+    calibration_year: int,
+    factory: Callable[[Path, Any], Any] | None,
+) -> tuple[Any, Any]:
+    frame, _provenance = load_uk_national_frame(h5_path)
+    resolver = None if factory is None else factory(Path(h5_path), frame)
+    return prepare_uk_target_frame(
+        frame, registry, period=calibration_year, measure_resolver=resolver
     )
+
+
+def _default_measure_resolver_factory(scratch_dir: Path, year: int):
+    def build(h5_path: Path, frame: Any):
+        from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
+
+        return UKMeasureResolver(
+            simulation_source=h5_path,
+            scratch_dir=scratch_dir,
+            year=year,
+            frame=frame,
+        )
+
+    return build
+
+
+def _target_drift(
+    registry: TargetRegistry,
+    candidate_errors: dict[str, float],
+    incumbent_errors: dict[str, float],
+) -> list[dict[str, object]]:
+    """Per-target relative errors, the auditable half of the score block."""
+
+    families = {spec.to_target().row_name: spec.family for spec in registry.specs}
+    rows = []
+    for name in sorted(candidate_errors):
+        candidate = candidate_errors[name]
+        incumbent = incumbent_errors[name]
+        # Relative errors are signed; the win is decided on magnitude, the
+        # same rule the aggregate counts use.
+        rows.append(
+            {
+                "target": name,
+                "family": families.get(name),
+                "candidate_relative_error": candidate,
+                "incumbent_relative_error": incumbent,
+                "winner": (
+                    "candidate"
+                    if abs(candidate) < abs(incumbent)
+                    else "incumbent"
+                    if abs(incumbent) < abs(candidate)
+                    else "tie"
+                ),
+            }
+        )
+    return rows
 
 
 def _write_json(path: str | Path, payload: dict[str, Any]) -> Path:
@@ -186,14 +287,43 @@ def _write_json(path: str | Path, payload: dict[str, Any]) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-h5", required=True, type=Path)
+    parser.add_argument("--candidate-sha256", required=True)
     parser.add_argument("--incumbent-h5", required=True, type=Path)
-    parser.add_argument("--target-registry-json", required=True, type=Path)
+    parser.add_argument("--incumbent-sha256", required=True)
+    parser.add_argument("--registry-json", required=True, type=Path)
     parser.add_argument("--output-json", required=True, type=Path)
+    parser.add_argument("--calibration-year", type=int)
+    parser.add_argument(
+        "--no-measure-resolution",
+        action="store_true",
+        help=(
+            "Score frames whose measures are already columns. Every packaged "
+            "UK reference binds a prepared measure, so this is for fixtures "
+            "only; a production register refuses on the first skipped target."
+        ),
+    )
     args = parser.parse_args(argv)
+    registry = _load_registry(args.registry_json)
+    calibration_year = args.calibration_year
+    if calibration_year is None:
+        from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+
+        calibration_year = load_uk_frs_release().calibration_year
+    factory = (
+        None
+        if args.no_measure_resolution
+        else _default_measure_resolver_factory(
+            args.output_json.parent, int(calibration_year)
+        )
+    )
     score = score_uk_national_candidate(
         candidate_h5=args.candidate_h5,
         incumbent_h5=args.incumbent_h5,
-        target_registry=_load_registry(args.target_registry_json),
+        candidate_sha256=args.candidate_sha256,
+        incumbent_sha256=args.incumbent_sha256,
+        target_registry=registry,
+        calibration_year=int(calibration_year),
+        measure_resolver_factory=factory,
     )
     _write_json(args.output_json, {"score_vs_enhanced_frs": score})
     return 0

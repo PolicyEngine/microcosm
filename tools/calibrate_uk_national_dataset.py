@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
+from microcosm.calibrate import TargetRegistry
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CANONICAL_UK_RELEASE_ID = re.compile(r"populace-uk-[1-9][0-9]*-[a-z0-9_]+-k[1-9][0-9]*")
@@ -231,24 +232,26 @@ def _paths_alias(left: Path, right: Path) -> bool:
 
 
 def _compare_frozen_register(path: Path | None, registry: Any) -> None:
+    """Refuse when the compiled register is not the frozen scoring surface.
+
+    Both sides are compared on ``TargetRegistry.version`` — the registry's own
+    content hash — through the validating loader, so the same artifact serves
+    this check and ``tools/score_uk_national_candidate.py``, and incidental
+    formatting cannot make two identical registers look different.
+    """
+
     if path is None:
         return
-    payload = {
-        "country": registry.country,
-        "version": registry.version,
-        "specs": [
-            {field: value for field, value in spec.__dict__.items() if value is not None}
-            for spec in registry.specs
-        ],
-    }
-    derived = hashlib.sha256(
-        json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
-    ).hexdigest()
-    frozen = hashlib.sha256(path.read_bytes()).hexdigest()
-    if derived != frozen:
+    try:
+        frozen = TargetRegistry.from_json(path)
+    except ValueError as error:
+        raise SystemExit(
+            f"error: frozen scoring register is unusable: {error}"
+        ) from error
+    if frozen.version != registry.version:
         raise SystemExit(
             "re-derived register differs from the frozen scoring register: "
-            f"{derived} vs {frozen}"
+            f"{registry.version} vs {frozen.version}"
         )
 
 
