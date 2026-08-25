@@ -3,7 +3,7 @@
 
 The default production path is the stacked pipeline:
 
-``stack -> gap-fill -> PUF pass + tail -> late DAG -> derive -> seed -> simulate -> gates``.
+``stack -> geography -> gap-fill -> PUF pass + tail -> late DAG -> derive -> seed -> simulate -> gates``.
 
 Both survey arms use one composition-preserving ``--sample-fraction``; PUF
 donors always remain full. The terminal completeness gate plus by-origin
@@ -33,7 +33,11 @@ validity-domain receipt, not a relaxed tolerance. Example (the committed
      --acs-rent-h5 "$RENT_H5" --acs-rent-h5-sha256 "$RENT_SHA" \\
      --puf-h5 "$PUF_H5" --puf-h5-sha256 "$PUF_SHA" \\
      --puf-source-year-csv "$PUF_CSV" \\
-     --puf-source-year-csv-sha256 "$PUF_CSV_SHA" --out "$OUT"
+     --puf-source-year-csv-sha256 "$PUF_CSV_SHA" \\
+     --puma-ladder "$PUMA_LADDER" --puma-ladder-sha256 "$PUMA_LADDER_SHA" \\
+     --congressional-district-vintage-crosswalk "$CD_CROSSWALK" \\
+     --congressional-district-vintage-crosswalk-sha256 "$CD_CROSSWALK_SHA" \\
+     --out "$OUT"
 """
 
 from __future__ import annotations
@@ -102,6 +106,16 @@ from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankSt
 from microcosm.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
+from microcosm.build.us_runtime.congressional_district_geography import (
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+)
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+    CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+    load_congressional_district_vintage_crosswalk,
+)
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -160,6 +174,13 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
     US_PUF_SUPPORT_FIT_NAME,
 )
+from microcosm.build.us_runtime.puma_ladder import (
+    UsPumaLadder,
+    load_us_puma_ladder,
+    us_puma_ladder_assignment_summary,
+    us_puma_ladder_gate,
+    with_household_us_puma_ladder,
+)
 from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_post_reconciliation_person_columns,
     us_qbi_reconciliation_contract_identity,
@@ -195,6 +216,8 @@ from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_provenance_counts,
+    support_clone_index_column,
+    support_source_id_column,
     validate_assembly_provenance,
 )
 from microcosm.build.us_runtime.take_up_contract import take_up_contract_identity
@@ -306,15 +329,39 @@ _STACKED_PIPELINE = "us-stacked-pool"
 _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
     "populace_us_stacked_pool_checkpoint_identity"
 )
-# Version 11 additionally binds the primary-PUF whole-pool universe semantics.
+# Version 12 binds the post-assembly household geography assignment authority,
+# target vintage, algorithm, operator order, and seed.  Earlier checkpoints
+# predate the congressional-district support required by release preflight.
+# Version 11 additionally bound the primary-PUF whole-pool universe semantics.
 # Earlier checkpoints must rebuild rather than resume with a nullable
 # s_corp_income leaf. Version 10 bound the complete late-resource semantics and
 # corrected outer order (the primary PUF callback is nested inside the DAG).
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 11
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 12
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
 )
+
+_STACKED_GEOGRAPHY_ASSIGNMENT_ALGORITHM = (
+    "assign_us_puma_ladder.population_weighted_overlap.v1"
+)
+_STACKED_GEOGRAPHY_ASSIGNMENT_ORDER = "before_gap_fill"
+_STACKED_GEOGRAPHY_ASSIGNMENT_SEED_SITE = "legacy_puma_ladder"
+_STACKED_PUMA_LADDER_INPUT_ROLE = "puma_ladder"
+_STACKED_PUMA_LADDER_SOURCE_REF = "source:us_puma_ladder_2020"
+_STACKED_PUMA_LADDER_SHA256 = (
+    "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+)
+_STACKED_CD_CROSSWALK_INPUT_ROLE = "congressional_district_vintage_crosswalk"
+_STACKED_CD_CROSSWALK_SOURCE_REF = (
+    "source:us_congressional_district_vintage_crosswalk_117_to_119"
+)
+_STACKED_CD_CROSSWALK_SHA256 = (
+    "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+)
+_STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF = "vintage:cd_117"
+_STACKED_CD_CROSSWALK_SOURCE_VINTAGE = "117th_congress"
+_STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF = "vintage:cd_119"
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 
@@ -511,6 +558,39 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         type=_sha256_argument,
         help="Expected SHA-256 of --puf-source-year-csv.",
+    )
+    parser.add_argument(
+        "--puma-ladder",
+        type=Path,
+        help=(
+            "Pinned national PUMA-overlap ladder. Required by the default "
+            "stacked pipeline; unused by --legacy-two-spine."
+        ),
+    )
+    parser.add_argument(
+        "--puma-ladder-sha256",
+        type=_sha256_argument,
+        help=(
+            "Canonical SHA-256 of --puma-ladder. Required by the default "
+            "stacked pipeline; unused by --legacy-two-spine."
+        ),
+    )
+    parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        help=(
+            "Pinned 117th-to-119th congressional-district crosswalk. Required "
+            "by the default stacked pipeline; unused by --legacy-two-spine."
+        ),
+    )
+    parser.add_argument(
+        "--congressional-district-vintage-crosswalk-sha256",
+        type=_sha256_argument,
+        help=(
+            "Canonical SHA-256 of --congressional-district-vintage-crosswalk. "
+            "Required by the default stacked pipeline; unused by "
+            "--legacy-two-spine."
+        ),
     )
     parser.add_argument(
         "--out",
@@ -731,10 +811,129 @@ def _verify_acs_file(
     return verified
 
 
+def _stacked_geography_assignment_contract() -> dict[str, object]:
+    """Return the closed household-geography authority bound by every cache."""
+
+    return {
+        "declaration": {
+            "anchor": "puma",
+            "order": _STACKED_GEOGRAPHY_ASSIGNMENT_ORDER,
+            "kernels": {
+                "assign": "kernel:assign_us_puma_ladder",
+                "validate": "kernel:us_puma_ladder_gate",
+            },
+            "draw": {
+                "asec": {
+                    "universe": "puma_within_state",
+                    "weight": "puma_population_2020",
+                },
+                "congressional_district": {
+                    "universe": "congressional_district_within_puma",
+                    "weight": "block_population_overlap",
+                },
+                "county": {
+                    "universe": "county_within_puma",
+                    "weight": "block_population_overlap",
+                },
+            },
+            "derive": [
+                "puma",
+                CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+                "county_fips",
+            ],
+            "assertions": [
+                "observed_acs_puma_preserved",
+                "geography_state_prefix_consistent",
+            ],
+            "ladder_source": _STACKED_PUMA_LADDER_SOURCE_REF,
+            "congressional_district_vintage_crosswalk": {
+                "source_ref": _STACKED_CD_CROSSWALK_SOURCE_REF,
+                "source_vintage": _STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF,
+                "target_vintage": _STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF,
+            },
+            "seed": "stream:geography_legacy",
+            "default_seed": POOL_RANDOM_SEED,
+            "assign_tract": False,
+            "layer_vintages": {
+                "congressional_district": _STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF,
+                "county": "vintage:census_2020",
+                "puma": "vintage:puma_2020",
+                "tract": "vintage:census_2020",
+            },
+            "validation": ["puma_ladder_gate", "vintage_refusal"],
+        },
+        "algorithm": {
+            "id": _STACKED_GEOGRAPHY_ASSIGNMENT_ALGORITHM,
+            "kernel": "assign_us_puma_ladder",
+            "operator": "assign_us_puma_ladder",
+            "order": _STACKED_GEOGRAPHY_ASSIGNMENT_ORDER,
+            "assign_tract": False,
+        },
+        "authorities": {
+            _STACKED_PUMA_LADDER_INPUT_ROLE: {
+                "input_role": _STACKED_PUMA_LADDER_INPUT_ROLE,
+                "source_ref": _STACKED_PUMA_LADDER_SOURCE_REF,
+                "sha256": _STACKED_PUMA_LADDER_SHA256,
+            },
+            _STACKED_CD_CROSSWALK_INPUT_ROLE: {
+                "input_role": _STACKED_CD_CROSSWALK_INPUT_ROLE,
+                "source_ref": _STACKED_CD_CROSSWALK_SOURCE_REF,
+                "sha256": _STACKED_CD_CROSSWALK_SHA256,
+                "source_vintage_ref": _STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF,
+                "source_vintage": _STACKED_CD_CROSSWALK_SOURCE_VINTAGE,
+                "target_vintage_ref": _STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF,
+                "target_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+            },
+        },
+        "seed": {
+            "site": _STACKED_GEOGRAPHY_ASSIGNMENT_SEED_SITE,
+            "stream": "geography_legacy",
+            "value_source": "run_request.build_model_seed",
+            "value": POOL_RANDOM_SEED,
+        },
+    }
+
+
+def _require_stacked_geography_arguments(args: argparse.Namespace) -> None:
+    """Require both authenticated geography authorities on the stacked route."""
+
+    required = {
+        "--puma-ladder": getattr(args, "puma_ladder", None),
+        "--puma-ladder-sha256": getattr(args, "puma_ladder_sha256", None),
+        "--congressional-district-vintage-crosswalk": getattr(
+            args, "congressional_district_vintage_crosswalk", None
+        ),
+        "--congressional-district-vintage-crosswalk-sha256": getattr(
+            args, "congressional_district_vintage_crosswalk_sha256", None
+        ),
+    }
+    missing = [option for option, value in required.items() if value is None]
+    if missing:
+        raise ValueError(
+            "The stacked pipeline requires pinned household-geography "
+            f"authorities; missing {', '.join(missing)}."
+        )
+    canonical_pins = {
+        "--puma-ladder-sha256": _STACKED_PUMA_LADDER_SHA256,
+        "--congressional-district-vintage-crosswalk-sha256": (
+            _STACKED_CD_CROSSWALK_SHA256
+        ),
+    }
+    for option, expected in canonical_pins.items():
+        value = required[option]
+        if value != expected:
+            raise ValueError(
+                f"{option} differs from the canonical US authority pin: "
+                f"got {value}, expected {expected}."
+            )
+
+
 def _verify_inputs(
     args: argparse.Namespace,
     outputs: PoolBuildOutputs,
 ) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
+    if not args.legacy_two_spine:
+        _require_stacked_geography_arguments(args)
     source_paths = _configured_source_paths(args)
     _validate_checkpoint_path_layout(outputs, source_paths=source_paths)
 
@@ -788,13 +987,28 @@ def _verify_inputs(
             args.puf_source_year_csv_sha256,
         ),
     }
+    if not args.legacy_two_spine:
+        verified.update(
+            {
+                _STACKED_PUMA_LADDER_INPUT_ROLE: _verify_file(
+                    "US PUMA ladder",
+                    args.puma_ladder,
+                    args.puma_ladder_sha256,
+                ),
+                _STACKED_CD_CROSSWALK_INPUT_ROLE: _verify_file(
+                    "congressional-district vintage crosswalk",
+                    args.congressional_district_vintage_crosswalk,
+                    args.congressional_district_vintage_crosswalk_sha256,
+                ),
+            }
+        )
     return verified, acs_source_manifest
 
 
 def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
-    """Resolve the six immutable input locations without opening them."""
+    """Resolve immutable input locations without opening them."""
 
-    return {
+    paths = {
         Path(args.asec_raw_stage_h5).resolve(),
         Path(args.acs_household_zip).resolve(),
         Path(args.acs_person_zip).resolve(),
@@ -802,6 +1016,15 @@ def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
+    if not args.legacy_two_spine:
+        _require_stacked_geography_arguments(args)
+        paths.update(
+            {
+                Path(args.puma_ladder).resolve(),
+                Path(args.congressional_district_vintage_crosswalk).resolve(),
+            }
+        )
+    return paths
 
 
 def _validate_checkpoint_path_layout(
@@ -1049,7 +1272,8 @@ def _stacked_rung(sample_fraction: float) -> str:
         return _STACKED_SAMPLE_RUNG_TOKENS[float(sample_fraction)]
     except KeyError as exc:
         raise ValueError(
-            "Stacked sample_fraction must be one standard rung: 0.01, 0.04, 0.10, or 1.0."
+            "Stacked sample_fraction must be one standard rung: "
+            "0.01, 0.04, 0.10, 0.25, or 1.0."
         ) from exc
 
 
@@ -1082,7 +1306,40 @@ def _configured_input_pins_digest(args: argparse.Namespace) -> str:
         "processed_puf": args.puf_h5_sha256,
         "puf_source_year": args.puf_source_year_csv_sha256,
     }
+    if not args.legacy_two_spine:
+        _require_stacked_geography_arguments(args)
+        payload.update(
+            {
+                _STACKED_PUMA_LADDER_INPUT_ROLE: args.puma_ladder_sha256,
+                _STACKED_CD_CROSSWALK_INPUT_ROLE: (
+                    args.congressional_district_vintage_crosswalk_sha256
+                ),
+            }
+        )
     return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+
+
+def _assert_stacked_geography_verified_inputs(
+    verified_inputs: Mapping[str, _VerifiedInput],
+) -> None:
+    expected = {
+        _STACKED_PUMA_LADDER_INPUT_ROLE: _STACKED_PUMA_LADDER_SHA256,
+        _STACKED_CD_CROSSWALK_INPUT_ROLE: _STACKED_CD_CROSSWALK_SHA256,
+    }
+    for role, canonical_sha256 in expected.items():
+        pin = verified_inputs.get(role)
+        if pin is None:
+            raise ValueError(
+                f"Stacked checkpoint identity requires verified input role {role!r}."
+            )
+        if (
+            pin.expected_sha256 != canonical_sha256
+            or pin.actual_sha256 != canonical_sha256
+        ):
+            raise ValueError(
+                f"Stacked verified input {role!r} differs from its canonical "
+                f"SHA-256 {canonical_sha256}."
+            )
 
 
 def _stacked_checkpoint_base_identity(
@@ -1097,6 +1354,10 @@ def _stacked_checkpoint_base_identity(
 ) -> dict[str, object]:
     """Bind #599/#608 caches to the live stack and both scale controls."""
 
+    # The empty mapping is reserved for the pure static-component oracle.
+    # Every configured/runtime identity carries verified inputs.
+    if verified_inputs:
+        _assert_stacked_geography_verified_inputs(verified_inputs)
     fraction_token = _stacked_rung(sample_fraction)
     if isinstance(sample_seed, bool) or sample_seed < 0:
         raise ValueError("sample_seed must be a non-negative integer.")
@@ -1132,6 +1393,7 @@ def _stacked_checkpoint_base_identity(
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
         },
+        "geography_assignment": _stacked_geography_assignment_contract(),
         "stacked_authority": stacked_spine_authority_receipt(),
         "pool_code": {
             "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
@@ -1204,6 +1466,7 @@ def _configured_stacked_identity(args: argparse.Namespace) -> dict[str, object]:
         "sample_seed": args.sample_seed,
         "clone_attachment_fraction": float(args.clone_attachment_fraction),
         "clone_attachment_seed": args.clone_attachment_seed,
+        "geography_assignment": _stacked_geography_assignment_contract(),
         "stacked_authority": stacked_spine_authority_receipt(),
     }
 
@@ -1290,6 +1553,381 @@ def _discover_stacked_checkpoint_identity(
                 f"{type(error).__name__}: {error}."
             )
     return None
+
+
+def _crosswalk_target_congressional_districts(
+    crosswalk: pd.DataFrame,
+) -> tuple[int, ...]:
+    """Return the authenticated crosswalk's sorted 119th-Congress universe."""
+
+    column = "target_geography_id"
+    if column not in crosswalk:
+        raise ValueError(
+            "Congressional-district vintage crosswalk has no target_geography_id."
+        )
+    target = crosswalk[column].astype(str)
+    prefix = CURRENT_CONGRESSIONAL_DISTRICT_PREFIX
+    if not target.str.startswith(prefix, na=False).all():
+        raise ValueError(
+            "Congressional-district vintage crosswalk contains a non-current "
+            "target geography prefix."
+        )
+    suffix = target.str.removeprefix(prefix)
+    if not suffix.str.fullmatch(r"[0-9]{4}").all():
+        raise ValueError(
+            "Congressional-district vintage crosswalk target geoids must have "
+            "four-digit state-plus-district suffixes."
+        )
+    districts = tuple(sorted(int(value) for value in suffix.unique()))
+    if not districts or districts[0] <= 0:
+        raise ValueError(
+            "Congressional-district vintage crosswalk has no positive targets."
+        )
+    return districts
+
+
+def _target_congressional_district_universe_receipt(
+    districts: tuple[int, ...],
+) -> dict[str, object]:
+    return {
+        "district_count": len(districts),
+        "geoids_sha256": hashlib.sha256(
+            _canonical_json_bytes(list(districts))
+        ).hexdigest(),
+    }
+
+
+def _ordered_household_id_receipt(household: pd.DataFrame) -> dict[str, object]:
+    column = "household_id"
+    if column not in household:
+        raise ValueError(
+            "Stacked geography assignment requires ordered household_id values."
+        )
+    numeric = pd.to_numeric(household[column], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    valid = np.isfinite(numeric) & (numeric == np.floor(numeric))
+    if not valid.all():
+        raise ValueError(
+            "Stacked geography assignment household_id values must be integral."
+        )
+    ordered = numeric.astype("<i8", copy=False)
+    digest = hashlib.sha256()
+    digest.update(b"populace-ordered-household-id-int64-le-v1\0")
+    digest.update(len(ordered).to_bytes(8, byteorder="little", signed=False))
+    digest.update(ordered.tobytes(order="C"))
+    return {
+        "column": column,
+        "codec": "int64_little_endian.v1",
+        "row_count": len(ordered),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _ordered_household_geography_receipt(
+    household: pd.DataFrame,
+) -> dict[str, object]:
+    """Digest ordered native IDs and every assigned launch-geography value."""
+
+    id_column = "household_id"
+    columns = (
+        id_column,
+        "puma",
+        CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+        "county_fips",
+    )
+    missing = [column for column in columns if column not in household]
+    if missing:
+        raise ValueError(
+            "Stacked geography output digest is missing household column(s): "
+            f"{missing}."
+        )
+
+    household_ids = pd.to_numeric(household[id_column], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    valid_ids = np.isfinite(household_ids) & (
+        household_ids == np.floor(household_ids)
+    )
+    if not valid_ids.all():
+        raise ValueError("Stacked geography output household IDs must be integral.")
+
+    def fixed_width_values(column: str, width: int) -> np.ndarray:
+        text = household[column].astype(str)
+        if not text.str.fullmatch(rf"[0-9]{{{width}}}").all():
+            raise ValueError(
+                f"Stacked geography output {column!r} must contain exactly "
+                f"{width}-digit codes."
+            )
+        return text.astype(np.int64).to_numpy(dtype="<i8", copy=False)
+
+    arrays = (
+        household_ids.astype("<i8", copy=False),
+        fixed_width_values("puma", 7),
+        _assigned_congressional_district_values(
+            household,
+            boundary="stacked geography output digest",
+        ).astype("<i8", copy=False),
+        fixed_width_values("county_fips", 5),
+    )
+    digest = hashlib.sha256()
+    digest.update(b"populace-ordered-household-geography-column-major-int64-le-v1\0")
+    digest.update(len(household).to_bytes(8, byteorder="little", signed=False))
+    for values in arrays:
+        digest.update(values.tobytes(order="C"))
+    return {
+        "columns": list(columns),
+        "codec": "column_major_int64_little_endian.v1",
+        "row_count": len(household),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _assigned_congressional_district_values(
+    household: pd.DataFrame,
+    *,
+    boundary: str,
+) -> np.ndarray:
+    if CONGRESSIONAL_DISTRICT_GEOID_COLUMN not in household:
+        raise ValueError(
+            f"{boundary}: household table has no "
+            f"{CONGRESSIONAL_DISTRICT_GEOID_COLUMN!r}."
+        )
+    numeric = pd.to_numeric(
+        household[CONGRESSIONAL_DISTRICT_GEOID_COLUMN],
+        errors="coerce",
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    valid = np.isfinite(numeric) & (numeric > 0) & (numeric == np.floor(numeric))
+    if not valid.all():
+        raise ValueError(
+            f"{boundary}: every household must carry a positive integral "
+            f"{CONGRESSIONAL_DISTRICT_GEOID_COLUMN}."
+        )
+    return numeric.astype(np.int64)
+
+
+def _validate_stacked_geography_assignment_receipt(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    target_districts: tuple[int, ...],
+    boundary: str,
+    require_exact_assembled_rows: bool,
+) -> None:
+    """Bind a live assembled-or-later Frame to its assignment receipt."""
+
+    if receipt.get("artifact_kind") != (
+        "populace_us_stacked_household_geography_assignment"
+    ) or receipt.get("schema_version") != 1:
+        raise ValueError(f"{boundary}: geography assignment receipt is unsupported.")
+    expected_contract = _stacked_geography_assignment_contract()
+    if _json_ready(receipt.get("contract")) != _json_ready(expected_contract):
+        raise ValueError(f"{boundary}: geography assignment contract changed.")
+    expected_universe = _target_congressional_district_universe_receipt(
+        target_districts
+    )
+    if receipt.get("target_universe") != expected_universe:
+        raise ValueError(
+            f"{boundary}: congressional-district target universe changed."
+        )
+    output = receipt.get("output")
+    if not isinstance(output, Mapping):
+        raise ValueError(f"{boundary}: geography assignment output is missing.")
+    assigned_rows = output.get("household_rows")
+    if (
+        isinstance(assigned_rows, bool)
+        or not isinstance(assigned_rows, int)
+        or assigned_rows < 1
+    ):
+        raise ValueError(
+            f"{boundary}: geography assignment household row count is invalid."
+        )
+
+    household = frame.table("household")
+    if len(household) < assigned_rows or (
+        require_exact_assembled_rows and len(household) != assigned_rows
+    ):
+        raise ValueError(
+            f"{boundary}: live household rows do not match the assembled "
+            "geography assignment."
+        )
+    native_household = household
+    clone_column = support_clone_index_column("household")
+    if clone_column in household:
+        clone_index = pd.to_numeric(household[clone_column], errors="coerce")
+        native_household = household.loc[clone_index.eq(0)]
+    expected_order = receipt.get("pre_assignment_household_order")
+    if (
+        len(native_household) != assigned_rows
+        or expected_order != _ordered_household_id_receipt(native_household)
+    ):
+        raise ValueError(
+            f"{boundary}: ordered native household IDs differ from the seeded "
+            "geography assignment receipt."
+        )
+    if receipt.get("assigned_household_geography") != (
+        _ordered_household_geography_receipt(native_household)
+    ):
+        raise ValueError(
+            f"{boundary}: ordered native household geography differs from the "
+            "assignment output receipt."
+        )
+    values = _assigned_congressional_district_values(
+        household,
+        boundary=boundary,
+    )
+    target = np.asarray(target_districts, dtype=np.int64)
+    outside = ~np.isin(values, target)
+    if outside.any():
+        raise ValueError(
+            f"{boundary}: household congressional-district values fall outside "
+            f"the authenticated 119th-Congress crosswalk target universe: "
+            f"{sorted(set(values[outside].tolist()))[:5]}."
+        )
+    if require_exact_assembled_rows:
+        expected_output = {
+            "household_rows": len(household),
+            "positive_congressional_district_rows": len(values),
+            "unique_congressional_district_values": int(len(np.unique(values))),
+        }
+        if output != expected_output:
+            raise ValueError(
+                f"{boundary}: assembled geography assignment counts changed."
+            )
+
+    summary = receipt.get("summary")
+    if (
+        not isinstance(summary, Mapping)
+        or summary.get("applied") is not True
+        or summary.get("household_rows") != assigned_rows
+    ):
+        raise ValueError(f"{boundary}: geography assignment summary is invalid.")
+    gate_receipt = receipt.get("gate")
+    gates = gate_receipt.get("gates") if isinstance(gate_receipt, Mapping) else None
+    puma_gate = gates.get("us_puma_ladder") if isinstance(gates, Mapping) else None
+    if (
+        not isinstance(gate_receipt, Mapping)
+        or gate_receipt.get("passed") is not True
+        or not isinstance(puma_gate, Mapping)
+        or puma_gate.get("passed") is not True
+    ):
+        raise ValueError(f"{boundary}: PUMA-ladder gate receipt did not pass.")
+    if require_exact_assembled_rows:
+        live_gate = GateReport(
+            (
+                us_puma_ladder_gate(
+                    household,
+                    frame.weights_for("household").values,
+                    assign_tract=False,
+                ),
+            )
+        ).to_manifest()
+        if gate_receipt != live_gate:
+            raise ValueError(
+                f"{boundary}: PUMA-ladder gate receipt changed from live output."
+            )
+
+    provenance_columns = (
+        support_source_id_column("household"),
+        support_clone_index_column("household"),
+    )
+    geography_columns = (
+        "puma",
+        CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+        "county_fips",
+    )
+    if all(column in household for column in (*provenance_columns, *geography_columns)):
+        source_column, _clone_column = provenance_columns
+        grouped = household.groupby(
+            source_column,
+            sort=False,
+            dropna=False,
+        )
+        for column in geography_columns:
+            incoherent = grouped[column].nunique(dropna=False) > 1
+            if bool(incoherent.any()):
+                raise ValueError(
+                    f"{boundary}: cloned household support rows disagree on "
+                    f"assigned geography column {column!r}."
+                )
+
+
+def _assign_stacked_household_geography(
+    frame: Frame,
+    *,
+    ladder: UsPumaLadder,
+    crosswalk: pd.DataFrame,
+) -> tuple[Frame, dict[str, object], tuple[int, ...]]:
+    """Apply the pinned geography operator after legal source assembly."""
+
+    target_districts = _crosswalk_target_congressional_districts(crosswalk)
+    ladder_districts = tuple(
+        sorted(int(value) for value in np.unique(ladder.cd_overlap_cd).tolist())
+    )
+    if ladder_districts != target_districts:
+        raise ValueError(
+            "US PUMA ladder congressional-district universe differs from the "
+            "authenticated vintage-crosswalk target universe."
+        )
+    pre_assignment_order = _ordered_household_id_receipt(frame.table("household"))
+    assigned = with_household_us_puma_ladder(
+        frame,
+        ladder,
+        seed=POOL_RANDOM_SEED,
+        assign_tract=False,
+        expected_congressional_district_vintage=(
+            CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+        ),
+    )
+    household = assigned.table("household")
+    values = _assigned_congressional_district_values(
+        household,
+        boundary="stacked post-assembly geography assignment",
+    )
+    gate = us_puma_ladder_gate(
+        household,
+        assigned.weights_for("household").values,
+        assign_tract=False,
+    )
+    if not gate.passed:
+        raise ValueError(
+            "Stacked post-assembly PUMA-ladder gate failed:\n  "
+            + "\n  ".join(gate.failures)
+        )
+    receipt = {
+        "artifact_kind": "populace_us_stacked_household_geography_assignment",
+        "schema_version": 1,
+        "contract": _stacked_geography_assignment_contract(),
+        "pre_assignment_household_order": pre_assignment_order,
+        "assigned_household_geography": _ordered_household_geography_receipt(
+            household
+        ),
+        "target_universe": _target_congressional_district_universe_receipt(
+            target_districts
+        ),
+        "output": {
+            "household_rows": len(household),
+            "positive_congressional_district_rows": len(values),
+            "unique_congressional_district_values": int(len(np.unique(values))),
+        },
+        "summary": us_puma_ladder_assignment_summary(
+            household,
+            ladder,
+            weight_values=assigned.weights_for("household").values,
+            assign_tract=False,
+        ),
+        "gate": GateReport((gate,)).to_manifest(),
+    }
+    _validate_stacked_geography_assignment_receipt(
+        assigned,
+        receipt,
+        target_districts=target_districts,
+        boundary="stacked post-assembly geography assignment",
+        require_exact_assembled_rows=True,
+    )
+    return assigned, receipt, target_districts
 
 
 def _stacked_realized_counts(
@@ -1907,7 +2545,11 @@ class _PoolStageCheckpointStore:
                 raise ValueError(f"{stage} checkpoint stage_receipts must be an object")
             if not isinstance(input_receipts, Mapping):
                 raise ValueError(f"{stage} checkpoint input_receipts must be an object")
-            _validate_checkpoint_receipt_prefix(stage, stage_receipts)
+            _validate_checkpoint_receipt_prefix(
+                stage,
+                stage_receipts,
+                stacked=_checkpoint_qbi_route(self._base_identity) == "stacked",
+            )
             restored_stage_receipts, receipts_record = (
                 self._load_operational_stage_receipts(
                     stage,
@@ -2127,11 +2769,14 @@ def _validate_checkpoint_metadata(
 def _validate_checkpoint_receipt_prefix(
     stage: str,
     stage_receipts: Mapping[str, object],
+    *,
+    stacked: bool,
 ) -> None:
+    geography = frozenset({"geography_assignment"}) if stacked else frozenset()
     expected = {
-        "assembled": frozenset(),
-        "transferred": frozenset({"impute"}),
-        "simulated": frozenset({"impute", "derive", "seed", "simulate"}),
+        "assembled": geography,
+        "transferred": geography | {"impute"},
+        "simulated": geography | {"impute", "derive", "seed", "simulate"},
     }[stage]
     observed = frozenset(stage_receipts)
     allowed = expected | ({"clone"} if stage != "assembled" else set())
@@ -2842,6 +3487,11 @@ def _emit_stacked_checkpoint(
     qbi_transition_authority_sha256: str | None = None,
     late_producer_transition_authority_sha256: str | None = None,
 ) -> None:
+    _validate_checkpoint_receipt_prefix(
+        stage,
+        stage_receipts,
+        stacked=True,
+    )
     if stage in {"transferred", "simulated"}:
         _validate_stacked_post_puf_stage_receipt(
             frame,
@@ -2881,6 +3531,8 @@ def build_stacked_pool(
     assembled: Frame,
     *,
     expected_stack_receipt: Mapping[str, object],
+    geography_assignment_receipt: Mapping[str, object] | None,
+    geography_target_districts: tuple[int, ...],
     release_id: str,
     puf_donor: pd.DataFrame | None,
     acs_rent_donor: pd.DataFrame | None,
@@ -2910,13 +3562,26 @@ def build_stacked_pool(
         raise ValueError("Fresh stacked assembly receipt changed before execution.")
 
     if resume is None:
+        if not isinstance(geography_assignment_receipt, Mapping):
+            raise ValueError(
+                "A cold stacked build requires its live geography assignment receipt."
+            )
+        _validate_stacked_geography_assignment_receipt(
+            assembled,
+            geography_assignment_receipt,
+            target_districts=geography_target_districts,
+            boundary="stacked pool fresh assembly",
+            require_exact_assembled_rows=True,
+        )
         current = canonicalize_frame_string_dtypes(
             assembled,
             boundary="stacked pool assembled checkpoint",
             in_place=True,
         )
         assembly_receipt = current.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
-        receipts: dict[str, Mapping[str, object]] = {}
+        receipts: dict[str, Mapping[str, object]] = {
+            "geography_assignment": dict(geography_assignment_receipt)
+        }
         qbi_transition_authority_sha256: str | None = None
         late_producer_transition_authority_sha256: str | None = None
         resume_stage: str | None = None
@@ -2929,6 +3594,11 @@ def build_stacked_pool(
         )
         mark_phase("assembled")
     else:
+        if geography_assignment_receipt is not None:
+            raise ValueError(
+                "A resumed stacked build must use its checkpointed geography "
+                "assignment receipt rather than redraw geography."
+            )
         current = canonicalize_frame_string_dtypes(
             resume.frame,
             boundary=f"stacked pool {resume.stage} resume",
@@ -2950,6 +3620,19 @@ def build_stacked_pool(
         receipts = {
             name: dict(receipt) for name, receipt in resume.stage_receipts.items()
         }
+        resumed_geography_receipt = receipts.get("geography_assignment")
+        if not isinstance(resumed_geography_receipt, Mapping):
+            raise ValueError(
+                f"Stacked {resume.stage!r} checkpoint has no geography "
+                "assignment receipt."
+            )
+        _validate_stacked_geography_assignment_receipt(
+            current,
+            resumed_geography_receipt,
+            target_districts=geography_target_districts,
+            boundary=f"stacked pool {resume.stage} resume",
+            require_exact_assembled_rows=resume.stage == "assembled",
+        )
         qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
         late_producer_transition_authority_sha256 = (
             resume.late_producer_transition_authority_sha256
@@ -3319,6 +4002,16 @@ def build_stacked_pool(
         current,
         boundary="stacked pool terminal input-only output",
     )
+    terminal_geography_receipt = receipts.get("geography_assignment")
+    if not isinstance(terminal_geography_receipt, Mapping):  # pragma: no cover
+        raise AssertionError("Stacked terminal output lost geography provenance.")
+    _validate_stacked_geography_assignment_receipt(
+        current,
+        terminal_geography_receipt,
+        target_districts=geography_target_districts,
+        boundary="stacked pool terminal input-only output",
+        require_exact_assembled_rows=False,
+    )
     return StackedPoolBuildResult(
         frame=current,
         stack_receipt=dict(expected_stack_receipt),
@@ -3472,6 +4165,16 @@ def _stacked_manifest_payload(
     puf_donor_receipt = input_receipts.get("puf_donor")
     if not isinstance(puf_donor_receipt, Mapping):
         raise ValueError("Stacked pool input receipts have no PUF donor object.")
+    geography_assignment = result.stage_receipts.get("geography_assignment")
+    if not isinstance(geography_assignment, Mapping):
+        raise ValueError(
+            "Stacked pool stage receipts have no geography assignment object."
+        )
+    if _json_ready(geography_assignment.get("contract")) != _json_ready(
+        _stacked_geography_assignment_contract()
+    ):
+        raise ValueError("Stacked pool geography assignment contract changed.")
+    _assert_stacked_geography_verified_inputs(verified_inputs)
     gates = _stacked_gate_payload(result)
     stack_manifest = _json_ready(result.stack_receipt)
     return {
@@ -3505,6 +4208,7 @@ def _stacked_manifest_payload(
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
         },
+        "geography_assignment": _json_ready(geography_assignment),
         "provenance_pins": {
             role: pin.to_manifest() for role, pin in verified_inputs.items()
         },
@@ -3783,6 +4487,16 @@ def _write_stacked_outputs(
             artifact_kind=POOL_H5_ARTIFACT_KIND,
             publication_run_id=publication_run_id,
             materializer_version=US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
+            root_attributes={
+                CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                    verified_inputs[
+                        _STACKED_CD_CROSSWALK_INPUT_ROLE
+                    ].actual_sha256
+                ),
+                CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+                ),
+            },
         )
         _atomic_write_json(temporary_diagnostics, diagnostics)
         os.replace(temporary_h5, outputs.pool_h5)
@@ -3917,6 +4631,7 @@ def _live_constants_adapter_gate() -> dict[str, object]:
         "period",
         "model_seed",
         "policyengine_us_version",
+        "geography_assignment",
         "stacked_authority",
         "pool_code",
     )
@@ -4497,6 +5212,14 @@ def _main_stacked(args: argparse.Namespace) -> int:
         verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
         state.input_pins_digest = _input_pins_digest(verified_inputs)
         _append_phase(state, "inputs_verified")
+        congressional_district_crosswalk = (
+            load_congressional_district_vintage_crosswalk(
+                args.congressional_district_vintage_crosswalk
+            )
+        )
+        geography_target_districts = _crosswalk_target_congressional_districts(
+            congressional_district_crosswalk
+        )
         stacked_checkpoint_root = _stacked_checkpoint_root(
             outputs,
             configured_identity,
@@ -4525,6 +5248,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
         stack_receipt: Mapping[str, object] | None = None
         puf_donor: pd.DataFrame | None = None
         acs_rent_donor: pd.DataFrame | None = None
+        geography_assignment_receipt: Mapping[str, object] | None = None
         if checkpoint_identity is not None:
             checkpoint_store = _PoolStageCheckpointStore(
                 outputs.checkpoint_root,
@@ -4581,7 +5305,22 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_fraction=args.sample_fraction,
                 sample_seed=args.sample_seed,
             )
-            stack_frame = stack.frame
+            puma_ladder = load_us_puma_ladder(args.puma_ladder)
+            (
+                stack_frame,
+                geography_assignment_receipt,
+                assigned_target_districts,
+            ) = _assign_stacked_household_geography(
+                stack.frame,
+                ladder=puma_ladder,
+                crosswalk=congressional_district_crosswalk,
+            )
+            if assigned_target_districts != geography_target_districts:
+                raise ValueError(
+                    "Post-assembly geography assignment changed the authenticated "
+                    "crosswalk target universe."
+                )
+            _append_phase(state, "geography_assigned")
             stack_receipt = stack.receipt
             puf_donor = loaded.puf_donor
             acs_rent_donor = loaded.acs_rent_donor
@@ -4623,6 +5362,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
         result = build_stacked_pool(
             stack_frame,
             expected_stack_receipt=stack_receipt,
+            geography_assignment_receipt=geography_assignment_receipt,
+            geography_target_districts=geography_target_districts,
             release_id=state.build_id,
             puf_donor=puf_donor,
             acs_rent_donor=acs_rent_donor,

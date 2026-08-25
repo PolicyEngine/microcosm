@@ -42,6 +42,14 @@ records:
   compatible_with:
   - vintage:asec_2023
   - vintage:target_2024
+- id: cd_117
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:us_congressional_district_vintage_crosswalk_117_to_119
+    authority: cd_117
+  compatible_with:
+  - vintage:cd_119
 - id: cd_119
   kind: geography_vintage_ref
   authority_ref:
@@ -49,6 +57,7 @@ records:
     source: source:us_puma_ladder_2020
     authority: cd_119
   compatible_with:
+  - vintage:cd_117
   - vintage:census_2020
   - vintage:puma_2020
 - id: census_2020

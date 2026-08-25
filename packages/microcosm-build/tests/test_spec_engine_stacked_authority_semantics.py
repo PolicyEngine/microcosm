@@ -127,6 +127,20 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
             actual_sha256="a" * 64,
             size_bytes=17,
         ),
+        "puma_ladder": pool_tool._VerifiedInput(
+            role="puma_ladder",
+            path=Path("unused-puma-ladder"),
+            expected_sha256=pool_tool._STACKED_PUMA_LADDER_SHA256,
+            actual_sha256=pool_tool._STACKED_PUMA_LADDER_SHA256,
+            size_bytes=29,
+        ),
+        "congressional_district_vintage_crosswalk": pool_tool._VerifiedInput(
+            role="congressional_district_vintage_crosswalk",
+            path=Path("unused-cd-crosswalk"),
+            expected_sha256=pool_tool._STACKED_CD_CROSSWALK_SHA256,
+            actual_sha256=pool_tool._STACKED_CD_CROSSWALK_SHA256,
+            size_bytes=77_935,
+        ),
     }
     pins = {
         role: {"sha256": pin.actual_sha256, "size_bytes": pin.size_bytes}
@@ -169,7 +183,12 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
 
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
-    assert list(projected["inputs"]) == ["alpha", "zeta"]
+    assert list(projected["inputs"]) == [
+        "alpha",
+        "congressional_district_vintage_crosswalk",
+        "puma_ladder",
+        "zeta",
+    ]
     assert (
         projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
         == "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
@@ -203,6 +222,7 @@ def test_static_projection_selects_exact_defaulted_live_identity_components(
         "period",
         "model_seed",
         "policyengine_us_version",
+        "geography_assignment",
         "stacked_authority",
         "pool_code",
     )

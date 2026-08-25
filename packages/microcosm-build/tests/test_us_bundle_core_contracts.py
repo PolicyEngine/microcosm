@@ -36,6 +36,7 @@ CORE_MODULE = importlib.util.module_from_spec(CORE_SPEC)
 CORE_SPEC.loader.exec_module(CORE_MODULE)
 build_catalogs = CORE_MODULE.build_catalogs
 build_bundle = CORE_MODULE.build_bundle
+build_geography = CORE_MODULE.build_geography
 build_publication = CORE_MODULE.build_publication
 build_sources = CORE_MODULE.build_sources
 build_vintages = CORE_MODULE.build_vintages
@@ -175,6 +176,54 @@ def test_source_schema_rejects_non_hex_content_digests() -> None:
         load_schema_registry().validate(sources, "sources.schema.json")
 
 
+def test_cd_vintage_crosswalk_source_and_geography_authority_are_pinned() -> None:
+    crosswalk_source = next(
+        row
+        for row in build_sources()["sources"]
+        if row["id"]
+        == "us_congressional_district_vintage_crosswalk_117_to_119"
+    )
+    assert crosswalk_source == {
+        "id": "us_congressional_district_vintage_crosswalk_117_to_119",
+        "role": "congressional_district_vintage_crosswalk",
+        "sha256": (
+            "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+        ),
+        "byte_size": 77_935,
+        "loader": "kernel:load_congressional_district_vintage_crosswalk",
+        "vintages": ["vintage:cd_117", "vintage:cd_119"],
+        "vintage_authorities": [
+            {
+                "id": "cd_117",
+                "kind": "geography_vintage",
+                "value": "117th_congress",
+            }
+        ],
+    }
+
+    assignment = build_geography()["assignment"]
+    assert assignment["order"] == "before_gap_fill"
+    assert assignment["congressional_district_vintage_crosswalk"] == {
+        "source_ref": (
+            "source:us_congressional_district_vintage_crosswalk_117_to_119"
+        ),
+        "source_vintage": "vintage:cd_117",
+        "target_vintage": "vintage:cd_119",
+    }
+    load_schema_registry().validate(build_geography(), "geography.schema.json")
+
+
+def test_cd_vintage_crosswalk_source_reference_is_resolved() -> None:
+    resources = {**_vintage_resources(), "geography": build_geography()}
+    _resolve_vintages(resources)
+
+    resources["geography"]["assignment"][
+        "congressional_district_vintage_crosswalk"
+    ]["source_ref"] = "source:missing_crosswalk"
+    with pytest.raises(SpecResolutionError, match="dangling source reference"):
+        _resolve_vintages(resources)
+
+
 def test_source_operational_locator_is_outside_spec_hash() -> None:
     sources = build_sources()
     original_hash, _, original_surfaces = _source_surface_hashes(sources)
@@ -228,7 +277,7 @@ def test_all_us_vintages_have_reciprocal_reviewed_compatibility() -> None:
     sources = build_sources()
     vintages = build_vintages()
     records = vintages["records"]
-    assert len(records) == 15
+    assert len(records) == 16
     by_id = {record["id"]: record for record in records}
     assert set(by_id) == {
         "acs_2022",
@@ -236,6 +285,7 @@ def test_all_us_vintages_have_reciprocal_reviewed_compatibility() -> None:
         "asec_2022",
         "asec_2023",
         "asec_2024",
+        "cd_117",
         "cd_119",
         "census_2020",
         "org_2024",
@@ -263,7 +313,7 @@ def test_all_us_vintages_have_reciprocal_reviewed_compatibility() -> None:
         }
     )
     resolved_wire = thaw_json(resolved.vintage_authorities)
-    assert len(resolved_wire["records"]) == 15
+    assert len(resolved_wire["records"]) == 16
     assert (
         resolved_wire["records"]["policyengine_us_surface"]["value"]
         == (ENGINE_LOCK["engine"]["version"])
