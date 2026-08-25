@@ -1,56 +1,36 @@
-# Progress: PolicyEngine-US 1.819.0 lock bump
+# Progress: defensive review of microcosm PR #743
 
 ## State
 
-Complete and ready for the owner to open the PR. The lock resolves
-`policyengine-us==1.819.0` and `policyengine-core==3.31.0`; all required
-compatibility repairs, generated contracts, attested identities, package test
-shards, generator checks, and Ruff are green. The code-cited mechanism audit,
-identity inventory, compatibility note, and validation receipts are in
-`_LANE-NOTES.md`.
-
-No pool-consumed variable was removed without a verified successor, so no
-owner question is pending. No pool/release build, push, gate change, threshold
-change, tolerance change, or band change occurred.
+Review in progress on local branch `codex/review-743` at cached PR head
+`74b4d768f7f7c83eb0593464ceb0e2a7c81ec154`. The PR branch itself is
+untouched; nothing will be pushed or built. The required all-package US-extra
+sync was attempted before review work, but the managed host cannot resolve
+GitHub or PyPI and its shared uv cache is read-only. A task-local-cache retry
+resolved the lock and created `.venv`, then stopped at the first unavailable
+wheel (`h5py==3.16.0`).
 
 ## Done
 
-- Started and committed this standing progress log at `514964d4` after
-  rebasing the lane start onto current `origin/main`.
-- Ran the ordered initial sync attempt, documented the sandbox cache/network
-  limits, and completed the unchanged-lock and upgraded-lock all-package US
-  syncs from exact official artifacts in a task-local cache.
-- Ran `uv lock --upgrade-package policyengine-us`. The complete version
-  movement is exactly `policyengine-core 3.26.11 -> 3.31.0` and
-  `policyengine-us 1.764.6 -> 1.819.0`; NumPy 2.4.6 and Torch 2.12.0 did not
-  move.
-- Verified upstream variable reality in the installed PE-US 1.819.0 package,
-  adapted Microcosm's input ownership and consumer guards, and retained
-  fail-closed certified-dataset version checks. Each mechanism is cited in
-  `_LANE-NOTES.md` under “verified upstream compatibility repairs.”
-- Regenerated the release-input, parity, source/take-up, engine-ABI, spec,
-  seed, coverage, and golden identities with repository tools. The final
-  46-value inventory is in `_LANE-NOTES.md`; the final commit body carries the
-  exhaustive old-to-new mapping.
-- Added the requested owner-facing PE-US 1.764.6-to-1.819.0 compatibility note
-  from the installed release changelog, including major SNAP, receipt,
-  OBBBA-follow-through, cash/health/housing, tax, and new-program changes.
-- Passed every package test: 7,213 passed / 77 skipped / 0 failed. Calibrate,
-  data, fit, and frame ran as individual package shards. The build inventory
-  was proven as a complete disjoint 4,161-item + 2,180-item partition after
-  the otherwise-green single process retained more than the binding memory
-  ceiling; accepted peaks were 12,596,384 and 13,363,984 KiB, both below 15
-  GiB. This uses the repository's fresh-process shard rationale
-  (`.github/workflows/test.yml:24-34`) without changing any assertion or model
-  behavior.
-- Reproduced 163 required release inputs / 7 reviewed exclusions / 41 reform
-  probes; 32 compiled parity targets / 52 reviewed exclusions; US spec SHA-256
-  `3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62`;
-  and 42,096/42,096 configuration fields plus 40/40 inventory checks.
-- Passed repository-wide Ruff and `git diff --check`; wrote the final handoff
-  to `FINAL_REPORT.md`.
+- Read `CLAUDE.md` and the GitNexus PR-review workflow.
+- Verified the worktree was clean and detached at `origin/main`
+  (`5abda6145b06d55b255db87ecead2438d5d8fde7`).
+- Attempted the requested `git fetch origin pull/743/head:pr-743`; recorded the
+  DNS failure without mutating any existing ref.
+- Verified the locally cached remote-tracking head for
+  `uk-national-first-calibrated-candidate-623` was fetched at 08:59 local time
+  today and points to `74b4d768f`; created local `pr-743` at that exact object,
+  checked it out, and immediately created the separate review branch.
+- Attempted `uv sync --all-packages --extra us` first with the default cache and
+  again with `UV_CACHE_DIR=/private/tmp/microcosm-review-743-uv-cache`; the
+  second attempt reached package acquisition before the host DNS restriction.
 
 ## Next
 
-The owner opens the PR. No push or additional build is required from this
-lane.
+- Inventory the exact PR diff against its GitHub base and read every changed
+  receipt, register, fixture, and executable path.
+- Audit evidence honesty, fail-closed behavior, one-target/logbook/staging
+  doctrine, and seed/identity re-pins.
+- Run the narrowest relevant tests available from a complete local environment
+  (or record precisely why a test cannot run), independently recompute receipt
+  claims, and write the code-cited verdict to `REVIEW-743.md`.
