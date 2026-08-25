@@ -390,42 +390,28 @@ def e6_identity_receipt(
     benunit = frame.table("benunit")
     household = frame.table("household").copy()
     household["household_weight"] = frame.weights_for("household").values
-    # Scope to the FRS spine rows: the SPI channel stages stack synthetic
-    # households AFTER the E6 stages ran (clones inherit their donors'
-    # consumption/services values), so the deterministic-layer identity
-    # claims apply to the population the consumption stages actually saw.
-    # The stacked rows are E7's receipt surface, not E6's. The
-    # spi_support_channel stage also scales the survey channel's weights by
-    # (1 - share) after the E6 stages ran; the NHS allocation's budget
-    # normalization is absolute, so restore the stage-time grossing scale
-    # from the declared share before recomputing.
-    if "household_is_spi_synthetic" in household.columns:
-        spine_mask = ~household["household_is_spi_synthetic"].astype(bool)
+    # Scope to the rows the E6 stages actually saw, and restore the grossing
+    # scale they saw them at. Every later stacking stage copies its source
+    # row's consumption/services values onto the new rows, so those rows are
+    # the later stage's receipt surface, not E6's; and every later stage that
+    # redistributes mass leaves these rows carrying a fraction of the weight
+    # E6 normalized against. Three layers stack today (SPI support channel,
+    # capital-gains clone, CGT band donors) and two of them move mass.
+    spine_mask = _unstacked_mask(household)
+    if spine_mask is not None:
         household = household.loc[spine_mask].reset_index(drop=True)
         spine_household_ids = set(household["household_id"].tolist())
         person = person.loc[
             person["person_household_id"].isin(spine_household_ids)
         ].reset_index(drop=True)
-        from importlib.resources import files as _files
-
-        spec = json.loads(
-            _files("microcosm.build.uk")
-            .joinpath("source_stages.json")
-            .read_text(encoding="utf-8")
+        applied = tuple(
+            stage
+            for flag, stage in _MASS_STAGE_BY_FLAG.items()
+            if flag in frame.table("household").columns
         )
-        channel = next(
-            (s for s in spec["stages"] if s["stage"] == "spi_support_channel"),
-            None,
-        )
-        if channel is not None:
-            share = next(
-                op["share"]
-                for op in channel["operations"]
-                if op["kind"] == "allocate_zero_weight_prior_mass"
-            )
-            household["household_weight"] = household["household_weight"].to_numpy(
-                dtype=float
-            ) / (1.0 - float(share))
+        household["household_weight"] = household["household_weight"].to_numpy(
+            dtype=float
+        ) / _stage_time_weight_divisor(after_stages=applied)
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
     permuted = recompute(
@@ -492,6 +478,164 @@ def e6_identity_receipt(
             "aggregate_admin NEED-margin receipt (raking inputs are "
             "consumed by the stage and not reconstructible from the "
             "artifact)"
+        ),
+    }
+
+
+def e7_identity_receipt(
+    frame,
+    *,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Receipt E7 deterministic layers under row permutation by entity id.
+
+    Covered: the support-channel labelling the SPI stack introduces — each
+    entity's channel and clone index, the composite source key, and the
+    propagation of a household's channel down to its persons and benefit
+    units. These are pure functions of the synthetic flag and the entity ids,
+    so they are bitwise both under permutation and against the store, and they
+    are the layer E7 actually contributes to the artifact.
+
+    Not covered here, and deliberately so:
+
+    * the stage-1/stage-2 QRF fits and the dividend redraw, which twin-build
+      determinism covers — the e6 and e8 precedent for QRF surfaces;
+    * the ``employer_pension_contributions = 3 * employee_pension_contributions``
+      derive, which is a genuine E7 deterministic layer but which E8's
+      salary_sacrifice rewrites in place afterwards. Measured on the E8
+      roster the relation survives on only 95.9% of survey-channel persons,
+      so the stage-time relation is not reconstructible from the final
+      artifact. That is the #721 rewrites-provenance class, not a defect, and
+      asserting it here would fail for the wrong reason.
+    """
+
+    def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+        household_out = pd.DataFrame(index=household_t["household_id"].to_numpy())
+        person_out = pd.DataFrame(index=person_t["person_id"].to_numpy())
+        benunit_out = pd.DataFrame(index=benunit_t["benunit_id"].to_numpy())
+
+        # An artifact without the synthetic flag carries no E7 layer, so
+        # there is nothing this receipt could certify about it. Returning an
+        # empty receipt here would report a vacuous pass — the mismatch loops
+        # never run over an empty recomputation — which is the one outcome a
+        # receipt must never produce. Refuse instead.
+        if "household_is_spi_synthetic" not in household_t.columns:
+            raise ValueError(
+                "e7 identity receipt: the artifact carries no "
+                "household_is_spi_synthetic column, so the E7 support-channel "
+                "layer is absent and there is nothing to receipt. Run the "
+                "check against an artifact built with the SPI channel, or "
+                "drop --check e7 for this artifact."
+            )
+        synthetic = household_t["household_is_spi_synthetic"].astype(bool).to_numpy()
+        channel = np.where(synthetic, "spi", "frs")
+        household_out["household_support_channel"] = channel
+        household_out["household_support_clone_index"] = np.where(synthetic, 1, 0)
+
+        missing_keys = {"source_year", "source_household_id"} - set(household_t.columns)
+        if missing_keys:
+            raise ValueError(
+                "e7 identity receipt: the artifact carries the synthetic flag "
+                f"but not {sorted(missing_keys)}; the source key cannot be "
+                "recomputed, and skipping it would silently shrink the "
+                "receipt's coverage."
+            )
+        household_out["source_household_key"] = [
+            f"{int(year)}:{int(source)}"
+            for year, source in zip(
+                household_t["source_year"].to_numpy(),
+                household_t["source_household_id"].to_numpy(),
+                strict=True,
+            )
+        ]
+
+        # The channel is a household property; persons and benefit units
+        # inherit it through membership, never redraw it.
+        by_household = pd.Series(channel, index=household_t["household_id"].to_numpy())
+        person_channel = (
+            person_t["person_household_id"].map(by_household).to_numpy(dtype=object)
+        )
+        person_out["person_support_channel"] = person_channel
+        by_benunit = pd.Series(
+            person_channel, index=person_t["person_benunit_id"].to_numpy()
+        )
+        by_benunit = by_benunit[~by_benunit.index.duplicated(keep="first")]
+        benunit_out["benunit_support_channel"] = (
+            benunit_t["benunit_id"].map(by_benunit).to_numpy(dtype=object)
+        )
+        return {
+            "household": household_out,
+            "person": person_out,
+            "benunit": benunit_out,
+        }
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+
+    original = recompute(person, benunit, household)
+    rng = np.random.default_rng(permutation_seed)
+    permuted = recompute(
+        person.iloc[rng.permutation(len(person))].reset_index(drop=True),
+        benunit.iloc[rng.permutation(len(benunit))].reset_index(drop=True),
+        household.iloc[rng.permutation(len(household))].reset_index(drop=True),
+    )
+
+    stored_tables = {
+        "person": person.set_index("person_id"),
+        "benunit": benunit.set_index("benunit_id"),
+        "household": household.set_index("household_id"),
+    }
+    mismatches: dict[str, list[str]] = {}
+    stored_mismatches: dict[str, list[str]] = {}
+    # Labels and integer indices: bitwise on both surfaces, no tolerance.
+    for entity, values in original.items():
+        for column in values.columns:
+            left = values[column]
+            right = permuted[entity][column].reindex(left.index)
+            if not np.array_equal(
+                left.to_numpy().astype(str), right.to_numpy().astype(str)
+            ):
+                mismatches.setdefault(entity, []).append(column)
+            stored_table = stored_tables[entity]
+            if column not in stored_table.columns:
+                # The store not carrying a column this receipt certifies is a
+                # failed comparison, not a narrower one.
+                stored_mismatches.setdefault(entity, []).append(column)
+            else:
+                kept = stored_table[column].reindex(left.index)
+                if not np.array_equal(
+                    left.to_numpy().astype(str), kept.to_numpy().astype(str)
+                ):
+                    stored_mismatches.setdefault(entity, []).append(column)
+    return {
+        "check": "uk_e7_identity_stability",
+        "permutation_seed": permutation_seed,
+        "columns_compared": {
+            entity: sorted(values.columns) for entity, values in original.items()
+        },
+        "identical_under_permutation": not mismatches,
+        "permutation_mismatches": mismatches,
+        "matches_stored_columns": not stored_mismatches,
+        "stored_column_mismatches": stored_mismatches,
+        "tolerance_policy": (
+            "bitwise on both surfaces: the support channel, clone index and "
+            "source key are labels and integer indices, so no float "
+            "tolerance applies"
+        ),
+        "columns_by_entity": {
+            entity: list(values.columns) for entity, values in original.items()
+        },
+        "qrf_draw_columns_scope": (
+            "excluded: the stage-1/stage-2 QRF fits and the dividend redraw "
+            "are covered by twin-build determinism (the e6 and e8 precedent)"
+        ),
+        "rewritten_layer_scope": (
+            "excluded: employer_pension_contributions = 3 x "
+            "employee_pension_contributions is an E7 derive, but E8 "
+            "salary_sacrifice rewrites the multiplicand in place afterwards, "
+            "so the stage-time relation is not reconstructible from the "
+            "final artifact (#721 rewrites-provenance class)"
         ),
     }
 
@@ -736,7 +880,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-h5", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--check", choices=("e4", "e5", "e6", "e8"), default="e4")
+    parser.add_argument("--check", choices=("e4", "e5", "e6", "e7", "e8"), default="e4")
     parser.add_argument("--permutation-seed", type=int, default=123)
     args = parser.parse_args()
 
@@ -765,7 +909,23 @@ def main() -> int:
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
         )
     elif args.check == "e5":
+        # E5's wealth stages ran before every stacking layer, and its regional
+        # property uprating scales to a per-region mean over the owner
+        # households in the frame — so a frame carrying stacked rows shifts
+        # the denominator and the recomputation stops matching what the stage
+        # stored. Scope to the population the stage saw.
         receipt = e5_identity_receipt(
+            _frs_only_frame(frame),
+            permutation_seed=args.permutation_seed,
+        )
+        ok = bool(
+            receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
+        )
+    elif args.check == "e7":
+        # E7's own layer is the support-channel stack, which is defined over
+        # the whole frame including the rows it stacks — so unlike e4/e5 this
+        # receipt deliberately does NOT scope to the unstacked rows.
+        receipt = e7_identity_receipt(
             frame,
             permutation_seed=args.permutation_seed,
         )
@@ -797,8 +957,96 @@ def main() -> int:
     return 0 if ok else 1
 
 
+#: Every flag that marks a row as stacked onto the survey channel rather than
+#: drawn from the raw FRS. A stage that stacks rows copies its source row's
+#: already-computed columns onto the new rows, so an identity-keyed
+#: recomputation for a stacked row's *own* id legitimately disagrees with what
+#: is stored there — that value was drawn for the source id, not this one.
+#: A new stacking stage MUST add its flag here, or these receipts silently
+#: start comparing inherited values against fresh draws and report a spine
+#: defect that is really an instrument defect.
+_STACKED_ROW_FLAGS = (
+    "household_is_spi_synthetic",  # #717 SPI support channel
+    "household_is_capital_gains_clone",  # E8 capital-gains incidence clone
+    "household_is_cgt_band_donor",  # E8 CGT band donors
+)
+
+#: The stage that stacks each flag, for artifacts that carry it. The weight
+#: restoration is driven by what the *artifact* actually contains rather than
+#: by the committed roster: a spine built before a stacking stage existed
+#: never had that stage's mass factor applied, and dividing it out anyway
+#: skews the comparison in the opposite direction.
+_MASS_STAGE_BY_FLAG = {
+    "household_is_spi_synthetic": "spi_support_channel",
+    "household_is_capital_gains_clone": "cgt_incidence_clone",
+}
+
+
+def _unstacked_mask(household: pd.DataFrame):
+    """Rows that were present when the pre-stacking stages ran, or None."""
+
+    flags = [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
+    if not flags:
+        return None
+    return ~household[flags].astype(bool).any(axis=1)
+
+
+def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
+    """Product of the declared mass factors applied after a receipted stage.
+
+    Scoping to the unstacked rows restores the stage's *population* but not
+    its *weights*: every later stage that redistributes household mass leaves
+    the surviving survey rows carrying a fraction of what the receipted stage
+    saw. A receipt whose recomputation normalizes against weights — the NHS
+    allocation's budget normalization is absolute, not relative — must divide
+    that back out or it compares against a different grossing scale.
+
+    On the E8 roster two stages do this: `spi_support_channel` reserves
+    ``share`` of prior mass for the synthetic channel, and
+    `cgt_incidence_clone` splits each household's weight across its copies by
+    ``mass_split``. Both factors are read from the declared operations rather
+    than hardcoded, so a change to either is picked up automatically; a *new*
+    mass-redistributing op kind still has to be added here.
+
+    ``after_stages`` names only the stages that actually ran in the artifact
+    under receipt — see ``_MASS_STAGE_BY_FLAG``. Deriving it from the
+    committed roster instead would divide out a factor that a spine built
+    before that stage never had applied, which is a regression the pre-E8
+    artifact catches immediately.
+    """
+
+    from importlib.resources import files as _files
+
+    spec = json.loads(
+        _files("microcosm.build.uk")
+        .joinpath("source_stages.json")
+        .read_text(encoding="utf-8")
+    )
+    wanted = set(after_stages)
+    divisor = 1.0
+    for stage in spec["stages"]:
+        if stage.get("stage") not in wanted:
+            continue
+        for operation in stage.get("operations", ()):
+            kind = operation.get("kind")
+            if kind == "allocate_zero_weight_prior_mass":
+                divisor *= 1.0 - float(operation["share"])
+            elif kind == "clone_records":
+                divisor *= float(operation["mass_split"])
+    if divisor <= 0.0:
+        raise ValueError(
+            "stage-time weight divisor collapsed to zero; the declared mass "
+            "factors are not usable for a grossing-scale restoration."
+        )
+    return divisor
+
+
 def _frs_only_frame(frame):
-    """Scope a post-#717 artifact to the survey channel (FRS rows only)."""
+    """Scope the artifact to the unstacked survey rows (raw FRS only).
+
+    On the E8 roster this leaves the 16,288 raw FRS households, which is the
+    population the pre-stacking stages actually drew for.
+    """
 
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
@@ -806,9 +1054,11 @@ def _frs_only_frame(frame):
     )
 
     household = frame.table("household")
-    if "household_is_spi_synthetic" not in household.columns:
+    flags = [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
+    if not flags:
         return frame
-    keep = ~household["household_is_spi_synthetic"].astype(bool)
+    stacked = household[flags].astype(bool).any(axis=1)
+    keep = ~stacked
     weights = frame.weights_for("household").values[keep.to_numpy()]
     household = household.loc[keep].reset_index(drop=True)
     ids = set(household["household_id"].tolist())

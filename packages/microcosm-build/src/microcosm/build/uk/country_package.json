@@ -138,6 +138,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ons_age_tail_band_populations.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "lcfs_consumption_support_bounds.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -169,6 +174,11 @@
     },
     {
       "path": "input_mass_reviewed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "spine_swap_signed_differences.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

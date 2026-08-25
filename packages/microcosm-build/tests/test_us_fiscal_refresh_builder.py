@@ -1,4 +1,3 @@
-import builtins
 import hashlib
 import importlib.util
 import inspect
@@ -1076,24 +1075,57 @@ def test_cd_vintage_support_provenance_requires_matching_h5_attrs(
     with pytest.raises(ValueError, match="crosswalk provenance mismatch"):
         builder._assert_cd_vintage_support_matches(h5_path, metadata)
 
-    monkeypatch.setattr(
-        builder,
-        "_read_cd_vintage_support_provenance",
-        lambda path: {
-            builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
-                "crosswalk-sha"
-            ),
-            builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
-                builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
-            ),
-            "household_congressional_district_geoid": {
-                "exists": True,
-                "positive_unique_count": 436,
-            },
-        },
-    )
 
+def test_cd_vintage_support_provenance_reads_fixed_household_frame(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    metadata = {"sha256": "crosswalk-sha"}
+
+    with pd.HDFStore(h5_path, mode="w") as store:
+        store.put(
+            "household",
+            pd.DataFrame({"congressional_district_geoid": [0, 101, 101, 202]}),
+            format="fixed",
+        )
+        assert store.get_storer("household").is_table is False
+        attrs = store.get_node("/")._v_attrs
+        attrs[builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = (
+            "crosswalk-sha"
+        )
+        attrs[builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+            builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+        )
+
+    original_hdf_store = builder.pd.HDFStore
+    opened_paths: list[Path] = []
+
+    def tracked_hdf_store(path, *args, **kwargs):
+        opened_paths.append(Path(path))
+        return original_hdf_store(path, *args, **kwargs)
+
+    monkeypatch.setattr(builder.pd, "HDFStore", tracked_hdf_store)
+    provenance = builder._read_cd_vintage_support_provenance(h5_path)
+
+    assert opened_paths == [h5_path]
+    assert provenance == {
+        builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: ("crosswalk-sha"),
+        builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+            builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+        ),
+        "household_congressional_district_geoid": {
+            "exists": True,
+            "table": "household",
+            "column": "congressional_district_geoid",
+            "rows": 4,
+            "positive_unique_count": 2,
+        },
+    }
     builder._assert_cd_vintage_support_matches(h5_path, metadata)
+    assert opened_paths == [h5_path, h5_path]
 
 
 def test_cd_vintage_support_provenance_rejects_missing_cd_lookup(
@@ -1136,20 +1168,17 @@ def test_cd_vintage_support_provenance_counts_only_positive_numeric_lookup() -> 
     )
 
 
-def test_cd_vintage_support_provenance_names_us_extra_when_h5py_missing(
+def test_cd_vintage_support_provenance_names_us_extra_when_pytables_missing(
     monkeypatch, tmp_path
 ) -> None:
     builder = _load_builder_module()
     h5_path = tmp_path / "support.h5"
     h5_path.write_text("")
-    original_import = builtins.__import__
 
-    def fake_import(name, *args, **kwargs):
-        if name == "h5py":
-            raise ModuleNotFoundError("No module named 'h5py'")
-        return original_import(name, *args, **kwargs)
+    def missing_hdf_store(*args, **kwargs):
+        raise ImportError("Missing optional dependency 'tables'.")
 
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(builder.pd, "HDFStore", missing_hdf_store)
 
     with pytest.raises(RuntimeError) as excinfo:
         builder._read_cd_vintage_support_provenance(h5_path)

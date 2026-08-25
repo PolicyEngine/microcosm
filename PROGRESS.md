@@ -1,56 +1,63 @@
-# Progress: PolicyEngine-US 1.819.0 lock bump
+# Progress: stacked-pool to release CD-vintage provenance
 
 ## State
 
-Complete and ready for the owner to open the PR. The lock resolves
-`policyengine-us==1.819.0` and `policyengine-core==3.31.0`; all required
-compatibility repairs, generated contracts, attested identities, package test
-shards, generator checks, and Ruff are green. The code-cited mechanism audit,
-identity inventory, compatibility note, and validation receipts are in
-`_LANE-NOTES.md`.
+Implementation and validation are complete. The stacked
+producer now authenticates and applies household geography after source
+assembly, carries its authority through checkpoint and publication identities,
+publishes verified CD-vintage H5 attributes, and reaches the unchanged release
+guard through the shared fixed/table-aware reader
+(`tools/build_us_multispine_pool.py:814-928,1300-1469,1857-1930,5290-5334`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:1032-1193,1463-1699`;
+`tools/build_us_fiscal_refresh_release.py:2565-2677`).
 
-No pool-consumed variable was removed without a verified successor, so no
-owner question is pending. No pool/release build, push, gate change, threshold
-change, tolerance change, or band change occurred.
+No pool/release build, push, guard weakening, operator-boundary weakening, or
+`logbook-pending-chain.txt` access has occurred.
 
 ## Done
 
-- Started and committed this standing progress log at `514964d4` after
-  rebasing the lane start onto current `origin/main`.
-- Ran the ordered initial sync attempt, documented the sandbox cache/network
-  limits, and completed the unchanged-lock and upgraded-lock all-package US
-  syncs from exact official artifacts in a task-local cache.
-- Ran `uv lock --upgrade-package policyengine-us`. The complete version
-  movement is exactly `policyengine-core 3.26.11 -> 3.31.0` and
-  `policyengine-us 1.764.6 -> 1.819.0`; NumPy 2.4.6 and Torch 2.12.0 did not
-  move.
-- Verified upstream variable reality in the installed PE-US 1.819.0 package,
-  adapted Microcosm's input ownership and consumer guards, and retained
-  fail-closed certified-dataset version checks. Each mechanism is cited in
-  `_LANE-NOTES.md` under “verified upstream compatibility repairs.”
-- Regenerated the release-input, parity, source/take-up, engine-ABI, spec,
-  seed, coverage, and golden identities with repository tools. The final
-  46-value inventory is in `_LANE-NOTES.md`; the final commit body carries the
-  exhaustive old-to-new mapping.
-- Added the requested owner-facing PE-US 1.764.6-to-1.819.0 compatibility note
-  from the installed release changelog, including major SNAP, receipt,
-  OBBBA-follow-through, cash/health/housing, tax, and new-program changes.
-- Passed every package test: 7,213 passed / 77 skipped / 0 failed. Calibrate,
-  data, fit, and frame ran as individual package shards. The build inventory
-  was proven as a complete disjoint 4,161-item + 2,180-item partition after
-  the otherwise-green single process retained more than the binding memory
-  ceiling; accepted peaks were 12,596,384 and 13,363,984 KiB, both below 15
-  GiB. This uses the repository's fresh-process shard rationale
-  (`.github/workflows/test.yml:24-34`) without changing any assertion or model
-  behavior.
-- Reproduced 163 required release inputs / 7 reviewed exclusions / 41 reform
-  probes; 32 compiled parity targets / 52 reviewed exclusions; US spec SHA-256
-  `3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62`;
-  and 42,096/42,096 configuration fields plus 40/40 inventory checks.
-- Passed repository-wide Ruff and `git diff --check`; wrote the final handoff
-  to `FINAL_REPORT.md`.
+- Reconciled the worktree with salvage commit `ca26ea21`: its tracked tree was
+  already exactly present, so the best salvage was retained and audited rather
+  than reimplemented.
+- Completed the required all-package US environment sync from the exact lock
+  using the writable offline uv cache after the managed sandbox refused the
+  default cache.
+- Added the two required pinned geography authority pairs, the ledgered seeded
+  PUMA-overlap assignment, schema-12 checkpoint identity, assignment receipts,
+  schema-9 terminal manifest validation, and schema-3 H5 materializer binding.
+- Added atomic nullable-H5 root-attribute write/verification and authenticated
+  manifest-to-H5 geography/clone-lineage validation.
+- Made release preflight read root attributes and fixed household frames in one
+  `HDFStore` handle while retaining all existing SHA, target-vintage, and
+  positive-support checks.
+- Added a real tiny stacked-pool publication to release-preflight integration
+  test plus negative attr, digest, missing-lineage, and divergent-clone tests
+  (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:2279-2335`;
+  `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1357-1440`).
+- Regenerated and checked the US anti-rot chain: spec SHA
+  `5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e`,
+  42,120/42,120 configuration fields, 49 claims, and 41/41 inventory checks.
+- Passed the complete accepted workspace suite: 7,241 passed, 77 skipped, and
+  0 failed. The two memory-bounded build partitions were 4,155 passed / 36
+  skipped and 2,177 passed / 3 skipped; calibrate, data, fit, and frame account
+  for the remaining 909 passed / 38 skipped.
+- Passed repository-wide Ruff, bundle freshness, coverage freshness, smoke
+  script syntax, and `git diff --check`.
+- Recorded the exact candidate Stage-1 path/SHA additions and the checkpoint
+  invalidation verdict in `_LANE-NOTES.md` and `FINAL_REPORT.md`.
 
 ## Next
 
-The owner opens the PR. No push or additional build is required from this
-lane.
+1. Candidate Stage 1 adds both authenticated geography authority pairs and
+   rebuilds under checkpoint materializer 12.
+2. Candidate Stage 2 consumes the new schema-9 manifest/materializer-3 H5 and
+   passes the unchanged release preflight.
+3. Do not reuse pre-fix Stage-1 checkpoints or pool publications; immutable
+   source artifacts remain reusable.
+
+## Historical prior lane
+
+The PolicyEngine-US 1.819.0 lock-bump journal previously in this file is
+historical: that lane merged into `origin/main` at `7b90bb18` on 2026-08-24.
+Its final state remains available at commit `05d254aa` and its detailed
+receipts remain in the historical section of `_LANE-NOTES.md`.

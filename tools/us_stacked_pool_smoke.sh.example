@@ -16,6 +16,10 @@ set -euo pipefail
 : "${PUF_SHA:?}"
 : "${PUF_CSV:?}"
 : "${PUF_CSV_SHA:?}"
+: "${PUMA_LADDER:?}"
+: "${PUMA_LADDER_SHA:?}"
+: "${CD_CROSSWALK:?}"
+: "${CD_CROSSWALK_SHA:?}"
 : "${OUT:?}"
 
 env \
@@ -37,4 +41,8 @@ env \
   --puf-h5-sha256 "${PUF_SHA}" \
   --puf-source-year-csv "${PUF_CSV}" \
   --puf-source-year-csv-sha256 "${PUF_CSV_SHA}" \
+  --puma-ladder "${PUMA_LADDER}" \
+  --puma-ladder-sha256 "${PUMA_LADDER_SHA}" \
+  --congressional-district-vintage-crosswalk "${CD_CROSSWALK}" \
+  --congressional-district-vintage-crosswalk-sha256 "${CD_CROSSWALK_SHA}" \
   --out "${OUT}"

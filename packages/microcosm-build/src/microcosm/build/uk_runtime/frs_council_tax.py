@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     WEEKS_IN_YEAR,
     normalize_ids,
     read_pinned_tab,
+    scottish_water_and_sewerage_weekly,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -79,15 +80,13 @@ def derive_council_tax(
     gvtregno = pd.to_numeric(aligned["gvtregno"], errors="coerce")
     ctband = pd.to_numeric(aligned["ctband"], errors="coerce")
     single_adult = pd.to_numeric(aligned["adulth"], errors="coerce") == 1
+    # Netted with the same helper the spine's water_and_sewerage_charges uses,
+    # so the amount removed from the council tax bill is exactly the amount
+    # charged as water and sewerage. See its docstring for the FRS 2024-25
+    # cell retirement (CWATAMT/CSEWAMT are empty in this vintage).
     scottish_water = np.where(
         gvtregno == SCOTLAND_GVTREGNO,
-        (
-            np.maximum(pd.to_numeric(aligned["csewamt"], errors="coerce").fillna(0), 0)
-            + np.maximum(
-                pd.to_numeric(aligned["cwatamtd"], errors="coerce").fillna(0), 0
-            )
-        )
-        * WEEKS_IN_YEAR,
+        scottish_water_and_sewerage_weekly(aligned) * WEEKS_IN_YEAR,
         0.0,
     )
     tax_only = pd.Series(np.maximum(ctannual - scottish_water, 0), index=aligned.index)

@@ -296,7 +296,7 @@ def test_constant_derived_domain_counts_are_complete(
     selection = _domain(resolved_us_spec, ResourceKind.SELECTION)
     catalogs = _domain(resolved_us_spec, ResourceKind.CATALOGS)
 
-    assert len(sources["sources"]) == 7
+    assert len(sources["sources"]) == 8
     assert len(sources["stages"]) == 37
 
     families = imputation["families"]
@@ -934,8 +934,17 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     )
     assert geography["phase"] == "legacy"
     assert geography["assignment"]["anchor"] == "puma"
-    assert geography["assignment"]["order"] == "legacy_post_transfer"
+    assert geography["assignment"]["order"] == "before_gap_fill"
     assert geography["assignment"]["assign_tract"] is False
+    assert geography["assignment"][
+        "congressional_district_vintage_crosswalk"
+    ] == {
+        "source_ref": (
+            "source:us_congressional_district_vintage_crosswalk_117_to_119"
+        ),
+        "source_vintage": "vintage:cd_117",
+        "target_vintage": "vintage:cd_119",
+    }
 
     engine_pins = [
         record

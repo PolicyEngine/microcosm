@@ -15,11 +15,14 @@ import math
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+import pandas as pd
+
 from microcosm.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
 )
+from microcosm.frame import read_frame_table
 
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 TARGET_MATERIALIZATION_CACHE_DIRNAME = "target_materialization_cache"
@@ -156,11 +159,11 @@ def read_h5_provenance(path: Path) -> Mapping[str, object]:
                     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
                 ),
             }
-            cd_lookup = _h5_table_column_status(
-                h5,
-                table="household",
-                column="congressional_district_geoid",
-            )
+        cd_lookup = _hdf_frame_column_status(
+            path,
+            table="household",
+            column="congressional_district_geoid",
+        )
     except OSError as exc:
         return {
             "readable": False,
@@ -438,19 +441,23 @@ def _h5_attr_text(attrs: Mapping[str, object], key: str) -> str | None:
     return str(value)
 
 
-def _h5_table_column_status(h5, *, table: str, column: str) -> dict[str, object]:
-    table_path = f"{table}/table"
-    if table_path not in h5:
+def _hdf_frame_column_status(
+    h5_path: Path,
+    *,
+    table: str,
+    column: str,
+) -> dict[str, object]:
+    try:
+        with pd.HDFStore(h5_path, mode="r") as store:
+            frame_table = read_frame_table(store, table)
+    except KeyError:
         return {"exists": False, "table": table, "column": column}
-    dataset = h5[table_path]
-    names = getattr(dataset.dtype, "names", None) or ()
-    if column not in names:
+    if column not in frame_table.columns:
         return {"exists": False, "table": table, "column": column}
-    values = dataset[column][:]
-    positive_unique_count = 0
-    if values.size:
-        positive = [value for value in values if _is_positive_number(value)]
-        positive_unique_count = len(set(positive))
+    values = frame_table[column].to_numpy(copy=False)
+    positive_unique_count = len(
+        {float(value) for value in values.ravel() if _is_positive_number(value)}
+    )
     return {
         "exists": True,
         "table": table,

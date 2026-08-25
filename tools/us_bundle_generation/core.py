@@ -54,6 +54,12 @@ __all__ = [
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _CANONICAL_INPUT_PIN_BUILD_ID = "populace-us-2024-pool-inc2-run7"
+_CD_CROSSWALK_PACKAGE = "microcosm.build.us_runtime.data"
+_CD_CROSSWALK_RESOURCE = "congressional_district_vintage_crosswalk.csv"
+_CD_CROSSWALK_PROVENANCE_RESOURCE = f"{_CD_CROSSWALK_RESOURCE}.provenance.json"
+_CD_CROSSWALK_SOURCE_ID = (
+    "us_congressional_district_vintage_crosswalk_117_to_119"
+)
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED_INPUT_ROLES = frozenset(
     {
@@ -235,6 +241,50 @@ def _puma_provenance() -> dict[str, Any]:
     return payload
 
 
+def _congressional_district_vintage_crosswalk_provenance() -> dict[str, Any]:
+    """Verify and return the packaged 117th-to-119th CD authority receipt."""
+
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+        load_default_congressional_district_vintage_crosswalk,
+    )
+
+    payload = _json_package_resource(
+        _CD_CROSSWALK_PACKAGE,
+        _CD_CROSSWALK_PROVENANCE_RESOURCE,
+    )
+    expected_digest = payload.get("crosswalk_sha256")
+    if not isinstance(expected_digest, str) or not _SHA256.fullmatch(
+        expected_digest
+    ):
+        raise ValueError("US CD-vintage crosswalk has no valid crosswalk_sha256.")
+    raw = (
+        importlib_resources.files(_CD_CROSSWALK_PACKAGE)
+        .joinpath(_CD_CROSSWALK_RESOURCE)
+        .read_bytes()
+    )
+    actual_digest = hashlib.sha256(raw).hexdigest()
+    if actual_digest != expected_digest:
+        raise ValueError(
+            "US CD-vintage crosswalk differs from its packaged provenance: "
+            f"expected={expected_digest}, actual={actual_digest}."
+        )
+    if payload.get("source_geography_vintage") != "117th_congress":
+        raise ValueError("US CD-vintage crosswalk source must be 117th_congress.")
+    if payload.get("target_geography_vintage") != (
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+    ):
+        raise ValueError(
+            "US CD-vintage crosswalk target differs from the runtime current "
+            "congressional-district vintage."
+        )
+
+    # This validates the supported assignment input's columns, district rosters,
+    # weights, and population-conservation contract in addition to its byte pin.
+    load_default_congressional_district_vintage_crosswalk()
+    return {**payload, "byte_size": len(raw)}
+
+
 def canonical_input_pins() -> dict[str, dict[str, int | str]]:
     """Return the six immutable file identities used by the canonical stack.
 
@@ -414,6 +464,24 @@ def build_sources() -> dict[str, Any]:
             ],
         }
     )
+    crosswalk = _congressional_district_vintage_crosswalk_provenance()
+    rows.append(
+        {
+            "id": _CD_CROSSWALK_SOURCE_ID,
+            "role": "congressional_district_vintage_crosswalk",
+            "sha256": crosswalk["crosswalk_sha256"],
+            "byte_size": crosswalk["byte_size"],
+            "loader": "kernel:load_congressional_district_vintage_crosswalk",
+            "vintages": ["vintage:cd_117", "vintage:cd_119"],
+            "vintage_authorities": [
+                {
+                    "id": "cd_117",
+                    "kind": "geography_vintage",
+                    "value": crosswalk["source_geography_vintage"],
+                }
+            ],
+        }
+    )
     stage_manifest = _source_stage_compatibility()
     stages = stage_manifest.get("stages")
     if not isinstance(stages, list):
@@ -568,6 +636,7 @@ def build_geography() -> dict[str, Any]:
     from microcosm.build.us_runtime.puma_ladder import assign_us_puma_ladder
 
     puma = _puma_provenance()
+    crosswalk = _congressional_district_vintage_crosswalk_provenance()
     layer_vintages = puma.get("layer_vintages")
     if not isinstance(layer_vintages, Mapping):
         raise ValueError("US PUMA provenance has no layer_vintages object.")
@@ -576,6 +645,7 @@ def build_geography() -> dict[str, Any]:
     ):
         raise ValueError("US PUMA and runtime congressional-district vintages differ.")
     vintage_ref_by_value = {
+        "117th_congress": "vintage:cd_117",
         "119th_congress": "vintage:cd_119",
         "2020_census": "vintage:census_2020",
         "2020_puma": "vintage:puma_2020",
@@ -596,7 +666,7 @@ def build_geography() -> dict[str, Any]:
         "phase": "legacy",
         "assignment": {
             "anchor": "puma",
-            "order": "legacy_post_transfer",
+            "order": "before_gap_fill",
             "kernels": {
                 "assign": "kernel:assign_us_puma_ladder",
                 "validate": "kernel:us_puma_ladder_gate",
@@ -621,6 +691,15 @@ def build_geography() -> dict[str, Any]:
                 "geography_state_prefix_consistent",
             ],
             "ladder_source": "source:us_puma_ladder_2020",
+            "congressional_district_vintage_crosswalk": {
+                "source_ref": f"source:{_CD_CROSSWALK_SOURCE_ID}",
+                "source_vintage": vintage_ref_by_value[
+                    str(crosswalk["source_geography_vintage"])
+                ],
+                "target_vintage": vintage_ref_by_value[
+                    str(crosswalk["target_geography_vintage"])
+                ],
+            },
             "seed": "stream:geography_legacy",
             "default_seed": default_seed,
             "assign_tract": False,
@@ -759,6 +838,17 @@ def build_vintages() -> dict[str, Any]:
             },
         },
         {
+            "id": "cd_117",
+            "kind": "geography_vintage_ref",
+            "authority_ref": {
+                "kind": "source_record",
+                "source": (
+                    "source:us_congressional_district_vintage_crosswalk_117_to_119"
+                ),
+                "authority": "cd_117",
+            },
+        },
+        {
             "id": "cd_119",
             "kind": "geography_vintage_ref",
             "authority_ref": {
@@ -860,7 +950,8 @@ def build_vintages() -> dict[str, Any]:
         "asec_2022": {"target_2024"},
         "asec_2023": {"asec_2024", "target_2024"},
         "asec_2024": {"asec_2023", "target_2024"},
-        "cd_119": {"census_2020", "puma_2020"},
+        "cd_117": {"cd_119"},
+        "cd_119": {"cd_117", "census_2020", "puma_2020"},
         "census_2020": {"cd_119", "puma_2020"},
         "org_2024": {"target_2024"},
         "policyengine_us_surface": {"target_2024"},

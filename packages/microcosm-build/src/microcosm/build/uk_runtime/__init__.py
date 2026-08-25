@@ -1,5 +1,14 @@
 """UK build helpers for Microcosm-owned local-geography artifacts."""
 
+from microcosm.build.uk_runtime.age_tail import (
+    UK_AGE_TAIL_BAND_POPULATIONS_RESOURCE,
+    UK_AGE_TAIL_BANDS,
+    UK_AGE_TAIL_DECLARED_SEEDS,
+    UK_AGE_TOP_CODE,
+    UKAgeTailStageTransform,
+    disaggregate_uk_age_top_code,
+    load_uk_age_tail_band_populations,
+)
 from microcosm.build.uk_runtime.battery_bindings import (
     UK_GATE_REGISTRY,
     UKGateBinding,
@@ -487,6 +496,13 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 )
 
 __all__ = [
+    "UK_AGE_TAIL_BANDS",
+    "UK_AGE_TAIL_BAND_POPULATIONS_RESOURCE",
+    "UK_AGE_TAIL_DECLARED_SEEDS",
+    "UK_AGE_TOP_CODE",
+    "UKAgeTailStageTransform",
+    "disaggregate_uk_age_top_code",
+    "load_uk_age_tail_band_populations",
     "ARTIFACT_CLONE_INDEX_COLUMN",
     "UKGateBinding",
     "UKRowwiseDoctrineSolve",

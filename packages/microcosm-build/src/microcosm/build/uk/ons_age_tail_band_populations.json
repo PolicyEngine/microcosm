@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "description": "ONS mid-year population estimates for the 80+ age bands, split by sex, used by the age_tail stage to disaggregate the FRS age top-code. These are the same facts the calibration register binds as its ons.population.{sex}_{band} targets, recorded here so the imputation source and the target denominators share one source of truth; the values were read from the compiled national register at calibration year 2025 and the target_id recorded on each cell is the drift check.",
+  "source": "Office for National Statistics, mid-year population estimates, via the chronicle ledger facts compiled into the UK national calibration register (target family ons_population).",
+  "bands": {
+    "MALE": {
+      "80_84": {"population": 815910.0, "target_id": "ons.population.male_80_84"},
+      "85_89": {"population": 459511.0, "target_id": "ons.population.male_85_89"},
+      "90_plus": {"population": 210520.0, "target_id": "ons.population.male_90_plus"}
+    },
+    "FEMALE": {
+      "80_84": {"population": 1024480.0, "target_id": "ons.population.female_80_84"},
+      "85_89": {"population": 665267.0, "target_id": "ons.population.female_85_89"},
+      "90_plus": {"population": 414716.0, "target_id": "ons.population.female_90_plus"}
+    }
+  }
+}

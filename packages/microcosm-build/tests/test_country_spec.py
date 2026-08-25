@@ -271,6 +271,10 @@ class TestCountryStagePlan:
 
 class TestUKCountryPackage:
     def test_spi_spine_adds_no_country_package_resources(self) -> None:
+        # The name records the #717 question this was written to answer; what
+        # it does now is pin the whole legacy-JSON resource list, so any
+        # increment that ships a new country-package resource lands here.
+        # spine_swap_signed_differences.json is #686's deliberate addition.
         spec = load_country_spec("uk")
 
         legacy_rows = tuple(
@@ -298,6 +302,7 @@ class TestUKCountryPackage:
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "nhs_consumption_by_age_gender.json",
+            "ons_age_tail_band_populations.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -305,6 +310,7 @@ class TestUKCountryPackage:
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
+            "spine_swap_signed_differences.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
@@ -319,11 +325,13 @@ class TestUKCountryPackage:
             "target_reference_membership.json",
         )
 
-    def test_uk_source_manifest_loads_twenty_six_stages(self) -> None:
+    def test_uk_source_manifest_loads_twenty_seven_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        assert len(spec.sources.stages) == 26
+        # 24 spine stages (age_tail is the newest, #747) plus the two
+        # certified-pair stages the June path still uses.
+        assert len(spec.sources.stages) == 27
 
 
 class TestExistingPackagesGeneralize:
@@ -370,6 +378,7 @@ class TestExistingPackagesGeneralize:
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "nhs_consumption_by_age_gender.json",
+            "ons_age_tail_band_populations.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -377,6 +386,7 @@ class TestExistingPackagesGeneralize:
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
+            "spine_swap_signed_differences.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
@@ -395,7 +405,7 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 397
+        assert len(references) == 408
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "calendar_year_average"

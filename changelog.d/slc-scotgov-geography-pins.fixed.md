@@ -1,0 +1,1 @@
+Pin the England-scoped SLC borrower and student-support targets and the Scottish Government child-payment target to their publication geographies, and treat ay-prefixed academic-year record-set tokens as period-bearing so multi-year SLC series resolve to the latest fact at or before the target period.

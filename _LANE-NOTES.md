@@ -1,4 +1,44 @@
-# PolicyEngine-US 1.819.0 lock-bump lane notes
+# Stacked-pool to release CD-vintage provenance lane notes
+
+## 2026-08-24 — lane start and environment
+
+- Branch `pool-cd-vintage-provenance` starts at `origin/main` commit
+  `7b90bb18`. This lane is limited to the authenticated producer/consumer
+  contract described in the candidate-chain defect report: post-assembly
+  household-CD assignment, checkpoint/manifest provenance, atomic nullable-H5
+  attributes, format-aware release preflight, and a real tiny integration
+  test (`tools/build_us_multispine_pool.py:441-577,3477-3786`;
+  `tools/build_us_fiscal_refresh_release.py:2565-2661`).
+- The ordered first `uv sync --all-packages --extra us` could not initialize
+  the sandbox-inaccessible user cache. A writable-cache retry reached the
+  locked Jinja2 URL but DNS is disabled. The exact recovery cloned the
+  completed Python 3.14 environment from the merged PolicyEngine-US 1.819.0
+  bump lane copy-on-write, then completed
+  `UV_CACHE_DIR=/private/tmp/microcosm-scorecard-uv.0rntvY/cache uv sync
+  --offline --all-packages --extra us`. uv rebuilt all five workspace wheels
+  and replaced their sibling-worktree editable origins with this worktree.
+- The GitNexus debugging skill applies to this cross-surface defect. No
+  GitNexus query, context, graph, or resource tools are exposed in this
+  session, so the fallback is direct source tracing, repository generators,
+  and focused plus suite-wide tests.
+- The producer must assign after the source boundary checks: preassembled
+  `congressional_district_geoid` is an operator output and is rejected
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-353,372-406`;
+  `tools/build_us_multispine_pool.py:4566-4584`). The release check remains
+  unconditional and must continue to require matching crosswalk SHA, target
+  vintage, and positive household support
+  (`tools/build_us_fiscal_refresh_release.py:2565-2613,8571-8590`).
+- No build, release, push, release-guard weakening, operator-boundary
+  weakening, or `logbook-pending-chain.txt` access occurred at lane start.
+- The pre-change suite is green. Fresh-process receipts are: calibrate 203
+  passed; data 318 passed / 2 skipped; fit 93 passed; frame 295 passed / 36
+  skipped; build partition excluding `test_us_[n-z]*.py` 4,127 passed / 36
+  skipped; complementary build partition 2,177 passed / 3 skipped. Combined:
+  7,213 passed / 77 skipped / 0 failed. The build split follows the CI
+  fresh-process rationale (`.github/workflows/test.yml:24-34`) and the same
+  previously accepted local partition; no assertion or behavior changed.
+
+# Historical lane notes: PolicyEngine-US 1.819.0 lock bump
 
 ## 2026-08-23 — lane start and unchanged-lock environment
 
@@ -857,3 +897,209 @@ decides whether the dense and sparse evidence justifies the flip.
 - Validation: six new identity/signature/parser tests pass; the standard
   10-file affected suite completed to 100% with exit 0; Ruff and
   `git diff --check` pass. No build ran.
+
+## 2026-08-24 — stacked-pool CD-vintage provenance contract complete
+
+### Recovery and environment
+
+- The live worktree's tracked tree exactly matched salvage commit `ca26ea21`,
+  so the salvaged implementation was retained and audited rather than
+  restarted. `PROGRESS.md` and this root journal were already committed at lane
+  start in `5925f808`.
+- The required lock-exact environment command completed offline after the
+  sandbox rejected the default uv cache:
+
+  ```bash
+  UV_CACHE_DIR=/private/tmp/microcosm-scorecard-uv.0rntvY/cache \
+    uv sync --offline --all-packages --extra us
+  ```
+
+  It checked all 100 locked packages. Test execution used
+  `uv run python -m pytest` so imports resolve to this worktree.
+
+### Five-part repair
+
+1. The stacked CLI now requires a national PUMA ladder and the canonical
+   117th-to-119th congressional-district crosswalk as explicit path/SHA pairs.
+   Missing arguments, noncanonical declared pins, or mismatching bytes fail
+   before any source build
+   (`tools/build_us_multispine_pool.py:563-594,897-1004`). The real assignment
+   runs only after operator-free source validation and stack assembly, then
+   before gap fill and clone operators
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-406`;
+   `tools/build_us_multispine_pool.py:5290-5334`).
+
+2. Configured and checkpoint identities bind both byte authorities, the
+   117th-to-119th vintage declaration, algorithm
+   `assign_us_puma_ladder.population_weighted_overlap.v1`, assignment order,
+   seed site `legacy_puma_ladder`, stream `geography_legacy`, and value `0`.
+   The ordered native-household assignment receipt persists through every
+   resumable stage and the schema-9 terminal manifest
+   (`tools/build_us_multispine_pool.py:814-928,1300-1469,1711-1930,3530-3635,3989-4027,4133-4215`).
+
+3. Nullable H5 publication now accepts caller-owned root attributes, validates
+   their names/values, writes them with the fixed entity tables in a temporary
+   sibling, verifies their exact round trip, and replaces the destination only
+   after successful verification. The stacked publisher writes the crosswalk
+   SHA and `119th_congress`
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:1463-1699`;
+   `tools/build_us_multispine_pool.py:4423-4519`). Schema-9 loading binds the
+   manifest receipt to those physical attrs and recomputes native household ID
+   and geography digests. It requires integral source/clone roles, exactly one
+   native per source, positive integral CD values, and coherent PUMA/CD/county
+   geography across clone roles
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:671-923,1032-1193,1321-1364`).
+
+4. Release preflight reads root attrs and the household frame within one
+   HDFStore and delegates fixed/table representation handling to the shared
+   reader. The guard's SHA equality, current-vintage equality, and positive-
+   household-support checks remain intact
+   (`tools/build_us_fiscal_refresh_release.py:2565-2677,8608-8612`).
+
+5. The integration test calls the real stacked entry point with tiny
+   fixture/stub sources, executes the real post-assembly geography assignment
+   and publisher, proves fixed household storage and both H5 attrs, then calls
+   the real release assertion and observes positive district support
+   (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:2279-2335`).
+   H5 consumer tests additionally reject attr drift, native-geography digest
+   drift, missing clone lineage, and divergent clone geography; writer tests
+   cover atomic attr round trip and pre-replacement failure
+   (`packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1357-1440`;
+   `packages/microcosm-build/tests/test_us_acs_multispine_base_builder.py:96-197`;
+   `packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:1061-1184`).
+
+### Assignment decision
+
+A one-value deterministic PUMA-to-CD allocation is not defensible: 2020 PUMAs
+and congressional districts do not nest, while the authority contains the
+block-population overlap distribution. Selecting only the largest overlap
+would erase supported within-PUMA geography. The existing ladder instead
+preserves observed ACS PUMA, assigns missing ASEC PUMA proportional to 2020
+PUMA population, and samples CD/county within PUMA proportional to block
+population. Its stable state/PUMA order and single generator make output
+reproducible from the bound seed
+(`packages/microcosm-build/src/microcosm/build/us_runtime/puma_ladder.py:1-20,293-383,638-698`).
+The seed ledger owns `legacy_puma_ladder` on `geography_legacy`, default `0`,
+and the generated spine declaration carries the same draw contract
+(`packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:870-887`;
+`packages/microcosm-build/src/microcosm/build/us/spec/spine.yaml:421-432`).
+
+### Anti-rot and identity receipts
+
+- Canonical US spec SHA:
+  `3189d90dec95c8ea7090e41b5283fa52b1e6855bed4a776dfa02820f2bd11c62`
+  to `5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e`.
+- Field-pointer inventory SHA:
+  `6d7353c6c42a6e1dbc6e3a227848e36864526fdc9533d5b284aa469c87dc064f`
+  to `bc4a948ab632191954600da8474c5b011f977a65e24c399d126f3dc4a79f23e5`.
+- Full checkpoint SHA:
+  `b6a47fac54d7de7aa42ce59dc1950c0765b7a67034f0174ad1531d5bbb06ceef`
+  to `a128a85f877fb32def9382b841b8b340f974e8a9148ac029c1f04becdc956c18`.
+- Pool-code diagnostic SHA:
+  `044d8a45c4fe42eec9f72f9bedbf403536b9734cf74d8d65b72caf3c6c1d60b7`
+  to `91c65a9ff36839d575036264c4bf57ffde6457e8fd180a0856f9be712ada371d`.
+- New geography-assignment SHA:
+  `f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585`.
+- Stacked checkpoint materializer moved 11 to 12, terminal manifest schema 8
+  to 9, nullable H5 materializer 2 to 3, and geography receipt absent to
+  schema 1. Pool-stage materializer 7, stacked authority 11, and late-registry
+  schema 16 did not move; their documentation changes only correct stale prose
+  (`tools/build_us_multispine_pool.py:332-360`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:75-105`;
+  `docs/us-multispine-operator-ordering.md:1-120`).
+
+The generated field ledger moved authored fields 32,331 to 32,351, resolved
+bindings 9,765 to 9,769, configuration/consumed fields 42,096 to 42,120, and
+claims 47 to 49. Compiler-semantic/front-end-validation/identity-only/legacy
+modes moved 27,688/346/128/13,934 to 27,699/348/103/13,970; unused and
+multiply-primary-used remain zero. Source records moved 7 to 8, vintage records
+15 to 16, resolved references 325 to 334, full/static checkpoint components
+12/9 to 13/10, and inventory checks 40 to 41
+(`packages/microcosm-build/src/microcosm/build/spec_engine/field_usage.py:29-31,387-393,671-692,803-822`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/inventory_coverage.py:348-380,417-453,1649-1712`;
+`docs/evidence/spec-engine/us-f0-coverage.json:1-15,775-788,1860-2060,2602-2612`).
+
+Both generated freshness checks pass byte-for-byte:
+
+```text
+US bundle spec_sha256=5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e
+spec-engine coverage: 42120/42120 configuration fields; 41/41 inventory checks
+```
+
+The new declarations and schema rules are generated in
+`us/spec/{geography,sources,vintages,spine}.yaml`; the field-usage ledger and
+inventory exact item are their fail-closed consumers
+(`packages/microcosm-build/src/microcosm/build/us/spec/geography.yaml:3-37`;
+`packages/microcosm-build/src/microcosm/build/us/spec/sources.yaml:69-86`;
+`packages/microcosm-build/src/microcosm/build/us/spec/vintages.yaml:45-53`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/schema/geography.schema.json:108-150`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/inventory_coverage.py:1649-1712`).
+
+### Validation and operational discipline
+
+- `microcosm-calibrate`: 203 passed.
+- `microcosm-data`: 318 passed / 2 skipped.
+- `microcosm-fit`: 93 passed.
+- `microcosm-frame`: 295 passed / 36 skipped.
+- `microcosm-build` partition A: 4,155 passed / 36 skipped.
+- `microcosm-build` partition B: 2,177 passed / 3 skipped.
+- Accepted total: **7,241 passed / 77 skipped / 0 failed**.
+- Repository-wide Ruff, both generator freshness checks, smoke-script shell
+  syntax, and `git diff --check` pass. The source-blind import-graph pin covers
+  the exact 69 runtime modules now reached
+  (`packages/microcosm-build/tests/test_us_spine_blindness.py:3270-3315`).
+
+No production pool or release build was required: integration evidence is
+fixture-sized. No push occurred, the release guard/operator boundary were not
+weakened, and `logbook-pending-chain.txt` was not touched.
+
+## Final candidate Stage-1 flags
+
+Keep the current six authenticated source pairs, `--sample-fraction 0.25`,
+`--sample-seed 578`, `--clone-attachment-fraction 1.0`,
+`--clone-attachment-seed 578`, `--checkpoint-root`, and `--out`. Add these
+exact runbook variables:
+
+```bash
+PUMA_LADDER="/Users/maxghenis/PolicyEngine/_worktrees/populace-acs-clone/build/us/us_puma_ladder_2020.npz"
+PUMA_LADDER_SHA="39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+CD_CROSSWALK="$WT/packages/microcosm-build/src/microcosm/build/us_runtime/data/congressional_district_vintage_crosswalk.csv"
+CD_CROSSWALK_SHA="c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+```
+
+Add these exact `check_pool_inputs` calls:
+
+```bash
+check_sha256 puma-ladder "$PUMA_LADDER" "$PUMA_LADDER_SHA"
+check_sha256 cd-crosswalk "$CD_CROSSWALK" "$CD_CROSSWALK_SHA"
+```
+
+Add these exact `POOL_COMMAND` arguments:
+
+```bash
+--puma-ladder "$PUMA_LADDER"
+--puma-ladder-sha256 "$PUMA_LADDER_SHA"
+--congressional-district-vintage-crosswalk "$CD_CROSSWALK"
+--congressional-district-vintage-crosswalk-sha256 "$CD_CROSSWALK_SHA"
+```
+
+The parser and canonical-pin validator fail closed on any absent or different
+value (`tools/build_us_multispine_pool.py:563-594,897-928`). Preserve the
+runbook's wait loop until no other `build_us_*` process is running, invoke the
+stage through `env -u POPULACE_LOGBOOK_PREV_ROW_DIGEST`, pass no
+`--logbook-prev-row-digest`, and never touch `logbook-pending-chain.txt`.
+
+## Final checkpoint-reuse verdict
+
+**No: the existing smoke pool checkpoints and pool H5 are not reusable.** The
+configured namespace now binds both new SHA pins, the base identity binds the
+complete geography contract, and the checkpoint materializer moved from 11 to
+12; old namespaces are not selected, and a relocated stale manifest fails the
+exact identity comparison
+(`tools/build_us_multispine_pool.py:332-360,1300-1555`). The old schema-8 /
+materializer-2 pool H5 also lacks the required physical attrs and household
+support binding and is rejected by schema-9 loading
+(`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:75-105,671-923,1032-1193`).
+The six immutable raw source artifacts remain reusable, but Stage-1 stage
+checkpoints, downstream banks, the terminal manifest, and the pool H5 must be
+regenerated under the new identity.
