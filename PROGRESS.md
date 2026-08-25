@@ -1,5 +1,41 @@
 # Health-coverage label lane progress
 
+## Round 2 state — 2026-08-25
+
+- Resumed the clean `battery-health-coverage-labels` worktree at `7a66c5a9`;
+  the round-1 mechanism repair and provenance commits are present and no push
+  is authorized.
+- The cold 1% host verification regressed the failing-gate count from 127 to
+  128: three legs greened and four health-label legs were introduced or moved.
+- The host-owned verification and baseline gate artifacts are read-only. No
+  local data build, calibration, publication, threshold change, band change,
+  seed change, or comparator exclusion is authorized.
+- The GitNexus debugging skill is active, but its graph-query tools are not
+  exposed in this session; round 1 also recorded a sandbox-blocked registry.
+  This pass therefore uses direct source/call-site traces, checkpointed-frame
+  receipts, and focused regression tests.
+
+## Round 2 done
+
+- Reloaded `CLAUDE.md`, the GitNexus debugging workflow, the existing lane
+  journal, and the round-1 progress/report history.
+- Confirmed the worktree started clean on the requested branch with exactly
+  the two round-1 commits ahead of its base.
+- Identified the four required diagnoses: IHS overshoot, TRICARE movement away
+  from band, newly red Marketplace, and moved non-Marketplace direct purchase.
+
+## Round 2 next
+
+- Commit this round-2 starting checkpoint after the required quality gate.
+- Read the host gate diff and checkpointed frames without running a build;
+  measure each relevant source category before/after and trace it to exact
+  derivation lines.
+- Correct only source-faithfulness defects, or record an owner-adjudication
+  declared-absence equation where the surveys do not expose comparable leaves.
+- Add mapping regressions, run the whole permitted suite under the 15 GiB RSS
+  ceiling, update `_LANE-NOTES.md` with next-run ratio expectations, and write
+  the completion report to `FINAL_REPORT.md`.
+
 ## State
 
 - Started 2026-08-21 on `battery-health-coverage-labels`.
