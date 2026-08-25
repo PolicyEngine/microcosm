@@ -24,9 +24,12 @@ agreement before consuming the column into the Frame's typed vector.
 
 from __future__ import annotations
 
+import json
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -38,22 +41,33 @@ from microcosm.frame import (
     WeightKind,
     Weights,
     engine_tables,
+    put_frame_table,
+    read_frame_table,
 )
 
 __all__ = [
     "UK_EXPORTED_WEIGHT_COLUMNS",
+    "UK_HOUSEHOLD_WEIGHT_KIND_ATTR",
+    "UK_MASS_LOG_ATTR",
+    "UK_NATIONAL_H5_TABLES",
     "UK_NATIONAL_SCHEMA",
     "UK_TIME_PERIOD_METADATA_KEY",
     "UKStagingProvenance",
+    "load_uk_national_frame",
     "uk_household_weight_kind",
     "uk_national_frame",
     "uk_time_period",
     "validate_uk_national_frame",
+    "write_uk_national_frame",
 ]
 
 UK_NATIONAL_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
 
 UK_TIME_PERIOD_METADATA_KEY = "time_period"
+
+UK_NATIONAL_H5_TABLES = ("person", "benunit", "household", "time_period")
+UK_HOUSEHOLD_WEIGHT_KIND_ATTR = "populace_household_weight_kind"
+UK_MASS_LOG_ATTR = "populace_mass_log_json"
 
 # The persisted weight columns of the materialized export contract above:
 # real columns on the tables, but plumbing rather than input mass. Consumers
@@ -115,6 +129,92 @@ def _uk_source_file_fingerprint(path: Path) -> _UKSourceFileFingerprint:
     )
 
 
+def _weight_kind_from_stored(value: object) -> WeightKind:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    try:
+        return WeightKind(str(value))
+    except ValueError as exc:
+        raise ValueError(f"Unknown stored UK household weight kind {value!r}.") from exc
+
+
+def _read_weight_metadata(path: Path) -> tuple[object, object]:
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to read UK national metadata.") from exc
+    with h5py.File(path, mode="r") as file:
+        return (
+            file.attrs.get(
+                UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
+                WeightKind.DESIGN.value,
+            ),
+            file.attrs.get(UK_MASS_LOG_ATTR, "[]"),
+        )
+
+
+def _write_weight_metadata(
+    path: Path,
+    *,
+    weight_kind: WeightKind,
+    mass_log: tuple[MassChangeRecord, ...],
+) -> None:
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = weight_kind.value
+        file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
+            [_mass_change_record_payload(record) for record in mass_log],
+            sort_keys=True,
+        )
+
+
+def _mass_log_from_stored(value: object) -> tuple[MassChangeRecord, ...]:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    try:
+        payload = json.loads(str(value))
+    except json.JSONDecodeError as exc:
+        raise ValueError("Stored UK microcosm mass log is not valid JSON.") from exc
+    if not isinstance(payload, list):
+        raise ValueError("Stored UK microcosm mass log must be a JSON list.")
+    records: list[MassChangeRecord] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            raise ValueError("Stored UK microcosm mass-log entries must be objects.")
+        try:
+            records.append(
+                MassChangeRecord(
+                    entity=str(entry["entity"]),
+                    old_total=float(entry["old_total"]),
+                    new_total=float(entry["new_total"]),
+                    declared_factor=(
+                        None
+                        if entry.get("declared_factor") is None
+                        else float(entry["declared_factor"])
+                    ),
+                    reason=str(entry["reason"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "Stored UK microcosm mass-log entry is malformed."
+            ) from exc
+    return tuple(records)
+
+
+def _mass_change_record_payload(record: MassChangeRecord) -> dict[str, object]:
+    return {
+        "entity": record.entity,
+        "old_total": record.old_total,
+        "new_total": record.new_total,
+        "declared_factor": record.declared_factor,
+        "reason": record.reason,
+    }
+
+
 @dataclass(frozen=True)
 class UKStagingProvenance:
     """Where a UK national frame's bytes came from, carried beside it.
@@ -125,6 +225,65 @@ class UKStagingProvenance:
 
     source_h5: Path
     fingerprint: _UKSourceFileFingerprint
+
+
+def _read_uk_national_tables(
+    path: str | Path,
+) -> tuple[dict[str, Any], _UKSourceFileFingerprint, Path]:
+    """Read a compact UK single-year H5's payload with the race guard."""
+
+    requested_path = Path(path).expanduser()
+    if requested_path.suffix != ".h5":
+        raise ValueError("UK national dataset path must end with '.h5'.")
+    input_path = requested_path.resolve()
+    if not input_path.is_file():
+        raise FileNotFoundError(f"UK national dataset not found: {input_path}.")
+
+    fingerprint_before = _uk_source_file_fingerprint(input_path)
+    stored_kind, stored_mass_log = _read_weight_metadata(input_path)
+    with pd.HDFStore(input_path, mode="r") as store:
+        keys = {key.lstrip("/") for key in store.keys()}
+        missing = sorted(set(UK_NATIONAL_H5_TABLES) - keys)
+        if missing:
+            raise ValueError(f"UK national dataset is missing table(s): {missing}.")
+        raw_period = store["time_period"]
+        if len(raw_period) != 1:
+            raise ValueError(
+                "UK national dataset time_period must contain exactly one value."
+            )
+        payload = {
+            "person": read_frame_table(store, "person"),
+            "benunit": read_frame_table(store, "benunit"),
+            "household": read_frame_table(store, "household"),
+            "time_period": str(raw_period.iloc[0]),
+            "household_weight_kind": _weight_kind_from_stored(stored_kind),
+            "mass_log": _mass_log_from_stored(stored_mass_log),
+        }
+    fingerprint_after = _uk_source_file_fingerprint(input_path)
+    if fingerprint_after != fingerprint_before:
+        raise RuntimeError(
+            "UK national source H5 changed while it was being loaded; refusing "
+            "to bind mixed or stale bytes to build stages."
+        )
+    return payload, fingerprint_after, input_path
+
+
+def load_uk_national_frame(
+    path: str | Path,
+) -> tuple[Frame, UKStagingProvenance]:
+    """Load a compact UK single-year H5 as a validated Frame plus provenance."""
+
+    payload, fingerprint, input_path = _read_uk_national_tables(path)
+    frame = uk_national_frame(
+        person=payload["person"],
+        benunit=payload["benunit"],
+        household=payload["household"],
+        time_period=payload["time_period"],
+        weight_kind=payload["household_weight_kind"],
+        mass_log=payload["mass_log"],
+    )
+    validate_uk_national_frame(frame)
+    return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
 
 
 def uk_national_frame(
@@ -192,6 +351,77 @@ def uk_household_weight_kind(frame: Frame) -> WeightKind:
     """The kind of the frame's explicit household weights."""
 
     return frame.weights_for("household").kind
+
+
+def _write_uk_single_year_tables(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    time_period: str,
+    weight_kind: WeightKind,
+    mass_log: tuple[MassChangeRecord, ...],
+    path: Path,
+) -> Path:
+    """The one physical writer for every UK single-year H5."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
+    try:
+        with pd.HDFStore(temporary_path) as store:
+            put_frame_table(
+                store,
+                "person",
+                person,
+                preferred_format="table",
+                data_columns=True,
+            )
+            put_frame_table(
+                store,
+                "benunit",
+                benunit,
+                preferred_format="table",
+                data_columns=True,
+            )
+            put_frame_table(
+                store,
+                "household",
+                household,
+                preferred_format="table",
+                data_columns=True,
+            )
+            store.put(
+                "time_period",
+                pd.Series([time_period]),
+                format="table",
+                data_columns=True,
+            )
+        _write_weight_metadata(
+            temporary_path, weight_kind=weight_kind, mass_log=mass_log
+        )
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return path
+
+
+def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:
+    """Atomically write a validated UK national Frame as a staging H5."""
+
+    validate_uk_national_frame(frame)
+    output_path = Path(path)
+    if output_path.suffix != ".h5":
+        raise ValueError("UK national staging path must end with '.h5'.")
+    tables = engine_tables(frame, weighted_entities=("household",))
+    return _write_uk_single_year_tables(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+        path=output_path,
+    )
 
 
 @dataclass(frozen=True)

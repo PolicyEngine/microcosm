@@ -346,9 +346,9 @@ def test_write_is_atomic_when_metadata_write_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     pytest.importorskip("tables")
-    # The rowwise writer routes through the national seam's shared physical
-    # writer, so the metadata-failure seam now lives there.
-    from microcosm.build.uk_runtime import national_build as module
+    # The rowwise writer routes through the national frame seam's shared
+    # physical writer, so the metadata-failure seam lives there.
+    from microcosm.build.uk_runtime import national_frame as module
 
     result = clone_uk_dataset_tables_with_rowwise_geography(
         person=person_frame(),
