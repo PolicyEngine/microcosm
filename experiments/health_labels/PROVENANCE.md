@@ -19,6 +19,14 @@ four-way experiment found no isolated landable arm
 (`../microcosm-arm-split/experiments/phase_p_arm_split/SYNTHESIS.md:5-12` and
 `:27-32`). CHAMPVA is therefore one leg of this label audit, not its goal.
 
+The cold round-2 1% receipts are recorded in `ROUND2_DIAGNOSIS.md`. They show
+that native `HINS7 == 1` is implemented exactly but has 2.468303 times the
+ASEC `NOW_IHSFLG == 1` incidence in the current comparison scope. That is not
+permission to dilute either source indicator. It elevates IHS to an explicit
+owner decision: retain the nominally matched questions under an approved
+common population scope, or declare the ACS detailed comparison structurally
+absent using the equation below.
+
 ## Runtime path to clone 0
 
 1. The ASEC operator converts current-coverage source codes with the strict
@@ -131,6 +139,21 @@ Its only current declared absence rule is ACS group-quarters rent
 and unsupported rules fail closed
 (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7729-7738`).
 This lane does **not** add the health rules; that decision is owner-only.
+
+For IHS, the source names are nominally matched, so it is not silently added
+to the seven-label concept-mismatch set above. If the owner adjudicates its
+survey-frame/reference construction as non-comparable after applying the
+common-universe analysis below, the corresponding exact candidate is
+
+```text
+A_IHS(r) = B(r) * 1[person_support_channel(r) = "acs"]
+B(r) = 1  =>  isna(IHS(r)) = A_IHS(r)
+T_IHS(r) = B(r) * (1 - A_IHS(r)).
+```
+
+As with the seven detailed-label equations, implementation would require both
+the exact live structural-null surface and an owner-approved comparator rule.
+This lane implements neither.
 
 ### Published aggregate alternatives
 

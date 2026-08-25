@@ -146,3 +146,49 @@ impact trace used direct source call sites and focused regressions.
 - `packages/microcosm-fit/tests`: 93 passed, 1 warning.
 - `packages/microcosm-frame/tests`: 294 passed, 36 skipped, 1 warning.
 - The unified command exited 0; `git diff --check` passed.
+
+## 2026-08-25 — cold 1% round-2 diagnosis
+
+### Host artifact receipt
+
+- Read only `baseline1pct/pool.gates.json`, `health1pct/pool.gates.json`, both
+  `simulated.checkpoint.h5` frames, and their health target-bank checkpoints.
+  No build, calibration, comparator, band, threshold, seed, or exclusion ran.
+- The frames align on every `person_id`, support channel, clone index, and
+  person weight. Clone-0 positive-weight denominators are 80,851,529.27715749
+  over 4,311 ASEC rows and 79,926,522.10879111 over 34,293 ACS rows.
+
+### Per-leg diagnosis
+
+- IHS: ASEC remains 8 positives / weight 197,606.039624; baseline ACS QRF had
+  12 / 46,033.921631. Native `HINS7 == 1` has exactly 252 / 482,171.216580,
+  producing 2.468303. No extra category enters the mapper: this is a
+  source/comparison mismatch, not a band-tunable derivation.
+- Marketplace: ASEC remains 157 / 2,908,019.635846. ACS moved from 872 /
+  2,360,680.784026 to 795 / 2,125,795.272305; 1,579 same-person rows flipped.
+- Non-Marketplace direct purchase: ASEC remains 107 / 2,028,850.769034. ACS
+  moved from 491 / 1,023,422.890043 to 528 / 1,054,016.416743; 857 rows flipped.
+- TRICARE: ASEC remains 45 / 807,558.923656. ACS moved from 206 /
+  502,159.944901 to 153 / 385,243.838170; 277 rows flipped.
+- Target metadata proves the causal seam: the first boolean batch changed from
+  eight targets `[CHAMPVA, ESI, IHS, Marketplace, Medicaid, direct purchase,
+  other means-tested, TRICARE]` to six by deleting the native ESI/IHS chain
+  steps. Stable bank indexes did not preserve the QRF completed-target prefix.
+
+### Disposition
+
+- Keep the exact HINS7 and ASEC `NOW_* == 1` mappings. Do not restore the IHS
+  QRF underprediction or map `HINS2`/`HINS5` onto narrower leaves.
+- Repair family activation so complete native peers participate as
+  conditioning-only chain steps whenever a peer is missing; target null masks
+  remain the authority that prevents overwriting native cells.
+- `experiments/health_labels/ROUND2_DIAGNOSIS.md` carries the full mass table,
+  code trace, and IHS owner-only absence equation. Marketplace, direct purchase,
+  and TRICARE retain the previously documented owner-only absence equation.
+
+### Next
+
+- Add the chain-completeness regression, implement the family-selection fix,
+  and run focused cold/warm target-bank tests.
+- Run the complete permitted Ruff/package-shard gate below 15 GiB RSS.
+- End this journal with evidence-grounded next-host-run ratio expectations.

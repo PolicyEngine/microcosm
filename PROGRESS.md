@@ -14,6 +14,10 @@
   exposed in this session; round 1 also recorded a sandbox-blocked registry.
   This pass therefore uses direct source/call-site traces, checkpointed-frame
   receipts, and focused regression tests.
+- Read-only checkpoint evidence now identifies two distinct dispositions: the
+  IHS native mapper is exact and exposes a source/comparison mismatch, while
+  the other three movements come from deleting complete ESI/IHS steps from a
+  chained QRF family.
 
 ## Round 2 done
 
@@ -23,15 +27,19 @@
   the two round-1 commits ahead of its base.
 - Identified the four required diagnoses: IHS overshoot, TRICARE movement away
   from band, newly red Marketplace, and moved non-Marketplace direct purchase.
+- Matched the two 38,604-row clone-0 frames exactly by person and weight;
+  measured every before/after category mass and every ACS boolean transition.
+- Proved from target-bank metadata and the QRF completed-prefix code that
+  stable target indexes did not preserve the family chain after native holes.
+- Wrote `experiments/health_labels/ROUND2_DIAGNOSIS.md` and extended the IHS
+  owner-adjudication equation without changing any comparator rule.
 
 ## Round 2 next
 
 - Commit this round-2 starting checkpoint after the required quality gate.
-- Read the host gate diff and checkpointed frames without running a build;
-  measure each relevant source category before/after and trace it to exact
-  derivation lines.
-- Correct only source-faithfulness defects, or record an owner-adjudication
-  declared-absence equation where the surveys do not expose comparable leaves.
+- Make complete family peers conditioning-only chain steps while retaining
+  target-level no-overwrite behavior and durable bank positions.
+- Pin the chain behavior and the exact label mappings with focused regressions.
 - Add mapping regressions, run the whole permitted suite under the 15 GiB RSS
   ceiling, update `_LANE-NOTES.md` with next-run ratio expectations, and write
   the completion report to `FINAL_REPORT.md`.
