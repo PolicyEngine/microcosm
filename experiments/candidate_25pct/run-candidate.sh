@@ -219,6 +219,9 @@ check_code_authority() {
     --acs-rent-h5 --acs-rent-h5-sha256 \
     --puf-h5 --puf-h5-sha256 \
     --puf-source-year-csv --puf-source-year-csv-sha256 \
+    --puma-ladder --puma-ladder-sha256 \
+    --congressional-district-vintage-crosswalk \
+    --congressional-district-vintage-crosswalk-sha256 \
     --sample-fraction --sample-seed \
     --clone-attachment-fraction --clone-attachment-seed \
     --checkpoint-root --out
@@ -232,9 +235,7 @@ check_code_authority() {
     --ssi-take-up-prior-weight-basis \
     --ssi-take-up-prior-weight-basis-sha256 \
     --checkpoint-root --release-id --seed --epochs \
-    --skip-reform-validation --no-staging --out \
-    --puma-ladder --puma-ladder-sha256 \
-    --congressional-district-vintage-crosswalk --congressional-district-vintage-crosswalk-sha256
+    --skip-reform-validation --no-staging --out
   require_parser_flags sparse "$RELEASE_TOOL" --l0-refit-lambda-share
   require_parser_flags scorer "$SCORER_TOOL" \
     --incumbent --candidate --ledger-facts --out-prefix
