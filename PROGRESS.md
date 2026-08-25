@@ -1,4 +1,65 @@
-# Progress: stacked-pool to release CD-vintage provenance
+# Progress: local ACS hours transfer and signal gate (#765)
+
+## State
+
+The issue trace and all three claimed mechanism links have been verified in
+source on branch `local-hours-transfer-765` at the post-#763 `origin/main`
+base. The pre-change test surface is green in fresh, serial processes,
+including isolated green reruns of five subprocess-timeout cases from the
+occupied-host build shard. No data build, release, push, gate/threshold tuning,
+or production-artifact mutation has occurred.
+
+The required US-extra dependency sync is complete from the exact lock. Direct
+shell access to GitHub and host process enumeration are blocked by the managed
+sandbox; both mandated commands were attempted, and the lane will invoke no
+build driver under any circumstance. The task-scoped journal draft found in
+the worktree has been reconciled to this session's observed receipts.
+
+## Done
+
+- Read the repository and GitNexus debugging instructions.
+- Attempted `uv sync --all-packages --extra us` first. The default user cache
+  is sandbox-inaccessible; the exact retry with `UV_CACHE_DIR=.uv-cache`
+  resolved 123 packages and checked 100 installed distributions. Verified
+  PolicyEngine-US 1.819.0, PolicyEngine-Core 3.31.0, and this worktree's
+  editable `microcosm-build` install.
+- Attempted `gh issue view 765 --repo PolicyEngine/microcosm --comments`; shell
+  network access is unavailable. The indexed read-only GitHub surface returned
+  the issue body (no comments), which matches the supplied David Trimmer trace.
+- Attempted the required `pgrep` check; process enumeration is denied by the
+  sandbox. No build command has been or will be started in this lane.
+- Read the GitNexus debugging skill; this session exposes no GitNexus graph
+  tools, so investigation will use direct source tracing and tests.
+- Reconciled the worktree journals byte-for-byte with salvage commit
+  `1b9ec45c`; the salvage contains no source implementation beyond these two
+  journal files.
+- Verified the national #578 mechanism, the local transfer-plan omission, the
+  raw-ASEC seeding incompatibility, the reviewed-null default materialization,
+  all three existing transfer RNG ledger sites, and the missing local finalize
+  gate directly in source. Exact citations are recorded in `_LANE-NOTES.md`.
+- Discarded one invalid calibration receipt after its traceback exposed a
+  cloned `pytest` script whose shebang pointed at the sibling
+  `microcosm-one-surface` environment. Current-worktree verification uses
+  `.venv/bin/python -m pytest`; all editable module paths and `.pth` files were
+  independently checked to point at this worktree.
+- Current-worktree baseline receipts: calibrate 203 passed; data 318 passed /
+  2 skipped; fit 93 passed; frame 295 passed / 36 skipped. The first build
+  partition passed 4,156 tests / skipped 36. The complementary partition
+  passed 2,172 / skipped 3 while five child-process tests timed out under the
+  occupied-host load; all five passed together in a fresh isolated rerun in
+  403.92 seconds. Thus every collected build test passed before source edits.
+
+## Next
+
+1. Commit this reconciled task journal and green baseline receipt.
+2. Extend the local transfer with seed-ledger and authored-surface anti-rot
+   coverage, then commit with a green suite.
+3. Wire the existing hours gate into local finalize, add the exact defaulted-
+   column regression, and commit with a green suite.
+4. Finish `_LANE-NOTES.md` with the serial-queue build command and David-ready
+   summary; write the final report to `FINAL_REPORT.md`.
+
+# Historical progress: stacked-pool to release CD-vintage provenance
 
 ## State
 

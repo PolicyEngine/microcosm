@@ -1,4 +1,101 @@
-# Stacked-pool to release CD-vintage provenance lane notes
+# Local ACS hours transfer and signal-gate lane notes (#765)
+
+## 2026-08-25 — lane start and environment
+
+- Branch `local-hours-transfer-765` starts at `origin/main` commit
+  `5abda6145b06` (merge of #763). This lane is limited to extending the
+  existing weekly-hours transfer to ACS-spine persons, wiring the existing
+  hours signal gate into local finalize, adding the requested regressions, and
+  updating any generated/attested ownership surfaces reached by those edits.
+- The ordered first `uv sync --all-packages --extra us` could not initialize
+  the sandbox-inaccessible user cache. The exact retry with the writable
+  workspace cache, `UV_CACHE_DIR=.uv-cache uv sync --all-packages --extra us`,
+  completed against the current lock (123 packages resolved, 100 installed
+  distributions checked). The verified environment has PolicyEngine-US
+  1.819.0, PolicyEngine-Core 3.31.0, and an editable `microcosm-build` rooted in
+  this worktree.
+- `gh issue view 765 --repo PolicyEngine/microcosm --comments` was attempted
+  before source investigation but shell network access is unavailable. The
+  indexed read-only GitHub surface returned the issue body (no comments); it
+  matches the supplied David Trimmer trace.
+- The required
+  `pgrep -f 'tools/build_us_(multispine_pool|fiscal_refresh_release)'` check was
+  attempted, but the managed macOS sandbox denies process-list access. No data
+  build or release command will be invoked; verification is limited to tests,
+  linters, and static/generated contract checks.
+- The GitNexus debugging skill applies, but no GitNexus query, context, graph,
+  or resource tools are exposed in this session. The prescribed fallback is
+  direct source tracing plus focused and suite-wide tests.
+- Salvage commit `1b9ec45c` is a one-commit descendant of the branch base and
+  changes only `PROGRESS.md` and `_LANE-NOTES.md`. The worktree copies were
+  byte-identical to that salvage tree, so the recovered work was preserved and
+  audited rather than restarted or duplicated.
+- The cloned environment's `pytest` launcher still named the sibling
+  `microcosm-one-surface` interpreter in its shebang. One resulting
+  calibration run was rejected as invalid. All five editable `.pth` files and
+  imported module paths point at this worktree; authoritative receipts use
+  `.venv/bin/python -m pytest` to bypass the stale console-script shebang.
+
+## 2026-08-25 — verified #765 mechanism trace
+
+- The shared national source operator maps ASEC `HRSWK` directly to
+  `weekly_hours_worked_before_lsr`, with `A_HRS1` and `WKSWORK` supplying the
+  sibling hours outputs
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:104-109,143-185`).
+  The national pool runs that operator on CPS-evidenced rows before cloning,
+  then dynamically owns the persisted weekly leaf as
+  `person/source_operator_hours_worked` in its pre-clone gap-fill plan
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:491-501,692-785,2139-2174,2370-2435`).
+  Production then sends that family through the shared ASEC-to-ACS QRF
+  transfer (`tools/build_us_multispine_pool.py:3683-3715`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:9258-9292`).
+- The generic ACS declaration deliberately excludes runtime-owned
+  hours-before-LSR while retaining `hours_worked_last_week`
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:307-357`),
+  and its anti-rot test pins that exclusion
+  (`packages/microcosm-build/tests/test_us_acs_transfer.py:724-743`). The local
+  staging builder currently passes exactly that generic declaration through
+  donor coverage, transfer, and post-transfer coverage, so the weekly leaf is
+  never modeled there
+  (`tools/_legacy/build_us_acs_multispine_base.py:219-263,344-415,489-523`).
+- Re-running the source operator on native ACS persons is not a valid fallback:
+  ACS native mapping carries no ASEC `HRSWK`, `A_HRS1`, or `WKSWORK`, while the
+  hours kernel requires all three and fails when any are absent
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:61-174`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:104-175`).
+- The missing ACS engine input is recorded in the staging null inventory, then
+  the consumer projection fills every reviewed null from the installed engine
+  default before writing the published H5. That is the silent defaulted-column
+  path, not a modeled value
+  (`tools/_legacy/build_us_acs_multispine_base.py:1066-1102`;
+  `tools/build_us_acs_local_release.py:212-263,274-355,1095-1153`).
+- The shared ACS QRF already derives and records the family seed, each
+  availability-pattern seed, and the QRF fit/draw split
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1507-1627,3190-3204`);
+  all three draw sites are exhaustively ledgered
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:615-684`).
+  Reusing the national `source_operator_hours_worked` family therefore adds no
+  RNG mechanism or unledgered draw site.
+- The shared signal gate rejects missing/constant hours columns and implausible
+  weighted worked-share or worker-mean distributions
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:267-348`).
+  National pool/fiscal paths call it, but local finalize constructs only PUMA,
+  calibration, composition, and consumer-readiness receipts and hard-fails
+  only the PUMA/calibration/consumer trio
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:1792-1821`;
+  `tools/build_us_fiscal_refresh_release.py:9333-9360`;
+  `tools/build_us_acs_local_release.py:1432-1578`).
+- Pre-change current-worktree receipts: calibrate 203 passed; data 318 passed /
+  2 skipped; fit 93 passed; frame 295 passed / 36 skipped. The first serial
+  build partition passed 4,156 tests / skipped 36 in 11,227.70 seconds. The
+  complementary partition passed 2,172 / skipped 3 in 10,910.92 seconds, with
+  five child-process timeout failures: one 300-second import-entry determinism
+  child and four 60-second atomic-publication crash children. Those exact five
+  tests then passed together in a fresh process in 403.92 seconds, establishing
+  that every collected build test passes while preserving the occupied-host
+  timeout evidence. No data/artifact build driver was invoked.
+
+# Historical lane notes: stacked-pool to release CD-vintage provenance
 
 ## 2026-08-24 — lane start and environment
 
