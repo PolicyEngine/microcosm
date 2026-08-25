@@ -2,8 +2,7 @@
 
 ## State
 
-Round-2 evidence collection is complete and the report is being drafted on
-the immutable live PR head
+Round-2 review is complete with a **HOLD** verdict on the immutable live PR head
 `76e39f9b77256766d7608c1f03e12db2f8cef118`, on the separate local branch
 `review/pr-747-r2-audit`. No push, candidate build, publication, or promotion
 has occurred. The tracked worktree was verified byte-for-byte against the live
@@ -47,16 +46,21 @@ affected test evidence.
 - Ran the six focused age/NHS/parity/register/payload test files: 115 tests,
   exit 0, using the compatible sibling lock environment with this worktree's
   package sources first on `PYTHONPATH`.
+- Completed the four supplemental UK parity-reference, terminal-gate,
+  weighted-integrity, and source-stage files: 104 passed, 1 skipped. An
+  unrelated US country-package test stalled in the fallback environment and
+  was interrupted.
 - Verified no terminal gate weakening, membership option, waiver, staging,
   publication/promotion side effect, or seed/identity move in the new commit.
+- Wrote the final code-cited report to `REVIEW-747.md`; its final report head
+  is `f322ea40` (initial report commit `4ba61e90`).
 
 ## Next
 
-1. Finish the broader non-build terminal-gate/source/spec test run and record
-   its exact outcome.
-2. Write and commit `REVIEW-747.md` with the fresh HOLD verdict, round-two
-   classifications, code citations, and minimum closure conditions.
-3. Update and commit this journal with the final report identity.
+1. Do not rely on or promote the already-merged UK spine swap.
+2. Fix the age-tail/NHS E6 inconsistency and strict signed-parity enforcement.
+3. Rebuild the exact 25-stage candidate and commit identity-bound acceptance
+   receipts before clearing the HOLD.
 
 ## Historical note
 
