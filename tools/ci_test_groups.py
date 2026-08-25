@@ -16,6 +16,17 @@ FAST_GROUPS = ("trade", "spine-uk", "rest")
 ENGINE_GROUPS = ("shared-spec", "us-p", "us-qs", "us-not", "us-am", "uk")
 GROUPS = (*FAST_GROUPS, *ENGINE_GROUPS)
 
+# Files the engine-free `fast` lane cannot run. They gate on `importorskip("tables")`
+# — satisfied by the workspace sync, unlike the wheels venv where it is absent and
+# these skip — and then reach an unguarded `policyengine_us` import, so without the
+# engine they FAIL instead of skipping (e.g. build_us_fiscal_refresh_release._load_frame).
+# They run in full in the engine tier, which installs both extras, so nothing is lost.
+# Listed explicitly, and printed by --verify, so the exclusion is never silent.
+ENGINE_ONLY = (
+    "packages/microcosm-build/tests/test_us_multispine_pool_tool.py",
+    "packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py",
+)
+
 PROCESSES = {
     "trade": ("main",),
     "spine-uk": ("main",),
@@ -84,6 +95,8 @@ def us_bucket(name: str) -> str | None:
 
 def fast_group(path: str) -> str:
     name = basename(path)
+    if path in ENGINE_ONLY:
+        return "engine-only"
     if is_build(path) and name.startswith("test_us_trade_"):
         return "trade"
     if is_build(path) and (name == "test_us_stacked_spine.py" or name.startswith("test_uk_")):
@@ -202,7 +215,13 @@ def verify() -> None:
     if not files:
         raise SystemExit(f"no tracked tests matched {TEST_GLOB}")
 
-    fast = assert_partition("fast", files, FAST_GROUPS, fast_group)
+    for path in ENGINE_ONLY:
+        if path not in files:
+            raise SystemExit(f"ENGINE_ONLY names a file that no longer exists: {path}")
+    # The fast tier partitions everything except the engine-only files; the engine
+    # tier still partitions the complete inventory, so no file escapes CI entirely.
+    fast_files = tuple(path for path in files if path not in ENGINE_ONLY)
+    fast = assert_partition("fast", fast_files, FAST_GROUPS, fast_group)
     engine = assert_partition("engine", files, ENGINE_GROUPS, engine_group)
 
     print(f"tracked_test_files={len(files)}")
@@ -213,6 +232,10 @@ def verify() -> None:
             print(f"{group}: files={len(paths)} procs={procs}")
             for path in paths:
                 print(f"  {path}")
+
+    print("[engine-only] excluded from the fast tier, run in the engine tier")
+    for path in ENGINE_ONLY:
+        print(f"  {path} -> {engine_group(path)}")
 
     defaulted = defaulted_engine_files(engine)
     print("[defaulted]")
