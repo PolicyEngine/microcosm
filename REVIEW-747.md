@@ -1,4 +1,4 @@
-HOLD — the committed swap-acceptance receipt certifies a 24-stage candidate and predates PR head's value-changing 25th stage and SPI persisted-value changes; no final-head acceptance evidence exists.
+POST-MERGE HOLD — all five numbered round-one findings survive on current `main`; the priority defect is a freshly reproduced E6 failure in the merged UK spine, where final `age_tail` ages disagree with all six stored age-derived NHS columns.
 
 # Defensive correctness and completeness audit — microcosm PR #747
 
@@ -6,7 +6,237 @@ Audited cached PR head `86f55741081fa3fb5e3c55234e3c8dc7ff77c777` against merge 
 
 GitHub and PyPI DNS were unavailable, so `git fetch origin pull/747/head:pr-747`, `gh pr view 747`, and the requested `uv sync --all-packages --extra us` could not complete. The audited cached remote head matches the María-authored #686/#747 sequence available in the shared repository. I did not run a candidate/repository build, publish, push, or commit to `pr-747`; review artifacts are on `review/pr-747-audit`.
 
-## Ranked findings
+## Round 2 — post-merge verification on current main
+
+GitHub's REST branch and PR responses independently identify current `main` as
+merge `2807e99cc11d1a8c69a0886992ae21a533719958`, created at
+2026-08-25 11:45:37 UTC with PR head
+`76e39f9b77256766d7608c1f03e12db2f8cef118` as its second parent. A fresh
+shell fetch was also attempted, but the sandbox could not resolve
+`github.com`; the REST result and the already-present commit/tree agree.
+
+The PR was rebased after round 1, so a raw SHA range is misleading. The
+defensive history probe was:
+
+```
+git range-diff \
+  7b90bb1882b0248d751a64bf817ec127e5c42a47..86f55741081fa3fb5e3c55234e3c8dc7ff77c777 \
+  5abda6145b06d55b255db87ecead2438d5d8fde7..76e39f9b77256766d7608c1f03e12db2f8cef118
+```
+
+It maps all 27 audited patches as patch-equivalent, including
+`19799f37 = 1664cca0` and `86f55741 = ff46edf9`. The sole added PR patch is
+`76e39f9b` (`Honour the entity scope when the signed-differences register is
+consulted`). It resolves the entity-table/student-loan subfinding, but no
+round-one finding in full. No experiment, stage plan, age-tail, ETB, E6, or
+reference blob changed after the audited patch series.
+
+### Fresh verdicts
+
+| Round-one surface | Verdict on `2807e99c` | Fresh probe and disposition |
+|---|---|---|
+| 1a. Receipt covers 24 rather than the final 25 stages | **SURVIVES ON MAIN** | AST/source probe found 25 production stages ending in `age_tail`, while the receipt still says “all 24 stages”; the named acceptance JSON is not tracked. No resolving commit. |
+| 1b. Final age-tail breaks E6's stored NHS identity | **SURVIVES ON MAIN — PRIORITY** | Production allocator → persist six NHS columns → production age-tail → production E6: 189/400 top-coded people moved to 85+, 67 to 90+, permutation identity stayed true, `matches_stored_columns=false`, and all six NHS columns mismatched. No resolving commit. |
+| 2. Signed register accepts arbitrary counts and reversed regressions | **SURVIVES ON MAIN, NARROWED** | Missing counts and counts set to 1 both matched the +32/−12 entry with `unsigned=[]`; water `0.776937 → 0.0` (delta `−0.776937`, opposite the signed positive direction) still matched with `unsigned=[]`. `76e39f9b` resolves entity-table scope only. |
+| 3. Strict mode permits a widened share band | **SURVIVES ON MAIN** | Empty register plus `strict=true`, band `0.9`, and water delta `−0.776937` returned `verdict=parity`, `strict_failure=false`, `unsigned=[]`. No resolving commit. |
+| 4. Weighted totals are not closed-world or identity-bound | **SURVIVES ON MAIN** | Strict comparison of `{kept: 1, omitted: 2}` against `{kept: 1}` accepted reference identity `{filename: anonymous-left}` and a missing candidate identity, reported `only_in_reference=[omitted]`, and returned parity with no unsigned differences. No resolving commit. |
+| 5. Re-pinned evidence retains a stale 1.56.14 figure | **SURVIVES ON MAIN** | Fresh JSON/Markdown probe found reference `main_residence_value=0.674658`, while the register and ledger still say `0.6761`. No resolving commit. |
+
+The first two rows are the two separately requested dispositions inside
+round-one finding 1. The final row is retained for completeness because it is
+the report's numbered finding 5 even though the user's four-item summary did
+not repeat it.
+
+### Refreshed code evidence
+
+- The receipt still says “all 24 stages”
+  (`experiments/686-uk-spine-swap-receipts.md:330-342`) and points to an
+  untracked JSON at `:552-576`. Production lists 25 stages, with
+  `etb_services` at `tools/build_uk_frs_spine.py:109`, final `age_tail` at
+  `:118`, and the latter installed in the real plan at `:845-853`.
+- ETB persists the six NHS outputs from stage-time age
+  (`packages/microcosm-build/src/microcosm/build/uk_runtime/etb_services.py:117-139,426-436`),
+  final age-tail mutates `person.age` in place
+  (`packages/microcosm-build/src/microcosm/build/uk_runtime/age_tail.py:151-196`),
+  and E6 recomputes NHS from final age and compares it with the stored columns
+  (`tools/verify_uk_identity_stability.py:378-386,431-464`).
+- `UKSignedDifference.covers()` receives only surface, column, expectation,
+  and entity; it has no count, delta, direction, sign, or magnitude input
+  (`packages/microcosm-build/src/microcosm/build/uk_runtime/signed_differences.py:124-184`).
+  The count/share callers consequently perform name-and-scope lookups only
+  (`tools/verify_uk_spine_parity.py:124-188`). The register prose nevertheless
+  claims positive water movement and exact +32/−12 counts
+  (`packages/microcosm-build/src/microcosm/build/uk/spine_swap_signed_differences.json:6-21,203-221`).
+- Any share band in `[0, 1)` remains accepted
+  (`tools/verify_uk_spine_parity.py:468-504`); in-band values avoid the unsigned
+  list (`:150-188`), and strict failure is still only unused-register handling
+  (`:418-426,552-567`).
+- Weighted totals still compare only key intersections and merely report
+  one-sided keys (`tools/verify_uk_spine_parity.py:230-274`); their optional
+  identities are copied into output without validation (`:365-383`).
+- The pinned reference says `0.674658`
+  (`packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json:313`),
+  versus `0.6761` in the signed register and ledger
+  (`packages/microcosm-build/src/microcosm/build/uk/spine_swap_signed_differences.json:142`;
+  `experiments/686-uk-spine-comparison-ledger.md:184-190`).
+
+### Draft follow-up issues for the owner
+
+#### Priority issue — merged E6/NHS identity failure
+
+**Title:** Merged UK spine: final age-tail breaks all six stored NHS identities
+
+**Body:**
+
+The UK spine merged in #747 runs `etb_services` before the final `age_tail`
+stage. ETB derives and persists six NHS visit/spending columns from the person's
+then-current age (`etb_services.py:117-139,426-436`); `age_tail` later rewrites
+top-coded `person.age` (`age_tail.py:151-196`); E6 recomputes NHS from final age
+and requires equality with the stored values
+(`verify_uk_identity_stability.py:378-386,431-464`).
+
+Fresh reproduction on current main `2807e99c`, using those production
+functions and the committed age-band resource: of 400 top-coded people, 189
+moved to age 85+ and 67 to age 90+. `identical_under_permutation` remained
+true, but `matches_stored_columns` was false and all six NHS columns appeared
+in `stored_column_mismatches`.
+
+Acceptance criteria:
+
+- Make final age and every stored age-derived NHS value obey one coherent
+  production contract.
+- Add an age-tail × NHS × E6 integration regression that fails on the merged
+  ordering.
+- Re-run E6 on the repaired final-stage artifact and attach an identity-bound
+  receipt before relying on or promoting the merged spine.
+
+#### Final-candidate acceptance issue
+
+**Title:** Regenerate UK spine acceptance for the exact final 25-stage candidate
+
+**Body:**
+
+Current main has 25 production stages ending in `age_tail`
+(`tools/build_uk_frs_spine.py:93-119,845-853`), while the committed L0 receipt
+still states “all 24 stages”
+(`experiments/686-uk-spine-swap-receipts.md:330-342`). The referenced parity
+receipt under `data/ukds/acceptance/686-spine-swap/` is not tracked, and the
+Markdown evidence predates the value-changing final stage and SPI persisted-zero
+changes. `git range-diff` confirms no post-round-one commit refreshed this
+evidence.
+
+Acceptance criteria:
+
+- Rebuild the exact final production composition after the E6/NHS repair.
+- Commit disclosure-safe evidence binding candidate content SHA, stage roster
+  and composition, twin-payload identity, E4–E8, and strict parity outcomes.
+- Make the receipt fail if its stage roster or candidate content identity
+  differs from the production plan.
+
+#### Signed-register enforcement issue
+
+**Title:** Enforce signed UK parity counts, directions, and magnitudes in code
+
+**Body:**
+
+The signed register says water moved about `+0.10` and entity counts moved
+person `+32` / benunit `−12`, but the verifier only matches surface, column,
+expectation, and entity (`signed_differences.py:124-184`;
+`verify_uk_spine_parity.py:124-188`). On current main, missing candidate counts
+and counts set to 1 both matched the count entry with no unsigned difference;
+water moving from `0.776937` to `0.0` also matched the positive-direction entry.
+
+Commit `76e39f9b` correctly fixes entity-table scope and the student-loan
+entity, but it does not enforce quantitative facts.
+
+Acceptance criteria:
+
+- Represent and validate exact expected counts or bounded count deltas.
+- Represent and validate signed direction and bounded magnitude for share and
+  total entries.
+- Add adversarial tests for omitted counts, implausible counts, reversed
+  direction, and out-of-bound magnitude while retaining the entity-scope tests.
+
+#### Strict-band issue
+
+**Title:** Pin strict UK spine parity to the contract share band
+
+**Body:**
+
+`--strict` is documented as the swap-acceptance posture, but any
+`--share-band` in `[0, 1)` is accepted
+(`tools/verify_uk_spine_parity.py:468-504`). A fresh current-main probe used an
+empty register, `strict=true`, band `0.9`, and a `−0.776937` water-share delta;
+the result was `verdict=parity`, `strict_failure=false`, and no unsigned
+differences.
+
+Acceptance criteria:
+
+- Make strict acceptance refuse a non-contract band, or separate diagnostic
+  band overrides into a mode that cannot emit an acceptance verdict.
+- Bind the effective band into the receipt and add an adversarial strict-mode
+  regression for a widened band.
+
+#### Weighted-total closure issue
+
+**Title:** Make UK weighted-total parity closed-world and artifact-identity-bound
+
+**Body:**
+
+The weighted comparator checks only intersecting keys and reports one-sided
+keys without failing (`tools/verify_uk_spine_parity.py:230-274`). The caller
+echoes optional identities without verifying them (`:365-383`). A current-main
+strict probe compared `{kept: 1, omitted: 2}` against `{kept: 1}`, accepted an
+anonymous reference filename and no candidate identity, reported
+`only_in_reference=[omitted]`, and returned parity with no unsigned difference.
+
+Acceptance criteria:
+
+- Require the complete expected total-key set on both sides.
+- Verify reference and candidate sidecars against full expected artifact/content
+  identities and bind those identities into the receipt.
+- Fail strict mode on every one-sided total key, missing identity, wrong
+  identity, and aliased/cross-artifact sidecar.
+
+#### Stale incumbent-evidence issue
+
+**Title:** Correct stale 1.56.14 main-residence evidence in the 1.56.16 UK register
+
+**Body:**
+
+The packaged 1.56.16 parity reference records
+`main_residence_value=0.674658`
+(`efrs_parity_reference.json:313`), but the signed register and comparison
+ledger still quote `0.6761`
+(`spine_swap_signed_differences.json:142`;
+`experiments/686-uk-spine-comparison-ledger.md:184-190`). The discrepancy
+survives byte-for-byte on current main. It does not change direction or band
+classification, but it disproves the stated completeness of the 1.56.16
+cross-check.
+
+Acceptance criteria:
+
+- Correct the register and ledger from the pinned artifact.
+- Add a machine check that every quoted incumbent share agrees with the
+  packaged parity reference at the declared precision.
+
+### Round-2 verification log
+
+- Required `uv sync --all-packages --extra us` was attempted first. The default
+  cache was outside the writable sandbox; a task-local cache resolved all 123
+  locked packages and then failed downloading `joblib==1.5.3` because external
+  DNS was unavailable.
+- Focused parity/register/payload/age/NHS tests completed with exit 0 using the
+  sibling environment whose `uv.lock` SHA-256 exactly matches this checkout,
+  with all five workspace source roots forced through this tree.
+- Fresh production-function and parity-verdict probes produced every value in
+  the table above. No candidate/repository build, publication, promotion, or
+  production-pointer mutation occurred.
+- GitNexus reported that this repository is not indexed and exposed no graph
+  tools; blast-radius analysis therefore used `git range-diff`, callers,
+  consumers, and focused tests directly.
+
+## Round 1 — ranked findings
 
 ### 1. BLOCKING — final-head acceptance evidence is stale, and the new last stage reproduces an E6 failure
 

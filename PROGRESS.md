@@ -2,38 +2,43 @@
 
 ## State
 
-- Round 2 began on 2026-08-25 under the user's explicit stale-head warning. No
-  round-1 conclusion is being carried forward without re-verification.
-- Required live PR head:
-  `76e39f9b65e498a4361ce708c786c27954cfb93d`. It is not yet present in the
-  shared object database or refs.
-- Three exact fetch attempts have failed before transfer because the shell
-  environment has no DNS configuration and cannot resolve `github.com`.
-  Therefore no round-2 finding has been evaluated yet and the required
-  `uv sync --all-packages --extra us` has not started.
-- Work remains isolated on `review/pr-747-audit`; no PR branch was modified,
-  committed to, pushed, built, published, or promoted.
+Round-2 post-merge verification is complete against current `main` merge
+`2807e99cc11d1a8c69a0886992ae21a533719958` and merged PR head
+`76e39f9b77256766d7608c1f03e12db2f8cef118`, independently confirmed through
+GitHub REST. All five numbered round-one findings survive; the entity-table
+subpart of finding 2 alone was resolved by `76e39f9b`. The priority production
+defect is a fresh E6 reproduction in which final age-tail redistribution makes
+all six stored NHS columns disagree with their final-age recomputation.
+
+`REVIEW-747.md` now carries the full post-merge verdict table, refreshed probes,
+resolving-commit analysis, and six owner-ready issue drafts. No build,
+publication, promotion, production-pointer change, or commit to the merged PR
+branch occurred.
 
 ## Done
 
-- Read `CLAUDE.md` and the `gitnexus-pr-review` instructions again for round 2.
-- Verified the worktree and existing round-1 journal were clean before the
-  fetch attempts.
-- Verified both the full live SHA and local ref `pr-747-r2` are absent, rather
-  than silently falling back to cached head `86f55741`.
-- Confirmed `gitnexus status` reports this repository is not indexed; no
-  repository analysis/indexing was started while the exact live source is
-  unavailable.
+- Read `CLAUDE.md` and the GitHub/GitNexus review instructions.
+- Attempted the required fresh shell fetch and US-extra sync; recorded the
+  sandbox DNS/cache failures. Used GitHub REST for live refs and a sibling
+  exact-lock environment for focused tests only.
+- Proved with `git range-diff` that all 27 audited patches are patch-equivalent
+  after rebase and the sole added PR patch is entity-scope repair `76e39f9b`.
+- Re-ran the production NHS allocator → persisted outputs → age-tail → E6 path:
+  189/400 moved to age 85+, 67 to 90+, and all six NHS stored columns failed
+  while permutation identity remained true.
+- Re-ran arbitrary/missing count, opposite-direction water, widened strict
+  band, and incomplete/unbound weighted-total probes; every fail-open survived.
+- Rechecked 24-vs-25 stage evidence, absence of the named tracked receipt, and
+  stale 0.6761-vs-0.674658 incumbent evidence.
+- Ran the focused parity/register/payload/age/NHS test slice with exit 0 and
+  validated the updated report with code-line citations.
 
 ## Next
 
-- Acquire and check out live head `76e39f9b`, verify it byte-exactly, then run
-  the required US-extra sync before evaluating any finding.
-- Rebase the audit artifacts onto a separate round-2 audit branch rooted at
-  that exact live head, preserving this journal and the round-1 report.
-- Re-verify every round-1 finding as `SURVIVES` or `RESOLVED`, inspect all new
-  commits/receipts/fixtures, run only scoped tests and probes, and update
-  `REVIEW-747.md` with the fresh verdict.
+1. The owner should file the priority E6/NHS issue first, then the five proof
+   completeness/enforcement issues drafted in `REVIEW-747.md`.
+2. Do not rely on or promote the merged spine until the E6 defect is fixed and
+   the exact repaired 25-stage candidate has identity-bound acceptance.
 
 ---
 
