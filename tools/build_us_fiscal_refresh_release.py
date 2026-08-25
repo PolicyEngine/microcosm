@@ -288,7 +288,7 @@ from microcosm.data.us_critical_targets import (
 from microcosm.data.us_critical_targets import (
     US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
 )
-from microcosm.frame import Frame, MassChange, WeightKind, Weights
+from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_table
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
@@ -2615,43 +2615,59 @@ def _assert_cd_vintage_support_matches(
 
 def _read_cd_vintage_support_provenance(h5_path: Path) -> dict[str, object]:
     try:
-        import h5py
-    except ModuleNotFoundError as exc:
+        with pd.HDFStore(h5_path, mode="r") as store:
+            root_attributes = store.get_node("/")._v_attrs
+            crosswalk_sha256 = _h5_attr_text(
+                root_attributes,
+                CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+            )
+            target_vintage = _h5_attr_text(
+                root_attributes,
+                CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+            )
+            cd_lookup = _hdf_store_frame_column_status(
+                store,
+                table="household",
+                column="congressional_district_geoid",
+            )
+    except ImportError as exc:
         raise RuntimeError(
-            "Reading congressional-district support provenance requires h5py. "
+            "Reading congressional-district support provenance requires PyTables. "
             "Run the fiscal refresh builder with the US extra, for example "
             "`uv run --python 3.13 --package microcosm-build --extra us --group "
             "dev python tools/build_us_fiscal_refresh_release.py ...`. This "
             "preflight is intentionally before calibration or donor imputation."
         ) from exc
-
-    with h5py.File(h5_path, "r") as h5:
-        return {
-            CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: _h5_attr_text(
-                h5.attrs, CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR
-            ),
-            CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: _h5_attr_text(
-                h5.attrs, CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR
-            ),
-            "household_congressional_district_geoid": (
-                _h5_table_column_status(
-                    h5,
-                    table="household",
-                    column="congressional_district_geoid",
-                )
-            ),
-        }
+    return {
+        CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: crosswalk_sha256,
+        CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: target_vintage,
+        "household_congressional_district_geoid": cd_lookup,
+    }
 
 
-def _h5_table_column_status(h5, *, table: str, column: str) -> dict[str, object]:
-    table_path = f"{table}/table"
-    if table_path not in h5:
+def _hdf_frame_column_status(
+    h5_path: Path,
+    *,
+    table: str,
+    column: str,
+) -> dict[str, object]:
+    with pd.HDFStore(h5_path, mode="r") as store:
+        return _hdf_store_frame_column_status(store, table=table, column=column)
+
+
+def _hdf_store_frame_column_status(
+    store: pd.HDFStore,
+    *,
+    table: str,
+    column: str,
+) -> dict[str, object]:
+    try:
+        frame_table = read_frame_table(store, table)
+    except KeyError:
         return {"exists": False, "table": table, "column": column}
-    dataset = h5[table_path]
-    names = getattr(dataset.dtype, "names", None) or ()
-    if column not in names:
+    if column not in frame_table.columns:
         return {"exists": False, "table": table, "column": column}
-    values = np.asarray(dataset[column])
+    values = frame_table[column].to_numpy(copy=False)
     return {
         "exists": True,
         "table": table,
@@ -2673,8 +2689,14 @@ def _positive_numeric_unique_count(values: np.ndarray) -> int:
     return len(positive)
 
 
-def _h5_attr_text(attrs: Mapping[str, object], key: str) -> str | None:
-    value = attrs.get(key)
+def _h5_attr_text(attrs: object, key: str) -> str | None:
+    try:
+        if isinstance(attrs, Mapping):
+            value = attrs.get(key)
+        else:
+            value = attrs[key]  # type: ignore[index]
+    except KeyError:
+        return None
     if value is None:
         return None
     if isinstance(value, bytes):

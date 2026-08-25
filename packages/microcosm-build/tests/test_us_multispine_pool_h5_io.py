@@ -20,6 +20,11 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+)
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -31,6 +36,10 @@ from microcosm.build.us_runtime.h5_io import (
     load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
+)
+from microcosm.build.us_runtime.support_provenance import (
+    support_clone_index_column,
+    support_source_id_column,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -70,7 +79,10 @@ def _pool_frame() -> Frame:
     )
 
 
-def _pool_frame_with_object_strings_on_every_entity() -> Frame:
+def _pool_frame_with_object_strings_on_every_entity(
+    *,
+    stacked: bool = False,
+) -> Frame:
     """Match the assembled pool's object-backed source-string shape."""
 
     frame = _pool_frame()
@@ -88,6 +100,21 @@ def _pool_frame_with_object_strings_on_every_entity() -> Frame:
             ),
         )
         tables[entity] = table
+    if stacked:
+        household = tables["household"].copy()
+        household["puma"] = ["0600101", "0600102", "0600102"]
+        household["congressional_district_geoid"] = np.asarray(
+            [601, 601, 601],
+            dtype=np.int64,
+        )
+        household["county_fips"] = ["06001", "06001", "06001"]
+        household[support_source_id_column("household")] = np.asarray(
+            [10, 20, 20], dtype=np.int64
+        )
+        household[support_clone_index_column("household")] = np.asarray(
+            [0, 0, 1], dtype=np.int64
+        )
+        tables["household"] = household
     return Frame(
         tables,
         frame.schema,
@@ -387,6 +414,166 @@ def test_pool_h5_load_boundary_canonicalizes_under_pyarrow_default(
     assert pd.isna(canonical["PERIDNUM"].iloc[1])
 
 
+def _fixture_geography_declaration() -> dict[str, object]:
+    return {
+        "anchor": "puma",
+        "order": "before_gap_fill",
+        "kernels": {
+            "assign": "kernel:assign_us_puma_ladder",
+            "validate": "kernel:us_puma_ladder_gate",
+        },
+        "draw": {
+            "asec": {
+                "universe": "puma_within_state",
+                "weight": "puma_population_2020",
+            },
+            "congressional_district": {
+                "universe": "congressional_district_within_puma",
+                "weight": "block_population_overlap",
+            },
+            "county": {
+                "universe": "county_within_puma",
+                "weight": "block_population_overlap",
+            },
+        },
+        "derive": ["puma", "congressional_district_geoid", "county_fips"],
+        "assertions": [
+            "observed_acs_puma_preserved",
+            "geography_state_prefix_consistent",
+        ],
+        "ladder_source": "source:us_puma_ladder_2020",
+        "congressional_district_vintage_crosswalk": {
+            "source_ref": (
+                "source:us_congressional_district_vintage_crosswalk_117_to_119"
+            ),
+            "source_vintage": "vintage:cd_117",
+            "target_vintage": "vintage:cd_119",
+        },
+        "seed": "stream:geography_legacy",
+        "default_seed": 0,
+        "assign_tract": False,
+        "layer_vintages": {
+            "congressional_district": "vintage:cd_119",
+            "county": "vintage:census_2020",
+            "puma": "vintage:puma_2020",
+            "tract": "vintage:census_2020",
+        },
+        "validation": ["puma_ladder_gate", "vintage_refusal"],
+    }
+
+
+def _fixture_geography_assignment(
+    household: pd.DataFrame,
+) -> dict[str, object]:
+    clone_column = support_clone_index_column("household")
+    native = household.loc[household[clone_column].eq(0)]
+    household_ids = native["household_id"].to_numpy(dtype="<i8", copy=False)
+    order_digest = hashlib.sha256()
+    order_digest.update(b"populace-ordered-household-id-int64-le-v1\0")
+    order_digest.update(
+        len(household_ids).to_bytes(8, byteorder="little", signed=False)
+    )
+    order_digest.update(household_ids.tobytes(order="C"))
+
+    geography_arrays = (
+        household_ids,
+        native["puma"].astype(np.int64).to_numpy(dtype="<i8", copy=False),
+        native["congressional_district_geoid"].to_numpy(
+            dtype="<i8",
+            copy=False,
+        ),
+        native["county_fips"]
+        .astype(np.int64)
+        .to_numpy(
+            dtype="<i8",
+            copy=False,
+        ),
+    )
+    geography_digest = hashlib.sha256()
+    geography_digest.update(
+        b"populace-ordered-household-geography-column-major-int64-le-v1\0"
+    )
+    geography_digest.update(len(native).to_bytes(8, byteorder="little", signed=False))
+    for values in geography_arrays:
+        geography_digest.update(values.tobytes(order="C"))
+
+    return {
+        "artifact_kind": "populace_us_stacked_household_geography_assignment",
+        "schema_version": 1,
+        "contract": {
+            "declaration": _fixture_geography_declaration(),
+            "algorithm": {
+                "id": "assign_us_puma_ladder.population_weighted_overlap.v1",
+                "kernel": "assign_us_puma_ladder",
+                "operator": "assign_us_puma_ladder",
+                "order": "before_gap_fill",
+                "assign_tract": False,
+            },
+            "authorities": {
+                "puma_ladder": {
+                    "input_role": "puma_ladder",
+                    "source_ref": "source:us_puma_ladder_2020",
+                    "sha256": (
+                        "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+                    ),
+                },
+                "congressional_district_vintage_crosswalk": {
+                    "input_role": "congressional_district_vintage_crosswalk",
+                    "source_ref": (
+                        "source:us_congressional_district_vintage_crosswalk_117_to_119"
+                    ),
+                    "sha256": (
+                        "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+                    ),
+                    "source_vintage_ref": "vintage:cd_117",
+                    "source_vintage": "117th_congress",
+                    "target_vintage_ref": "vintage:cd_119",
+                    "target_vintage": "119th_congress",
+                },
+            },
+            "seed": {
+                "site": "legacy_puma_ladder",
+                "stream": "geography_legacy",
+                "value_source": "run_request.build_model_seed",
+                "value": 0,
+            },
+        },
+        "pre_assignment_household_order": {
+            "column": "household_id",
+            "codec": "int64_little_endian.v1",
+            "row_count": len(native),
+            "sha256": order_digest.hexdigest(),
+        },
+        "assigned_household_geography": {
+            "columns": [
+                "household_id",
+                "puma",
+                "congressional_district_geoid",
+                "county_fips",
+            ],
+            "codec": "column_major_int64_little_endian.v1",
+            "row_count": len(native),
+            "sha256": geography_digest.hexdigest(),
+        },
+        "target_universe": {
+            "district_count": 1,
+            "geoids_sha256": "d" * 64,
+        },
+        "output": {
+            "household_rows": len(native),
+            "positive_congressional_district_rows": len(native),
+            "unique_congressional_district_values": int(
+                native["congressional_district_geoid"].nunique()
+            ),
+        },
+        "summary": {"applied": True, "household_rows": len(native)},
+        "gate": {
+            "passed": True,
+            "gates": {"us_puma_ladder": {"passed": True}},
+        },
+    }
+
+
 def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     run_id = "fixture-publication"
     pool_path = tmp_path / "pool.h5"
@@ -403,14 +590,34 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         },
     }
     schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 4
+    pool_frame = _pool_frame_with_object_strings_on_every_entity(stacked=stacked)
+    geography_assignment = (
+        _fixture_geography_assignment(pool_frame.table("household"))
+        if stacked
+        else None
+    )
     write_nullable_us_h5(
-        _pool_frame_with_object_strings_on_every_entity(),
+        pool_frame,
         pool_path,
         period=2024,
         artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
         publication_run_id=run_id,
         materializer_version=(
             US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION if stacked else None
+        ),
+        root_attributes=(
+            {
+                CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                    geography_assignment["contract"]["authorities"][
+                        "congressional_district_vintage_crosswalk"
+                    ]["sha256"]
+                ),
+                CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+                ),
+            }
+            if geography_assignment is not None
+            else None
         ),
     )
     diagnostics = {
@@ -477,25 +684,40 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     }
     if stacked:
         dag = _canonical_stacked_late_dag_receipt()
+        assert geography_assignment is not None
         transition_authority = (
             stacked_spine_module._late_producer_transition_authority_receipt(dag)
         )
         manifest.update(
             {
                 "pipeline": "us-stacked-pool",
+                "random_seed": 0,
+                "geography_assignment": geography_assignment,
+                "provenance_pins": {
+                    role: {
+                        "path": f"/fixture/{role}",
+                        "expected_sha256": authority["sha256"],
+                        "actual_sha256": authority["sha256"],
+                        "size_bytes": 1,
+                    }
+                    for role, authority in geography_assignment["contract"][
+                        "authorities"
+                    ].items()
+                },
                 "late_producer_transition_authority_sha256": (
                     transition_authority["sha256"]
                 ),
                 "terminal_gates": agreement_gate,
                 "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
                 "stage_receipts": {
+                    "geography_assignment": geography_assignment,
                     "impute": {
                         "source_operator_chain": {
                             "late_dag_completion": dag["source_completion"],
                         },
                         "stacked_late_producer_dag": dag,
                         "stacked_post_puf_transfer": dag["post_puf_transfer"],
-                    }
+                    },
                 },
             }
         )
@@ -1112,7 +1334,7 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
-    assert manifest["schema_version"] == 8
+    assert manifest["schema_version"] == 9
     assert (
         manifest["pool_h5"]["materializer_version"]
         == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
@@ -1130,6 +1352,92 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
         transition_authority["sha256"]
         == manifest["late_producer_transition_authority_sha256"]
     )
+
+
+def test_ready_stacked_pool_loader_binds_h5_cd_vintage_attrs(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        store.get_node("/")._v_attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+            "117th_congress"
+        )
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="root attributes do not match"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_binds_h5_household_geography_digest(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        household = h5_io.read_frame_table(store, "household")
+        household.loc[household.index[0], "congressional_district_geoid"] = 602
+        store.put("household", household, format="fixed")
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="household geography differs"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize(
+    "column",
+    (
+        support_source_id_column("household"),
+        support_clone_index_column("household"),
+    ),
+)
+def test_ready_stacked_pool_loader_requires_h5_clone_lineage(
+    tmp_path: Path,
+    column: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        household = h5_io.read_frame_table(store, "household").drop(columns=column)
+        store.put("household", household, format="fixed")
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing household clone-lineage"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_rejects_divergent_clone_geography(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    clone_column = support_clone_index_column("household")
+    with pd.HDFStore(pool_path, mode="a") as store:
+        household = h5_io.read_frame_table(store, "household")
+        clone_row = household[clone_column].eq(1)
+        assert int(clone_row.sum()) == 1
+        household.loc[clone_row, "puma"] = "0600103"
+        store.put("household", household, format="fixed")
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cloned household rows disagree.*puma"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
@@ -1307,6 +1615,7 @@ def test_ready_stacked_pool_cannot_be_stripped_into_legacy_shape(
         "release_id",
         "sampling",
         "clone_attachment",
+        "geography_assignment",
         "input_pins_digest",
         "late_producer_transition_authority_sha256",
         "stack_manifest",

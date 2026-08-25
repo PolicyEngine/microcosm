@@ -59,6 +59,7 @@ EXPECTED_CHECKPOINT_TOP_LEVEL = frozenset(
         "pipeline",
         "policyengine_us_version",
         "pool_code",
+        "geography_assignment",
         "schema_version",
         "stacked_authority",
     }
@@ -349,9 +350,10 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "3a980927227704d0589f246eef9cd825c2ae84f3a4134ac835e0e5ed39a563ac",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "b6a47fac54d7de7aa42ce59dc1950c0765b7a67034f0174ad1531d5bbb06ceef",
+    "full_checkpoint": "a128a85f877fb32def9382b841b8b340f974e8a9148ac029c1f04becdc956c18",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "7125ad28ae2c69f22094a574bbf6ed2ddf1682a2c2c3b416f8f49304b7016ce7",
+    "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
     "late_resource_semantics": "3850554eb804fde5e4f86a34ac1bb8a7a07aafff7e8b48396a3d5fca844798e8",
     "late_schedule": "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79",
@@ -375,6 +377,7 @@ EXPECTED_INVENTORY_ITEMS = frozenset(
         "early_gap_fill_plan_exact",
         "early_transfer_surface_exact",
         "gap_fill_schedule_receipt_exact",
+        "stacked_geography_assignment_exact",
         "itemization_declared_splits_exact",
         "late_schedule_receipt_exact",
         "late_split_ledger_exact",
@@ -430,16 +433,16 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 325,
+    "resolved_references": 334,
     "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
     "seed_sites": 53,
     "seed_streams": 14,
     "source_operators": 16,
     "source_stages": 37,
-    "stacked_checkpoint_full_components": 12,
+    "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
-    "stacked_checkpoint_static_components": 9,
+    "stacked_checkpoint_static_components": 10,
     "tail_control_fields": 934,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
@@ -620,6 +623,7 @@ def build_inventory_coverage(
     }
     imputation = _mapping(domains["imputation"], "imputation")
     sources = _mapping(domains["sources"], "sources")
+    geography = _mapping(domains["geography"], "geography")
     spine = _mapping(domains["spine"], "spine")
     take_up = _mapping(domains["take_up"], "take_up")
     calibration = _mapping(domains["calibration"], "calibration")
@@ -647,6 +651,14 @@ def build_inventory_coverage(
         "expected checkpoint static",
     )
     pool_code = _mapping(static.get("pool_code"), "checkpoint pool_code")
+    geography_assignment = _mapping(
+        static.get("geography_assignment"),
+        "checkpoint geography assignment",
+    )
+    expected_geography_assignment = _mapping(
+        expected_static.get("geography_assignment"),
+        "expected checkpoint geography assignment",
+    )
 
     family_rows = [
         _mapping(value, "imputation family")
@@ -1633,6 +1645,70 @@ def build_inventory_coverage(
         consumers=("legacy_adapter.stacked_checkpoint_static_components",),
         observed={"field_names": sorted(static)},
         expected={"field_names": sorted(EXPECTED_CHECKPOINT_TOP_LEVEL)},
+    )
+    geography_authorities = _mapping(
+        geography_assignment.get("authorities"),
+        "checkpoint geography authorities",
+    )
+    geography_seed = _mapping(
+        geography_assignment.get("seed"),
+        "checkpoint geography seed",
+    )
+    add(
+        "stacked_geography_assignment_exact",
+        clauses={
+            "checkpoint geography assignment differs": _json_equal(
+                geography_assignment,
+                expected_geography_assignment,
+            ),
+            "geography declaration is not embedded exactly": _json_equal(
+                geography_assignment.get("declaration"),
+                geography.get("assignment"),
+            ),
+            "geography assignment authorities differ": set(geography_authorities)
+            == {
+                "puma_ladder",
+                "congressional_district_vintage_crosswalk",
+            },
+            "geography assignment seed differs": geography_seed
+            == {
+                "site": "legacy_puma_ladder",
+                "stream": "geography_legacy",
+                "value_source": "run_request.build_model_seed",
+                "value": 0,
+            },
+            "geography assignment digest differs": _operational_free_sha256(
+                geography_assignment
+            )
+            == EXPECTED_HASHES["geography_assignment"],
+        },
+        homes=(
+            "/geography/assignment",
+            "/sources/sources",
+            "/vintages/records",
+            "/spine/seed_site_bindings",
+        ),
+        consumers=(
+            "legacy_adapter.stacked_checkpoint_static_components.geography_assignment",
+        ),
+        observed={
+            "sha256": _operational_free_sha256(geography_assignment),
+            "authority_roles": sorted(geography_authorities),
+            "target_vintage": _mapping(
+                geography_authorities.get(
+                    "congressional_district_vintage_crosswalk"
+                ),
+                "checkpoint geography crosswalk authority",
+            ).get("target_vintage"),
+        },
+        expected={
+            "sha256": EXPECTED_HASHES["geography_assignment"],
+            "authority_roles": [
+                "congressional_district_vintage_crosswalk",
+                "puma_ladder",
+            ],
+            "target_vintage": "119th_congress",
+        },
     )
     add(
         "stacked_checkpoint_pool_code_exact",

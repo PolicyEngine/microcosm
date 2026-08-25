@@ -3,10 +3,11 @@ pipeline_contract:
   artifact_protocol:
     artifact_kind: populace_us_stacked_pool_checkpoint_identity
     schema_version: 1
-    materializer_version: 11
+    materializer_version: 12
     pipeline: us-stacked-pool
   stacked_operator_order:
   - assemble_stacked_spine
+  - assign_us_puma_ladder
   - prepare_multispine_source_inputs_for_clone
   - gap_fill_stacked_spine
   - run_stacked_late_producer_dag
@@ -44,7 +45,6 @@ pipeline_contract:
   - _complete_schedule_d_input
   - with_us_qbi_input_reconciliation
   auxiliary_operations:
-  - assign_us_puma_ladder
   - calibrate
   - select_exact_k
   qbi_reconciliation:

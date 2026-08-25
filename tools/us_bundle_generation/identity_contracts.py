@@ -32,7 +32,6 @@ __all__ = ["build_pipeline_contract", "build_seed_site_bindings"]
 
 
 _AUXILIARY_OPERATIONS = (
-    "assign_us_puma_ladder",
     "calibrate",
     "select_exact_k",
 )

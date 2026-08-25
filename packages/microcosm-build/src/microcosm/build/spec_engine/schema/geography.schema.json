@@ -105,6 +105,26 @@
     "identified_county_source": {
      "$ref": "defs.schema.json#/$defs/source_ref"
     },
+    "congressional_district_vintage_crosswalk": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "source_ref",
+      "source_vintage",
+      "target_vintage"
+     ],
+     "properties": {
+      "source_ref": {
+       "$ref": "defs.schema.json#/$defs/source_ref"
+      },
+      "source_vintage": {
+       "$ref": "defs.schema.json#/$defs/vintage_ref"
+      },
+      "target_vintage": {
+       "$ref": "defs.schema.json#/$defs/vintage_ref"
+      }
+     }
+    },
     "derive": {
      "type": "array",
      "minItems": 1,
