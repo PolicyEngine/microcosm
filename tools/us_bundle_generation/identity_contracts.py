@@ -102,7 +102,7 @@ def _stages_with_operation(
 def build_seed_site_bindings(
     source_document: Mapping[str, Any],
 ) -> list[dict[str, object]]:
-    """Bind all 53 legacy-v1 sites to their concrete execution owners."""
+    """Bind all 66 legacy-v1 sites to their concrete execution owners."""
 
     source_ids = _source_stage_ids(source_document)
     transfer_nodes = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
@@ -174,9 +174,7 @@ def build_seed_site_bindings(
             "snap_abawd_discretionary_exemption"
         ),
         **{
-            f"immigration_humanitarian_{label}_assignment": source(
-                "immigration_status"
-            )
+            f"immigration_humanitarian_{label}_assignment": source("immigration_status")
             for label in (
                 "paroled_one_year_afghanistan",
                 "paroled_one_year_ukraine",

@@ -21,11 +21,11 @@ pytest.importorskip("policyengine_us")
 
 from policyengine_us import Simulation  # noqa: E402
 
-from microcosm.build.us_runtime.release_input_coverage import (  # noqa: E402
-    us_release_reform_coverage_probes,
-)
 from microcosm.build.us_runtime.reform_coverage_smoke import (  # noqa: E402
     _build_reform,
+)
+from microcosm.build.us_runtime.release_input_coverage import (  # noqa: E402
+    us_release_reform_coverage_probes,
 )
 
 _HR1_PROBE_IDS = (
