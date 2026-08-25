@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 
 def _load_inspector_module():
@@ -186,6 +187,7 @@ def test__given_default_reader_gets_invalid_h5__then_payload_reports_read_error(
 def test__given_fixed_household_frame__then_default_reader_finds_cd_support(
     tmp_path,
 ) -> None:
+    pytest.importorskip("tables", reason="pandas fixed-format fixture needs PyTables (absent in the base wheel gate; the US-extra test jobs run this fully)")
     inspector = _load_inspector_module()
     support_h5 = tmp_path / "support.h5"
 
