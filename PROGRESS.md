@@ -2,13 +2,52 @@
 
 ## State
 
-- Audit and report are complete on local audit branch `review/pr-747-audit`; the PR branch remains unmodified.
-- Reviewed cached PR head `86f55741081fa3fb5e3c55234e3c8dc7ff77c777` against merge base `7b90bb1882b0248d751a64bf817ec127e5c42a47`.
-- GitHub and the default uv cache are unavailable in the sandbox; the requested sync also failed from a writable cache because PyPI DNS is blocked. No candidate/repository build was run.
-- Exact diff inventory: 27 commits, 51 files, 9,965 insertions and 3,922 deletions (the largest churn is generated `source_stages.json`).
-- Final verdict is HOLD: the committed acceptance evidence predates the value-changing 25th stage and SPI persisted-value changes, the final stage order reproduces an E6 NHS identity failure, and the strict parity instrument has independently reproduced fail-open paths.
+- Round 2 began on 2026-08-25 under the user's explicit stale-head warning. No
+  round-1 conclusion is being carried forward without re-verification.
+- Required live PR head:
+  `76e39f9b65e498a4361ce708c786c27954cfb93d`. It is not yet present in the
+  shared object database or refs.
+- Three exact fetch attempts have failed before transfer because the shell
+  environment has no DNS configuration and cannot resolve `github.com`.
+  Therefore no round-2 finding has been evaluated yet and the required
+  `uv sync --all-packages --extra us` has not started.
+- Work remains isolated on `review/pr-747-audit`; no PR branch was modified,
+  committed to, pushed, built, published, or promoted.
 
 ## Done
+
+- Read `CLAUDE.md` and the `gitnexus-pr-review` instructions again for round 2.
+- Verified the worktree and existing round-1 journal were clean before the
+  fetch attempts.
+- Verified both the full live SHA and local ref `pr-747-r2` are absent, rather
+  than silently falling back to cached head `86f55741`.
+- Confirmed `gitnexus status` reports this repository is not indexed; no
+  repository analysis/indexing was started while the exact live source is
+  unavailable.
+
+## Next
+
+- Acquire and check out live head `76e39f9b`, verify it byte-exactly, then run
+  the required US-extra sync before evaluating any finding.
+- Rebase the audit artifacts onto a separate round-2 audit branch rooted at
+  that exact live head, preserving this journal and the round-1 report.
+- Re-verify every round-1 finding as `SURVIVES` or `RESOLVED`, inspect all new
+  commits/receipts/fixtures, run only scoped tests and probes, and update
+  `REVIEW-747.md` with the fresh verdict.
+
+---
+
+## Historical round-1 audit (stale head `86f55741`)
+
+### State
+
+- Audit and report completed on local audit branch `review/pr-747-audit`; the PR branch remained unmodified.
+- Reviewed cached PR head `86f55741081fa3fb5e3c55234e3c8dc7ff77c777` against merge base `7b90bb1882b0248d751a64bf817ec127e5c42a47`.
+- GitHub and the default uv cache were unavailable in the sandbox; the requested sync also failed from a writable cache because PyPI DNS was blocked. No candidate/repository build was run.
+- Exact diff inventory: 27 commits, 51 files, 9,965 insertions and 3,922 deletions (the largest churn is generated `source_stages.json`).
+- Historical verdict was HOLD: the committed acceptance evidence predated the value-changing 25th stage and SPI persisted-value changes, the final stage order reproduced an E6 NHS identity failure, and the strict parity instrument had independently reproduced fail-open paths.
+
+### Done
 
 - Read `CLAUDE.md` and the GitNexus PR-review workflow.
 - Attempted the requested PR fetch and `gh pr view`; both failed because the sandbox cannot resolve GitHub.
@@ -25,7 +64,7 @@
 - Ran `git diff --check` over the exact PR range successfully.
 - Wrote the ranked, code-cited verdict and minimum closure conditions to `REVIEW-747.md`.
 
-## Next
+### Next at round-1 close
 
 - María should hold the merge until the final 25-stage candidate is rebuilt and receipted and the strict comparator/register fail-opens are closed; then rerun this audit against the new head.
 
