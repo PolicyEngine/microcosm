@@ -57,8 +57,9 @@ with 400 age-80 people, persisted the production NHS allocation, ran the
 committed age-tail transform, and invoked the production E6 receipt. It moved
 188 people to age 85+ and 67 to age 90+. Permutation identity remained true,
 but `matches_stored_columns` was false and all six NHS columns were reported as
-mismatches. Because age stays positive, the L2 nonzero-share comparison is
-blind to this value corruption; a fresh L2-only receipt would not close it.
+mismatches. The probe preserved nonzero status for age and all six NHS columns,
+so the L2 nonzero-share comparison is blind to this value corruption; a fresh
+L2-only receipt would not close it.
 
 The only named R5 JSON remains an uncommitted local path
 (`experiments/686-uk-spine-swap-receipts.md:552-576`); `git ls-files` found no
