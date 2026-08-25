@@ -470,6 +470,9 @@ def test_segment_seeds_are_distinct_and_deterministic() -> None:
 
     seeds = module.was_wealth_segment_seeds(0)
 
+    # Golden pin: the production roots for the declared stage seed 0. Moving
+    # them is a spec-visible RNG change, never an accident.
+    assert seeds == (3757552657, 673228719, 3241444873)
     assert len(seeds) == 3
     assert len(set(seeds)) == 3
     assert seeds == module.was_wealth_segment_seeds(0)

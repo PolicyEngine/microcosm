@@ -254,9 +254,11 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
         cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
     cleaned["is_renting"] = cleaned["private_rent_code"] == 1
     # Private pension wealth other than current-employment defined-benefit
-    # entitlements (WAS total private pension wealth less DVValDBT_SCAPE, both
-    # at the SCAPE discount rate): DC pots, AVCs, current personal pensions,
-    # retained DB/DC rights, pensions in payment and pension-sharing rights.
+    # entitlements (WAS total private pension wealth less DVValDBT_SCAPE;
+    # defined-benefit-type components are valued at the SCAPE discount rate,
+    # money-purchase components are reported fund values): DC pots, AVCs,
+    # current personal pensions, retained DB/DC rights, pensions in payment
+    # and pensions expected from a former spouse or partner.
     # The incumbent folds this into corporate_wealth, where the means-tested
     # capital tests count it; pension rights are disregarded capital (UC Regs
     # 2013 Sch 10 para 10 and the parallel HB/JSA/ESA/IS/SPC paragraphs), so
@@ -366,8 +368,9 @@ def was_wealth_segment_seeds(seed: int, segments: int = 3) -> tuple[int, ...]:
     restart the same streams each time and couple the k-th target of every
     segment (the same quantile and sign-gate uniforms per recipient). On the
     licensed donor that coupling collapsed P(shares > 0 | property_wealth = 0)
-    to 0.011 against 0.055 observed; distinct child seeds recover 0.045. The
-    declared stage seed stays the root and the children are deterministic.
+    to 0.011 against 0.055 observed; the production child seeds recover 0.039
+    (hold-out receipt re-run with exactly this derivation). The declared stage
+    seed stays the root and the children are deterministic.
     """
 
     return tuple(

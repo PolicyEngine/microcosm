@@ -36,14 +36,37 @@ DB-free (retained DB and DB pensions in payment stay inside it): it is named
 `private_pension_wealth` with the current-DB exclusion stated first in its
 documentation, not `non_db_pension_wealth`.
 
-## Measurement (microcosm machinery at a fixed seed, weights unchanged)
+## The fixed-draw legal effect (the causal number)
+
+On the final code's own draws (per-segment seeds, seed 0, 100 trees), the
+drawn `private_pension_wealth` column was folded back into `corporate_wealth`
+on the same rows and UC recomputed — every draw identical, only the
+capital-test classification differs. Split minus folded, 2025, weights
+unchanged:
+
+| | folded back (pension counted) | split (pension disregarded) | fixed-draw effect |
+|---|---|---|---|
+| UC benefit units, UK | 4.869 | 6.268 | **+1.399** |
+| UC benefit units, GB | 4.761 | 6.090 | +1.329 |
+| UC spend, £bn | 59.7 | 71.4 | +11.7 |
+| eligible benefit units | 8.67 | 15.57 | +6.90 |
+| reporter records over £16k | 3,195 | 1,742 | −1,453 |
+| GB housing / LCWRA / carer / childcare / child elements | 3.77 / 1.70 / 0.57 / 0.24 / 2.21 | 4.59 / 2.06 / 0.62 / 0.40 / 2.82 | +0.82 / +0.35 / +0.06 / +0.17 / +0.61 |
+| GB single / lone parent / couple no children / couple with children | 2.36 / 1.52 / 0.19 / 0.68 | 3.01 / 1.90 / 0.27 / 0.91 | +0.65 / +0.37 / +0.08 / +0.23 |
+
+With reporters anchored: 4.889 → 6.345 (+1.456).
+
+## Whole-implementation comparison (redraw pair, shared-seed variant)
 
 The WAS wealth block was re-imputed on every household of the 1.56.16
-artifact with this package's stage code (seed 0, 100 trees), once with the
-pre-split arithmetic (OLD) and once with the split (NEW), the household
-columns swapped into the single-year dataset before the simulation is built,
-and UC measured at 2025 with policyengine-uk 2.91.0. Benefit units in
-millions; GB = excluding Northern Ireland.
+artifact (seed 0, 100 trees), once with the pre-split arithmetic (OLD) and
+once with the split (NEW), both under the pre-fix shared-seed pattern, the
+household columns swapped into the single-year dataset before the simulation
+is built, and UC measured at 2025 with policyengine-uk 2.91.0. OLD and NEW
+are independently fitted and drawn, so this pair compares whole
+implementations rather than isolating the classification (the fixed-draw
+table above does that); no matched OLD′ exists for the final per-segment-seed
+branch. Benefit units in millions; GB = excluding Northern Ireland.
 
 | | incumbent artifact | OLD re-draw | NEW re-draw | NEW − OLD |
 |---|---|---|---|---|
@@ -98,11 +121,16 @@ share-like holdings, the countable quantity). The adversarial review measured
 it on train/hold-out halves of the donor (30 trees; companion JSON
 `452-uk-pension-wealth-split-coupling-receipt.json`):
 
-| hold-out probability | observed | stage as-is (same seed) | per-segment seeds |
+| hold-out probability | observed | stage as-is (same seed) | production child seeds |
 |---|---|---|---|
-| P(shares excl. ISA > 0 \| property_wealth = 0) | 0.055 | 0.011 | 0.045 |
-| P(stocks-and-shares ISA > 0 \| property_wealth = 0) | 0.031 | 0.017 | 0.028 |
-| P(private pension wealth > 0 \| property_wealth = 0) | 0.560 | 0.540 | 0.554 |
+| P(shares excl. ISA > 0 \| property_wealth = 0) | 0.055 | 0.011 | 0.039 |
+| P(stocks-and-shares ISA > 0 \| property_wealth = 0) | 0.031 | 0.017 | 0.025 |
+| P(private pension wealth > 0 \| property_wealth = 0) | 0.560 | 0.540 | 0.528 |
+
+(The receipt was re-run with `was_wealth_segment_seeds` — the exact production
+derivation — after review caught that the first variant derived its child
+seeds with a modulo-2^31 truncation and measured 0.045; the unit test now
+golden-pins the production tuple.)
 
 The stage now derives one child seed per segment from the declared seed
 (`SeedSequence(0).spawn(3)` → 3757552657, 673228719, 3241444873); the
