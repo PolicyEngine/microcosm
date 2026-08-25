@@ -330,6 +330,58 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: snap_abawd_discretionary_exemption
+- site: immigration_humanitarian_paroled_one_year_afghanistan_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_paroled_one_year_ukraine_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_paroled_one_year_nicaragua_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_paroled_one_year_venezuela_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_refugee_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_asylee_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_deportation_withheld_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_venezuela_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_el_salvador_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_honduras_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_nicaragua_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_nepal_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_other_designated_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
 - site: immigration_ead_workers_assignment
   owners:
   - kind: source_stage

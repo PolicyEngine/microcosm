@@ -173,6 +173,26 @@ def build_seed_site_bindings(
         "snap_discretionary_exemption_assignment": source(
             "snap_abawd_discretionary_exemption"
         ),
+        **{
+            f"immigration_humanitarian_{label}_assignment": source(
+                "immigration_status"
+            )
+            for label in (
+                "paroled_one_year_afghanistan",
+                "paroled_one_year_ukraine",
+                "paroled_one_year_nicaragua",
+                "paroled_one_year_venezuela",
+                "refugee",
+                "asylee",
+                "deportation_withheld",
+                "tps_venezuela",
+                "tps_el_salvador",
+                "tps_honduras",
+                "tps_nicaragua",
+                "tps_nepal",
+                "tps_other_designated",
+            )
+        },
         "immigration_ead_workers_assignment": source("immigration_status"),
         "immigration_ead_students_assignment": source("immigration_status"),
         "ssi_take_up_assignment": source("ssi_take_up"),
@@ -203,9 +223,9 @@ def build_seed_site_bindings(
     }
 
     protocol_site_ids = tuple(site.id for site in LEGACY_V1_PROTOCOL.sites)
-    if len(protocol_site_ids) != 53 or set(owners) != set(protocol_site_ids):
+    if len(protocol_site_ids) != 66 or set(owners) != set(protocol_site_ids):
         raise RuntimeError(
-            "legacy-v1 seed owner ledger must cover exactly 53 protocol sites; "
+            "legacy-v1 seed owner ledger must cover exactly 66 protocol sites; "
             f"missing={sorted(set(protocol_site_ids) - owners.keys())!r}, "
             f"extra={sorted(owners.keys() - set(protocol_site_ids))!r}"
         )
