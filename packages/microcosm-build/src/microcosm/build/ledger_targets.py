@@ -22,10 +22,10 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
 ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
 ALLOWED_VALUE_OPERATIONS = frozenset(
-    ("identity", "sum", "calendar_year_average", "latest_plateau")
+    ("identity", "sum", "calendar_year_average", "latest_plateau", "count_x_mean")
 )
 MULTI_FACT_VALUE_OPERATIONS = frozenset(
-    ("sum", "calendar_year_average", "latest_plateau")
+    ("sum", "calendar_year_average", "latest_plateau", "count_x_mean")
 )
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
 
@@ -531,6 +531,8 @@ def target_spec_from_ledger_reference(
         numeric_value = sum(numeric_values) / len(numeric_values)
     elif reference.value_operation == "latest_plateau":
         numeric_value = numeric_values[-1]
+    elif reference.value_operation == "count_x_mean":
+        numeric_value = numeric_values[0] * numeric_values[1]
     elif reference.value_operation == "sum":
         numeric_value = sum(numeric_values)
     else:
@@ -615,7 +617,16 @@ def _validate_fact_aggregation(
         reference.metadata.get("fact_aggregation") == "time_mean"
         and aggregation == "mean"
     )
-    if aggregation not in SUPPORTED_LEDGER_AGGREGATIONS and not accepts_time_mean:
+    accepts_count_x_mean = (
+        reference.value_operation == "count_x_mean"
+        and aggregation == "mean"
+        and _count_mean_fact_role(fact) == "mean"
+    )
+    if (
+        aggregation not in SUPPORTED_LEDGER_AGGREGATIONS
+        and not accepts_time_mean
+        and not accepts_count_x_mean
+    ):
         raise ValueError(
             f"Ledger fact for {reference.name!r} has unsupported aggregation "
             f"{aggregation!r}; Microcosm targets must be compiled from sum "
@@ -888,6 +899,8 @@ def _resolve_reference_fact(
             )
         if reference.value_operation == "latest_plateau" and eligible_matches:
             return _resolve_latest_plateau_reference_facts(reference, eligible_matches)
+        if reference.value_operation == "count_x_mean" and eligible_matches:
+            return _resolve_count_x_mean_reference_facts(reference, eligible_matches)
         if len(eligible_matches) == 1:
             return eligible_matches[0]
         latest_match = _latest_period_selector_match(reference, eligible_matches)
@@ -994,6 +1007,49 @@ def _resolve_latest_plateau_reference_facts(
     return tuple(reversed(plateau))
 
 
+def _resolve_count_x_mean_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    partitions: dict[
+        tuple[tuple[str, ...], tuple[int, int, str]], dict[str, list[object]]
+    ] = {}
+    for fact in eligible_matches:
+        role = _count_mean_fact_role(fact)
+        if not role:
+            continue
+        key = (_selector_count_mean_partition_key(fact), _period_key(fact))
+        partitions.setdefault(key, {}).setdefault(role, []).append(fact)
+
+    valid = {
+        key: roles
+        for key, roles in partitions.items()
+        if len(roles.get("count", ())) == 1 and len(roles.get("mean", ())) == 1
+    }
+    if not valid:
+        observed = {
+            key: {role: len(facts) for role, facts in roles.items()}
+            for key, roles in partitions.items()
+        }
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            "'count_x_mean' requires exactly one count fact and one mean fact "
+            f"in a shared selector partition; observed {observed!r}."
+        )
+    latest_period = max(period_key for _, period_key in valid)
+    latest = [
+        roles for (_, period_key), roles in valid.items() if period_key == latest_period
+    ]
+    if len(latest) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            "'count_x_mean' matched multiple count/mean selector partitions "
+            "at the latest eligible period."
+        )
+    roles = latest[0]
+    return (roles["count"][0], roles["mean"][0])
+
+
 def _monthly_operation_matches(
     reference: LedgerTargetReference,
     eligible_matches: list[object],
@@ -1078,6 +1134,34 @@ def _fact_year_month(fact: object) -> tuple[int, int]:
 def _selector_sum_partition_key(fact: object) -> tuple[str, ...]:
     invariant = _selector_period_invariant_key(fact)
     return invariant[:8] + invariant[11:]
+
+
+def _selector_count_mean_partition_key(fact: object) -> tuple[str, ...]:
+    return (
+        _source_name(fact),
+        _str_at(fact, "geography", "level"),
+        _str_at(fact, "geography", "id"),
+        _str_at(fact, "entity", "name"),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        _str_at(fact, "layout", "record_set_spec_id"),
+        _str_at(fact, "layout", "groupby_dimension"),
+        _normalized_period_bearing_id(_str_at(fact, "layout", "groupby_value_id")),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+        _domain(fact),
+    )
+
+
+def _count_mean_fact_role(fact: object) -> str:
+    measure_id = (
+        _str_at(fact, "observed_measure", "source_measure_id")
+        or _str_at(fact, "layout", "measure_id")
+    ).lower()
+    if measure_id.endswith("_count") or measure_id == "count":
+        return "count"
+    if measure_id.endswith("_mean") or measure_id == "mean":
+        return "mean"
+    return ""
 
 
 def _eligible_selector_matches(
@@ -1425,6 +1509,8 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
         return (_str_at(fact, "entity", "name"),)
     if key in {"record_set_id", "layout_record_set_id"}:
         return (_str_at(fact, "layout", "record_set_id"),)
+    if key in {"record_set_spec_id", "layout_record_set_spec_id"}:
+        return (_str_at(fact, "layout", "record_set_spec_id"),)
     if key in {"groupby_dimension", "layout_groupby_dimension"}:
         return (_str_at(fact, "layout", "groupby_dimension"),)
     if key == "layout_groupby_value_id":
@@ -1640,6 +1726,9 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_entity_role": _str_at(fact, "entity", "role"),
         "ledger_domain": _domain(fact),
         "ledger_layout_record_set_id": _str_at(fact, "layout", "record_set_id"),
+        "ledger_layout_record_set_spec_id": _str_at(
+            fact, "layout", "record_set_spec_id"
+        ),
         "ledger_layout_groupby_dimension": _str_at(fact, "layout", "groupby_dimension"),
         "ledger_layout_groupby_value_id": _str_at(fact, "layout", "groupby_value_id"),
         "ledger_layout_measure_id": _str_at(fact, "layout", "measure_id"),

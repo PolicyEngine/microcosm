@@ -60,6 +60,62 @@ class TargetReferenceAuthoringConfig:
     source_fact_feed: str = ""
 
 
+@dataclass(frozen=True)
+class AreaSignedDeferral:
+    """Signed area-level compile deferral for one contract target."""
+
+    target_id: str
+    geography_level: str
+    reason_id: str
+    rationale: str
+    area_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.target_id:
+            raise ValueError("AreaSignedDeferral.target_id must be non-empty.")
+        if not self.geography_level:
+            raise ValueError("AreaSignedDeferral.geography_level must be non-empty.")
+        if not self.reason_id:
+            raise ValueError("AreaSignedDeferral.reason_id must be non-empty.")
+        if not self.rationale:
+            raise ValueError("AreaSignedDeferral.rationale must be non-empty.")
+        if not self.area_ids:
+            raise ValueError("AreaSignedDeferral.area_ids must be non-empty.")
+        object.__setattr__(
+            self,
+            "area_ids",
+            tuple(dict.fromkeys(str(area_id) for area_id in self.area_ids)),
+        )
+
+
+@dataclass(frozen=True)
+class AreaTargetReferenceAuthoringConfig:
+    """Country-supplied authoring policy for area-grain targets."""
+
+    target_period: int | str
+    areas_by_geography_level: Mapping[str, Iterable[str]]
+    area_signed_deferrals: tuple[AreaSignedDeferral, ...] = ()
+    value_operation_by_target_id: Mapping[str, str] = field(default_factory=dict)
+    selector_pins_by_target_id: Mapping[str, Mapping[str, Any]] = field(
+        default_factory=dict
+    )
+    binding_vocabulary: frozenset[str] = frozenset()
+    source_fact_feed: str = ""
+
+    def normalized_areas(self) -> dict[str, tuple[str, ...]]:
+        """Return area rosters with duplicate ids removed in declared order."""
+
+        rosters: dict[str, tuple[str, ...]] = {}
+        for level, area_ids in self.areas_by_geography_level.items():
+            values = tuple(dict.fromkeys(str(area_id) for area_id in area_ids))
+            if not values:
+                raise ValueError(
+                    f"Area roster for geography level {level!r} must be non-empty."
+                )
+            rosters[str(level)] = values
+        return rosters
+
+
 def author_target_references(
     contract: Mapping[str, Any],
     facts: Iterable[Mapping[str, Any]],
@@ -187,6 +243,157 @@ def author_target_references(
     return AuthoredTargetReferences(tuple(active_rows), report)
 
 
+def author_area_target_references(
+    contract: Mapping[str, Any],
+    facts: Iterable[Mapping[str, Any]],
+    config: AreaTargetReferenceAuthoringConfig,
+) -> AuthoredTargetReferences:
+    """Build area-grain target references over a declared geography roster."""
+
+    fact_rows = tuple(facts)
+    areas_by_level = config.normalized_areas()
+    signed = _area_deferral_index(config, contract, areas_by_level)
+    facts_by_area = _facts_by_geography_id(fact_rows)
+    _validate_contract_bindings(contract, config.binding_vocabulary)
+
+    active_rows: list[dict[str, Any]] = []
+    target_entries: dict[str, Any] = {}
+
+    for target in contract.get("targets", ()):
+        target_id = str(target["target_id"])
+        level_entries: dict[str, Any] = {}
+        for geography_level in target.get("geography_levels", ()):
+            geography_level = str(geography_level)
+            area_ids = areas_by_level.get(geography_level)
+            if area_ids is None:
+                continue
+            candidates: list[dict[str, Any]] = []
+            for area_id in area_ids:
+                key = (target_id, geography_level, area_id)
+                selector = _area_target_selector(
+                    target,
+                    geography_level=geography_level,
+                    area_id=area_id,
+                    config=config,
+                )
+                row = _area_reference_row(
+                    target,
+                    selector,
+                    geography_level=geography_level,
+                    area_id=area_id,
+                    config=config,
+                )
+                source_facts = facts_by_area.get(area_id, ())
+                matched = [
+                    fact
+                    for fact in source_facts
+                    if _fact_matches_selector(fact, selector)
+                ]
+                reference = LedgerTargetReference(**row)
+                eligible = [fact for fact in matched if _eligible_fact(reference, fact)]
+                signed_deferral = signed.get(key)
+                entry: dict[str, Any] = {
+                    "name": row["name"],
+                    "target_id": target_id,
+                    "geography_level": geography_level,
+                    "geography_id": area_id,
+                    "status": "",
+                    "matched_fact_count_overall": len(matched),
+                    "matched_fact_count_at_or_before_period": len(eligible),
+                }
+                try:
+                    registry = compile_ledger_target_references(
+                        matched,
+                        [reference],
+                        country=str(contract["country"]),
+                    )
+                except ValueError as error:
+                    status = _classify_area_deferral(error, matched, eligible)
+                    entry["status"] = status
+                    entry["error"] = _compact_compile_error(status)
+                    if signed_deferral is None:
+                        raise ValueError(
+                            "Unsigned local target absence for "
+                            f"{target_id!r} at {geography_level!r}/{area_id!r}: "
+                            f"{status}."
+                        ) from error
+                    entry["signed_reason_id"] = signed_deferral.reason_id
+                    entry["signed_rationale"] = signed_deferral.rationale
+                else:
+                    if signed_deferral is not None:
+                        raise ValueError(
+                            "Stale area signed deferral for "
+                            f"{target_id!r} at {geography_level!r}/{area_id!r}: "
+                            "the candidate now compiles."
+                        )
+                    spec = registry.specs[0]
+                    active_rows.append(row)
+                    entry.update(
+                        {
+                            "status": "active",
+                            "resolved_period": spec.period,
+                            "resolved_value": spec.value,
+                            "resolved_fact_period": spec.metadata.get(
+                                "ledger_fact_period",
+                                "",
+                            ),
+                            "resolved_fact_key": _json_safe_ledger_id(
+                                spec.metadata.get("ledger_aggregate_fact_key", "")
+                            ),
+                        }
+                    )
+                candidates.append(entry)
+            level_entries[geography_level] = {
+                "status": _target_status(candidates),
+                "candidate_count": len(candidates),
+                "candidates": candidates,
+            }
+        target_entries[target_id] = {
+            "status": _target_status(
+                [
+                    entry
+                    for level in level_entries.values()
+                    for entry in level["candidates"]
+                ]
+            ),
+            "geography_levels": level_entries,
+        }
+
+    status_counts = Counter(
+        entry["status"]
+        for target in target_entries.values()
+        for level in target["geography_levels"].values()
+        for entry in level["candidates"]
+    )
+    report = {
+        "source_fact_feed": config.source_fact_feed,
+        "target_period": config.target_period,
+        "candidate_count": sum(
+            level["candidate_count"]
+            for target in target_entries.values()
+            for level in target["geography_levels"].values()
+        ),
+        "contract_target_count": len(tuple(contract.get("targets", ()))),
+        "active_reference_count": len(active_rows),
+        "status_counts": dict(sorted(status_counts.items())),
+        "areas_by_geography_level": {
+            level: list(area_ids) for level, area_ids in areas_by_level.items()
+        },
+        "signed_deferrals": [
+            {
+                "target_id": deferral.target_id,
+                "geography_level": deferral.geography_level,
+                "reason_id": deferral.reason_id,
+                "rationale": deferral.rationale,
+                "area_ids": list(deferral.area_ids),
+            }
+            for deferral in config.area_signed_deferrals
+        ],
+        "targets": target_entries,
+    }
+    return AuthoredTargetReferences(tuple(active_rows), report)
+
+
 def target_references_resource(
     *,
     country: str,
@@ -203,6 +410,7 @@ def target_references_resource(
             "sum",
             "calendar_year_average",
             "latest_plateau",
+            "count_x_mean",
         ],
         "target_references": list(authored.references),
     }
@@ -257,6 +465,64 @@ def _target_selector(
             continue
         selector[key] = value
     return selector
+
+
+def _area_target_selector(
+    target: Mapping[str, Any],
+    *,
+    geography_level: str,
+    area_id: str,
+    config: AreaTargetReferenceAuthoringConfig,
+) -> dict[str, Any]:
+    selector = {
+        **dict(target["ledger_selector"]),
+        "geography_level": geography_level,
+        "geography_id": area_id,
+    }
+    pins = config.selector_pins_by_target_id.get(str(target["target_id"]), {})
+    for key, value in pins.items():
+        if key == "dimension_values" and isinstance(value, Mapping):
+            existing = selector.get("dimension_values")
+            selector[key] = {
+                **(dict(existing) if isinstance(existing, Mapping) else {}),
+                **dict(value),
+            }
+            continue
+        selector[key] = value
+    return selector
+
+
+def _area_reference_row(
+    target: Mapping[str, Any],
+    selector: Mapping[str, Any],
+    *,
+    geography_level: str,
+    area_id: str,
+    config: AreaTargetReferenceAuthoringConfig,
+) -> dict[str, Any]:
+    target_id = str(target["target_id"])
+    binding = target["bindings"]["policyengine"]
+    row: dict[str, Any] = {
+        "name": f"{target_id}@{area_id}",
+        "ledger_selector": dict(selector),
+        "entity": binding.get("from_entity") or binding.get("map_to") or "household",
+        "measure": binding["metric_name"],
+        "family": target["family"],
+        "period": config.target_period,
+        "metadata": {
+            "contract_target_id": target_id,
+            "measure_kind": "prepared_column",
+            "geography_level": geography_level,
+            "geography_id": area_id,
+        },
+    }
+    assertion_policy = target.get("assertion_policy")
+    if assertion_policy is not None:
+        row["assertion_policy"] = assertion_policy
+    value_operation = config.value_operation_by_target_id.get(target_id)
+    if value_operation is not None and value_operation != "identity":
+        row["value_operation"] = value_operation
+    return row
 
 
 def _fanout_rows(
@@ -333,6 +599,49 @@ def _source_name(fact: Mapping[str, Any]) -> str:
         or fact.get("observed_measure", {}).get("source_name")
         or ""
     )
+
+
+def _facts_by_geography_id(
+    facts: tuple[Mapping[str, Any], ...],
+) -> dict[str, tuple[Mapping[str, Any], ...]]:
+    buckets: dict[str, list[Mapping[str, Any]]] = {}
+    for fact in facts:
+        area_id = str(fact.get("geography", {}).get("id") or "")
+        if area_id:
+            buckets.setdefault(area_id, []).append(fact)
+    return {key: tuple(value) for key, value in buckets.items()}
+
+
+def _area_deferral_index(
+    config: AreaTargetReferenceAuthoringConfig,
+    contract: Mapping[str, Any],
+    areas_by_level: Mapping[str, tuple[str, ...]],
+) -> dict[tuple[str, str, str], AreaSignedDeferral]:
+    target_levels = {
+        (str(target["target_id"]), str(level))
+        for target in contract.get("targets", ())
+        for level in target.get("geography_levels", ())
+    }
+    index: dict[tuple[str, str, str], AreaSignedDeferral] = {}
+    for deferral in config.area_signed_deferrals:
+        if (deferral.target_id, deferral.geography_level) not in target_levels:
+            raise ValueError(
+                "Area signed deferral references undeclared target/geography "
+                f"{deferral.target_id!r}/{deferral.geography_level!r}."
+            )
+        roster = set(areas_by_level.get(deferral.geography_level, ()))
+        outside = sorted(set(deferral.area_ids) - roster)
+        if outside:
+            raise ValueError(
+                "Area signed deferral references area id(s) outside the roster "
+                f"for {deferral.geography_level!r}: {outside!r}."
+            )
+        for area_id in deferral.area_ids:
+            key = (deferral.target_id, deferral.geography_level, area_id)
+            if key in index:
+                raise ValueError(f"Duplicate area signed deferral for {key!r}.")
+            index[key] = deferral
+    return index
 
 
 def _native_groupby_pin(
@@ -447,7 +756,19 @@ def _classify_deferral(
     return "signed_deferral_compile_error"
 
 
+def _classify_area_deferral(
+    error: ValueError,
+    matched: list[Mapping[str, Any]],
+    eligible: list[Mapping[str, Any]],
+) -> str:
+    if not matched:
+        return "no_fact_for_area"
+    return _classify_deferral(error, matched, eligible)
+
+
 def _target_status(candidate_entries: list[dict[str, Any]]) -> str:
+    if not candidate_entries:
+        return "not_applicable"
     if any(entry["status"] == "active" for entry in candidate_entries):
         if all(entry["status"] == "active" for entry in candidate_entries):
             return "active"

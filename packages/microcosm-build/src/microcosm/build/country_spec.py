@@ -819,6 +819,97 @@ def _validate_target_references(
     return tuple(references)
 
 
+def _validate_local_target_references(
+    raw: Mapping[str, Any],
+    *,
+    country: str,
+    crosswalk: Mapping[str, Any] | None,
+) -> tuple[LedgerTargetReference, ...]:
+    """Validate a ``local_target_references.json`` resource."""
+
+    context = "local_target_references.json"
+    if crosswalk is None:
+        raise ValueError(
+            f"{context}: local target references require local_area_crosswalk.json."
+        )
+    rosters = _local_area_rosters(crosswalk, context=context)
+    references = _validate_target_references(raw, country=country)
+    names = [reference.name for reference in references]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"{context}: duplicate reference name(s) {duplicates}.")
+    for reference in references:
+        if "@" not in reference.name:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} must use "
+                "target_id@geography_id naming."
+            )
+        contract_target_id, geography_id = reference.name.rsplit("@", 1)
+        if not contract_target_id or not geography_id:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} must use "
+                "target_id@geography_id naming."
+            )
+        selector = reference.ledger_selector
+        selector_level = selector.get("geography_level")
+        selector_id = selector.get("geography_id")
+        if not selector_level or not selector_id:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} must pin "
+                "ledger_selector.geography_level and geography_id."
+            )
+        if str(selector_id) != geography_id:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} geography id does not "
+                f"match selector geography_id {selector_id!r}."
+            )
+        roster = rosters.get(str(selector_level))
+        if roster is None:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} uses unknown "
+                f"geography level {selector_level!r}."
+            )
+        if geography_id not in roster["area_ids"]:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} geography id "
+                f"{geography_id!r} is outside the {selector_level!r} roster "
+                f"for expected vintage {roster['expected_vintage']!r}."
+            )
+        if reference.metadata.get("contract_target_id") not in {"", contract_target_id}:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} metadata "
+                "contract_target_id must match the name prefix."
+            )
+    return references
+
+
+def _local_area_rosters(
+    crosswalk: Mapping[str, Any],
+    *,
+    context: str,
+) -> dict[str, dict[str, Any]]:
+    levels = crosswalk.get("levels")
+    if not isinstance(levels, Mapping):
+        raise ValueError(f"{context}: local_area_crosswalk.json must expose levels.")
+    rosters: dict[str, dict[str, Any]] = {}
+    for level, payload in levels.items():
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                f"{context}: local_area_crosswalk level {level!r} must be an object."
+            )
+        area_ids = payload.get("area_ids")
+        if not isinstance(area_ids, list) or not area_ids:
+            raise ValueError(
+                f"{context}: local_area_crosswalk level {level!r} must expose "
+                "a non-empty area_ids list."
+            )
+        rosters[str(level)] = {
+            "area_ids": frozenset(str(area_id) for area_id in area_ids),
+            "expected_vintage": payload.get("expected_vintage", ""),
+        }
+    return rosters
+
+
 # ---------------------------------------------------------------------------
 # The country spec
 # ---------------------------------------------------------------------------
@@ -952,6 +1043,7 @@ class ResolvedCountrySpec:
     support_spine: SupportSpineManifest | None
     geography_spine: GeographySpineManifest | None
     target_references: tuple[LedgerTargetReference, ...]
+    local_target_references: tuple[LedgerTargetReference, ...]
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
     take_up_contract: Mapping[str, Any] | None
@@ -1570,6 +1662,15 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         if "target_references.json" in payloads
         else ()
     )
+    local_target_references = (
+        _validate_local_target_references(
+            payloads["local_target_references.json"],
+            country=declared_country,
+            crosswalk=payloads.get("local_area_crosswalk.json"),
+        )
+        if "local_target_references.json" in payloads
+        else ()
+    )
     gates = (
         GatesManifest.from_mapping(payloads["gates.json"], country=declared_country)
         if "gates.json" in payloads
@@ -1596,6 +1697,7 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         support_spine=support_spine,
         geography_spine=geography_spine,
         target_references=target_references,
+        local_target_references=local_target_references,
         gates=gates,
         release_contract=release_contract,
         take_up_contract=take_up_contract,

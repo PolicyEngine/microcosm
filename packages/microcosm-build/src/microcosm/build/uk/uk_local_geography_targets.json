@@ -1,0 +1,1445 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "description": "UK local-geography calibration contract: value-free target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets and how they bind to the model. Observed values resolve from a hash-pinned Chronicle consumer-facts artifact at build time. The local surface compiles area-grain Ledger target references from this contract and the packaged local-area crosswalk.",
+  "allowed_value_operations": [
+    "identity",
+    "sum"
+  ],
+  "resolution_defaults": {
+    "base_period_policy": "latest_not_after_build_base_period",
+    "operation": "sum",
+    "assertion_policy": "observed_only"
+  },
+  "profile_parity": {
+    "source_profile": "PolicyEngine/chronicle:policyengine_chronicle/target_profiles/uk_local_geography.json",
+    "source_profile_commit": "8ed39e4e65620c990b09f780edffe1e0782c8001",
+    "source_profile_sha256": "c797211dd3bff5e735b90950aad0c87a6cadb56294e8836f398c72f1bab0281d",
+    "source_schema_version": "policyengine_ledger.target_profile.v1",
+    "source_profile_id": "uk_local_geography",
+    "source_target_count": 25,
+    "contract_target_count": 25,
+    "corrected_rows": 25,
+    "corrected": [
+      {
+        "target_id": "hmrc.self_employment_income.amount",
+        "profile_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": "self_employment_income_amount"
+        },
+        "corrected_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": [
+            "self_employment_income_count",
+            "self_employment_income_mean"
+          ],
+          "record_set_spec_id": [
+            "uk.local_geography.spi_income.by_constituency.v1",
+            "uk.local_geography.spi_income.by_local_authority.v1"
+          ]
+        },
+        "reason": "SPI publishes count and mean but no amount measure; the local reference compiler resolves amount as count_x_mean per area."
+      },
+      {
+        "target_id": "hmrc.self_employment_income.count",
+        "profile_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": "self_employment_income_count"
+        },
+        "corrected_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": "self_employment_income_count",
+          "record_set_spec_id": [
+            "uk.local_geography.spi_income.by_constituency.v1",
+            "uk.local_geography.spi_income.by_local_authority.v1"
+          ]
+        },
+        "reason": "Narrowed to the wave-3 SPI local-geography record-set specs so constituency and local-authority rows resolve by area pin."
+      },
+      {
+        "target_id": "hmrc.employment_income.amount",
+        "profile_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": "employment_income_amount"
+        },
+        "corrected_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": [
+            "employment_income_count",
+            "employment_income_mean"
+          ],
+          "record_set_spec_id": [
+            "uk.local_geography.spi_income.by_constituency.v1",
+            "uk.local_geography.spi_income.by_local_authority.v1"
+          ]
+        },
+        "reason": "SPI publishes count and mean but no amount measure; the local reference compiler resolves amount as count_x_mean per area."
+      },
+      {
+        "target_id": "hmrc.employment_income.count",
+        "profile_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": "employment_income_count"
+        },
+        "corrected_selector": {
+          "source_name": "hmrc",
+          "source_measure_id": "employment_income_count",
+          "record_set_spec_id": [
+            "uk.local_geography.spi_income.by_constituency.v1",
+            "uk.local_geography.spi_income.by_local_authority.v1"
+          ]
+        },
+        "reason": "Narrowed to the wave-3 SPI local-geography record-set specs so constituency and local-authority rows resolve by area pin."
+      },
+      {
+        "target_id": "ons.age.0_10",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_0_10.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.10_20",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_10_20.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.20_30",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_20_30.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.30_40",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_30_40.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.40_50",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_40_50.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.50_60",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_50_60.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.60_70",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_60_70.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "ons.age.70_80",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "population",
+          "record_set_spec_id": "uk.local_geography.population.age_70_80.v1"
+        },
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+      },
+      {
+        "target_id": "dwp.universal_credit.households",
+        "profile_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households"
+        },
+        "corrected_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households",
+          "record_set_spec_id": [
+            "uk.local_geography.uc_households.by_constituency.v1",
+            "uk.local_geography.uc_households.by_local_authority.v1"
+          ]
+        },
+        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row."
+      },
+      {
+        "target_id": "dwp.universal_credit.households.0_children",
+        "profile_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_0_children"
+        },
+        "corrected_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_by_children",
+          "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
+        },
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded."
+      },
+      {
+        "target_id": "dwp.universal_credit.households.1_child",
+        "profile_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_1_child"
+        },
+        "corrected_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_by_children",
+          "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
+        },
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded."
+      },
+      {
+        "target_id": "dwp.universal_credit.households.2_children",
+        "profile_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_2_children"
+        },
+        "corrected_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_by_children",
+          "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
+        },
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded."
+      },
+      {
+        "target_id": "dwp.universal_credit.households.3plus_children",
+        "profile_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_3plus_children"
+        },
+        "corrected_selector": {
+          "source_name": "dwp",
+          "source_measure_id": "universal_credit_households_by_children",
+          "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
+        },
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded."
+      },
+      {
+        "target_id": "ons.equiv_net_income_bhc",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "equivalised_net_income_before_housing_costs"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "equivalised_net_income_before_housing_costs",
+          "record_set_spec_id": "uk.local_geography.msoa_income.equivalised_bhc.v1"
+        },
+        "reason": "Corrected to the MSOA-grain equivalised-income record-set spec; local-authority aggregation is signed out by the area compiler until the mean aggregation design lands."
+      },
+      {
+        "target_id": "ons.equiv_net_income_ahc",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "equivalised_net_income_after_housing_costs"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "equivalised_net_income_after_housing_costs",
+          "record_set_spec_id": "uk.local_geography.msoa_income.equivalised_ahc.v1"
+        },
+        "reason": "Corrected to the MSOA-grain equivalised-income record-set spec; local-authority aggregation is signed out by the area compiler until the mean aggregation design lands."
+      },
+      {
+        "target_id": "ons.equiv_housing_costs",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "equivalised_housing_costs"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": [
+            "equivalised_net_income_before_housing_costs",
+            "equivalised_net_income_after_housing_costs"
+          ],
+          "record_set_spec_id": [
+            "uk.local_geography.msoa_income.equivalised_bhc.v1",
+            "uk.local_geography.msoa_income.equivalised_ahc.v1"
+          ]
+        },
+        "reason": "No publisher housing-cost measure exists; the binding remains the BHC minus AHC value_expression over the corrected MSOA income measures."
+      },
+      {
+        "target_id": "ons.tenure.owned_outright",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "owned_outright_households"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "households",
+          "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
+        },
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+      },
+      {
+        "target_id": "ons.tenure.owned_mortgage",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "owned_with_mortgage_households"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "households",
+          "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
+        },
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+      },
+      {
+        "target_id": "ons.tenure.private_rent",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "private_rent_households"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "households",
+          "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
+        },
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+      },
+      {
+        "target_id": "ons.tenure.social_rent",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "social_rent_households"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "households",
+          "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
+        },
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+      },
+      {
+        "target_id": "ons.rent.private_rent",
+        "profile_selector": {
+          "source_name": "ons",
+          "source_measure_id": "private_rent"
+        },
+        "corrected_selector": {
+          "source_name": "ons",
+          "source_measure_id": "private_rent",
+          "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
+        },
+        "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
+      }
+    ]
+  },
+  "targets": [
+    {
+      "target_id": "hmrc.self_employment_income.amount",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.self_employment.amount",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/self_employment_income/amount",
+          "value_variable": "self_employment_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/self_employment_income/amount",
+          "status": "pending",
+          "value_rule": "uk.income.self_employment.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": [
+          "self_employment_income_count",
+          "self_employment_income_mean"
+        ],
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec."
+    },
+    {
+      "target_id": "hmrc.self_employment_income.count",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.income.self_employment.amount",
+            "operator": "!=",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/self_employment_income/count",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "self_employment_income",
+              "operator": "!=",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/self_employment_income/count",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": "self_employment_income_count",
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      }
+    },
+    {
+      "target_id": "hmrc.employment_income.amount",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.employment.amount",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/employment_income/amount",
+          "value_variable": "employment_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/employment_income/amount",
+          "status": "pending",
+          "value_rule": "uk.income.employment.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": [
+          "employment_income_count",
+          "employment_income_mean"
+        ],
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec."
+    },
+    {
+      "target_id": "hmrc.employment_income.count",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.income.employment.amount",
+            "operator": "!=",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/employment_income/count",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "employment_income",
+              "operator": "!=",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/employment_income/count",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": "employment_income_count",
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      }
+    },
+    {
+      "target_id": "ons.age.0_10",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 0,
+            "upper": 10
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/0_10",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 0,
+              "upper": 10
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/0_10",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_0_10.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.10_20",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 10,
+            "upper": 20
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/10_20",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 10,
+              "upper": 20
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/10_20",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_10_20.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.20_30",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 20,
+            "upper": 30
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/20_30",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 20,
+              "upper": 30
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/20_30",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_20_30.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.30_40",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 30,
+            "upper": 40
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/30_40",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 30,
+              "upper": 40
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/30_40",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_30_40.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.40_50",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 40,
+            "upper": 50
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/40_50",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 40,
+              "upper": 50
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/40_50",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_40_50.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.50_60",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 50,
+            "upper": 60
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/50_60",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 50,
+              "upper": 60
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/50_60",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_50_60.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.60_70",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 60,
+            "upper": 70
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/60_70",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 60,
+              "upper": 70
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/60_70",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_60_70.v1"
+      }
+    },
+    {
+      "target_id": "ons.age.70_80",
+      "family": "ons_population",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "lower": 70,
+            "upper": 80
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "age/70_80",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "age",
+              "lower": 70,
+              "upper": 80
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "age/70_80",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_70_80.v1"
+      }
+    },
+    {
+      "target_id": "dwp.universal_credit.households",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "map_to": "household",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "uc_households",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "uc_households",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_measure_id": "universal_credit_households",
+        "record_set_spec_id": [
+          "uk.local_geography.uc_households.by_constituency.v1",
+          "uk.local_geography.uc_households.by_local_authority.v1"
+        ]
+      }
+    },
+    {
+      "target_id": "dwp.universal_credit.households.0_children",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "constituency"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.household_receives",
+            "equals": true
+          },
+          {
+            "concept": "uk.household.children",
+            "equals": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "uc_hh_0_children",
+          "value_variable": "household_count"
+        },
+        "axiom": {
+          "metric_name": "uc_hh_0_children",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_measure_id": "universal_credit_households_by_children",
+        "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
+      }
+    },
+    {
+      "target_id": "dwp.universal_credit.households.1_child",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "constituency"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.household_receives",
+            "equals": true
+          },
+          {
+            "concept": "uk.household.children",
+            "equals": 1
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "uc_hh_1_child",
+          "value_variable": "household_count"
+        },
+        "axiom": {
+          "metric_name": "uc_hh_1_child",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_measure_id": "universal_credit_households_by_children",
+        "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
+      }
+    },
+    {
+      "target_id": "dwp.universal_credit.households.2_children",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "constituency"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.household_receives",
+            "equals": true
+          },
+          {
+            "concept": "uk.household.children",
+            "equals": 2
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "uc_hh_2_children",
+          "value_variable": "household_count"
+        },
+        "axiom": {
+          "metric_name": "uc_hh_2_children",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_measure_id": "universal_credit_households_by_children",
+        "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
+      }
+    },
+    {
+      "target_id": "dwp.universal_credit.households.3plus_children",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "constituency"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.household_receives",
+            "equals": true
+          },
+          {
+            "concept": "uk.household.children",
+            "lower": 3
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "uc_hh_3plus_children",
+          "value_variable": "household_count"
+        },
+        "axiom": {
+          "metric_name": "uc_hh_3plus_children",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_measure_id": "universal_credit_households_by_children",
+        "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
+      }
+    },
+    {
+      "target_id": "ons.equiv_net_income_bhc",
+      "family": "ons_income",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.equivalised_net_income_bhc"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/equiv_net_income_bhc",
+          "value_variable": "equiv_hbai_household_net_income"
+        },
+        "axiom": {
+          "metric_name": "ons/equiv_net_income_bhc",
+          "status": "pending",
+          "value_rule": "uk.household.equivalised_net_income_bhc"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "equivalised_net_income_before_housing_costs",
+        "record_set_spec_id": "uk.local_geography.msoa_income.equivalised_bhc.v1"
+      },
+      "selector_note": "Facts are MSOA-grain mean-valued targets; local-authority rows are signed deferrals in the local reference compiler."
+    },
+    {
+      "target_id": "ons.equiv_net_income_ahc",
+      "family": "ons_income",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.equivalised_net_income_ahc"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/equiv_net_income_ahc",
+          "value_variable": "equiv_hbai_household_net_income_ahc"
+        },
+        "axiom": {
+          "metric_name": "ons/equiv_net_income_ahc",
+          "status": "pending",
+          "value_rule": "uk.household.equivalised_net_income_ahc"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "equivalised_net_income_after_housing_costs",
+        "record_set_spec_id": "uk.local_geography.msoa_income.equivalised_ahc.v1"
+      },
+      "selector_note": "Facts are MSOA-grain mean-valued targets; local-authority rows are signed deferrals in the local reference compiler."
+    },
+    {
+      "target_id": "ons.equiv_housing_costs",
+      "family": "ons_income",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.equivalised_housing_costs"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/equiv_housing_costs",
+          "value_expression": "equiv_hbai_household_net_income - equiv_hbai_household_net_income_ahc"
+        },
+        "axiom": {
+          "metric_name": "ons/equiv_housing_costs",
+          "status": "pending",
+          "value_rule": "uk.household.equivalised_housing_costs"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": [
+          "equivalised_net_income_before_housing_costs",
+          "equivalised_net_income_after_housing_costs"
+        ],
+        "record_set_spec_id": [
+          "uk.local_geography.msoa_income.equivalised_bhc.v1",
+          "uk.local_geography.msoa_income.equivalised_ahc.v1"
+        ]
+      },
+      "selector_note": "Computed BHC-AHC quantity; no standalone publisher measure exists."
+    },
+    {
+      "target_id": "ons.tenure.owned_outright",
+      "family": "ons_housing",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "equals": "owned_outright"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "tenure/owned_outright",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "equals": "OWNED_OUTRIGHT"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "tenure/owned_outright",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "households",
+        "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
+      }
+    },
+    {
+      "target_id": "ons.tenure.owned_mortgage",
+      "family": "ons_housing",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "equals": "owned_with_mortgage"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "tenure/owned_mortgage",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "equals": "OWNED_WITH_MORTGAGE"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "tenure/owned_mortgage",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "households",
+        "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
+      }
+    },
+    {
+      "target_id": "ons.tenure.private_rent",
+      "family": "ons_housing",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "equals": "private_rent"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "tenure/private_rent",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "equals": "RENT_PRIVATELY"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "tenure/private_rent",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "households",
+        "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
+      }
+    },
+    {
+      "target_id": "ons.tenure.social_rent",
+      "family": "ons_housing",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.tenure",
+            "in": [
+              "rent_from_council",
+              "rent_from_housing_association"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "tenure/social_rent",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "in": [
+                "RENT_FROM_COUNCIL",
+                "RENT_FROM_HA"
+              ]
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "tenure/social_rent",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "households",
+        "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
+      }
+    },
+    {
+      "target_id": "ons.rent.private_rent",
+      "family": "ons_housing",
+      "geography_levels": [
+        "local_authority"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "map_to": "household",
+        "concept": "uk.housing.private_rent.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "rent/private_rent",
+          "value_variable": "benunit_rent",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "tenure_type",
+              "equals": "RENT_PRIVATELY"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "rent/private_rent",
+          "status": "pending",
+          "value_rule": "uk.housing.private_rent.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "private_rent",
+        "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
+      },
+      "selector_note": "Private rent is a price-level target; non-English and masked rows are signed deferrals in the local reference compiler."
+    }
+  ]
+}

@@ -238,6 +238,21 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "uk_local_geography_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_firms_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_area_crosswalk.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "uk_national_targets.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

@@ -72,6 +72,47 @@ def compile_uk_target_registry(
     )
 
 
+def compile_uk_local_target_registry(
+    facts: Iterable[Mapping[str, Any]],
+    *,
+    target_period: int | str,
+    crosswalk: Mapping[str, Any],
+) -> UKLedgerTargetCompilation:
+    """Compile packaged UK local-area Ledger references against fact rows."""
+
+    fact_rows = tuple(facts)
+    spec = load_country_spec("uk")
+    rosters = _local_crosswalk_rosters(crosswalk)
+    compiled = []
+    unsupported: list[dict[str, str]] = []
+    for reference in spec.local_target_references:
+        restamped = LedgerTargetReference(
+            **{**reference.__dict__, "period": target_period}
+        )
+        _assert_local_reference_in_crosswalk(restamped, rosters)
+        candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
+        try:
+            registry = compile_ledger_target_references(
+                candidate_facts,
+                [restamped],
+                country="uk",
+            )
+        except ValueError as error:
+            unsupported.append(
+                {
+                    "name": reference.name,
+                    "period": target_period,
+                    "reason": str(error),
+                }
+            )
+        else:
+            compiled.extend(registry.specs)
+    return UKLedgerTargetCompilation(
+        TargetRegistry(compiled, country="uk"),
+        tuple(unsupported),
+    )
+
+
 def _candidate_facts_for_reference(
     facts: tuple[Mapping[str, Any], ...],
     reference: LedgerTargetReference,
@@ -79,8 +120,58 @@ def _candidate_facts_for_reference(
     if not reference.ledger_selector:
         return facts
     return tuple(
-        fact for fact in facts if _fact_matches_selector(fact, reference.ledger_selector)
+        fact
+        for fact in facts
+        if _fact_matches_selector(fact, reference.ledger_selector)
     )
+
+
+def _local_crosswalk_rosters(
+    crosswalk: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    levels = crosswalk.get("levels")
+    if not isinstance(levels, Mapping):
+        raise ValueError("UK local area crosswalk must expose levels.")
+    rosters: dict[str, dict[str, Any]] = {}
+    for level, payload in levels.items():
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"UK local area crosswalk level {level!r} is invalid.")
+        area_ids = payload.get("area_ids")
+        if not isinstance(area_ids, list) or not area_ids:
+            raise ValueError(
+                f"UK local area crosswalk level {level!r} must expose area_ids."
+            )
+        rosters[str(level)] = {
+            "area_ids": frozenset(str(area_id) for area_id in area_ids),
+            "expected_vintage": payload.get("expected_vintage", ""),
+        }
+    return rosters
+
+
+def _assert_local_reference_in_crosswalk(
+    reference: LedgerTargetReference,
+    rosters: Mapping[str, Mapping[str, Any]],
+) -> None:
+    selector = reference.ledger_selector
+    geography_level = str(selector.get("geography_level") or "")
+    geography_id = str(selector.get("geography_id") or "")
+    if not geography_level or not geography_id:
+        raise ValueError(
+            f"UK local target reference {reference.name!r} must pin "
+            "geography_level and geography_id."
+        )
+    roster = rosters.get(geography_level)
+    if roster is None:
+        raise ValueError(
+            f"UK local target reference {reference.name!r} uses unknown "
+            f"geography level {geography_level!r}."
+        )
+    if geography_id not in roster["area_ids"]:
+        raise ValueError(
+            f"UK local target reference {reference.name!r} uses geography id "
+            f"{geography_id!r} outside the {geography_level!r} roster for "
+            f"expected vintage {roster['expected_vintage']!r}."
+        )
 
 
 def materialize_uk_ledger_targets(
@@ -169,8 +260,7 @@ class UKFrameTargetAdapter:
         if metric_name and metric_name in self.tables[entity]:
             return np.asarray(self.tables[entity][metric_name], dtype=float)
         raise ValueError(
-            "frame does not carry precomputed counterfactual delta "
-            f"{metric_name!r}"
+            f"frame does not carry precomputed counterfactual delta {metric_name!r}"
         )
 
     def _household_ids_for(self, entity: str) -> Any:

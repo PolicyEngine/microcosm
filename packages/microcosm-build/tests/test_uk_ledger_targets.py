@@ -1,9 +1,13 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
+from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime.ledger_targets import (
+    compile_uk_local_target_registry,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
 )
@@ -90,6 +94,62 @@ def _fixture_rows() -> list[dict]:
     ]
 
 
+def _local_crosswalk(area_ids: list[str]) -> dict:
+    return {
+        "country": "uk",
+        "levels": {
+            "constituency": {
+                "expected_vintage": "pcon_2024",
+                "area_ids": area_ids,
+            }
+        },
+    }
+
+
+def _local_fact(value: float, *, area_id: str = "A1", fact_key: str) -> dict:
+    return {
+        "aggregate_fact_key": fact_key,
+        "aggregation": {"method": "sum"},
+        "assertion": "observation",
+        "concept_alignment": {
+            "authority": "ons",
+            "canonical_concept": "ons.population",
+            "relation": "source_label",
+            "source_concept": "ons.population",
+        },
+        "dimensions": {},
+        "entity": {"name": "person", "role": "resident"},
+        "geography": {
+            "level": "constituency",
+            "id": area_id,
+            "vintage": "pcon_2024",
+        },
+        "layout": {
+            "measure_id": "population",
+            "record_set_id": "uk.local_geography.population.age_0_10",
+            "record_set_spec_id": "uk.local_geography.population.age_0_10.v1",
+        },
+        "lineage": {"source_record_id": f"{fact_key}.source_record"},
+        "observed_measure": {
+            "source_concept": "ons.population",
+            "source_measure_id": "population",
+            "source_name": "ons",
+            "source_table": "synthetic local population",
+            "unit": "count",
+        },
+        "period": {"type": "calendar_year", "value": 2025},
+        "source": {
+            "source_name": "ons",
+            "source_table": "synthetic local population",
+            "source_file": "fixture.csv",
+            "vintage": "fixture",
+            "url": "https://example.test/local-population",
+        },
+        "universe_constraints": {"domain": "population"},
+        "value": value,
+    }
+
+
 def test_compile_uk_target_registry_compiles_fixture_subset():
     result = compile_uk_target_registry(_fixture_rows(), target_period=2025)
     names = {spec.name for spec in result.registry.specs}
@@ -102,6 +162,76 @@ def test_compile_uk_target_registry_compiles_fixture_subset():
         "hmrc.cgt.taxpayers_total",
     } <= names
     assert result.unsupported
+
+
+def test_compile_uk_local_target_registry_compiles_synthetic_area(monkeypatch):
+    reference = LedgerTargetReference(
+        name="ons.age.0_10@A1",
+        ledger_selector={
+            "source_name": "ons",
+            "source_measure_id": "population",
+            "record_set_spec_id": "uk.local_geography.population.age_0_10.v1",
+            "geography_level": "constituency",
+            "geography_id": "A1",
+        },
+        value_operation="sum",
+        entity="person",
+        measure="age/0_10",
+        period=2025,
+        family="ons_population",
+        metadata={"contract_target_id": "ons.age.0_10"},
+    )
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.ledger_targets.load_country_spec",
+        lambda country: SimpleNamespace(local_target_references=(reference,)),
+    )
+
+    result = compile_uk_local_target_registry(
+        [
+            _local_fact(10.0, fact_key="ledger.aggregate_fact.v2:a"),
+            _local_fact(20.0, fact_key="ledger.aggregate_fact.v2:b"),
+        ],
+        target_period=2025,
+        crosswalk=_local_crosswalk(["A1"]),
+    )
+
+    assert result.unsupported == ()
+    assert len(result.registry.specs) == 1
+    spec = result.registry.specs[0]
+    assert spec.name == "ons.age.0_10@A1"
+    assert spec.value == 30.0
+    assert spec.metadata["ledger_geography_level"] == "constituency"
+    assert spec.metadata["ledger_geography_id"] == "A1"
+
+
+def test_compile_uk_local_target_registry_refuses_crosswalk_mismatch(monkeypatch):
+    reference = LedgerTargetReference(
+        name="ons.age.0_10@A9",
+        ledger_selector={
+            "source_name": "ons",
+            "source_measure_id": "population",
+            "record_set_spec_id": "uk.local_geography.population.age_0_10.v1",
+            "geography_level": "constituency",
+            "geography_id": "A9",
+        },
+        value_operation="sum",
+        entity="person",
+        measure="age/0_10",
+        period=2025,
+        family="ons_population",
+        metadata={"contract_target_id": "ons.age.0_10"},
+    )
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.ledger_targets.load_country_spec",
+        lambda country: SimpleNamespace(local_target_references=(reference,)),
+    )
+
+    with pytest.raises(ValueError, match="A9.*pcon_2024"):
+        compile_uk_local_target_registry(
+            [_local_fact(10.0, area_id="A9", fact_key="ledger.aggregate_fact.v2:a")],
+            target_period=2025,
+            crosswalk=_local_crosswalk(["A1"]),
+        )
 
 
 def test_materialize_uk_ledger_targets_with_stub_adapter():
