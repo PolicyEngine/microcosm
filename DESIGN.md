@@ -301,7 +301,7 @@ decomposition:
 2. **Conditional structure** — a fitted model carrying P(y|x) from data the
    contributor holds (`fit` artifacts). Private sources contribute *only*
    this way: certified conditional models, never microdata.
-3. **Facts** — targets with standard errors (`calibrate`; Ledger's lane).
+3. **Facts** — targets with standard errors (`calibrate`; Chronicle's lane).
    Calibration is uncertainty-weighted evidence combination, not exact-hit.
 
 **The merge operator is the sound comparison, institutionalized:** a
