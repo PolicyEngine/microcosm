@@ -39,15 +39,16 @@ The committed L0 receipt still says the accepted candidate ran “all 24 stages�
 (`experiments/686-uk-spine-swap-receipts.md:330-342`), yet the live driver lists
 25, with `etb_services` at stage 16 and `age_tail` last
 (`tools/build_uk_frs_spine.py:93-119`), and installs that final transform in the
-production plan (`tools/build_uk_frs_spine.py:840-848`). The ledger nevertheless
+production plan (`tools/build_uk_frs_spine.py:845-852`). The ledger nevertheless
 declares L0, E4–E8, and signed L2 complete
 (`experiments/686-uk-spine-comparison-ledger.md:60-67`).
 
 This is a demonstrated correctness break, not a stale stage-count label.
 `etb_services` allocates and persists six NHS columns from each person's
 stage-time age (`packages/microcosm-build/src/microcosm/build/uk_runtime/etb_services.py:117-139`,
-`:426-436`). `age_tail` later rewrites top-coded age in place to ages 80–97
-(`packages/microcosm-build/src/microcosm/build/uk_runtime/age_tail.py:151-196`).
+`:426-436`). `age_tail` defines the 80–97 tail and later rewrites top-coded age
+in place (`packages/microcosm-build/src/microcosm/build/uk_runtime/age_tail.py:62-77`,
+`:151-196`).
 E6 then recomputes the NHS values from final age and requires equality with the
 stored columns (`tools/verify_uk_identity_stability.py:378-386`, `:428-464`).
 
