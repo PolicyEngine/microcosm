@@ -15,24 +15,51 @@ FIXTURE_FEED_ROWS = (
 
 
 class StubUKAdapter:
+    """Seven people across three households, flagged child by flagged child.
+
+    The flag and the count are deliberately distinct here: household 0 holds
+    three flagged children and household 2 holds two, so a household-grain
+    read of the boolean (1/0/1) can never be mistaken for the child counts
+    (3/0/2) the contract's count rows declare.
+    """
+
     def __init__(self):
+        person_household = np.array([0, 0, 0, 0, 1, 2, 2])
+        child_flags = np.array([True, True, True, False, False, True, True])
         self.tables = {
             "person": {
-                "capital_gains": np.array([0.0, 5_000.0, 20_000.0]),
+                "capital_gains": np.array(
+                    [0.0, 0.0, 0.0, 5_000.0, 0.0, 0.0, 20_000.0]
+                ),
+                "person_household_id": person_household,
+                "uc_is_child_limit_affected": child_flags,
             },
             "household": {
-                # Mapped to household, uc_is_child_limit_affected sums to the
-                # number of flagged children, so it is both the affected flag
-                # and the affected-children count.
-                "uc_is_child_limit_affected": np.array([3.0, 0.0, 4.0]),
+                "household_id": np.array([0, 1, 2]),
+                # The household-grain flag is the any-collapse: "this
+                # household contains at least one flagged child".
+                "uc_is_child_limit_affected": np.array([1.0, 0.0, 1.0]),
             },
         }
-
     def column(self, entity, variable):
         return self.tables[entity][variable]
 
     def set_column(self, entity, variable, values):
         self.tables.setdefault(entity, {})[variable] = np.asarray(values)
+
+    def entity_reduction(self, reduction):
+        assert reduction["reduce"] == "sum"
+        assert reduction["entity"] == "person"
+        variable = reduction["variable"]
+        values = self.tables["person"][variable].astype(float)
+        households = self.tables["person"]["person_household_id"]
+        return np.asarray(
+            [
+                values[households == household_id].sum()
+                for household_id in self.tables["household"]["household_id"]
+            ],
+            dtype=float,
+        )
 
     def parameter(self, name, period):
         assert name == "gov.hmrc.cgt.annual_exempt_amount"
@@ -94,10 +121,21 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
     result = materialize_uk_ledger_targets(adapter, registry, period=2025)
 
     assert result.skipped == ()
-    assert adapter.tables["person"]["hmrc/cgt_taxpayers"].tolist() == [0.0, 0.0, 1.0]
+    assert adapter.tables["person"]["hmrc/cgt_taxpayers"].tolist() == [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
+    # Child counts, not household indicators: the declared value_reduction
+    # sums the flag over each household's people. A boolean any-collapse
+    # would have published [1.0, 0.0, 1.0] against a count target.
     assert adapter.tables["household"][
         "dwp/uc/two_child_limit/children_affected"
-    ].tolist() == [3.0, 0.0, 4.0]
+    ].tolist() == [3.0, 0.0, 2.0]
 
 
 def _composition_frame():

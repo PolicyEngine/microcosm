@@ -684,3 +684,92 @@ def test_crosstab_counts_a_real_value_variable_per_record():
 
     # children is [3, 2, 4], masked by affected [1, 0, 1].
     assert list(adapter.tables["household"]["affected_children"]) == [3.0, 0.0, 4.0]
+
+
+def _two_filter_registry(*, matching: bool) -> TargetRegistry:
+    """Bands whose specs carry a second, competing band-like filter.
+
+    ``matching`` decides whether the income filter's key relates to the
+    binding's ``groupby_variable``; when it does not, neither candidate can be
+    attributed and the edge must refuse rather than be guessed.
+    """
+
+    income_key = (
+        "ledger_filter_income_lower_bound"
+        if matching
+        else "ledger_filter_total_income_lower_bound"
+    )
+    specs = []
+    for lower, age_lower, label in ((0, 16, "0"), (20, 30, "20")):
+        specs.append(
+            TargetSpec(
+                name=f"band_{label}",
+                entity="person",
+                measure=f"income_band_{label}",
+                value=1.0,
+                source="test",
+                family="hmrc_spi",
+                metadata={
+                    "contract_target_id": "spi.income_by_band",
+                    income_key: str(lower),
+                    "ledger_filter_age_lower_bound": str(age_lower),
+                },
+            )
+        )
+    return TargetRegistry(specs, country="uk")
+
+
+def test_band_edges_follow_the_groupby_variable_not_alphabetical_order():
+    # "age" sorts before "income", so the alphabetically-first key would have
+    # sliced the income measure on age edges: distinct, plausible, and wrong.
+    adapter = StubAdapter()
+
+    result = materialize_target_bindings(
+        adapter, _two_filter_registry(matching=True), _BANDED_CONTRACT, period=2025
+    )
+
+    assert result.skipped == ()
+    # income is [10, 20, 30]; income bands are [0,20) and [20,inf).
+    assert list(adapter.tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
+    assert list(adapter.tables["person"]["income_band_20"]) == [0.0, 1.0, 1.0]
+
+
+def test_unattributable_band_filters_refuse_rather_than_guess():
+    adapter = StubAdapter()
+
+    with pytest.raises(ValueError) as error:
+        materialize_target_bindings(
+            adapter,
+            _two_filter_registry(matching=False),
+            _BANDED_CONTRACT,
+            period=2025,
+        )
+
+    message = str(error.value)
+    assert "band-like Ledger filters" in message
+    assert "ledger_filter_age_lower_bound" in message
+    assert "band_filter_dimension" in message
+
+
+def test_declared_band_filter_dimension_breaks_the_tie():
+    adapter = StubAdapter()
+    contract = {
+        "spi.income_by_band": {
+            "bindings": {
+                "policyengine": {
+                    **_BANDED_CONTRACT["spi.income_by_band"]["bindings"][
+                        "policyengine"
+                    ],
+                    "band_filter_dimension": "total_income",
+                }
+            }
+        }
+    }
+
+    result = materialize_target_bindings(
+        adapter, _two_filter_registry(matching=False), contract, period=2025
+    )
+
+    assert result.skipped == ()
+    assert list(adapter.tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
+    assert list(adapter.tables["person"]["income_band_20"]) == [0.0, 1.0, 1.0]

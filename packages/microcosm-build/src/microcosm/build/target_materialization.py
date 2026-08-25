@@ -304,18 +304,62 @@ def _band_lower_edge(
 
     metadata = getattr(spec, "metadata", None) or {}
     factor = float(binding.get("band_period_factor", 1) or 1)
+    numeric: list[tuple[str, float]] = []
+    labelled: list[tuple[str, float]] = []
     for key, value in sorted(metadata.items()):
         if not key.startswith(_LEDGER_FILTER_PREFIX):
             continue
         if key.endswith(_BAND_LOWER_BOUND_SUFFIX):
-            return float(str(value).replace(",", "")) * factor
-    for key, value in sorted(metadata.items()):
-        if not key.startswith(_LEDGER_FILTER_PREFIX):
+            numeric.append((key, float(str(value).replace(",", ""))))
             continue
         match = _RANGE_LABEL.search(str(value)) or _OPEN_LABEL.search(str(value))
         if match is not None:
-            return float(match.group(1).replace(",", "")) * factor
+            labelled.append((key, float(match.group(1).replace(",", ""))))
+    for candidates in (numeric, labelled):
+        if not candidates:
+            continue
+        return _select_band_edge(spec, binding, candidates) * factor
     return None
+
+
+def _select_band_edge(
+    spec: Any,
+    binding: Mapping[str, Any],
+    candidates: Sequence[tuple[str, float]],
+) -> float:
+    """Pick the band edge belonging to this binding's groupby variable.
+
+    A spec can carry several Ledger filters, and more than one of them can
+    look like a band — an age filter alongside an income band, say. Slicing
+    on the wrong variable's edges produces plausible-looking but wrong
+    subpopulation totals, so the edge is bound to the declared banding
+    dimension and an unresolvable tie refuses rather than picking the
+    alphabetically-first key.
+    """
+
+    if len(candidates) == 1:
+        return candidates[0][1]
+    declared = binding.get("band_filter_dimension")
+    wanted = {
+        f"{_LEDGER_FILTER_PREFIX}{name}"
+        for name in (declared, binding.get("groupby_variable"))
+        if name
+    }
+    matched = [
+        value
+        for key, value in candidates
+        if any(key == name or key.startswith(f"{name}_") for name in wanted)
+    ]
+    if len(matched) == 1:
+        return matched[0]
+    raise ValueError(
+        f"banded measure {getattr(spec, 'measure', '?')!r} carries "
+        f"{len(candidates)} band-like Ledger filters "
+        f"({', '.join(key for key, _ in candidates)}) and "
+        f"{'none' if not matched else 'several'} of them belong to "
+        f"groupby_variable {binding.get('groupby_variable')!r}; declare "
+        "band_filter_dimension on the binding to name the banding dimension."
+    )
 
 
 def _band_edges_by_group(
@@ -482,7 +526,15 @@ def baseline_flag_crosstab(
     flag = _column(adapter, entity, binding["affected_flag_variable"]).astype(bool)
     value_variable = str(binding.get("value_variable") or "")
     count_of = str(binding.get("count_of") or "")
-    if value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
+    reduction = binding.get("value_reduction")
+    if reduction:
+        # A count declared over a member-level variable — the number of
+        # children in the household, not whether it has any. Reading such a
+        # boolean at the crosstab's own grain would collapse it to an
+        # indicator and publish that against a count target, so the reduction
+        # is declared and performed member-wise instead.
+        values = _entity_reduction(adapter, reduction)
+    elif value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
         values = _column(adapter, entity, value_variable)
     elif count_of and count_of not in {"household", "person", "household_count"}:
         values = _column(adapter, entity, count_of)
@@ -530,6 +582,25 @@ def _prepared_column_values(
         banded = _column(adapter, entity, binding["groupby_variable"]).astype(float)
         mask &= (banded >= lower) & (banded < upper)
     return np.where(mask, values, 0.0)
+
+
+def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:
+    """Reduce a member-level variable to the target entity's grain.
+
+    Declared as ``value_reduction`` on a binding whose value is a count over
+    members. The adapter owns the linkage, the same way it owns
+    ``household_condition``; an adapter that cannot reduce refuses rather than
+    falling back to a same-grain read, which would silently substitute an
+    indicator for a count.
+    """
+
+    if not hasattr(adapter, "entity_reduction"):
+        raise ValueError(
+            "binding declares value_reduction "
+            f"{dict(reduction)!r} but the adapter cannot reduce member "
+            "variables; refusing to substitute a same-grain read."
+        )
+    return np.asarray(adapter.entity_reduction(reduction), dtype=float)
 
 
 def _predicate_mask(

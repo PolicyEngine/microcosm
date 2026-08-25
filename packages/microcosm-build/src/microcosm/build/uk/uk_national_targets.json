@@ -3653,6 +3653,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "uc_is_child_limit_affected",
+          "value_reduction": {
+            "variable": "uc_is_child_limit_affected",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
         },
@@ -3686,6 +3691,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "is_child",
+          "value_reduction": {
+            "variable": "is_child",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: children_in_affected_households."
         },
@@ -3770,6 +3780,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "is_child",
+          "value_reduction": {
+            "variable": "is_child",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
@@ -3854,6 +3869,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "is_child",
+          "value_reduction": {
+            "variable": "is_child",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
@@ -3938,6 +3958,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "is_child",
+          "value_reduction": {
+            "variable": "is_child",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
@@ -4022,6 +4047,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "is_child",
+          "value_reduction": {
+            "variable": "is_child",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Total children (not only affected children) in affected households of this size (compute/benefits.py:158-161). Row counts: children_in_affected_households."
         },
@@ -4106,6 +4136,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "uc_is_child_limit_affected",
+          "value_reduction": {
+            "variable": "uc_is_child_limit_affected",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
         },
@@ -4190,6 +4225,11 @@
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
           "value_variable": "uc_is_child_limit_affected",
+          "value_reduction": {
+            "variable": "uc_is_child_limit_affected",
+            "entity": "person",
+            "reduce": "sum"
+          },
           "map_to": "household",
           "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
         },

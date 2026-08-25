@@ -37,12 +37,23 @@ class FrameStub:
         return self._tables[entity]
 
 
+def _stub_value_type(values):
+    """The policyengine ``value_type`` a real variable definition would carry."""
+
+    return {"f": float, "i": int, "b": bool}.get(
+        np.asarray(values).dtype.kind, str
+    )
+
+
 class SimulationStub:
     def __init__(self, values):
         self.values = values
         variables = {
-            name: SimpleNamespace(entity=SimpleNamespace(key=entity))
-            for name, (entity, _values) in values.items()
+            name: SimpleNamespace(
+                entity=SimpleNamespace(key=entity),
+                value_type=_stub_value_type(stub_values),
+            )
+            for name, (entity, stub_values) in values.items()
         }
         self.tax_benefit_system = SimpleNamespace(variables=variables)
         self.calls = []
@@ -229,3 +240,52 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert scratch.receipt()["mode"] == "scratch_frame_export"
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
     assert created == [str(tmp_path / "input.h5"), str(tmp_path / "simulation-input.h5")]
+
+
+def _resolver_over(sim, monkeypatch, tmp_path: Path) -> UKMeasureResolver:
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: sim),
+    )
+    return UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=FrameStub(),
+    )
+
+
+def test_knows_answers_only_for_routes_compute_can_take(monkeypatch, tmp_path: Path):
+    sim = SimulationStub(
+        {
+            "income_tax": ("person", np.array([1.0, 2.0, 3.0])),
+            "is_disabled": ("person", np.array([False, True, False])),
+            "family_type": ("benunit", np.array(["couple", "single"])),
+            "benunit_income": ("benunit", np.array([1.0, 2.0])),
+        }
+    )
+    resolver = _resolver_over(sim, monkeypatch, tmp_path)
+
+    assert resolver.knows("person", "income_tax")
+    assert resolver.knows("household", "income_tax")
+    assert resolver.knows("household", "is_disabled")
+    assert resolver.knows("person", "family_type")
+    # Numeric group-to-group rides the map_to route…
+    assert resolver.knows("household", "benunit_income")
+    # …but a categorical one has no benunit-to-household mapping at all, and
+    # the fence must say so rather than let compute raise mid-resolution.
+    assert not resolver.knows("household", "family_type")
+    assert not resolver.knows("person", "no_such_variable")
+    assert not resolver.knows("firm", "income_tax")
+
+
+def test_unknown_categorical_mapping_refuses_through_the_fence(
+    monkeypatch, tmp_path: Path
+):
+    sim = SimulationStub({"family_type": ("benunit", np.array(["couple", "single"]))})
+    resolver = _resolver_over(sim, monkeypatch, tmp_path)
+
+    assert not resolver.knows("household", "family_type")
+    with pytest.raises(KeyError, match="no categorical mapping"):
+        resolver.compute("household", "family_type")

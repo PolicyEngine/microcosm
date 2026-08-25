@@ -119,11 +119,27 @@ class UKMeasureResolver:
         self.contract_targets = _uk_contract_targets()
 
     def knows(self, entity: str, variable: str) -> bool:
+        """Whether a route in :func:`compute_uk_measure_input` reaches here.
+
+        The resolution loop turns a False into a named refusal; anything this
+        answers True to must actually compute, or the operator gets a wrapped
+        provider exception instead of the fence's message.
+        """
+
         definition = self.simulation.tax_benefit_system.variables.get(variable)
-        if definition is None:
+        if definition is None or entity not in _ENTITY_ID:
             return False
         native = definition.entity.key
-        return native == entity or entity in _ENTITY_ID
+        if native == entity:
+            return True
+        if "person" in (native, entity):
+            # Person-to-group and group-to-person are covered by the
+            # broadcast, any-collapse, and map_to routes alike.
+            return True
+        # Group to group has only the numeric map_to route: a categorical or
+        # boolean variable has no mapping between benunit and household and
+        # refuses here rather than deep inside the provider.
+        return getattr(definition, "value_type", None) in (int, float)
 
     def entity_for(self, variable: str) -> str | None:
         definition = self.simulation.tax_benefit_system.variables.get(variable)

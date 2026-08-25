@@ -47,6 +47,7 @@ SELECTOR_KEYS = {
 POLICYENGINE_BINDING_KEYS = {
     "affected_flag_variable",
     "band",
+    "band_filter_dimension",
     "band_period_factor",
     "count_of",
     "filters",
@@ -58,6 +59,7 @@ POLICYENGINE_BINDING_KEYS = {
     "groupby_variable",
     "household_conditions",
     "kind",
+    "value_reduction",
     "map_to",
     "metric_name",
     "notes",
@@ -283,6 +285,21 @@ def test_uk_national_targets_declare_chronicle_loader_guarantees():
             # record; count_of survives as the legacy spelling the provider
             # still accepts. Either key must name the counted column.
             assert {"value_variable", "count_of"} & set(binding), target["target_id"]
+
+        reduction = binding.get("value_reduction")
+        if reduction is not None:
+            # A count over a member-level variable declares its reduction, so
+            # the materializer sums members instead of reading the variable at
+            # the target's own grain — a boolean read there would collapse to
+            # a household indicator and be published against a count.
+            assert set(reduction) == {"variable", "entity", "reduce"}, (
+                target["target_id"]
+            )
+            assert reduction["reduce"] in PREDICATE_REDUCERS, target["target_id"]
+            assert reduction["entity"] in PREDICATE_ENTITIES, target["target_id"]
+            assert reduction["variable"] == binding.get("value_variable"), (
+                target["target_id"]
+            )
 
         if "reduce" in binding:
             assert binding["reduce"] in BINDING_REDUCERS, target["target_id"]

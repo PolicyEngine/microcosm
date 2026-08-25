@@ -24,7 +24,10 @@ from microcosm.build.uk_runtime import (
     uk_doctrine_with_overrides,
     uk_national_target_loss_weights,
 )
-from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
+from microcosm.build.uk_runtime.ledger_targets import (
+    UKLedgerTargetCompilation,
+    _uk_contract_targets,
+)
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
@@ -159,6 +162,29 @@ class StubMeasureResolver:
         return {"provider": "stub_uc"}
 
 
+class StubCrosstabResolver:
+    """Supplies the household-grain affected flag, as production does.
+
+    ``uc_is_child_limit_affected`` is person-native in policyengine-uk, and
+    the Frame's global column-uniqueness rule forbids the same name on two
+    entity tables — so the household-grain flag can only ever arrive as a
+    table-scoped adapter injection. That is the production route, and it is
+    the route exercised here.
+    """
+
+    contract_targets = None
+
+    def knows(self, entity, variable):
+        return (entity, variable) == ("household", "uc_is_child_limit_affected")
+
+    def compute(self, entity, variable):
+        assert (entity, variable) == ("household", "uc_is_child_limit_affected")
+        return np.array([1.0, 0.0, 1.0]), "stub_any_collapse_person_to_household"
+
+    def receipt(self):
+        return {"provider": "stub_crosstab_flag"}
+
+
 def _nested_frame() -> Frame:
     return Frame(
         {
@@ -228,21 +254,19 @@ def _materialization_binding_frame(
             "household_id": np.arange(3, dtype="int64"),
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
-            # Mapped to household, uc_is_child_limit_affected sums to the
-            # number of flagged children: both the affected flag and the
-            # affected-children count.
-            "uc_is_child_limit_affected": [2.0, 0.0, 3.0],
         }
     )
     salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
     person_columns = {
-        "person_id": np.arange(4, dtype="int64"),
-        "person_benunit_id": [0, 0, 1, 2],
-        "person_household_id": [0, 0, 1, 2],
-        "capital_gains": [0.0, 7_000.0, 12_000.0, 500.0],
+        "person_id": np.arange(6, dtype="int64"),
+        "person_benunit_id": [0, 0, 1, 2, 2, 2],
+        "person_household_id": [0, 0, 1, 2, 2, 2],
+        "capital_gains": [0.0, 7_000.0, 12_000.0, 500.0, 0.0, 0.0],
+        # Two flagged children in household 0, none in 1, three in 2.
+        "uc_is_child_limit_affected": [True, True, False, True, True, True],
     }
     if include_counterfactual_delta:
-        person_columns[salary_sacrifice_metric] = [1.0, 2.0, 0.0, 0.0]
+        person_columns[salary_sacrifice_metric] = [1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     return Frame(
         {
             "person": pd.DataFrame(person_columns),
@@ -433,10 +457,13 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     )
 
     registry = compile_ledger_target_references(facts, references, country="uk")
+    resolver = StubCrosstabResolver()
+    resolver.contract_targets = _uk_contract_targets()
     stage = UKNationalCalibrationStage(
         registry,
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=1, learning_rate=0.01),
+        measure_resolver=resolver,
     )
 
     input_frame = _materialization_binding_frame()
@@ -458,15 +485,23 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
         assert set(result.table(entity).columns) == original_columns[entity]
     # The binding classes produce the right prepared values on the adapter…
     adapter = UKFrameTargetAdapter(_materialization_binding_frame())
+    # The same table-scoped injection the resolution loop performs.
+    adapter.tables["household"]["uc_is_child_limit_affected"] = np.array(
+        [1.0, 0.0, 1.0]
+    )
     materialize_uk_ledger_targets(adapter, registry, period=2025)
     materialized = {
         ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
         ("household", "obr/esa"): [11.0, 22.0, 0.0],
-        ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0],
+        ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+        # Counts of flagged children, reduced from the person rows — not the
+        # household indicator [1.0, 0.0, 1.0] a same-grain boolean read gives.
         ("household", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
         ("person", "hmrc/salary_sacrifice_it_relief_basic_rate"): [
             1.0,
             2.0,
+            0.0,
+            0.0,
             0.0,
             0.0,
         ],

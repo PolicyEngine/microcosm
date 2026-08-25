@@ -179,29 +179,65 @@ class UKFrameTargetAdapter:
             f"{metric_name!r}"
         )
 
-    def household_condition(self, condition: Mapping[str, Any]) -> np.ndarray:
-        entity = str(condition.get("entity") or "household")
+    def _household_ids_for(self, entity: str) -> Any:
+        """The household each row of ``entity`` belongs to, row-aligned."""
+
         source = self.tables[entity]
         if entity == "household":
-            household_ids = source["household_id"]
-        elif entity == "person":
+            return source["household_id"]
+        if entity == "person":
             # People sit directly in a household; only group entities need the
             # membership lookup below, whose column would be the nonexistent
             # "person_person_id" here.
-            household_ids = source["person_household_id"]
+            return source["person_household_id"]
+        people = self.tables["person"]
+        entity_membership = f"person_{entity}_id"
+        if entity_membership not in people:
+            raise KeyError(entity_membership)
+        group_to_household = (
+            people[[entity_membership, "person_household_id"]]
+            .drop_duplicates()
+            .set_index(entity_membership)["person_household_id"]
+        )
+        if group_to_household.index.has_duplicates:
+            raise ValueError(f"UK {entity} groups span multiple households.")
+        return source[f"{entity}_id"].map(group_to_household)
+
+    def entity_reduction(self, reduction: Mapping[str, Any]) -> np.ndarray:
+        """Reduce a member-level variable to a household-grain value.
+
+        The numeric sibling of :meth:`household_condition`: where that answers
+        "does this household satisfy the predicate", this answers "what does
+        this household's members sum to". A count target declared over a
+        boolean member variable — the number of children, not whether the
+        household has any — is only honest through this path; collapsing the
+        boolean with ``any`` would publish an indicator against a count.
+        """
+
+        entity = str(reduction.get("entity") or "person")
+        source = self.tables[entity]
+        variable = str(reduction["variable"])
+        if variable not in source:
+            raise KeyError(f"{entity}.{variable}")
+        household_ids = self._household_ids_for(entity)
+        reduce = str(reduction.get("reduce") or "sum")
+        values = source[variable]
+        if reduce == "sum":
+            aggregate = values.astype(float).groupby(household_ids).sum()
+        elif reduce == "count":
+            aggregate = values.groupby(household_ids).count()
         else:
-            people = self.tables["person"]
-            entity_membership = f"person_{entity}_id"
-            if entity_membership not in people:
-                raise KeyError(entity_membership)
-            group_to_household = (
-                people[[entity_membership, "person_household_id"]]
-                .drop_duplicates()
-                .set_index(entity_membership)["person_household_id"]
-            )
-            if group_to_household.index.has_duplicates:
-                raise ValueError(f"UK {entity} groups span multiple households.")
-            household_ids = source[f"{entity}_id"].map(group_to_household)
+            raise ValueError(f"Unsupported UK entity reduction {reduce!r}.")
+        households = self.tables["household"]
+        return np.asarray(
+            households["household_id"].map(aggregate).fillna(0.0),
+            dtype=float,
+        )
+
+    def household_condition(self, condition: Mapping[str, Any]) -> np.ndarray:
+        entity = str(condition.get("entity") or "household")
+        source = self.tables[entity]
+        household_ids = self._household_ids_for(entity)
 
         reduce = str(condition["reduce"])
         variable = str(condition["variable"])
