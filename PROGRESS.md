@@ -2,10 +2,11 @@
 
 ## State
 
-- In progress on local audit branch `review/pr-747-audit`; the PR branch remains unmodified.
+- Evidence review is complete on local audit branch `review/pr-747-audit`; the PR branch remains unmodified.
 - Reviewing cached PR head `86f55741081fa3fb5e3c55234e3c8dc7ff77c777` against merge base `7b90bb1882b0248d751a64bf817ec127e5c42a47`.
 - GitHub and the default uv cache are unavailable in the sandbox; the requested sync also failed from a writable cache because PyPI DNS is blocked. No repository build will be run.
 - Exact diff inventory: 27 commits, 51 files, 9,965 insertions and 3,922 deletions (the largest churn is generated `source_stages.json`).
+- Provisional verdict is HOLD: the committed acceptance evidence predates the value-changing 25th stage, that stage invalidates the E6 NHS identity check, and the strict parity instrument has independently reproduced fail-open paths.
 
 ## Done
 
@@ -15,12 +16,17 @@
 - Retried `uv sync --all-packages --extra us` with `/tmp/uv-cache-review747`; resolution reached the locked `joblib==1.5.3` download and stopped on blocked DNS.
 - Located a complete sibling-worktree environment whose `uv.lock`, workspace metadata, and package metadata are byte-identical to the PR; it will run only targeted tests with this worktree's sources first on `PYTHONPATH`.
 - Inventoried the entire PR file/commit surface and assigned independent receipt, doctrine, and code/test audits.
+- Read the full diff and both experiment records, and checked every changed committed register, resource, pin, generated manifest, and fixture relevant to the swap claim.
+- Established commit ordering: the experiment records end at `a7336d31`; candidate-changing `19799f37` subsequently adds `age_tail` and SPI persisted-value changes; `86f55741` only re-pins the roster-derived release manifest and test.
+- Ran 250 focused tests against this worktree's sources: 249 passed and 1 skipped across parity, signed-register, age-tail, identity, reference, terminal-gate, weighted-integrity, source-stage, and country-spec coverage.
+- Reproduced the final-order E6 failure with production functions: 77/80 synthetic top-coded persons moved to 85+, and all six stored NHS columns then disagreed with E6's recomputation from final ages.
+- Reproduced four parity fail-opens: arbitrary or missing signed entity counts remain unsigned-clean; an opposite-direction water regression is signed; a 0.70 unsigned share delta disappears at `--share-band 0.9`; and an omitted weighted-total key is reported but not failed.
+- Confirmed no terminal threshold, criticality, reviewed-exclusion register, target membership, Logbook rule, publication path, or promotion side effect changed.
+- Ran `git diff --check` over the exact PR range successfully.
 
 ## Next
 
-- Read the full diff, every added receipt/register/fixture, and relevant doctrine.
-- Verify suspicious claims with targeted tests and independent receipt checks.
-- Write `REVIEW-747.md` with a merge verdict and code-cited evidence.
+- Write and verify `REVIEW-747.md` with the exact HOLD conditions, ranked code-cited findings, test evidence, and clean doctrine notes.
 
 ---
 
