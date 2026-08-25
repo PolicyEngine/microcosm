@@ -18,11 +18,7 @@ from microcosm.build.uk_runtime.parity_reference import (
 _UK_PACKAGE = "microcosm.build.uk"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_efrs_parity_reference.py"
-policyengine_uk_installed = importlib.util.find_spec("policyengine_uk") is not None
-requires_uk = pytest.mark.skipif(
-    not policyengine_uk_installed,
-    reason="requires the policyengine-uk [uk] extra (build environment)",
-)
+requires_uk = pytest.mark.requires_uk
 _FORMULA_OWNED_PERSISTED_OVERRIDES = {
     "current_education",
     "is_benunit_head",

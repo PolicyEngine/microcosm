@@ -110,8 +110,8 @@ def test_resource_digest_binds_complete_json() -> None:
     assert uk_take_up_contract_identity(contract)["resource_sha256"] == expected
 
 
+@pytest.mark.requires_uk
 def test_engine_version_is_read_dynamically_and_tie_break_absent() -> None:
-    pytest.importorskip("policyengine_uk")
     import policyengine_uk
 
     package_version = metadata.version("policyengine-uk")

@@ -16,23 +16,43 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ```bash
 uv sync --all-packages   # set up the whole workspace
-uv sync --all-packages --extra us  # include live US ownership/consumer guards
+uv sync --all-packages --locked --extra us --extra uk  # CI engine env
 uv run pytest            # behavioral contract suite + unit tests (all shards)
 uv run ruff check .      # lint
 ```
 
-PR CI (`.github/workflows/test.yml`) uses the US-extra sync so pool-input
-ownership and consumer existence are checked against the locked PolicyEngine-US,
-then runs the test and lint commands plus a wheel-packaging gate (build every
-shard's wheel, install into a clean venv under the lock's constraints, import
-and test). CI runs the test suite one pytest process per shard (a single
-suite-wide process OOM-kills the 7 GB runner); locally `uv run pytest` is
-still fine. Spec identities (`spec_sha256` pins, seed digests) attest kernel
-source and locked RNG-library versions, so they legitimately move when main
-changes an attested module or dependency — CI tests the merge ref, so merge
-main and re-pin rather than hunting for an environment leak. Editable installs
-hide packaging breaks — if you touch packaging, build wheels locally before
-pushing.
+PR CI (`.github/workflows/test.yml`) has four lanes — `lint`, `fast`,
+`engine` (three jobs), and `wheels` — fed by a `changes` job that classifies
+the diff into `shared`/`us`/`uk`. `lint` verifies
+`tools/ci_test_groups.py --verify`, syncs with `--locked`, and runs ruff.
+`fast` runs the full tracked test-file inventory without engine extras in
+three groups (`trade`, `spine-uk`, `rest`); engine-gated tests skip there
+through whichever guard they carry — the `requires_*` markers, or the
+`importorskip` calls that remain the norm on the US side. `engine-shared` always syncs
+`--extra us --extra uk` and runs the shared/spec group. `engine-us` and
+`engine-uk` use statically named matrix jobs and job-level `if` conditions
+based only on the `changes` job outputs: country jobs run on main pushes or
+when that country or shared paths changed. A country PR that merges over a
+fresh change to the other country is certified by main's push run; watch main
+after merging. The `wheels` lane remains the packaging gate: build every
+shard's real wheel, install into a clean uv-export-constrained venv, assert
+the wheel/import boundary and spec digests, and run the suite against installed
+wheels.
+
+`requires_us` and `requires_uk` are registered pytest markers. Mark new tests
+that need a live PolicyEngine engine with the appropriate marker; the root
+collection hook skips them when that engine is absent, and the marker also
+makes `-m requires_uk` a real selector. Do not add new module-local skip
+aliases. Existing `importorskip` guards (still the norm across the US files)
+keep working and were deliberately left in place — convert one only when you
+are already editing that test for another reason. `tools/ci_test_groups.py` is the partition
+authority for CI file groups; update it and keep `--verify` green whenever
+test files move or new grouped lanes are added. Spec identities
+(`spec_sha256` pins, seed digests) attest kernel source and locked
+RNG-library versions, so they legitimately move when main changes an attested
+module or dependency. CI tests the merge ref, so merge main and re-pin rather
+than hunting for an environment leak. Editable installs hide packaging breaks;
+if you touch packaging, build wheels locally before pushing.
 
 ## The PR-CI / certification boundary
 

@@ -23,11 +23,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
-pytest.importorskip(
-    "policyengine_uk",
-    reason="the eFRS weighted-totals extraction classifies loader inputs "
-    "against the live UK engine",
-)
+pytestmark = pytest.mark.requires_uk
 
 
 def _tool_module():

@@ -1423,6 +1423,7 @@ def test_national_build_accepts_hugging_face_style_h5_symlink(tmp_path) -> None:
     assert staging_h5.is_file()
 
 
+@pytest.mark.requires_uk
 def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     pytest.importorskip("tables")
     policyengine_data = pytest.importorskip("policyengine_uk.data")

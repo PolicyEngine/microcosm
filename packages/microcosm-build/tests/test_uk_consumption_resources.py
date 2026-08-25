@@ -48,6 +48,7 @@ def test_policy_anchor_resources_carry_parameter_paths() -> None:
     assert services["nhs_budget_2025_26"]["value"] == 202_000_000_000
 
 
+@pytest.mark.requires_uk
 def test_policy_anchor_values_lockstep_with_engine_parameter_tree() -> None:
     """Every anchor value with a parameter_path equals the installed tree's value.
 

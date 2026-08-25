@@ -14,11 +14,7 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_release_input_coverage_manifest.py"
 _UK_PACKAGE = "microcosm.build.uk"
-policyengine_uk_installed = importlib.util.find_spec("policyengine_uk") is not None
-requires_uk = pytest.mark.skipif(
-    not policyengine_uk_installed,
-    reason="requires the policyengine-uk [uk] extra (build environment)",
-)
+requires_uk = pytest.mark.requires_uk
 
 
 def _resource(name: str) -> dict:

@@ -529,8 +529,8 @@ class TestUKReleaseInputCoverageGate:
             == 1
         )
 
+    @pytest.mark.requires_uk
     def test_integer_encoded_enum_default_is_not_signal(self) -> None:
-        pytest.importorskip("policyengine_uk")
         contract = _manifest((UKReleaseInputColumn("gender", "required"),))
         frame = _weighted_person_frame(
             {"gender": np.asarray([0, 0], dtype=np.int16)},
@@ -880,8 +880,8 @@ class TestUKManifest:
         assert len(overrides) == 13
         assert overrides <= set(manifest.required_columns)
 
+    @pytest.mark.requires_uk
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
-        pytest.importorskip("policyengine_uk")
         engine = PolicyEngineUKCoverageEngine()
         assert set(UK_LOADER_INPUT_ALIASES) <= set(engine.variables())
         defaults = engine.default_values(UK_LOADER_INPUT_ALIASES)
@@ -890,8 +890,8 @@ class TestUKManifest:
             name: "person" for name in UK_LOADER_INPUT_ALIASES
         }
 
+    @pytest.mark.requires_uk
     def test_live_uk_adapter_recognises_formula_owned_overrides(self) -> None:
-        pytest.importorskip("policyengine_uk")
         engine = PolicyEngineUKCoverageEngine()
         names = ("state_pension_reported", "student_loan_repayments")
         assert set(names) <= set(engine.variables())

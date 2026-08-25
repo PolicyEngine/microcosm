@@ -88,6 +88,7 @@ def test_disability_flag_operator_asymmetry_and_afcs() -> None:
     assert result["is_severely_disabled_for_benefits"].tolist() == [True, True]
 
 
+@pytest.mark.requires_uk
 def test_dwp_reader_split_is_value_bearing() -> None:
     # The readers construct the real engine's parameter tree; the wheel gate
     # and the us-extra CI lane run without policyengine-uk, so skip there.
@@ -97,7 +98,6 @@ def test_dwp_reader_split_is_value_bearing() -> None:
     # the plain tree the incumbent's flags read is fiscal-2023-24. A licensed
     # head-to-head against the incumbent's own output caught the one-row
     # flag divergence when both readers used the raw-file January values.
-    pytest.importorskip("policyengine_uk")
     from microcosm.build.uk_runtime.frs_disability import (
         uk_dwp_disability_flag_rates,
     )
