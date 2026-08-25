@@ -254,7 +254,11 @@ def _record_failed_attempt(
         rung="f100",
         seed=seed,
         code_pin=code_pin,
-        disposition="failed",
+        # An operator interrupt is a discarded attempt, not a failed one; the
+        # row says which so the chain reads honestly.
+        disposition=(
+            "discarded" if isinstance(error, KeyboardInterrupt) else "failed"
+        ),
         predecessor=predecessor,
         spool_dir=spool_dir,
     )
