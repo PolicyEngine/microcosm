@@ -162,15 +162,37 @@ def _geography_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
 
 SCOTGOV_COUNCIL_TAX_STOCK_PREFIX = "scotgov.council_tax_stock."
 
+# Target-id prefixes whose geography pins cannot come from the nation-substring
+# rule below. Each entry is justified by the layer that fixes the geography:
+# the Chronicle fact stamp, the contract binding, or the model variable's own
+# country gate.
+TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
+    # Scottish Government statistics are Scotland-scoped and Chronicle stamps
+    # them S92000003 (CTAXBASE chargeable dwellings, Scottish Budget
+    # social-security lines); the substring rule sees no "scotland" in
+    # "scotgov" or "scottish_child_payment" and would fall through to the UK
+    # pin, which never matches a Scotland-stamped fact.
+    ("scotgov.", "scotland"),
+    # The SLC borrower-plan forecasts Chronicle carries are England-scoped
+    # (facts stamped E92000001) and the contract bindings already filter
+    # country == ENGLAND explicitly, so the GB default could never match.
+    ("slc.borrowers.", "england"),
+    # The SLC student-support publication is England-scoped (facts stamped
+    # E92000001) and the bound model variables are England-gated by
+    # construction (maintenance_loan_in_england_system,
+    # parents_learning_allowance_eligible and adult_dependants_grant_eligible
+    # all require country == ENGLAND). slc.repayments.* stays with the
+    # substring rule: its england_* ids name their nation, and devolved_total
+    # needs a per-nation redesign before it can activate.
+    ("slc.support.", "england"),
+)
+
 
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
-    if target_id.startswith(SCOTGOV_COUNCIL_TAX_STOCK_PREFIX):
-        # The Scottish Government CTAXBASE chargeable-dwelling facts are
-        # stamped S92000003 in Chronicle; the substring rule below sees no
-        # "scotland" in "scotgov" and would fall through to the UK pin, which
-        # never matches a Scotland-stamped fact.
-        return UK_GEOGRAPHY_IDS["scotland"]
+    for prefix, geography_key in TARGET_PREFIX_GEOGRAPHY_PINS:
+        if target_id.startswith(prefix):
+            return UK_GEOGRAPHY_IDS[geography_key]
     selector = target.get("ledger_selector") or {}
     concept = str(selector.get("source_concept", "")).lower()
     measure = str(selector.get("source_measure_id", "")).lower()

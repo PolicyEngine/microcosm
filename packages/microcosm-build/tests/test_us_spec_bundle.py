@@ -87,13 +87,13 @@ F_P_WAIVED_TARGETS = frozenset(
         "has_other_means_tested_health_coverage_at_interview",
         "has_tricare_health_coverage_at_interview",
         "has_va_health_coverage_at_interview",
-        "is_tanf_enrolled",
+        "receives_tanf",
         "receives_housing_assistance",
         "receives_snap",
         "receives_wic",
         "takes_up_housing_assistance_if_eligible",
         "takes_up_medicare_if_eligible",
-        "would_claim_wic",
+        "takes_up_wic_if_eligible",
     }
 )
 
@@ -151,7 +151,7 @@ EXPECTED_F_P_TARGET_CONCEPTS = {
         "veteran_status",
         "military_coverage_context",
     ],
-    "is_tanf_enrolled": [
+    "receives_tanf": [
         "dependent_child_status",
         "household_income_eligibility",
     ],
@@ -177,7 +177,7 @@ EXPECTED_F_P_TARGET_CONCEPTS = {
         "disability_status",
         "medicare_coverage_context",
     ],
-    "would_claim_wic": ["dependent_child_status", "pregnancy_status"],
+    "takes_up_wic_if_eligible": ["dependent_child_status", "pregnancy_status"],
 }
 
 EXPECTED_RUNGS = [
@@ -190,13 +190,13 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "a3e9ca87f43d74b3d83320ca77559f28452036cf60dfc16bee10a22d4784f672"
+        "dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
     ),
     "take_up_contract.json": (
-        "5852e96582793313782d1c3edfc4cfdd0358a1a9cfd54bfea5844cbb09e89bd4"
+        "a9e70fb3e14b0af6cac5cc7935ef554f62dc3dca0377bc1fb57c0e6fa583e813"
     ),
 }
 
@@ -296,7 +296,7 @@ def test_constant_derived_domain_counts_are_complete(
     selection = _domain(resolved_us_spec, ResourceKind.SELECTION)
     catalogs = _domain(resolved_us_spec, ResourceKind.CATALOGS)
 
-    assert len(sources["sources"]) == 7
+    assert len(sources["sources"]) == 8
     assert len(sources["stages"]) == 37
 
     families = imputation["families"]
@@ -382,19 +382,19 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+        == "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7766f2e94476cceb93d9730a74afb2ca6fed836068053f96fa4141bcc2f6154e"
+        == "5921cda83725b2801f2713242003e99ba54766851808b94a4f483666bce604c5"
     )
 
-    assert len(take_up["programs"]) == 13
+    assert len(take_up["programs"]) == 17
     assert Counter(program["ownership"] for program in take_up["programs"]) == {
-        "engine": 4,
+        "engine": 7,
         "measured": 1,
         "mixed": 1,
-        "modeled": 6,
+        "modeled": 7,
         "transferred": 1,
     }
     take_up_steps = []
@@ -405,12 +405,12 @@ def test_constant_derived_domain_counts_are_complete(
             take_up_steps.extend(
                 step for segment in program["segments"] for step in segment["pipeline"]
             )
-    assert len(take_up_steps) == 24
+    assert len(take_up_steps) == 28
     assert Counter(step["kind"] for step in take_up_steps) == {
         "assignment": 5,
         "count_calibration": 5,
-        "probability_seed": 4,
-        "engine_default": 4,
+        "probability_seed": 5,
+        "engine_default": 7,
         "measured_map": 3,
         "imputed_transfer": 2,
         "delivery_gate": 1,
@@ -419,11 +419,11 @@ def test_constant_derived_domain_counts_are_complete(
         step for step in take_up_steps if "source_operation_ref" in step
     ]
     local_steps = [step for step in take_up_steps if "source_operation_ref" not in step]
-    assert len(source_backed_steps) == 17
-    assert len(local_steps) == 7
+    assert len(source_backed_steps) == 18
+    assert len(local_steps) == 10
     assert (
         len({step["source_operation_ref"]["stage"] for step in source_backed_steps})
-        == 8
+        == 9
     )
     source_operations = {
         stage["stage"]: stage["operations"] for stage in sources["stages"]
@@ -439,14 +439,14 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 131
+    assert len(battery["metric_registry"]) == 134
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
     assert "completeness" not in battery
     battery_views = derive_battery_registry_views(battery)
     assert battery_views["metric_counts"] == {
-        "boolean_incidence": 48,
+        "boolean_incidence": 51,
         "categorical_tvd": 4,
         "monetary_sign_separated": 79,
     }
@@ -472,8 +472,8 @@ def test_constant_derived_domain_counts_are_complete(
     for knob in ("k", "pi_hi", "seed"):
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
-    assert len(catalogs["columns"]) == 173
-    assert len(resolved_us_spec.columns) == 173
+    assert len(catalogs["columns"]) == 176
+    assert len(resolved_us_spec.columns) == 176
     assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
         "producer_node": 38,
         "virtual_output": 18,
@@ -934,8 +934,17 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     )
     assert geography["phase"] == "legacy"
     assert geography["assignment"]["anchor"] == "puma"
-    assert geography["assignment"]["order"] == "legacy_post_transfer"
+    assert geography["assignment"]["order"] == "before_gap_fill"
     assert geography["assignment"]["assign_tract"] is False
+    assert geography["assignment"][
+        "congressional_district_vintage_crosswalk"
+    ] == {
+        "source_ref": (
+            "source:us_congressional_district_vintage_crosswalk_117_to_119"
+        ),
+        "source_vintage": "vintage:cd_117",
+        "target_vintage": "vintage:cd_119",
+    }
 
     engine_pins = [
         record
@@ -955,13 +964,16 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     ]
     engine_lock = _json_resource("engine_abi.lock.json")
     engine_version = engine_lock["engine"]["version"]
-    assert (
-        sum(
-            _count_scalar(_domain(resolved_us_spec, kind), engine_version)
-            for kind in TYPED_DOMAIN_KINDS
-        )
-        == 0
-    )
+    engine_version_occurrences = {
+        kind: _count_scalar(_domain(resolved_us_spec, kind), engine_version)
+        for kind in TYPED_DOMAIN_KINDS
+    }
+    assert engine_version_occurrences == {
+        kind: int(kind == "take_up") for kind in TYPED_DOMAIN_KINDS
+    }
+    assert take_up["legacy_contract_metadata"]["asserted_engine"][
+        "inventory_built_against"
+    ] == engine_version
     assert _count_scalar(engine_lock, engine_version) == 1
     resolved_vintages = thaw_json(resolved_us_spec.vintage_authorities)
     assert resolved_vintages["records"]["policyengine_us_surface"]["value"] == (

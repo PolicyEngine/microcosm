@@ -73,28 +73,28 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "24ae81f408e8d608db1956463206fe9842b5214ca813113d3e5366fc66ca3cde"
+        "3a980927227704d0589f246eef9cd825c2ae84f3a4134ac835e0e5ed39a563ac"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
     } == {
         "declared_surface": (
-            "d6d987b34d88bf4a6327dcd4318c67d45ab9392a1bdb2f586887fdcf340faffc"
+            "5b5a4470e2612365f253e933833bb08b8f9c857ea0bc175b958ead9a74abee01"
         ),
         "gap_fill_plan": (
-            "f70bc89cd887504645bd299501e9a63ea23726fb8d9f3fe523092639e251fe0f"
+            "f41319a95750a441676bc6599b1de6bb49a87b45d83b9263d627c402cfe8e750"
         ),
         "joint_metric_registry": (
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
         ),
         "late_producer_schedule": (
-            "bf95c78ea4168c81fa319872276002835f19ac27461eb3b69349c9637bc14f86"
+            "9b15db577b85c796944e8eb267500d5d662f2a0eee77b25c1e4241c7d9620473"
         ),
         "metric_registry": (
-            "9fb545df48c31004444dbda542b8b67b9c66288d3742fd00e9c7b210d75766e9"
+            "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
         ),
         "post_puf_transfer_surface": (
-            "290c871baf8d5602dc1009fbba3db0b7fcf65b60ccf6557bf7776b8c0c07dbec"
+            "a31e8a9512ec829c98745ed9ca2177e66d529bdc4b096ecfa2b4452f7bd41d73"
         ),
         "post_transfer_calibration": (
             "141519684c72ab84a077ae0f5716a0416f1e19da57262948e459633cbe560576"
@@ -126,6 +126,20 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
             expected_sha256="a" * 64,
             actual_sha256="a" * 64,
             size_bytes=17,
+        ),
+        "puma_ladder": pool_tool._VerifiedInput(
+            role="puma_ladder",
+            path=Path("unused-puma-ladder"),
+            expected_sha256=pool_tool._STACKED_PUMA_LADDER_SHA256,
+            actual_sha256=pool_tool._STACKED_PUMA_LADDER_SHA256,
+            size_bytes=29,
+        ),
+        "congressional_district_vintage_crosswalk": pool_tool._VerifiedInput(
+            role="congressional_district_vintage_crosswalk",
+            path=Path("unused-cd-crosswalk"),
+            expected_sha256=pool_tool._STACKED_CD_CROSSWALK_SHA256,
+            actual_sha256=pool_tool._STACKED_CD_CROSSWALK_SHA256,
+            size_bytes=77_935,
         ),
     }
     pins = {
@@ -169,10 +183,15 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
 
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
-    assert list(projected["inputs"]) == ["alpha", "zeta"]
+    assert list(projected["inputs"]) == [
+        "alpha",
+        "congressional_district_vintage_crosswalk",
+        "puma_ladder",
+        "zeta",
+    ]
     assert (
         projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
-        == "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+        == "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
     )
 
 
@@ -203,6 +222,7 @@ def test_static_projection_selects_exact_defaulted_live_identity_components(
         "period",
         "model_seed",
         "policyengine_us_version",
+        "geography_assignment",
         "stacked_authority",
         "pool_code",
     )

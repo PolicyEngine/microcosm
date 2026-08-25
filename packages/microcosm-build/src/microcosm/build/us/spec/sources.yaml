@@ -84,10 +84,22 @@ sources:
   - id: puma_2020
     kind: geography_vintage
     value: 2020_puma
+- id: us_congressional_district_vintage_crosswalk_117_to_119
+  role: congressional_district_vintage_crosswalk
+  sha256: c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec
+  byte_size: 77935
+  loader: kernel:load_congressional_district_vintage_crosswalk
+  vintages:
+  - vintage:cd_117
+  - vintage:cd_119
+  vintage_authorities:
+  - id: cd_117
+    kind: geography_vintage
+    value: 117th_congress
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: a3e9ca87f43d74b3d83320ca77559f28452036cf60dfc16bee10a22d4784f672
+  sha256: dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097
 stage_manifest:
   version: 1
   country: us
@@ -378,35 +390,35 @@ stages:
     and its retired QRF target/override entries at calibration/puf_impute.py lines 90-198; the pinned
     processed 1.8.0 artifact carries nondefault source signal. The retired processed person array embodies
     a randomized EARNSPLIT filer/spouse allocation (puf.py lines 477-546 and 1513-1601), but the hermetic
-    ASEC target has no EARNSPLIT. Microcosm therefore aggregates each processed donor leaf to its identifiable
-    tax-unit total, places that total on the unit''s first person, and sparsifies only the PUF support
-    channel to the donor positive rate rather than inventing an earnings-based split or reproducing the
-    retired both-half override. This within-unit placement is policy-neutral in PolicyEngine-US 1.764.6
-    because the relevant formulas sum these leaves to the tax unit. Alimony reproduces the retired direct
-    PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe,
-    datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported
-    ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits)
-    are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Domestic production
-    reproduces the retired direct mapping domestic_production_ald = E03240 at archived puf.py line 646,
-    appears in the exported field list at lines 808-815, and is re-derived after aggregate-row disaggregation;
-    it is the former Section 199 deduction, not Section 199A QBI. The retired weighted-QRF target and
-    override lists include it at calibration/puf_impute.py lines 90-198, with the fit at lines 940-1075.
-    Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py
-    lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business
-    expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same
-    commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Signed
-    farm business inputs reproduce farm_operations_income = E02100 and farm_rent_income = E27200 at archived
-    puf.py lines 636-704 and are re-derived after disaggregation without clipping; ASEC farm_operations_income
-    = FRSE_VAL at archived cps.py lines 1363-1382 remains measured on that channel, while PUF farm_income
-    = T27800 is a distinct Schedule J leaf and a forbidden substitute. The retired farm QRF overwrote
-    both clone halves (calibration/puf_impute.py lines 513-672); Microcosm deliberately preserves measured
-    ASEC operations income and replaces only the PUF support channel. Section 199A inputs are carried
-    from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define
-    the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce
-    the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118
-    pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets
-    and fit. Microcosm source-aligns boolean person counts and restores the archived split/exposure identities
-    after its weighted PUF QRF.'
+    ASEC target has no EARNSPLIT. Microcosm aggregates each processed donor person leaf to a tax-unit
+    QRF target and sparsifies only the PUF support channel to the donor positive rate. Predicted person-output
+    totals are redistributed using copied ASEC within-unit shares or leaf-specific allocation bases, with
+    a stable first-person fallback only where the target support has no allocation mass; this preserves
+    person-sensitive caps and eligibility where a defensible allocation basis exists. Alimony reproduces
+    the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit
+    42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after
+    aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while
+    codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py
+    lines 1481-1492. Domestic production reproduces the retired direct mapping domestic_production_ald
+    = E03240 at archived puf.py line 646, appears in the exported field list at lines 808-815, and is
+    re-derived after aggregate-row disaggregation; it is the former Section 199 deduction, not Section
+    199A QBI. The retired weighted-QRF target and override lists include it at calibration/puf_impute.py
+    lines 90-198, with the fit at lines 940-1075. Casualty loss reproduces the retired direct mapping
+    casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after
+    aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400
+    proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665,
+    and are likewise re-derived after disaggregation. Signed farm business inputs reproduce farm_operations_income
+    = E02100 and farm_rent_income = E27200 at archived puf.py lines 636-704 and are re-derived after disaggregation
+    without clipping; ASEC farm_operations_income = FRSE_VAL at archived cps.py lines 1363-1382 remains
+    measured on that channel, while PUF farm_income = T27800 is a distinct Schedule J leaf and a forbidden
+    substitute. The retired farm QRF overwrote both clone halves (calibration/puf_impute.py lines 513-672);
+    Microcosm deliberately preserves measured ASEC operations income and replaces only the PUF support
+    channel. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn:
+    archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA
+    simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves;
+    qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075
+    pin the retired QRF targets and fit. Microcosm source-aligns boolean person counts and restores the
+    archived split/exposure identities after its weighted PUF QRF.'
 - stage: education_inputs
   survey: IRS PUF 2015 (uprated) + Census CPS ASEC
   source: https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files
@@ -614,9 +626,9 @@ stages:
     floor-eligible spouse. Selection is a seeded weight-targeted permutation prefix over sorted unit ids
     (invariant to person-row order) at the measured usage rate; levels are a distribution-preserving weighted-quantile
     draw whose grid is the selected units'' own cumulative-weight midpoints, placed on the qualifying
-    person with the smallest person_id. PolicyEngine-US 1.764.6 owns all downstream CDCC formulas; is_incapable_of_self_care
-    is also read by SNAP/Medicaid work-requirement exemptions and state CDCC analogs, which move those
-    programs from flag-off defaults toward the measured disability structure.'
+    person with the smallest person_id. PolicyEngine-US 1.819.0 owns all downstream CDCC formulas; is_incapable_of_self_care
+    is also consumed by SNAP/Medicaid work-requirement logic and multiple state dependent-care formulas,
+    moving those programs from flag-off defaults toward the measured disability structure.'
 - stage: energy_subsidy
   survey: Census CPS ASEC
   source: https://www.census.gov/programs-surveys/cps.html
@@ -2284,7 +2296,7 @@ stages:
         child: 0.46
         none: 0.0
   outputs:
-  - would_claim_wic
+  - takes_up_wic_if_eligible
   notes: 'The retired eCPS derives PolicyEngine-US wic_category_str and assigns a stable seeded Bernoulli
     at category-specific rates (archived cps.py lines 684-691, wic_takeup.yaml lines 1-33, and randomness.py
     lines 5-28). The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%,
@@ -2870,11 +2882,11 @@ stages:
     coverage (has_esi - the conservative, incomplete proxy for the 26 USC 162(l)(2)(B) subsidized-employer-plan
     month exclusion; eligibility through a spouse''s or dependent''s employer is not measured and remains
     documented residual overbreadth), and marks is_self_employed for every strictly-positive Schedule
-    C person. PolicyEngine-US 1.764.6 then computes self_employed_health_insurance_premiums (a formula-owned
+    C person. PolicyEngine-US 1.819.0 then computes self_employed_health_insurance_premiums (a formula-owned
     adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the section 162(l)
     ALD as min(total_self_employment_income, premiums). The Medicare proxy keeps the statutory medical-expense
     premium concept numerically invariant because the direct input equals the decomposed reported premium
-    whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US 1.764.6 reads
+    whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US 1.819.0 reads
     the bare health_insurance_premiums input in five state/local formulas (MO qualified-premium subtraction,
     MI household resources, OH uninsured unreimbursed medical expenses, CA Orange County general relief
     countable income, MO child-care-subsidy adjusted income): attribution moves those programs from premiums-invisible

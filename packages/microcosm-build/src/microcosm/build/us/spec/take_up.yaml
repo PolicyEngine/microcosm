@@ -424,15 +424,35 @@ programs:
         operation_index: 3
         operation_id: impute_housing_assistance_to_puf_support
     final_owner_stage: acs_rent
+- id: wic
+  variable: takes_up_wic_if_eligible
+  ownership: modeled
+  documentation:
+    scope_owner: wic_claim_input source stage (USDA FNS CY2022 category-rate assignment)
+    consumed_via: wic (defined_for takes_up_wic_if_eligible; adds wic_if_takes_up)
+    notes: PolicyEngine-US 1.777.0 renamed would_claim_wic to takes_up_wic_if_eligible and made WIC consume
+      the successor. The existing source stage already assigns the reviewed USDA FNS CY2022 category-specific
+      participation rates, so the runtime output is renamed without inventing a new rate or changing its
+      ownership. out_of_scope means out of scope for the generic Bernoulli seeder, not unseeded.
+  pipeline:
+  - kind: probability_seed
+    kernel: kernel:with_us_wic_claim_input
+    source_operation_ref:
+      stage: wic_claim_input
+      operation_index: 1
+      operation_id: derive_wic_claim
+    rate_review:
+      status: sourced_administrative
+  final_owner_stage: wic_claim_input
 - id: aca
   variable: takes_up_aca_if_eligible
   ownership: modeled
   documentation:
     scope_owner: 'populace ACA family #70/#74/#75/#76/#168'
-    engine_state_note: 'As of pinned 1.752.2 the engine carries NO aca_take_up_seed and no formula on
+    engine_state_note: 'As of pinned 1.819.0 the engine carries NO aca_take_up_seed and no formula on
       this flag, so by pure engine facts it is data_seeded, not model_simulated. The spec anticipated
       PE-US #76''s model-side take-up migration (aca_take_up_seed); that migration has NOT landed in the
-      pinned engine. populace already carries a native ACA take-up stage in source_stages.json (assign_binary_from_rate
+      pinned engine. Microcosm already carries a native ACA take-up stage in source_stages.json (assign_binary_from_rate
       + calibrate_binary_assignment anchored on reported Marketplace coverage). This issue does not touch
       ACA flag-seeding per its scope boundary; the engine-vs-spec discrepancy is flagged for the ACA workstream
       and #313.'
@@ -484,6 +504,63 @@ programs:
       operation_index: 6
       operation_id: calibrate_binary_assignment
   final_owner_stage: aca_marketplace_inputs
+- id: ca_premium_subsidy
+  variable: takes_up_ca_premium_subsidy_if_eligible
+  ownership: engine
+  documentation:
+    consumed_via: assigned_ca_premium_subsidy
+    followup: Source a California Premium Subsidy participation rate or enrollment-count authority before
+      assigning this flag below the engine default.
+    notes: PolicyEngine-US added this input leaf to gate the assigned California Premium Subsidy. No reviewed
+      Microcosm source supplies its participation, so it remains at the disclosed default rather than
+      receiving an invented rate.
+  pipeline:
+  - kind: engine_default
+    operation_id: legacy_seeded_input_default
+    kernel: kernel:engine_default
+    debt:
+      populace_treatment: rate_unsourced
+      rate_review:
+        status: no_source
+  final_owner_stage: policyengine_us_default
+- id: co_premium_assistance
+  variable: takes_up_co_premium_assistance_if_eligible
+  ownership: engine
+  documentation:
+    consumed_via: assigned_co_premium_assistance
+    followup: Source a Colorado Premium Assistance participation rate or enrollment-count authority before
+      assigning this flag below the engine default.
+    notes: PolicyEngine-US added this input leaf to gate assigned Colorado Premium Assistance. No reviewed
+      Microcosm source supplies its participation, so it remains at the disclosed default rather than
+      receiving an invented rate.
+  pipeline:
+  - kind: engine_default
+    operation_id: legacy_seeded_input_default
+    kernel: kernel:engine_default
+    debt:
+      populace_treatment: rate_unsourced
+      rate_review:
+        status: no_source
+  final_owner_stage: policyengine_us_default
+- id: nm_premium_assistance
+  variable: takes_up_nm_premium_assistance_if_eligible
+  ownership: engine
+  documentation:
+    consumed_via: assigned_nm_premium_assistance
+    followup: Source a New Mexico Premium Assistance participation rate or enrollment-count authority
+      before assigning this flag below the engine default.
+    notes: PolicyEngine-US added this input leaf to gate assigned New Mexico Premium Assistance. No reviewed
+      Microcosm source supplies its participation, so it remains at the disclosed default rather than
+      receiving an invented rate.
+  pipeline:
+  - kind: engine_default
+    operation_id: legacy_seeded_input_default
+    kernel: kernel:engine_default
+    debt:
+      populace_treatment: rate_unsourced
+      rate_review:
+        status: no_source
+  final_owner_stage: policyengine_us_default
 legacy_contract_metadata:
   policy: 'Take-up contract inventory for PolicyEngine-US take-up flags. Each program records the engine
     facts a test asserts against the installed policyengine-us (entity, default, engine_class) and the
@@ -495,7 +572,7 @@ legacy_contract_metadata:
   asserted_engine:
     package: policyengine-us
     constraint: '>=1.745.0,<2'
-    inventory_built_against: 1.752.2
+    inventory_built_against: 1.819.0
     note: engine_class, entity, value_type, and default below are asserted against the installed engine
       by test. inventory_built_against records the version the curated treatments were reviewed against;
       the pin constraint is the contract the build honors.

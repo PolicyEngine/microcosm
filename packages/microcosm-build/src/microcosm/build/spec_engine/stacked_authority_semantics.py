@@ -107,12 +107,174 @@ def _us_domains(spec: ResolvedSpec) -> dict[str, dict[str, object]]:
         for kind in (
             "battery",
             "bundle",
+            "geography",
             "imputation",
             "publication",
             "sources",
             "spine",
             "take_up",
         )
+    }
+
+
+def _source_record(
+    sources: Mapping[str, object],
+    source_ref: str,
+) -> Mapping[str, object]:
+    source_id = source_ref.removeprefix("source:")
+    matches = [
+        row
+        for index, value in enumerate(
+            _array(sources.get("sources"), location="sources/sources")
+        )
+        for row in [_mapping(value, location=f"sources/sources/{index}")]
+        if row.get("id") == source_id
+    ]
+    if len(matches) != 1:
+        raise SpecValidationError(
+            f"sources/sources: source ref {source_ref!r} must resolve exactly once"
+        )
+    return matches[0]
+
+
+def _source_vintage_value(
+    source: Mapping[str, object],
+    vintage_ref: str,
+) -> str:
+    vintage_id = vintage_ref.removeprefix("vintage:")
+    matches = [
+        authority
+        for index, value in enumerate(
+            _array(
+                source.get("vintage_authorities"),
+                location="sources/source/vintage_authorities",
+            )
+        )
+        for authority in [
+            _mapping(
+                value,
+                location=f"sources/source/vintage_authorities/{index}",
+            )
+        ]
+        if authority.get("id") == vintage_id
+    ]
+    if len(matches) != 1:
+        raise SpecValidationError(
+            f"source vintage authority {vintage_ref!r} must resolve exactly once"
+        )
+    return _nonempty_string(
+        matches[0].get("value"),
+        location=f"sources/source/vintage_authorities/{vintage_id}/value",
+    )
+
+
+def _stacked_geography_assignment_contract(
+    spec: ResolvedSpec,
+    domains: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    assignment = _mapping(
+        domains["geography"].get("assignment"),
+        location="geography/assignment",
+    )
+    kernels = _mapping(
+        assignment.get("kernels"),
+        location="geography/assignment/kernels",
+    )
+    assign_kernel_ref = _nonempty_string(
+        kernels.get("assign"),
+        location="geography/assignment/kernels/assign",
+    )
+    if assign_kernel_ref != "kernel:assign_us_puma_ladder":
+        raise SpecValidationError(
+            "geography/assignment/kernels/assign: stacked runtime requires "
+            "kernel:assign_us_puma_ladder"
+        )
+    order = _nonempty_string(
+        assignment.get("order"), location="geography/assignment/order"
+    )
+    if order != "before_gap_fill":
+        raise SpecValidationError(
+            "geography/assignment/order: stacked runtime requires before_gap_fill"
+        )
+    ladder_ref = _nonempty_string(
+        assignment.get("ladder_source"),
+        location="geography/assignment/ladder_source",
+    )
+    crosswalk = _mapping(
+        assignment.get("congressional_district_vintage_crosswalk"),
+        location=(
+            "geography/assignment/congressional_district_vintage_crosswalk"
+        ),
+    )
+    crosswalk_ref = _nonempty_string(
+        crosswalk.get("source_ref"),
+        location=(
+            "geography/assignment/congressional_district_vintage_crosswalk/"
+            "source_ref"
+        ),
+    )
+    source_vintage_ref = _nonempty_string(
+        crosswalk.get("source_vintage"),
+        location=(
+            "geography/assignment/congressional_district_vintage_crosswalk/"
+            "source_vintage"
+        ),
+    )
+    target_vintage_ref = _nonempty_string(
+        crosswalk.get("target_vintage"),
+        location=(
+            "geography/assignment/congressional_district_vintage_crosswalk/"
+            "target_vintage"
+        ),
+    )
+    ladder_source = _source_record(domains["sources"], ladder_ref)
+    crosswalk_source = _source_record(domains["sources"], crosswalk_ref)
+    seed_site = spec.seed_protocol.site("legacy_puma_ladder")
+    if seed_site.default is None:
+        raise SpecValidationError(
+            "seed_protocol/legacy_puma_ladder: default seed required"
+        )
+    return {
+        "declaration": deepcopy(dict(assignment)),
+        "algorithm": {
+            "id": "assign_us_puma_ladder.population_weighted_overlap.v1",
+            "kernel": assign_kernel_ref.removeprefix("kernel:"),
+            "operator": "assign_us_puma_ladder",
+            "order": order,
+            "assign_tract": assignment.get("assign_tract"),
+        },
+        "authorities": {
+            "puma_ladder": {
+                "input_role": "puma_ladder",
+                "source_ref": ladder_ref,
+                "sha256": _nonempty_string(
+                    ladder_source.get("sha256"),
+                    location="sources/us_puma_ladder_2020/sha256",
+                ),
+            },
+            "congressional_district_vintage_crosswalk": {
+                "input_role": "congressional_district_vintage_crosswalk",
+                "source_ref": crosswalk_ref,
+                "sha256": _nonempty_string(
+                    crosswalk_source.get("sha256"),
+                    location="sources/CD vintage crosswalk/sha256",
+                ),
+                "source_vintage_ref": source_vintage_ref,
+                "source_vintage": _source_vintage_value(
+                    crosswalk_source, source_vintage_ref
+                ),
+                "target_vintage_ref": target_vintage_ref,
+                "target_vintage": _source_vintage_value(
+                    ladder_source, target_vintage_ref
+                ),
+            },
+        },
+        "seed": {
+            "site": seed_site.id,
+            "stream": seed_site.stream,
+            "value_source": seed_site.value_source,
+            "value": seed_site.default,
+        },
     }
 
 
@@ -1038,6 +1200,9 @@ def project_stacked_checkpoint_base_identity(
             "fraction": attachment_fraction,
             "seed": attachment_seed_value,
         },
+        "geography_assignment": _stacked_geography_assignment_contract(
+            spec, domains
+        ),
         "stacked_authority": project_stacked_authority_receipt(spec),
         "pool_code": {
             "operator_order": deepcopy(
@@ -1214,6 +1379,7 @@ def project_stacked_checkpoint_static_components(
         "period": full["period"],
         "model_seed": full["model_seed"],
         "policyengine_us_version": full["policyengine_us_version"],
+        "geography_assignment": deepcopy(full["geography_assignment"]),
         "stacked_authority": deepcopy(full["stacked_authority"]),
         "pool_code": deepcopy(full["pool_code"]),
     }

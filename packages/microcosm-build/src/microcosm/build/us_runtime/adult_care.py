@@ -1,6 +1,6 @@
 """ASEC-measured adult/disabled-dependent care inputs for the section 21 CDCC.
 
-PolicyEngine-US 1.764.6 computes the CDCC adult-care leg from two person
+PolicyEngine-US 1.819.0 computes the CDCC adult-care leg from two person
 inputs neither the retired eCPS nor any prior Microcosm base carried:
 ``is_incapable_of_self_care`` (the section 21(b)(1)(B)/(C) qualifying test
 and the 21(d)(2) spouse deemed-earnings gate) and

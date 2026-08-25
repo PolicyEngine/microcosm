@@ -114,12 +114,12 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
 # (``"eternity"``, ``"day"``) is point-in-time state.
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 
-# PolicyEngine-US 1.764.6 creates 110 default-system variables outside ordinary
+# PolicyEngine-US 1.819.0 creates 110 default-system variables outside ordinary
 # top-level ``class ...(Variable)`` declarations. Keep the compact metadata
 # snapshot tied to every source/activation surface that produced it: a changed
 # wheel must fail closed until this audit is refreshed, never silently omit a
 # newly generated formula-owned output.
-_GENERATED_SOURCE_VERSION = "1.764.6"
+_GENERATED_SOURCE_VERSION = "1.819.0"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
     "variables/household/demographic/geographic/state/in_state.py": (
@@ -135,9 +135,9 @@ _GENERATED_SOURCE_SHA256: dict[str, str] = {
         "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
     ),
     "reforms/reforms.py": (
-        "3e97e5100254ef2aaef81a8b6126674e9091b8da1951e0e5b0ddf6cf25805721"
+        "9846915c2b03e776dc37cdd6d92566de117f6eebafbf5508179e196fce28d474"
     ),
-    "system.py": "cd0a56ed5572da71923852e589eb90a38049723d6c9a7c15e49e774ac7fea42a",
+    "system.py": "820dadeb7d22ef14d9cb2c34607f2afe68ba5fae616e05e634c2319e61eb457d",
 }
 _GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
     (

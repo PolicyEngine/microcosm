@@ -56,6 +56,7 @@ EXPECTED_CHECKS = {
     "stacked_checkpoint_base_identity_exact",
     "stacked_checkpoint_pool_code_exact",
     "stacked_checkpoint_top_level_exact",
+    "stacked_geography_assignment_exact",
     "take_up_identity_exact",
     "take_up_legacy_contract_exact",
     "take_up_pipeline_steps_exact",
@@ -82,21 +83,21 @@ EXPECTED_COUNTS = {
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 318,
+    "resolved_references": 334,
     "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
     "seed_sites": 53,
     "seed_streams": 14,
     "source_operators": 16,
     "source_stages": 37,
-    "stacked_checkpoint_full_components": 12,
+    "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
-    "stacked_checkpoint_static_components": 9,
+    "stacked_checkpoint_static_components": 10,
     "tail_control_fields": 934,
-    "take_up_pipeline_steps": 24,
-    "take_up_programs": 13,
+    "take_up_pipeline_steps": 28,
+    "take_up_programs": 17,
     "typed_artifacts": 84,
-    "typed_columns": 173,
+    "typed_columns": 176,
     "typed_entities": 8,
     "typed_scopes": 7,
 }
@@ -160,8 +161,8 @@ def test_us_inventory_is_structure_exact_and_complete(
     )
 
     assert_inventory_coverage_complete(report)
-    assert report["required_item_count"] == 40
-    assert report["covered_item_count"] == 40
+    assert report["required_item_count"] == 41
+    assert report["covered_item_count"] == 41
     assert report["missing_item_count"] == 0
     assert report["missing_items"] == []
     assert set(report["items"]) == EXPECTED_CHECKS

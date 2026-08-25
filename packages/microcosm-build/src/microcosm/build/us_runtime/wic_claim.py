@@ -1,13 +1,13 @@
 """Source-backed WIC claim propensity from official FNS category rates.
 
 The retired eCPS pipeline calculated PolicyEngine-US ``wic_category_str`` and
-then drew ``would_claim_wic`` from the USDA FNS participation rate for that
+then drew the WIC take-up input from the USDA FNS participation rate for that
 category.  This stage restores that exported input without inventing a survey
 receipt anchor: the hermetic ASEC spine has the age, sex, parent, family, and
 newly seeded pregnancy inputs needed to reproduce the demographic categories,
 while the official CY2022 FNS estimates supply the rates.
 
-PolicyEngine-US 1.764.6 evaluates categories in this order: pregnant,
+PolicyEngine-US 1.819.0 evaluates categories in this order: pregnant,
 breastfeeding mother of an infant, postpartum mother, infant, child, none.
 There is no breastfeeding assessment in the hermetic sources.  Rather than
 invent one, this stage assigns every female parent whose family includes an
@@ -87,7 +87,9 @@ WIC_CLAIM_FNS_SOURCE_URL = (
 )
 
 US_WIC_CLAIM_STAGE_NAME = "wic_claim_input"
-US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = ("would_claim_wic",)
+US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = (
+    "takes_up_wic_if_eligible",
+)
 US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS = US_WIC_CLAIM_OUTPUT_COLUMNS
 
 # These are persisted PolicyEngine-facing columns already carried or derived
@@ -102,6 +104,9 @@ US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 )
 
 _OUTPUT = US_WIC_CLAIM_OUTPUT_COLUMNS[0]
+# Preserve the established draws across the upstream input rename. The wire
+# protocol attests this historical salt separately from the output column.
+_DRAW_SALT = "would_claim_wic"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _PERSON_SUPPORT_SOURCE_ID_COLUMN = "person_support_source_id"
 _SOURCE_IDENTITY_COLUMNS = (
@@ -391,7 +396,7 @@ def _stable_person_draws(person: pd.DataFrame, *, seed: int) -> np.ndarray:
         [
             int.from_bytes(
                 hashlib.blake2b(
-                    f"{seed}:{_OUTPUT}:{key}".encode(),
+                    f"{seed}:{_DRAW_SALT}:{key}".encode(),
                     digest_size=8,
                 ).digest(),
                 byteorder="big",
@@ -409,7 +414,7 @@ def derive_us_wic_claim_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext,
 ) -> pd.DataFrame:
-    """Assign ``would_claim_wic`` from source categories and FNS rates."""
+    """Assign WIC take-up from source categories and FNS rates."""
 
     if operation.kind != "derive_wic_claim":
         raise SourceRuntimeError(

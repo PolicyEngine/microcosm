@@ -89,11 +89,11 @@ class TestEfrsParityReference:
         assert source.repo_id == "policyengine/policyengine-uk-data-private"
         assert source.repo_type == "model"
         assert source.filename == "enhanced_frs_2024_25.h5"
-        assert source.revision == "a2039519d3b92aecc06c66dfd175cb46ac24cada"
+        assert source.revision == "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df"
         assert source.sha256 == (
-            "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
+            "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"
         )
-        assert source.size_bytes == 126_579_434
+        assert source.size_bytes == 126_553_300
         assert source.url.endswith(f"/{source.revision}/{source.filename}")
         assert source.period == "2024"
         assert source.vintage == "2024_25"

@@ -1,162 +1,130 @@
-# Final report: US release replacement scorecard
+# Final report: stacked-pool to release CD-vintage provenance
 
 ## Outcome
 
-The replacement yardstick is complete and the live US incumbent is scored.
-`tools/score_us_release_head_to_head.py` accepts the incumbent H5 and an
-optional candidate H5 or authenticated pool, normalizes each through one
-role-neutral loader API, and sends both through the same scoring function
-(`tools/score_us_release_head_to_head.py:495-515,1398-1536,1670-1721`). Its
-deterministic JSON contains every compiled fiscal target and every nominal
-terminal-battery scalar leg; its Markdown twin is the readable scorecard.
+The producer/consumer defect is fixed. The production stacked route now
+produces the same authenticated congressional-district contract that release
+preflight requires: the canonical crosswalk SHA, target vintage
+`119th_congress`, and positive household
+`congressional_district_geoid` support. Geography remains outside source
+assembly, and the release guard still fails closed on every mismatch
+(`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-406`;
+`tools/build_us_fiscal_refresh_release.py:2565-2613,8608-8612`).
 
-The scorer compiles the sole US fiscal registry once, then materializes and
-scores fixed registry chunks across fixed household slices
-(`tools/score_us_release_head_to_head.py:518-579,675-852`). Every slice must
-match the target, scale, diagnostic-name, and scored-column contracts; the two
-artifacts must also have identical final scored-column contracts, so a missing
-candidate measure cannot disappear silently
-(`tools/score_us_release_head_to_head.py:858-938,1539-1553`).
+## Five-part repair
 
-No gate, threshold, tolerance, or band decides the replacement. When a
-candidate is present, the output reports its weighted-loss delta, the exact
-per-target balance of lower/equal/higher absolute relative errors, and each
-side's battery evidence, then leaves the flip to the owner
-(`tools/score_us_release_head_to_head.py:1571-1667`).
+1. The stacked CLI requires path/SHA pairs for the national PUMA ladder and
+   canonical 117th-to-119th CD crosswalk. Both declared hashes must equal the
+   repository pins before the source bytes are authenticated
+   (`tools/build_us_multispine_pool.py:563-594,897-1004`). The real geography
+   operator runs immediately after operator-free source assembly and before
+   gap fill or cloning
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:346-406`;
+   `tools/build_us_multispine_pool.py:5290-5334`).
 
-## Frozen incumbent and yardstick
+2. The configured namespace, checkpoint identity, persisted stage receipts,
+   and terminal manifest bind both byte authorities, source and target
+   vintages, assignment declaration, overlap algorithm, operator order, seed
+   site/stream/value, and ordered native-household output receipt
+   (`tools/build_us_multispine_pool.py:814-928,1300-1469,1711-1930,3530-3635,3989-4027,4133-4215`).
 
-The current PolicyEngine.py `5.0.3` bundle resolves the US default dataset as:
+3. Nullable H5 publication accepts validated root attributes, writes them in
+   the same temporary HDFStore as the fixed entity tables, verifies their
+   exact round trip, and atomically replaces the destination only after all
+   checks pass. The stacked publisher supplies the crosswalk-SHA and target-
+   vintage attrs
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:1463-1699`;
+   `tools/build_us_multispine_pool.py:4423-4519`). Schema-9 loading also binds
+   those physical attrs and the live household geography/clone lineage back to
+   the manifest
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:671-923,1032-1193,1321-1364`).
 
-- repository: `policyengine/populace-us` (Hugging Face dataset);
-- revision/build:
-  `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`;
-- filename: `populace_us_2024.h5`;
-- resolved Hugging Face commit:
-  `26dcad66867687f15735dc4926523e3741920836`;
-- artifact SHA-256:
-  `48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e`;
-- PolicyEngine.py source commit:
-  `cfdd128fc316e07ef54c182f2149fac217e8706f`, certified for
-  `policyengine-us==1.764.6`.
+4. Release preflight now reads root attrs and the household frame from one
+   HDFStore snapshot through the shared fixed/table-aware reader. Its existing
+   equality checks for crosswalk SHA, current target vintage, and positive
+   household district support are unchanged
+   (`tools/build_us_fiscal_refresh_release.py:2565-2677`).
 
-That identity comes from PolicyEngine.py `5.0.3`'s bundle manifest
-(`src/policyengine/data/bundle/manifest.json:113-140,156-160,181-189`), with
-resolution at
-`src/policyengine/provenance/manifest.py:180-187,270-299,301-318,540-560`,
-Hugging Face handling at
-`src/policyengine/provenance/dataset_sources.py:57-74,77-117`, and the US model
-selection at `src/policyengine/tax_benefit_models/us/model.py:423-462`. The
-charter's enhanced-CPS assumption is historical; it is not the dataset the
-current package resolves. The scorer independently hash-matched the cached
-bytes before attaching this identity
-(`tools/score_us_release_head_to_head.py:120-138,399-405,448-492`).
+5. A tiny fixture invokes the real stacked entry point, post-assembly
+   geography operator, fixed-H5 publisher, and real release assertion. It
+   proves both root attrs and positive household district support; consumer
+   tests reject changed attrs, changed native geography, missing lineage, and
+   divergent clone geography
+   (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:2279-2335`;
+   `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1357-1440`;
+   `packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:1061-1184`).
 
-The frozen yardstick is registry `c4ac617743f2`: 32,842 targets compiled from
-Ledger facts SHA-256
-`b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
-The production loss weights use square-root target magnitude, semantic-concept
-budgets, equal amount/count budgets, and final mean normalization; the
-aggregate is the weighted mean of capped target-scaled absolute errors, with
-no family multipliers
-(`tools/build_us_fiscal_refresh_release.py:344-348,481-516,5781-5814,6214-6290`;
-`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537,576-600`).
+## Assignment design and anti-rot
 
-## Incumbent evidence
+A one-value deterministic PUMA-to-CD lookup is not defensible because 2020
+PUMAs and congressional districts do not nest. The existing national ladder
+preserves observed ACS PUMA, assigns missing ASEC PUMA proportional to 2020
+PUMA population, then draws CD and county within PUMA proportional to block-
+population overlap. Stable row/state/PUMA order and the ledgered
+`legacy_puma_ladder` / `geography_legacy` / seed `0` contract make the draw
+reproducible for fixed inputs
+(`packages/microcosm-build/src/microcosm/build/us_runtime/puma_ladder.py:1-20,293-383,638-698`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:870-887`;
+`packages/microcosm-build/src/microcosm/build/us/spec/spine.yaml:421-432`).
 
-The committed results are:
+The spec and schemas now declare the crosswalk source/vintage authority and
+geography assignment, while field-usage and inventory owners cover the new
+surface exactly
+(`packages/microcosm-build/src/microcosm/build/us/spec/geography.yaml:3-37`;
+`packages/microcosm-build/src/microcosm/build/us/spec/sources.yaml:69-86`;
+`packages/microcosm-build/src/microcosm/build/us/spec/vintages.yaml:45-53`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/field_usage.py:387-393,671-692,803-822`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/inventory_coverage.py:348-380,1649-1712`).
 
-- `experiments/replacement_scorecard/incumbent_48b9d479.json` — complete
-  32,842-row machine-readable evidence, SHA-256
-  `b2ad1a07f9668bc5d796cc9de99ef12da781b1ee8163ea65781871a20da441c8`;
-- `experiments/replacement_scorecard/incumbent_48b9d479.md` — human scorecard,
-  SHA-256
-  `3f9171b8f63fcef61518a4af1c18a8555c4f449ac62e9283e41ac2fe9c779021`.
-
-The incumbent weighted loss is `0.11462448275649702`; its fraction of targets
-within 10% is `0.2669143170330674`; all 57,240 household weights are nonzero.
-The Markdown summary records these values and the exact identity at
-`experiments/replacement_scorecard/incumbent_48b9d479.md:5-18`.
-
-The terminal battery is entirely by-origin: its canonical surface is 131
-single-column comparisons plus one joint comparison, normalized to 369 scalar
-legs (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3011-3025,11644-11709,11824-11832,11948-12154`). The incumbent has 120,261
-positive-weight clone-0 ASEC rows and zero ACS rows, so all 132 comparisons and
-all 369 scalar legs are explicitly **inapplicable**. No zero, pass, or failure
-was synthesized for the absent side; the human receipt is at
-`experiments/replacement_scorecard/incumbent_48b9d479.md:97-104`.
-
-A finished candidate H5 with both origins computes the same canonical formulas
-while explicitly marking the production assembly/tail receipt unauthenticated
-(`tools/score_us_release_head_to_head.py:1077-1358`;
-`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11474-11492,11530-11898`). A pool candidate instead consumes its authenticated
-terminal receipt. The scoring-only pool loader may authenticate the exact
-current `gate_failed`/`simulation_ready=false` publication pair without
-weakening or reusing the separate production-ready loader
-(`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:371-588,691-869`;
-`tools/score_us_release_head_to_head.py:1361-1395`).
-
-## Owner handoff
-
-`_LANE-NOTES.md`, under “Owner command when the 25% candidate exists,” contains
-the exact dense-pool and sparse-57k commands, including the required host-side
-builder-process check and manifest hash pin. “Better than the incumbent” means
-comparing each candidate view against the exact incumbent weighted loss and
-the target-by-target lower/equal/higher error balance, while separately
-inspecting every candidate battery leg that is computable. There is no invented
-threshold or automatic conjunction; the owner decides whether the dense and
-sparse evidence warrants the flip.
-
-The candidate does not yet exist, so the incumbent-only JSON correctly leaves
-`artifacts.candidate` and `comparison` null. This is the only external work
-remaining.
+The generated US spec SHA is
+`5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e`.
+Coverage is exact at 42,120/42,120 fields, 49 claims, and 41/41 inventory
+checks. Principal legitimate movements are pointer inventory
+`6d7353c6...` to `bc4a948a...`, full checkpoint `b6a47fac...` to
+`a128a85f...`, and the new geography identity `f49425ca...`; executable
+versions move checkpoint 11 to 12, terminal manifest 8 to 9, and nullable H5
+materializer 2 to 3
+(`tools/spec_engine_coverage.py:42-45`;
+`packages/microcosm-build/src/microcosm/build/spec_engine/inventory_coverage.py:348-380`;
+`docs/evidence/spec-engine/us-f0-coverage.json:10,775-788,1890,2027-2057,2602`;
+`tools/build_us_multispine_pool.py:332-360`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:75-105`).
 
 ## Verification
 
-- Environment sync completed with
-  `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv sync --all-packages --extra us`.
-- Full workspace suite:
-  `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv run python -m pytest` —
-  **7,028 passed, 76 skipped, 0 failed** in 1:39:56. The `python -m` form avoids
-  a copied virtualenv console-script shebang that pointed at a sibling
-  worktree.
-- Repository-wide `ruff check .`: green. All six Python files changed by this
-  branch pass `ruff format --check`; the whole-tree format audit names 69
-  pre-existing mainline files and was not used to rewrite unrelated code.
-- `py_compile` for the scorer and `git diff --check`: green.
-- Contract and loader-symmetry tests are at
-  `packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py:415-499`;
-  deterministic fixture end-to-end coverage at `:502-569`; chunked/one-shot
-  equivalence at `:575-678`; scalar-leg completeness at `:285-378`; failed-pool
-  authentication at
-  `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1017-1085`;
-  and finished-H5 canonical battery equivalence at
-  `packages/microcosm-build/tests/test_us_stacked_spine.py:6929-6966`.
-- The real incumbent run exited zero at 18.666 GiB peak RSS, below the binding
-  20 GiB limit. Its five registry chunks used twelve household slices apiece;
-  the scorer enforces the RSS ceiling after loading, after every chunk, and
-  after releasing each side
-  (`tools/score_us_release_head_to_head.py:332-352,653-852,1398-1463,1670-1715`).
+- `microcosm-calibrate`: 203 passed.
+- `microcosm-data`: 318 passed / 2 skipped.
+- `microcosm-fit`: 93 passed.
+- `microcosm-frame`: 295 passed / 36 skipped.
+- `microcosm-build` partition A: 4,155 passed / 36 skipped.
+- `microcosm-build` partition B: 2,177 passed / 3 skipped.
+- Accepted workspace total: **7,241 passed / 77 skipped / 0 failed**.
+- The high-risk real integration and H5 consumer cases are included in those
+  build partitions
+  (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:2279-2335`;
+  `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1357-1440`).
+- Bundle freshness reports the spec SHA above; coverage freshness reports
+  42,120/42,120 fields and 41/41 inventory checks
+  (`tools/generate_us_bundle_from_constants.py:355-437`;
+  `tools/spec_engine_coverage.py:378-398`).
+- Repository-wide Ruff, smoke-script shell syntax, and `git diff --check` pass.
+  The source-blind import-graph anti-rot pin now covers the exact 69-module
+  graph reached by the three new shared validators
+  (`packages/microcosm-build/tests/test_us_spine_blindness.py:3270-3315`).
 
-The sandbox denied `ps`, `pgrep`, and `top`. Before scoring, the permitted
-`lsof` process and open-file audits found no build-runtime process or open pool,
-checkpoint, manifest, or build file. This lane started no pool build. It also
-made no push and changed no gate, threshold, tolerance, or band.
+No production pool or release build ran, no push occurred, and
+`logbook-pending-chain.txt` was not touched.
 
-## Commits
+## Candidate handoff
 
-- `fd7d5515` — start the replacement-scorecard lane and committed progress log.
-- `de5ca6aa` — document the yardstick audit.
-- `256165e2` — correct the live incumbent identity.
-- `90fe2364` — add the common head-to-head scorer.
-- `758aa0c4` — preserve H5 snapshot identity across cache symlinks.
-- `eebd1d6f` — make scoring chunked and memory-bounded.
-- `8226f376` — complete artifact battery evidence and pool authentication.
-- `34d93846` — merge the current `origin/main` before scoring.
-- `e834baad` — record the merge and pre-score queue audit.
-- `d876c971` — commit the live incumbent scorecard.
-- `8d2ba34c` — document the exact candidate handoff.
-- `6847d245` — keep the journal within the source-hygiene contract.
-- Final progress, validation, and this report — the commit containing this file.
-
-Nothing was pushed, and no pool build or publication was performed.
+Stage 1 must add the canonical PUMA-ladder and CD-crosswalk path/SHA pairs
+listed exactly at the end of `_LANE-NOTES.md`, run off-chain, and rebuild under
+the new checkpoint identity. The old smoke checkpoints and pool publication
+are not reusable: configured identity now includes both new input pins and the
+geography contract, checkpoint materializer is 12, terminal manifest schema is
+9, and nullable H5 materializer is 3
+(`tools/build_us_multispine_pool.py:332-360,1300-1555`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:75-105`).
+The six pre-existing immutable source artifacts can be reused; the Stage-1
+checkpoint namespace and pool H5 must be regenerated with the two additional
+authenticated authorities (`tools/build_us_multispine_pool.py:931-1004,1292-1319`).

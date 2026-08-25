@@ -33,7 +33,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 397
+ACTIVE_REFERENCE_COUNT = 408
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 FIXTURE_REFERENCE_NAMES = {
@@ -184,27 +184,54 @@ def test_ons_age_total_targets_pin_exact_age_dimension_set() -> None:
     ]["dimensions"] == ["age"]
 
 
-def test_scotgov_council_tax_stock_pins_are_scotland_and_the_rule_is_scoped() -> None:
-    """The CTAXBASE stock facts are stamped S92000003 in Chronicle.
+def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -> None:
+    """Prefix pins carry the families the nation-substring rule cannot.
 
-    The substring pin rule sees no "scotland" in "scotgov" and used to pin the
-    nine stock targets to the UK, so they could never match. The fix is scoped
-    to the stock family: every other Scotland pin still comes from the
-    substring rule, and the unrelated scotgov child-payment target keeps the
-    UK pin it had.
+    Chronicle stamps Scottish Government facts S92000003, but the substring
+    rule sees no "scotland" in "scotgov" or "scottish_child_payment" and used
+    to pin the family to the UK, so it could never match. The SLC
+    borrower-plan forecasts and the student-support publication are England
+    publications (facts stamped E92000001) whose contract side is
+    England-scoped too — the borrower bindings filter country == ENGLAND
+    explicitly and the support model variables are England-gated by
+    construction — while the GB default pin could never match.
+    slc.repayments.devolved_total and the dwp.pip claimant counts keep the GB
+    pin and stay held: activating them needs contract redesign (per-nation
+    repayment rows; an England-and-Wales PIP binding), not a pin change.
     """
     contract = _load_uk_resource("uk_national_targets.json")
     pins = _geography_pins(contract)
-    stock_ids = {
+    scotgov_ids = {
         str(target["target_id"])
         for target in contract["targets"]
-        if str(target["target_id"]).startswith("scotgov.council_tax_stock.")
+        if str(target["target_id"]).startswith("scotgov.")
     }
-    assert stock_ids == {f"scotgov.council_tax_stock.band_{band}" for band in "abcdefgh"} | {
-        "scotgov.council_tax_stock.total"
+    assert scotgov_ids == {
+        f"scotgov.council_tax_stock.band_{band}" for band in "abcdefgh"
+    } | {
+        "scotgov.council_tax_stock.total",
+        "scotgov.scottish_child_payment_spending",
     }
-    assert {pins[target_id]["geography_id"] for target_id in stock_ids} == {"S92000003"}
-    assert pins["scotgov.scottish_child_payment_spending"]["geography_id"] == "K02000001"
+    assert {pins[target_id]["geography_id"] for target_id in scotgov_ids} == {
+        "S92000003"
+    }
+
+    england_slc_ids = {
+        str(target["target_id"])
+        for target in contract["targets"]
+        if str(target["target_id"]).startswith(("slc.borrowers.", "slc.support."))
+    }
+    assert len(england_slc_ids) == 10
+    assert {pins[target_id]["geography_id"] for target_id in england_slc_ids} == {
+        "E92000001"
+    }
+    assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
+    assert (
+        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K03000001"
+    )
+    assert (
+        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K03000001"
+    )
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
@@ -228,12 +255,23 @@ def test_scotgov_council_tax_stock_pins_are_scotland_and_the_rule_is_scoped() ->
         for target_id, pin in pins.items()
         if pin["geography_id"] == "S92000003"
     }
-    assert scotland_pinned == stock_ids | substring_scotland
+    assert scotland_pinned == scotgov_ids | substring_scotland
 
     membership = _load_uk_resource("target_reference_membership.json")
-    for target_id in stock_ids:
+    for target_id in sorted(scotgov_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "S92000003"
         assert membership["targets"][target_id]["status"] == "active"
+    for target_id in sorted(england_slc_ids):
+        assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
+        assert membership["targets"][target_id]["status"] == "active"
+    for target_id in (
+        "slc.repayments.devolved_total",
+        "dwp.pip.daily_living_standard_claimants",
+        "dwp.pip.daily_living_enhanced_claimants",
+    ):
+        assert (
+            membership["targets"][target_id]["status"] == "no_fact_at_or_before_period"
+        )
 
 
 def test_uk_target_reference_membership_report_is_packaged() -> None:
@@ -242,9 +280,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 397,
+        "active": 408,
         "multi_fact": 1,
-        "no_fact_at_or_before_period": 18,
+        "no_fact_at_or_before_period": 7,
         "signed_excluded": 1,
     }
     assert membership["genuine_sum_residue"]

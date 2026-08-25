@@ -15,9 +15,18 @@ Service EUL (CD137 §8 / CD171 §5.2.1). Differences are reported as column
 names, dtype names, booleans, and threshold-guarded row counts — never as
 unit-record values. Reads are ``mode="r"`` throughout.
 
-Exit code: 0 when the payloads are identical, 1 when they differ, and 2 when
-no verdict is possible — an unsafe CLI configuration, or an artifact that
-could not be read (reported with exception text suppressed).
+``--structure-only`` re-verdicts the same measurements for the #686 swap
+comparison, where the control and candidate artifacts are expected to share a
+surface exactly and to differ in values only where a difference is signed:
+every structural predicate stays strict, and each differing column or root
+attribute must name an entry in the committed signed-differences register.
+``payload_identical`` is still computed and reported either way, so a
+structure-only receipt stays comparable with a full-mode one.
+
+Exit code: 0 when the payloads are identical — or, under ``--structure-only``,
+when the structures match and every value difference is signed; 1 when they
+differ; and 2 when no verdict is possible — an unsafe CLI configuration, or an
+artifact that could not be read (reported with exception text suppressed).
 """
 
 from __future__ import annotations
@@ -283,6 +292,130 @@ def compare_uk_h5_payload(
     return report
 
 
+def _structure_equal(report: dict[str, Any]) -> bool:
+    """Whether the two artifacts have the same shape, ignoring values.
+
+    Everything ``payload_identical`` asserts except the per-column value
+    comparison: the same keys, stored kinds, row counts, column lists in
+    order, dtypes, indexes, and root-attribute names.
+    """
+
+    if not report["keys_equal"]:
+        return False
+    if report["keys_only_left"] or report["keys_only_right"]:
+        return False
+    for table in report["tables"].values():
+        if not (
+            table["row_count_equal"]
+            and table["column_order_equal"]
+            and table["stored_kind_equal"]
+            and table["index_type_equal"]
+            and table["index_dtype_equal"]
+            and table["index_name_equal"]
+            and table["index_values_equal"]
+        ):
+            return False
+        if table["columns_only_left"] or table["columns_only_right"]:
+            return False
+        if table["dtype_mismatches"]:
+            return False
+    attrs = report["root_attrs"]
+    return bool(
+        attrs["names_in_order_equal"]
+        and not attrs["attrs_only_left"]
+        and not attrs["attrs_only_right"]
+    )
+
+
+def apply_structure_only_verdict(
+    report: dict[str, Any], register: Any
+) -> dict[str, Any]:
+    """Re-verdict a full-payload report as structure-only against a register.
+
+    The swap comparison expects the control and candidate artifacts to have
+    an identical surface and to differ only where a difference is signed, so
+    this keeps every structural predicate strict and requires each differing
+    column and root attribute to name a register entry. Lookup is
+    expectation-aware: a value mismatch is covered by a ``column_differs``
+    entry on ``payload_column`` or, through the register's payload bridge, on
+    a value-bearing surface (``nonzero_shares``, ``weighted_totals``) — the
+    share instrument and this one read the same adjudicated fact. Structural
+    expectations never excuse a value difference.
+
+    ``payload_identical`` is left exactly as computed, so a structure-only
+    receipt stays comparable with a full-mode one.
+    """
+
+    matched: set[str] = set()
+    unsigned_columns: list[str] = []
+    for key, table in report["tables"].items():
+        signed_ids: dict[str, str | None] = {}
+        for column in sorted(table["value_mismatch_rows_by_column"]):
+            # The store key is the entity whose table this column lives in;
+            # passing it stops a household-scoped adjudication signing a
+            # same-named person column.
+            entry = register.matching(
+                surface="payload_column",
+                column=column,
+                expectation="column_differs",
+                entity=key,
+            )
+            signed_ids[column] = entry.id if entry else None
+            if entry is None:
+                unsigned_columns.append(f"{key}.{column}")
+            else:
+                matched.add(entry.id)
+        table["value_mismatch_signed_ids"] = signed_ids
+
+    unsigned_attrs: list[str] = []
+    attr_signed: dict[str, str | None] = {}
+    for name in report["root_attrs"]["attrs_with_differing_values"]:
+        entry = register.matching(
+            surface="root_attr", column=name, expectation="column_differs"
+        )
+        attr_signed[name] = entry.id if entry else None
+        if entry is None:
+            unsigned_attrs.append(name)
+        else:
+            matched.add(entry.id)
+    report["root_attrs"]["differing_signed_ids"] = attr_signed
+
+    structure_equal = _structure_equal(report)
+    report["verdict_mode"] = "structure_only"
+    report["structure_equal"] = structure_equal
+    report["signed"] = {
+        "resource": "spine_swap_signed_differences.json",
+        "matched_ids": sorted(matched),
+        "unsigned_columns": sorted(unsigned_columns),
+        "unsigned_root_attrs": sorted(unsigned_attrs),
+        "unused_ids": sorted(
+            difference.id
+            for difference in register.differences
+            if difference.id not in matched
+        ),
+    }
+    report["structure_only_ok"] = bool(
+        structure_equal and not unsigned_columns and not unsigned_attrs
+    )
+    return report
+
+
+def _load_signed_register(override: Path | None) -> Any:
+    """Load the signed-differences register the structure-only verdict uses."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    source = repo_root / "packages" / "microcosm-build" / "src"
+    if str(source) not in sys.path:
+        sys.path.insert(0, str(source))
+    from microcosm.build.uk_runtime.signed_differences import (
+        load_uk_spine_swap_signed_differences,
+    )
+
+    if override is not None:
+        return load_uk_spine_swap_signed_differences(str(override))
+    return load_uk_spine_swap_signed_differences()
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -309,6 +442,27 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Also write the report JSON to this path.",
     )
+    parser.add_argument(
+        "--structure-only",
+        action="store_true",
+        help=(
+            "Verdict on shape rather than bytes (#686 swap acceptance): every "
+            "structural predicate stays strict, and each differing column or "
+            "root attribute must name an entry in the signed-differences "
+            "register. Values are expected to differ where a difference is "
+            "signed; anything else still fails."
+        ),
+    )
+    parser.add_argument(
+        "--signed-differences",
+        type=Path,
+        default=None,
+        help=(
+            "Override the committed signed-differences register used by "
+            "--structure-only (tests only; the packaged resource is the "
+            "contract)."
+        ),
+    )
     return parser
 
 
@@ -332,8 +486,18 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --json-out must not alias either H5 input.", file=sys.stderr)
         return 2
 
+    if args.signed_differences is not None and not args.structure_only:
+        print(
+            "error: --signed-differences only applies to --structure-only.",
+            file=sys.stderr,
+        )
+        return 2
+
     try:
         report = compare_uk_h5_payload(args.left, args.right, minimum=minimum)
+        if args.structure_only:
+            register = _load_signed_register(args.signed_differences)
+            report = apply_structure_only_verdict(report, register)
         rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
     except Exception:
         # An unreadable or malformed artifact is not a "payloads differ"
@@ -356,6 +520,26 @@ def main(argv: list[str] | None = None) -> int:
     print(rendered)
     if args.json_out is not None:
         args.json_out.write_text(rendered + "\n", encoding="utf-8")
+
+    if args.structure_only:
+        if report["structure_only_ok"]:
+            return 0
+        if not report["structure_equal"]:
+            print(
+                "DIFFER: the two artifacts do not share a structure.",
+                file=sys.stderr,
+            )
+        else:
+            signed = report["signed"]
+            print(
+                "UNSIGNED: value differences with no register entry: "
+                + ", ".join(
+                    (signed["unsigned_columns"] + signed["unsigned_root_attrs"])[:20]
+                ),
+                file=sys.stderr,
+            )
+        return 1
+
     if not report["payload_identical"]:
         print("DIFFER: the two artifacts are not payload-identical.", file=sys.stderr)
         return 1

@@ -1143,9 +1143,13 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "person",
         "source_operator_hours_worked",
     )
-    assert owners["is_tanf_enrolled"] == (
+    assert owners["receives_tanf"] == (
         "spm_unit",
         "model_required_boolean",
+    )
+    assert owners["takes_up_wic_if_eligible"] == (
+        "person",
+        "source_operator_wic_claim",
     )
     assert owners["receives_snap"] == (
         "spm_unit",
@@ -1170,7 +1174,7 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert len(target_names) == 118
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "74fd985208c62ee51a96c161ee2766118e4d92020ce2897bf2942e2625db9484"
+        == "c792f12f0ef34f8a2ca9f16e68f5b306391eed56f120cda247bf778a95118c15"
     )
 
 
@@ -1225,7 +1229,7 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 139
+    assert len(surface) == len(by_name) == 142
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
@@ -1234,7 +1238,7 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
             "pool_transfer_target_families": 118,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
-            "load_take_up_contract": 13,
+            "load_take_up_contract": 17,
         }
     )
     assert by_name["bank_account_assets"] == PoolInputSurfaceEntry(
@@ -1281,7 +1285,7 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
         family="take_up_out_of_scope",
         provenance=("load_take_up_contract",),
     )
-    for variable in ("is_tanf_enrolled", "receives_snap"):
+    for variable in ("receives_tanf", "receives_snap"):
         assert by_name[variable] == PoolInputSurfaceEntry(
             variable=variable,
             entity="spm_unit",
@@ -1343,8 +1347,8 @@ def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
     assert closure.engine_version == POOL_SSI_DEPENDENCY_CONTRACT.engine_version
     assert closure.root == "ssi"
     assert len(closure.input_leaves) == 55
-    assert len(closure.formula_nodes) == 62
-    assert len(closure.edges) == 186
+    assert len(closure.formula_nodes) == 63
+    assert len(closure.edges) == 187
     assert closure.sha256 == POOL_SSI_DEPENDENCY_CONTRACT.sha256
     assert closure.input_leaves == (
         "age",
@@ -1475,13 +1479,13 @@ def test_remaining_stage_manifest_covers_seed_programs_and_structure() -> None:
     program_names = {program.variable for program in load_take_up_contract().programs}
     programs = [entry for entry in seed if entry.variable in program_names]
 
-    assert len(programs) == len(program_names) == 13
+    assert len(programs) == len(program_names) == 17
     assert {entry.variable for entry in programs} == program_names
     assert Counter(entry.provision for entry in programs) == Counter(
         {
             "administrative_seed_or_preserved_input": 2,
-            "transferred_or_preserved_input": 2,
-            "preserved_input_or_disclosed_engine_default": 9,
+            "transferred_or_preserved_input": 3,
+            "preserved_input_or_disclosed_engine_default": 12,
         }
     )
     structural = {
@@ -1581,21 +1585,21 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
         entry for entry in manifest if entry.consumer == "_simulation_projection"
     ]
 
-    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 863
+    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 924
     assert {(entry.entity, entry.variable) for entry in projection} == {
         (index.variable_metadata(variable).entity, variable)
         for variable in index.variables()
     }
     assert Counter(entry.provision for entry in projection) == Counter(
         {
-            "materialized_pool_input_surface": 123,
-            "seed_stage_program_contract": 13,
+            "materialized_pool_input_surface": 122,
+            "seed_stage_program_contract": 17,
             "declared_deferred_null_input": 3,
             "assembled_native_engine_input": 5,
             "frame_structural_engine_input": 10,
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 704,
+            "declared_absent_engine_input": 762,
         }
     )
     preserved = {
@@ -1633,9 +1637,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
     receipt = pool_engine_input_projection_receipt(PolicyEngineUSEngine())
 
     assert receipt == {
-        "engine_version": "1.764.6",
-        "input_count": 863,
-        "default_count": 863,
+        "engine_version": "1.819.0",
+        "input_count": 924,
+        "default_count": 924,
         "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
     }
 
@@ -1643,9 +1647,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 993
+    assert len(manifest) == 1058
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 29, "simulate": 930}
+        {"derive": 34, "seed": 33, "simulate": 991}
     )
     assert len(
         {
@@ -1658,16 +1662,16 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 993
+    assert receipt["entry_count"] == 1058
     assert receipt["stage_counts"] == {
         "derive": 34,
-        "seed": 29,
-        "simulate": 930,
+        "seed": 33,
+        "simulate": 991,
     }
     assert receipt["engine_input_projection_contract"] == {
-        "engine_version": "1.764.6",
-        "input_count": 863,
-        "default_count": 863,
+        "engine_version": "1.819.0",
+        "input_count": 924,
+        "default_count": 924,
         "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
         "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
     }
@@ -3038,11 +3042,11 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 993
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1058
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
         "derive": 34,
-        "seed": 29,
-        "simulate": 930,
+        "seed": 33,
+        "simulate": 991,
     }
     assert (
         result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
@@ -3285,9 +3289,9 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     assert prepared_person.loc[~prepared_cps, "receives_wic"].isna().all()
 
     prepared_spm_unit = prepared.frame.table("spm_unit")
-    assert prepared_spm_unit["is_tanf_enrolled"].dropna().tolist() == [True, False]
+    assert prepared_spm_unit["receives_tanf"].dropna().tolist() == [True, False]
     assert prepared_spm_unit["receives_snap"].dropna().tolist() == [False, True]
-    assert prepared_spm_unit["is_tanf_enrolled"].isna().sum() == 2
+    assert prepared_spm_unit["receives_tanf"].isna().sum() == 2
     assert prepared_spm_unit["receives_snap"].isna().sum() == 2
 
     cloned = clone_us_frame_for_puf_support(prepared.frame)
@@ -3315,7 +3319,7 @@ def test_real_preclone_prefix_runs_before_physical_clone(
     spm_source_id = support_source_id_column("spm_unit")
     spm_clone_index = support_clone_index_column("spm_unit")
     expected = {
-        "is_tanf_enrolled": {201: True, 202: False},
+        "receives_tanf": {201: True, 202: False},
         "receives_snap": {201: False, 202: True},
     }
     for column, expected_by_source in expected.items():
@@ -3710,6 +3714,7 @@ def _assembled_cloned_with_partial_take_up() -> Frame:
     tables["spm_unit"]["takes_up_tanf_if_eligible"] = [True, False]
     tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = [True, False]
     tables["person"]["takes_up_medicare_if_eligible"] = [False, True]
+    tables["person"]["takes_up_wic_if_eligible"] = [True, False]
     asec = Frame(
         tables,
         asec.schema,
@@ -3720,6 +3725,7 @@ def _assembled_cloned_with_partial_take_up() -> Frame:
     tables = {entity: acs.table(entity).copy() for entity in acs.entities}
     tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = [False, True]
     tables["person"]["takes_up_medicare_if_eligible"] = [True, False]
+    tables["person"]["takes_up_wic_if_eligible"] = [False, True]
     acs = Frame(
         tables,
         acs.schema,
@@ -3799,6 +3805,9 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
         after_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
         == before_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
     )
+    assert after_person["takes_up_wic_if_eligible"].tolist() == before_person[
+        "takes_up_wic_if_eligible"
+    ].tolist()
     assert (
         after_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
         == before_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
@@ -3812,6 +3821,9 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
     medicare = result.receipt["programs"]["takes_up_medicare_if_eligible"]
     assert medicare["provenance_kind"] == ("transferred_or_preserved_input")
     assert medicare["defaulted_rows"] == 0
+    wic = result.receipt["programs"]["takes_up_wic_if_eligible"]
+    assert wic["provenance_kind"] == "transferred_or_preserved_input"
+    assert wic["defaulted_rows"] == 0
 
     spm = result.frame.table("spm_unit")
     source_id = support_source_id_column("spm_unit")

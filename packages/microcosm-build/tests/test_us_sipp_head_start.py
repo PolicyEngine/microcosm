@@ -507,10 +507,10 @@ def test_summary_and_gate_require_nonconstant_clone_consistent_domain_signal() -
 
 
 @requires_us
-def test_policyengine_us_1_764_6_head_start_is_zero_when_neutralized() -> None:
+def test_policyengine_us_1_819_0_head_start_is_zero_when_neutralized() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"

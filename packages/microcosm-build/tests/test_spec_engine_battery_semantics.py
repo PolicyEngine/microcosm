@@ -52,10 +52,10 @@ def test_battery_registry_views_match_live_registry(
 ) -> None:
     views = derive_battery_registry_views(battery)
     assert views["declared_surface"] == _json_ready(CANONICAL_STACKED_DECLARED_SURFACE)
-    assert views["required_scalar_targets"] == 131
+    assert views["required_scalar_targets"] == 134
     assert views["required_joint_targets"] == 1
     assert views["metric_counts"] == {
-        "boolean_incidence": 48,
+        "boolean_incidence": 51,
         "categorical_tvd": 4,
         "monetary_sign_separated": 79,
     }
@@ -129,7 +129,7 @@ def test_battery_legacy_projection_survives_resolved_normalization(
     assert projected["gates"][1]["metric"]["params"] == {
         **battery["gates"][1]["metric"]["params"],
         "required_joint_targets": 1,
-        "required_scalar_targets": 131,
+        "required_scalar_targets": 134,
     }
 
 

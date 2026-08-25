@@ -329,11 +329,11 @@ def test_signal_gate_rejects_clipped_losses_and_asec_rent(
 
 
 @requires_us
-def test_policyengine_us_1_764_6_qbi_graph_reads_each_farm_leaf() -> None:
+def test_policyengine_us_1_819_0_qbi_graph_reads_each_farm_leaf() -> None:
     from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     system = CountryTaxBenefitSystem()
     for output in US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS:
         variable = system.variables[output]

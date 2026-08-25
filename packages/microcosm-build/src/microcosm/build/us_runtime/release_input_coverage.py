@@ -109,6 +109,7 @@ __all__ = [
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "REFERENCE_ECPS_LAYER_RENAMES",
     "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
@@ -122,6 +123,13 @@ __all__ = [
 ]
 
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
+
+# The SHA-pinned incumbent predates the verified PolicyEngine-US 1.777.0 WIC
+# input rename. Preserve its historical evidence bytes while projecting the
+# retired name onto the live 1.819.0 input leaf for the current release gate.
+REFERENCE_ECPS_LAYER_RENAMES = {
+    "would_claim_wic": "takes_up_wic_if_eligible",
+}
 
 # The frozen reference artifact predates the retired pipeline's export of the
 # pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
@@ -626,7 +634,18 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    return frozenset(str(name) for name, share in shares.items() if float(share) > 0.0)
+    historical = {
+        str(name) for name, share in shares.items() if float(share) > 0.0
+    }
+    projected = {
+        REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical
+    }
+    if len(projected) != len(historical):
+        raise ValueError(
+            f"{_ECPS_PARITY_REFERENCE_RESOURCE}: reference-layer rename "
+            "projection collides with another populated input."
+        )
+    return frozenset(projected)
 
 
 def assert_release_input_coverage_manifest_current(
@@ -640,9 +659,9 @@ def assert_release_input_coverage_manifest_current(
     (when available):
 
     - The declared columns must equal the reference eCPS populated input surface
-      (``ecps_parity_reference.json``) plus the explicit post-reference inputs
-      required by shipped reform probes. A change to either surface must be
-      reflected here.
+      (``ecps_parity_reference.json``), projected through reviewed upstream
+      input renames, plus the explicit post-reference inputs required by shipped
+      reform probes. A change to either surface must be reflected here.
     - The three SSI countable-resource asset inputs must be ``required`` with no
       reviewed exclusion — the #368 red-gate guarantee cannot be quietly undone.
     - Every declared column must be a real PolicyEngine-US input leaf, and every

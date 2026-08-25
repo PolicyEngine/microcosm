@@ -424,7 +424,7 @@ def test_operator_boundary_rejects_forged_native_receipt_for_operator_output() -
     source = _us_frame(include_age=False)
     tables = {entity: source.table(entity).copy() for entity in source.entities}
     tables["person"]["AGEP"] = [30, 50]
-    tables["person"]["would_claim_wic"] = [True, False]
+    tables["person"]["takes_up_wic_if_eligible"] = [True, False]
     forged = Frame(
         tables,
         source.schema,
@@ -432,7 +432,7 @@ def test_operator_boundary_rejects_forged_native_receipt_for_operator_output() -
         source.strata,
     )
     forged_receipt = {
-        "would_claim_wic": {
+        "takes_up_wic_if_eligible": {
             "entity": "person",
             "source_columns": ["AGEP"],
             "transformation": "identity",

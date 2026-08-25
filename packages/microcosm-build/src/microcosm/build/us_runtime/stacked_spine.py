@@ -2953,7 +2953,7 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             (
                 "person",
                 "source_operator_wic_claim",
-                "would_claim_wic",
+                "takes_up_wic_if_eligible",
             ),
             ("person", "take_up", "takes_up_basic_health_program_if_eligible"),
             ("person", "take_up", "takes_up_chip_if_eligible"),
@@ -2966,7 +2966,7 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "benefit_participation",
                 "takes_up_housing_assistance_if_eligible",
             ),
-            ("spm_unit", "model_required_boolean", "is_tanf_enrolled"),
+            ("spm_unit", "model_required_boolean", "receives_tanf"),
             ("spm_unit", "model_required_boolean", "receives_snap"),
             (
                 "spm_unit",
@@ -2976,8 +2976,23 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             ("spm_unit", "take_up", "takes_up_snap_if_eligible"),
             ("spm_unit", "take_up", "takes_up_tanf_if_eligible"),
             ("tax_unit", "take_up", "takes_up_aca_if_eligible"),
+            (
+                "tax_unit",
+                "take_up",
+                "takes_up_ca_premium_subsidy_if_eligible",
+            ),
+            (
+                "tax_unit",
+                "take_up",
+                "takes_up_co_premium_assistance_if_eligible",
+            ),
             ("tax_unit", "take_up", "takes_up_dc_ptc"),
             ("tax_unit", "take_up", "takes_up_eitc"),
+            (
+                "tax_unit",
+                "take_up",
+                "takes_up_nm_premium_assistance_if_eligible",
+            ),
         ),
         "categorical_tvd": (
             ("person", "model_required_discrete", "own_children_in_household"),
@@ -8673,8 +8688,8 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 131
-    or len(set(_canonical_surface_keys)) != 131
+    len(_canonical_surface_keys) != 134
+    or len(set(_canonical_surface_keys)) != 134
     or len(_canonical_early_transfer_keys) != 48
     or len(_canonical_late_transfer_keys) != 70
     or len(_canonical_late_puf_producer_keys) != 43
@@ -8708,7 +8723,7 @@ if (
     raise RuntimeError(
         "Canonical stacked authority must partition the exact 118-target "
         "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 131-target terminal surface and metric registry; "
+        "inside an exact 134-target terminal surface and metric registry; "
         "the late surface must be exactly covered by 43 PUF-clone and 29 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
@@ -13079,7 +13094,7 @@ class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
 
     Production never accepts these specs from a caller: it consumes the
-    immutable 131-column canonical registry. The explicit test-authority seam
+    immutable 134-column canonical registry. The explicit test-authority seam
     groups its digested registry into specs so the comparison engine can reuse
     the same loop. ``clone_index`` scopes a fixture comparison to one clone
     role: 0 compares native rows and 1 compares a PUF arm.
@@ -13133,7 +13148,7 @@ def by_origin_battery(
     *,
     tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Run the canonical 131-target plus joint by-origin battery."""
+    """Run the canonical 134-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,

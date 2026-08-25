@@ -217,8 +217,8 @@ _UK_QRF_TAIL_MIN_NONZERO_RECORDS = 274
 _UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
 _UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "filename": "enhanced_frs_2024_25.h5",
-    "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
-    "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+    "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
     "vintage": "2024_25",
 }
 # Independent publication pin for the canonical
@@ -227,7 +227,7 @@ _UK_INPUT_MASS_REFERENCE_IDENTITY = {
 # under the UKDS EUL; keep this in lockstep with
 # UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 in the build shard.
 _UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659"
+    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
 )
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
@@ -373,13 +373,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "31a74493d937366f982c896d7b904778ba9ab4f6862e6ab1a8899e2c2233efa6"
+    "61c1e22c6d3f3e9087b7b83548f36c4ad0e4bc05d2f7119185d15eaaf5c45d16"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "932e039b18812116aa028fdd8f1f47548f1827a3602d7979afb317a34cfd91f0"
+    "409e2aa6db2825a32d2189bb7077c9a8b7c4e2285dec4800b132f1df23d672d2"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "538eae1a1131b0dcd42fcd6b49ccabcb3878d52ec7df453579cf8388db2c1492"
+    "a47f0752544d394337be1cea4bfcd07d205f2af7b881d57a149643d7ab9709fc"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -461,7 +461,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "806f46de90a0bf08c70c977ab63dad1ed644088c89e40df1869ce07b97f63c0c"
+    "16093e8605ac4bf9cf63fd66967c7b50fa80e29761443e8c6d37551e2d3b1fee"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest

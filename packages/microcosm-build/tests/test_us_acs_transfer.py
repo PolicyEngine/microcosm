@@ -785,7 +785,7 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     )
     assert declared_acs_transfer_target_families()["spm_unit"][
         "model_required_boolean"
-    ] == ("is_tanf_enrolled", "receives_snap")
+    ] == ("receives_snap", "receives_tanf")
 
 
 def test_explicit_transfer_adds_requested_model_inputs(

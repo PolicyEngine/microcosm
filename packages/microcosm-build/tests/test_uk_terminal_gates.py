@@ -285,8 +285,8 @@ def _input_mass_reference(totals=None) -> UKInputMassReference:
     return UKInputMassReference(
         totals=({"employment_income": 10.0} if totals is None else totals),
         filename="enhanced_frs_2024_25.h5",
-        revision="a2039519d3b92aecc06c66dfd175cb46ac24cada",
-        sha256=("97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"),
+        revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+        sha256=("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
         vintage="2024_25",
     )
 
@@ -295,8 +295,8 @@ def _input_mass_descriptor() -> UKInputMassReferenceDescriptor:
     return UKInputMassReferenceDescriptor(
         name="efrs-post-calibration",
         filename="enhanced_frs_2024_25.h5",
-        revision="a2039519d3b92aecc06c66dfd175cb46ac24cada",
-        sha256="97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+        revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+        sha256="e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
         vintage="2024_25",
         totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
         scope_note="Seeded scoped-reference note.",

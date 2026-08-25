@@ -392,7 +392,10 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
 
     assert person.loc[base, "gift_aid"].tolist() == [0.0, 0.0]
     assert person.loc[base, "charitable_investment_gifts"].tolist() == [0.0, 0.0]
-    assert person.loc[base, "hmrc_spi_employment_benefits"].isna().all()
+    # Unmeasured on the FRS instrument, so the base channel carries the
+    # stage-time zero — the explicit initialization above and this fill are
+    # now the same semantics, and the artifact ships no NaN.
+    assert person.loc[base, "hmrc_spi_employment_benefits"].eq(0.0).all()
     assert person.loc[base, "dividend_income"].tolist() == [100.0, 101.0]
     assert person.loc[spi, "dividend_income"].tolist() == [100.0, 101.0]
     assert _FakeQRF.events[1][0] == "stage2"

@@ -45,12 +45,22 @@ REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 
 # The immutable enhanced-FRS reference recorded by the certified UK bundle's
 # adjudication inputs.  The licensed data lives in a private HF *model* repo.
+#
+# Pinned at policyengine-uk-data 1.56.16 (#686).  The previous pin, 1.56.14
+# (revision a2039519..., sha 97a07f9c...), carried policyengine-uk-data#461:
+# from the 2024-25 FRS release the raw benunit table is no longer ordered by
+# sernum, so every benunit-level variable landed on the wrong benefit unit
+# relative to the model's sorted-id entity order.  Nonzero-share screens are
+# permutation-blind to that defect, so parity signed against the 1.56.14
+# reference would have frozen it into the contract.  1.56.16 carries the
+# upstream fix (uk-data 6591b70).
 SOURCE_REPO_ID = "policyengine/policyengine-uk-data-private"
 SOURCE_REPO_TYPE = "model"
 SOURCE_FILENAME = "enhanced_frs_2024_25.h5"
-SOURCE_REVISION = "a2039519d3b92aecc06c66dfd175cb46ac24cada"
-SOURCE_SHA256 = "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
-SOURCE_SIZE_BYTES = 126_579_434
+SOURCE_VERSION = "1.56.16"
+SOURCE_REVISION = "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df"
+SOURCE_SHA256 = "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"
+SOURCE_SIZE_BYTES = 126_553_300
 SOURCE_VINTAGE = "2024_25"
 SOURCE_PERIOD = "2024"
 SOURCE_URL = (
@@ -105,12 +115,36 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         metavar="PATH",
         help=(
-            "Write weighted per-column totals of the pinned artifact's "
-            "effective input surface, in the schema the input_mass_parity "
-            "terminal gate consumes (#609), and exit. This does NOT regenerate "
-            "the committed coverage reference: the destination must be outside "
-            "the repository, because the totals are an operational gate input "
+            "Write weighted per-column totals of the artifact's effective "
+            "input surface, in the schema the input_mass_parity terminal gate "
+            "consumes (#609), and exit. This does NOT regenerate the committed "
+            "coverage reference: the destination must be outside the "
+            "repository, because the totals are an operational gate input "
             "derived from licensed microdata."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-h5",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Extract the same input surface from a candidate spine instead of "
+            "the pinned incumbent (#686). The artifact is identified by its own "
+            "sha256 rather than checked against the incumbent pin, so this mode "
+            "can never write the committed reference — pass "
+            "--emit-candidate-json, or --emit-weighted-totals for the "
+            "candidate-side licensed register."
+        ),
+    )
+    parser.add_argument(
+        "--emit-candidate-json",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Destination for the candidate extraction, which "
+            "verify_uk_spine_parity.py diffs against the committed reference. "
+            "Requires --candidate-h5; refused anywhere inside the package "
+            "directory."
         ),
     )
     return parser.parse_args()
@@ -138,6 +172,25 @@ def _verify_source(path: Path) -> None:
         raise ValueError(
             f"{path}: sha256 {digest} does not match the pinned eFRS {SOURCE_SHA256}."
         )
+
+
+def _candidate_source_block(path: Path) -> dict[str, Any]:
+    """Self-describing identity for a candidate spine.
+
+    A candidate is identified by the bytes it actually is, never by the
+    incumbent pin: ``_verify_source`` would reject it, and passing it off as
+    the pinned artifact is exactly the confusion the parity instrument's
+    aliasing fence exists to catch.
+    """
+
+    return {
+        "filename": path.name,
+        "sha256": _sha256(path),
+        "size_bytes": path.stat().st_size,
+        "vintage": SOURCE_VINTAGE,
+        "period": SOURCE_PERIOD,
+        "role": "candidate",
+    }
 
 
 def _hf_token() -> str | None:
@@ -239,9 +292,17 @@ def _effective_input_entities(system: Any) -> dict[str, str]:
     return entities
 
 
-def build_reference(source_h5: Path) -> dict[str, Any]:
-    """Extract the pinned eFRS populated input surface into JSON-ready facts."""
-    _verify_source(source_h5)
+def build_reference(source_h5: Path, *, candidate: bool = False) -> dict[str, Any]:
+    """Extract a populated input surface into JSON-ready facts.
+
+    With ``candidate=False`` this is the pinned incumbent extraction that
+    produces the committed reference. With ``candidate=True`` the same
+    producer runs over a candidate spine so the two sides are measured
+    identically — same engine, same alias handling, same rounding — and the
+    emitted ``source`` block carries the candidate's own identity.
+    """
+    if not candidate:
+        _verify_source(source_h5)
     try:
         from policyengine_uk import CountryTaxBenefitSystem
     except ImportError as exc:  # pragma: no cover - CLI dependency diagnostic
@@ -337,17 +398,22 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
             "column to set_input; pipeline scratch columns, structural IDs, "
             "and all-zero loader layers are not requirements."
         ),
-        "source": {
-            "repo_id": SOURCE_REPO_ID,
-            "repo_type": SOURCE_REPO_TYPE,
-            "filename": SOURCE_FILENAME,
-            "revision": SOURCE_REVISION,
-            "sha256": SOURCE_SHA256,
-            "size_bytes": SOURCE_SIZE_BYTES,
-            "url": SOURCE_URL,
-            "vintage": SOURCE_VINTAGE,
-            "period": SOURCE_PERIOD,
-        },
+        "source": (
+            _candidate_source_block(source_h5)
+            if candidate
+            else {
+                "repo_id": SOURCE_REPO_ID,
+                "repo_type": SOURCE_REPO_TYPE,
+                "filename": SOURCE_FILENAME,
+                "version": SOURCE_VERSION,
+                "revision": SOURCE_REVISION,
+                "sha256": SOURCE_SHA256,
+                "size_bytes": SOURCE_SIZE_BYTES,
+                "url": SOURCE_URL,
+                "vintage": SOURCE_VINTAGE,
+                "period": SOURCE_PERIOD,
+            }
+        ),
         "engine": {
             "package": "policyengine-uk",
             "version": version("policyengine-uk"),
@@ -372,17 +438,25 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
     }
 
 
-def build_weighted_totals(source_h5: Path) -> dict[str, Any]:
-    """Weighted per-column totals of the pinned eFRS effective input surface.
+def build_weighted_totals(
+    source_h5: Path, *, candidate: bool = False
+) -> dict[str, Any]:
+    """Weighted per-column totals of an artifact's effective input surface.
 
     Emitted in the ``load_uk_input_mass_reference`` schema so the frozen
     incumbent can serve as the input_mass_parity gate's reference (#609):
     a candidate cannot move the bar by choosing its own reference. Weights
     are the artifact's shipped household weights, broadcast to person and
     benunit rows through the membership columns.
+
+    With ``candidate=True`` the same measurement runs over a candidate spine,
+    stamped with the candidate's own identity. That side is the *measured*
+    register — the comparison's other half and the source of #686's candidate
+    baselines — never a substitute reference for the gate.
     """
 
-    _verify_source(source_h5)
+    if not candidate:
+        _verify_source(source_h5)
     try:
         from policyengine_uk import CountryTaxBenefitSystem
     except ImportError as exc:  # pragma: no cover - CLI dependency diagnostic
@@ -451,16 +525,28 @@ def build_weighted_totals(source_h5: Path) -> dict[str, Any]:
             "(#609). Derived from licensed UKDS microdata: do not commit or "
             "post until the EUL disclosure question on #609 is resolved."
         ),
-        "identity": {
-            "filename": SOURCE_FILENAME,
-            "revision": SOURCE_REVISION,
-            "sha256": SOURCE_SHA256,
-            "vintage": SOURCE_VINTAGE,
-        },
-        "source": {
+        "identity": (
+            {
+                "filename": source_h5.name,
+                "revision": "candidate",
+                "sha256": _sha256(source_h5),
+                "vintage": SOURCE_VINTAGE,
+            }
+            if candidate
+            else {
+                "filename": SOURCE_FILENAME,
+                "revision": SOURCE_REVISION,
+                "sha256": SOURCE_SHA256,
+                "vintage": SOURCE_VINTAGE,
+            }
+        ),
+        "source": _candidate_source_block(source_h5)
+        if candidate
+        else {
             "repo_id": SOURCE_REPO_ID,
             "repo_type": SOURCE_REPO_TYPE,
             "filename": SOURCE_FILENAME,
+            "version": SOURCE_VERSION,
             "revision": SOURCE_REVISION,
             "sha256": SOURCE_SHA256,
             "size_bytes": SOURCE_SIZE_BYTES,
@@ -495,6 +581,78 @@ def _emit_weighted_totals(source_h5: Path, destination: Path) -> Path:
     return totals_output
 
 
+def _refuse_inside_package(destination: Path, *, what: str) -> Path:
+    resolved = destination.resolve()
+    if UK_PACKAGE_DIR.resolve() in resolved.parents or resolved == REFERENCE_PATH:
+        raise SystemExit(
+            f"{resolved} is inside the country package; {what} is measured "
+            "evidence about a candidate, never a committed contract artifact."
+        )
+    return resolved
+
+
+def _run_candidate_extraction(args: argparse.Namespace) -> int:
+    """Measure a candidate spine with the incumbent's own producer.
+
+    Both sides of the parity comparison have to be measured the same way or
+    the diff is between two measurement methods rather than two artifacts, so
+    this reuses ``build_reference``/``build_weighted_totals`` unchanged and
+    only swaps the identity block.
+    """
+
+    candidate_h5 = args.candidate_h5
+    if not candidate_h5.is_file():
+        raise SystemExit(f"--candidate-h5 must be an existing file: {candidate_h5}")
+    if args.check:
+        raise SystemExit(
+            "--check verifies the committed reference against the pinned "
+            "incumbent; a candidate can never satisfy it."
+        )
+    if args.emit_candidate_json is None and args.emit_weighted_totals is None:
+        raise SystemExit(
+            "--candidate-h5 needs a destination: --emit-candidate-json for the "
+            "parity surface, --emit-weighted-totals for the licensed register."
+        )
+
+    if args.emit_weighted_totals is not None:
+        destination = _refuse_inside_package(
+            args.emit_weighted_totals, what="a weighted register"
+        )
+        if REPO_ROOT.resolve() in destination.parents:
+            raise SystemExit(
+                f"{destination} is inside the repository; weighted totals are "
+                "derived from licensed microdata and stay uncommitted (#609)."
+            )
+        payload = build_weighted_totals(candidate_h5, candidate=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"wrote {destination} — {len(payload['totals'])} candidate weighted "
+            "input totals (UKDS-derived: keep uncommitted, see #609)"
+        )
+
+    if args.emit_candidate_json is not None:
+        destination = _refuse_inside_package(
+            args.emit_candidate_json, what="a candidate extraction"
+        )
+        payload = build_reference(candidate_h5, candidate=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"wrote {destination} — {len(payload['nonzero_shares'])} candidate "
+            "input layers; diff it with tools/verify_uk_spine_parity.py"
+        )
+
+    print("committed reference left untouched")
+    return 0
+
+
 def main() -> int:
     args = _parse_args()
     if args.check and args.emit_weighted_totals is not None:
@@ -502,6 +660,12 @@ def main() -> int:
             "--check verifies the committed reference only; run "
             "--emit-weighted-totals in its own pass."
         )
+    if args.emit_candidate_json is not None and args.candidate_h5 is None:
+        raise SystemExit("--emit-candidate-json requires --candidate-h5.")
+
+    if args.candidate_h5 is not None:
+        return _run_candidate_extraction(args)
+
     source_h5 = resolve_source_h5(args.input_h5)
     if args.emit_weighted_totals is not None:
         # Emitting gate input is not regenerating the coverage contract. The

@@ -106,13 +106,13 @@ _PARTICIPATION_TARGETS = frozenset(
         "has_other_means_tested_health_coverage_at_interview",
         "has_tricare_health_coverage_at_interview",
         "has_va_health_coverage_at_interview",
-        "is_tanf_enrolled",
+        "receives_tanf",
         "receives_housing_assistance",
         "receives_snap",
         "receives_wic",
         "takes_up_housing_assistance_if_eligible",
         "takes_up_medicare_if_eligible",
-        "would_claim_wic",
+        "takes_up_wic_if_eligible",
     }
 )
 
@@ -193,7 +193,7 @@ _PARTICIPATION_TARGET_CONCEPTS: dict[str, tuple[str, ...]] = {
         "veteran_status",
         "military_coverage_context",
     ),
-    "is_tanf_enrolled": (
+    "receives_tanf": (
         "dependent_child_status",
         "household_income_eligibility",
     ),
@@ -219,7 +219,7 @@ _PARTICIPATION_TARGET_CONCEPTS: dict[str, tuple[str, ...]] = {
         "disability_status",
         "medicare_coverage_context",
     ),
-    "would_claim_wic": (
+    "takes_up_wic_if_eligible": (
         "dependent_child_status",
         "pregnancy_status",
     ),

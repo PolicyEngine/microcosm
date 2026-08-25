@@ -1317,6 +1317,16 @@ columns:
     nullable: false
     domain: take_up_count_calibrated
     public_stability: internal
+- key: person.takes_up_wic_if_eligible
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: month
+    vintage: vintage:target_2024
+    nullable: false
+    domain: source_operator_wic_claim
+    public_stability: internal
 - key: person.tax_exempt_interest_income
   contract:
     entity: person
@@ -1526,16 +1536,6 @@ columns:
     domain: source_operator_workers_compensation
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
-- key: person.would_claim_wic
-  contract:
-    entity: person
-    dtype: bool
-    unit: boolean
-    definition_period: month
-    vintage: vintage:target_2024
-    nullable: false
-    domain: source_operator_wic_claim
-    public_stability: internal
 - key: spm_unit.@resolved_weight
   contract:
     entity: spm_unit
@@ -1545,16 +1545,6 @@ columns:
     vintage: vintage:target_2024
     nullable: false
     domain: frame_weight
-    public_stability: internal
-- key: spm_unit.is_tanf_enrolled
-  contract:
-    entity: spm_unit
-    dtype: bool
-    unit: boolean
-    definition_period: month
-    vintage: vintage:target_2024
-    nullable: false
-    domain: model_required_boolean
     public_stability: internal
 - key: spm_unit.receives_housing_assistance
   contract:
@@ -1567,6 +1557,16 @@ columns:
     domain: source_operator_housing_inputs
     public_stability: internal
 - key: spm_unit.receives_snap
+  contract:
+    entity: spm_unit
+    dtype: bool
+    unit: boolean
+    definition_period: month
+    vintage: vintage:target_2024
+    nullable: false
+    domain: model_required_boolean
+    public_stability: internal
+- key: spm_unit.receives_tanf
   contract:
     entity: spm_unit
     dtype: bool
@@ -1766,6 +1766,26 @@ columns:
     nullable: false
     domain: take_up_out_of_scope
     public_stability: internal
+- key: tax_unit.takes_up_ca_premium_subsidy_if_eligible
+  contract:
+    entity: tax_unit
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
+    public_stability: internal
+- key: tax_unit.takes_up_co_premium_assistance_if_eligible
+  contract:
+    entity: tax_unit
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
+    public_stability: internal
 - key: tax_unit.takes_up_dc_ptc
   contract:
     entity: tax_unit
@@ -1785,6 +1805,16 @@ columns:
     vintage: vintage:target_2024
     nullable: false
     domain: take_up_seed
+    public_stability: internal
+- key: tax_unit.takes_up_nm_premium_assistance_if_eligible
+  contract:
+    entity: tax_unit
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
     public_stability: internal
 - key: tax_unit.tax_unit_id
   contract:

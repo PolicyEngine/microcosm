@@ -728,12 +728,12 @@ def test_signal_gate_requires_boolean_plausible_and_clone_consistent() -> None:
 
 
 @requires_us
-def test_policyengine_1_764_6_contract_and_aca_ptc_neutralization() -> None:
+def test_policyengine_1_819_0_contract_and_aca_ptc_neutralization() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "1.764.6"
+    assert version("policyengine-us") == "1.819.0"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "tax_unit"

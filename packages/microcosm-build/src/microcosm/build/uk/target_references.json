@@ -9318,6 +9318,27 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.scottish_child_payment_spending",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": "scotgov.social_security_assistance_spending",
+        "dimension_values": {
+          "social_security_line": "scottish_child_payment"
+        },
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "sss/scottish_child_payment",
+      "family": "scotgov_social_security",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.scottish_child_payment_spending",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection"
+    },
+    {
       "name": "ons.savings_interest_income",
       "ledger_selector": {
         "source_name": "ons",
@@ -9525,6 +9546,224 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.borrowers.plan_2_above_threshold",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_borrowers",
+        "dimension_values": {
+          "row_group": "Higher education total",
+          "repayment_plan": "plan_2",
+          "borrower_status": "above_repayment_threshold"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/plan_2_borrowers_above_threshold",
+      "family": "slc_borrowers",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.borrowers.plan_2_above_threshold",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection"
+    },
+    {
+      "name": "slc.borrowers.plan_2_liable",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_borrowers",
+        "dimension_values": {
+          "row_group": "Higher education total",
+          "repayment_plan": "plan_2",
+          "borrower_status": "liable_to_repay"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/plan_2_borrowers_liable",
+      "family": "slc_borrowers",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.borrowers.plan_2_liable",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection"
+    },
+    {
+      "name": "slc.borrowers.plan_5_above_threshold",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_borrowers",
+        "dimension_values": {
+          "row_group": "Higher education total",
+          "repayment_plan": "plan_5",
+          "borrower_status": "above_repayment_threshold"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/plan_5_borrowers_above_threshold",
+      "family": "slc_borrowers",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.borrowers.plan_5_above_threshold",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection"
+    },
+    {
+      "name": "slc.borrowers.plan_5_liable",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.student_loan_borrowers",
+        "dimension_values": {
+          "row_group": "Higher education total",
+          "repayment_plan": "plan_5",
+          "borrower_status": "liable_to_repay"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/plan_5_borrowers_liable",
+      "family": "slc_borrowers",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.borrowers.plan_5_liable",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection"
+    },
+    {
+      "name": "slc.support.maintenance_loan_recipients",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.maintenance_loan_recipients",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/maintenance_loan_recipients",
+      "family": "slc_student_support",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.support.maintenance_loan_recipients",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.support.maintenance_loan_spend",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.maintenance_loan_amount_paid",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/maintenance_loan_spend",
+      "family": "slc_student_support",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.support.maintenance_loan_spend",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.support.parents_learning_allowance_recipients",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.targeted_support_recipients",
+        "dimension_values": {
+          "student_support_product": "parents_learning_allowance"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/parents_learning_allowance_recipients",
+      "family": "slc_student_support",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.support.parents_learning_allowance_recipients",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.support.parents_learning_allowance_spend",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.targeted_support_amount_awarded",
+        "dimension_values": {
+          "student_support_product": "parents_learning_allowance"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/parents_learning_allowance_spend",
+      "family": "slc_student_support",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.support.parents_learning_allowance_spend",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.support.adult_dependants_grant_recipients",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.targeted_support_recipients",
+        "dimension_values": {
+          "student_support_product": "adult_dependants_grant"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/adult_dependants_grant_recipients",
+      "family": "slc_student_support",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.support.adult_dependants_grant_recipients",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "slc.support.adult_dependants_grant_spend",
+      "ledger_selector": {
+        "source_name": "slc",
+        "source_concept": "slc.targeted_support_amount_awarded",
+        "dimension_values": {
+          "student_support_product": "adult_dependants_grant"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "slc/adult_dependants_grant_spend",
+      "family": "slc_student_support",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "slc.support.adult_dependants_grant_spend",
+        "measure_kind": "prepared_column"
+      },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

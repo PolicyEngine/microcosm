@@ -52,27 +52,27 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert_coverage_complete(coverage_report)
     assert coverage_report["status"] == "pass"
     fields = coverage_report["field_usage"]
-    assert fields["configuration_field_count"] == 41_471
-    assert fields["authored_normative_field_count"] == 32_252
-    assert fields["resolved_binding_field_count"] == 9_219
-    assert fields["consumed_field_count"] == 41_471
+    assert fields["configuration_field_count"] == 42_120
+    assert fields["authored_normative_field_count"] == 32_351
+    assert fields["resolved_binding_field_count"] == 9_769
+    assert fields["consumed_field_count"] == 42_120
     assert fields["unused_field_count"] == 0
     assert fields["multiple_primary_use_field_count"] == 0
-    assert fields["claim_count"] == 47
+    assert fields["claim_count"] == 49
     assert fields["mode_counts"] == {
-        "legacy_behavior": 13_336,
-        "compiler_semantic": 27_661,
-        "front_end_validation": 346,
-        "identity_only": 128,
+        "legacy_behavior": 13_970,
+        "compiler_semantic": 27_699,
+        "front_end_validation": 348,
+        "identity_only": 103,
     }
     assert fields["generation0_effect_counts"] == {
-        "legacy_behavior": 37_809,
-        "no_generation0_effect": 3_662,
+        "legacy_behavior": 38_443,
+        "no_generation0_effect": 3_677,
     }
 
     inventory = coverage_report["inventory_coverage"]
-    assert inventory["required_item_count"] == 40
-    assert inventory["covered_item_count"] == 40
+    assert inventory["required_item_count"] == 41
+    assert inventory["covered_item_count"] == 41
     assert inventory["missing_item_count"] == 0
     assert inventory["missing_items"] == []
     assert inventory["counts"]["producer_inputs"] == 2_742

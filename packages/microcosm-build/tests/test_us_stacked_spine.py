@@ -1746,7 +1746,7 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         calibration["scope"]["reference"] = "forged"
 
 
-def test_canonical_metric_registry_covers_the_declared_131_target_split() -> None:
+def test_canonical_metric_registry_covers_the_declared_134_target_split() -> None:
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     surface_targets = {
@@ -1756,10 +1756,10 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         for target in targets
     }
 
-    assert len(surface_targets) == 131
+    assert len(surface_targets) == 134
     assert Counter(entity for entity, _family, _target, _clone in surface_targets) == {
         "person": 114,
-        "tax_unit": 9,
+        "tax_unit": 12,
         "spm_unit": 8,
     }
     assert (
@@ -1775,7 +1775,7 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
     assert set(registry) == surface_targets
     assert Counter(registry.values()) == {
         "monetary_sign_separated": 79,
-        "boolean_incidence": 48,
+        "boolean_incidence": 51,
         "categorical_tvd": 4,
     }
     assert (
@@ -1921,7 +1921,7 @@ def test_canonical_metric_registry_drives_checkpoint_round_trip(
     nullable_booleans = _transferred_registry_boolean_targets()
     assert Counter(registry.values()) == {
         "monetary_sign_separated": 79,
-        "boolean_incidence": 48,
+        "boolean_incidence": 51,
         "categorical_tvd": 4,
     }
     for (entity, _family, column, _clone_index), metric in registry.items():
@@ -1999,8 +1999,8 @@ def test_checkpoint_boundary_extension_dtype_inventory_is_exact() -> None:
         ("person", "self_employment_income_would_be_qualified"),
         ("person", "sstb_self_employment_income_would_be_qualified"),
         ("person", "takes_up_medicare_if_eligible"),
-        ("person", "would_claim_wic"),
-        ("spm_unit", "is_tanf_enrolled"),
+        ("person", "takes_up_wic_if_eligible"),
+        ("spm_unit", "receives_tanf"),
         ("spm_unit", "receives_housing_assistance"),
         ("spm_unit", "receives_snap"),
         ("spm_unit", "takes_up_housing_assistance_if_eligible"),
@@ -2025,10 +2025,13 @@ def test_checkpoint_boundary_extension_dtype_inventory_is_exact() -> None:
         ("spm_unit", "takes_up_snap_if_eligible"),
         ("spm_unit", "takes_up_tanf_if_eligible"),
         ("tax_unit", "takes_up_aca_if_eligible"),
+        ("tax_unit", "takes_up_ca_premium_subsidy_if_eligible"),
+        ("tax_unit", "takes_up_co_premium_assistance_if_eligible"),
         ("tax_unit", "takes_up_dc_ptc"),
         ("tax_unit", "takes_up_eitc"),
+        ("tax_unit", "takes_up_nm_premium_assistance_if_eligible"),
     }
-    assert len(seeded_numpy_booleans) == 11
+    assert len(seeded_numpy_booleans) == 14
     assembled_strings = {
         ("person", "PERIDNUM"),
         ("person", "source_person_id"),
@@ -2085,7 +2088,7 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for (entity, _family, column, _clone_index), metric in registry.items()
     }
-    assert len(by_column) == len(registry) == 131
+    assert len(by_column) == len(registry) == 134
 
     representative = {
         "monetary_sign_separated": pd.Series([1.0, pd.NA], dtype="Float64"),
@@ -7919,7 +7922,7 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     )
     canonical = stacked_completeness_gate(frame)
     assert canonical.passed, canonical.failures
-    assert canonical.details["declared_targets"] == 131
+    assert canonical.details["declared_targets"] == 134
     authority = canonical.details["authority"]
     assert authority["authority_form"] == "CANONICAL"
     assert authority["canonical"] is True
@@ -8407,7 +8410,7 @@ def test_fresh_gate_result_cannot_graft_canonical_authority_onto_test_surface() 
 
     with pytest.raises(
         ValueError,
-        match="must declare exactly 131 targets.*manifest emission is forbidden",
+        match="must declare exactly 134 targets.*manifest emission is forbidden",
     ):
         GateReport((grafted,)).to_manifest()
 
@@ -8542,7 +8545,7 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
 
     with pytest.raises(
         ValueError,
-        match="coverage receipt must bind all 131 targets.*emission is forbidden",
+        match="coverage receipt must bind all 134 targets.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 
@@ -9074,7 +9077,7 @@ def test_battery_taxable_interest_metric_cannot_be_relabelled_rare_incidence() -
     assert not result.passed
     assert result.details["tested_comparisons"] == 0
     metric_receipt = result.details["authority"]["components"]["metric_registry"]
-    assert metric_receipt["target_count"] == 131
+    assert metric_receipt["target_count"] == 134
     assert any(
         "person/puf_tax_itemization/taxable_interest_income[clone_0]" in failure
         and "authoritative metric 'monetary_sign_separated'" in failure

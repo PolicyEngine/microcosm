@@ -2,7 +2,7 @@
 phase: legacy
 assignment:
   anchor: puma
-  order: legacy_post_transfer
+  order: before_gap_fill
   kernels:
     assign: kernel:assign_us_puma_ladder
     validate: kernel:us_puma_ladder_gate
@@ -24,6 +24,10 @@ assignment:
   - observed_acs_puma_preserved
   - geography_state_prefix_consistent
   ladder_source: source:us_puma_ladder_2020
+  congressional_district_vintage_crosswalk:
+    source_ref: source:us_congressional_district_vintage_crosswalk_117_to_119
+    source_vintage: vintage:cd_117
+    target_vintage: vintage:cd_119
   seed: stream:geography_legacy
   default_seed: 0
   assign_tract: false
