@@ -1,0 +1,1 @@
+Lock PolicyEngine-US at 1.820.2 (first release carrying the work-experience person inputs): version-only generated-variable audit re-pin (all seven generator sources byte-identical), metadata-index counts (6,149 definitions / 5,225 formula-owned; +3 input leaves), SSI dependency-closure and engine-input projection contracts, and a regenerated engine ABI lock (#746).

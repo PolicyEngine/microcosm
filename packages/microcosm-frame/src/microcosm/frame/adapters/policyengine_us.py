@@ -119,7 +119,7 @@ _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 # snapshot tied to every source/activation surface that produced it: a changed
 # wheel must fail closed until this audit is refreshed, never silently omit a
 # newly generated formula-owned output.
-_GENERATED_SOURCE_VERSION = "1.819.0"
+_GENERATED_SOURCE_VERSION = "1.820.2"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
     "variables/household/demographic/geographic/state/in_state.py": (

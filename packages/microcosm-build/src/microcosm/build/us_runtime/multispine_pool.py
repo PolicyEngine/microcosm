@@ -326,17 +326,17 @@ class PoolEngineInputProjectionContract:
 
 
 POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
-    engine_version="1.819.0",
+    engine_version="1.820.2",
     root="ssi",
     input_leaf_count=55,
     formula_node_count=63,
     edge_count=187,
-    sha256="e0a23d961c36526a10e56d80d51ca46760e92b4ea3653734014469da2394f702",
+    sha256="52a4727315be7099c5f4d8fef3fa4d7fffb2ef25678c70a9bb89c647c63a2bc5",
 )
 """Exact static graph consumed by the terminal SSI agreement simulation."""
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
-    engine_version="1.819.0",
+    engine_version="1.820.2",
     input_count=924,
     default_count=924,
     sha256="b4b2041d221b6322a3143dd2d54dc95eb1b20d5f33f4a60908055d735ba07930",
