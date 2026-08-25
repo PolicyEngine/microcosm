@@ -165,7 +165,7 @@ UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json
 # UKDS EUL; this reviewed digest lets the gate and publication contract bind
 # them without disclosing them.
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659"
+    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
 )
 
 
@@ -239,8 +239,8 @@ class UKInputMassReferenceDescriptor:
 _UK_INPUT_MASS_REFERENCE_DESCRIPTOR = UKInputMassReferenceDescriptor(
     name="efrs-post-calibration",
     filename="enhanced_frs_2024_25.h5",
-    revision="a2039519d3b92aecc06c66dfd175cb46ac24cada",
-    sha256="97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+    revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+    sha256="e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
     vintage="2024_25",
     totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     scope_note=(

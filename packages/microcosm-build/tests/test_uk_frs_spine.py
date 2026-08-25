@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
     build_uk_frs_spine_frame,
+    scottish_water_and_sewerage_weekly,
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.national_build import load_uk_national_frame
@@ -66,8 +67,13 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CTBAND": 4,
         "CTREBAMT": 2.0,
         "ADULTH": 1,
-        "CSEWAMT": 0.0,
+        # CWATAMT/CSEWAMT are retired in FRS 2024-25: the headers survive but
+        # carry no data at all, so the fixture leaves them blank exactly as the
+        # real tab does. CWATAMT1/CSEWAMT1 are their Scotland-only successors.
+        "CSEWAMT": "",
         "CWATAMTD": 0.0,
+        "CWATAMT1": "",
+        "CSEWAMT1": "",
         "WATSEWRT": 3.0,
         "NIRATLIA": 4.0,
         "RT2REBAM": 0.0,
@@ -89,8 +95,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CTANNUAL": -1.0,
         "CTBAND": 2,
         "CTREBAMT": 1.0,
-        "CSEWAMT": 2.0,
+        "CSEWAMT": "",
         "CWATAMTD": 3.0,
+        "CWATAMT1": 4.0,
+        "CSEWAMT1": 5.0,
         "WATSEWRT": 99.0,
         "NIRATLIA": -1.0,
         "RT2REBAM": 5.0,
@@ -146,6 +154,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "ACCSSAMT": 1.0,
         "GRTDIR1": 2.0,
         "GRTDIR2": 3.0,
+        # heartval is on the adult tape too; the three school columns are not.
+        "HEARTVAL": 5.0,
     }
     adult_2 = {**adult_1, "SERNUM": 2, "PERSON": 1, "SEX": 2, "HRPID": 1}
     child_1 = {
@@ -165,6 +175,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TRAIN": 9,
         "EMAAMT": 0.0,
         "CHEMAAMT": 1.0,
+        "FSMVAL": 3.0,
+        "FSFVVAL": 1.0,
+        "FSBVAL": 2.0,
+        "HEARTVAL": 4.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -886,8 +900,11 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     assert household.loc[1, "council_tax_band"] == "B"
     assert household.loc[1, "council_tax_rebate"] == pytest.approx(WEEKS_IN_YEAR)
     assert household.loc[1, "council_tax_single_adult_raw"] == 1
+    # Scotland: CWATAMTD 3 (after discount) + CSEWAMT1 5 (gross) discounted at
+    # this household's own observed factor CWATAMTD/CWATAMT1 = 3/4, so
+    # 3 + 5 * 0.75 = 6.75. WATSEWRT is not asked in Scotland and is ignored.
     assert household.loc[1, "water_and_sewerage_charges"] == pytest.approx(
-        5 * WEEKS_IN_YEAR
+        6.75 * WEEKS_IN_YEAR
     )
     assert household.loc[1, "domestic_rates"] == pytest.approx(5 * WEEKS_IN_YEAR)
     assert household.loc[1, "rent"] == pytest.approx(6 * WEEKS_IN_YEAR)
@@ -1627,3 +1644,101 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "student_loan_plan_5": 42,
         "student_loan_plan_2": 42,
     }
+
+
+class TestScottishWaterAndSewerage:
+    """The FRS 2024-25 cell retirement, at the three shapes the tab presents.
+
+    CWATAMT/CSEWAMT survive as headers in this vintage but carry no data, so a
+    fixture that supplies them (as the pre-#686 one did) never exercises what
+    the real tab does. Each case below is a real domain on the 2024-25 tab.
+    """
+
+    @staticmethod
+    def _frame(**columns: object) -> pd.DataFrame:
+        return pd.DataFrame({name: [value] for name, value in columns.items()})
+
+    def test_discount_factor_carries_to_the_gross_sewerage_cell(self) -> None:
+        # 1,641 of 1,684 Scottish households: a positive gross water bill, so
+        # the household's own discount factor is observable and applies to the
+        # sewerage side of the same bill.
+        frame = self._frame(CSEWAMT="", CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
+        frame.columns = [c.lower() for c in frame.columns]
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(6.75)
+
+    def test_undiscounted_household_keeps_the_gross_sewerage_charge(self) -> None:
+        frame = self._frame(CWATAMTD=4.0, CWATAMT1=4.0, CSEWAMT1=5.0)
+        frame.columns = [c.lower() for c in frame.columns]
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(9.0)
+
+    def test_recorded_water_without_a_gross_bill_cell_is_not_scaled(self) -> None:
+        # 22 Scottish households carry a recorded CWATAMTD with CWATAMT1 == 0;
+        # their CSEWAMT1 is zero too, so the fallback factor cannot move them.
+        frame = self._frame(CWATAMTD=3.0, CWATAMT1=0.0, CSEWAMT1=0.0)
+        frame.columns = [c.lower() for c in frame.columns]
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(3.0)
+
+    def test_sewerage_without_an_observable_discount_is_refused(self) -> None:
+        # The domain claim in the docstring — that a household with no gross
+        # water bill also carries no gross sewerage — is what makes the 1.0
+        # fallback safe. A vintage refresh that breaks it must refuse at build
+        # time rather than silently pay sewerage at gross, which would flow
+        # into council_tax through the netting.
+        frame = self._frame(CWATAMTD=3.0, CWATAMT1=0.0, CSEWAMT1=5.0)
+        frame.columns = [c.lower() for c in frame.columns]
+        with pytest.raises(ValueError, match="no discount factor is observable"):
+            scottish_water_and_sewerage_weekly(frame)
+
+    def test_household_without_council_tax_cells_is_zero(self) -> None:
+        # 21 Scottish households carry no council-tax cells at all.
+        frame = self._frame(CWATAMTD="", CWATAMT1="", CSEWAMT1="")
+        frame.columns = [c.lower() for c in frame.columns]
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(0.0)
+
+    def test_retired_cells_cannot_reintroduce_the_incumbent_zeroing(self) -> None:
+        # The incumbent adds CSEWAMT before filling, so an all-blank CSEWAMT
+        # propagates NaN and zeroes every Scottish household. The successor
+        # cells must decide the answer on their own.
+        blank = self._frame(CSEWAMT="", CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
+        blank.columns = [c.lower() for c in blank.columns]
+        absent = self._frame(CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
+        absent.columns = [c.lower() for c in absent.columns]
+        result = scottish_water_and_sewerage_weekly(blank).iloc[0]
+        assert result == pytest.approx(
+            scottish_water_and_sewerage_weekly(absent).iloc[0]
+        )
+        assert result > 0
+
+
+def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:
+    """The four in-kind benefit columns, ported at #686.
+
+    They were absent from the spine while the incumbent mapped them straight
+    off the person tapes, so the parity screen reported them as columns the
+    candidate did not produce. Each is a plain weeklyised amount.
+    """
+
+    stage = _write_fixture(tmp_path)
+
+    frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
+    person = frame.table("person").set_index("person_id")
+
+    children = person.loc[person["age"] < 16]
+    assert len(children) == 1
+    child = children.iloc[0]
+    assert child["free_school_meals"] == pytest.approx(3.0 * WEEKS_IN_YEAR)
+    assert child["free_school_fruit_veg"] == pytest.approx(1.0 * WEEKS_IN_YEAR)
+    assert child["free_school_breakfasts"] == pytest.approx(2.0 * WEEKS_IN_YEAR)
+    assert child["healthy_start_vouchers"] == pytest.approx(4.0 * WEEKS_IN_YEAR)
+
+    # heartval is on the adult tape as well; the school columns are child-only
+    # and must read as zero for adults rather than propagating NaN.
+    adults = person.loc[person["age"] > 16]
+    assert (adults["healthy_start_vouchers"] > 0).all()
+    for column in (
+        "free_school_meals",
+        "free_school_fruit_veg",
+        "free_school_breakfasts",
+    ):
+        assert (adults[column] == 0).all()
+        assert person[column].notna().all()

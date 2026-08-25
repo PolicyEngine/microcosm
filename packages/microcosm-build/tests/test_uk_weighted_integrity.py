@@ -92,8 +92,8 @@ def _frame(
 def _reference(totals, **overrides) -> UKInputMassReference:
     fields = {
         "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
-        "sha256": ("97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"),
+        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+        "sha256": ("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
         "vintage": "2024_25",
     }
     fields.update(overrides)
@@ -104,8 +104,8 @@ def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
     fields = {
         "name": "efrs-post-calibration",
         "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
-        "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+        "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
         "vintage": "2024_25",
         "totals_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
         "scope_note": "Seeded scoped-reference note.",
@@ -273,8 +273,8 @@ def test_input_mass_reference_identity_is_recorded() -> None:
 
     assert gate.details["reference_identity"] == {
         "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
-        "sha256": ("97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"),
+        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+        "sha256": ("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
         "vintage": "2024_25",
     }
 
@@ -1002,9 +1002,9 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
                 "schema_version": 1,
                 "identity": {
                     "filename": "enhanced_frs_2024_25.h5",
-                    "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+                    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
                     "sha256": (
-                        "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
+                        "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"
                     ),
                     "vintage": "2024_25",
                 },

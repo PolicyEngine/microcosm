@@ -463,10 +463,15 @@ def impute_uk_spi_income_support(
         raise ValueError("SPI stage-1 produced negative non-negative outputs.")
     for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
         if column not in person:
-            # These full concepts are unavailable on the FRS instrument. NaN
-            # is the honest state until the SPI donor overwrites its own rows;
-            # zero would falsely assert a measured structural zero on FRS.
-            person[column] = np.nan
+            # These full concepts are unavailable on the FRS instrument, so
+            # the FRS channel carries the adjudicated stage-time semantics:
+            # zero, the value every consumer fills at read time. Shipping NaN
+            # here was assessment-era honesty that made the artifact
+            # unloadable — the engine's validate() refuses NaN inputs, and
+            # the calibration seam's finiteness fence rightly refuses the
+            # frame — while the auxiliary crosswalk guard above already
+            # protects the QRF from mistaking the fill for measured data.
+            person[column] = 0.0
         person.loc[spi_people, column] = stage1_draws[column].to_numpy()
     person = _derive_policyengine_employment_input(person, spi_people=spi_people)
 
@@ -609,7 +614,10 @@ def _initialize_frs_channel_columns(
                 f"initialize_frs_channel_columns[{column!r}] must be finite."
             )
         if column not in result:
-            result[column] = np.nan
+            # Belt-and-braces zero: every initialized column has its base
+            # rows overwritten on the next line, but a NaN default here would
+            # silently survive any future wiring change.
+            result[column] = 0.0
         result.loc[base_people, column] = numeric
     return result
 
@@ -865,9 +873,11 @@ def derive_hmrc_income_auxiliaries(
             result[column] = values
     else:
         # A prior full-frame auxiliary is not valid evidence for the partial
-        # FRS channel. Clear every derived output, then materialize SPI only.
+        # FRS channel. Clear every derived output to the stage-time zero,
+        # then materialize SPI only — the mask-restricted arithmetic below
+        # never reads the cleared rows, and the artifact must not ship NaN.
         for column, values in derived.items():
-            result[column] = np.nan
+            result[column] = 0.0
             result.loc[mask, column] = values
     if not np.array_equal(
         result.loc[mask, "hmrc_spi_assessable_income"].to_numpy(dtype=float),
