@@ -2,13 +2,14 @@
 
 ## State
 
-Evidence collection is complete on local branch `codex/review-743` at cached
-PR head `74b4d768f7f7c83eb0593464ceb0e2a7c81ec154`. The verdict is HOLD: the
-documented held-run path is not runnable on its production target surface, the
-decisive scorer cannot score exported production-shaped H5s or authenticate
-the incumbent, boolean person-count measures collapse to household indicators,
+Review complete on local branch `codex/review-743` at cached PR head
+`74b4d768f7f7c83eb0593464ceb0e2a7c81ec154`. `REVIEW-743.md` records a HOLD:
+the documented held-run path is not runnable on its production target surface,
+the decisive scorer cannot score exported production-shaped H5s or
+authenticate the incumbent, boolean person-count measures collapse to
+household indicators, release-candidate membership is operator-selectable,
 and the new calibration attempt cannot satisfy the ratified Logbook contract.
-The PR branch itself remains untouched; nothing was pushed or built.
+The PR branch remains untouched; nothing was pushed or built.
 
 ## Done
 
@@ -55,10 +56,19 @@ The PR branch itself remains untouched; nothing was pushed or built.
   threshold/default-seed weakening, publication, or promotion side effect.
 - Moved the generated local GitNexus analysis index out of the worktree to
   `/private/tmp/microcosm-review-743-gitnexus-index`.
+- Wrote the ranked, code-cited defensive audit to `REVIEW-743.md`; validated all
+  50 full-path citations against the checked-out PR files and ran
+  `git diff --check` cleanly.
+- Committed each coherent review checkpoint on the separate review branch:
+  setup journal `88e72569`, evidence journal `b81b4ad0`, and review report
+  `ccf2cdc7`.
 
 ## Next
 
-- Write the ranked, code-cited HOLD verdict to `REVIEW-743.md`, including the
-  exact probes and test evidence.
-- Run document checks, commit the final report and completed journal on the
-  review branch, and hand María the smallest concrete remediation list.
+- María should hold #743 until the documented run uses the resolver/exclusion
+  seam; production-shaped scoring and count reductions are corrected; the
+  scorer and parity receipts bind the incumbent and expose row drift; target
+  membership has one owner-receipted surface; and Logbook scope, attempt IDs,
+  predecessor ordering, and failure rows meet the ratified contract.
+- After those changes, rerun the adversarial probes listed in `REVIEW-743.md`
+  before relying on the claimed green suites.
