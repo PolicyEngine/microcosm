@@ -226,11 +226,11 @@ def _bypass_reviewed_donor_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(spi_income, "_verify_spi_donor_identity", lambda _: None)
 
 
+@pytest.mark.requires_uk
 def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     monkeypatch,
     tmp_path,
 ) -> None:
-    pytest.importorskip("policyengine_uk")
     support = _dead_support()
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -378,11 +378,11 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     assert support.household_weight_kind is WeightKind.IMPORTANCE
 
 
+@pytest.mark.requires_uk
 def test_spi_stage2_does_not_require_frs_other_investment_income(
     monkeypatch,
     tmp_path,
 ) -> None:
-    pytest.importorskip("policyengine_uk")
     support = _dead_support(drop_income_component="other_investment_income")
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -424,11 +424,11 @@ def test_finite_numeric_diagnostic_names_columns_and_counts() -> None:
     assert "good" not in message
 
 
+@pytest.mark.requires_uk
 def test_spi_weighted_bootstrap_does_not_apply_fact_twice(
     monkeypatch,
     tmp_path,
 ) -> None:
-    pytest.importorskip("policyengine_uk")
     support = _dead_support()
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)

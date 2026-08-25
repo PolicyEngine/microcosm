@@ -7,9 +7,192 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      us: ${{ steps.filter.outputs.us }}
+      uk: ${{ steps.filter.outputs.uk }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Classify changed paths
+        id: filter
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import fnmatch
+          import json
+          import os
+          import subprocess
+          import urllib.request
+
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          event = json.loads(open(os.environ["GITHUB_EVENT_PATH"]).read())
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+
+          def api_json(url: str) -> object:
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request) as response:
+                  return json.loads(response.read())
+
+          def pull_request_files() -> list[str]:
+              number = event["pull_request"]["number"]
+              files: list[str] = []
+              page = 1
+              while True:
+                  payload = api_json(
+                      f"https://api.github.com/repos/{repo}/pulls/{number}/files"
+                      f"?per_page=100&page={page}"
+                  )
+                  if not payload:
+                      return files
+                  files.extend(item["filename"] for item in payload)
+                  page += 1
+
+          def push_files() -> list[str]:
+              before = event.get("before")
+              after = event.get("after")
+              if before and after and set(before) != {"0"}:
+                  payload = api_json(
+                      f"https://api.github.com/repos/{repo}/compare/{before}...{after}"
+                  )
+                  return [item["filename"] for item in payload.get("files", [])]
+              output = subprocess.check_output(
+                  ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", after],
+                  text=True,
+              )
+              return [line for line in output.splitlines() if line]
+
+          changed = pull_request_files() if event_name == "pull_request" else push_files()
+
+          filters = {
+              "shared": {
+                  "include": [
+                      "uv.lock",
+                      "pyproject.toml",
+                      "packages/*/pyproject.toml",
+                      "conftest.py",
+                      # Every shard's src, not just build+frame: microcosm-build
+                      # depends on frame, fit, and calibrate (and on data via the
+                      # us extra), and 19 country test files import calibrate/fit
+                      # — e.g. uk_runtime/diagnostics.py imports microcosm.calibrate.
+                      # The country-runtime excludes below keep country-scoped
+                      # changes classifying narrowly.
+                      "packages/*/src/**",
+                      # The quiet shards' tests execute in the engine tier (us-am),
+                      # so a change to them must open that lane. fnmatch has no
+                      # brace expansion, hence three lines.
+                      "packages/microcosm-calibrate/tests/**",
+                      "packages/microcosm-data/tests/**",
+                      "packages/microcosm-fit/tests/**",
+                      "specs/**",
+                      ".github/workflows/**",
+                      "tools/**",
+                  ],
+                  "exclude": [
+                      "packages/microcosm-build/src/microcosm/build/us_runtime/**",
+                      "packages/microcosm-build/src/microcosm/build/uk_runtime/**",
+                      "tools/*us*",
+                      "tools/*uk*",
+                  ],
+              },
+              "us": {
+                  "include": [
+                      "build/us/**",
+                      "packages/microcosm-build/src/microcosm/build/us_runtime/**",
+                      "packages/microcosm-build/tests/test_us_*",
+                      "packages/microcosm-frame/tests/test_policyengine_us_*",
+                      "packages/microcosm-frame/tests/test_rules_engine_contract.py",
+                      "tools/*us*",
+                  ],
+                  "exclude": [],
+              },
+              "uk": {
+                  "include": [
+                      "build/uk/**",
+                      "packages/microcosm-build/src/microcosm/build/uk_runtime/**",
+                      "packages/microcosm-build/tests/test_uk_*",
+                      "packages/microcosm-frame/tests/test_policyengine_uk_adapter.py",
+                      "tools/*uk*",
+                  ],
+                  "exclude": [],
+              },
+          }
+
+          def matches(path: str, include: list[str], exclude: list[str]) -> bool:
+              included = any(fnmatch.fnmatch(path, pattern) for pattern in include)
+              excluded = any(fnmatch.fnmatch(path, pattern) for pattern in exclude)
+              return included and not excluded
+
+          outputs = {
+              name: any(
+                  matches(path, spec["include"], spec["exclude"])
+                  for path in changed
+              )
+              for name, spec in filters.items()
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for name, value in outputs.items():
+                  print(f"{name}={str(value).lower()}", file=output)
+          print("changed paths:")
+          for path in changed:
+              print(path)
+          print("filters:", outputs)
+          PY
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Verify CI test groups
+        # python3 (not bare `python`): guaranteed on the Ubuntu image, and this
+        # step runs before any sync so it must hold with the stdlib alone.
+        run: python3 tools/ci_test_groups.py --verify
+      - name: Sync workspace
+        run: uv sync --all-packages --locked
+      - name: Lint
+        run: uv run --no-sync ruff check .
+
+  fast:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+        group: [trade, spine-uk, rest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Sync workspace without engines
+        run: uv sync --all-packages --locked
+      - name: Engine-free tests (${{ matrix.group }})
+        run: |
+          mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.group }}")
+          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+
+  engine-shared:
+    # Deliberately does NOT depend on `changes`: it reads no classifier output,
+    # and a dependency-skip (the inline script makes live API calls with no
+    # retry) would take the unconditional engine lane down with it.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.13", "3.14"]
     steps:
@@ -17,23 +200,58 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Sync workspace with US engine metadata
-        # The pool-input sweeps are live PolicyEngine-US ownership and consumer
-        # existence guards. Installing the US extra makes an upstream formula or
-        # consumer change fail here instead of being skipped until a remote build.
-        run: uv sync --all-packages --extra us
-      - name: Behavioral contract suite + unit tests
-        # One pytest process per shard. A single process accumulates the
-        # engine plus every shard's fixtures and repeatedly OOM-killed the
-        # 7 GB runner at ~91% (the runner-shutdown signature, three runs in
-        # a row); per-shard processes bound residency and give per-shard
-        # attribution if one shard ever outgrows the runner on its own.
+      - name: Sync workspace with US and UK engines
+        run: uv sync --all-packages --locked --extra us --extra uk
+      - name: Shared/spec engine tests
         run: |
-          for shard in packages/*/; do
-            uv run pytest "${shard}tests" -p no:cacheprovider
-          done
-      - name: Lint
-        run: uv run ruff check .
+          mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)
+          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+
+  engine-us:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.us == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+        group: [us-p, us-qs, us-not, us-am]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Sync workspace with US and UK engines
+        run: uv sync --all-packages --locked --extra us --extra uk
+      - name: US engine tests (${{ matrix.group }})
+        run: |
+          while IFS= read -r proc; do
+            mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.group }}:${proc}")
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+          done < <(uv run --no-sync python tools/ci_test_groups.py --procs "${{ matrix.group }}")
+
+  engine-uk:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.uk == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+        group: [uk]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Sync workspace with US and UK engines
+        run: uv sync --all-packages --locked --extra us --extra uk
+      - name: UK engine tests
+        run: |
+          while IFS= read -r proc; do
+            mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "uk:${proc}")
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+          done < <(uv run --no-sync python tools/ci_test_groups.py --procs uk)
 
   wheels:
     # The charter-mandated packaging gate: editable installs hide packaging
@@ -43,6 +261,7 @@ jobs:
     # semantics, and run the suite against the installed constellation.
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.13", "3.14"]
     steps:
@@ -106,5 +325,39 @@ jobs:
         run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk
       - name: Run the suite against the installed wheels
         run: |
-          env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
+          /usr/bin/time -v env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
             packages/*/tests -p no:cacheprovider
+
+  ci-ok:
+    # The single aggregate context for branch protection. Per-leg matrix names
+    # cannot be required: `jobs.<job_id>.if` is evaluated before the matrix
+    # expands, so a skipped lane reports one bare `engine-us` check and the
+    # per-leg contexts are never created — a required `engine-us (3.13, us-p)`
+    # would wait forever on a UK-only PR. This job also closes the seam where a
+    # dependency-skip lets a failed `changes` take the engine lanes down without
+    # any required check going red: a lane skip is accepted only when
+    # classification itself succeeded.
+    needs: [changes, lint, fast, engine-shared, engine-us, engine-uk, wheels]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every lane to have passed (or legitimately skipped)
+        run: |
+          set -euo pipefail
+          fail=0
+          require_success() {
+            if [ "$2" != "success" ]; then echo "::error::$1 = $2 (expected success)"; fail=1; fi
+          }
+          require_success changes        "${{ needs.changes.result }}"
+          require_success lint           "${{ needs.lint.result }}"
+          require_success fast           "${{ needs.fast.result }}"
+          require_success engine-shared  "${{ needs['engine-shared'].result }}"
+          require_success wheels         "${{ needs.wheels.result }}"
+          for lane in "engine-us:${{ needs['engine-us'].result }}" "engine-uk:${{ needs['engine-uk'].result }}"; do
+            name="${lane%%:*}"; result="${lane#*:}"
+            case "$result" in
+              success|skipped) echo "$name = $result" ;;
+              *) echo "::error::$name = $result (expected success or skipped)"; fail=1 ;;
+            esac
+          done
+          exit "$fail"
