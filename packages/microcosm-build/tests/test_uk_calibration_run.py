@@ -19,6 +19,9 @@ from microcosm.build.uk_runtime.calibration_run import (
     UKCalibrationRunPaths,
     run_uk_calibration,
 )
+from microcosm.build.uk_runtime.etb_services import (
+    UK_NHS_SPENDING_COMPONENT_COLUMNS,
+)
 from microcosm.build.uk_runtime.national_doctrine import UKNationalSolveDoctrine
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -458,6 +461,44 @@ def test_aggregate_admin_measurement_convention_and_refusals():
     stripped.table("household").drop(columns=["electricity_consumption"], inplace=True)
     with pytest.raises(ValueError, match="household.electricity_consumption"):
         calibration_run._aggregate_admin_totals(stripped, manifest)
+
+
+def test_nhs_anchor_composes_from_the_columns_the_spine_actually_carries():
+    """The anchor is published as one total; the spine carries it in three parts.
+
+    Composing is the translation from the published concept to ours, and the
+    receipt has to say so — the anchor measured a silent zero for as long as it
+    named a column no stage produces.
+    """
+
+    frame = _frame()
+    person = frame.table("person")
+    person.drop(columns=["nhs_spending"], inplace=True)
+    person["nhs_a_and_e_spending"] = [20.0, 20.0, 20.0, 20.0]
+    person["nhs_admitted_patient_spending"] = [25.0, 25.0, 25.0, 25.0]
+    person["nhs_outpatient_spending"] = [5.0, 5.0, 5.0, 5.0]
+    manifest = calibration_run._calibration_gate_manifest()
+
+    totals, receipt = calibration_run._aggregate_admin_totals(frame, manifest)
+
+    # Same 4 persons x 50.0 x weight 10.0 as the single-column fixture.
+    assert totals["nhs_spending_total"] == pytest.approx(2000.0)
+    by_anchor = {row["anchor"]: row for row in receipt}
+    assert by_anchor["nhs_spending_total"]["composed_from"] == list(
+        UK_NHS_SPENDING_COMPONENT_COLUMNS
+    )
+    assert by_anchor["need_gas_mean_spending"]["composed_from"] == []
+
+
+def test_partly_carried_derived_anchor_refuses_and_names_the_missing_part():
+    frame = _frame()
+    person = frame.table("person")
+    person.drop(columns=["nhs_spending"], inplace=True)
+    person["nhs_a_and_e_spending"] = [20.0, 20.0, 20.0, 20.0]
+    manifest = calibration_run._calibration_gate_manifest()
+
+    with pytest.raises(ValueError, match="nhs_admitted_patient_spending"):
+        calibration_run._aggregate_admin_totals(frame, manifest)
 
 
 def test_seam_pipeline_derives_a_ratified_logbook_scope():

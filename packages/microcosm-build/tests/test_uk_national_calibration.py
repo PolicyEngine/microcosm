@@ -861,3 +861,57 @@ def test_measure_resolution_never_touches_the_source_frame() -> None:
     assert ("household", "probe_measure") in resolution.measure_inputs
     for entity in frame.entities:
         assert list(frame.table(entity).columns) == before[entity]
+
+
+def test_published_child_reduction_translates_to_the_age_predicate():
+    """A published fact keeps its publisher's semantics; binding it is our job.
+
+    DWP names a dependent-child concept in `any_child_under`. The model carries
+    no `is_child` column because it has no need of one — dependency is derived
+    from age where it is wanted — so "any child under N" is exactly "any person
+    aged under N" here. The translation is declared, not aliased at the call
+    site, and refusing the fact instead would drop a real target.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_TRANSLATED_HOUSEHOLD_REDUCTIONS,
+        UKFrameTargetAdapter,
+    )
+
+    assert UK_TRANSLATED_HOUSEHOLD_REDUCTIONS["any_child_under"] == "any"
+
+    frame = _materialization_binding_frame()
+    adapter = UKFrameTargetAdapter(frame)
+    # Households 0 and 2 each carry an infant; household 1 does not.
+    adapter.tables["person"]["age"] = [0.0, 40.0, 35.0, 0.0, 38.0, 41.0]
+    condition = {
+        "variable": "age",
+        "entity": "person",
+        "reduce": "any_child_under",
+        "operator": "<",
+        "value": 1,
+    }
+
+    translated = adapter.household_condition(condition)
+
+    assert list(translated) == [True, False, True]
+    assert list(translated) == list(
+        adapter.household_condition({**condition, "reduce": "any"})
+    )
+
+
+def test_unmapped_household_reduction_names_the_published_reducer():
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    adapter = UKFrameTargetAdapter(_materialization_binding_frame())
+
+    with pytest.raises(ValueError, match="any_grandchild_under"):
+        adapter.household_condition(
+            {
+                "variable": "capital_gains",
+                "entity": "person",
+                "reduce": "any_grandchild_under",
+                "operator": "<",
+                "value": 1,
+            }
+        )

@@ -131,6 +131,24 @@ class UKPolicyEngineAdapter:
         raise KeyError(parameter)
 
 
+#: Published-fact reductions rewritten to the internal reduction that carries
+#: the same meaning on our frame. Facts keep the semantics of the source that
+#: published them; translating those onto the model's own concepts is our job,
+#: and a fact we cannot phrase internally gets translated and recorded, never
+#: dropped.
+#:
+#: ``any_child_under`` (DWP Stat-Xplore, Scottish UC households with a child
+#: under 1) names a dependent-child concept the model does not carry. There is
+#: no ``is_child`` column because the model has no need of one: dependency is
+#: derived from age where it is wanted. So "any child under N" is exactly "any
+#: person aged under N" here, and the condition already supplies the age bound.
+#: The rewrite is declared rather than aliased at the call site so it stays
+#: greppable, testable, and visible in review.
+UK_TRANSLATED_HOUSEHOLD_REDUCTIONS: Mapping[str, str] = {
+    "any_child_under": "any",
+}
+
+
 class UKFrameTargetAdapter:
     """Frame-backed target materialization adapter for UK calibration stages."""
 
@@ -239,7 +257,8 @@ class UKFrameTargetAdapter:
         source = self.tables[entity]
         household_ids = self._household_ids_for(entity)
 
-        reduce = str(condition["reduce"])
+        published = str(condition["reduce"])
+        reduce = UK_TRANSLATED_HOUSEHOLD_REDUCTIONS.get(published, published)
         variable = str(condition["variable"])
         if reduce == "any":
             matched = _compare_series(source[variable], condition)
@@ -252,7 +271,12 @@ class UKFrameTargetAdapter:
             aggregate = source[variable].groupby(household_ids).count()
             expected = condition
         else:
-            raise ValueError(f"Unsupported UK household reduction {reduce!r}.")
+            raise ValueError(
+                f"Unsupported UK household reduction {published!r}."
+                if published == reduce
+                else f"Unsupported UK household reduction {published!r} "
+                f"(translated to {reduce!r})."
+            )
 
         households = self.tables["household"]
         ids = households["household_id"]

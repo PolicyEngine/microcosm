@@ -45,6 +45,9 @@ from microcosm.build.uk_runtime.diagnostics import (
     uk_target_geography_levels,
     write_uk_calibration_diagnostics,
 )
+from microcosm.build.uk_runtime.etb_services import (
+    UK_NHS_SPENDING_COMPONENT_COLUMNS,
+)
 from microcosm.build.uk_runtime.national_calibration import UKNationalCalibrationStage
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -549,6 +552,16 @@ def _calibration_gate_manifest() -> GatesManifest:
     )
 
 
+#: Admin anchors published against a concept the frame carries only in parts.
+#: The anchor keeps the publisher's shape (one NHS budget line); our stages
+#: carry the spend split by point of delivery. Composing is the translation,
+#: declared here and recorded per anchor in the measurement receipt — never a
+#: reason to drop the anchor or to let it measure a silent zero.
+UK_DERIVED_ADMIN_ANCHOR_MEASURES: Mapping[str, tuple[str, ...]] = {
+    "nhs_spending": UK_NHS_SPENDING_COMPONENT_COLUMNS,
+}
+
+
 def _aggregate_admin_totals(
     frame: Frame, manifest: GatesManifest
 ) -> tuple[dict[str, float], list[dict[str, object]]]:
@@ -575,12 +588,22 @@ def _aggregate_admin_totals(
         name = str(anchor.get("name", anchor.get("measure")))
         measure = str(anchor.get("measure", anchor.get("name")))
         table = frame.table(entity)
+        composed_from: tuple[str, ...] = ()
         if measure not in table:
-            raise ValueError(
-                f"aggregate_admin anchor {name!r} needs {entity}.{measure}, "
-                "which the calibrated frame does not carry; refusing to "
-                "fabricate a measured value."
-            )
+            composed_from = UK_DERIVED_ADMIN_ANCHOR_MEASURES.get(measure, ())
+            missing = [column for column in composed_from if column not in table]
+            if not composed_from or missing:
+                raise ValueError(
+                    f"aggregate_admin anchor {name!r} needs {entity}.{measure}, "
+                    "which the calibrated frame does not carry"
+                    + (
+                        f" (declared as the sum of {list(composed_from)}, "
+                        f"missing {missing})"
+                        if composed_from
+                        else ""
+                    )
+                    + "; refusing to fabricate a measured value."
+                )
         if entity == "household":
             weights = household_weights
         elif entity == "person":
@@ -606,7 +629,11 @@ def _aggregate_admin_totals(
                 "the calibration seam measures household and person anchors "
                 "only."
             )
-        values = table[measure].to_numpy(dtype=float)
+        values = (
+            table[list(composed_from)].to_numpy(dtype=float).sum(axis=1)
+            if composed_from
+            else table[measure].to_numpy(dtype=float)
+        )
         total = float(np.dot(values, weights))
         carriers = values != 0
         carrier_weight = float(weights[carriers].sum())
@@ -627,6 +654,7 @@ def _aggregate_admin_totals(
                 "weighted_total": total,
                 "weighted_mean_carriers": mean_carriers,
                 "statistic_convention": "assessed_by_anchor_magnitude",
+                "composed_from": list(composed_from),
             }
         )
     return totals, receipt

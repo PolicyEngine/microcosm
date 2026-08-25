@@ -73,6 +73,15 @@ UK_ETB_SERVICES_OUTPUT_COLUMNS = (
     *UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS,
     *UK_NHS_OUTPUT_COLUMNS,
 )
+#: The NHS budget anchor is published as one total; this stage carries the
+#: spend split across the three points of delivery it imputes. Summing them is
+#: the translation from the published concept to ours — declared beside the
+#: columns so it cannot drift from what the stage actually produces.
+UK_NHS_SPENDING_COMPONENT_COLUMNS = (
+    "nhs_a_and_e_spending",
+    "nhs_admitted_patient_spending",
+    "nhs_outpatient_spending",
+)
 UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS = UK_ETB_SERVICES_OUTPUT_COLUMNS
 UK_ETB_SERVICES_FIT_NAME = "uk_etb_2024_services"
 UK_ETB_SERVICES_STAGE_NAME = "etb_services"
