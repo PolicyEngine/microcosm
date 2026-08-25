@@ -4,18 +4,21 @@
 
 - In progress on local audit branch `review/pr-747-audit`; the PR branch remains unmodified.
 - Reviewing cached PR head `86f55741081fa3fb5e3c55234e3c8dc7ff77c777` against merge base `7b90bb1882b0248d751a64bf817ec127e5c42a47`.
-- GitHub and the default uv cache are unavailable in the sandbox; no build will be run.
+- GitHub and the default uv cache are unavailable in the sandbox; the requested sync also failed from a writable cache because PyPI DNS is blocked. No repository build will be run.
+- Exact diff inventory: 27 commits, 51 files, 9,965 insertions and 3,922 deletions (the largest churn is generated `source_stages.json`).
 
 ## Done
 
 - Read `CLAUDE.md` and the GitNexus PR-review workflow.
 - Attempted the requested PR fetch and `gh pr view`; both failed because the sandbox cannot resolve GitHub.
 - Identified the cached matching remote-tracking head `origin/uk-spine-assembly-686`, checked it out as local `pr-747`, then branched before adding audit artifacts.
+- Retried `uv sync --all-packages --extra us` with `/tmp/uv-cache-review747`; resolution reached the locked `joblib==1.5.3` download and stopped on blocked DNS.
+- Located a complete sibling-worktree environment whose `uv.lock`, workspace metadata, and package metadata are byte-identical to the PR; it will run only targeted tests with this worktree's sources first on `PYTHONPATH`.
+- Inventoried the entire PR file/commit surface and assigned independent receipt, doctrine, and code/test audits.
 
 ## Next
 
-- Retry `uv sync --all-packages --extra us` with a writable temporary cache.
-- Inventory and read the full diff, every added receipt/register/fixture, and relevant doctrine.
+- Read the full diff, every added receipt/register/fixture, and relevant doctrine.
 - Verify suspicious claims with targeted tests and independent receipt checks.
 - Write `REVIEW-747.md` with a merge verdict and code-cited evidence.
 
