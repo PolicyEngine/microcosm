@@ -153,11 +153,11 @@
           "student_loan_balance"
         ],
         "entities": [
-          "household"
+          "person"
         ]
       },
       "expectation": "column_differs",
-      "magnitude_evidence": "Scoped apart from the benchmarked wealth columns because it has no donor benchmark to quote: the column is a fold of two WAS aggregates (total loans less total loans excluding Student Loans Company debt) and lands at a different entity grain from the household columns beside it, so no like-for-like donor share exists on the stage's cleaned frame. The observed divergence is +0.0296 on the unweighted share, incumbent 0.0197 against ours 0.0493 \u2014 the spine places student debt on about two and a half times as many carriers. Signed under the standing E5 adjudication as part of the same correlated-rank draw, with the absence of a benchmark stated rather than papered over; if the wealth stage is revisited, this is the column whose direction is unevidenced.",
+      "magnitude_evidence": "Scoped apart from the benchmarked wealth columns because it has no donor benchmark to quote: the column is a fold of two WAS aggregates (total loans less total loans excluding Student Loans Company debt) and is a person-entity column where the wealth columns beside it are household-entity, so no like-for-like donor share exists on the stage's cleaned frame. The observed divergence is +0.0296 on the unweighted share, incumbent 0.0197 against ours 0.0493 \u2014 the spine places student debt on about two and a half times as many carriers. Signed under the standing E5 adjudication as part of the same correlated-rank draw, with the absence of a benchmark stated rather than papered over; if the wealth stage is revisited, this is the column whose direction is unevidenced.",
       "evidence": "experiments/686-uk-spine-comparison-ledger.md#e5--wealth--signed-carried-forward",
       "adjudicator": "juaristi22",
       "adjudicated_on": "2026-08-24"

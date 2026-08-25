@@ -135,7 +135,10 @@ def _compare_entity_counts(
         entry = {"reference": expected, "candidate": observed, "equal": equal}
         if not equal:
             signed = register.matching(
-                surface="entity_counts", column=entity, expectation="count_differs"
+                surface="entity_counts",
+                column=entity,
+                expectation="count_differs",
+                entity=entity,
             )
             entry["signed_id"] = signed.id if signed else None
             if signed is None:
@@ -168,7 +171,10 @@ def _compare_shares(
             "delta": delta,
         }
         signed = register.matching(
-            surface="nonzero_shares", column=column, expectation="column_differs"
+            surface="nonzero_shares",
+            column=column,
+            expectation="column_differs",
+            entity=entities.get(column),
         )
         if abs(delta) <= band:
             # Reported, never dropped: the band decides what must be
@@ -185,7 +191,10 @@ def _compare_shares(
         out: dict[str, Any] = {}
         for column in sorted(names):
             signed = register.matching(
-                surface="nonzero_shares", column=column, expectation=expectation
+                surface="nonzero_shares",
+                column=column,
+                expectation=expectation,
+                entity=entities.get(column),
             )
             out[column] = {
                 "entity": entities.get(column),
@@ -222,6 +231,7 @@ def _compare_weighted_totals(
     reference_totals: Mapping[str, float],
     candidate_totals: Mapping[str, float],
     register: UKSignedDifferenceRegister,
+    entities: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     unsigned: list[str] = []
     differing: dict[str, Any] = {}
@@ -240,7 +250,10 @@ def _compare_weighted_totals(
         if relative is not None and abs(relative) <= TOTALS_EPSILON:
             continue
         signed = register.matching(
-            surface="weighted_totals", column=column, expectation="column_differs"
+            surface="weighted_totals",
+            column=column,
+            expectation="column_differs",
+            entity=(entities or {}).get(column),
         )
         # Deltas only: the absolute totals are licensed and stay outside.
         differing[column] = {
@@ -362,6 +375,7 @@ def verify_uk_spine_parity(
             {k: float(v) for k, v in left_totals.items()},
             {k: float(v) for k, v in right_totals.items()},
             register,
+            reference.input_entities,
         )
         totals_report["reference_identity"] = left.get("identity")
         totals_report["candidate_identity"] = right.get("identity")

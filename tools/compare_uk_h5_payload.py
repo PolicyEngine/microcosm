@@ -351,8 +351,14 @@ def apply_structure_only_verdict(
     for key, table in report["tables"].items():
         signed_ids: dict[str, str | None] = {}
         for column in sorted(table["value_mismatch_rows_by_column"]):
+            # The store key is the entity whose table this column lives in;
+            # passing it stops a household-scoped adjudication signing a
+            # same-named person column.
             entry = register.matching(
-                surface="payload_column", column=column, expectation="column_differs"
+                surface="payload_column",
+                column=column,
+                expectation="column_differs",
+                entity=key,
             )
             signed_ids[column] = entry.id if entry else None
             if entry is None:

@@ -286,11 +286,16 @@ def _entry(
     surface: str,
     columns: list[str],
     expectation: str = "column_differs",
+    entities: list[str] | None = None,
 ) -> dict:
     return {
         "id": identifier,
         "class": "mechanism_change",
-        "scope": {"surface": surface, "columns": columns, "entities": ["household"]},
+        "scope": {
+            "surface": surface,
+            "columns": columns,
+            "entities": entities if entities is not None else ["household"],
+        },
         "expectation": expectation,
         "magnitude_evidence": "disclosure-safe magnitude statement",
         "evidence": "experiments/686-uk-spine-swap-receipts.md#r0",
@@ -554,3 +559,97 @@ class TestRegisterSurfaceBridge:
             )
             == 1
         )
+
+
+class TestEntityScopeAcrossTables:
+    """A household adjudication must not sign a person column (#747 re-review).
+
+    The comparator iterates per table, so a column name that exists on two
+    entities reaches the same register lookup twice. Before the entity scope
+    was honoured, the household-scoped Scottish-water entry would have signed
+    a person-table divergence in a same-named column.
+    """
+
+    @staticmethod
+    def _tables_with_shared_column(*, person_value: float) -> dict:
+        tables = _tables()
+        tables["household"]["water_and_sewerage_charges"] = [5.0, 6.0]
+        tables["person"]["water_and_sewerage_charges"] = [1.0, 2.0, person_value]
+        return tables
+
+    def test_a_person_divergence_is_not_signed_by_a_household_entry(
+        self, tmp_path: Path
+    ) -> None:
+        pytest.importorskip("tables")
+        left = _write(
+            tmp_path / "left.h5", self._tables_with_shared_column(person_value=3.0)
+        )
+        right = _write(
+            tmp_path / "right.h5",
+            self._tables_with_shared_column(person_value=SENTINEL_VALUE),
+        )
+        register = _register(
+            tmp_path,
+            _entry(
+                "household-water",
+                surface="nonzero_shares",
+                columns=["water_and_sewerage_charges"],
+                entities=["household"],
+            ),
+        )
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(register),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 1
+        assert report["signed"]["unsigned_columns"] == [
+            "person.water_and_sewerage_charges"
+        ]
+        assert report["signed"]["matched_ids"] == []
+
+    def test_the_same_entry_signs_the_household_divergence(
+        self, tmp_path: Path
+    ) -> None:
+        pytest.importorskip("tables")
+        left_tables = self._tables_with_shared_column(person_value=3.0)
+        right_tables = self._tables_with_shared_column(person_value=3.0)
+        right_tables["household"]["water_and_sewerage_charges"] = [5.0, SENTINEL_VALUE]
+        left = _write(tmp_path / "left.h5", left_tables)
+        right = _write(tmp_path / "right.h5", right_tables)
+        register = _register(
+            tmp_path,
+            _entry(
+                "household-water",
+                surface="nonzero_shares",
+                columns=["water_and_sewerage_charges"],
+                entities=["household"],
+            ),
+        )
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(register),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 0
+        assert report["signed"]["matched_ids"] == ["household-water"]

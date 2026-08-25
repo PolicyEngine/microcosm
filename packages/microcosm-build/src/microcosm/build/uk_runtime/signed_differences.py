@@ -95,6 +95,16 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 #: versa.
 _PAYLOAD_BRIDGE_SURFACES = frozenset({"nonzero_shares", "weighted_totals"})
 
+#: Surfaces whose "column" is a column of a named entity's table. An entry on
+#: one of these must name both its columns and its entities: column names are
+#: not unique across tables, so an unscoped entry would sign a same-named
+#: column on an entity it was never adjudicated for. ``entity_counts`` is
+#: excluded because its "column" *is* the entity, and ``root_attr`` because a
+#: root attribute belongs to no entity.
+_ENTITY_SCOPED_SURFACES = frozenset(
+    {"nonzero_shares", "weighted_totals", "payload_column"}
+)
+
 
 @dataclass(frozen=True)
 class UKSignedDifference:
@@ -111,35 +121,67 @@ class UKSignedDifference:
     adjudicator: str
     adjudicated_on: str
 
-    def covers(self, *, surface: str, column: str, expectation: str) -> bool:
+    def covers(
+        self,
+        *,
+        surface: str,
+        column: str,
+        expectation: str,
+        entity: str | None = None,
+    ) -> bool:
         """Whether this entry signs the observed difference.
 
-        A difference is observed as ``(surface, column, expectation)`` and an
-        entry signs it only when the expectation matches — an entry adjudicated
-        for a column appearing (``column_missing_in_reference``) never excuses
-        that column's *values* diverging, and vice versa. The expectation is
-        therefore consulted at every lookup, not just validated at load.
+        A difference is observed as ``(surface, entity, column, expectation)``
+        and an entry signs it only when all of them match.
 
-        An empty ``columns`` tuple is a surface-wide entry (used by
-        ``entity_counts``, where the "column" is an entity name).
+        ``expectation`` is consulted at every lookup, not merely validated at
+        load: an entry adjudicated for a column *appearing*
+        (``column_missing_in_reference``) never excuses that column's *values*
+        diverging, and vice versa.
+
+        ``entity`` matters because column names are not unique across tables.
+        A caller that knows which entity's table it is reading passes it, and
+        an entry only signs a column on an entity it names — so a
+        household-scoped adjudication cannot sign a same-named person column.
+        A caller that cannot determine an entity passes ``None`` and gets no
+        entity filtering; on the surfaces where that is possible the column
+        namespace is already global, and the payload comparator — the one
+        surface that genuinely iterates per table — always knows its entity.
+
+        An empty ``columns`` tuple is a surface-wide entry, which the loader
+        permits only on ``entity_counts``, where the "column" is an entity
+        name.
 
         One deliberate cross-surface rule: a ``column_differs`` entry on a
         value-bearing surface (``nonzero_shares``, ``weighted_totals``) also
         covers a ``payload_column`` value mismatch on the same column, because
-        both readings measure the same adjudicated fact.
+        both readings measure the same adjudicated fact. The bridge carries
+        the entity scope with it rather than widening it.
         """
 
         if expectation != self.expectation:
             return False
-        if surface == self.surface:
-            return not self.columns or column in self.columns
-        if (
+        bridged = (
             surface == "payload_column"
             and expectation == "column_differs"
             and self.surface in _PAYLOAD_BRIDGE_SURFACES
+        )
+        if surface != self.surface and not bridged:
+            return False
+        if self.columns and column not in self.columns:
+            return False
+        if not self.columns and surface in _ENTITY_SCOPED_SURFACES:
+            # Defence in depth: the loader refuses these, so reaching here
+            # would mean a register built by another path.
+            return False
+        if (
+            entity is not None
+            and surface in _ENTITY_SCOPED_SURFACES
+            and self.entities
+            and entity not in self.entities
         ):
-            return not self.columns or column in self.columns
-        return False
+            return False
+        return True
 
 
 @dataclass(frozen=True)
@@ -167,13 +209,21 @@ class UKSignedDifferenceRegister:
         return None
 
     def matching(
-        self, *, surface: str, column: str, expectation: str
+        self,
+        *,
+        surface: str,
+        column: str,
+        expectation: str,
+        entity: str | None = None,
     ) -> UKSignedDifference | None:
         """The entry signing the observed difference, if any."""
 
         for difference in self.differences:
             if difference.covers(
-                surface=surface, column=column, expectation=expectation
+                surface=surface,
+                column=column,
+                expectation=expectation,
+                entity=entity,
             ):
                 return difference
         return None
@@ -287,6 +337,41 @@ def load_uk_spine_swap_signed_differences(
                 "per-gate reviewed-exclusion register instead."
             )
 
+        surface = _require_member(
+            raw_scope.get("surface"),
+            allowed=SIGNED_DIFFERENCE_SURFACES,
+            field_name=f"{where}.scope.surface",
+            resource=resource,
+        )
+        columns = _require_str_tuple(
+            raw_scope.get("columns"),
+            field_name=f"{where}.scope.columns",
+            resource=resource,
+        )
+        entities = _require_str_tuple(
+            raw_scope.get("entities"),
+            field_name=f"{where}.scope.entities",
+            resource=resource,
+        )
+        # A column name is not unique across entity tables, so an entry on a
+        # column surface that names no columns — or no entities — would sign
+        # divergences it was never adjudicated for. That is the one thing this
+        # register exists to prevent, so it is refused at load rather than
+        # left to reviewer vigilance.
+        if surface in _ENTITY_SCOPED_SURFACES:
+            if not columns:
+                raise ValueError(
+                    f"{resource}: {where} signs the {surface!r} surface without "
+                    "naming columns; it would absorb unrelated divergences."
+                )
+            if not entities:
+                raise ValueError(
+                    f"{resource}: {where} signs the {surface!r} surface without "
+                    "naming entities; column names are not unique across "
+                    "tables, so it could sign a same-named column on an entity "
+                    "it was never adjudicated for."
+                )
+
         differences.append(
             UKSignedDifference(
                 id=identifier,
@@ -296,28 +381,15 @@ def load_uk_spine_swap_signed_differences(
                     field_name=f"{where}.class",
                     resource=resource,
                 ),
-                surface=_require_member(
-                    raw_scope.get("surface"),
-                    allowed=SIGNED_DIFFERENCE_SURFACES,
-                    field_name=f"{where}.scope.surface",
-                    resource=resource,
-                ),
+                surface=surface,
                 expectation=_require_member(
                     raw.get("expectation"),
                     allowed=SIGNED_DIFFERENCE_EXPECTATIONS,
                     field_name=f"{where}.expectation",
                     resource=resource,
                 ),
-                columns=_require_str_tuple(
-                    raw_scope.get("columns"),
-                    field_name=f"{where}.scope.columns",
-                    resource=resource,
-                ),
-                entities=_require_str_tuple(
-                    raw_scope.get("entities"),
-                    field_name=f"{where}.scope.entities",
-                    resource=resource,
-                ),
+                columns=columns,
+                entities=entities,
                 magnitude_evidence=_require_str(
                     raw.get("magnitude_evidence"),
                     field_name=f"{where}.magnitude_evidence",

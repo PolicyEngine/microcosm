@@ -770,3 +770,50 @@ class TestReviewFindings:
             )
             == 1
         )
+
+
+class TestWeightedTotalsRegisterAccounting:
+    """A totals-scoped entry counts as matched, not as register rot.
+
+    Latent while the surface is dormant, and it bites exactly when the
+    surface is un-dormanted for a calibrated candidate — which is the moment
+    the accounting starts mattering.
+    """
+
+    def test_a_totals_entry_that_matched_is_not_reported_unused(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(tmp_path / "ref.json", {"identity": {}, "totals": {"col": 100.0}})
+        right = _write(
+            tmp_path / "cand.json", {"identity": {}, "totals": {"col": 125.0}}
+        )
+        register = _register(
+            tmp_path,
+            _entry("totals-signed", surface="weighted_totals", columns=["col"]),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(register),
+                "--reference-weighted-totals",
+                str(left),
+                "--candidate-weighted-totals",
+                str(right),
+                "--strict",
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 0
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["strict_failure"] is False
+        assert report["register"]["matched_ids"] == ["totals-signed"]
+        assert report["register"]["unused_ids"] == []
+        assert report["register"]["dormant_ids"] == []

@@ -332,6 +332,91 @@ class TestExpectationAwareCoverage:
                 )
 
 
+class TestEntityScope:
+    """A column name is not unique across tables (#747 re-review).
+
+    Every committed entry is entity-scoped, but `covers()` matched on column
+    alone — harmless while only the share surface consulted it, and
+    load-bearing the moment the payload bridge let a household adjudication
+    reach a per-table comparison.
+    """
+
+    def _entry(self, *, entities: list[str]) -> UKSignedDifference:
+        return UKSignedDifference(
+            id="household-scoped",
+            difference_class="mechanism_change",
+            surface="nonzero_shares",
+            expectation="column_differs",
+            columns=("water_and_sewerage_charges",),
+            entities=tuple(entities),
+            magnitude_evidence="evidence",
+            evidence="experiments/686-uk-spine-swap-receipts.md",
+            adjudicator="juaristi22",
+            adjudicated_on="2026-08-22",
+        )
+
+    def test_an_entry_signs_only_the_entity_it_names(self) -> None:
+        entry = self._entry(entities=["household"])
+        assert entry.covers(
+            surface="nonzero_shares",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
+            entity="household",
+        )
+        assert not entry.covers(
+            surface="nonzero_shares",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
+            entity="person",
+        )
+
+    def test_the_payload_bridge_carries_the_entity_scope(self) -> None:
+        # The bridge must not widen the adjudication it forwards.
+        entry = self._entry(entities=["household"])
+        assert entry.covers(
+            surface="payload_column",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
+            entity="household",
+        )
+        assert not entry.covers(
+            surface="payload_column",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
+            entity="person",
+        )
+
+    def test_a_caller_without_an_entity_gets_no_entity_filtering(self) -> None:
+        entry = self._entry(entities=["household"])
+        assert entry.covers(
+            surface="nonzero_shares",
+            column="water_and_sewerage_charges",
+            expectation="column_differs",
+        )
+
+    def test_every_committed_entry_names_the_reference_entity(self) -> None:
+        # An entry naming the wrong entity now fails to match rather than
+        # signing across tables, so a mis-declared scope is a defect.
+        reference = json.loads(
+            files("microcosm.build.uk")
+            .joinpath("efrs_parity_reference.json")
+            .read_text(encoding="utf-8")
+        )
+        entities = reference["input_entities"]
+        for difference in load_uk_spine_swap_signed_differences().differences:
+            if difference.surface not in {"nonzero_shares", "weighted_totals"}:
+                continue
+            for column in difference.columns:
+                actual = entities.get(column)
+                if actual is None:
+                    continue
+                assert actual in difference.entities, (
+                    f"{difference.id} scopes {column!r} to "
+                    f"{list(difference.entities)}, but the reference carries "
+                    f"it on {actual!r}."
+                )
+
+
 class TestValidation:
     def test_duplicate_ids_are_refused(self, tmp_path: Path) -> None:
         payload = {
@@ -373,6 +458,44 @@ class TestValidation:
         }
         with pytest.raises(ValueError, match=match):
             load_uk_spine_swap_signed_differences(_write(tmp_path, payload))
+
+    def test_a_column_surface_entry_without_columns_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        # Via the payload bridge an empty columns tuple would blanket-sign
+        # every column in every table.
+        entry = _valid_entry()
+        entry["scope"] = {
+            "surface": "nonzero_shares",
+            "columns": [],
+            "entities": ["household"],
+        }
+        payload = {"schema_version": 1, "scope_note": "note", "differences": [entry]}
+        with pytest.raises(ValueError, match="without naming columns"):
+            load_uk_spine_swap_signed_differences(_write(tmp_path, payload))
+
+    def test_a_column_surface_entry_without_entities_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        entry = _valid_entry()
+        entry["scope"] = {
+            "surface": "nonzero_shares",
+            "columns": ["savings"],
+            "entities": [],
+        }
+        payload = {"schema_version": 1, "scope_note": "note", "differences": [entry]}
+        with pytest.raises(ValueError, match="without naming entities"):
+            load_uk_spine_swap_signed_differences(_write(tmp_path, payload))
+
+    def test_an_entity_counts_entry_may_stay_surface_wide(self, tmp_path: Path) -> None:
+        # The one surface where a column-less entry is meaningful: its
+        # "column" is the entity name.
+        entry = _valid_entry()
+        entry["scope"] = {"surface": "entity_counts", "columns": [], "entities": []}
+        entry["expectation"] = "count_differs"
+        payload = {"schema_version": 1, "scope_note": "note", "differences": [entry]}
+        register = load_uk_spine_swap_signed_differences(_write(tmp_path, payload))
+        assert register.differences[0].columns == ()
 
     def test_unknown_surface_is_refused(self, tmp_path: Path) -> None:
         payload = {
