@@ -19,14 +19,12 @@ any blocking decision raises.
 from __future__ import annotations
 
 import json
-import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-
-import pandas as pd
 
 import microcosm.build.uk_runtime.national_frame as _national_frame
 from microcosm.build.country_spec import load_country_spec
@@ -47,16 +45,52 @@ from microcosm.build.plan import Stage as PlanStage
 from microcosm.build.plan import StagePlan, StageRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.national_frame import (
-    UKStagingProvenance,
+    UK_HOUSEHOLD_WEIGHT_KIND_ATTR as UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    UK_MASS_LOG_ATTR as UK_MASS_LOG_ATTR,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    UK_NATIONAL_H5_TABLES as UK_NATIONAL_H5_TABLES,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    UKStagingProvenance as UKStagingProvenance,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    _mass_log_from_stored as _mass_log_from_stored,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    _read_uk_national_tables as _read_uk_national_tables,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    _read_weight_metadata as _read_weight_metadata,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    _weight_kind_from_stored as _weight_kind_from_stored,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    _write_uk_single_year_tables as _write_uk_single_year_tables,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    _write_weight_metadata as _write_weight_metadata,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame as load_uk_national_frame,
+)
+from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.national_frame import (
+    write_uk_national_frame as write_uk_national_frame,
+)
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
     sample_uk_national_frame,
 )
+from microcosm.build.uk_runtime.parity_reference import EfrsParityReference
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
@@ -66,14 +100,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
 )
 from microcosm.calibrate import TargetRegistry
-from microcosm.frame import (
-    Frame,
-    MassChangeRecord,
-    WeightKind,
-    engine_tables,
-    put_frame_table,
-    read_frame_table,
-)
+from microcosm.frame import Frame
 
 __all__ = [
     "UKNationalBuildResult",
@@ -87,11 +114,6 @@ __all__ = [
     "validate_uk_national_frame",
     "write_uk_national_frame",
 ]
-
-UK_NATIONAL_H5_TABLES = ("person", "benunit", "household", "time_period")
-UK_HOUSEHOLD_WEIGHT_KIND_ATTR = "populace_household_weight_kind"
-UK_MASS_LOG_ATTR = "populace_mass_log_json"
-
 
 # The fingerprint pair moved to national_frame with the Frame carrier; the
 # re-import keeps this module's existing consumers (hmrc_restoration binds
@@ -173,169 +195,6 @@ class UKNationalBuildResult:
         return self.terminal_gate_path
 
 
-def _read_uk_national_tables(
-    path: str | Path,
-) -> tuple[dict[str, Any], _UKSourceFileFingerprint, Path]:
-    """Read a compact UK single-year H5's payload with the race guard.
-
-    Shared body of both loaders: suffix check, symlink resolution, and the
-    fingerprint-before/after guard binding the returned tables to one stable
-    set of bytes.
-    """
-
-    requested_path = Path(path).expanduser()
-    if requested_path.suffix != ".h5":
-        raise ValueError("UK national dataset path must end with '.h5'.")
-    # Hugging Face cache entries retain the requested ``.h5`` name as a
-    # symlink whose content-addressed blob target has no suffix. Validate the
-    # caller-facing artifact name before resolving it, while binding all
-    # provenance and stable-byte checks to the actual opened file.
-    input_path = requested_path.resolve()
-    if not input_path.is_file():
-        raise FileNotFoundError(f"UK national dataset not found: {input_path}.")
-
-    fingerprint_before = _uk_source_file_fingerprint(input_path)
-    stored_kind, stored_mass_log = _read_weight_metadata(input_path)
-    with pd.HDFStore(input_path, mode="r") as store:
-        keys = {key.lstrip("/") for key in store.keys()}
-        missing = sorted(set(UK_NATIONAL_H5_TABLES) - keys)
-        if missing:
-            raise ValueError(f"UK national dataset is missing table(s): {missing}.")
-        raw_period = store["time_period"]
-        if len(raw_period) != 1:
-            raise ValueError(
-                "UK national dataset time_period must contain exactly one value."
-            )
-        payload = {
-            "person": read_frame_table(store, "person"),
-            "benunit": read_frame_table(store, "benunit"),
-            "household": read_frame_table(store, "household"),
-            "time_period": str(raw_period.iloc[0]),
-            "household_weight_kind": _weight_kind_from_stored(stored_kind),
-            "mass_log": _mass_log_from_stored(stored_mass_log),
-        }
-    fingerprint_after = _uk_source_file_fingerprint(input_path)
-    if fingerprint_after != fingerprint_before:
-        raise RuntimeError(
-            "UK national source H5 changed while it was being loaded; refusing "
-            "to bind mixed or stale bytes to build stages."
-        )
-    return payload, fingerprint_after, input_path
-
-
-def load_uk_national_frame(
-    path: str | Path,
-) -> tuple[Frame, UKStagingProvenance]:
-    """Load a compact UK single-year H5 as a validated Frame plus provenance.
-
-    Frame construction is where the structural invariants are enforced
-    (linkage in both directions, sorted group ids, column uniqueness, weight
-    health); :func:`validate_uk_national_frame` adds the UK residue. The
-    provenance record travels beside the frame — it is the same source-path
-    and fingerprint identity the shadow carrier smuggled in private fields.
-    """
-
-    payload, fingerprint, input_path = _read_uk_national_tables(path)
-    frame = uk_national_frame(
-        person=payload["person"],
-        benunit=payload["benunit"],
-        household=payload["household"],
-        time_period=payload["time_period"],
-        weight_kind=payload["household_weight_kind"],
-        mass_log=payload["mass_log"],
-    )
-    validate_uk_national_frame(frame)
-    return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
-
-
-def _write_uk_single_year_tables(
-    *,
-    person: pd.DataFrame,
-    benunit: pd.DataFrame,
-    household: pd.DataFrame,
-    time_period: str,
-    weight_kind: WeightKind,
-    mass_log: tuple[MassChangeRecord, ...],
-    path: Path,
-) -> Path:
-    """The one physical writer for every UK single-year H5.
-
-    Tables and the weight-kind/mass-log attrs must land together: writing
-    them into a temporary file and renaming keeps a metadata failure from
-    leaving a complete-looking attr-less H5 that would silently default to
-    DESIGN semantics on the next read.
-    """
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
-    try:
-        with pd.HDFStore(temporary_path) as store:
-            put_frame_table(
-                store,
-                "person",
-                person,
-                preferred_format="table",
-                data_columns=True,
-            )
-            put_frame_table(
-                store,
-                "benunit",
-                benunit,
-                preferred_format="table",
-                data_columns=True,
-            )
-            put_frame_table(
-                store,
-                "household",
-                household,
-                preferred_format="table",
-                data_columns=True,
-            )
-            store.put(
-                "time_period",
-                pd.Series([time_period]),
-                format="table",
-                data_columns=True,
-            )
-        _write_weight_metadata(
-            temporary_path, weight_kind=weight_kind, mass_log=mass_log
-        )
-        temporary_path.replace(path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-    return path
-
-
-def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:
-    """Atomically write a validated UK national Frame as a staging H5.
-
-    The engine-facing payload is materialized through the shared
-    :func:`microcosm.frame.engine_tables`, so the typed weights are
-    authoritative and the ``household_weight`` column is overwritten in
-    place (preserving its position, and therefore the artifact's column
-    order).
-    """
-
-    validate_uk_national_frame(frame)
-    output_path = Path(path)
-    if output_path.suffix != ".h5":
-        raise ValueError("UK national staging path must end with '.h5'.")
-    # The export contract is pinned, not inherited: household weights are the
-    # one materialized vector, so a frame that somehow reached this point
-    # with other typed weights cannot grow reserved columns the UK loader
-    # rejects (validate_uk_national_frame refuses such frames anyway).
-    tables = engine_tables(frame, weighted_entities=("household",))
-    return _write_uk_single_year_tables(
-        person=tables["person"],
-        benunit=tables["benunit"],
-        household=tables["household"],
-        time_period=uk_time_period(frame),
-        weight_kind=uk_household_weight_kind(frame),
-        mass_log=frame.mass_log,
-        path=output_path,
-    )
-
-
 def build_uk_national_dataset(
     *,
     input_h5: str | Path,
@@ -360,6 +219,7 @@ def build_uk_national_dataset(
     now: date | None = None,
     gate_registry: Mapping[str, GateBinding] | None = None,
     ledger_target_registry: Mapping[int | str, TargetRegistry] | None = None,
+    parity_reference: EfrsParityReference | None = None,
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5.
 
@@ -555,6 +415,13 @@ def build_uk_national_dataset(
     calibration_evidence = _stage_calibration_evidence(materialized_stages)
     if calibration_evidence is not None:
         artifacts["national_calibration"] = calibration_evidence
+        parity_evidence = _stage_parity_evidence(
+            materialized_stages,
+            frame=frame,
+            parity_reference=parity_reference,
+        )
+        if parity_evidence is not None:
+            artifacts["parity_evidence"] = parity_evidence
     if input_mass_reference is not None:
         artifacts["input_mass_reference"] = input_mass_reference
     if reviewed_input_mass_exclusions is not None:
@@ -828,7 +695,80 @@ def _stage_calibration_evidence(
     for stage in stages:
         if stage.name == "national_calibration":
             manifest = getattr(stage.transform, "manifest", None)
-            return dict(manifest) if isinstance(manifest, Mapping) else {}
+            if not isinstance(manifest, Mapping):
+                raise RuntimeError(
+                    "national_calibration stage did not produce a manifest; "
+                    "refusing to build calibration gate evidence."
+                )
+            return dict(manifest)
+    return None
+
+
+def _stage_parity_evidence(
+    stages: tuple[PlanStage, ...],
+    *,
+    frame: Frame,
+    parity_reference: EfrsParityReference | None,
+) -> object | None:
+    """Build the parity-trio evidence, side by side, never aliased.
+
+    Two different comparisons travel in one object, and they are not equally
+    strong:
+
+    * The **column** surfaces are independently sourced — the candidate's from
+      the staged frame, the reference's from the frozen parity instrument's
+      declared input entities.
+    * The **target** surfaces are not. The parity instrument carries source
+      identity and incumbent input-column shares only; it holds no incumbent
+      target surface. So the reference side is the declared registry and the
+      candidate side is the solve's realized diagnostics — which proves that
+      the solve bound every declared target at the declared period, and does
+      **not** prove agreement with any incumbent-derived surface.
+
+    Neither side is ever copied from the other; a copied reference would make
+    the trio pass by construction. Sourcing the target side from an
+    incumbent-bound instrument needs an instrument that carries one, which is
+    release-cut work (#757).
+    """
+
+    for stage in stages:
+        if stage.name != "national_calibration":
+            continue
+        if parity_reference is None:
+            return None
+        diagnostics = getattr(stage.transform, "diagnostics", None)
+        if not isinstance(diagnostics, tuple):
+            raise RuntimeError(
+                "national_calibration stage did not produce target diagnostics; "
+                "refusing to build parity evidence."
+            )
+        registry = getattr(stage.transform, "registry", None)
+        specs = getattr(registry, "specs", None)
+        if specs is None:
+            raise RuntimeError(
+                "national_calibration stage carries no compiled registry; "
+                "refusing to build parity evidence."
+            )
+        target_relative_errors = {
+            str(row["name"]): float(row["relative_error"]) for row in diagnostics
+        }
+        return SimpleNamespace(
+            candidate_columns={
+                f"{entity}.{column}"
+                for entity in frame.entities
+                for column in frame.table(entity).columns
+            },
+            reference_columns={
+                f"{entity}.{name}"
+                for name, entity in parity_reference.input_entities.items()
+            },
+            candidate_targets=set(target_relative_errors),
+            # Solver diagnostics label rows as ``name@period``; the declared
+            # side is compared at the same labeled grain so a target bound at
+            # the wrong period cannot satisfy the surface.
+            reference_targets={f"{spec.name}@{spec.period}" for spec in specs},
+            target_relative_errors=target_relative_errors,
+        )
     return None
 
 
@@ -877,89 +817,3 @@ def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
         encoding="utf-8",
     )
     temporary_path.replace(path)
-
-
-def _weight_kind_from_stored(value: object) -> WeightKind:
-    if isinstance(value, bytes):
-        value = value.decode("utf-8")
-    try:
-        return WeightKind(str(value))
-    except ValueError as exc:
-        raise ValueError(f"Unknown stored UK household weight kind {value!r}.") from exc
-
-
-def _read_weight_metadata(path: Path) -> tuple[object, object]:
-    try:
-        import h5py
-    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
-        raise RuntimeError("h5py is required to read UK national metadata.") from exc
-    with h5py.File(path, mode="r") as file:
-        return (
-            file.attrs.get(
-                UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
-                WeightKind.DESIGN.value,
-            ),
-            file.attrs.get(UK_MASS_LOG_ATTR, "[]"),
-        )
-
-
-def _write_weight_metadata(
-    path: Path,
-    *,
-    weight_kind: WeightKind,
-    mass_log: tuple[MassChangeRecord, ...],
-) -> None:
-    try:
-        import h5py
-    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
-        raise RuntimeError("h5py is required to write UK national metadata.") from exc
-    with h5py.File(path, mode="r+") as file:
-        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = weight_kind.value
-        file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
-            [_mass_change_record_payload(record) for record in mass_log],
-            sort_keys=True,
-        )
-
-
-def _mass_log_from_stored(value: object) -> tuple[MassChangeRecord, ...]:
-    if isinstance(value, bytes):
-        value = value.decode("utf-8")
-    try:
-        payload = json.loads(str(value))
-    except json.JSONDecodeError as exc:
-        raise ValueError("Stored UK microcosm mass log is not valid JSON.") from exc
-    if not isinstance(payload, list):
-        raise ValueError("Stored UK microcosm mass log must be a JSON list.")
-    records: list[MassChangeRecord] = []
-    for entry in payload:
-        if not isinstance(entry, dict):
-            raise ValueError("Stored UK microcosm mass-log entries must be objects.")
-        try:
-            records.append(
-                MassChangeRecord(
-                    entity=str(entry["entity"]),
-                    old_total=float(entry["old_total"]),
-                    new_total=float(entry["new_total"]),
-                    declared_factor=(
-                        None
-                        if entry.get("declared_factor") is None
-                        else float(entry["declared_factor"])
-                    ),
-                    reason=str(entry["reason"]),
-                )
-            )
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(
-                "Stored UK microcosm mass-log entry is malformed."
-            ) from exc
-    return tuple(records)
-
-
-def _mass_change_record_payload(record: MassChangeRecord) -> dict[str, object]:
-    return {
-        "entity": record.entity,
-        "old_total": record.old_total,
-        "new_total": record.new_total,
-        "declared_factor": record.declared_factor,
-        "reason": record.reason,
-    }

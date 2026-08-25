@@ -77,7 +77,7 @@ FRAME_TABLE_SERIALIZERS = (
     FrameSerializerSpec(
         serializer_id="uk_single_year_h5",
         writer=HdfWriteSite(
-            "packages/microcosm-build/src/microcosm/build/uk_runtime/national_build.py",
+            "packages/microcosm-build/src/microcosm/build/uk_runtime/national_frame.py",
             "_write_uk_single_year_tables",
         ),
         backend="pandas.HDFStore table",
@@ -177,7 +177,7 @@ HDF_WRITE_EXCLUSIONS = (
     HdfWriteExclusion(
         exclusion_id="uk_weight_root_attrs",
         writer=HdfWriteSite(
-            "packages/microcosm-build/src/microcosm/build/uk_runtime/national_build.py",
+            "packages/microcosm-build/src/microcosm/build/uk_runtime/national_frame.py",
             "_write_weight_metadata",
         ),
         reason="Adds weight-kind and mass-log root attributes only.",
