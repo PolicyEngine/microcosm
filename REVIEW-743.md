@@ -1,10 +1,66 @@
-HOLD — the documented held-run command cannot materialize the production target surface; the decisive rule-1 scorer cannot score or authenticate exported UK artifacts; boolean child-count targets are miscomputed; release-candidate membership is operator-selectable through unsigned waivers; and the new calibration attempts cannot enter the ratified Logbook chain.
+POST-ROUND-2 HOLD — all five round-1 P0 findings survive at the live PR head. The live head is still exactly `74b4d768`, so the three seam commits named as later changes were already included in round 1 and supply no resolving delta.
 
 # Defensive correctness and completeness audit — microcosm PR #743
 
 Reviewed PR head 74b4d768f7f7c83eb0593464ceb0e2a7c81ec154 against its exact merge base 7b90bb1882. The triple-dot diff is 35 files, 4,881 additions, and 437 deletions. I read every changed executable path and every added runbook, register, fixture, and receipt-producing path. No build was run.
 
-## Ranked findings
+## Round 2 — current-head reverification (2026-08-25)
+
+### Exact head and scope
+
+The live GitHub PR record, fresh `FETCH_HEAD`, and
+`origin/uk-national-first-calibrated-candidate-623` independently resolved to
+`74b4d768f7f7c83eb0593464ceb0e2a7c81ec154`; `git diff --quiet` found the trees
+identical. `git merge-base --is-ancestor <sha> 74b4d768` exited 0 for each of
+`96e73047`, `971a9699`, and `e54e546b`. Thus those commits precede the audited
+head: there is no commit after round 1 to cite as a resolution. The verdicts
+below nevertheless use fresh runtime/static probes, rather than history alone.
+
+The requested five are the five P0 findings named in the round-1 summary
+(P0/1–P0/5 below). The three supplemental P1 observations remain preserved in
+the historical round-1 section; this matrix does not silently promote or close
+them without a separate full reprobe.
+
+| Round-1 finding | Round-2 verdict | Fresh evidence at `74b4d768` and current-head citations |
+|---|---|---|
+| 1. Documented held-run path aborts on the production target surface | **SURVIVES** | The runbook still invokes the national builder (`docs/uk-national-calibration-runbook-623.md:20-36`), whose stage construction still supplies neither resolver nor exclusions (`tools/build_uk_national_dataset.py:922-934`). The stage still returns no resolution without a resolver and refuses an activated unmaterializable measure (`packages/microcosm-build/src/microcosm/build/uk_runtime/national_calibration.py:86-99,203-218`). The exact packaged no-resolver regression passed while asserting that `RuntimeError` (`packages/microcosm-build/tests/test_uk_national_calibration.py:478-494`); no production-shaped successful builder path was found. |
+| 2. Rule-1 scorer cannot score/authenticate production exports | **SURVIVES** | The scorer still calls `score_targets` directly on loaded H5 frames (`tools/score_uk_national_candidate.py:36-59`), while calibration still exports rebuilt pristine tables (`packages/microcosm-build/src/microcosm/build/uk_runtime/national_calibration.py:341-357,380-396`). Fresh inventory: all **397/397** target references are slash-named; a production-shaped `dwp/uc/households` target still raised `ValueError: No targets compiled`. Arbitrary H5s with SHA-256 `c052af90…` and `3827878d…` were still accepted under the default candidate/incumbent labels, and neither digest appeared in the receipt (`tools/score_uk_national_candidate.py:85-93,119-177,186-198`; representative target at `packages/microcosm-build/src/microcosm/build/uk/target_references.json:9532-9545`). |
+| 3. Boolean person-count targets collapse with `any` | **SURVIVES** | Production routing still chooses boolean `max` for person-to-household reduction (`packages/microcosm-build/src/microcosm/build/uk_runtime/measure_simulation.py:23-76`). A three-child household again resolved to `[1.0, 0.0]`, not `[3.0, 0.0]`, through `bool_any_collapse_person_to_household`; inventory again found eight affected bindings. The added test still covers only legitimate predicate-any semantics (`packages/microcosm-build/tests/test_uk_measure_simulation.py:80-88`), while representative child-count bindings remain in `packages/microcosm-build/src/microcosm/build/uk/uk_national_targets.json:3641-3780`. |
+| 4. Calibration seam cannot enter the ratified Logbook chain safely | **SURVIVES** | The pipeline remains `uk-national-calibration` (`packages/microcosm-build/src/microcosm/build/uk_runtime/calibration_run.py:52-54`), which still derives undeclared scope `uk/national`; the declared scopes remain `uk/frs` and `us` (`tools/logbook.py:63-67,192-200`; `logbook/README.md:3-5,22-44`). A fresh AST/order probe found staging write at line 227, build-record write at 259, record attempt at 265, and predecessor resolution only at 274 (`packages/microcosm-build/src/microcosm/build/uk_runtime/calibration_run.py:201-276`); export still enforces archive/pipeline scope agreement (`tools/logbook.py:419-438`). |
+| 5. Release-candidate membership is operator-selectable through unsigned exclusions | **SURVIVES** | The parser still accepts `--release-candidate --measure-exclusions /private/tmp/.../operator.json`, and the custom file is still loaded/applied before the run (`tools/calibrate_uk_national_dataset.py:42-61,127-184`). The scoped battery still omits `uk_target_surface` (`packages/microcosm-build/src/microcosm/build/uk_runtime/calibration_run.py:87-116`). All five packaged exclusions still have only `name`, `reason`, and `tracking` (`packages/microcosm-build/src/microcosm/build/uk/calibration_measure_exclusions.json:1-30`), omitting the approval/adjudication/expiry fields enforced by the repository's complete exclusion receipt (`packages/microcosm-build/src/microcosm/build/uk_runtime/weighted_integrity.py:259-344`). |
+
+### Vahid's second-pass findings: overlap and supersession
+
+I read the four findings in [Vahid Ahmadi's second-pass PR comment](https://github.com/PolicyEngine/microcosm/pull/743#issuecomment-5408202783). None supersedes any of the five findings above; three are distinct defects and the fourth is safe in the current implementation.
+
+| Vahid finding | Relationship to this audit | Current-head check |
+|---|---|---|
+| Duplicate household IDs collapse in `_aggregate_admin_totals` | **Distinct; no overlap or supersession.** This is an admin-anchor weighting bug, not the Logbook, scorer, target-membership, runbook, or boolean-count defect. | The person path still builds `dict(zip(household_id, household_weights))`, so duplicate clone IDs overwrite earlier weights before person lookup (`packages/microcosm-build/src/microcosm/build/uk_runtime/calibration_run.py:343-389`). |
+| `_band_lower_edge` chooses the first sorted Ledger filter | **Adjacent to P0/3, but distinct.** Both affect target materialization; P0/3 concerns the aggregation operator, whereas this concerns which band metadata supplies a threshold. Neither fixes nor subsumes the other. | The function still scans all sorted `ledger_filter_*` keys and returns the first numeric/range match without relating the key to the binding's `groupby_variable` (`packages/microcosm-build/src/microcosm/build/target_materialization.py:291-318`). |
+| `UKMeasureResolver.knows` makes the entity fence vacuous | **Adjacent to P0/1, but distinct.** P0/1 proves the documented builder omits the resolver altogether; this finding concerns entity validation when the resolver is used. | For every known variable, `knows` still returns `native == entity or entity in _ENTITY_ID`; a valid requested entity therefore passes even when it is not the variable's native entity (`packages/microcosm-build/src/microcosm/build/uk_runtime/measure_simulation.py:121-126`). |
+| Resolver injection might mutate source frames | **Confirmed safe / not a current finding; no supersession.** | `UKFrameTargetAdapter.__init__` copies every entity table and link table before `_inject_measure_inputs` writes adapter state (`packages/microcosm-build/src/microcosm/build/uk_runtime/ledger_targets.py:134-140`). No source-frame mutation path was reproduced. |
+
+### Round-2 verification record
+
+- Required `uv sync --all-packages --extra us` was attempted first. With a
+  task-local cache, lock resolution completed and package download stopped on
+  DNS. No build was run.
+- The fallback interpreter came from the sibling worktree whose `uv.lock`
+  SHA-256 exactly matches this worktree:
+  `0a36a8d2ae77adad1a64dde76fc8ebc57424abd51bf1c6a099d795416ee6b0cb`.
+  All five current-worktree package source roots preceded it on `PYTHONPATH`.
+- The corrected focused suite passed across
+  `test_uk_calibration_run.py`, `test_uk_calibration_seam_driver.py`,
+  `test_score_uk_national_candidate.py`, `test_uk_measure_simulation.py`,
+  `test_target_materialization.py`, and the exact
+  `test_packaged_materialization_skip_aborts_national_stage` regression.
+- Fresh probes produced the values recorded in the matrix: 397 slash-named
+  targets, production-shaped scorer refusal, arbitrary-label scorer acceptance,
+  `[1, 0]` versus `[3, 0]` child counts, undeclared `uk/national` scope and late
+  predecessor resolution, and acceptance of a custom release-candidate
+  exclusion file.
+
+## Round 1 — ranked findings
 
 ### P0 / 1. The documented held-run command takes a path that is known to abort on this production target surface
 

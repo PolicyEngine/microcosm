@@ -2,7 +2,7 @@
 
 ## State (round 2)
 
-- Current-head reverification is in progress on the dedicated
+- Current-head reverification is complete on the dedicated
   `review/pr-743-audit` branch; the PR branch remains untouched.
 - GitHub's live PR record, the freshly written `FETCH_HEAD`, and
   `origin/uk-national-first-calibrated-candidate-623` all resolve to
@@ -26,12 +26,19 @@
 - Refreshed probes for the documented builder path, production-shaped scorer,
   boolean child counts, Logbook scope/order, and release-candidate exclusion
   path. All five round-1 P0 failures reproduced at the live head.
+- Added the round-2 verdict matrix to `REVIEW-743.md`: all five P0 findings are
+  **SURVIVES**. Mapped Vahid Ahmadi's four second-pass findings: none supersedes
+  ours; three are distinct/adjacent defects and the source-frame mutation
+  concern is safe because the adapter copies its tables and links.
 
 ## Next (round 2)
 
-- Add the round-2 verdict matrix and Vahid overlap/supersession analysis to
-  `REVIEW-743.md`, update this journal to complete, commit both files, and
-  publish only the authorized review branch.
+- Publish this committed report only to the authorized
+  `review/pr-743-audit` branch. Ordinary Git transport is currently blocked by
+  host DNS; do not push any production or PR source branch.
+- The PR owner should treat the five original P0 findings and Vahid's three
+  confirmed distinct defects as open until fixes land on a genuinely new head,
+  then rerun the same probes.
 
 ---
 
