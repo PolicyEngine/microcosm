@@ -20,6 +20,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.support_clip import (
+    UKSupportClipReceipt,
+    UKSupportClipResult,
+    support_clip_to_donor_with_receipt,
+)
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -77,6 +82,7 @@ UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS = tuple(
 )
 UK_WAS_WEALTH_DECLARED_SEEDS = {"was_wealth": 0}
 UK_WAS_WEALTH_FIT_NAME = "uk_was_2018_20_wealth"
+UK_WAS_WEALTH_STAGE_NAME = "was_wealth"
 
 REGIONS: Mapping[int, str] = {
     1: "NORTH_EAST",
@@ -152,6 +158,20 @@ _RAW_TO_CLEAN = {
 
 
 @dataclass
+class UKWASWealthResult:
+    """Transformed frame and donor-support clip receipt."""
+
+    frame: Frame
+    support_clip: UKSupportClipReceipt
+
+    def evidence(self) -> dict[str, object]:
+        return {
+            "stage": UK_WAS_WEALTH_STAGE_NAME,
+            "support_clip": self.support_clip.evidence(),
+        }
+
+
+@dataclass
 class UKWASWealthStageTransform:
     """Whole-stage callable for WAS-trained UK wealth imputation.
 
@@ -170,6 +190,7 @@ class UKWASWealthStageTransform:
         init=False,
         repr=False,
     )
+    last_result: UKWASWealthResult | None = field(default=None, init=False)
 
     @property
     def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
@@ -198,7 +219,8 @@ class UKWASWealthStageTransform:
             n_estimators=_qrf_n_estimators(self.stage),
         )
         self.last_fit_weight_records = imputation.fit_weight_records
-        household_draws = support_clip_to_donor(imputation.draws, donor)
+        clip_result = support_clip_to_donor(imputation.draws, donor)
+        household_draws = clip_result.clipped
         household_draws["num_vehicles"] = (
             np.rint(household_draws["num_vehicles"]).clip(lower=0).astype("int64")
         )
@@ -221,11 +243,20 @@ class UKWASWealthStageTransform:
             mass_log=frame.mass_log,
         )
         validate_uk_national_frame(result)
+        self.last_result = UKWASWealthResult(
+            frame=result,
+            support_clip=clip_result.receipt,
+        )
         return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return UK_WAS_WEALTH_OUTPUT_COLUMNS
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_result is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_result.evidence()}
 
 
 def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
@@ -478,22 +509,17 @@ def encode_qrf_predictor_pair(
     )
 
 
-def support_clip_to_donor(draws: pd.DataFrame, donor: pd.DataFrame) -> pd.DataFrame:
+def support_clip_to_donor(
+    draws: pd.DataFrame, donor: pd.DataFrame
+) -> UKSupportClipResult:
     """Clip output draws to donor-realized support."""
 
-    clipped = draws.copy()
-    for column in UK_WAS_WEALTH_OUTPUT_COLUMNS:
-        if column not in clipped or column not in donor:
-            continue
-        values = pd.to_numeric(donor[column], errors="coerce")
-        finite = values[np.isfinite(values)]
-        if finite.empty:
-            continue
-        clipped[column] = clipped[column].clip(
-            lower=float(finite.min()),
-            upper=float(finite.max()),
-        )
-    return clipped
+    return support_clip_to_donor_with_receipt(
+        draws,
+        donor,
+        columns=UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        stage=UK_WAS_WEALTH_STAGE_NAME,
+    )
 
 
 def allocate_student_loan_balance_to_people(

@@ -7,6 +7,7 @@ import hashlib
 import json
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -444,6 +445,39 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
         if stage_seeds:
             declared[stage.stage] = stage_seeds
     return declared
+
+
+def _result_evidence(result: object) -> object:
+    if isinstance(result, dict):
+        return result
+    evidence = getattr(result, "evidence", None)
+    if callable(evidence):
+        return evidence()
+    return None
+
+
+def _collect_stage_evidence(
+    *,
+    stage_names: Sequence[str],
+    implementations: Mapping[str, object],
+) -> dict[str, object]:
+    evidence_by_stage: dict[str, object] = {}
+    for stage_name in stage_names:
+        implementation = implementations.get(stage_name)
+        if implementation is None:
+            continue
+        metadata = None
+        metadata_hook = getattr(implementation, "checkpoint_metadata", None)
+        if callable(metadata_hook):
+            metadata = dict(metadata_hook())
+            evidence = metadata.get("evidence", metadata)
+        else:
+            evidence = _result_evidence(
+                getattr(implementation, "last_result", None)
+            )
+        if evidence is not None:
+            evidence_by_stage[stage_name] = evidence
+    return evidence_by_stage
 
 
 def _build_sidecar(
@@ -890,30 +924,12 @@ def main(argv: list[str] | None = None) -> int:
             frs_vintage=frs_release.vintage,
             sampling=sampling,
         )
-        # E8 executed-effect receipts (#730/#684 two-arm rule, arm 2): the
-        # clone/donor/salsac/student-loan transforms record their receipts on
-        # last_result; persist them beside the declared seeds so the sidecar
-        # carries evidence that every declared parameter shaped the output.
-        e8_stage_evidence: dict[str, object] = {}
-        for e8_stage_name in (
-            "cgt_incidence_clone",
-            "cgt_band_donors",
-            "salary_sacrifice",
-            "student_loans",
-            "age_tail",
-        ):
-            e8_implementation = implementations.get(e8_stage_name)
-            e8_last_result = getattr(e8_implementation, "last_result", None)
-            if e8_last_result is not None:
-                # age_tail's receipt is already the evidence mapping; the E8
-                # transforms carry a result object that produces one.
-                e8_stage_evidence[e8_stage_name] = (
-                    e8_last_result
-                    if isinstance(e8_last_result, dict)
-                    else e8_last_result.evidence()
-                )
-        if e8_stage_evidence:
-            sidecar["stage_evidence"] = e8_stage_evidence
+        stage_evidence = _collect_stage_evidence(
+            stage_names=_STAGE_NAMES,
+            implementations=implementations,
+        )
+        if stage_evidence:
+            sidecar["stage_evidence"] = stage_evidence
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:

@@ -1646,6 +1646,101 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     }
 
 
+def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
+    tool = _load_tool()
+
+    class _EvidenceResult:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self.payload = payload
+
+        def evidence(self) -> dict[str, object]:
+            return self.payload
+
+    class _CheckpointStage:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self.payload = payload
+
+        def checkpoint_metadata(self) -> dict[str, object]:
+            return {"evidence": self.payload}
+
+    e8_payloads = {
+        "cgt_incidence_clone": {"stage": "cgt_incidence_clone", "rows": 1},
+        "cgt_band_donors": {"stage": "cgt_band_donors", "rows": 2},
+        "salary_sacrifice": {"stage": "salary_sacrifice", "rows": 3},
+        "student_loans": {"stage": "student_loans", "rows": 4},
+        "age_tail": {"stage": "age_tail", "rows": 5},
+    }
+    spi_payloads = {
+        "frs_hmrc_spine_leaves": {
+            "stage": "frs_hmrc_spine_leaves",
+            "source_signal_rows": {"employment_income": 2},
+        },
+        "spi_support_channel": {
+            "stage": "spi_support_channel",
+            "spi_households": 7,
+        },
+        "hmrc_spi_income_spine": {
+            "stage": "hmrc_spi_income_spine",
+            "targets": {"count": 8},
+        },
+    }
+    new_payload = {"stage": "future_stage", "rows": 9}
+    implementations = {
+        "frs_spine": SimpleNamespace(),
+        "frs_hmrc_spine_leaves": _CheckpointStage(
+            spi_payloads["frs_hmrc_spine_leaves"]
+        ),
+        "spi_support_channel": _CheckpointStage(spi_payloads["spi_support_channel"]),
+        "hmrc_spi_income_spine": _CheckpointStage(
+            spi_payloads["hmrc_spi_income_spine"]
+        ),
+        "cgt_incidence_clone": _CheckpointStage(
+            e8_payloads["cgt_incidence_clone"]
+        ),
+        "cgt_band_donors": _CheckpointStage(e8_payloads["cgt_band_donors"]),
+        "salary_sacrifice": _CheckpointStage(e8_payloads["salary_sacrifice"]),
+        "student_loans": SimpleNamespace(
+            last_result=_EvidenceResult(e8_payloads["student_loans"])
+        ),
+        "age_tail": SimpleNamespace(last_result=e8_payloads["age_tail"]),
+        "future_stage": _CheckpointStage(new_payload),
+    }
+
+    evidence = tool._collect_stage_evidence(
+        stage_names=(
+            "frs_spine",
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "hmrc_spi_income_spine",
+            "cgt_incidence_clone",
+            "cgt_band_donors",
+            "salary_sacrifice",
+            "student_loans",
+            "age_tail",
+            "future_stage",
+        ),
+        implementations=implementations,
+    )
+
+    assert evidence == {
+        **spi_payloads,
+        **e8_payloads,
+        "future_stage": new_payload,
+    }
+    assert list(evidence) == [
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "hmrc_spi_income_spine",
+        "cgt_incidence_clone",
+        "cgt_band_donors",
+        "salary_sacrifice",
+        "student_loans",
+        "age_tail",
+        "future_stage",
+    ]
+    assert "frs_spine" not in evidence
+
+
 class TestScottishWaterAndSewerage:
     """The FRS 2024-25 cell retirement, at the three shapes the tab presents.
 

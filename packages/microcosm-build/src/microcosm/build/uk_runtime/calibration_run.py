@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.diagnostics import (
 from microcosm.build.uk_runtime.national_calibration import UKNationalCalibrationStage
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
+    uk_household_weight_kind,
     write_uk_national_frame,
 )
 from microcosm.calibrate import TargetRegistry
@@ -295,6 +296,9 @@ def _run_uk_calibration_attempt(
     append_phase(state, "input_sha_verified")
     frame, _provenance = load_uk_national_frame(paths.input_h5)
     append_phase(state, "input_loaded")
+    spine_sidecar_path = paths.input_h5.with_suffix(".build.json")
+    spine_sidecar = _load_bound_spine_sidecar(spine_sidecar_path, frame)
+    append_phase(state, "input_sidecar_bound")
     assert_calibration_input_finite(frame)
     append_phase(state, "input_finite")
 
@@ -329,6 +333,10 @@ def _run_uk_calibration_attempt(
             else None
         ),
         "register": _register_census(register_registry, exclusion_receipt),
+        "spine_provenance": _spine_provenance_from_sidecar(
+            spine_sidecar_path,
+            spine_sidecar,
+        ),
         "score_vs_enhanced_frs": None,
     }
     write_uk_calibration_diagnostics(
@@ -369,6 +377,7 @@ def _run_uk_calibration_attempt(
         "source_pins": dict(source_pins),
         "role_pins_digest": role_pins_digest(source_pins),
         "input_posture": build_block["input_posture"],
+        "spine_provenance": build_block["spine_provenance"],
         "register": build_block["register"],
         "calibration": stage.manifest,
         "gate_summary": _gate_summary(gate_report),
@@ -457,6 +466,73 @@ def _run_calibration_gate_battery(
     _resign_gate_report(payload)
     _write_json(path, payload)
     return payload
+
+
+def _load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
+    if not path.is_file():
+        raise ValueError(f"input H5 build sidecar absent: {path}")
+    try:
+        sidecar = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"input H5 build sidecar is invalid JSON: {path}") from exc
+    if not isinstance(sidecar, dict):
+        raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
+    _assert_spine_sidecar_binds_frame(sidecar, frame)
+    return sidecar
+
+
+def _assert_spine_sidecar_binds_frame(
+    sidecar: Mapping[str, object],
+    frame: Frame,
+) -> None:
+    expected_counts = sidecar.get("entity_row_counts")
+    actual_counts = {entity: int(len(frame.table(entity))) for entity in frame.entities}
+    if expected_counts != actual_counts:
+        raise ValueError(
+            "input H5 build sidecar row-count mismatch: "
+            f"sidecar {expected_counts!r}, frame {actual_counts!r}"
+        )
+    expected_kind = sidecar.get("household_weight_kind")
+    actual_kind = uk_household_weight_kind(frame).value
+    if expected_kind != actual_kind:
+        raise ValueError(
+            "input H5 build sidecar household_weight_kind mismatch: "
+            f"sidecar {expected_kind!r}, frame {actual_kind!r}"
+        )
+    expected_total = sidecar.get("household_weight_total")
+    actual_total = float(frame.weights_for("household").values.sum())
+    if not isinstance(expected_total, int | float) or not np.isclose(
+        float(expected_total), actual_total
+    ):
+        raise ValueError(
+            "input H5 build sidecar household_weight_total mismatch: "
+            f"sidecar {expected_total!r}, frame {actual_total!r}"
+        )
+
+
+def _spine_provenance_from_sidecar(
+    path: Path,
+    sidecar: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "sidecar": {
+            "path": str(path),
+            "sha256": _sha256_file(path),
+            "schema_version": sidecar.get("schema_version"),
+            "pipeline": sidecar.get("pipeline"),
+        },
+        "stages": list(sidecar.get("stages", ())),
+        "stage_records": list(sidecar.get("stage_records", ())),
+        "stage_evidence": dict(sidecar.get("stage_evidence", {})),
+        "artifact_pins": dict(sidecar.get("artifact_pins", {})),
+        "input_artifact_pins": dict(sidecar.get("input_artifact_pins", {})),
+        "resource_pins": dict(sidecar.get("resource_pins", {})),
+        "stage_artifact_pins": dict(sidecar.get("stage_artifact_pins", {})),
+        "declared_seeds": dict(sidecar.get("declared_seeds", {})),
+        "rules_engine": dict(sidecar.get("rules_engine", {})),
+        "source_vintages": dict(sidecar.get("source_vintages", {})),
+        "stochastic_contract_sha256": sidecar.get("stochastic_contract_sha256"),
+    }
 
 
 def _calibration_gate_manifest() -> GatesManifest:

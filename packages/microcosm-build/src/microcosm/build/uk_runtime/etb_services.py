@@ -19,6 +19,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.support_clip import (
+    UKSupportClipReceipt,
+    UKSupportClipResult,
+    support_clip_to_donor_with_receipt,
+)
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -70,6 +75,21 @@ UK_ETB_SERVICES_OUTPUT_COLUMNS = (
 )
 UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS = UK_ETB_SERVICES_OUTPUT_COLUMNS
 UK_ETB_SERVICES_FIT_NAME = "uk_etb_2024_services"
+UK_ETB_SERVICES_STAGE_NAME = "etb_services"
+
+
+@dataclass
+class UKETBServicesResult:
+    """Transformed frame and donor-support clip receipt."""
+
+    frame: Frame
+    support_clip: UKSupportClipReceipt
+
+    def evidence(self) -> dict[str, object]:
+        return {
+            "stage": UK_ETB_SERVICES_STAGE_NAME,
+            "support_clip": self.support_clip.evidence(),
+        }
 
 
 @dataclass
@@ -84,6 +104,7 @@ class UKETBServicesStageTransform:
         init=False,
         repr=False,
     )
+    last_result: UKETBServicesResult | None = field(default=None, init=False)
 
     @property
     def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
@@ -110,7 +131,8 @@ class UKETBServicesStageTransform:
         draws, records = impute_etb_services(
             donor, predictors, seed=_qrf_seed(self.stage)
         )
-        draws = support_clip_to_donor(draws, donor)
+        clip_result = support_clip_to_donor(draws, donor)
+        draws = clip_result.clipped
         draws["rail_usage"] = (
             draws["rail_subsidy_spending"] / config["rail_fare_index"]
         )
@@ -138,11 +160,20 @@ class UKETBServicesStageTransform:
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = records
+        self.last_result = UKETBServicesResult(
+            frame=result,
+            support_clip=clip_result.receipt,
+        )
         return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return UK_ETB_SERVICES_OUTPUT_COLUMNS
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_result is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_result.evidence()}
 
 
 def clean_etb_services_table(
@@ -307,15 +338,15 @@ def impute_etb_services(
     return raw, tuple(records)
 
 
-def support_clip_to_donor(draws: pd.DataFrame, donor: pd.DataFrame) -> pd.DataFrame:
-    result = draws.copy()
-    for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]:
-        values = donor[column]
-        finite = values[np.isfinite(values)]
-        if finite.empty:
-            continue
-        result[column] = result[column].clip(float(finite.min()), float(finite.max()))
-    return result
+def support_clip_to_donor(
+    draws: pd.DataFrame, donor: pd.DataFrame
+) -> UKSupportClipResult:
+    return support_clip_to_donor_with_receipt(
+        draws,
+        donor,
+        columns=UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3],
+        stage=UK_ETB_SERVICES_STAGE_NAME,
+    )
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:

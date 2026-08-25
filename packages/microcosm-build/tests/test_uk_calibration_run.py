@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime.calibration_run import (
 from microcosm.build.uk_runtime.national_doctrine import UKNationalSolveDoctrine
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
+    uk_household_weight_kind,
     uk_national_frame,
     write_uk_national_frame,
 )
@@ -86,6 +87,54 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _write_spine_sidecar(
+    input_h5: Path,
+    frame=None,
+    **overrides,
+) -> dict[str, object]:
+    frame = _frame() if frame is None else frame
+    sidecar = {
+        "schema_version": 2,
+        "pipeline": "uk-frs-spine",
+        "stages": ["frs_spine", "was_wealth"],
+        "stage_records": [
+            {
+                "stage": "was_wealth",
+                "produced": ["property_wealth"],
+                "nonzero_share": {"property_wealth": 1.0},
+                "seconds": 0.1,
+            }
+        ],
+        "stage_evidence": {
+            "was_wealth": {
+                "stage": "was_wealth",
+                "support_clip": {"columns": {}},
+            }
+        },
+        "artifact_pins": {"person": "a" * 64},
+        "input_artifact_pins": {"was_qrf_donor": {"sha256": "b" * 64}},
+        "resource_pins": {"wealth.json": "c" * 64},
+        "stage_artifact_pins": {"was_wealth": {"was_qrf_donor": "d" * 64}},
+        "declared_seeds": {"was_wealth": {"was_wealth": 0}},
+        "rules_engine": {"package": "policyengine-uk", "version": "unavailable"},
+        "source_vintages": {"frs": "2024_25"},
+        "stochastic_contract_sha256": "e" * 64,
+        "entity_row_counts": {
+            entity: int(len(frame.table(entity))) for entity in frame.entities
+        },
+        "household_weight_kind": uk_household_weight_kind(frame).value,
+        "household_weight_total": float(
+            frame.weights_for("household").values.sum()
+        ),
+    }
+    sidecar.update(overrides)
+    input_h5.with_suffix(".build.json").write_text(
+        json.dumps(sidecar, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return sidecar
+
+
 def _admin_anchor_values():
     values = {}
     for entry in load_country_spec("uk").gates.gates:
@@ -116,7 +165,9 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    spine_sidecar = _write_spine_sidecar(input_h5, frame)
     paths = UKCalibrationRunPaths(
         input_h5=input_h5,
         staging_h5=tmp_path / "staged.h5",
@@ -152,6 +203,23 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     assert result.build_record["artifacts"]["staging_h5"]["sha256"] == _sha(paths.staging_h5)
     assert result.build_record["artifacts"]["diagnostics_json"]["sha256"] == _sha(paths.diagnostics_json)
     assert result.build_record["artifacts"]["terminal_gate_json"]["sha256"] == _sha(paths.terminal_gate_json)
+    spine_provenance = result.build_record["spine_provenance"]
+    assert spine_provenance["stages"] == spine_sidecar["stages"]
+    assert spine_provenance["stage_records"] == spine_sidecar["stage_records"]
+    assert spine_provenance["stage_evidence"] == spine_sidecar["stage_evidence"]
+    assert spine_provenance["artifact_pins"] == spine_sidecar["artifact_pins"]
+    assert spine_provenance["input_artifact_pins"] == spine_sidecar["input_artifact_pins"]
+    assert spine_provenance["resource_pins"] == spine_sidecar["resource_pins"]
+    assert spine_provenance["stage_artifact_pins"] == spine_sidecar["stage_artifact_pins"]
+    assert spine_provenance["declared_seeds"] == spine_sidecar["declared_seeds"]
+    assert spine_provenance["rules_engine"] == spine_sidecar["rules_engine"]
+    assert spine_provenance["source_vintages"] == spine_sidecar["source_vintages"]
+    assert (
+        spine_provenance["stochastic_contract_sha256"]
+        == spine_sidecar["stochastic_contract_sha256"]
+    )
+    diagnostics = json.loads(paths.diagnostics_json.read_text())
+    assert diagnostics["build"]["spine_provenance"] == spine_provenance
     staged, _ = load_uk_national_frame(paths.staging_h5)
     assert staged.weights_for("household").kind is WeightKind.CALIBRATED
     report = json.loads(paths.terminal_gate_json.read_text())
@@ -198,6 +266,98 @@ def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
     assert not paths.diagnostics_json.exists()
 
 
+def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    input_h5 = tmp_path / "input.h5"
+    write_uk_national_frame(_frame(), input_h5)
+    paths = UKCalibrationRunPaths(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staged.h5",
+        diagnostics_json=tmp_path / "diagnostics.json",
+        build_record_json=tmp_path / "build_record.json",
+        terminal_gate_json=tmp_path / "terminal_gates.json",
+    )
+
+    with pytest.raises(ValueError, match="build sidecar absent"):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256=_sha(input_h5),
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            calibration_year=2025,
+            exclusion_receipt={},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={
+                "input_h5": {
+                    "sha256": _sha(input_h5),
+                    "size_bytes": input_h5.stat().st_size,
+                }
+            },
+            run_config_extra={"calibration_year": 2025},
+            release_candidate=False,
+            release_id="missing-sidecar",
+        )
+
+    assert not paths.staging_h5.exists()
+    assert not paths.diagnostics_json.exists()
+    assert not paths.terminal_gate_json.exists()
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        (
+            {"entity_row_counts": {"person": 999, "benunit": 4, "household": 4}},
+            "row-count mismatch",
+        ),
+        ({"household_weight_total": 1.0}, "household_weight_total mismatch"),
+    ],
+)
+def test_run_uk_calibration_refuses_unbound_input_sidecar(
+    override, message, tmp_path: Path
+):
+    pytest.importorskip("tables")  # pandas HDF backend
+    frame = _frame()
+    input_h5 = tmp_path / "input.h5"
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame, **override)
+    paths = UKCalibrationRunPaths(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staged.h5",
+        diagnostics_json=tmp_path / "diagnostics.json",
+        build_record_json=tmp_path / "build_record.json",
+        terminal_gate_json=tmp_path / "terminal_gates.json",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256=_sha(input_h5),
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            calibration_year=2025,
+            exclusion_receipt={},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={
+                "input_h5": {
+                    "sha256": _sha(input_h5),
+                    "size_bytes": input_h5.stat().st_size,
+                }
+            },
+            run_config_extra={"calibration_year": 2025},
+            release_candidate=False,
+            release_id="unbound-sidecar",
+        )
+
+    assert not paths.staging_h5.exists()
+    assert not paths.diagnostics_json.exists()
+    assert not paths.terminal_gate_json.exists()
+
+
 def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
     """The seam's defining invariant: weights move, data never does.
 
@@ -214,7 +374,9 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
     paths = UKCalibrationRunPaths(
         input_h5=input_h5,
         staging_h5=tmp_path / "staged.h5",
@@ -378,7 +540,9 @@ def test_attempt_ids_are_unique_across_reruns_of_one_release(
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
     source_pins = {
         "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
     }
@@ -423,7 +587,9 @@ def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
     artifact = SimpleNamespace(
         facts_sha256="d" * 64,
         fact_row_count=107_550,
