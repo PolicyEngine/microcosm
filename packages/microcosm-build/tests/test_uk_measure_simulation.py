@@ -183,7 +183,9 @@ def test_exclusion_applier_returns_pruned_registry_and_receipt():
     )
 
     assert [spec.name for spec in pruned.specs] == ["keep"]
-    assert receipt == {"drop": "reviewed"}
+    assert receipt == {
+        "drop": {"reason": "reviewed", "tracking": "microcosm#623"}
+    }
     with pytest.raises(ValueError, match="matched zero"):
         apply_uk_calibration_measure_exclusions(
             registry,
@@ -289,3 +291,20 @@ def test_unknown_categorical_mapping_refuses_through_the_fence(
     assert not resolver.knows("household", "family_type")
     with pytest.raises(KeyError, match="no categorical mapping"):
         resolver.compute("household", "family_type")
+
+
+def test_exclusion_loader_requires_tracking(tmp_path: Path):
+    # An exclusion narrows the calibrated target surface; the register has to
+    # say where each narrowing is being resolved, not only why.
+    with pytest.raises(ValueError, match="empty tracking"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "untracked.json",
+                {
+                    "schema_version": 1,
+                    "exclusions": [
+                        {"name": "a", "reason": "reviewed reason", "tracking": ""}
+                    ],
+                },
+            )
+        )

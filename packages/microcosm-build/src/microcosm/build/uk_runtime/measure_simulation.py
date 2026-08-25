@@ -191,6 +191,11 @@ def load_uk_calibration_measure_exclusions(
             raise ValueError(f"duplicate UK calibration measure exclusion {name!r}.")
         if not reason.strip():
             raise ValueError(f"UK calibration measure exclusion {name!r} has empty reason.")
+        if not tracking.strip():
+            raise ValueError(
+                f"UK calibration measure exclusion {name!r} has empty tracking; "
+                "a narrowed target surface must name where it is being resolved."
+            )
         seen.add(name)
         loaded.append({"name": name, "reason": reason, "tracking": tracking})
     return tuple(loaded)
@@ -198,19 +203,30 @@ def load_uk_calibration_measure_exclusions(
 
 def apply_uk_calibration_measure_exclusions(
     registry: TargetRegistry, exclusions: tuple[dict[str, str], ...]
-) -> tuple[TargetRegistry, dict[str, str]]:
-    """Remove reviewed excluded references from a UK target registry."""
+) -> tuple[TargetRegistry, dict[str, dict[str, str]]]:
+    """Remove reviewed excluded references from a UK target registry.
 
-    reasons = {entry["name"]: entry["reason"] for entry in exclusions}
-    matched = {spec.name for spec in registry.specs if spec.name in reasons}
-    stale = sorted(set(reasons) - matched)
+    The receipt carries every field the register declares, tracking included:
+    an exclusion narrows the calibrated target surface, so the run evidence
+    must say where each narrowing is being resolved, not only why.
+    """
+
+    declared = {entry["name"]: entry for entry in exclusions}
+    matched = {spec.name for spec in registry.specs if spec.name in declared}
+    stale = sorted(set(declared) - matched)
     if stale:
         raise ValueError(
             "UK calibration measure exclusion matched zero registry specs: "
             + ", ".join(stale)
         )
-    kept = [spec for spec in registry.specs if spec.name not in reasons]
-    receipt = {name: reasons[name] for name in sorted(matched)}
+    kept = [spec for spec in registry.specs if spec.name not in declared]
+    receipt = {
+        name: {
+            "reason": declared[name]["reason"],
+            "tracking": declared[name]["tracking"],
+        }
+        for name in sorted(matched)
+    }
     return TargetRegistry(kept, country=registry.country), receipt
 
 

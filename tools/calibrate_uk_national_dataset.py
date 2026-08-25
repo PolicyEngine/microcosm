@@ -160,6 +160,17 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "--release-candidate is refused with doctrine override flag(s): "
             + ", ".join(passed_overrides)
         )
+    if args.release_candidate and args.measure_exclusions is not None:
+        # An exclusion register prunes the compiled target surface before the
+        # solve, and the calibration-scoped battery does not carry the
+        # target-surface gate — so an operator-supplied register would be an
+        # unreviewed narrowing of what a release candidate was measured
+        # against. Release candidates use the committed register only.
+        parser.error(
+            "--release-candidate is refused with --measure-exclusions: a "
+            "release candidate is measured against the committed target "
+            "surface, not an operator-supplied one"
+        )
     if (
         not args.release_candidate
         and (_CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id) or args.release_id == _UK_JUNE_RELEASE_ID)

@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,11 +30,14 @@ from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
     append_phase,
+    apply_error_verdict,
+    error_receipt_path,
     git_code_pin,
     local_artifact_reference,
     record_terminal_attempt,
     resolve_predecessor,
     role_pins_digest,
+    write_error_receipt,
 )
 from microcosm.build.target_materialization import assert_calibration_input_finite
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
@@ -50,7 +54,10 @@ from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame
 
 _REPOSITORY = Path(__file__).resolve().parents[6]
-_PIPELINE = "uk-national-calibration"
+# The FRS line's spine, staging, imputation and calibration stages share one
+# hash chain (logbook/README.md): the dataset token names the base data, not
+# the build mechanism, so calibration derives the ratified `uk/frs` scope.
+_PIPELINE = "uk-frs-calibration"
 
 
 @dataclass(frozen=True)
@@ -123,7 +130,7 @@ def run_uk_calibration(
     ledger_artifact: Any,
     register_registry: TargetRegistry,
     calibration_year: int,
-    exclusion_receipt: Mapping[str, str],
+    exclusion_receipt: Mapping[str, Mapping[str, str]],
     doctrine: Any,
     doctrine_overrides: Mapping[str, Mapping[str, object]],
     measure_resolver: object | None,
@@ -138,22 +145,143 @@ def run_uk_calibration(
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
+    # Predecessor configuration is validated before anything is written: a
+    # disagreeing chain must refuse with no artifact on disk, not after a
+    # staged H5, diagnostics and a signed gate report already exist.
+    predecessor = resolve_predecessor(logbook_prev_row_digest)
     run_config = {
         "pipeline": _PIPELINE,
+        "release_id": release_id,
         "register_sha256": register_registry.version,
         "calibration_year": int(calibration_year),
         "doctrine": _doctrine_payload(doctrine),
         "doctrine_overrides": dict(doctrine_overrides),
+        # The caller verifies the feed's facts and manifest digests; sealing
+        # the verified identity into run_config carries it through the
+        # identity digest, the build record and the Logbook row, so the run
+        # says which Ledger artifact it was measured against.
+        "ledger": _ledger_provenance(ledger_artifact),
         **dict(run_config_extra),
     }
     state = AttemptState(
-        build_id=f"uk-national-calibration-{release_id}",
+        # Attempts are distinct rows even when they re-run one release: both
+        # the local chain and the store refuse a repeated build id.
+        build_id=_new_calibration_attempt_id(timestamp=started_ts),
         identity_digest=hashlib.sha256(canonical_json_bytes(run_config)).hexdigest(),
         input_pins_digest=role_pins_digest(source_pins),
         phases_reached=["attempt_started"],
         gate_verdicts={},
     )
+    spool_dir = paths.staging_h5.parent / "logbook-spool"
+    try:
+        return _run_uk_calibration_attempt(
+            paths=paths,
+            input_sha256=input_sha256,
+            ledger_artifact=ledger_artifact,
+            register_registry=register_registry,
+            calibration_year=calibration_year,
+            exclusion_receipt=exclusion_receipt,
+            doctrine=doctrine,
+            doctrine_overrides=doctrine_overrides,
+            measure_resolver=measure_resolver,
+            source_pins=source_pins,
+            release_candidate=release_candidate,
+            release_id=release_id,
+            state=state,
+            run_config=run_config,
+            code_pin=code_pin,
+            started_at=started_at,
+            started_ts=started_ts,
+            predecessor=predecessor,
+            spool_dir=spool_dir,
+        )
+    except BaseException as error:
+        # Every terminal disposition records a row — successful, failed, or
+        # refused (logbook/README.md). A refusal that left no row would be a
+        # silent gap in the chain the run is supposed to evidence.
+        _record_failed_attempt(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            seed=getattr(doctrine, "seed", None),
+            code_pin=code_pin,
+            predecessor=predecessor,
+            receipt_base_dir=paths.staging_h5.parent,
+            spool_dir=spool_dir,
+        )
+        raise
 
+
+def _new_calibration_attempt_id(*, timestamp: datetime) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        "uk-frs-calibration-attempt-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _record_failed_attempt(
+    *,
+    error: BaseException,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    seed: int | None,
+    code_pin: str,
+    predecessor: str | None,
+    receipt_base_dir: Path,
+    spool_dir: Path,
+) -> None:
+    if state.spool_path is not None:
+        return
+    error_path = write_error_receipt(
+        error_receipt_path(receipt_base_dir, build_id=state.build_id),
+        state=state,
+        pipeline=_PIPELINE,
+        error=error,
+    )
+    apply_error_verdict(
+        state,
+        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}"
+        "#/error_type",
+    )
+    record_terminal_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        pipeline=_PIPELINE,
+        rung="f100",
+        seed=seed,
+        code_pin=code_pin,
+        disposition="failed",
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _run_uk_calibration_attempt(
+    *,
+    paths: UKCalibrationRunPaths,
+    input_sha256: str,
+    ledger_artifact: Any,
+    register_registry: TargetRegistry,
+    calibration_year: int,
+    exclusion_receipt: Mapping[str, Mapping[str, str]],
+    doctrine: Any,
+    doctrine_overrides: Mapping[str, Mapping[str, object]],
+    measure_resolver: object | None,
+    source_pins: Mapping[str, Mapping[str, object]],
+    release_candidate: bool,
+    release_id: str,
+    state: AttemptState,
+    run_config: Mapping[str, object],
+    code_pin: str,
+    started_at: float,
+    started_ts: datetime,
+    predecessor: str | None,
+    spool_dir: Path,
+) -> UKCalibrationRunResult:
     measured_input_sha = _sha256_file(paths.input_h5)
     if measured_input_sha != input_sha256:
         raise ValueError(
@@ -182,6 +310,7 @@ def run_uk_calibration(
         "build_id": state.build_id,
         "code_pin": code_pin,
         "source_pins": dict(source_pins),
+        "ledger": run_config["ledger"],
         "input_posture": {
             "tier": "staging_candidate",
             "sha256": measured_input_sha,
@@ -271,8 +400,8 @@ def run_uk_calibration(
         seed=getattr(doctrine, "seed", None),
         code_pin=code_pin,
         disposition="iterating",
-        predecessor=resolve_predecessor(logbook_prev_row_digest),
-        spool_dir=paths.staging_h5.parent / "logbook-spool",
+        predecessor=predecessor,
+        spool_dir=spool_dir,
     )
     return UKCalibrationRunResult(
         frame=calibrated,
@@ -419,8 +548,30 @@ def _aggregate_admin_totals(
     return totals, receipt
 
 
+def _ledger_provenance(artifact: Any) -> dict[str, object]:
+    """The verified identity of the Ledger consumer feed this run compiled.
+
+    A bare ``consumer_facts.jsonl`` feed carries no manifest, so its
+    Ledger-side provenance is recorded as absent rather than invented.
+    """
+
+    provenance: dict[str, object] = {
+        "facts_sha256": getattr(artifact, "facts_sha256", None),
+        "fact_row_count": getattr(artifact, "fact_row_count", None),
+        "manifest_sha256": getattr(artifact, "manifest_sha256", None),
+    }
+    manifest = getattr(artifact, "manifest", None)
+    if isinstance(manifest, Mapping):
+        provenance["manifest"] = {
+            key: manifest.get(key)
+            for key in ("artifact_id", "profile", "schema_version", "generated_at")
+            if manifest.get(key) is not None
+        }
+    return provenance
+
+
 def _register_census(
-    registry: TargetRegistry, exclusions: Mapping[str, str]
+    registry: TargetRegistry, exclusions: Mapping[str, Mapping[str, str]]
 ) -> dict[str, object]:
     return {
         "country": registry.country,

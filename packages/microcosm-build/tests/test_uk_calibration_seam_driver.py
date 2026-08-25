@@ -83,6 +83,27 @@ def test_driver_refuses_release_candidate_with_each_override(tmp_path: Path):
             driver._parse_args(_args(tmp_path) + ["--release-candidate", *flag])
 
 
+def test_driver_refuses_release_candidate_with_operator_exclusions(tmp_path: Path):
+    # The scoped battery carries no target-surface gate, so an operator
+    # register could narrow what a release candidate was measured against
+    # without anything noticing.
+    driver = _load_driver_module()
+    exclusions = tmp_path / "operator.json"
+    exclusions.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        driver._parse_args(
+            _args(tmp_path)
+            + ["--release-candidate", "--measure-exclusions", str(exclusions)]
+        )
+
+    # Without the release-candidate posture the same register is accepted.
+    parsed = driver._parse_args(
+        _args(tmp_path) + ["--measure-exclusions", str(exclusions)]
+    )
+    assert parsed.measure_exclusions == exclusions
+
+
 def test_driver_refuses_bad_sha_and_path_alias(tmp_path: Path):
     driver = _load_driver_module()
     base_args = _args(tmp_path)

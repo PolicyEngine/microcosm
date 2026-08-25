@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -295,3 +296,179 @@ def test_aggregate_admin_measurement_convention_and_refusals():
     stripped.table("household").drop(columns=["electricity_consumption"], inplace=True)
     with pytest.raises(ValueError, match="household.electricity_consumption"):
         calibration_run._aggregate_admin_totals(stripped, manifest)
+
+
+def test_seam_pipeline_derives_a_ratified_logbook_scope():
+    """The seam appends to the FRS line's chain, not a new unratified one."""
+
+    logbook_tool = _load_logbook_tool()
+
+    scope = logbook_tool._chain_scope(calibration_run._PIPELINE)
+
+    assert scope == "uk/frs"
+    assert scope in logbook_tool.DECLARED_SCOPES
+
+
+def _load_logbook_tool():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[3] / "tools" / "logbook.py"
+    spec = importlib.util.spec_from_file_location("_logbook_tool", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    input_h5 = tmp_path / "input.h5"
+    write_uk_national_frame(_frame(), input_h5)
+    paths = UKCalibrationRunPaths(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staged.h5",
+        diagnostics_json=tmp_path / "diagnostics.json",
+        build_record_json=tmp_path / "build_record.json",
+        terminal_gate_json=tmp_path / "terminal_gates.json",
+    )
+
+    with pytest.raises(ValueError, match="sha mismatch"):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256="0" * 64,
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            calibration_year=2025,
+            exclusion_receipt={},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={
+                "input_h5": {
+                    "sha256": _sha(input_h5),
+                    "size_bytes": input_h5.stat().st_size,
+                }
+            },
+            run_config_extra={"calibration_year": 2025},
+            release_candidate=False,
+            release_id="refused-run",
+        )
+
+    # Every terminal disposition is a row; a refusal that left the chain
+    # silent would hide the attempt entirely.
+    spooled = sorted((tmp_path / "logbook-spool").rglob("*.json"))
+    assert spooled, "refusal recorded no Logbook row"
+    rows = [json.loads(path.read_text()) for path in spooled]
+    assert [row["disposition"] for row in rows] == ["failed"]
+    assert rows[0]["pipeline"] == calibration_run._PIPELINE
+    # The refusal is explained on disk, not only in the row.
+    receipts = sorted((tmp_path / "logbook-receipts").rglob("error.json"))
+    assert len(receipts) == 1
+    assert not paths.staging_h5.exists()
+    assert not paths.diagnostics_json.exists()
+    assert not paths.terminal_gate_json.exists()
+
+
+def test_attempt_ids_are_unique_across_reruns_of_one_release(
+    monkeypatch, tmp_path: Path
+):
+    pytest.importorskip("tables")  # pandas HDF backend
+    monkeypatch.setattr(
+        calibration_run,
+        "_aggregate_admin_totals",
+        lambda frame, manifest: (_admin_anchor_values(), []),
+    )
+    input_h5 = tmp_path / "input.h5"
+    write_uk_national_frame(_frame(), input_h5)
+    source_pins = {
+        "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
+    }
+    build_ids = []
+    for attempt in ("a", "b"):
+        run_dir = tmp_path / attempt
+        run_dir.mkdir()
+        result = run_uk_calibration(
+            paths=UKCalibrationRunPaths(
+                input_h5=input_h5,
+                staging_h5=run_dir / "staged.h5",
+                diagnostics_json=run_dir / "diagnostics.json",
+                build_record_json=run_dir / "build_record.json",
+                terminal_gate_json=run_dir / "terminal_gates.json",
+            ),
+            input_sha256=_sha(input_h5),
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            calibration_year=2025,
+            exclusion_receipt={},
+            doctrine=UKNationalSolveDoctrine(epochs=5),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins=source_pins,
+            run_config_extra={"calibration_year": 2025},
+            release_candidate=False,
+            release_id="one-release-id",
+        )
+        build_ids.append(result.build_record["build_id"])
+
+    # Both the local chain and the store reject a duplicate build id, so one
+    # release re-run twice must not collide.
+    assert build_ids[0] != build_ids[1]
+    assert all(value.startswith("uk-frs-calibration-attempt-") for value in build_ids)
+
+
+def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path: Path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    monkeypatch.setattr(
+        calibration_run,
+        "_aggregate_admin_totals",
+        lambda frame, manifest: (_admin_anchor_values(), []),
+    )
+    input_h5 = tmp_path / "input.h5"
+    write_uk_national_frame(_frame(), input_h5)
+    artifact = SimpleNamespace(
+        facts_sha256="d" * 64,
+        fact_row_count=107_550,
+        manifest_sha256="e" * 64,
+        manifest={
+            "artifact_id": "chronicle-uk-artifact-1cab809",
+            "profile": "uk-national",
+            "schema_version": 1,
+            "unrelated": "not carried",
+        },
+    )
+
+    result = run_uk_calibration(
+        paths=UKCalibrationRunPaths(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staged.h5",
+            diagnostics_json=tmp_path / "diagnostics.json",
+            build_record_json=tmp_path / "build_record.json",
+            terminal_gate_json=tmp_path / "terminal_gates.json",
+        ),
+        input_sha256=_sha(input_h5),
+        ledger_artifact=artifact,
+        register_registry=_registry(),
+        calibration_year=2025,
+        exclusion_receipt={},
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        doctrine_overrides={},
+        measure_resolver=None,
+        source_pins={
+            "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
+        },
+        run_config_extra={"calibration_year": 2025},
+        release_candidate=False,
+        release_id="ledger-identity",
+    )
+
+    ledger = result.build_record["run_config"]["ledger"]
+    assert ledger["facts_sha256"] == "d" * 64
+    assert ledger["manifest_sha256"] == "e" * 64
+    assert ledger["fact_row_count"] == 107_550
+    assert ledger["manifest"] == {
+        "artifact_id": "chronicle-uk-artifact-1cab809",
+        "profile": "uk-national",
+        "schema_version": 1,
+    }
+    # A bare feed carries no manifest, and that absence is recorded rather
+    # than invented.
+    assert calibration_run._ledger_provenance(object())["manifest_sha256"] is None
