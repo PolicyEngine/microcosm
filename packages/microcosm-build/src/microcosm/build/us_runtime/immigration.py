@@ -41,16 +41,33 @@ narrowly-scoped control where the survey carries no signal at all:
    emergent total is ≈13M — inside the range of published 2023–24 estimates
    — with 26.6M non-citizens, 18.0M residual after the indicators, and 4.8M
    spilled to EAD.
-5. **Status tags carry only statutory tests the data can support.**
+5. **Humanitarian/temporary-protection statuses are drawn to published
+   stocks, never blanketed (microcosm #767).** Blanket ``REFUGEE``/``TPS``
+   labels for recent arrivals were originally refused because LPR treatment
+   gave near-identical means-tested eligibility; H.R.1 repealed exactly that
+   equivalence (Medicaid §71109 effective 2026-10-01, SNAP §10108 effective
+   2025-07-01, ACA §71301/§71302 effective 2026/2027 — all keyed to these
+   enum values in policyengine-us parameters), so an LPR-only file silently
+   zeroes every one of those channels. Instead of blankets, the stage now
+   draws ``REFUGEE`` / ``ASYLEE`` / ``DEPORTATION_WITHHELD`` /
+   ``PAROLED_ONE_YEAR`` / ``TPS`` — in that order, mutually exclusive —
+   from candidates whose survey signature supports the status (origin
+   country x arrival window x legal-status indicators), each to a
+   manifest-cited weighted stock target. Cuba/Haiti-born persons are
+   excluded from every humanitarian draw (the ``CUBAN_HAITIAN_ENTRANT``
+   class is the better statutory label and keeps H.R.1 eligibility), as is
+   the DACA statutory cohort. Draws from the residual pool (TPS and parole
+   only) flip ``ssn_card_type`` ``NONE`` to ``NON_CITIZEN_VALID_EAD`` —
+   both programs grant employment authorization — so the two output columns
+   never disagree. ``CONDITIONAL_ENTRANT`` is deliberately not emitted: the
+   INA 203(a)(7) class closed in 1980 and surviving holders are
+   indistinguishable from LPRs at this granularity.
+6. **Status tags carry only statutory tests the data can support.**
    ``DACA`` applies the statutory cohort test (arrived by 2007 before age
    16, aged 15+) to EAD holders; ``CUBAN_HAITIAN_ENTRANT`` applies the
    nationality-plus-arrival class to documented non-citizens; every other
    documented non-citizen stays ``LEGAL_PERMANENT_RESIDENT`` (the modal true
-   status). Blanket ``REFUGEE``/``TPS`` labels for recent arrivals or
-   leftover EAD holders are deliberately not emitted: they would mislabel
-   millions (true stocks are under a million each) and over-grant
-   refugee-class exemptions in benefit rules, while LPR treatment gives
-   near-identical means-tested eligibility for those populations.
+   status).
 
 Selection draws are seeded blake2b hashes keyed by the person's stable source
 identity (``source_year``/``source_person_id`` when present), so
@@ -89,12 +106,15 @@ from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
+    "HUMANITARIAN_STATUS_CATEGORIES",
     "IMMIGRATION_STATUS_VALUES",
     "SSN_CARD_TYPE_VALUES",
     "US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS",
     "US_IMMIGRATION_OUTPUT_COLUMNS",
     "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
     "US_IMMIGRATION_STAGE_NAME",
+    "HumanitarianDraw",
+    "ImmigrationControls",
     "UndocumentedControls",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
@@ -126,13 +146,18 @@ SSN_CARD_TYPE_VALUES: tuple[str, ...] = (
 
 #: PolicyEngine-US ``ImmigrationStatus`` enum member names this stage emits
 #: (a deliberate subset of the engine's full enum domain; see module
-#: docstring for why blanket REFUGEE/TPS labels are not fabricated).
+#: docstring for why ``CONDITIONAL_ENTRANT`` is not fabricated).
 IMMIGRATION_STATUS_VALUES: tuple[str, ...] = (
     "CITIZEN",
     "LEGAL_PERMANENT_RESIDENT",
     "CUBAN_HAITIAN_ENTRANT",
     "DACA",
     "UNDOCUMENTED",
+    "PAROLED_ONE_YEAR",
+    "REFUGEE",
+    "ASYLEE",
+    "DEPORTATION_WITHHELD",
+    "TPS",
 )
 
 #: Raw CPS ASEC person columns the derivation reads. All of them ship in the
@@ -169,11 +194,13 @@ _PERSON_WEIGHT_COLUMN = "person_weight"
 
 _FORCED_CONTROL_KEYS = ("undocumented_workers", "undocumented_students")
 _ANCHOR_KEY = "undocumented_population_anchor"
+_HUMANITARIAN_KEY = "humanitarian_status_stocks"
 
 _DERIVE_IMMIGRATION_STATUS_PARAMETER_KEYS = frozenset(
     {
         *_FORCED_CONTROL_KEYS,
         _ANCHOR_KEY,
+        _HUMANITARIAN_KEY,
         "seed_from_build_config",
         "time_period_from_build_config",
     }
@@ -226,6 +253,118 @@ _DACA_LATEST_ARRIVAL_YEAR = 2007
 _DACA_MAX_AGE_AT_ENTRY = 16
 _DACA_MIN_CURRENT_AGE = 15
 
+#: Humanitarian draw order: decreasing target precision (exact per-origin
+#: program admissions first, national flow aggregates next, per-country TPS
+#: registrations last). Draws are sequential and mutually exclusive.
+HUMANITARIAN_STATUS_CATEGORIES: tuple[str, ...] = (
+    "paroled_one_year",
+    "refugee",
+    "asylee",
+    "deportation_withheld",
+    "tps",
+)
+
+_HUMANITARIAN_STATUS_BY_CATEGORY: Mapping[str, str] = {
+    "paroled_one_year": "PAROLED_ONE_YEAR",
+    "refugee": "REFUGEE",
+    "asylee": "ASYLEE",
+    "deportation_withheld": "DEPORTATION_WITHHELD",
+    "tps": "TPS",
+}
+
+#: PEINUSYR codes for 2020+ arrivals (2024 ASEC data dictionary: 27 =
+#: 2020-2021, 28 = 2022-2024) — the humanitarian-parole and recent-refugee
+#: cohorts. The Census codebook rebins this variable across vintages, so
+#: these windows are survey-vintage facts, not statutory dates.
+_RECENT_ARRIVAL_CODES = (27, 28)
+#: Asylum grants lag arrival by filing queues plus court backlog; grantees
+#: in 2022-2024 overwhelmingly arrived 2016+ (OHSS asylee flow reports).
+_ASYLEE_ARRIVAL_CODES = (25, 26, 27, 28)
+#: Withholding of removal follows years of proceedings: settled arrivals only.
+_WITHHELD_MAX_ARRIVAL_CODE = 26
+
+#: PENATVTY birth-country codes, verified against Census CPS technical
+#: documentation (cpsmar24.pdf) Appendix I "Countries and Areas of the
+#: World". Cuba (327) and Haiti (332) stay out of every humanitarian draw:
+#: the Cuban/Haitian-entrant class is the better statutory label.
+#:
+#: Parole per-origin keys: Operation Allies Welcome (Afghanistan), Uniting
+#: for Ukraine, and the non-Cuban/Haitian CHNV nationalities.
+_PAROLE_ORIGIN_CODES: Mapping[str, tuple[int, ...]] = {
+    "afghanistan": (200,),
+    "ukraine": (164,),
+    "nicaragua": (315,),
+    "venezuela": (373,),
+}
+
+#: Top refugee-resettlement nationalities, OHSS Refugees Annual Flow Report
+#: FY2023 Table 3 and the OHSS FY-24 report (DR Congo, Syria, Afghanistan,
+#: Burma, Venezuela lead; Congo appears as both 412 Congo and 459 Zaire).
+_REFUGEE_ORIGIN_CODES: tuple[int, ...] = (
+    412,  # Congo
+    459,  # Zaire (Democratic Republic of the Congo)
+    239,  # Syria
+    200,  # Afghanistan
+    205,  # Myanmar (Burma)
+    373,  # Venezuela
+    448,  # Somalia
+    451,  # Sudan
+    417,  # Eritrea
+    213,  # Iraq
+    313,  # Guatemala
+    164,  # Ukraine
+)
+
+#: Top asylum-grant nationalities, OHSS Asylees flow reports FY2022-FY2024
+#: (Afghanistan, China, Venezuela, Russia lead; Central/South America and
+#: Egypt/Cameroon/Turkey round out the recurring top grant countries).
+_ASYLEE_ORIGIN_CODES: tuple[int, ...] = (
+    200,  # Afghanistan
+    207,  # China
+    373,  # Venezuela
+    163,  # Russia
+    312,  # El Salvador
+    313,  # Guatemala
+    314,  # Honduras
+    315,  # Nicaragua
+    210,  # India
+    414,  # Egypt
+    407,  # Cameroon
+    364,  # Colombia
+    365,  # Ecuador
+    370,  # Peru
+    243,  # Turkey
+    239,  # Syria
+)
+
+#: TPS per-country keys: birth codes plus the latest PEINUSYR arrival code
+#: compatible with the designation's required continuous-residence date
+#: (CRS RS20844 Table 1). Legacy designations bind hard (El Salvador
+#: 2001-02-13 -> code 17; Honduras/Nicaragua 1998-12-30 -> code 16; Nepal
+#: 2015-06-24 -> code 24); 2021+ designations reach the top code, where the
+#: 2022-2024 bin unavoidably includes some post-cutoff arrivals.
+#: Ukraine and Afghanistan TPS registrants are carried by the parole draw
+#: (same U4U/OAW people); Haiti TPS is carried by CUBAN_HAITIAN_ENTRANT.
+_TPS_ORIGIN_CODES: Mapping[str, tuple[tuple[int, ...], int]] = {
+    "venezuela": ((373,), 28),
+    "el_salvador": ((312,), 17),
+    "honduras": ((314,), 16),
+    "nicaragua": ((315,), 16),
+    "nepal": ((229,), 24),
+    # Burma, Syria, Yemen, Lebanon, Cameroon, Ethiopia, Somalia, Sudan
+    # (South Sudan shares 451 in the CPS codebook).
+    "other_designated": ((205, 239, 248, 224, 407, 416, 448, 451), 28),
+}
+
+#: Categories whose flat manifest block carries one national target.
+_FLAT_HUMANITARIAN_CATEGORIES = ("refugee", "asylee", "deportation_withheld")
+#: Categories whose manifest block carries per-origin targets, and the
+#: module table each block's keys must match exactly.
+_PER_ORIGIN_HUMANITARIAN_CATEGORIES: Mapping[str, tuple[str, ...]] = {
+    "paroled_one_year": tuple(_PAROLE_ORIGIN_CODES),
+    "tps": tuple(_TPS_ORIGIN_CODES),
+}
+
 #: Weighted share of persons whose SSN card type is not ``CITIZEN`` must land
 #: in this band (Census counts ~22–27M non-citizens of ~336M residents; a
 #: share outside it means the imputation collapsed or exploded).
@@ -235,6 +374,12 @@ _NON_CITIZEN_SHARE_BAND = (0.03, 0.12)
 #: collapse or explosion, not a calibration objective; the level belongs to
 #: the calibration lane.
 _UNDOCUMENTED_ANCHOR_RELATIVE_BAND = (0.5, 1.6)
+#: Emitted humanitarian mass per category relative to its cited target.
+#: The draw forces the target when candidates suffice, so the band only
+#: bites on pool exhaustion (the ASEC undercovers 2022-24 arrivals — the
+#: Ukraine parole pool saturates below its admin count) or collapse. A
+#: category with an explicit zero target must emit exactly zero.
+_HUMANITARIAN_TARGET_RELATIVE_BAND = (0.35, 1.5)
 
 
 @dataclass(frozen=True)
@@ -271,6 +416,69 @@ class UndocumentedControls:
             raise ValueError(
                 f"Undocumented control(s) missing a source citation: {missing}."
             )
+
+
+@dataclass(frozen=True)
+class HumanitarianDraw:
+    """One seeded humanitarian draw: a cited stock the stage selects toward.
+
+    Attributes:
+        category: Manifest category key (``paroled_one_year`` … ``tps``).
+        origin: Per-origin key inside the category, or ``None`` for a
+            national draw.
+        status: ``ImmigrationStatus`` enum member name the draw emits.
+        target: Cited weighted stock. Zero is allowed and means the
+            category is explicitly not imputed (the citation documents why).
+        source: Citation URL or reference for the target.
+    """
+
+    category: str
+    origin: str | None
+    status: str
+    target: float
+    source: str
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.target) or self.target < 0:
+            raise ValueError(
+                f"Humanitarian target {self.label!r} must be non-negative, "
+                f"got {self.target!r}."
+            )
+        if not self.source:
+            raise ValueError(
+                f"Humanitarian target {self.label!r} requires a source citation."
+            )
+
+    @property
+    def label(self) -> str:
+        return self.category if self.origin is None else f"{self.category}:{self.origin}"
+
+    @property
+    def salt(self) -> str:
+        return f"immigration:{self.label}"
+
+
+@dataclass(frozen=True)
+class ImmigrationControls:
+    """Every manifest-sourced control the immigration stage consumes.
+
+    Attributes:
+        undocumented: The legacy forced margins and the composition-gate
+            anchor for the residual pool.
+        humanitarian: The humanitarian draws in assignment order — the
+            per-origin draws of a category are adjacent, categories follow
+            ``HUMANITARIAN_STATUS_CATEGORIES``.
+    """
+
+    undocumented: UndocumentedControls
+    humanitarian: tuple[HumanitarianDraw, ...]
+
+    def humanitarian_target(self, category: str) -> float:
+        """Summed cited target for one category across its origins."""
+
+        return float(
+            sum(draw.target for draw in self.humanitarian if draw.category == category)
+        )
 
 
 def us_immigration_stage_spec() -> SourceStageSpec:
@@ -346,15 +554,17 @@ def derive_us_immigration_status_from_manifest(
         raise SourceRuntimeError(
             "US immigration derivation requires finite non-negative person weights."
         )
-    ssn_codes = _assign_ssn_card_codes(
+    ssn_codes, humanitarian_marks = _assign_ssn_card_codes(
         result,
         weights.to_numpy(dtype=np.float64),
         seed=int(context.config.seed),
         controls=controls,
+        time_period=int(context.config.target_year),
     )
     status = _derive_immigration_status(
         result,
         ssn_codes,
+        humanitarian_marks,
         time_period=int(context.config.target_year),
     )
     code_to_name = {
@@ -368,7 +578,119 @@ def derive_us_immigration_status_from_manifest(
     return result
 
 
-def _controls_from_parameters(params: Mapping[str, object]) -> UndocumentedControls:
+def _target_and_source(
+    block: object,
+    *,
+    label: str,
+    value_key: str,
+    allow_zero: bool,
+) -> tuple[float, str]:
+    if not isinstance(block, Mapping):
+        raise SourceRuntimeError(
+            f"US immigration control {label!r} requires an object with "
+            f"{value_key!r} and 'source'."
+        )
+    unexpected = sorted(set(block) - {value_key, "source"})
+    if unexpected:
+        raise SourceRuntimeError(
+            f"US immigration control {label!r} has unsupported key(s): {unexpected}."
+        )
+    value = block.get(value_key)
+    source = block.get("source")
+    valid_number = isinstance(value, int | float) and not isinstance(value, bool)
+    if not valid_number or (float(value) <= 0 and not (allow_zero and value == 0)):
+        requirement = "non-negative" if allow_zero else "positive"
+        raise SourceRuntimeError(
+            f"US immigration control {label!r} requires a {requirement} numeric "
+            f"{value_key!r}."
+        )
+    if not isinstance(source, str) or not source:
+        raise SourceRuntimeError(
+            f"US immigration control {label!r} requires a source citation."
+        )
+    return float(value), source
+
+
+def _humanitarian_draws_from_parameters(
+    params: Mapping[str, object],
+) -> tuple[HumanitarianDraw, ...]:
+    block = params.get(_HUMANITARIAN_KEY)
+    if not isinstance(block, Mapping):
+        raise SourceRuntimeError(
+            f"US immigration derivation requires a {_HUMANITARIAN_KEY!r} object "
+            f"with one block per category {list(HUMANITARIAN_STATUS_CATEGORIES)}."
+        )
+    unexpected = sorted(set(block) - set(HUMANITARIAN_STATUS_CATEGORIES))
+    if unexpected:
+        raise SourceRuntimeError(
+            f"US immigration {_HUMANITARIAN_KEY} has unsupported category(ies): "
+            f"{unexpected}."
+        )
+    missing = sorted(set(HUMANITARIAN_STATUS_CATEGORIES) - set(block))
+    if missing:
+        raise SourceRuntimeError(
+            f"US immigration {_HUMANITARIAN_KEY} is missing category(ies): "
+            f"{missing}."
+        )
+    draws: list[HumanitarianDraw] = []
+    for category in HUMANITARIAN_STATUS_CATEGORIES:
+        status = _HUMANITARIAN_STATUS_BY_CATEGORY[category]
+        category_block = block[category]
+        if category in _PER_ORIGIN_HUMANITARIAN_CATEGORIES:
+            origin_keys = _PER_ORIGIN_HUMANITARIAN_CATEGORIES[category]
+            if not isinstance(category_block, Mapping):
+                raise SourceRuntimeError(
+                    f"US immigration control {category!r} requires per-origin "
+                    f"blocks {list(origin_keys)}."
+                )
+            unexpected_origins = sorted(set(category_block) - set(origin_keys))
+            if unexpected_origins:
+                raise SourceRuntimeError(
+                    f"US immigration control {category!r} has origin(s) outside "
+                    f"the stage's codebook table: {unexpected_origins}."
+                )
+            missing_origins = sorted(set(origin_keys) - set(category_block))
+            if missing_origins:
+                raise SourceRuntimeError(
+                    f"US immigration control {category!r} is missing origin(s): "
+                    f"{missing_origins}."
+                )
+            for origin in origin_keys:
+                target, source = _target_and_source(
+                    category_block[origin],
+                    label=f"{category}:{origin}",
+                    value_key="target",
+                    allow_zero=True,
+                )
+                draws.append(
+                    HumanitarianDraw(
+                        category=category,
+                        origin=origin,
+                        status=status,
+                        target=target,
+                        source=source,
+                    )
+                )
+        else:
+            target, source = _target_and_source(
+                category_block,
+                label=category,
+                value_key="target",
+                allow_zero=True,
+            )
+            draws.append(
+                HumanitarianDraw(
+                    category=category,
+                    origin=None,
+                    status=status,
+                    target=target,
+                    source=source,
+                )
+            )
+    return tuple(draws)
+
+
+def _controls_from_parameters(params: Mapping[str, object]) -> ImmigrationControls:
     values: dict[str, float] = {}
     sources: dict[str, str] = {}
     for key, value_key in (
@@ -376,39 +698,20 @@ def _controls_from_parameters(params: Mapping[str, object]) -> UndocumentedContr
         ("undocumented_students", "target"),
         (_ANCHOR_KEY, "value"),
     ):
-        block = params.get(key)
-        if not isinstance(block, Mapping):
-            raise SourceRuntimeError(
-                f"US immigration derivation requires a {key!r} object with "
-                f"{value_key!r} and 'source'."
-            )
-        unexpected = sorted(set(block) - {value_key, "source"})
-        if unexpected:
-            raise SourceRuntimeError(
-                f"US immigration control {key!r} has unsupported key(s): {unexpected}."
-            )
-        value = block.get(value_key)
-        source = block.get("source")
-        if (
-            not isinstance(value, int | float)
-            or isinstance(value, bool)
-            or float(value) <= 0
-        ):
-            raise SourceRuntimeError(
-                f"US immigration control {key!r} requires a positive numeric "
-                f"{value_key!r}."
-            )
-        if not isinstance(source, str) or not source:
-            raise SourceRuntimeError(
-                f"US immigration control {key!r} requires a source citation."
-            )
-        values[key] = float(value)
+        value, source = _target_and_source(
+            params.get(key), label=key, value_key=value_key, allow_zero=False
+        )
+        values[key] = value
         sources[key] = source
-    return UndocumentedControls(
+    undocumented = UndocumentedControls(
         workers=values["undocumented_workers"],
         students=values["undocumented_students"],
         population_anchor=values[_ANCHOR_KEY],
         sources=sources,
+    )
+    return ImmigrationControls(
+        undocumented=undocumented,
+        humanitarian=_humanitarian_draws_from_parameters(params),
     )
 
 
@@ -500,13 +803,145 @@ def _select_weight_to_target(
     return selected
 
 
+def _arrival_profile(
+    person: pd.DataFrame, *, time_period: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(PEINUSYR code, arrival-year midpoint, age at entry) per person."""
+
+    arrival_code = _integer_column(person, "PEINUSYR")
+    arrival_year = np.full(len(person), time_period, dtype=np.int64)
+    for code, midpoint in _ARRIVAL_YEAR_MIDPOINTS.items():
+        arrival_year[arrival_code == code] = midpoint
+    years_in_us = time_period - arrival_year
+    age = _integer_column(person, "A_AGE")
+    age_at_entry = np.maximum(0, age - years_in_us)
+    return arrival_code, arrival_year, age_at_entry
+
+
+def _daca_statutory_cohort(
+    arrival_year: np.ndarray, age_at_entry: np.ndarray, age: np.ndarray
+) -> np.ndarray:
+    return (
+        (arrival_year <= _DACA_LATEST_ARRIVAL_YEAR)
+        & (age_at_entry < _DACA_MAX_AGE_AT_ENTRY)
+        & (age >= _DACA_MIN_CURRENT_AGE)
+    )
+
+
+def _humanitarian_draw_candidates(
+    draw: HumanitarianDraw,
+    *,
+    ssn_codes: np.ndarray,
+    birth_country: np.ndarray,
+    arrival_code: np.ndarray,
+) -> np.ndarray:
+    """Candidate mask for one draw, before exclusions shared by all draws.
+
+    ``REFUGEE``/``ASYLEE``/``DEPORTATION_WITHHELD`` draw from the
+    indicator-documented pool only (code 3: those statuses carry immediate
+    federal benefits access, the same signals the ASEC-UA method reads);
+    parole and TPS may also draw from the still-unspilled residual pool
+    (code 0), whose members then receive EAD-backed SSN cards.
+    """
+
+    if draw.category == "paroled_one_year":
+        assert draw.origin is not None
+        return (
+            np.isin(ssn_codes, (0, 3))
+            & np.isin(birth_country, _PAROLE_ORIGIN_CODES[draw.origin])
+            & np.isin(arrival_code, _RECENT_ARRIVAL_CODES)
+        )
+    if draw.category == "refugee":
+        return (
+            (ssn_codes == 3)
+            & np.isin(birth_country, _REFUGEE_ORIGIN_CODES)
+            & np.isin(arrival_code, _RECENT_ARRIVAL_CODES)
+        )
+    if draw.category == "asylee":
+        return (
+            (ssn_codes == 3)
+            & np.isin(birth_country, _ASYLEE_ORIGIN_CODES)
+            & np.isin(arrival_code, _ASYLEE_ARRIVAL_CODES)
+        )
+    if draw.category == "deportation_withheld":
+        return (
+            (ssn_codes == 3)
+            & (arrival_code >= 1)
+            & (arrival_code <= _WITHHELD_MAX_ARRIVAL_CODE)
+        )
+    if draw.category == "tps":
+        assert draw.origin is not None
+        codes, max_arrival_code = _TPS_ORIGIN_CODES[draw.origin]
+        return (
+            np.isin(ssn_codes, (0, 3))
+            & np.isin(birth_country, codes)
+            & (arrival_code >= 1)
+            & (arrival_code <= max_arrival_code)
+        )
+    raise SourceRuntimeError(
+        f"US immigration derivation has no candidate rule for draw "
+        f"{draw.label!r}."
+    )
+
+
+def _assign_humanitarian_statuses(
+    person: pd.DataFrame,
+    ssn_codes: np.ndarray,
+    weights: np.ndarray,
+    *,
+    seed: int,
+    controls: ImmigrationControls,
+    time_period: int,
+) -> np.ndarray:
+    """Mark humanitarian statuses and upgrade residual draws' SSN codes.
+
+    Runs after the legal-status indicators and before the EAD worker/student
+    spill, so the Pew worker/student controls still bind the remaining
+    residual pool exactly. Draws are sequential over
+    ``controls.humanitarian``; a person marked by an earlier draw is out of
+    every later candidate pool. Residual-pool selections (parole/TPS only)
+    move to ``NON_CITIZEN_VALID_EAD`` — both programs confer employment
+    authorization — keeping the ``NONE`` ⇔ ``UNDOCUMENTED`` invariant.
+    """
+
+    marks = np.full(len(person), "", dtype="U24")
+    arrival_code, arrival_year, age_at_entry = _arrival_profile(
+        person, time_period=time_period
+    )
+    age = _integer_column(person, "A_AGE")
+    birth_country = _integer_column(person, "PENATVTY")
+    # Cuba/Haiti-born keep the statutorily-favorable entrant class; the DACA
+    # cohort keeps its statutory tag (dual TPS/DACA holders stay DACA).
+    excluded = np.isin(birth_country, _CUBAN_HAITIAN_BIRTH_CODES)
+    excluded |= _daca_statutory_cohort(arrival_year, age_at_entry, age)
+    for draw in controls.humanitarian:
+        if draw.target <= 0:
+            continue
+        candidates = (
+            _humanitarian_draw_candidates(
+                draw,
+                ssn_codes=ssn_codes,
+                birth_country=birth_country,
+                arrival_code=arrival_code,
+            )
+            & ~excluded
+            & (marks == "")
+        )
+        draws = _stable_person_draws(person, seed=seed, salt=draw.salt)
+        selected = _select_weight_to_target(candidates, weights, draws, draw.target)
+        marks[selected] = draw.status
+        ssn_codes[selected & (ssn_codes == 0)] = 2
+    return marks
+
+
 def _assign_ssn_card_codes(
     person: pd.DataFrame,
     weights: np.ndarray,
     *,
     seed: int,
-    controls: UndocumentedControls,
-) -> np.ndarray:
+    controls: ImmigrationControls,
+    time_period: int,
+) -> tuple[np.ndarray, np.ndarray]:
     citizenship = _integer_column(person, "PRCITSHP")
     unknown = ~np.isin(citizenship, [1, 2, 3, 4, 5])
     if unknown.any():
@@ -566,6 +1001,18 @@ def _assign_ssn_card_codes(
     )
     ssn_codes[(ssn_codes == 0) & assumed_documented] = 3
 
+    # Humanitarian draws run between the indicators and the EAD spill: the
+    # spill controls then bind the *remaining* residual pool, so the final
+    # undocumented worker/student counts still land on the Pew anchors.
+    humanitarian_marks = _assign_humanitarian_statuses(
+        person,
+        ssn_codes,
+        weights,
+        seed=seed,
+        controls=controls,
+        time_period=time_period,
+    )
+
     is_worker = (_float_column(person, "WSAL_VAL") > 0) | (
         _float_column(person, "SEMP_VAL") > 0
     )
@@ -579,7 +1026,9 @@ def _assign_ssn_card_codes(
     # composition gate checks it against a cited anchor, and reconciling the
     # level is the calibration lane's job, not this label stage's.
     worker_candidates = (ssn_codes == 0) & noncitizens & is_worker
-    worker_excess = float(weights[worker_candidates].sum()) - controls.workers
+    worker_excess = (
+        float(weights[worker_candidates].sum()) - controls.undocumented.workers
+    )
     worker_draws = _stable_person_draws(
         person, seed=seed, salt="immigration:ead_workers"
     )
@@ -590,7 +1039,9 @@ def _assign_ssn_card_codes(
     ] = 2
 
     student_candidates = (ssn_codes == 0) & noncitizens & is_student
-    student_excess = float(weights[student_candidates].sum()) - controls.students
+    student_excess = (
+        float(weights[student_candidates].sum()) - controls.undocumented.students
+    )
     student_draws = _stable_person_draws(
         person, seed=seed, salt="immigration:ead_students"
     )
@@ -599,22 +1050,18 @@ def _assign_ssn_card_codes(
             student_candidates, weights, student_draws, student_excess
         )
     ] = 2
-    return ssn_codes
+    return ssn_codes, humanitarian_marks
 
 
 def _derive_immigration_status(
     person: pd.DataFrame,
     ssn_codes: np.ndarray,
+    humanitarian_marks: np.ndarray,
     *,
     time_period: int,
 ) -> np.ndarray:
-    arrival_code = _integer_column(person, "PEINUSYR")
-    arrival_year = np.full(len(person), time_period, dtype=np.int64)
-    for code, midpoint in _ARRIVAL_YEAR_MIDPOINTS.items():
-        arrival_year[arrival_code == code] = midpoint
-    years_in_us = time_period - arrival_year
+    _, arrival_year, age_at_entry = _arrival_profile(person, time_period=time_period)
     age = _integer_column(person, "A_AGE")
-    age_at_entry = np.maximum(0, age - years_in_us)
     birth_country = _integer_column(person, "PENATVTY")
 
     # Documented non-citizens default to LPR — the modal true status — and
@@ -633,13 +1080,14 @@ def _derive_immigration_status(
     )
     status[cuban_haitian] = "CUBAN_HAITIAN_ENTRANT"
 
-    daca = (
-        (ssn_codes == 2)
-        & (arrival_year <= _DACA_LATEST_ARRIVAL_YEAR)
-        & (age_at_entry < _DACA_MAX_AGE_AT_ENTRY)
-        & (age >= _DACA_MIN_CURRENT_AGE)
-    )
+    daca = (ssn_codes == 2) & _daca_statutory_cohort(arrival_year, age_at_entry, age)
     status[daca] = "DACA"
+
+    # Humanitarian draws exclude Cuba/Haiti-born and the DACA cohort, so
+    # the marks are disjoint from both tags; every marked person carries a
+    # non-NONE SSN code, so the columns still agree about the undocumented.
+    marked = humanitarian_marks != ""
+    status[marked] = humanitarian_marks[marked]
     return status
 
 
@@ -746,7 +1194,7 @@ def us_immigration_composition_summary(frame: Frame) -> dict[str, object]:
 def us_immigration_composition_gate(
     frame: Frame,
     *,
-    controls: UndocumentedControls | None = None,
+    controls: ImmigrationControls | None = None,
 ) -> GateResult:
     """Release gate: the SSN/immigration surface exists and is plausible.
 
@@ -754,8 +1202,12 @@ def us_immigration_composition_gate(
     mode: everyone a citizen with a valid SSN), when a value falls outside
     the engine enum domain, when the two columns disagree about citizenship
     or undocumented status, when the weighted non-citizen share leaves its
-    plausibility band, or when the emergent undocumented population strays
-    outside a coarse band around its cited published anchor.
+    plausibility band, when the emergent undocumented population strays
+    outside a coarse band around its cited published anchor, or when a
+    humanitarian category's emitted mass leaves the coarse band around its
+    cited stock target (microcosm #767 — the H.R.1 §71109/§71301/§71302 and
+    SNAP §10108 eligibility channels all bind through these categories; an
+    explicit zero target must emit exactly zero).
     """
 
     if controls is None:
@@ -779,13 +1231,20 @@ def us_immigration_composition_gate(
     details: dict[str, object] = {
         "summary": us_immigration_composition_summary(frame),
         "controls": {
-            "undocumented_workers": controls.workers,
-            "undocumented_students": controls.students,
-            "undocumented_population_anchor": controls.population_anchor,
-            "sources": dict(controls.sources),
+            "undocumented_workers": controls.undocumented.workers,
+            "undocumented_students": controls.undocumented.students,
+            "undocumented_population_anchor": (
+                controls.undocumented.population_anchor
+            ),
+            "sources": dict(controls.undocumented.sources),
+            "humanitarian_status_stocks": {
+                draw.label: {"target": draw.target, "source": draw.source}
+                for draw in controls.humanitarian
+            },
         },
         "non_citizen_share_band": list(_NON_CITIZEN_SHARE_BAND),
         "undocumented_anchor_relative_band": list(_UNDOCUMENTED_ANCHOR_RELATIVE_BAND),
+        "humanitarian_target_relative_band": list(_HUMANITARIAN_TARGET_RELATIVE_BAND),
     }
 
     missing = [
@@ -850,15 +1309,47 @@ def us_immigration_composition_gate(
         )
 
     undocumented = float(weights[ssn_none].sum())
-    relative = undocumented / controls.population_anchor
+    relative = undocumented / controls.undocumented.population_anchor
     rel_low, rel_high = _UNDOCUMENTED_ANCHOR_RELATIVE_BAND
     if not (rel_low <= relative <= rel_high):
         failures.append(
             f"emergent undocumented population {undocumented:,.0f} is "
             f"{relative:.2f}x the published anchor "
-            f"{controls.population_anchor:,.0f} (band [{rel_low}, {rel_high}], "
-            f"{controls.sources[_ANCHOR_KEY]})."
+            f"{controls.undocumented.population_anchor:,.0f} "
+            f"(band [{rel_low}, {rel_high}], "
+            f"{controls.undocumented.sources[_ANCHOR_KEY]})."
         )
+
+    status_values = status.to_numpy()
+    hum_low, hum_high = _HUMANITARIAN_TARGET_RELATIVE_BAND
+    achieved_by_category: dict[str, dict[str, object]] = {}
+    for category in HUMANITARIAN_STATUS_CATEGORIES:
+        status_name = _HUMANITARIAN_STATUS_BY_CATEGORY[category]
+        target = controls.humanitarian_target(category)
+        emitted = float(weights[status_values == status_name].sum())
+        achieved_by_category[category] = {
+            "status": status_name,
+            "target": target,
+            "population": emitted,
+            "relative": (emitted / target) if target > 0 else None,
+        }
+        if target <= 0:
+            if emitted > 0:
+                failures.append(
+                    f"{status_name}: {emitted:,.0f} weighted persons emitted "
+                    "against an explicit zero target — the manifest documents "
+                    "this category as not imputed."
+                )
+            continue
+        category_relative = emitted / target
+        if not (hum_low <= category_relative <= hum_high):
+            failures.append(
+                f"{status_name}: emitted population {emitted:,.0f} is "
+                f"{category_relative:.2f}x the cited stock target "
+                f"{target:,.0f} (band [{hum_low}, {hum_high}]) — the H.R.1 "
+                "eligibility channels through this category are degenerate."
+            )
+    details["humanitarian_achieved"] = achieved_by_category
 
     return GateResult(
         name="immigration_composition",
