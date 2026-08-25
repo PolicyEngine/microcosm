@@ -40,6 +40,35 @@ PROCESSES = {
 }
 
 
+def stray_nested_test_files(flat: tuple[str, ...]) -> tuple[str, ...]:
+    """Tracked ``test_*.py`` files nested below a shard's ``tests/`` directory.
+
+    The CI lanes run explicit file lists built from the flat ``TEST_GLOB``, while
+    local ``uv run pytest`` and the wheels lane discover recursively. A test file
+    dropped into ``tests/fixtures/`` or ``tests/golden/`` therefore runs locally
+    and in the engine-free wheels lane — where engine-gated tests skip — but never
+    executes with an engine anywhere in CI, while every check stays green. Names
+    are matched in Python rather than by pathspec, which does not descend here.
+    """
+    result = subprocess.run(
+        ["git", "ls-files", "--", "packages"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    known = set(flat)
+    nested = {
+        line
+        for line in result.stdout.splitlines()
+        if "/tests/" in line
+        and basename(line).startswith("test_")
+        and line.endswith(".py")
+        and line not in known
+    }
+    return tuple(sorted(nested))
+
+
 def tracked_test_files() -> tuple[str, ...]:
     result = subprocess.run(
         ["git", "ls-files", "--", TEST_GLOB],
@@ -214,6 +243,16 @@ def verify() -> None:
     files = tracked_test_files()
     if not files:
         raise SystemExit(f"no tracked tests matched {TEST_GLOB}")
+
+    strays = stray_nested_test_files(files)
+    if strays:
+        listed = "\n  ".join(strays)
+        raise SystemExit(
+            "test files nested below a shard's tests/ directory are invisible to "
+            "every CI lane (they run only under local recursive discovery and the "
+            "engine-free wheels lane, where engine-gated tests skip). Move them "
+            f"directly into packages/<shard>/tests/:\n  {listed}"
+        )
 
     for path in ENGINE_ONLY:
         if path not in files:

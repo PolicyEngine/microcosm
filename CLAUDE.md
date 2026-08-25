@@ -45,7 +45,19 @@ collection hook skips them when that engine is absent, and the marker also
 makes `-m requires_uk` a real selector. Do not add new module-local skip
 aliases. Existing `importorskip` guards (still the norm across the US files)
 keep working and were deliberately left in place — convert one only when you
-are already editing that test for another reason. `tools/ci_test_groups.py` is the partition
+are already editing that test for another reason.
+
+**Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
+no subdirectories; `fixtures/` and `golden/` hold data only — and be named
+`test_*.py`. The lanes run explicit file lists built from a flat pathspec, while
+local `uv run pytest` and the wheels lane discover recursively, so a test parked
+next to its fixtures would run locally and stay green in CI without ever
+executing against an engine. `--verify` fails on such a file rather than letting
+it hide. Build tests that exercise a country engine must be named `test_us_*` or
+`test_uk_*` so they land in that country's lane; an engine-dependent file named
+anything else falls into the always-on `shared-spec` group and runs on every PR.
+After adding one, check `tools/ci_test_groups.py --verify`: your file should
+appear in the group you expect and never under `[defaulted]`. `tools/ci_test_groups.py` is the partition
 authority for CI file groups; update it and keep `--verify` green whenever
 test files move or new grouped lanes are added. Spec identities
 (`spec_sha256` pins, seed digests) attest kernel source and locked
