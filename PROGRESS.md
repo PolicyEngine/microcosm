@@ -1,5 +1,42 @@
 # Progress: defensive review of microcosm PR #743
 
+## State (round 2)
+
+- Current-head reverification is in progress on the dedicated
+  `review/pr-743-audit` branch; the PR branch remains untouched.
+- GitHub's live PR record, the freshly written `FETCH_HEAD`, and
+  `origin/uk-national-first-calibrated-candidate-623` all resolve to
+  `74b4d768f7f7c83eb0593464ceb0e2a7c81ec154`, the exact head audited in round
+  1. The prompt's three named seam commits (`96e73047`, `971a9699`, and
+  `e54e546b`) are ancestors of that head, not successors.
+- The audit is defensive: every round-1 verdict will require a refreshed
+  production-shaped probe plus current-head source citations. No build will be
+  run.
+
+## Done (round 2)
+
+- Read the current PR conversation, including Vahid Ahmadi's four second-pass
+  findings, and preserved the direct comment URL for the overlap analysis.
+- Repeated the required setup attempt from a writable uv cache; dependency
+  resolution succeeded but package download stopped on DNS. Verified the
+  fallback sibling environment has the exact same `uv.lock` SHA-256 and placed
+  this worktree's five source roots first on `PYTHONPATH`.
+- Re-ran the focused seam, scorer, resolver, target-materialization, and exact
+  no-resolver regression tests successfully.
+- Refreshed probes for the documented builder path, production-shaped scorer,
+  boolean child counts, Logbook scope/order, and release-candidate exclusion
+  path. All five round-1 P0 failures reproduced at the live head.
+
+## Next (round 2)
+
+- Add the round-2 verdict matrix and Vahid overlap/supersession analysis to
+  `REVIEW-743.md`, update this journal to complete, commit both files, and
+  publish only the authorized review branch.
+
+---
+
+## Round 1 record
+
 ## State
 
 Review complete on local branch `codex/review-743` at cached PR head
