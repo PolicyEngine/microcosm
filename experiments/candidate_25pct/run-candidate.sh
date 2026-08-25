@@ -90,6 +90,8 @@ ORG_WAGES="/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_da
 ORG_WAGES_SHA="66fa5b6aa4087413b691038767b51f603281ff55411b58259922f78e67460372"
 CD_CROSSWALK="$WT/packages/microcosm-build/src/microcosm/build/us_runtime/data/congressional_district_vintage_crosswalk.csv"
 CD_CROSSWALK_SHA="c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+PUMA_LADDER="/Users/maxghenis/PolicyEngine/_worktrees/populace-acs-clone/build/us/us_puma_ladder_2020.npz"
+PUMA_LADDER_SHA="39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
 
 INCUMBENT_EVIDENCE="$WT/experiments/replacement_scorecard/incumbent_48b9d479.json"
 INCUMBENT_EVIDENCE_SHA="b2ad1a07f9668bc5d796cc9de99ef12da781b1ee8163ea65781871a20da441c8"
@@ -230,7 +232,9 @@ check_code_authority() {
     --ssi-take-up-prior-weight-basis \
     --ssi-take-up-prior-weight-basis-sha256 \
     --checkpoint-root --release-id --seed --epochs \
-    --skip-reform-validation --no-staging --out
+    --skip-reform-validation --no-staging --out \
+    --puma-ladder --puma-ladder-sha256 \
+    --congressional-district-vintage-crosswalk --congressional-district-vintage-crosswalk-sha256
   require_parser_flags sparse "$RELEASE_TOOL" --l0-refit-lambda-share
   require_parser_flags scorer "$SCORER_TOOL" \
     --incumbent --candidate --ledger-facts --out-prefix
@@ -238,6 +242,8 @@ check_code_authority() {
 
 check_pool_inputs() {
   check_sha256 asec-raw-stage-h5 "$ASEC_RAW" "$ASEC_RAW_SHA"
+  check_sha256 puma-ladder "$PUMA_LADDER" "$PUMA_LADDER_SHA"
+  check_sha256 cd-crosswalk "$CD_CROSSWALK" "$CD_CROSSWALK_SHA"
   check_sha256 acs-household-zip "$ACS_HOUSEHOLD" "$ACS_HOUSEHOLD_SHA"
   check_sha256 acs-person-zip "$ACS_PERSON" "$ACS_PERSON_SHA"
   check_sha256 acs-rent-h5 "$ACS_RENT" "$ACS_RENT_SHA"
@@ -1168,6 +1174,10 @@ POOL_COMMAND=(
   --puf-h5-sha256 "$PUF_H5_SHA"
   --puf-source-year-csv "$PUF_SOURCE"
   --puf-source-year-csv-sha256 "$PUF_SOURCE_SHA"
+  --puma-ladder "$PUMA_LADDER"
+  --puma-ladder-sha256 "$PUMA_LADDER_SHA"
+  --congressional-district-vintage-crosswalk "$CD_CROSSWALK"
+  --congressional-district-vintage-crosswalk-sha256 "$CD_CROSSWALK_SHA"
   --checkpoint-root "$POOL_CHECKPOINTS"
   --out "$POOL_H5"
 )
