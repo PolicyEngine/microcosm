@@ -451,7 +451,9 @@ class HumanitarianDraw:
 
     @property
     def label(self) -> str:
-        return self.category if self.origin is None else f"{self.category}:{self.origin}"
+        return (
+            self.category if self.origin is None else f"{self.category}:{self.origin}"
+        )
 
     @property
     def salt(self) -> str:
@@ -629,8 +631,7 @@ def _humanitarian_draws_from_parameters(
     missing = sorted(set(HUMANITARIAN_STATUS_CATEGORIES) - set(block))
     if missing:
         raise SourceRuntimeError(
-            f"US immigration {_HUMANITARIAN_KEY} is missing category(ies): "
-            f"{missing}."
+            f"US immigration {_HUMANITARIAN_KEY} is missing category(ies): {missing}."
         )
     draws: list[HumanitarianDraw] = []
     for category in HUMANITARIAN_STATUS_CATEGORIES:
@@ -879,8 +880,7 @@ def _humanitarian_draw_candidates(
             & (arrival_code <= max_arrival_code)
         )
     raise SourceRuntimeError(
-        f"US immigration derivation has no candidate rule for draw "
-        f"{draw.label!r}."
+        f"US immigration derivation has no candidate rule for draw {draw.label!r}."
     )
 
 
@@ -1233,9 +1233,7 @@ def us_immigration_composition_gate(
         "controls": {
             "undocumented_workers": controls.undocumented.workers,
             "undocumented_students": controls.undocumented.students,
-            "undocumented_population_anchor": (
-                controls.undocumented.population_anchor
-            ),
+            "undocumented_population_anchor": (controls.undocumented.population_anchor),
             "sources": dict(controls.undocumented.sources),
             "humanitarian_status_stocks": {
                 draw.label: {"target": draw.target, "source": draw.source}
