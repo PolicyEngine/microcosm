@@ -8,12 +8,19 @@ GitHub and PyPI DNS were unavailable, so `git fetch origin pull/747/head:pr-747`
 
 ## Round 2 — post-merge verification on current main
 
-GitHub's REST branch and PR responses independently identify current `main` as
-merge `2807e99cc11d1a8c69a0886992ae21a533719958`, created at
-2026-08-25 11:45:37 UTC with PR head
-`76e39f9b77256766d7608c1f03e12db2f8cef118` as its second parent. A fresh
-shell fetch was also attempted, but the sandbox could not resolve
-`github.com`; the REST result and the already-present commit/tree agree.
+GitHub's REST PR response identifies the #747 merge as
+`2807e99cc11d1a8c69a0886992ae21a533719958`, created at 2026-08-25 11:45:37
+UTC with PR head `76e39f9b77256766d7608c1f03e12db2f8cef118` as its second parent. A final
+live branch read after the probes found that `main` had advanced by one commit
+to `f9d3b4838c137e113e87452ccdeaa734b11733d2`. GitHub's compare response proves
+that sole later commit changes only one word in `DESIGN.md` (Ledger →
+Chronicle); it changes no executable, resource, receipt, register, test, or
+experiment file. The focused probes were executed on the #747 merge tree, and
+every byte they exercised is therefore identical at final live `main`.
+
+A fresh shell fetch was also attempted, but the sandbox could not resolve
+`github.com`; live refs and the one-file intervening diff were verified through
+GitHub REST rather than asserted from the stale remote-tracking ref.
 
 The PR was rebased after round 1, so a raw SHA range is misleading. The
 defensive history probe was:
@@ -33,7 +40,7 @@ reference blob changed after the audited patch series.
 
 ### Fresh verdicts
 
-| Round-one surface | Verdict on `2807e99c` | Fresh probe and disposition |
+| Round-one surface | Verdict on `f9d3b483` | Fresh probe and disposition |
 |---|---|---|
 | 1a. Receipt covers 24 rather than the final 25 stages | **SURVIVES ON MAIN** | AST/source probe found 25 production stages ending in `age_tail`, while the receipt still says “all 24 stages”; the named acceptance JSON is not tracked. No resolving commit. |
 | 1b. Final age-tail breaks E6's stored NHS identity | **SURVIVES ON MAIN — PRIORITY** | Production allocator → persist six NHS columns → production age-tail → production E6: 189/400 top-coded people moved to 85+, 67 to 90+, permutation identity stayed true, `matches_stored_columns=false`, and all six NHS columns mismatched. No resolving commit. |
@@ -95,11 +102,12 @@ top-coded `person.age` (`age_tail.py:151-196`); E6 recomputes NHS from final age
 and requires equality with the stored values
 (`verify_uk_identity_stability.py:378-386,431-464`).
 
-Fresh reproduction on current main `2807e99c`, using those production
+Fresh reproduction on the #747 merge tree `2807e99c`, using those production
 functions and the committed age-band resource: of 400 top-coded people, 189
 moved to age 85+ and 67 to age 90+. `identical_under_permutation` remained
 true, but `matches_stored_columns` was false and all six NHS columns appeared
-in `stored_column_mismatches`.
+in `stored_column_mismatches`. Final live `main` `f9d3b483` changes only
+`DESIGN.md`, so the complete probed path and resource bytes are identical.
 
 Acceptance criteria:
 

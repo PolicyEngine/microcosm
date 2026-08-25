@@ -2,13 +2,15 @@
 
 ## State
 
-Round-2 post-merge verification is complete against current `main` merge
-`2807e99cc11d1a8c69a0886992ae21a533719958` and merged PR head
-`76e39f9b77256766d7608c1f03e12db2f8cef118`, independently confirmed through
-GitHub REST. All five numbered round-one findings survive; the entity-table
-subpart of finding 2 alone was resolved by `76e39f9b`. The priority production
-defect is a fresh E6 reproduction in which final age-tail redistribution makes
-all six stored NHS columns disagree with their final-age recomputation.
+Round-2 post-merge verification is complete against final live `main`
+`f9d3b4838c137e113e87452ccdeaa734b11733d2`. PR #747 merged as
+`2807e99cc11d1a8c69a0886992ae21a533719958` with PR head `76e39f9b`; the sole
+later main commit changes one word in `DESIGN.md`, so every probed executable,
+resource, receipt, and register byte is identical at the final tip. All five
+numbered round-one findings survive; the entity-table subpart of finding 2
+alone was resolved by `76e39f9b`. The priority production defect is a fresh E6
+reproduction in which final age-tail redistribution makes all six stored NHS
+columns disagree with their final-age recomputation.
 
 `REVIEW-747.md` now carries the full post-merge verdict table, refreshed probes,
 resolving-commit analysis, and six owner-ready issue drafts. No build,
@@ -32,6 +34,9 @@ branch occurred.
   stale 0.6761-vs-0.674658 incumbent evidence.
 - Ran the focused parity/register/payload/age/NHS test slice with exit 0 and
   validated the updated report with code-line citations.
+- Re-read live `main` immediately before finalization. It had advanced by one
+  commit to `f9d3b483`; GitHub compare and commit evidence show exactly a
+  one-word `DESIGN.md` edit and no finding-surface change.
 
 ## Next
 
