@@ -29,6 +29,9 @@ built, published, or pushed.
   banner, complete machine-readable carriage, and mixed-mode coverage proving
   the carried verdict does not alter an existing preflight exit code.
 - Added the changelog fragment. All 25 preflight tests and focused Ruff pass.
+- The adjacent exact-k E2E run exposed a legacy minimal `Namespace` without
+  the new parser attribute; the receipt helper now treats that absence as the
+  unchanged flag-off default, and all three ladder-point cases pass again.
 
 ## Next
 
