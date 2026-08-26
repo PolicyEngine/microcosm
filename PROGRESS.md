@@ -1,36 +1,33 @@
-# Progress: authenticated gate-failed base-pool release
+# Progress: opt-in release from a gate-failed US pool
 
 ## State
 
-Implementation is starting from `origin/main` at `2263df36`. The legacy
-`--base-h5` release path and publication preflight are being traced so that a
-multispine pool cannot bypass its terminal manifest, while an explicit
-human-visible opt-in can carry a terminal `gate_failed` verdict into a release.
-
-No pool/release build, publication, push, network access, battery change, or
-gate-logic change has occurred.
+Work began on 2026-08-26 from branch `release-from-gate-failed-pool` at
+`2263df3673f5`. The lane is mapping the existing release-builder and
+publication-preflight contracts before adding the explicit fail-closed opt-in.
+No pool or release has been built, published, or pushed.
 
 ## Done
 
-- Read the repository operating instructions and the GitNexus debugging,
-  impact-analysis, and CLI workflows.
-- Confirmed branch `release-from-gate-failed-pool` is clean at `2263df36`.
-- Checked the local GitNexus CLI; this worktree has no index, so source tracing
-  will use offline repository search and direct code inspection.
+- Read the repository operating instructions and the GitNexus impact-analysis
+  workflow.
+- Confirmed the worktree is initially clean and the pre-built environment is
+  available.
+- Established this lane-specific committed journal before implementation.
 
 ## Next
 
-1. Trace pool identity stamping, authenticated loader contracts, both legacy
-   H5 consumers, release-manifest construction, and relevant tests.
-2. Audit every `simulation_ready`, `gate_failed`, and
-   `load_simulation_ready` consumer under `tools/` and `packages/`.
-3. Implement and commit fail-closed containment, explicit opt-in and verdict
-   carriage, then preflight authentication/surfacing and regression tests.
-4. Add the changelog fragment, run Ruff and the full suite one process per
-   shard, finalize `out.md` and this journal, and leave a clean worktree.
+1. Audit the loader seam, manifest schemas, preflight, tests, and every
+   `simulation_ready`/`gate_failed`/`load_simulation_ready` consumer.
+2. Add the explicit builder opt-in, carried agreement-gate verdict, preflight
+   visibility, focused tests, and a changelog fragment without changing the
+   battery or loader contracts.
+3. Run Ruff and full pytest one process per shard, record evidence, write
+   `out.md`, and leave the branch clean with coherent local commits.
 
-## Historical prior lane
+## Historical context
 
-The stacked-pool CD-vintage provenance journal previously in this file is
-historical: that work is present in the `origin/main` base used by this lane.
-Its final journal remains available at commit `2263df36^`.
+The stacked-pool CD-vintage provenance journal previously occupying this file
+was complete on `origin/main` before this lane began. Its detailed final state
+remains available in the parent history at `2263df3673f5`. The earlier
+PolicyEngine-US 1.819.0 lock-bump journal remains available at `05d254aa`.
