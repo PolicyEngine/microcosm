@@ -103,7 +103,7 @@ _RUNG_ABORT_EXIT_CODE = 3
 #: The last stage of the assembled checkpoint: everything through the base
 #: FRS mapping and the stochastic draws. A name, not an index — a position
 #: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the policyengine-uk-data#468 class).
+#: orderings happen to agree (the uk-data#468 class).
 UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 _STAGE_NAMES = (
     "frs_spine",
