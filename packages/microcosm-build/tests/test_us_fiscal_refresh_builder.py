@@ -1669,19 +1669,27 @@ def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
 
 
 @pytest.mark.parametrize(
-    ("allow_gate_failed", "status", "simulation_ready", "passed"),
     (
-        (False, "simulation_ready", True, True),
-        (True, "gate_failed", False, False),
+        "allow_gate_failed",
+        "status",
+        "simulation_ready",
+        "passed",
+        "rejected",
+    ),
+    (
+        (False, "simulation_ready", True, True, False),
+        (True, "gate_failed", False, False, False),
+        (True, "simulation_ready", True, True, True),
     ),
 )
-def test_builder_base_h5_pool_loader_is_selected_only_by_explicit_opt_in(
+def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
     monkeypatch,
     tmp_path,
     allow_gate_failed,
     status,
     simulation_ready,
     passed,
+    rejected,
 ) -> None:
     builder = _load_builder_module()
     pool_h5 = tmp_path / "pool.h5"
@@ -1716,36 +1724,30 @@ def test_builder_base_h5_pool_loader_is_selected_only_by_explicit_opt_in(
         lambda path: manifest_path,
     )
 
-    def selected(path):
+    def selected(path, *, allow_terminal_gate_failure):
         assert path == manifest_path
+        assert allow_terminal_gate_failure is allow_gate_failed
         return frame, manifest, authenticated
 
-    if allow_gate_failed:
-        monkeypatch.setattr(
-            builder,
-            "load_authenticated_us_multispine_pool_for_scoring",
-            selected,
-        )
-        monkeypatch.setattr(
-            builder,
-            "load_simulation_ready_us_multispine_pool",
-            lambda path: pytest.fail("strict loader ran after explicit opt-in"),
-        )
-    else:
-        monkeypatch.setattr(
-            builder,
-            "load_simulation_ready_us_multispine_pool",
-            selected,
-        )
-        monkeypatch.setattr(
-            builder,
-            "load_authenticated_us_multispine_pool_for_scoring",
-            lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
-        )
+    monkeypatch.setattr(
+        builder,
+        "load_authenticated_us_multispine_pool_for_release",
+        selected,
+    )
 
-    loaded_frame, receipt, loaded_identity = builder._load_base_pool_if_identified(
-        pool_h5,
-        allow_gate_failed_base_pool=allow_gate_failed,
+    if rejected:
+        with pytest.raises(ValueError, match="override is valid only"):
+            builder._load_base_pool_if_identified(
+                pool_h5,
+                allow_gate_failed_base_pool=allow_gate_failed,
+            )
+        return
+
+    loaded_frame, receipt, loaded_identity = (
+        builder._load_base_pool_if_identified(
+            pool_h5,
+            allow_gate_failed_base_pool=allow_gate_failed,
+        )
     )
 
     assert loaded_frame is frame
@@ -1757,33 +1759,47 @@ def test_builder_base_h5_pool_loader_is_selected_only_by_explicit_opt_in(
     )
 
 
-def test_builder_refuses_red_base_h5_pool_without_opt_in(
+def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
     monkeypatch, tmp_path
 ) -> None:
     builder = _load_builder_module()
     pool_h5 = tmp_path / "pool.h5"
+    pool_h5.write_bytes(b"pool identity comes from its sibling manifest")
     manifest_path = pool_h5.with_suffix(".manifest.json")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": "populace_us_multispine_pool_manifest",
+                "status": "gate_failed",
+                "simulation_ready": False,
+            }
+        )
+    )
+    out = tmp_path / "out"
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
     monkeypatch.setattr(
         builder,
-        "identify_us_multispine_pool_manifest",
-        lambda path: manifest_path,
+        "_load_frame",
+        lambda path: pytest.fail("red pool reached the generic H5 loader"),
     )
-    monkeypatch.setattr(
-        builder,
-        "load_authenticated_us_multispine_pool_for_scoring",
-        lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
-    )
-
-    def refuse(path):
-        raise ValueError("US multispine pool manifest is not simulation-ready")
-
-    monkeypatch.setattr(builder, "load_simulation_ready_us_multispine_pool", refuse)
 
     with pytest.raises(ValueError, match="not simulation-ready"):
-        builder._load_base_pool_if_identified(
-            pool_h5,
-            allow_gate_failed_base_pool=False,
+        builder.main(
+            [
+                "--base-h5",
+                str(pool_h5),
+                "--ledger-facts",
+                str(tmp_path / "facts.jsonl"),
+                "--out",
+                str(out),
+                "--release-id",
+                "populace-us-2024-red-pool-fixture",
+                "--no-staging",
+            ]
         )
+
+    assert not out.exists()
 
 
 def test_builder_refuses_bare_stamped_pool_h5_before_generic_load(

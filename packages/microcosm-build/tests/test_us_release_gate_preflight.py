@@ -747,19 +747,27 @@ def test__report__carried_red_pool_is_prominent_but_non_blocking(tmp_path) -> No
 
 
 @pytest.mark.parametrize(
-    ("allow_gate_failed", "status", "simulation_ready", "passed"),
     (
-        (False, "simulation_ready", True, True),
-        (True, "gate_failed", False, False),
+        "allow_gate_failed",
+        "status",
+        "simulation_ready",
+        "passed",
+        "rejected",
+    ),
+    (
+        (False, "simulation_ready", True, True, False),
+        (True, "gate_failed", False, False, False),
+        (True, "simulation_ready", True, True, True),
     ),
 )
-def test__preflight_base__authenticates_pool_with_loader_selected_by_opt_in(
+def test__preflight_base__passes_explicit_terminal_gate_policy_to_release_loader(
     monkeypatch,
     tmp_path,
     allow_gate_failed,
     status,
     simulation_ready,
     passed,
+    rejected,
 ) -> None:
     base_h5 = tmp_path / "pool.h5"
     base_h5.write_bytes(b"authenticated pool")
@@ -793,32 +801,24 @@ def test__preflight_base__authenticates_pool_with_loader_selected_by_opt_in(
         lambda path: manifest_path,
     )
 
-    def selected(path):
+    def selected(path, *, allow_terminal_gate_failure):
         assert path == manifest_path
+        assert allow_terminal_gate_failure is allow_gate_failed
         return frame, manifest, identity
 
-    if allow_gate_failed:
-        monkeypatch.setattr(
-            preflight_module,
-            "load_authenticated_us_multispine_pool_for_scoring",
-            selected,
-        )
-        monkeypatch.setattr(
-            preflight_module,
-            "load_simulation_ready_us_multispine_pool",
-            lambda path: pytest.fail("strict loader ran after explicit opt-in"),
-        )
-    else:
-        monkeypatch.setattr(
-            preflight_module,
-            "load_simulation_ready_us_multispine_pool",
-            selected,
-        )
-        monkeypatch.setattr(
-            preflight_module,
-            "load_authenticated_us_multispine_pool_for_scoring",
-            lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
-        )
+    monkeypatch.setattr(
+        preflight_module,
+        "load_authenticated_us_multispine_pool_for_release",
+        selected,
+    )
+
+    if rejected:
+        with pytest.raises(ValueError, match="override is valid only"):
+            preflight_module._load_preflight_base(
+                base_h5,
+                allow_gate_failed_base_pool=allow_gate_failed,
+            )
+        return
 
     loaded, receipt, loaded_manifest_path = preflight_module._load_preflight_base(
         base_h5,
@@ -831,29 +831,27 @@ def test__preflight_base__authenticates_pool_with_loader_selected_by_opt_in(
     assert receipt["agreement_gate_reference"]["failure_count"] == len(failures)
 
 
-def test__preflight_base__refuses_red_pool_without_opt_in(
+def test__preflight_base__refuses_actual_red_sidecar_without_opt_in(
     monkeypatch, tmp_path
 ) -> None:
+    import microcosm.build.us_runtime.l0_refit_export as l0_refit_export
+
     base_h5 = tmp_path / "pool.h5"
+    base_h5.write_bytes(b"pool identity comes from its sibling manifest")
     manifest_path = base_h5.with_suffix(".manifest.json")
-    monkeypatch.setattr(
-        preflight_module,
-        "identify_us_multispine_pool_manifest",
-        lambda path: manifest_path,
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": "populace_us_multispine_pool_manifest",
+                "status": "gate_failed",
+                "simulation_ready": False,
+            }
+        )
     )
     monkeypatch.setattr(
-        preflight_module,
-        "load_authenticated_us_multispine_pool_for_scoring",
-        lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
-    )
-
-    def refuse(path):
-        raise ValueError("US multispine pool manifest is not simulation-ready")
-
-    monkeypatch.setattr(
-        preflight_module,
-        "load_simulation_ready_us_multispine_pool",
-        refuse,
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: pytest.fail("red pool reached the generic H5 loader"),
     )
 
     with pytest.raises(ValueError, match="not simulation-ready"):

@@ -36,6 +36,7 @@ from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     AuthenticatedPoolH5MismatchError,
     identify_us_multispine_pool_manifest,
+    load_authenticated_us_multispine_pool_for_release,
     load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
     require_authenticated_us_multispine_pool_h5,
@@ -1484,9 +1485,20 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
 
     with pytest.raises(ValueError, match="not simulation-ready"):
         load_simulation_ready_us_multispine_pool(manifest_path)
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=False,
+        )
 
     frame, loaded_manifest, authenticated_h5 = (
         load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+    )
+    release_frame, release_manifest, release_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=True,
+        )
     )
 
     assert frame.n("household") == 3
@@ -1494,6 +1506,9 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
     assert loaded_manifest["simulation_ready"] is False
     assert loaded_manifest["terminal_gates"]["passed"] is False
     assert authenticated_h5.sha256 == loaded_manifest["pool_h5"]["sha256"]
+    assert release_frame.n("household") == frame.n("household")
+    assert release_manifest == loaded_manifest
+    assert release_h5 == authenticated_h5
 
     receipt = us_multispine_pool_release_receipt(
         loaded_manifest,
@@ -1516,6 +1531,55 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         ],
         "verdict": failed_gate,
     }
+
+
+def test_gate_failed_release_opt_in_is_rejected_for_a_ready_pool(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    _frame, manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="override is valid only"):
+        us_multispine_pool_release_receipt(
+            manifest,
+            authenticated_h5,
+            allow_gate_failed_base_pool=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("nested_passed", "failures"),
+    ((False, []), (True, ["contradictory failure"])),
+)
+def test_release_receipt_rejects_incoherent_nested_gate_verdict(
+    tmp_path: Path,
+    nested_passed: bool,
+    failures: list[str],
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    _frame, manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=False,
+        )
+    )
+    first_gate = next(iter(manifest["agreement_gate"]["gates"].values()))
+    first_gate["passed"] = nested_passed
+    first_gate["failures"] = failures
+
+    with pytest.raises(ValueError, match="incoherent passed verdict"):
+        us_multispine_pool_release_receipt(
+            manifest,
+            authenticated_h5,
+            allow_gate_failed_base_pool=False,
+        )
 
 
 def test_pool_h5_identity_requires_its_missing_manifest_sidecar(

@@ -229,7 +229,7 @@ from microcosm.build.us_runtime.fiscal_targets import (
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     identify_us_multispine_pool_manifest,
-    load_authenticated_us_multispine_pool_for_scoring,
+    load_authenticated_us_multispine_pool_for_release,
     load_simulation_ready_us_multispine_pool,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
@@ -1709,12 +1709,12 @@ def _load_base_pool_if_identified(
             )
         return None, None, None
 
-    loader = (
-        load_authenticated_us_multispine_pool_for_scoring
-        if allow_gate_failed_base_pool
-        else load_simulation_ready_us_multispine_pool
+    frame, manifest, authenticated_pool_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=allow_gate_failed_base_pool,
+        )
     )
-    frame, manifest, authenticated_pool_h5 = loader(manifest_path)
     require_authenticated_us_multispine_pool_h5(
         path,
         authenticated_pool_h5,
@@ -8981,8 +8981,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
             "method": "preserve_validated_multispine_pool_weights",
             "applied": False,
             "reason": (
-                "Exact-k selection and HT-with-q refit retain the validated "
-                "pool artifact's original importance-weight baseline."
+                "The authenticated multispine input retains the published "
+                "pool artifact's original importance-weight baseline; "
+                "pool-owned preparation stages are not replayed."
             ),
             "initial_population": pool_population,
             "benchmark": US_BASE_PERSON_POPULATION_BENCHMARK,

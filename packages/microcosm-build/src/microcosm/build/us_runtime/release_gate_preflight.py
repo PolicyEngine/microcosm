@@ -66,8 +66,7 @@ import pandas as pd
 from microcosm.build.gates import input_mass_parity_gate
 from microcosm.build.us_runtime.h5_io import (
     identify_us_multispine_pool_manifest,
-    load_authenticated_us_multispine_pool_for_scoring,
-    load_simulation_ready_us_multispine_pool,
+    load_authenticated_us_multispine_pool_for_release,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
@@ -990,12 +989,12 @@ def _load_preflight_base(
             )
         return load_us_frame(base_h5), None, None
 
-    loader = (
-        load_authenticated_us_multispine_pool_for_scoring
-        if allow_gate_failed_base_pool
-        else load_simulation_ready_us_multispine_pool
+    frame, manifest, authenticated_pool_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=allow_gate_failed_base_pool,
+        )
     )
-    frame, manifest, authenticated_pool_h5 = loader(manifest_path)
     require_authenticated_us_multispine_pool_h5(
         base_h5,
         authenticated_pool_h5,

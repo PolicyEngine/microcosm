@@ -59,6 +59,7 @@ __all__ = [
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "US_STACKED_POOL_OPERATOR_ORDER",
     "identify_us_multispine_pool_manifest",
+    "load_authenticated_us_multispine_pool_for_release",
     "load_authenticated_us_multispine_pool_for_scoring",
     "load_legacy_calibrated_us_h5",
     "load_simulation_ready_us_multispine_pool",
@@ -420,6 +421,12 @@ def us_multispine_pool_release_receipt(
             "Authenticated gate-failed US multispine pool requires the explicit "
             "--allow-gate-failed-base-pool opt-in."
         )
+    if is_ready and allow_gate_failed_base_pool:
+        raise ValueError(
+            "--allow-gate-failed-base-pool was set, but the authenticated US "
+            "multispine pool is simulation-ready; the override is valid only "
+            "for status=gate_failed and simulation_ready=false."
+        )
 
     agreement_gate = _mapping(
         manifest.get("agreement_gate"),
@@ -435,7 +442,13 @@ def us_multispine_pool_release_receipt(
         agreement_gate.get("gates"),
         label="authenticated US multispine pool agreement_gate.gates",
     )
+    if not gates:
+        raise ValueError(
+            "Authenticated US multispine pool agreement gate has no nested "
+            "gate verdicts."
+        )
     failures: list[dict[str, str]] = []
+    nested_passed: list[bool] = []
     for gate_name, gate_payload in gates.items():
         if not isinstance(gate_name, str) or not gate_name:
             raise ValueError(
@@ -446,16 +459,30 @@ def us_multispine_pool_release_receipt(
             gate_payload,
             label=f"authenticated US multispine pool gate {gate_name!r}",
         )
+        gate_passed = gate.get("passed")
         gate_failures = gate.get("failures")
-        if not isinstance(gate_failures, list) or not all(
+        if type(gate_passed) is not bool or not isinstance(
+            gate_failures, list
+        ) or not all(
             isinstance(failure, str) for failure in gate_failures
         ):
             raise ValueError(
                 f"Authenticated US multispine pool gate {gate_name!r} has an "
-                "invalid failure list."
+                "invalid passed verdict or failure list."
             )
+        if gate_passed is bool(gate_failures):
+            raise ValueError(
+                f"Authenticated US multispine pool gate {gate_name!r} has an "
+                "incoherent passed verdict and failure list."
+            )
+        nested_passed.append(gate_passed)
         failures.extend(
             {"gate": gate_name, "message": failure} for failure in gate_failures
+        )
+    if all(nested_passed) is not expected_passed:
+        raise ValueError(
+            "Authenticated US multispine pool aggregate agreement verdict "
+            "disagrees with its nested gate verdicts."
         )
 
     diagnostics = _mapping(
@@ -1442,6 +1469,33 @@ def load_authenticated_us_multispine_pool_for_scoring(
     readiness contract is unchanged.
     """
 
+    return _load_us_multispine_pool(
+        path,
+        expected_manifest_sha256=expected_manifest_sha256,
+        require_simulation_ready=False,
+    )
+
+
+def load_authenticated_us_multispine_pool_for_release(
+    path: str | Path,
+    *,
+    allow_terminal_gate_failure: bool,
+    expected_manifest_sha256: str | None = None,
+) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
+    """Load an authenticated pool for release build or release preflight.
+
+    The default release boundary remains the public simulation-ready loader.
+    An explicit caller opt-in may instead admit the same current stacked
+    ``gate_failed`` status pair accepted for evidence scoring. Both branches
+    authenticate the complete manifest/H5/diagnostics publication; neither
+    changes the contract of the strict or scoring-only public loaders.
+    """
+
+    if not allow_terminal_gate_failure:
+        return load_simulation_ready_us_multispine_pool(
+            path,
+            expected_manifest_sha256=expected_manifest_sha256,
+        )
     return _load_us_multispine_pool(
         path,
         expected_manifest_sha256=expected_manifest_sha256,
