@@ -21,6 +21,7 @@ from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     TargetRegistry,
     TargetSpec,
+    diagnostics_payload,
     score_targets,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
@@ -342,6 +343,32 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         },
     ]
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
+
+
+def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
+    result, frame, registry, geography = _diagnostics_case()
+    build = {"release_id": "fixture"}
+
+    shared = diagnostics_payload(result, target_registry=registry, build=build)
+    uk = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        build=build,
+    )
+
+    uk_shared_layer = {
+        key: value for key, value in uk.items() if key != "uk_diagnostics"
+    }
+    assert uk_shared_layer == shared
+    assert set(uk) == {*shared.keys(), "uk_diagnostics"}
+    assert set(uk["uk_diagnostics"]) == {
+        "schema_version",
+        "weights",
+        "zero_weight_rows_by_stratum",
+        "target_pass_rates_by_geography_level",
+    }
 
 
 def test_payload_requires_exact_explicit_geography_mapping() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -12,6 +13,7 @@ import pytest
 
 from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
+from microcosm.build.logbook_adoption import role_pins_digest
 from microcosm.build.uk_runtime.national_frame import (
     UKStagingProvenance,
     _uk_source_file_fingerprint,
@@ -927,6 +929,40 @@ def test_national_driver_accepts_legacy_input_coverage_path_alias(
     assert args.logbook_prev_row_digest == "d" * 64
 
 
+def test_national_driver_accepts_staging_candidate_input_sha(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    declared_sha = "a" * 64
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--staging-candidate-input-sha256",
+            declared_sha,
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_candidate_input_sha256 == declared_sha
+
+
 def test_national_driver_forwards_legacy_output_to_compatibility_serializer(
     monkeypatch,
     tmp_path,
@@ -1283,6 +1319,60 @@ def test_national_driver_refuses_release_candidate_with_the_legacy_alias(
     assert "signed schema-4 report" in capsys.readouterr().err
 
 
+def test_national_driver_refuses_release_candidate_with_staging_candidate_input(
+    monkeypatch,
+    capsys,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--staging-candidate-input-sha256",
+            "a" * 64,
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
+            "--release-candidate",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "non-certified spine" in capsys.readouterr().err
+
+
+def test_staging_candidate_input_verifier_requires_declared_sha(tmp_path) -> None:
+    builder = _load_builder_module()
+    source = tmp_path / "synthetic-spine.h5"
+    source.write_bytes(b"synthetic")
+    digest = hashlib.sha256(b"synthetic").hexdigest()
+
+    identity = builder.verify_staging_candidate_uk_input(
+        source,
+        expected_sha256=digest,
+    )
+
+    assert identity.tier == "staging_candidate"
+    assert identity.sha256 == digest
+    with pytest.raises(ValueError, match="does not match declared"):
+        builder.verify_staging_candidate_uk_input(
+            source,
+            expected_sha256="0" * 64,
+        )
+
+
 def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) -> None:
     builder = _load_builder_module()
     for name in ("adult.tab", "benefits.tab", "put2223uk.tab", "hmrc.ods", "cgt.ods"):
@@ -1495,3 +1585,44 @@ def test_invalid_logbook_predecessor_refuses_before_sidecar_cleanup(
     for sidecar in sidecars:
         assert sidecar.read_text() == '{"stale": true}\n'
     assert not (tmp_path / "logbook-spool").exists()
+
+
+@pytest.mark.parametrize("feed_layout", ["file", "directory"])
+def test_ledger_facts_role_pin_is_digestible(tmp_path, feed_layout) -> None:
+    """The armed run's Ledger role pin must survive role_pins_digest.
+
+    First-armed-run finding (2026-08-23): _source_pins stored the full Ledger
+    provenance block under the 'ledger_facts' role, but role_pins_digest
+    accepts exactly {sha256, size_bytes}, so every armed build raised
+    ValueError at input_pins_digest before its first stage. Neither PR branch
+    fired it alone because only --ledger-facts reaches this path.
+    """
+
+    builder = _load_builder_module()
+    facts_body = b'{"fact": 1}\n'
+    if feed_layout == "file":
+        feed_path = tmp_path / "consumer_facts.jsonl"
+        feed_path.write_bytes(facts_body)
+    else:
+        feed_path = tmp_path / "feed"
+        feed_path.mkdir()
+        (feed_path / "consumer_facts.jsonl").write_bytes(facts_body)
+    artifact = SimpleNamespace(
+        path=feed_path,
+        facts_sha256="a" * 64,
+        provenance=lambda: {
+            "facts_sha256": "a" * 64,
+            "manifest_sha256": "b" * 64,
+            "profile": "uk-national",
+        },
+    )
+
+    pin = builder._ledger_facts_pin(artifact)
+
+    assert set(pin) == {"sha256", "size_bytes"}
+    assert pin["sha256"] == "a" * 64
+    assert pin["size_bytes"] == len(facts_body)
+    digest = role_pins_digest({"ledger_facts": pin})
+    assert len(digest) == 64
+    with pytest.raises(ValueError):
+        role_pins_digest({"ledger_facts": dict(artifact.provenance())})

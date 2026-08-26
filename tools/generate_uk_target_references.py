@@ -34,6 +34,7 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     {
         "affected_flag_variable",
         "band",
+        "band_filter_dimension",
         "band_period_factor",
         "count_of",
         "filters",
@@ -54,6 +55,7 @@ POLICYENGINE_BINDING_KEYS = frozenset(
         "source_lines",
         "threshold_price_base_year",
         "value_expression",
+        "value_reduction",
         "value_variable",
         "zeroed_input",
     }

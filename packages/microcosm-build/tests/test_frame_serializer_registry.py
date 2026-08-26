@@ -20,7 +20,7 @@ from microcosm.build.frame_serializer_registry import (
     HDF_WRITE_EXCLUSIONS,
     FrameSerializerSpec,
 )
-from microcosm.build.uk_runtime.national_build import (
+from microcosm.build.uk_runtime.national_frame import (
     _read_uk_national_tables,
     _write_uk_single_year_tables,
 )

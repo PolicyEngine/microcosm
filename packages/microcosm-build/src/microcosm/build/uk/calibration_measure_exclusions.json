@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "exclusions": [
+    {
+      "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
+      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
+      "tracking": "microcosm#623"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
+      "tracking": "microcosm#623"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
+      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
+      "tracking": "microcosm#623"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.nics_relief_employee",
+      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
+      "tracking": "microcosm#623"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.nics_relief_employer",
+      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
+      "tracking": "microcosm#623"
+    }
+  ]
+}

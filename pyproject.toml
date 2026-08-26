@@ -38,4 +38,6 @@ testpaths = ["packages"]
 addopts = "-q --import-mode=importlib"
 markers = [
     "slow: end-to-end tests that require large local source artifacts",
+    "requires_us: needs policyengine-us (the us extra); auto-skipped when absent",
+    "requires_uk: needs policyengine-uk (the uk extra); auto-skipped when absent",
 ]

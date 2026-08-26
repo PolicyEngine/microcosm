@@ -68,6 +68,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "calibration_measure_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_cgt_size_bands.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

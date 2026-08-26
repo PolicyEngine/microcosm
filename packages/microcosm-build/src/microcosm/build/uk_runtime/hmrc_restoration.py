@@ -12,6 +12,7 @@ aggregate replay report with the reviewed source fences.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -91,6 +92,8 @@ CERTIFIED_UK_CANDIDATE_SHA256 = (
     "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
 )
 CERTIFIED_UK_CANDIDATE_SIZE_BYTES = 1_315_880_118
+STAGING_CANDIDATE_TIER = "staging_candidate"
+STAGING_CANDIDATE_REVISION = "non_certified_staging_candidate"
 _CERTIFIED_CANDIDATE_VERIFICATION_TOKEN = object()
 
 
@@ -494,6 +497,50 @@ def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdent
     return identity
 
 
+def verify_staging_candidate_uk_input(
+    path: str | Path,
+    *,
+    expected_sha256: str,
+) -> UKCertifiedCandidateIdentity:
+    """Hash-gate a declared non-certified staging-candidate input."""
+
+    candidate = Path(path).expanduser().resolve()
+    if not candidate.is_file():
+        raise FileNotFoundError(f"UK staging-candidate input not found: {candidate}.")
+    expected = str(expected_sha256)
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise ValueError(
+            "--staging-candidate-input-sha256 must be a lowercase SHA-256."
+        )
+    fingerprint_before = _uk_source_file_fingerprint(candidate)
+    digest = _sha256(candidate)
+    fingerprint_after = _uk_source_file_fingerprint(candidate)
+    if fingerprint_after != fingerprint_before:
+        raise RuntimeError(
+            "UK staging-candidate input changed while its SHA-256 was being verified."
+        )
+    if digest != expected:
+        raise ValueError(
+            f"{candidate}: sha256 {digest} does not match declared "
+            f"staging-candidate input {expected}."
+        )
+    identity = UKCertifiedCandidateIdentity(
+        path=candidate,
+        filename=candidate.name,
+        tier=STAGING_CANDIDATE_TIER,
+        revision=STAGING_CANDIDATE_REVISION,
+        sha256=digest,
+        size_bytes=fingerprint_after.size_bytes,
+    )
+    object.__setattr__(
+        identity,
+        "_verification_token",
+        _CERTIFIED_CANDIDATE_VERIFICATION_TOKEN,
+    )
+    object.__setattr__(identity, "_source_file_fingerprint", fingerprint_after)
+    return identity
+
+
 def restore_uk_hmrc_income_family(
     frame: Frame,
     *,
@@ -801,6 +848,24 @@ def _validate_certified_candidate_identity(
         identity.sha256,
         identity.size_bytes,
     )
+    if identity.tier == STAGING_CANDIDATE_TIER:
+        # A declared staging-candidate input is deliberately not the certified
+        # artifact, so the certified-pin equality below cannot apply. The bytes
+        # are still bound, by the two checks above rather than by this branch:
+        # the verification token is a module-private sentinel that only
+        # verify_certified_uk_candidate and verify_staging_candidate_uk_input
+        # stamp, and the latter hashes the file against a mandatory declared
+        # sha256 (re-reading the fingerprint to catch a mid-read swap) and
+        # refuses on mismatch; the source-file fingerprint is required of both
+        # tiers. What this tier declares is "the file the operator named", and
+        # the build record labels it non_certified_staging_candidate while
+        # --staging-candidate-input-sha256 is refused for release candidates.
+        if identity.revision != STAGING_CANDIDATE_REVISION:
+            raise ValueError(
+                "UK staging-candidate input identity has an invalid revision "
+                f"{identity.revision!r}."
+            )
+        return
     if actual != expected:
         raise ValueError(
             "HMRC replay base identity does not match the certified Microcosm UK "

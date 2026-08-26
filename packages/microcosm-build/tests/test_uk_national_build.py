@@ -31,15 +31,21 @@ from microcosm.build.uk_runtime.national_build import (
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
 )
+from microcosm.build.uk_runtime.national_doctrine import UKNationalSolveDoctrine
 from microcosm.build.uk_runtime.national_frame import (
     _uk_gate_surface,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.parity_reference import (
+    EfrsParityReference,
+    EfrsParitySource,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
@@ -355,6 +361,13 @@ def _registry_with_calibration() -> dict[str, UKGateBinding]:
     return registry
 
 
+def _registry_with_calibration_and_parity_trio() -> dict[str, UKGateBinding]:
+    registry = _registry_with_calibration()
+    for name in ("export_surface", "target_surface", "target_fit"):
+        registry[name] = UK_GATE_REGISTRY[name]
+    return registry
+
+
 def _uc_reference(**overrides) -> LedgerTargetReference:
     values = {
         "name": "dwp.uc.households",
@@ -388,6 +401,22 @@ def _calibration_fact(value: float = 60.0) -> dict:
         "period": {"type": "month", "value": "2025-12"},
         "value": value,
     }
+
+
+def _calibration_registry(value: float = 60.0) -> TargetRegistry:
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households",
+                entity="benunit",
+                measure="dwp/uc/households",
+                value=value,
+                source="test",
+                metadata={"contract_target_id": "dwp.uc.households"},
+            )
+        ],
+        country="uk",
+    )
 
 
 def test_driver_validates_the_uk_residue_after_each_stage(
@@ -523,16 +552,16 @@ def test_resumed_national_calibration_feeds_reference_coverage_gate(
     _write_two_row_h5(input_h5, include_calibration_columns=True)
     frame, _provenance = load_uk_national_frame(input_h5)
     stage = UKNationalCalibrationStage(
-        [_calibration_fact()],
-        references=[_uc_reference()],
-        epochs=1,
+        _calibration_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
     )
     staged = stage(frame)
     metadata = json.loads(json.dumps(stage.checkpoint_metadata()))
     resumed = UKNationalCalibrationStage(
-        [_calibration_fact()],
-        references=[_uc_reference()],
-        epochs=1,
+        _calibration_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
     )
 
     resumed.resume_from_checkpoint(metadata, staged)
@@ -1205,6 +1234,108 @@ def test_national_build_parity_trio_is_evidence_absent(
     assert gates["uk_qrf_tail_concentration"]["status"] == "failed"
 
 
+def _fixture_parity_reference(input_h5) -> EfrsParityReference:
+    """A synthetic frozen instrument matching the fixture's export surface.
+
+    Reference and candidate stay independently derived in production; the
+    test constructs the reference from the *input* artifact, before any
+    stage runs, so a stage that leaked scratch columns would still fail
+    the export-surface comparison.
+    """
+
+    frame, _provenance = load_uk_national_frame(input_h5)
+    input_entities = {
+        str(column): entity
+        for entity in frame.entities
+        for column in frame.table(entity).columns
+    }
+    return EfrsParityReference(
+        source=EfrsParitySource(
+            repo_id="example/synthetic",
+            repo_type="model",
+            filename="synthetic_reference.h5",
+            revision="0" * 40,
+            sha256="0" * 64,
+            url="https://example.invalid/synthetic_reference.h5",
+            vintage="2024_25",
+            period="2024",
+            size_bytes=1,
+        ),
+        nonzero_shares={name: 1.0 for name in input_entities},
+        input_entities=input_entities,
+    )
+
+
+def test_national_build_parity_trio_evaluates_for_armed_calibration(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "healthy.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    _write_two_row_h5(input_h5, include_calibration_columns=True)
+
+    _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staging.h5",
+        stages=(
+            Stage(
+                name="national_calibration",
+                transform=UKNationalCalibrationStage(
+                    _calibration_registry(55.0),
+                    period=2025,
+                    doctrine=UKNationalSolveDoctrine(epochs=1),
+                ),
+            ),
+        ),
+        coverage_engine=object(),
+        terminal_gate_path=terminal_json,
+        gate_registry=_registry_with_calibration_and_parity_trio(),
+        parity_reference=_fixture_parity_reference(input_h5),
+    )
+
+    gates = json.loads(terminal_json.read_text(encoding="utf-8"))["gates"]
+    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+        assert gates[entry_id]["status"] == "passed", entry_id
+    assert gates["uk_calibration_reference_coverage"]["status"] == "passed"
+
+
+def test_armed_calibration_without_parity_reference_stays_evidence_absent(
+    tmp_path,
+) -> None:
+    """No frozen instrument, no trio evidence — never a copied reference."""
+
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "healthy.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    _write_two_row_h5(input_h5, include_calibration_columns=True)
+
+    _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staging.h5",
+        stages=(
+            Stage(
+                name="national_calibration",
+                transform=UKNationalCalibrationStage(
+                    _calibration_registry(55.0),
+                    period=2025,
+                    doctrine=UKNationalSolveDoctrine(epochs=1),
+                ),
+            ),
+        ),
+        coverage_engine=object(),
+        terminal_gate_path=terminal_json,
+        gate_registry=_registry_with_calibration_and_parity_trio(),
+    )
+
+    gates = json.loads(terminal_json.read_text(encoding="utf-8"))["gates"]
+    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+        assert gates[entry_id]["status"] == "evidence_absent", entry_id
+        assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
+    assert gates["uk_calibration_reference_coverage"]["status"] == "passed"
+
+
 def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
     tmp_path,
 ) -> None:
@@ -1423,6 +1554,7 @@ def test_national_build_accepts_hugging_face_style_h5_symlink(tmp_path) -> None:
     assert staging_h5.is_file()
 
 
+@pytest.mark.requires_uk
 def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     pytest.importorskip("tables")
     policyengine_data = pytest.importorskip("policyengine_uk.data")
@@ -1467,7 +1599,7 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
     monkeypatch, tmp_path
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
+    from microcosm.build.uk_runtime import national_frame
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -1479,10 +1611,10 @@ def test_atomic_writer_cleans_temporary_h5_after_write_failure(
         Path(path).write_bytes(b"partial")
         raise OSError("simulated HDF write failure")
 
-    monkeypatch.setattr(national_build.pd, "HDFStore", fail_store)
+    monkeypatch.setattr(national_frame.pd, "HDFStore", fail_store)
 
     with pytest.raises(OSError, match="simulated HDF write failure"):
-        national_build.write_uk_national_frame(frame, staging_h5)
+        national_frame.write_uk_national_frame(frame, staging_h5)
 
     assert staging_h5.read_bytes() == b"previous-good-artifact"
     assert list(tmp_path.glob(".staging.h5.*.tmp.h5")) == []
@@ -1529,14 +1661,18 @@ class _CountingCalibrationStage:
     def __init__(self, calls: list[str]) -> None:
         self.calls = calls
         self.inner = UKNationalCalibrationStage(
-            [_calibration_fact()],
-            references=[_uc_reference()],
-            epochs=1,
+            _calibration_registry(),
+            period=2025,
+            doctrine=UKNationalSolveDoctrine(epochs=1),
         )
 
     @property
     def manifest(self) -> dict[str, object] | None:
         return self.inner.manifest
+
+    @property
+    def diagnostics(self) -> tuple[dict[str, object], ...]:
+        return self.inner.diagnostics
 
     def __call__(self, frame: Frame) -> Frame:
         self.calls.append("national_calibration")

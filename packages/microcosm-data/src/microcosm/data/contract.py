@@ -376,10 +376,10 @@ _UK_GATE_BATTERY_POLICY_SHA256 = (
     "61c1e22c6d3f3e9087b7b83548f36c4ad0e4bc05d2f7119185d15eaaf5c45d16"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "409e2aa6db2825a32d2189bb7077c9a8b7c4e2285dec4800b132f1df23d672d2"
+    "fef7bb948a255b789408041c83ab67695bb7d3b00ce03b54ca0ac5b67e210b86"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a47f0752544d394337be1cea4bfcd07d205f2af7b881d57a149643d7ab9709fc"
+    "f505823b64ed7b44e637f34cbe434e250546335bd527827e94f03deb864ff73b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate

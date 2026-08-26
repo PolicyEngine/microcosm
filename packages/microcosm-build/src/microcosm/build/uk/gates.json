@@ -305,7 +305,7 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
-      "notes": "Candidate and incumbent calibration target surfaces must agree exactly; the gate takes no tunable parameters."
+      "notes": "The solve's realized target surface must equal the declared register exactly, at name-and-period grain; the gate takes no tunable parameters. The reference side is the declared register, not an incumbent-derived surface \u2014 the frozen parity instrument carries input-column shares only \u2014 so this proves that every declared target was bound at its declared period, not agreement with the incumbent."
     },
     {
       "id": "uk_target_fit",

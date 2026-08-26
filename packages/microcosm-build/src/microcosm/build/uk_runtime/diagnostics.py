@@ -19,6 +19,7 @@ import json
 import math
 import uuid
 from collections.abc import Mapping, Sequence
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_target_geography_levels",
     "uk_weight_summary",
     "uk_zero_weight_strata",
     "write_uk_calibration_diagnostics",
@@ -257,6 +259,33 @@ def _normalize_geography_level(value: object) -> str:
             f"{UK_TARGET_GEOGRAPHY_LEVELS} (or adapter alias 'la')."
         )
     return level
+
+
+def uk_target_geography_levels(registry: TargetRegistry) -> dict[str, str]:
+    """Map declared UK target row names to their contract geography level."""
+
+    payload = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("uk_national_targets.json")
+        .read_text(encoding="utf-8")
+    )
+    targets = {row["target_id"]: row for row in payload["targets"]}
+    levels: dict[str, str] = {}
+    for spec in registry.specs:
+        target_id = spec.metadata.get("contract_target_id")
+        target = targets.get(str(target_id))
+        if target is None:
+            raise ValueError(
+                f"UK calibration target {spec.name!r} references unknown "
+                f"contract target {target_id!r}."
+            )
+        geography_levels = tuple(target.get("geography_levels") or ())
+        if not geography_levels:
+            raise ValueError(
+                f"UK calibration target {spec.name!r} has no geography level."
+            )
+        levels[spec.to_target().row_name] = str(geography_levels[0])
+    return levels
 
 
 def _geography_mapping(
