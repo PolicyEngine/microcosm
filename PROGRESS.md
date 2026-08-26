@@ -36,11 +36,12 @@ pushed.
   human and JSON output, and passed all 30 focused preflight tests.
 - Corrected the changelog fragment to describe the closed legacy bypass rather
   than the unchanged exact-k arm.
+- Documented the authenticated base-pool and human publication boundary in the
+  repository release-flow guide.
 
 ## Next
 
-1. Update the release-flow guide, then run the complete affected test files and
-   adjacent release-contract tests.
+1. Run the complete affected test files and adjacent release-contract tests.
 2. Run repository-wide Ruff and full pytest one process per shard.
 3. Record the audit and verification evidence, write
    `out.md`, and leave the branch clean with coherent local commits.
