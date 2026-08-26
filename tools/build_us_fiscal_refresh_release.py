@@ -228,8 +228,11 @@ from microcosm.build.us_runtime.fiscal_targets import (
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
+    identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
+    require_authenticated_us_multispine_pool_h5,
+    us_multispine_pool_release_receipt,
 )
 from microcosm.build.us_runtime.input_mass import us_input_mass_totals
 from microcosm.build.us_runtime.l0_refit_export import (
@@ -853,11 +856,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--allow-gate-failed-base-pool",
         action="store_true",
         help=(
-            "Explicitly allow an authenticated current stacked base-pool "
-            "manifest with status=gate_failed and simulation_ready=false. "
+            "Explicitly allow --base-h5 to consume an authenticated current "
+            "stacked pool with status=gate_failed and simulation_ready=false. "
             "The red agreement-gate verdict is carried into the release "
             "manifest for a separate human publication decision. Without "
-            "this flag --pool-manifest remains fail-closed."
+            "this flag an identified pool H5 remains fail-closed. The exact-k "
+            "--pool-manifest arm is always simulation-ready-only."
         ),
     )
     parser.add_argument(
@@ -1549,8 +1553,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
         parser.error("--evidence-failure-owners requires --evidence-release.")
-    if args.allow_gate_failed_base_pool and args.pool_manifest is None:
-        parser.error("--allow-gate-failed-base-pool requires --pool-manifest.")
+    if args.allow_gate_failed_base_pool and args.base_h5 is None:
+        parser.error("--allow-gate-failed-base-pool requires --base-h5.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
             "--evidence-release is incompatible with --exact-k: ladder "
@@ -1687,6 +1691,41 @@ def _legacy_base_h5_sha256(path: Path) -> str:
     """Hash only the non-pool base path selected by main's legacy branch."""
 
     return _sha256(path)
+
+
+def _load_base_pool_if_identified(
+    path: Path,
+    *,
+    allow_gate_failed_base_pool: bool,
+) -> tuple[Frame | None, dict[str, object] | None, AuthenticatedPoolH5 | None]:
+    """Authenticate a pool supplied through legacy ``--base-h5`` if present."""
+
+    manifest_path = identify_us_multispine_pool_manifest(path)
+    if manifest_path is None:
+        if allow_gate_failed_base_pool:
+            raise ValueError(
+                "--allow-gate-failed-base-pool was set, but --base-h5 does not "
+                "identify as a US multispine pool."
+            )
+        return None, None, None
+
+    loader = (
+        load_authenticated_us_multispine_pool_for_scoring
+        if allow_gate_failed_base_pool
+        else load_simulation_ready_us_multispine_pool
+    )
+    frame, manifest, authenticated_pool_h5 = loader(manifest_path)
+    require_authenticated_us_multispine_pool_h5(
+        path,
+        authenticated_pool_h5,
+        consumer="US fiscal refresh release builder --base-h5",
+    )
+    receipt = us_multispine_pool_release_receipt(
+        manifest,
+        authenticated_pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed_base_pool,
+    )
+    return frame, receipt, authenticated_pool_h5
 
 
 def _copy_base_h5_for_local_audit(
@@ -7474,6 +7513,7 @@ def _build_manifests(
     calibration_key: str = "populace_us_2024_calibration",
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
+    base_pool: Mapping[str, object] | None = None,
     evidence_known_failures: Sequence[Mapping[str, str]] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
@@ -7540,6 +7580,7 @@ def _build_manifests(
             if exact_k_ladder is not None
             else {}
         ),
+        **({"base_pool": dict(base_pool)} if base_pool is not None else {}),
         "dataset": {
             "filename": dataset_filename,
             "sha256": dataset_sha,
@@ -7763,6 +7804,7 @@ def _build_manifests(
                 if exact_k_ladder is not None
                 else {}
             ),
+            **({"base_pool": dict(base_pool)} if base_pool is not None else {}),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
@@ -8238,91 +8280,31 @@ def _exact_k_ladder_manifest_payload(
         isinstance(value, Mapping) for value in (agreement_diagnostics, agreement_gate)
     ):
         raise RuntimeError("Validated pool manifest lost a required receipt block.")
-    agreement_gate_passed = agreement_gate.get("passed")
-    gate_passed = agreement_gate_passed is True
-    allow_gate_failed_base_pool = getattr(
-        args,
-        "allow_gate_failed_base_pool",
-        False,
-    )
-    is_gate_failed_pool = (
-        pool_manifest.get("status") == "gate_failed"
-        and pool_manifest.get("simulation_ready") is False
-    )
-    if is_gate_failed_pool and agreement_gate_passed is not False:
-        raise RuntimeError(
-            "Validated gate-failed pool manifest does not carry an explicitly "
-            "failed agreement gate."
-        )
-    if not gate_passed and not (
-        allow_gate_failed_base_pool and is_gate_failed_pool
-    ):
+    if agreement_gate.get("passed") is not True:
         raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
     pool_release_id = _assert_pool_release_id_value(
         args.pool_release_id,
         authenticated_pool_h5.publication_run_id,
     )
-    pool_reference = {
-        "release_id": pool_release_id,
-        "release_id_source": "pool_manifest.publication_run_id",
-        "manifest_sha256": authenticated_pool_h5.manifest_sha256,
-        "publication_run_id": authenticated_pool_h5.publication_run_id,
-        "pool_h5_sha256": authenticated_pool_h5.sha256,
-        "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
-        "agreement_diagnostics_sha256": agreement_diagnostics.get("sha256"),
-    }
-    agreement_gate_reference = {
-        "passed": True,
-        "publication_run_id": authenticated_pool_h5.publication_run_id,
-        "diagnostics_sha256": agreement_diagnostics.get("sha256"),
-        "verdict": dict(agreement_gate),
-    }
-    if allow_gate_failed_base_pool:
-        pool_reference.update(
-            {
-                "status": pool_manifest.get("status"),
-                "simulation_ready": pool_manifest.get("simulation_ready"),
-                "allow_gate_failed_base_pool": True,
-            }
-        )
-    if is_gate_failed_pool:
-        failures: list[str] = []
-        gates = agreement_gate.get("gates")
-        if not isinstance(gates, Mapping):
-            raise RuntimeError(
-                "Validated gate-failed pool manifest lost its agreement-gate "
-                "results."
-            )
-        for gate_name, gate_verdict in gates.items():
-            if not isinstance(gate_verdict, Mapping):
-                raise RuntimeError(
-                    "Validated gate-failed pool manifest has a malformed "
-                    f"agreement-gate result for {gate_name!r}."
-                )
-            gate_failures = gate_verdict.get("failures", ())
-            if not isinstance(gate_failures, list) or not all(
-                isinstance(failure, str) for failure in gate_failures
-            ):
-                raise RuntimeError(
-                    "Validated gate-failed pool manifest has a malformed "
-                    f"failure list for {gate_name!r}."
-                )
-            failures.extend(gate_failures)
-        agreement_gate_reference.update(
-            {
-                "passed": False,
-                "battery_status": "red",
-                "gates_json_sha256": agreement_diagnostics.get("sha256"),
-                "failure_count": len(failures),
-                "failures": failures,
-            }
-        )
     payload = exact_k_ladder_manifest_payload(
         outcome,
         k=int(args.exact_k),
         seed=int(args.seed),
-        pool=pool_reference,
-        agreement_gate_reference=agreement_gate_reference,
+        pool={
+            "release_id": pool_release_id,
+            "release_id_source": "pool_manifest.publication_run_id",
+            "manifest_sha256": authenticated_pool_h5.manifest_sha256,
+            "publication_run_id": authenticated_pool_h5.publication_run_id,
+            "pool_h5_sha256": authenticated_pool_h5.sha256,
+            "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
+            "agreement_diagnostics_sha256": agreement_diagnostics.get("sha256"),
+        },
+        agreement_gate_reference={
+            "passed": True,
+            "publication_run_id": authenticated_pool_h5.publication_run_id,
+            "diagnostics_sha256": agreement_diagnostics.get("sha256"),
+            "verdict": dict(agreement_gate),
+        },
         frozen_target_register={
             "ledger_artifact": dict(ledger_artifact),
             "target_surface_sha256": target_surface.get("sha256"),
@@ -8606,15 +8588,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
     pool_original_household_ids: np.ndarray | None = None
     pool_original_household_weights: np.ndarray | None = None
     pool_manifest_payload: dict[str, object] | None = None
+    base_pool_receipt: dict[str, object] | None = None
     authenticated_pool_h5: AuthenticatedPoolH5 | None = None
     if args.pool_manifest is not None:
-        pool_loader = (
-            load_authenticated_us_multispine_pool_for_scoring
-            if args.allow_gate_failed_base_pool
-            else load_simulation_ready_us_multispine_pool
-        )
         pool_frame, pool_manifest_payload, authenticated_pool_h5 = (
-            pool_loader(
+            load_simulation_ready_us_multispine_pool(
                 args.pool_manifest,
                 expected_manifest_sha256=args.pool_manifest_sha256,
             )
@@ -8643,7 +8621,19 @@ def _main(argv: Sequence[str] | None = None) -> None:
         base_h5 = authenticated_pool_h5.path
     else:
         base_h5 = args.base_h5 or _download_base_h5()
-        base_dataset_sha256 = _legacy_base_h5_sha256(base_h5)
+        pool_frame, base_pool_receipt, authenticated_pool_h5 = (
+            _load_base_pool_if_identified(
+                base_h5,
+                allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
+            )
+        )
+        if authenticated_pool_h5 is None:
+            base_dataset_sha256 = _legacy_base_h5_sha256(base_h5)
+        else:
+            base_dataset_sha256 = authenticated_pool_h5.verified_digest(
+                consumer="builder base dataset identity"
+            )
+            base_h5 = authenticated_pool_h5.path
     digest = base_dataset_sha256[:7]
     build_timestamp = datetime.now(UTC)
     full_commit = _git_output("rev-parse", "HEAD")
@@ -11800,6 +11790,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         calibration_key=calibration_key,
         calibration_filename=calibration_filename,
         exact_k_ladder=exact_k_ladder_provenance,
+        base_pool=base_pool_receipt,
         evidence_known_failures=evidence_known_failures,
     )
     if telemetry is not None:

@@ -2,11 +2,11 @@
 
 ## State
 
-Implementation is in correction after the source audit showed that the first
-builder pass attached the opt-in to the already-fail-closed exact-k arm rather
-than the legacy `--base-h5` arm. The shared H5 seam now identifies pool H5s,
-binds sidecars to the requested bytes, and builds complete verdict carriage.
-No pool or release has been built, published, or pushed.
+Builder containment and carriage are now corrected and focused-tested. The
+exact-k manifest arm is again unchanged and strict; the legacy `--base-h5` arm
+authenticates any positively identified pool and requires the explicit opt-in
+for a coherent current stacked red pool. No pool or release has been built,
+published, or pushed.
 
 ## Done
 
@@ -26,15 +26,17 @@ No pool or release has been built, published, or pushed.
 - Added the changelog fragment. All 25 preflight tests and focused Ruff pass.
 - Added and focused-tested the shared pool classifier, sidecar/H5 path binding,
   and self-contained red/green receipt builder in `h5_io.py`.
+- Moved the opt-in to the legacy base-H5 arm, restored exact-k's strict loader
+  and receipt, carried `base_pool` into both manifests, and added regression
+  coverage for missing manifests, red/no-flag refusal, flag-on routing, and
+  release-manifest visibility.
 
 ## Next
 
-1. Move the opt-in and carriage from exact-k to authenticated legacy
-   `--base-h5`, add the closed-bypass regression, and keep exact-k strict.
-2. Authenticate base pools in ordinary preflight and teach manifest-only review
+1. Authenticate base pools in ordinary preflight and teach manifest-only review
    the generic `build.base_pool` carriage shape.
-3. Run repository-wide Ruff and full pytest one process per shard.
-4. Record the audit and verification evidence, write
+2. Run repository-wide Ruff and full pytest one process per shard.
+3. Record the audit and verification evidence, write
    `out.md`, and leave the branch clean with coherent local commits.
 
 ## Historical context
