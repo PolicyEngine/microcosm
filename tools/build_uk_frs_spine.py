@@ -12,11 +12,16 @@ from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
-from microcosm.build.country_spec import country_stage_plan, load_country_spec
+from microcosm.build.country_spec import (
+    GatesManifest,
+    country_stage_plan,
+    load_country_spec,
+)
 from microcosm.build.frame_sampling import (
     normalize_sampled_household_mass,
     sample_frame_households,
 )
+from microcosm.build.gate_battery import BlockingMode, EvidenceContext, GateBatteryRun
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -34,6 +39,8 @@ from microcosm.build.logbook_adoption import (
     write_error_receipt,
 )
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
@@ -492,6 +499,7 @@ def _build_sidecar(
     stochastic_contract_sha256: str,
     frs_vintage: str,
     sampling: dict[str, object] | None,
+    spine_gate_report: dict[str, object] | None = None,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
@@ -525,6 +533,7 @@ def _build_sidecar(
         "declared_seeds": _declared_seeds(stages),
         "source_vintages": {"frs": frs_vintage},
         "sampling": sampling,
+        "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
     }
@@ -612,6 +621,8 @@ def _run_plan_with_spine_sampling(
     *,
     sample_fraction: float,
     sample_seed: int,
+    spine_battery: GateBatteryRun | None = None,
+    stage_evidence_provider=None,
 ) -> tuple[object, tuple[object, ...], dict[str, object] | None]:
     if not plan.stages or plan.stages[0].name != "frs_spine":
         frame, records = plan.run(uk_frs_spine_seed_frame())
@@ -629,8 +640,68 @@ def _run_plan_with_spine_sampling(
     )
     if len(plan.stages) == 1:
         return spine_frame, spine_records, sampling
-    frame, tail_records = StagePlan(plan.stages[1:]).run(spine_frame)
-    return frame, (*spine_records, *tail_records), sampling
+    assembled_end = min(11, len(plan.stages))
+    frame, assembled_records = StagePlan(plan.stages[1:assembled_end]).run(spine_frame)
+    if spine_battery is not None:
+        _run_spine_gate_phase(
+            spine_battery,
+            "assembled",
+            frame=frame,
+            stage_evidence=(
+                stage_evidence_provider() if stage_evidence_provider is not None else {}
+            ),
+        )
+    if assembled_end == len(plan.stages):
+        return frame, (*spine_records, *assembled_records), sampling
+    frame, tail_records = StagePlan(plan.stages[assembled_end:]).run(frame)
+    if spine_battery is not None:
+        _run_spine_gate_phase(
+            spine_battery,
+            "transferred",
+            frame=frame,
+            stage_evidence=(
+                stage_evidence_provider() if stage_evidence_provider is not None else {}
+            ),
+        )
+    return frame, (*spine_records, *assembled_records, *tail_records), sampling
+
+
+def _run_spine_gate_phase(
+    battery: GateBatteryRun,
+    phase: str,
+    *,
+    frame,
+    stage_evidence: Mapping[str, object],
+) -> None:
+    battery.run_phase(
+        phase,
+        EvidenceContext(
+            frame=frame,
+            artifacts={"stage_evidence": dict(stage_evidence)},
+        ),
+    )
+    battery.enforce(phase, mode=BlockingMode.BLOCKS_ARTIFACT)
+
+
+def _spine_gate_report_path(spine_h5: Path) -> Path:
+    return spine_h5.with_suffix(".spine_gates.json")
+
+
+def _spine_gate_manifest_from_spec(spec) -> GatesManifest | None:
+    source = getattr(spec, "gates", None)
+    if source is None:
+        return None
+    entries = tuple(entry for entry in source.gates if entry.id in UK_SPINE_GATE_SCOPE)
+    missing = sorted(set(UK_SPINE_GATE_SCOPE) - {entry.id for entry in entries})
+    if missing:
+        raise RuntimeError(f"UK spine gate scope names undeclared gate id(s): {missing}.")
+    return GatesManifest(
+        country=source.country,
+        version=source.version,
+        policy=f"{source.policy}; spine_build_scope",
+        phases=("assembled", "transferred"),
+        gates=entries,
+    )
 
 
 def _rung_abort_receipt(
@@ -690,6 +761,7 @@ def main(argv: list[str] | None = None) -> int:
             args.spine_h5,
             args.spine_h5.with_suffix(".build.json"),
             args.spine_h5.with_suffix(".hmrc_replay.json"),
+            _spine_gate_report_path(args.spine_h5),
             args.spine_h5.with_suffix(".rung_abort.json"),
         ]
         if args.emit_nonzero_shares is not None:
@@ -885,11 +957,31 @@ def main(argv: list[str] | None = None) -> int:
             implementations,
             stage_names=stage_names,
         )
+        spine_gate_path = _spine_gate_report_path(args.spine_h5)
+        spine_gate_manifest = _spine_gate_manifest_from_spec(spec)
+        spine_battery = (
+            GateBatteryRun(
+                spine_gate_manifest,
+                release_id=state.build_id,
+                report_path=spine_gate_path,
+                release_candidate=args.sample_fraction == 1.0,
+                registry=UK_GATE_REGISTRY,
+            )
+            if spine_gate_manifest is not None
+            else None
+        )
         frame, records, sampling = _run_plan_with_spine_sampling(
             plan,
             sample_fraction=args.sample_fraction,
             sample_seed=args.sample_seed,
+            spine_battery=spine_battery,
+            stage_evidence_provider=lambda: _collect_stage_evidence(
+                stage_names=_STAGE_NAMES,
+                implementations=implementations,
+            ),
         )
+        if spine_battery is not None:
+            append_phase(state, "spine_gates_evaluated")
         append_phase(state, "spine_built")
         output = write_uk_national_frame(frame, args.spine_h5)
         append_phase(state, "spine_written")
@@ -923,6 +1015,14 @@ def main(argv: list[str] | None = None) -> int:
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
             frs_vintage=frs_release.vintage,
             sampling=sampling,
+            spine_gate_report=(
+                {
+                    "path": str(spine_gate_path),
+                    "sha256": hashlib.sha256(spine_gate_path.read_bytes()).hexdigest(),
+                }
+                if spine_gate_path.is_file()
+                else None
+            ),
         )
         stage_evidence = _collect_stage_evidence(
             stage_names=_STAGE_NAMES,
@@ -961,6 +1061,16 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             }
         }
+        if spine_gate_path.is_file():
+            gate_payload = json.loads(spine_gate_path.read_text(encoding="utf-8"))
+            for gate_id, payload in gate_payload.get("gates", {}).items():
+                state.gate_verdicts[str(gate_id)] = {
+                    "verdict": str(payload.get("status")),
+                    "receipt": (
+                        f"{local_artifact_reference(spine_gate_path, repository_hint=_REPOSITORY)}"
+                        f"#/gates/{gate_id}"
+                    ),
+                }
         spool_path = _record_attempt(
             state=state,
             started_at=started_at,

@@ -61,6 +61,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
 from microcosm.build.uk_runtime.source_runtime import UK_NONNEGATIVE_OUTPUTS_BY_STAGE
+from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
@@ -231,6 +232,34 @@ def _evaluate_calibration_reference_coverage(
         ),
         details={"activated": declared, "resolved": resolved, "matrix": matrix},
     )
+
+
+def _evaluate_stage_health(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    stage = str(parameters["stage"])
+    evidence_by_stage = context.artifacts["stage_evidence"]
+    if not isinstance(evidence_by_stage, Mapping):
+        raise TypeError("stage_evidence must map stage names to receipt payloads.")
+    receipt = evidence_by_stage.get(stage)
+    if not isinstance(receipt, Mapping):
+        raise ValueError(f"stage_evidence has no receipt object for {stage!r}.")
+    return uk_stage_health_gate(
+        evidence=receipt,
+        stage=stage,
+        check=str(parameters["check"]),
+        parameters=parameters,
+    )
+
+
+def _stage_health_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    stage = str(parameters["stage"])
+    evidence_by_stage = context.artifacts["stage_evidence"]
+    if not isinstance(evidence_by_stage, Mapping):
+        raise TypeError("stage_evidence must map stage names to receipt payloads.")
+    return {stage: evidence_by_stage.get(stage)}
 
 
 def _evaluate_nonnegative_columns(
@@ -824,6 +853,39 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_calibration_reference_coverage,
         artifact_keys=frozenset({"national_calibration"}),
         needs_frame=False,
+    ),
+    "stage_health": UKGateBinding(
+        name="stage_health",
+        evaluator=_evaluate_stage_health,
+        parameter_keys=frozenset(
+            {
+                "stage",
+                "check",
+                "columns",
+                "exempt_columns",
+                "max_clipped_low_rows_by_column",
+                "max_clipped_high_rows_by_column",
+                "target",
+                "maximum_abs_realization_deviation",
+                "allow_cap_bound",
+                "stocks",
+                "maximum_relative_mass_imbalance",
+                "spi_prior_mass_share",
+                "absolute_tolerance",
+                "household_weight_kind",
+                "minimum_spi_households",
+                "minimum_identity_rows",
+                "minimum_target_count",
+                "minimum_signal_rows",
+                "structural_zero_columns",
+                "maximum_relative_deviation",
+                "support_bounds_resource",
+                "minimum_band_rows",
+            }
+        ),
+        artifact_keys=frozenset({"stage_evidence"}),
+        needs_frame=False,
+        evidence=_stage_health_evidence,
     ),
     "nonnegative_columns": UKGateBinding(
         name="nonnegative_columns",

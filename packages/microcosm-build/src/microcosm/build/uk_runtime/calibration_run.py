@@ -94,33 +94,94 @@ UK_CALIBRATION_GATE_SCOPE = (
     "uk_calibration_reference_coverage",
 )
 
+UK_SPINE_GATE_SCOPE = (
+    "uk_stage_was_wealth_support",
+    "uk_stage_lcfs_consumption_support",
+    "uk_stage_etb_vat_support",
+    "uk_stage_etb_services_support",
+    "uk_stage_frs_hmrc_spine_leaves_signal",
+    "uk_stage_spi_support_channel_mass",
+    "uk_stage_hmrc_spi_income_spine_identity",
+    "uk_stage_cgt_incidence_clone_mass",
+    "uk_stage_cgt_band_donors_support",
+    "uk_stage_hmrc_cgt_gains_spine_summary",
+    "uk_stage_salary_sacrifice_realization",
+    "uk_stage_student_loans_realization",
+    "uk_stage_age_tail_targets",
+    # Weight-independent, and its column exists from frs_brma onward, so the
+    # spine checks it at the assembled boundary instead of the release end.
+    "uk_brma_enum_domain",
+)
+
+UK_NATIONAL_GATE_SCOPE = (
+    "uk_release_input_coverage_manifest_current",
+    "uk_release_family_build_stages",
+    "uk_ledger_compile_parity_production_2023",
+    "uk_ledger_compile_parity_incumbent_2025",
+    "uk_release_input_coverage",
+    "uk_degenerate_release_surface",
+    "uk_nonnegative_columns",
+    "uk_support",
+    "uk_aggregate_admin",
+    "uk_export_surface",
+    "uk_take_up_signal",
+    "uk_student_loan_plan_enum_domain",
+    "uk_target_surface",
+    "uk_input_mass_parity",
+    "uk_qrf_tail_concentration",
+    "uk_weights_audit",
+)
+
+_SWAP_ACCEPTANCE_GATE_IDS = frozenset(
+    {"uk_export_surface", "uk_target_surface"}
+)
+
+#: Gate ids two batteries both own, on purpose. A release certification unions
+#: the scoped reports, so a gate appearing twice has to be a declared duplicate
+#: the union can reconcile — never an accident that silently double-counts.
+#:
+#: `uk_aggregate_admin` measures the same admin anchors on two different frames:
+#: the seam checks them on the frame it just calibrated, the national terminal
+#: battery re-checks them on the release frame. Both are real checks, so both
+#: keep the gate.
+UK_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
+
 
 def _scope_exclusions() -> dict[str, str]:
     full = {entry.id for entry in load_country_spec("uk").gates.gates}
-    excluded = full - set(UK_CALIBRATION_GATE_SCOPE)
+    spine = set(UK_SPINE_GATE_SCOPE)
+    national = set(UK_NATIONAL_GATE_SCOPE)
+    calibration = set(UK_CALIBRATION_GATE_SCOPE)
+    # Closed-world means both halves: every gate owned by someone (below), and
+    # no gate owned twice without saying so. Coverage alone would let an
+    # accidental overlap through, and the certification union is exactly where
+    # that would be paid for.
+    for left_name, left, right_name, right in (
+        ("calibration", calibration, "spine", spine),
+        ("calibration", calibration, "national", national),
+        ("spine", spine, "national", national),
+    ):
+        undeclared = (left & right) - UK_SHARED_GATE_IDS
+        if undeclared:
+            raise RuntimeError(
+                f"UK gate scopes {left_name} and {right_name} both claim "
+                f"{sorted(undeclared)} without declaring them in "
+                "UK_SHARED_GATE_IDS."
+            )
+    classified = calibration | spine | national
     rationales: dict[str, str] = {}
-    for gate_id in sorted(excluded):
-        if "parity" in gate_id or gate_id in {"uk_export_surface", "uk_target_surface"}:
+    for gate_id in sorted(full - set(UK_CALIBRATION_GATE_SCOPE)):
+        if gate_id in spine:
+            reason = "spine-construction gate; owned by the spine build's scoped battery."
+        elif gate_id in national:
+            reason = "national build gate; owned by the national preflight/terminal battery."
+        elif "parity" in gate_id or gate_id in _SWAP_ACCEPTANCE_GATE_IDS:
             reason = "swap-acceptance evidence; produced by the swap lane, not the calibration seam."
-        elif gate_id in {
-            "uk_release_input_coverage_manifest_current",
-            "uk_release_family_build_stages",
-            "uk_release_input_coverage",
-            "uk_nonnegative_columns",
-            "uk_support",
-            "uk_take_up_signal",
-            "uk_brma_enum_domain",
-            "uk_degenerate_release_surface",
-            "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
-            "uk_weights_audit",
-        }:
-            reason = "spine-construction gate; owned by the spine build's own battery."
         else:
             reason = "outside the calibration seam's reviewed gate scope."
         rationales[gate_id] = reason
-    if set(UK_CALIBRATION_GATE_SCOPE) | set(rationales) != full:
-        raise RuntimeError("UK calibration gate scope does not classify every gate id.")
+    if classified | set(rationales) != full:
+        raise RuntimeError("UK gate scope does not classify every gate id.")
     return rationales
 
 
@@ -481,6 +542,7 @@ def _load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    _assert_spine_gate_report_passed(_spine_gate_report_path(path), sidecar)
     return sidecar
 
 
@@ -513,10 +575,72 @@ def _assert_spine_sidecar_binds_frame(
         )
 
 
+def _spine_gate_report_path(sidecar_path: Path) -> Path:
+    if sidecar_path.name.endswith(".build.json"):
+        stem = sidecar_path.name[: -len(".build.json")]
+        return sidecar_path.with_name(f"{stem}.spine_gates.json")
+    return sidecar_path.with_suffix(".spine_gates.json")
+
+
+def _assert_spine_gate_report_passed(
+    report_path: Path,
+    sidecar: Mapping[str, object],
+) -> None:
+    bypass = sidecar.get("spine_gate_bypass")
+    if bypass is not None:
+        if not isinstance(bypass, Mapping) or bypass.get("reviewed") is not True:
+            raise ValueError("spine_gate_bypass must be a reviewed bypass object.")
+        if not str(bypass.get("reason", "")).strip():
+            raise ValueError("spine_gate_bypass needs a non-empty reason.")
+        return
+    if not report_path.is_file():
+        raise ValueError(f"input H5 spine gate report absent: {report_path}")
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"input H5 spine gate report is invalid JSON: {report_path}"
+        ) from exc
+    if not isinstance(report, Mapping):
+        raise ValueError(
+            f"input H5 spine gate report must be a JSON object: {report_path}"
+        )
+    if report.get("blocked_at_phase") is not None:
+        raise ValueError(
+            "input H5 spine gate report blocked_at_phase must be null; "
+            f"got {report.get('blocked_at_phase')!r}."
+        )
+    gates = report.get("gates")
+    if not isinstance(gates, Mapping):
+        raise ValueError("input H5 spine gate report is missing gates.")
+    failing = sorted(
+        f"{gate_id}:{payload.get('status')}"
+        for gate_id, payload in gates.items()
+        if isinstance(payload, Mapping)
+        and payload.get("criticality") == "release_blocking"
+        and payload.get("status") != "passed"
+    )
+    if failing:
+        raise ValueError(
+            "input H5 spine gate report has non-passing release-blocking "
+            f"entries: {failing}."
+        )
+
+
 def _spine_provenance_from_sidecar(
     path: Path,
     sidecar: Mapping[str, object],
 ) -> dict[str, object]:
+    report_path = _spine_gate_report_path(path)
+    if report_path.is_file():
+        spine_gate_report: Mapping[str, object] = {
+            "path": str(report_path),
+            "sha256": _sha256_file(report_path),
+        }
+    elif isinstance(sidecar.get("spine_gate_bypass"), Mapping):
+        spine_gate_report = {"bypass": dict(sidecar["spine_gate_bypass"])}
+    else:
+        spine_gate_report = {}
     return {
         "sidecar": {
             "path": str(path),
@@ -524,6 +648,7 @@ def _spine_provenance_from_sidecar(
             "schema_version": sidecar.get("schema_version"),
             "pipeline": sidecar.get("pipeline"),
         },
+        "spine_gate_report": dict(spine_gate_report),
         "stages": list(sidecar.get("stages", ())),
         "stage_records": list(sidecar.get("stage_records", ())),
         "stage_evidence": dict(sidecar.get("stage_evidence", {})),
@@ -539,15 +664,37 @@ def _spine_provenance_from_sidecar(
 
 
 def _calibration_gate_manifest() -> GatesManifest:
-    source = load_country_spec("uk").gates
-    entries = tuple(
-        entry for entry in source.gates if entry.id in UK_CALIBRATION_GATE_SCOPE
+    return _scoped_gate_manifest(
+        UK_CALIBRATION_GATE_SCOPE,
+        phases=("terminal",),
+        policy_suffix="calibration_seam_scope",
     )
+
+
+def _spine_gate_manifest() -> GatesManifest:
+    return _scoped_gate_manifest(
+        UK_SPINE_GATE_SCOPE,
+        phases=("assembled", "transferred"),
+        policy_suffix="spine_build_scope",
+    )
+
+
+def _scoped_gate_manifest(
+    scope: tuple[str, ...],
+    *,
+    phases: tuple[str, ...],
+    policy_suffix: str,
+) -> GatesManifest:
+    source = load_country_spec("uk").gates
+    entries = tuple(entry for entry in source.gates if entry.id in scope)
+    missing = sorted(set(scope) - {entry.id for entry in entries})
+    if missing:
+        raise RuntimeError(f"UK gate scope names undeclared gate id(s): {missing}.")
     return GatesManifest(
         country=source.country,
         version=source.version,
-        policy=f"{source.policy}; calibration_seam_scope",
-        phases=("terminal",),
+        policy=f"{source.policy}; {policy_suffix}",
+        phases=phases,
         gates=entries,
     )
 

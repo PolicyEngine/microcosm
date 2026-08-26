@@ -27,7 +27,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import microcosm.build.uk_runtime.national_frame as _national_frame
-from microcosm.build.country_spec import load_country_spec
+from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.frame_sampling import (
     validate_sample_fraction,
     validate_sample_seed,
@@ -44,6 +44,7 @@ from microcosm.build.gates import GateResult
 from microcosm.build.plan import Stage as PlanStage
 from microcosm.build.plan import StagePlan, StageRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+from microcosm.build.uk_runtime.calibration_run import UK_NATIONAL_GATE_SCOPE
 from microcosm.build.uk_runtime.national_frame import (
     UK_HOUSEHOLD_WEIGHT_KIND_ATTR as UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
 )
@@ -331,7 +332,7 @@ def build_uk_national_dataset(
     # fence too: the unlinks come strictly last.
     evaluation_date = exclusion_evaluation_date(now)
     battery = GateBatteryRun(
-        load_country_spec("uk").gates,
+        _national_gate_manifest(),
         release_id=release_id,
         report_path=diagnostic_path,
         release_candidate=release_candidate,
@@ -559,6 +560,21 @@ def _run_stages_checkpointed(
             metadata=uk_stage_metadata(frame, extra=extra_metadata),
         )
     return frame, tuple(records)
+
+
+def _national_gate_manifest() -> GatesManifest:
+    source = load_country_spec("uk").gates
+    entries = tuple(entry for entry in source.gates if entry.id in UK_NATIONAL_GATE_SCOPE)
+    missing = sorted(set(UK_NATIONAL_GATE_SCOPE) - {entry.id for entry in entries})
+    if missing:
+        raise RuntimeError(f"UK national gate scope names undeclared gate id(s): {missing}.")
+    return GatesManifest(
+        country=source.country,
+        version=source.version,
+        policy=f"{source.policy}; national_build_scope",
+        phases=("preflight", "terminal"),
+        gates=entries,
+    )
 
 
 def _coerce_stage_plan(

@@ -16,6 +16,7 @@ from microcosm.build.uk_runtime import calibration_run
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
+    UK_SPINE_GATE_SCOPE,
     UKCalibrationRunPaths,
     run_uk_calibration,
 )
@@ -133,6 +134,24 @@ def _write_spine_sidecar(
     sidecar.update(overrides)
     input_h5.with_suffix(".build.json").write_text(
         json.dumps(sidecar, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    input_h5.with_suffix(".spine_gates.json").write_text(
+        json.dumps(
+            {
+                "blocked_at_phase": None,
+                "gates": {
+                    gate_id: {
+                        "criticality": "release_blocking",
+                        "status": "passed",
+                    }
+                    for gate_id in UK_SPINE_GATE_SCOPE
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
     return sidecar

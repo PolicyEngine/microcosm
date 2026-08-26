@@ -565,11 +565,17 @@
     "capital_gains"
    ],
    "required_mass_change_reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
-   "source_manifest": "cgt_source_stages.json",
-   "source_manifest_sha256": "71104111b4b9f2da00ce49ad5abec54a35d300196032c9742d62e02aa1730774",
-   "source_vintages": {
-    "hmrc_surface": "2023-24",
-    "mapped_build_period": "2024"
+    "source_manifest": "cgt_source_stages.json",
+    "source_manifest_sha256": "71104111b4b9f2da00ce49ad5abec54a35d300196032c9742d62e02aa1730774",
+    "superseded_by": {
+      "reason": "The FRS spine build executes hmrc_cgt_gains_spine, which applies the same HMRC Table 3 amounts redraw directly in source_stages.json before calibration.",
+      "source_manifest": "source_stages.json",
+      "source_manifest_sha256": "84d1c1c85f0172a9a396ef69d445ee33cf1340f62ff73c8653c399af40087bf4",
+      "stage": "hmrc_cgt_gains_spine"
+    },
+    "source_vintages": {
+      "hmrc_surface": "2023-24",
+      "mapped_build_period": "2024"
    },
    "stage": "hmrc_cgt_gains",
    "status": "required_at_build"
@@ -663,7 +669,7 @@
      "OTHERINC"
     ]
    },
-   "reviewed_fence_ids": [
+    "reviewed_fence_ids": [
     "frs_epb_source_absent",
     "frs_exps_source_absent",
     "frs_taxterm_source_absent",
@@ -673,9 +679,15 @@
     "frs_srp_regular_code5_subset",
     "full_frs_tei_band_unavailable"
    ],
-   "source_manifest": "hmrc_income_source_stages.json",
-   "source_manifest_sha256": "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea",
-   "source_vintages": {
+    "source_manifest": "hmrc_income_source_stages.json",
+    "source_manifest_sha256": "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea",
+    "superseded_by": {
+      "reason": "The FRS spine build executes hmrc_spi_income_spine, which supersedes the June retained-leaves/hmrc_spi_income pair inside source_stages.json.",
+      "source_manifest": "source_stages.json",
+      "source_manifest_sha256": "84d1c1c85f0172a9a396ef69d445ee33cf1340f62ff73c8653c399af40087bf4",
+      "stage": "hmrc_spi_income_spine"
+    },
+    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2024",
     "period_mapping": "latest_published_tax_year",

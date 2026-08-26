@@ -1124,22 +1124,16 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
         "uk_ledger_compile_parity_incumbent_2025": "evidence_absent",
         "uk_release_input_coverage": "passed",
         "uk_degenerate_release_surface": "passed",
-        "uk_zero_weight_strata": "passed",
-        "uk_weight_ess": "passed",
-        "uk_weight_ratio": "passed",
         "uk_weights_audit": "passed",
         "uk_nonnegative_columns": "passed",
         "uk_support": "passed",
         "uk_aggregate_admin": "evidence_absent",
         "uk_take_up_signal": "passed",
-        "uk_brma_enum_domain": "passed",
         "uk_student_loan_plan_enum_domain": "failed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
         "uk_export_surface": "evidence_absent",
-        "uk_calibration_reference_coverage": "evidence_absent",
         "uk_target_surface": "evidence_absent",
-        "uk_target_fit": "evidence_absent",
         "uk_input_mass_parity": "evidence_absent",
         "uk_qrf_tail_concentration": "failed",
     }
@@ -1227,9 +1221,10 @@ def test_national_build_parity_trio_is_evidence_absent(
         "uk_frs_only_spi_fill": "importance",
         "uk_spi_2022_23_income": "design",
     }
-    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+    for entry_id in ("uk_export_surface", "uk_target_surface"):
         assert gates[entry_id]["status"] == "evidence_absent", entry_id
         assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
+    assert "uk_target_fit" not in gates
     assert gates["uk_input_mass_parity"]["status"] == "evidence_absent"
     assert gates["uk_qrf_tail_concentration"]["status"] == "failed"
 
@@ -1295,9 +1290,10 @@ def test_national_build_parity_trio_evaluates_for_armed_calibration(
     )
 
     gates = json.loads(terminal_json.read_text(encoding="utf-8"))["gates"]
-    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+    for entry_id in ("uk_export_surface", "uk_target_surface"):
         assert gates[entry_id]["status"] == "passed", entry_id
-    assert gates["uk_calibration_reference_coverage"]["status"] == "passed"
+    assert "uk_target_fit" not in gates
+    assert "uk_calibration_reference_coverage" not in gates
 
 
 def test_armed_calibration_without_parity_reference_stays_evidence_absent(
@@ -1330,10 +1326,11 @@ def test_armed_calibration_without_parity_reference_stays_evidence_absent(
     )
 
     gates = json.loads(terminal_json.read_text(encoding="utf-8"))["gates"]
-    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+    for entry_id in ("uk_export_surface", "uk_target_surface"):
         assert gates[entry_id]["status"] == "evidence_absent", entry_id
         assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
-    assert gates["uk_calibration_reference_coverage"]["status"] == "passed"
+    assert "uk_target_fit" not in gates
+    assert "uk_calibration_reference_coverage" not in gates
 
 
 def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
@@ -1452,7 +1449,7 @@ def test_national_build_manifest_failure_blocks_before_stages_with_a_report(
         == "failed"
     )
     assert payload["gates"]["uk_release_input_coverage"]["status"] == "unreached"
-    assert payload["gates"]["uk_weight_ratio"]["status"] == "unreached"
+    assert payload["gates"]["uk_release_input_coverage"]["status"] == "unreached"
 
 
 def test_national_build_rejects_stage_that_breaks_entity_links(tmp_path) -> None:
@@ -1851,13 +1848,7 @@ def test_checkpointed_build_resumes_completed_calibration_evidence(
 
     assert resumed_calibration_calls == []
     assert after_calls == ["after"]
-    calibration_gate = result.gate_report["gates"]["uk_calibration_reference_coverage"]
-    assert calibration_gate["status"] == "passed"
-    assert calibration_gate["details"] == {
-        "activated": 1,
-        "resolved": 1,
-        "matrix": 1,
-    }
+    assert "uk_calibration_reference_coverage" not in result.gate_report["gates"]
 
 
 def test_checkpointed_build_pins_the_run_config(tmp_path) -> None:
@@ -1924,7 +1915,7 @@ def test_release_candidate_blocks_on_named_evidence_gaps(tmp_path) -> None:
         for entry_id, gate in dev.gate_report["gates"].items()
         if gate["status"] == "evidence_absent"
     }
-    assert "uk_weight_ratio" in absent  # unbound in the toy registry
+    assert "uk_export_surface" in absent  # unbound in the toy registry
 
     with pytest.raises(GateBatteryBlockedError) as error:
         _run_national_build(

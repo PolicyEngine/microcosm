@@ -619,9 +619,14 @@ class TestUKGatesManifest:
     def manifest(self):
         return load_country_spec("uk").gates
 
-    def test_declares_the_two_uk_phases_in_order(self, manifest) -> None:
+    def test_declares_the_uk_phases_in_order(self, manifest) -> None:
         assert manifest is not None
-        assert manifest.phases == ("preflight", "terminal")
+        assert manifest.phases == (
+            "preflight",
+            "assembled",
+            "transferred",
+            "terminal",
+        )
 
     def test_declares_the_full_june_battery(self, manifest) -> None:
         assert [gate.id for gate in manifest.gates] == [
@@ -629,6 +634,19 @@ class TestUKGatesManifest:
             "uk_release_family_build_stages",
             "uk_ledger_compile_parity_production_2023",
             "uk_ledger_compile_parity_incumbent_2025",
+            "uk_stage_was_wealth_support",
+            "uk_stage_lcfs_consumption_support",
+            "uk_stage_etb_vat_support",
+            "uk_stage_etb_services_support",
+            "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_spi_support_channel_mass",
+            "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_cgt_band_donors_support",
+            "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_salary_sacrifice_realization",
+            "uk_stage_student_loans_realization",
+            "uk_stage_age_tail_targets",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -664,13 +682,29 @@ class TestUKGatesManifest:
             params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
         )
 
-    def test_only_the_weights_audit_blocks_on_absent_evidence(self, manifest) -> None:
+    def test_strict_absent_evidence_entries_are_declared(self, manifest) -> None:
         # "An absent audit is not a passing audit" — the retired schema-3
         # path blocked every posture on a missing fit-weight audit, and the
         # battery keeps that strictness via the entry flag (#654, #691
-        # review). No other entry opts out of the dev-posture leniency.
+        # review). Stage-health gates also block on absent receipts because
+        # the spine build cannot silently skip a checkpoint's own evidence.
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
-        assert flagged == ["uk_weights_audit"]
+        assert flagged == [
+            "uk_stage_was_wealth_support",
+            "uk_stage_lcfs_consumption_support",
+            "uk_stage_etb_vat_support",
+            "uk_stage_etb_services_support",
+            "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_spi_support_channel_mass",
+            "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_cgt_band_donors_support",
+            "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_salary_sacrifice_realization",
+            "uk_stage_student_loans_realization",
+            "uk_stage_age_tail_targets",
+            "uk_weights_audit",
+        ]
         assert all(g.not_applicable is None for g in manifest.gates)
 
     def test_gate_names_are_country_neutral(self, manifest) -> None:

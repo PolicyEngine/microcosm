@@ -261,6 +261,8 @@ class TestProducerRoundTrip:
         monkeypatch.setenv(gate_signing_key_env("uk"), KEY)
         run = _uk_run(tmp_path)
         run.run_phase("preflight", EvidenceContext())
+        run.run_phase("assembled", EvidenceContext())
+        run.run_phase("transferred", EvidenceContext())
         run.run_phase("terminal", EvidenceContext())
         report = json.loads((tmp_path / "terminal_gates.json").read_text())
 
@@ -286,6 +288,8 @@ class TestProducerRoundTrip:
             release_evidence={"calibration_diagnostics_sha256": "c" * 64},
         )
         run.run_phase("preflight", EvidenceContext())
+        run.run_phase("assembled", EvidenceContext())
+        run.run_phase("transferred", EvidenceContext())
         run.run_phase("terminal", EvidenceContext())
         report = json.loads((tmp_path / "terminal_gates.json").read_text())
 

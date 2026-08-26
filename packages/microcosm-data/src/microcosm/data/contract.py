@@ -363,7 +363,7 @@ _UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 # gate_signing_key_env("uk") in the build shard; the legacy POPULACE variable
 # stays with the schema-3 path above.
 _UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
-_UK_GATE_BATTERY_PHASES = ("preflight", "terminal")
+_UK_GATE_BATTERY_PHASES = ("preflight", "assembled", "transferred", "terminal")
 _UK_GATE_BATTERY_STATUSES = frozenset(
     {"passed", "failed", "not_applicable", "evidence_absent", "unreached"}
 )
@@ -373,13 +373,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "623f340ddde6f705717c3a6306522f8cf46c1c17a067f9e89df190ecc690f0fc"
+    "31c79de22ea90d5766d015f0df5e1416ee21647f07b351f2971faa86f3a133c0"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4f66eea7e593b795da93217e9ac8b3b53ca1f82375ec346b3a2ecbb558b89cb6"
+    "f9225c546b706cbf06d3a80dd97f8db82927f3bbcf9baebe7f5d694eac7fc730"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "26fdbcccfaa01e9afa116339cfaa870f76fc6ed3bd5db57fec498781ff3efc64"
+    "e7176207973ebd6731fe1e8e906da6fc6ef0f5ed79956542332ee21bf184486b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -421,6 +421,31 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "ledger_compile_parity",
         "preflight",
     ),
+    "uk_stage_was_wealth_support": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
+    "uk_stage_etb_vat_support": ("stage_health", "transferred"),
+    "uk_stage_etb_services_support": ("stage_health", "transferred"),
+    "uk_stage_frs_hmrc_spine_leaves_signal": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_spi_support_channel_mass": ("stage_health", "transferred"),
+    "uk_stage_hmrc_spi_income_spine_identity": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
+    "uk_stage_cgt_band_donors_support": ("stage_health", "transferred"),
+    "uk_stage_hmrc_cgt_gains_spine_summary": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_salary_sacrifice_realization": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_student_loans_realization": ("stage_health", "transferred"),
+    "uk_stage_age_tail_targets": ("stage_health", "transferred"),
     "uk_release_input_coverage": ("release_input_coverage", "terminal"),
     "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
     "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
@@ -432,7 +457,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
-    "uk_brma_enum_domain": ("enum_domain", "terminal"),
+    "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -454,6 +479,19 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_ledger_compile_parity_incumbent_2025",
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
+        "uk_stage_was_wealth_support",
+        "uk_stage_lcfs_consumption_support",
+        "uk_stage_etb_vat_support",
+        "uk_stage_etb_services_support",
+        "uk_stage_frs_hmrc_spine_leaves_signal",
+        "uk_stage_spi_support_channel_mass",
+        "uk_stage_hmrc_spi_income_spine_identity",
+        "uk_stage_cgt_incidence_clone_mass",
+        "uk_stage_cgt_band_donors_support",
+        "uk_stage_hmrc_cgt_gains_spine_summary",
+        "uk_stage_salary_sacrifice_realization",
+        "uk_stage_student_loans_realization",
+        "uk_stage_age_tail_targets",
     }
 )
 # The input-mass binding's evidence payload wraps the reviewed reference

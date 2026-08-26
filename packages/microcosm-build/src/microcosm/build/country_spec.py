@@ -121,6 +121,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "per_family_fit",
         "release_input_coverage",
         "source_coverage",
+        "stage_health",
         "spine_agreement",
         "support",
         "tail_concentration",

@@ -941,6 +941,16 @@ def _cgt_family_coverage_contract(
         "stage": "hmrc_cgt_gains",
         "source_manifest": CGT_SOURCE_STAGES_PATH.name,
         "source_manifest_sha256": _sha256(CGT_SOURCE_STAGES_PATH),
+        "superseded_by": {
+            "stage": "hmrc_cgt_gains_spine",
+            "source_manifest": SOURCE_STAGES_PATH.name,
+            "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+            "reason": (
+                "The FRS spine build executes hmrc_cgt_gains_spine, which "
+                "applies the same HMRC Table 3 amounts redraw directly in "
+                "source_stages.json before calibration."
+            ),
+        },
         "base_candidate_sha256": str(base_candidate["sha256"]),
         "base_candidate_tier": base_candidate_tier,
         "source_vintages": {
@@ -1230,6 +1240,16 @@ def _hmrc_family_coverage_contract(
         # source (adversarial-review finding, 2026-08-20).
         "canonical_source_manifest": SOURCE_STAGES_PATH.name,
         "canonical_source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "superseded_by": {
+            "stage": "hmrc_spi_income_spine",
+            "source_manifest": SOURCE_STAGES_PATH.name,
+            "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+            "reason": (
+                "The FRS spine build executes hmrc_spi_income_spine, which "
+                "supersedes the June retained-leaves/hmrc_spi_income pair "
+                "inside source_stages.json."
+            ),
+        },
         "base_candidate_sha256": str(base_candidate["sha256"]),
         "base_candidate_tier": base_candidate_tier,
         "source_vintages": {
