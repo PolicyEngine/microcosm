@@ -2,8 +2,11 @@
 
 ## State
 
-Implementation has started from `origin/main` at `2263df36`. Repository and
-agent instructions have been read. The working tree was clean at kickoff.
+Design and consumer review are complete. The final salvage tree is a useful
+implementation base, but it needs two additional fail-closed checks before it
+is trustworthy: reject a redundant gate-failure opt-in on a green pool, and
+bind mixed preflight inputs so a release manifest cannot display one pool's
+red verdict while static checks authenticate another pool.
 
 ## Done
 
@@ -14,14 +17,29 @@ agent instructions have been read. The working tree was clean at kickoff.
   publication failure.
 - Confirmed that no network, artifact builds, publishing, or pushes are in
   scope.
+- Traced the strict manifest loader, current stacked-only terminal-failure
+  exception, H5 identity stamp, pool sidecar naming, legacy release arm,
+  release manifests, and both preflight output modes.
+- Reviewed the salvage branch's final source and test diff line by line. Its
+  shared classifier/path-binding/receipt approach closes the bypass without
+  changing either loader's contract and is suitable to retain with the two
+  coherence corrections above.
+- Completed the `simulation_ready` / `gate_failed` / loader consumer audit.
+  Exact-k remains deliberately strict and head-to-head scoring remains the
+  existing authenticated evidence exception.
+- Identified report-only downstream caveats: stacked producer metadata still
+  names only the k-ladder readiness consumer; red pool publication returns
+  status 1 and stops shell chains; ACS-local derivatives keep a donor revision
+  but do not project the nested red verdict; generic release consumers tolerate
+  and ignore the additive receipt.
 
 ## Next
 
-- Trace the current release builder, H5 loader seam, pool stamping, preflight,
-  and relevant tests.
-- Review the untrusted salvage branch line by line as a design reference.
-- Implement and test the containment and opt-in behavior.
-- Audit other pool-manifest and `simulation_ready` consumers.
+- Import the re-reviewed salvage implementation as coherent local commits.
+- Add redundant-opt-in and mixed-preflight receipt-binding regressions and
+  enforce both contracts.
+- Run the focused containment, carriage, preflight, exact-k, and data-contract
+  suites.
 - Run Ruff and every pytest shard in its own process, then write `out.md`.
 
 ## Historical prior lane
