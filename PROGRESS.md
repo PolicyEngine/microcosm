@@ -2,8 +2,9 @@
 
 ## State
 
-The scorer-legacy lane is in progress on 2026-08-26. The branch starts from
-`origin/main` at `10bfa17e`; no implementation code has changed yet.
+The scorer-legacy implementation is complete and focused tests pass. Loaded
+entity H5s, legacy flat H5s, and authenticated pool H5s now share one
+current-engine ownership normalization seam before scoring.
 
 The goal is to make head-to-head scoring deterministically remove and receipt
 formula-owned columns from loaded historical incumbent or candidate H5
@@ -16,14 +17,26 @@ artifacts, while keeping the fresh-release leaf-only export gate strict.
 - Confirmed the requested defect boundary: historical scorer inputs only; no
   pool build, release build, publishing, push, or validation bypass is in scope.
 - Started this committed lane journal before implementation work.
+- Reused the release gate's cached, period-sensitive
+  `PolicyEngineUSVariableMetadataIndex` classification at the scorer loading
+  boundary without changing the builder gate.
+- Added fail-closed dependency-closure checks on each dropped output, including
+  entity-correct leaf presence, before removing any artifact column.
+- Added schema-3 JSON and Markdown receipts with deterministic total count and
+  sorted column names per entity; clean artifacts seal an explicit empty
+  receipt.
+- Preserved tables, weights, strata, mass log, and frame metadata across the
+  scorer-only normalization.
+- Added the changelog fragment and three requested H5 tests: drop-and-score,
+  missing-leaf refusal, and clean empty receipt. The full targeted scorer test
+  file passes.
 
 ## Next
 
-1. Trace the scorer load/export flow and the existing metadata-index gate.
-2. Add deterministic historical-artifact sanitization, missing-leaf refusal,
-   JSON/Markdown receipts, focused tests, and a changelog fragment.
-3. Run targeted tests, all test shards, Ruff, and the real acceptance scorer.
-4. Record exact evidence in `out.md`, finalize this journal, and leave a clean
+1. Run repository-wide Ruff, CI inventory verification, strict-builder
+   regression coverage, and all five pytest shards in separate processes.
+2. Run the real incumbent-versus-pool acceptance scorer from this worktree.
+3. Record exact evidence in `out.md`, finalize this journal, and leave a clean
    committed worktree.
 
 ## Historical prior lane

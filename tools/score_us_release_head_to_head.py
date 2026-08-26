@@ -59,7 +59,7 @@ import resource
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import build_us_fiscal_refresh_release as release
@@ -96,7 +96,7 @@ from microcosm.calibrate import TargetRegistry, score_targets
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_RSS_BYTES = 20 * 1024**3
 MARKDOWN_WORST_TARGET_ROWS = 50
 # Registry chunk size for streaming materialize-and-score. The target-column
@@ -223,6 +223,13 @@ _CODE_CITATIONS = {
 }
 
 
+def _empty_historical_formula_owned_columns_receipt() -> dict[str, object]:
+    return {
+        "count": 0,
+        "columns_by_entity": {},
+    }
+
+
 @dataclass(frozen=True)
 class LoadedArtifact:
     """One role-neutral artifact normalized to a US entity frame."""
@@ -233,6 +240,9 @@ class LoadedArtifact:
     h5_path: Path
     terminal_gates: Mapping[str, object] | None = None
     authenticated_pool_h5: AuthenticatedPoolH5 | None = None
+    historical_formula_owned_columns: Mapping[str, object] = field(
+        default_factory=_empty_historical_formula_owned_columns_receipt
+    )
 
 
 @dataclass(frozen=True)
@@ -405,6 +415,78 @@ def _live_incumbent_identity_if_matched(sha256: str) -> dict[str, object] | None
     }
 
 
+def _drop_historical_formula_owned_columns(
+    frame: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    """Normalize one loaded artifact to current-engine input leaves.
+
+    Historical H5 artifacts can carry columns that were inputs under the
+    PolicyEngine-US version that built them but are formula-owned under the
+    scorer's current locked engine. The fresh-release builder must reject such
+    columns; this scorer-only loading seam instead proves that every current
+    formula input leaf is present, drops the stale derived columns, and lets
+    the one comparison engine recompute them.
+    """
+
+    metadata_index = release._formula_owned_gate_adapter()
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    formula_owned = metadata_index._engine_computed_columns(
+        tables,
+        period=release.PERIOD,
+    )
+    if not formula_owned:
+        return frame, _empty_historical_formula_owned_columns_receipt()
+
+    missing_leaves_by_column: dict[str, list[str]] = {}
+    for column in sorted(formula_owned):
+        closure = metadata_index.variable_dependency_closure(column)
+        missing_leaves = sorted(
+            leaf
+            for leaf in closure.input_leaves
+            if (
+                (entity := metadata_index.variable_metadata(leaf).entity) not in tables
+                or leaf not in tables[entity].columns
+            )
+        )
+        if missing_leaves:
+            missing_leaves_by_column[column] = missing_leaves
+    if missing_leaves_by_column:
+        details = "; ".join(
+            f"{column}: {missing_leaves}"
+            for column, missing_leaves in missing_leaves_by_column.items()
+        )
+        raise ValueError(
+            "Historical scoring artifact has formula-owned PolicyEngine "
+            "column(s) that cannot be recomputed under the current engine "
+            f"because required input leaves are absent: {details}."
+        )
+
+    columns_by_entity = {
+        entity: sorted(set(tables[entity].columns) & formula_owned)
+        for entity in sorted(frame.entities)
+        if set(tables[entity].columns) & formula_owned
+    }
+    cleaned_tables = {
+        entity: tables[entity].drop(columns=columns_by_entity.get(entity, ()))
+        for entity in frame.entities
+    }
+    cleaned_weights = {
+        entity: frame.weights_for(entity) for entity in frame.weighted_entities
+    }
+    cleaned = Frame(
+        cleaned_tables,
+        frame.schema,
+        cleaned_weights,
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return cleaned, {
+        "count": sum(len(columns) for columns in columns_by_entity.values()),
+        "columns_by_entity": columns_by_entity,
+    }
+
+
 def _load_pool_manifest(
     manifest_path: Path,
     *,
@@ -414,6 +496,7 @@ def _load_pool_manifest(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
     )
+    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
     terminal_gates = manifest.get("terminal_gates")
     if not isinstance(terminal_gates, Mapping):
         raise ValueError(
@@ -442,6 +525,7 @@ def _load_pool_manifest(
         h5_path=authenticated.path,
         terminal_gates=terminal_gates,
         authenticated_pool_h5=authenticated,
+        historical_formula_owned_columns=formula_owned_receipt,
     )
 
 
@@ -467,13 +551,12 @@ def _load_h5(path: Path) -> LoadedArtifact:
         }
     else:
         frame, layout_receipt = fiscal_scorer._load_legacy_pe_flat_frame(path)
-        frame, formula_owned = fiscal_scorer._drop_legacy_formula_owned_inputs(frame)
         loader = {
             "kind": "legacy_policyengine_flat_h5",
             "weight_kind": frame.weights_for("household").kind.value,
             "layout_receipt": layout_receipt,
-            "formula_owned_inputs_dropped": formula_owned,
         }
+    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
     sha256 = _sha256(path)
     identity: dict[str, object] = {
         "kind": "h5",
@@ -489,6 +572,7 @@ def _load_h5(path: Path) -> LoadedArtifact:
         identity=identity,
         loader=loader,
         h5_path=path,
+        historical_formula_owned_columns=formula_owned_receipt,
     )
 
 
@@ -1492,6 +1576,9 @@ def score_loaded_artifact(
         },
         "terminal_battery": terminal_battery,
         "normalization_receipts": {
+            "historical_formula_owned_columns": dict(
+                artifact.historical_formula_owned_columns
+            ),
             "congressional_district_provenance": cd_provenance,
             "base_population_mass_repair": dict(mass_repair),
             "base_population_scale_gate": {
@@ -2006,6 +2093,45 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 f"(build `{resolved['build_id']}`).",
             ]
         )
+    lines.extend(
+        [
+            "",
+            "## Historical formula-owned column normalization",
+            "",
+            "Loaded artifact columns owned by formulas in the current locked "
+            "PolicyEngine-US are dropped only after their required input "
+            "leaves are verified present, then recomputed by the shared "
+            "comparison engine.",
+        ]
+    )
+    for role, artifact in roles:
+        normalization = artifact.get("normalization_receipts")
+        receipt = (
+            normalization.get("historical_formula_owned_columns")
+            if isinstance(normalization, Mapping)
+            else None
+        )
+        if not isinstance(receipt, Mapping):
+            raise TypeError(
+                f"Scorecard {role} has no historical formula-owned column receipt."
+            )
+        columns_by_entity = receipt.get("columns_by_entity")
+        if not isinstance(columns_by_entity, Mapping):
+            raise TypeError(
+                f"Scorecard {role} formula-owned column receipt has no entity map."
+            )
+        count = int(receipt.get("count", -1))
+        lines.extend(["", f"### {role}", "", f"Dropped column count: **{count}**."])
+        if columns_by_entity:
+            for entity, columns in sorted(columns_by_entity.items()):
+                if not isinstance(columns, list):
+                    raise TypeError(
+                        f"Scorecard {role} receipt columns for {entity} must be a list."
+                    )
+                rendered = ", ".join(f"`{column}`" for column in columns)
+                lines.append(f"- `{entity}`: {rendered}")
+        else:
+            lines.append("No formula-owned columns were present.")
     comparison = payload.get("comparison")
     if isinstance(comparison, Mapping):
         loss = comparison["fiscal_weighted_loss"]
