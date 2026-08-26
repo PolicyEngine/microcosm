@@ -130,17 +130,26 @@ def _write_exclusions(path: Path, payload: dict) -> Path:
     return path
 
 
-def test_exclusion_loader_refusals(tmp_path: Path):
-    base = {
-        "schema_version": 1,
-        "exclusions": [
-            {"name": "a", "reason": "reviewed reason", "tracking": "microcosm#623"}
-        ],
+def _entry(**overrides) -> dict:
+    entry = {
+        "name": "a",
+        "reason": "reviewed reason",
+        "tracking": "microcosm#623",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#757",
+        "approved_on": "2026-08-25",
+        "expires_on": "2026-11-25",
     }
+    entry.update(overrides)
+    return entry
+
+
+def test_exclusion_loader_refusals(tmp_path: Path):
+    base = {"schema_version": 2, "exclusions": [_entry()]}
 
     with pytest.raises(ValueError, match="schema_version"):
         load_uk_calibration_measure_exclusions(
-            _write_exclusions(tmp_path / "bad-version.json", {**base, "schema_version": 2})
+            _write_exclusions(tmp_path / "bad-version.json", {**base, "schema_version": 1})
         )
     with pytest.raises(ValueError, match="unknown top-level"):
         load_uk_calibration_measure_exclusions(
@@ -150,20 +159,42 @@ def test_exclusion_loader_refusals(tmp_path: Path):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "empty.json",
-                {**base, "exclusions": [{"name": "a", "reason": "", "tracking": "x"}]},
+                {**base, "exclusions": [_entry(reason="")]},
+            )
+        )
+    with pytest.raises(ValueError, match="empty approved_by"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "unapproved.json",
+                {**base, "exclusions": [_entry(approved_by="")]},
+            )
+        )
+    with pytest.raises(ValueError, match="canonical ISO"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "sloppy-date.json",
+                {**base, "exclusions": [_entry(approved_on="2026-8-25")]},
+            )
+        )
+    with pytest.raises(ValueError, match="after approved_on"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "inverted.json",
+                {**base, "exclusions": [_entry(expires_on="2026-08-25")]},
+            )
+        )
+    with pytest.raises(ValueError, match="unknown UK calibration measure exclusion field"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "extra-field.json",
+                {**base, "exclusions": [_entry(sneaky="value")]},
             )
         )
     with pytest.raises(ValueError, match="duplicate"):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "duplicate.json",
-                {
-                    **base,
-                    "exclusions": [
-                        {"name": "a", "reason": "one", "tracking": "x"},
-                        {"name": "a", "reason": "two", "tracking": "x"},
-                    ],
-                },
+                {**base, "exclusions": [_entry(), _entry(reason="two")]},
             )
         )
 
@@ -177,19 +208,38 @@ def test_exclusion_applier_returns_pruned_registry_and_receipt():
         country="uk",
     )
 
+    from datetime import date
+
+    window = _entry(name="drop", reason="reviewed")
     pruned, receipt = apply_uk_calibration_measure_exclusions(
-        registry,
-        ({"name": "drop", "reason": "reviewed", "tracking": "microcosm#623"},),
+        registry, (window,), now=date(2026, 9, 1)
     )
 
     assert [spec.name for spec in pruned.specs] == ["keep"]
     assert receipt == {
-        "drop": {"reason": "reviewed", "tracking": "microcosm#623"}
+        "drop": {
+            "reason": "reviewed",
+            "tracking": "microcosm#623",
+            "approved_by": "juaristi22",
+            "adjudication": "microcosm#757",
+            "approved_on": "2026-08-25",
+            "expires_on": "2026-11-25",
+            "evaluated_on": "2026-09-01",
+        }
     }
     with pytest.raises(ValueError, match="matched zero"):
         apply_uk_calibration_measure_exclusions(
-            registry,
-            ({"name": "stale", "reason": "reviewed", "tracking": "microcosm#623"},),
+            registry, (_entry(name="stale"),), now=date(2026, 9, 1)
+        )
+    # Outside the reviewed window the run refuses with correct-or-renew —
+    # the narrowing neither lapses silently nor lives forever.
+    with pytest.raises(ValueError, match="correct the underlying gap"):
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 11, 26)
+        )
+    with pytest.raises(ValueError, match="correct the underlying gap"):
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 8, 24)
         )
 
 
@@ -300,11 +350,6 @@ def test_exclusion_loader_requires_tracking(tmp_path: Path):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "untracked.json",
-                {
-                    "schema_version": 1,
-                    "exclusions": [
-                        {"name": "a", "reason": "reviewed reason", "tracking": ""}
-                    ],
-                },
+                {"schema_version": 2, "exclusions": [_entry(tracking="")]},
             )
         )

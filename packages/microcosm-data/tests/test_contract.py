@@ -98,25 +98,11 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         "expires_on": "2027-02-20",
     },
     "owned_land": {
-        "reason": (
-            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
-            "nonzero share) whose weighted total is dominated by a handful "
-            "of large farm/estate records: the E5 stability receipt "
-            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
-            "measures a 37.7 percent national and 2.41x London swing "
-            "between adjacent seeds, the same realization-variance class "
-            "the archived incumbent data repo records at uk-data#448 (4.6x "
-            "Wales swing across releases). Register parity at this grain "
-            "is not meaningful "
-            "until the whole-spine comparison; the "
-            "one-month expiry enforces the end-of-workstream revisit "
-            "registered on microcosm#145 (winsorised donor or separate "
-            "land imputation are the candidate remedies)."
-        ),
+        "reason": "Sparse heavy-tailed WAS donor column (0.7 percent weighted nonzero share) whose weighted total is dominated by a handful of large farm/estate records: the spine-e stability receipt (data/ukds/acceptance/757-swap/owned_land_stability_receipt_spine_e.json) measures a 53.8 percent national and 96.7 percent West Midlands swing between adjacent seeds on the 25-stage candidate \u2014 the realization-variance class the archived incumbent data repo records at uk-data#448 (4.6x Wales swing across releases), reproduced from the E5 instrument's method. Register parity at this grain stays not meaningful; the one-month expiry keeps the end-of-workstream revisit registered on microcosm#145 live (winsorised donor or separate land imputation are the candidate remedies).",
         "approved_by": "juaristi22",
         "adjudication": "microcosm#714",
-        "approved_on": "2026-08-20",
-        "expires_on": "2026-09-20",
+        "approved_on": "2026-08-26",
+        "expires_on": "2026-09-26",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -160,7 +146,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "16093e8605ac4bf9cf63fd66967c7b50fa80e29761443e8c6d37551e2d3b1fee"
+    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
