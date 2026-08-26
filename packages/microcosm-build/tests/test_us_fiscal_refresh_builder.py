@@ -1550,25 +1550,26 @@ def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> No
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     builder = _load_builder_module()
 
-    parsed = builder._parse_args(_exact_k_builder_argv("20000"))
+    base_argv = [
+        "--base-h5",
+        "pool.h5",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--no-staging",
+    ]
+    parsed = builder._parse_args(base_argv)
     assert parsed.allow_gate_failed_base_pool is False
 
-    parsed = builder._parse_args(
-        [*_exact_k_builder_argv("20000"), "--allow-gate-failed-base-pool"]
-    )
+    parsed = builder._parse_args([*base_argv, "--allow-gate-failed-base-pool"])
     assert parsed.allow_gate_failed_base_pool is True
 
     with pytest.raises(SystemExit):
         builder._parse_args(
-            [
-                "--ledger-facts",
-                "facts.jsonl",
-                "--out",
-                "release",
-                "--allow-gate-failed-base-pool",
-            ]
+            [*_exact_k_builder_argv("20000"), "--allow-gate-failed-base-pool"]
         )
-    assert "requires --pool-manifest" in capsys.readouterr().err
+    assert "requires --base-h5" in capsys.readouterr().err
 
 
 def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
@@ -1668,52 +1669,170 @@ def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
 
 
 @pytest.mark.parametrize(
-    ("allow_gate_failed", "selected_loader", "unselected_loader"),
+    ("allow_gate_failed", "status", "simulation_ready", "passed"),
     (
-        (
-            False,
-            "load_simulation_ready_us_multispine_pool",
-            "load_authenticated_us_multispine_pool_for_scoring",
-        ),
-        (
-            True,
-            "load_authenticated_us_multispine_pool_for_scoring",
-            "load_simulation_ready_us_multispine_pool",
-        ),
+        (False, "simulation_ready", True, True),
+        (True, "gate_failed", False, False),
     ),
 )
-def test_builder_selects_pool_loader_only_from_explicit_gate_failed_opt_in(
+def test_builder_base_h5_pool_loader_is_selected_only_by_explicit_opt_in(
     monkeypatch,
     tmp_path,
     allow_gate_failed,
-    selected_loader,
-    unselected_loader,
+    status,
+    simulation_ready,
+    passed,
 ) -> None:
     builder = _load_builder_module()
-    argv = _exact_k_builder_argv("20000")
-    argv[argv.index("out")] = str(tmp_path / "out")
-    if allow_gate_failed:
-        argv.append("--allow-gate-failed-base-pool")
+    pool_h5 = tmp_path / "pool.h5"
+    pool_h5.write_bytes(b"authenticated pool")
+    manifest_path = pool_h5.with_suffix(".manifest.json")
+    gate_failures = [] if passed else ["fixture battery failure"]
+    manifest = {
+        "status": status,
+        "simulation_ready": simulation_ready,
+        "agreement_gate": {
+            "passed": passed,
+            "gates": {
+                "us_by_origin_battery": {
+                    "passed": passed,
+                    "failures": gate_failures,
+                }
+            },
+        },
+        "agreement_diagnostics": {"sha256": "2" * 64},
+    }
+    authenticated = builder.AuthenticatedPoolH5(
+        path=pool_h5.resolve(),
+        sha256=hashlib.sha256(pool_h5.read_bytes()).hexdigest(),
+        size_bytes=pool_h5.stat().st_size,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+    )
+    frame = SimpleNamespace()
+    monkeypatch.setattr(
+        builder,
+        "identify_us_multispine_pool_manifest",
+        lambda path: manifest_path,
+    )
 
+    def selected(path):
+        assert path == manifest_path
+        return frame, manifest, authenticated
+
+    if allow_gate_failed:
+        monkeypatch.setattr(
+            builder,
+            "load_authenticated_us_multispine_pool_for_scoring",
+            selected,
+        )
+        monkeypatch.setattr(
+            builder,
+            "load_simulation_ready_us_multispine_pool",
+            lambda path: pytest.fail("strict loader ran after explicit opt-in"),
+        )
+    else:
+        monkeypatch.setattr(
+            builder,
+            "load_simulation_ready_us_multispine_pool",
+            selected,
+        )
+        monkeypatch.setattr(
+            builder,
+            "load_authenticated_us_multispine_pool_for_scoring",
+            lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
+        )
+
+    loaded_frame, receipt, loaded_identity = builder._load_base_pool_if_identified(
+        pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
+    )
+
+    assert loaded_frame is frame
+    assert loaded_identity is authenticated
+    assert receipt["status"] == status
+    assert receipt["allow_gate_failed_base_pool"] is allow_gate_failed
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(
+        gate_failures
+    )
+
+
+def test_builder_refuses_red_base_h5_pool_without_opt_in(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    pool_h5 = tmp_path / "pool.h5"
+    manifest_path = pool_h5.with_suffix(".manifest.json")
+    monkeypatch.setattr(
+        builder,
+        "identify_us_multispine_pool_manifest",
+        lambda path: manifest_path,
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_authenticated_us_multispine_pool_for_scoring",
+        lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
+    )
+
+    def refuse(path):
+        raise ValueError("US multispine pool manifest is not simulation-ready")
+
+    monkeypatch.setattr(builder, "load_simulation_ready_us_multispine_pool", refuse)
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        builder._load_base_pool_if_identified(
+            pool_h5,
+            allow_gate_failed_base_pool=False,
+        )
+
+
+def test_builder_refuses_bare_stamped_pool_h5_before_generic_load(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "pool.h5"
+    with pd.HDFStore(base_h5, mode="w") as store:
+        store.put(
+            "_populace_staging_metadata",
+            pd.Series(
+                [
+                    json.dumps(
+                        {
+                            "artifact_kind": "populace_us_multispine_input_pool",
+                            "household_weight_kind": "importance",
+                            "publication_run_id": "fixture-publication",
+                        }
+                    )
+                ]
+            ),
+            format="table",
+        )
+    out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
     monkeypatch.setattr(
         builder,
-        "_load_verified_incumbent_diagnostics_payload",
-        lambda path, *, expected_sha256: ({}, expected_sha256),
+        "_load_frame",
+        lambda path: pytest.fail("bare pool reached the generic H5 loader"),
     )
 
-    def selected(*args, **kwargs):
-        raise RuntimeError("selected pool loader")
+    with pytest.raises(ValueError, match="pool.manifest.json is not readable"):
+        builder.main(
+            [
+                "--base-h5",
+                str(base_h5),
+                "--ledger-facts",
+                str(tmp_path / "facts.jsonl"),
+                "--out",
+                str(out),
+                "--release-id",
+                "populace-us-2024-bare-pool-fixture",
+                "--no-staging",
+            ]
+        )
 
-    def unselected(*args, **kwargs):
-        pytest.fail("the unselected pool loader ran")
-
-    monkeypatch.setattr(builder, selected_loader, selected)
-    monkeypatch.setattr(builder, unselected_loader, unselected)
-
-    with pytest.raises(RuntimeError, match="selected pool loader"):
-        builder.main(argv)
+    assert not out.exists()
 
 
 def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
@@ -8790,7 +8909,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
     )
 
 
-def _gate_failed_exact_k_receipt(builder, *, allow_gate_failed_base_pool: bool):
+def _gate_failed_exact_k_inputs(builder):
     class FakeFrame:
         @staticmethod
         def n(entity):
@@ -8813,7 +8932,7 @@ def _gate_failed_exact_k_receipt(builder, *, allow_gate_failed_base_pool: bool):
         exact_k=20_000,
         seed=17,
         pool_release_id="fixture-publication",
-        allow_gate_failed_base_pool=allow_gate_failed_base_pool,
+        allow_gate_failed_base_pool=True,
     )
     failures = ["asec incidence differs", "puf_tax_detail incidence differs"]
     pool_manifest = {
@@ -8838,40 +8957,73 @@ def _gate_failed_exact_k_receipt(builder, *, allow_gate_failed_base_pool: bool):
         publication_run_id="fixture-publication",
         manifest_sha256="a" * 64,
     )
-    receipt = builder._exact_k_ladder_manifest_payload(
-        args=args,
-        outcome=outcome,
-        pool_manifest=pool_manifest,
-        authenticated_pool_h5=authenticated_pool_h5,
-        ledger_artifact={"facts_sha256": "3" * 64},
-        target_surface={"sha256": "4" * 64},
-        target_loss_basis={"method": "fixture"},
-        incumbent_diagnostics_sha256="5" * 64,
-        incumbent_fit_gate=builder.GateResult("incumbent_fit", True),
-        puf_tail_gate=builder.GateResult("puf_tail", True),
-    )
-    return receipt, failures
+    return {
+        "args": args,
+        "outcome": outcome,
+        "pool_manifest": pool_manifest,
+        "authenticated_pool_h5": authenticated_pool_h5,
+        "ledger_artifact": {"facts_sha256": "3" * 64},
+        "target_surface": {"sha256": "4" * 64},
+        "target_loss_basis": {"method": "fixture"},
+        "incumbent_diagnostics_sha256": "5" * 64,
+        "incumbent_fit_gate": builder.GateResult("incumbent_fit", True),
+        "puf_tail_gate": builder.GateResult("puf_tail", True),
+    }
 
 
-def test_builder_refuses_gate_failed_pool_without_explicit_opt_in() -> None:
+def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> None:
     builder = _load_builder_module()
 
     with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
-        _gate_failed_exact_k_receipt(
-            builder,
-            allow_gate_failed_base_pool=False,
+        builder._exact_k_ladder_manifest_payload(
+            **_gate_failed_exact_k_inputs(builder)
         )
 
 
-def test_gate_failed_pool_verdict_is_carried_into_release_manifest(
+def _gate_failed_base_pool_receipt() -> dict[str, object]:
+    failures = [
+        {"gate": "us_by_origin_battery", "message": "asec incidence differs"},
+        {
+            "gate": "us_by_origin_battery",
+            "message": "puf_tax_detail incidence differs",
+        },
+    ]
+    verdict = {
+        "passed": False,
+        "gates": {
+            "us_by_origin_battery": {
+                "passed": False,
+                "failures": [entry["message"] for entry in failures],
+                "details": {"fixture": True},
+            }
+        },
+    }
+    return {
+        "artifact_kind": "populace_us_multispine_input_pool",
+        "status": "gate_failed",
+        "simulation_ready": False,
+        "manifest_sha256": "a" * 64,
+        "publication_run_id": "fixture-publication",
+        "pool_h5_sha256": "1" * 64,
+        "pool_h5_size_bytes": 123,
+        "allow_gate_failed_base_pool": True,
+        "agreement_gate_reference": {
+            "battery_status": "red",
+            "passed": False,
+            "gates_json_sha256": "2" * 64,
+            "failure_count": len(failures),
+            "failures": failures,
+            "verdict": verdict,
+        },
+    }
+
+
+def test_gate_failed_base_pool_verdict_is_carried_into_release_manifest(
     monkeypatch, tmp_path
 ) -> None:
     builder = _load_builder_module()
-    ladder, failures = _gate_failed_exact_k_receipt(
-        builder,
-        allow_gate_failed_base_pool=True,
-    )
-    release_id = "populace-us-2024-k20000-gate-failed-fixture"
+    receipt = _gate_failed_base_pool_receipt()
+    release_id = "populace-us-2024-gate-failed-fixture"
     release_dir = tmp_path / "release" / release_id
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
@@ -8904,33 +9056,14 @@ def test_gate_failed_pool_verdict_is_carried_into_release_manifest(
     )
 
     builder._build_manifests(
-        exact_k_ladder=ladder,
+        base_pool=receipt,
         **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
     )
 
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
-    carried = release_manifest["build"]["exact_k_ladder"]
-    assert carried["pool"] == {
-        "release_id": "fixture-publication",
-        "release_id_source": "pool_manifest.publication_run_id",
-        "manifest_sha256": "a" * 64,
-        "publication_run_id": "fixture-publication",
-        "pool_h5_sha256": "1" * 64,
-        "pool_h5_size_bytes": 123,
-        "agreement_diagnostics_sha256": "2" * 64,
-        "status": "gate_failed",
-        "simulation_ready": False,
-        "allow_gate_failed_base_pool": True,
-    }
-    verdict = carried["agreement_gate_reference"]
-    assert verdict["passed"] is False
-    assert verdict["battery_status"] == "red"
-    assert verdict["gates_json_sha256"] == "2" * 64
-    assert verdict["failure_count"] == 2
-    assert verdict["failures"] == failures
-    assert verdict["verdict"]["gates"]["us_by_origin_battery"]["failures"] == (
-        failures
-    )
+    assert build_manifest["base_pool"] == receipt
+    assert release_manifest["build"]["base_pool"] == receipt
 
 
 def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt(
