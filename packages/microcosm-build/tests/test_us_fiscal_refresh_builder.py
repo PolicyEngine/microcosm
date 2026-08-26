@@ -1877,10 +1877,41 @@ def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
         builder._write_release_calibration_diagnostics
     )
     receipt_source = inspect.getsource(builder._exact_k_ladder_manifest_payload)
+    main_tree = ast.parse(main_source)
+    base_pool_assignments = [
+        node
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_load_base_pool_if_identified"
+    ]
+    assert len(base_pool_assignments) == 1
+    assert [
+        element.id
+        for element in base_pool_assignments[0].targets[0].elts
+        if isinstance(element, ast.Name)
+    ] == ["pool_frame", "base_pool_receipt", "authenticated_pool_h5"]
+    manifest_calls = [
+        node
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    base_pool_keyword = next(
+        keyword for keyword in manifest_calls[0].keywords if keyword.arg == "base_pool"
+    )
+    assert isinstance(base_pool_keyword.value, ast.Name)
+    assert base_pool_keyword.value.id == "base_pool_receipt"
     assert (
         "authenticated_pool_h5.verified_digest(\n"
         '            consumer="builder base dataset identity"'
     ) in main_source
+    assert "if pool_frame is None:\n        base_frame = _load_frame(base_h5)" in (
+        main_source
+    )
     assert "base_dataset_sha256=base_dataset_sha256" in main_source
     assert '"base_dataset_sha256": base_dataset_sha256' in diagnostics_source
     assert '"manifest_sha256": authenticated_pool_h5.manifest_sha256' in receipt_source
