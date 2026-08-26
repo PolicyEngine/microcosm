@@ -26,15 +26,20 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
 )
 from microcosm.build.us_runtime.h5_io import (
+    LEGACY_NULLABLE_STAGING_ARTIFACT_KIND,
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
     US_STACKED_POOL_OPERATOR_ORDER,
+    AuthenticatedPoolH5,
     AuthenticatedPoolH5MismatchError,
+    identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
+    require_authenticated_us_multispine_pool_h5,
+    us_multispine_pool_release_receipt,
     write_nullable_us_h5,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -1489,6 +1494,91 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
     assert loaded_manifest["simulation_ready"] is False
     assert loaded_manifest["terminal_gates"]["passed"] is False
     assert authenticated_h5.sha256 == loaded_manifest["pool_h5"]["sha256"]
+
+    receipt = us_multispine_pool_release_receipt(
+        loaded_manifest,
+        authenticated_h5,
+        allow_gate_failed_base_pool=True,
+    )
+    assert receipt["status"] == "gate_failed"
+    assert receipt["simulation_ready"] is False
+    assert receipt["allow_gate_failed_base_pool"] is True
+    assert receipt["agreement_gate_reference"] == {
+        "battery_status": "red",
+        "passed": False,
+        "gates_json_sha256": loaded_manifest["agreement_diagnostics"]["sha256"],
+        "failure_count": 1,
+        "failures": [
+            {
+                "gate": "us_spine_agreement",
+                "message": "fixture terminal failure",
+            }
+        ],
+        "verdict": failed_gate,
+    }
+
+
+def test_pool_h5_identity_requires_its_missing_manifest_sidecar(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    pool_path = tmp_path / "pool.h5"
+    manifest_path.unlink()
+
+    assert identify_us_multispine_pool_manifest(pool_path) == manifest_path
+
+
+def test_pool_sidecar_identity_requires_authentication_even_without_h5_stamp(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    pool_path = tmp_path / "pool.h5"
+    write_nullable_us_h5(
+        _pool_frame(),
+        pool_path,
+        period=2024,
+        artifact_kind=LEGACY_NULLABLE_STAGING_ARTIFACT_KIND,
+    )
+    manifest_path = pool_path.with_suffix(".manifest.json")
+    manifest_path.write_text(
+        json.dumps({"artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND}),
+        encoding="utf-8",
+    )
+
+    assert identify_us_multispine_pool_manifest(pool_path) == manifest_path
+
+
+def test_non_pool_h5_has_no_required_pool_manifest(tmp_path: Path) -> None:
+    pytest.importorskip("tables")
+    h5_path = tmp_path / "staging.h5"
+    write_nullable_us_h5(
+        _pool_frame(),
+        h5_path,
+        period=2024,
+        artifact_kind=LEGACY_NULLABLE_STAGING_ARTIFACT_KIND,
+    )
+
+    assert identify_us_multispine_pool_manifest(h5_path) is None
+
+
+def test_pool_sidecar_must_authenticate_the_requested_h5(tmp_path: Path) -> None:
+    requested = tmp_path / "requested.h5"
+    authenticated = tmp_path / "authenticated.h5"
+    identity = AuthenticatedPoolH5(
+        path=authenticated,
+        sha256="a" * 64,
+        size_bytes=1,
+        publication_run_id="fixture-publication",
+        manifest_sha256="b" * 64,
+    )
+
+    with pytest.raises(ValueError, match="authenticates a different H5"):
+        require_authenticated_us_multispine_pool_h5(
+            requested,
+            identity,
+            consumer="fixture consumer",
+        )
 
 
 @pytest.mark.parametrize(

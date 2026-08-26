@@ -58,11 +58,14 @@ __all__ = [
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "US_STACKED_POOL_OPERATOR_ORDER",
+    "identify_us_multispine_pool_manifest",
     "load_authenticated_us_multispine_pool_for_scoring",
     "load_legacy_calibrated_us_h5",
     "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "read_nullable_us_h5_metadata",
+    "require_authenticated_us_multispine_pool_h5",
+    "us_multispine_pool_release_receipt",
     "write_nullable_us_h5",
 ]
 
@@ -326,6 +329,167 @@ class AuthenticatedPoolH5:
             f"sha256={self.sha256}, size_bytes={self.size_bytes}, observed "
             f"sha256={observed_sha256}, size_bytes={observed_size_bytes}."
         )
+
+
+def identify_us_multispine_pool_manifest(path: str | Path) -> Path | None:
+    """Return the required sidecar when an H5 positively identifies as a pool.
+
+    A successful pool publication writes ``<stem>.manifest.json`` beside the
+    H5 and stamps the H5's artifact-metadata row. Either identity is enough to
+    require the manifest. The caller must still authenticate that manifest;
+    this classifier deliberately does not turn sidecar existence into trust.
+    """
+
+    h5_path = Path(path)
+    manifest_path = h5_path.with_suffix(".manifest.json")
+    manifest_identifies_pool = False
+    if manifest_path.is_file():
+        try:
+            sibling_manifest = _read_json_object(
+                manifest_path,
+                label="candidate US multispine pool manifest",
+            )
+        except (OSError, ValueError):
+            sibling_manifest = None
+        manifest_identifies_pool = (
+            isinstance(sibling_manifest, Mapping)
+            and sibling_manifest.get("artifact_kind")
+            == US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
+        )
+
+    # A generic PolicyEngine H5 has no Microcosm artifact-metadata table. Open
+    # the key inventory first so an unreadable non-pool fixture stays on the
+    # generic path, while a present-but-malformed identity row remains a hard
+    # error instead of becoming a receipt bypass.
+    try:
+        with pd.HDFStore(h5_path, mode="r") as store:
+            has_artifact_metadata = _METADATA_KEY in {
+                key.lstrip("/") for key in store.keys()
+            }
+    except Exception:
+        has_artifact_metadata = False
+
+    h5_identifies_pool = False
+    if has_artifact_metadata:
+        metadata = read_nullable_us_h5_metadata(h5_path)
+        h5_identifies_pool = (
+            metadata.get("artifact_kind") == US_MULTISPINE_POOL_H5_ARTIFACT_KIND
+        )
+    if manifest_identifies_pool or h5_identifies_pool:
+        return manifest_path
+    return None
+
+
+def require_authenticated_us_multispine_pool_h5(
+    requested_path: str | Path,
+    authenticated_pool_h5: AuthenticatedPoolH5,
+    *,
+    consumer: str,
+) -> Path:
+    """Require one sidecar to authorize the exact H5 supplied by a consumer."""
+
+    requested = Path(requested_path).resolve()
+    authenticated = authenticated_pool_h5.path.resolve()
+    if authenticated != requested:
+        raise ValueError(
+            f"{consumer} supplied US multispine pool H5 {requested}, but its "
+            f"sibling manifest authenticates a different H5 {authenticated}."
+        )
+    return authenticated
+
+
+def us_multispine_pool_release_receipt(
+    manifest: Mapping[str, object],
+    authenticated_pool_h5: AuthenticatedPoolH5,
+    *,
+    allow_gate_failed_base_pool: bool,
+) -> dict[str, object]:
+    """Build self-contained release evidence from an authenticated pool."""
+
+    status = manifest.get("status")
+    simulation_ready = manifest.get("simulation_ready")
+    is_ready = status == "simulation_ready" and simulation_ready is True
+    is_gate_failed = status == "gate_failed" and simulation_ready is False
+    if not is_ready and not is_gate_failed:
+        raise ValueError(
+            "Authenticated US multispine pool has an unsupported release status "
+            f"pair: status={status!r}, simulation_ready={simulation_ready!r}."
+        )
+    if is_gate_failed and not allow_gate_failed_base_pool:
+        raise ValueError(
+            "Authenticated gate-failed US multispine pool requires the explicit "
+            "--allow-gate-failed-base-pool opt-in."
+        )
+
+    agreement_gate = _mapping(
+        manifest.get("agreement_gate"),
+        label="authenticated US multispine pool agreement_gate",
+    )
+    expected_passed = is_ready
+    if agreement_gate.get("passed") is not expected_passed:
+        raise ValueError(
+            "Authenticated US multispine pool status disagrees with its "
+            "agreement-gate verdict."
+        )
+    gates = _mapping(
+        agreement_gate.get("gates"),
+        label="authenticated US multispine pool agreement_gate.gates",
+    )
+    failures: list[dict[str, str]] = []
+    for gate_name, gate_payload in gates.items():
+        if not isinstance(gate_name, str) or not gate_name:
+            raise ValueError(
+                "Authenticated US multispine pool agreement gate has an invalid "
+                "gate name."
+            )
+        gate = _mapping(
+            gate_payload,
+            label=f"authenticated US multispine pool gate {gate_name!r}",
+        )
+        gate_failures = gate.get("failures")
+        if not isinstance(gate_failures, list) or not all(
+            isinstance(failure, str) for failure in gate_failures
+        ):
+            raise ValueError(
+                f"Authenticated US multispine pool gate {gate_name!r} has an "
+                "invalid failure list."
+            )
+        failures.extend(
+            {"gate": gate_name, "message": failure} for failure in gate_failures
+        )
+
+    diagnostics = _mapping(
+        manifest.get("agreement_diagnostics"),
+        label="authenticated US multispine pool agreement_diagnostics",
+    )
+    gates_json_sha256 = diagnostics.get("sha256")
+    if (
+        not isinstance(gates_json_sha256, str)
+        or _LOWERCASE_SHA256.fullmatch(gates_json_sha256) is None
+    ):
+        raise ValueError(
+            "Authenticated US multispine pool agreement diagnostics have no "
+            "valid SHA-256."
+        )
+
+    return {
+        "artifact_kind": US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+        "status": status,
+        "simulation_ready": simulation_ready,
+        "manifest_sha256": authenticated_pool_h5.manifest_sha256,
+        "publication_run_id": authenticated_pool_h5.publication_run_id,
+        "pool_h5_sha256": authenticated_pool_h5.sha256,
+        "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
+        "allow_gate_failed_base_pool": bool(allow_gate_failed_base_pool),
+        "agreement_gate_reference": {
+            "battery_status": "green" if is_ready else "red",
+            "passed": expected_passed,
+            "gates_json_sha256": gates_json_sha256,
+            "failure_count": len(failures),
+            "failures": failures,
+            "verdict": dict(agreement_gate),
+        },
+    }
 
 
 def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
