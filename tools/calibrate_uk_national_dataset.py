@@ -110,7 +110,6 @@ def main(argv: list[str] | None = None) -> int:
             "ledger_facts": _ledger_facts_pin(artifact),
         },
         run_config_extra={"calibration_year": calibration_year},
-        release_candidate=args.release_candidate,
         release_id=args.release_id,
         logbook_prev_row_digest=args.logbook_prev_row_digest,
     )
@@ -149,34 +148,26 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     args.terminal_gate_json = args.terminal_gate_json or args.staging_h5.with_suffix(
         ".terminal_gates.json"
     )
-    override_flags = {
-        "--epochs": args.epochs,
-        "--target-weight-rule": args.target_weight_rule,
-        "--learning-rate": args.learning_rate,
-        "--target-loss-cap": args.target_loss_cap,
-    }
-    passed_overrides = [flag for flag, value in override_flags.items() if value is not None]
-    if args.release_candidate and passed_overrides:
+    if args.release_candidate:
+        # The seam refuses release-candidate posture outright (the #757
+        # release-cut audit, issue comment 5413502559): its scoped battery
+        # covers 6 of the declared entries and must never sign a
+        # shippability claim, and its evidence_absent gaps already refuse
+        # upstream. A candidate's verdict comes only from the release-cut
+        # certification producer (tools/certify_uk_release_cut.py).
         parser.error(
-            "--release-candidate is refused with doctrine override flag(s): "
-            + ", ".join(passed_overrides)
+            "--release-candidate is refused on the calibration seam: the "
+            "seam's scoped battery cannot sign shippability; run the "
+            "release-cut certification producer instead"
         )
-    if args.release_candidate and args.measure_exclusions is not None:
-        # An exclusion register prunes the compiled target surface before the
-        # solve, and the calibration-scoped battery does not carry the
-        # target-surface gate — so an operator-supplied register would be an
-        # unreviewed narrowing of what a release candidate was measured
-        # against. Release candidates use the committed register only.
-        parser.error(
-            "--release-candidate is refused with --measure-exclusions: a "
-            "release candidate is measured against the committed target "
-            "surface, not an operator-supplied one"
-        )
-    if (
-        not args.release_candidate
-        and (_CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id) or args.release_id == _UK_JUNE_RELEASE_ID)
+    if _CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id) or (
+        args.release_id == _UK_JUNE_RELEASE_ID
     ):
-        parser.error("canonical UK release ids require --release-candidate")
+        parser.error(
+            "canonical UK release ids belong to the release-cut "
+            "certification producer; the seam runs under a staging or dev "
+            "release id"
+        )
     _validate_distinct_paths(
         {
             "--input-h5": args.input_h5,

@@ -204,7 +204,6 @@ def run_uk_calibration(
     measure_resolver: object | None,
     source_pins: Mapping[str, Mapping[str, object]],
     run_config_extra: Mapping[str, object],
-    release_candidate: bool,
     release_id: str,
     logbook_prev_row_digest: str | None = None,
 ) -> UKCalibrationRunResult:
@@ -253,7 +252,6 @@ def run_uk_calibration(
             doctrine_overrides=doctrine_overrides,
             measure_resolver=measure_resolver,
             source_pins=source_pins,
-            release_candidate=release_candidate,
             release_id=release_id,
             state=state,
             run_config=run_config,
@@ -344,7 +342,6 @@ def _run_uk_calibration_attempt(
     doctrine_overrides: Mapping[str, Mapping[str, object]],
     measure_resolver: object | None,
     source_pins: Mapping[str, Mapping[str, object]],
-    release_candidate: bool,
     release_id: str,
     state: AttemptState,
     run_config: Mapping[str, object],
@@ -421,7 +418,6 @@ def _run_uk_calibration_attempt(
         calibrated,
         stage,
         paths.terminal_gate_json,
-        release_candidate=release_candidate,
         release_id=release_id,
         diagnostics_sha256=diagnostics_sha,
     )
@@ -448,11 +444,15 @@ def _run_uk_calibration_attempt(
         "register": build_block["register"],
         "calibration": stage.manifest,
         "gate_summary": _gate_summary(gate_report),
-        "shippable": False,
-        "shippable_reason": (
-            "calibration-scoped battery; release certification is the "
-            "release-cut producer's job"
-        ),
+        # No shippability claim lives here: the calibration-scoped battery
+        # covers 6 of the declared gate entries. The release verdict is the
+        # release-cut certification's, produced over this record.
+        "certification": {
+            "expected_artifact": str(
+                paths.staging_h5.with_suffix(".release_certification.json")
+            ),
+            "producer": "tools/certify_uk_release_cut.py",
+        },
         "artifacts": {
             "staging_h5": {"path": str(paths.staging_h5), "sha256": staging_sha},
             "diagnostics_json": {
@@ -500,7 +500,6 @@ def _run_calibration_gate_battery(
     stage: UKNationalCalibrationStage,
     path: Path,
     *,
-    release_candidate: bool,
     release_id: str,
     diagnostics_sha256: str,
 ) -> dict[str, object]:
@@ -519,8 +518,12 @@ def _run_calibration_gate_battery(
     battery = GateBatteryRun(
         manifest,
         release_id=release_id,
+        # The seam never runs release-candidate posture: its scoped battery
+        # covers 6 of the declared entries and must never sign a
+        # shippability claim (the #757 release-cut audit). Shippability
+        # comes only from the release-cut certification.
         report_path=path,
-        release_candidate=release_candidate,
+        release_candidate=False,
         registry=UK_GATE_REGISTRY,
         release_evidence={"calibration_diagnostics_sha256": diagnostics_sha256},
     )
