@@ -6,9 +6,9 @@
       "household": 52846,
       "person": 113649
     },
-    "name": "spine-g",
-    "sha256": "02900abeec29d52596f16c9e29b2a8991e0acd5f5118c3be28a50ca77403787b",
-    "sidecar_sha256": "d5f4dc645c130484b05d8d7ef00f3f81ffb9c3633eff305bc9e6754c52b1ec0e",
+    "name": "spine-i",
+    "sha256": "0cce03992207b4e16d96483642e2edd943fd25112a6425208d748b31c7742416",
+    "sidecar_sha256": "615de0a428538b0005c050cdd18982d32903b75ab7fd95f55edcc60958d92fee",
     "stage_count": 25,
     "stage_roster": [
       "frs_spine",
@@ -66,13 +66,15 @@
   "schema_version": 1,
   "spine_battery": {
     "blocked_at_phase": null,
-    "report_sha256": "57c4a44d9627b1e47b7a94438a71bc0d96de06073931e37ff096f1f988c3c58b",
+    "release_candidate": true,
+    "report_sha256": "0ddd22c15fab204c5ca9b7992f736795107f4fc804c811cfb7e16f197065e83a",
+    "signed": true,
     "statuses": {
       "passed": 14
     }
   },
   "strict_parity": {
-    "receipt_sha256": "8fff9bf6952f6985eb71b8e81d6adad8dfb862810a7c8e4c5da7d2c278d13bdd",
+    "receipt_sha256": "f020df07cc6bf8c535671475c0655b49f99d75e19cc014d69ba8de3cb1579756",
     "share_band": {
       "contract": 0.02,
       "effective": 0.02
@@ -82,9 +84,9 @@
     "verdict": "signed_parity"
   },
   "twin": {
-    "name": "spine-e (and spine-d before it)",
-    "note": "Three code vintages, one payload: spine-d (pre-evidence-layer), spine-e (pre-battery), spine-g (full battery armed) are pairwise payload_identical across all tables, keys and root attrs \u2014 the twin-determinism receipt and the proof that receipts and gates never moved a byte of the artifact.",
+    "name": "spine-g (and spine-d/e before it)",
+    "note": "spine-i rebuilds the candidate at the #757 follow-up tip (release-cut certification machinery, exclusion pass, QRF tail re-arm, lever run reverted to 0.55): payload-identical to spine-g, whose own d/e/g twins were pairwise payload-identical. The battery ran at release-candidate strictness and the report is signed. The would_claim_uc lever build (spine-h, 0.85) is a measured-and-reverted receipt in the acceptance evidence, not a candidate.",
     "payload_identical": true,
-    "sha256": "3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a"
+    "sha256": "02900abeec29d52596f16c9e29b2a8991e0acd5f5118c3be28a50ca77403787b"
   }
 }
