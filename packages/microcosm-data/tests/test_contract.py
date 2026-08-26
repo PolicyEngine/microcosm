@@ -212,6 +212,16 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_age_tail_targets": ("stage_health", "transferred", None),
+    "uk_ledger_compile_parity_local_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+        None,
+    ),
+    "uk_target_surface_local_default_2025": (
+        "target_surface",
+        "preflight",
+        None,
+    ),
     "uk_release_input_coverage": (
         "release_input_coverage",
         "terminal",
@@ -1144,6 +1154,24 @@ def _gate_battery_payload(
                 "actual_count": 636,
                 "signed_difference_count": 0,
             }
+        elif entry_id == "uk_ledger_compile_parity_local_incumbent_2025":
+            details = {
+                "fixture": "incumbent_local_2025",
+                "expected_count": 23_545,
+                "actual_count": 17_077,
+                "signed_difference_count": 23_837,
+            }
+        elif entry_id == "uk_target_surface_local_default_2025":
+            details = {
+                "candidate_name": "UK local compiled Ledger surface",
+                "reference_name": "UK local default metric surface",
+                "candidate_targets": 17_077,
+                "reference_targets": 19_642,
+                "extra_candidate_targets": [],
+                "missing_reference_targets": [],
+                "reviewed_exclusions": {},
+                "unused_reviewed_exclusions": [],
+            }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
         elif gate == "stage_health":
@@ -1180,6 +1208,29 @@ def _gate_battery_payload(
                 "registry_count": 636,
                 "registry_version": "fixture",
                 "signed_differences": [],
+            }
+        ),
+        "uk_ledger_compile_parity_local_incumbent_2025": _canonical_sha256(
+            {
+                "fixture_resource": "local_registry_parity_fixture_2025.json",
+                "registry_artifact": "uk_ledger_compiled_local_registries",
+                "registry_count": 17_077,
+                "registry_version": "fixture",
+                "signed_differences": [],
+                "target_period": 2025,
+            }
+        ),
+        "uk_target_surface_local_default_2025": _canonical_sha256(
+            {
+                "candidate_targets": 17_077,
+                "crosswalk_resource": "local_area_crosswalk.json",
+                "expected": "local_default_surface",
+                "membership_resource": "local_target_reference_membership.json",
+                "reference_targets": 19_642,
+                "registry_artifact": "uk_ledger_compiled_local_registries",
+                "registry_count": 17_077,
+                "reviewed_exclusions": 1_554,
+                "target_period": 2025,
             }
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,

@@ -22,6 +22,7 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.local_targets import load_uk_local_geography_contract
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame
 
@@ -32,6 +33,74 @@ class UKLedgerTargetCompilation:
 
     registry: TargetRegistry
     unsupported: tuple[dict[str, str], ...]
+
+
+LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE = "local_registry_parity_fixture_2025.json"
+
+
+def align_uk_local_registry_parity_fixture(
+    fixture: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Align incumbent local metric names to the Microcosm contract ids.
+
+    The incumbent fixture is extracted from the old runtime's metric columns
+    (``hmrc/self_employment_income/amount@...``). The local Ledger registry is
+    contract-named (``hmrc.self_employment_income.amount@...``). In-contract
+    fixture rows are therefore renamed for comparison; out-of-contract metrics
+    deliberately remain fixture-only so the signed receipt records the ruled
+    exclusions.
+    """
+
+    metric_target_ids = _uk_local_metric_target_ids()
+    rows: list[dict[str, Any]] = []
+    for row in fixture.get("rows", ()):
+        if not isinstance(row, Mapping):
+            rows.append(row)
+            continue
+        updated = dict(row)
+        metric = str(
+            updated.get("metric") or str(updated.get("name", "")).split("@")[0]
+        )
+        target_id = metric_target_ids.get(metric)
+        if target_id is not None:
+            geography_id = str(
+                updated.get("geography_id")
+                or str(updated.get("name", "")).split("@", 1)[1]
+            )
+            updated["name"] = f"{target_id}@{geography_id}"
+            updated["contract_target_id"] = updated["name"]
+            updated.setdefault("measure", metric)
+        rows.append(updated)
+    aligned = dict(fixture)
+    aligned["rows"] = rows
+    return aligned
+
+
+def _uk_local_metric_target_ids() -> dict[str, str]:
+    contract = load_uk_local_geography_contract()
+    mapping: dict[str, str] = {}
+    for target in contract.get("targets", ()):
+        if not isinstance(target, Mapping):
+            continue
+        bindings = target.get("bindings")
+        if not isinstance(bindings, Mapping):
+            continue
+        policyengine = bindings.get("policyengine")
+        if not isinstance(policyengine, Mapping):
+            continue
+        metric_name = policyengine.get("metric_name")
+        target_id = target.get("target_id")
+        if not isinstance(metric_name, str) or not isinstance(target_id, str):
+            continue
+        existing = mapping.get(metric_name)
+        if existing is not None and existing != target_id:
+            raise ValueError(
+                "UK local geography contract maps metric "
+                f"{metric_name!r} to multiple target ids: "
+                f"{existing!r} and {target_id!r}."
+            )
+        mapping[metric_name] = target_id
+    return mapping
 
 
 def compile_uk_target_registry(
@@ -81,6 +150,7 @@ def compile_uk_local_target_registry(
     """Compile packaged UK local-area Ledger references against fact rows."""
 
     fact_rows = tuple(facts)
+    local_fact_buckets = _local_fact_buckets(fact_rows)
     spec = load_country_spec("uk")
     rosters = _local_crosswalk_rosters(crosswalk)
     compiled = []
@@ -90,7 +160,14 @@ def compile_uk_local_target_registry(
             **{**reference.__dict__, "period": target_period}
         )
         _assert_local_reference_in_crosswalk(restamped, rosters)
-        candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
+        candidate_facts = _candidate_facts_for_reference(
+            _local_candidate_fact_pool(
+                fact_rows,
+                local_fact_buckets,
+                restamped,
+            ),
+            restamped,
+        )
         try:
             registry = compile_ledger_target_references(
                 candidate_facts,
@@ -124,6 +201,43 @@ def _candidate_facts_for_reference(
         for fact in facts
         if _fact_matches_selector(fact, reference.ledger_selector)
     )
+
+
+def _local_fact_buckets(
+    facts: tuple[Mapping[str, Any], ...],
+) -> dict[tuple[str, str], tuple[Mapping[str, Any], ...]]:
+    materialized: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for fact in facts:
+        key = _local_fact_geography_key(fact)
+        if key is not None:
+            materialized.setdefault(key, []).append(fact)
+    return {key: tuple(rows) for key, rows in materialized.items()}
+
+
+def _local_candidate_fact_pool(
+    facts: tuple[Mapping[str, Any], ...],
+    buckets: Mapping[tuple[str, str], tuple[Mapping[str, Any], ...]],
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, Any], ...]:
+    selector = reference.ledger_selector
+    geography_level = selector.get("geography_level")
+    geography_id = selector.get("geography_id")
+    if not isinstance(geography_level, str) or not isinstance(geography_id, str):
+        return facts
+    return buckets.get((geography_level, geography_id), ())
+
+
+def _local_fact_geography_key(fact: Mapping[str, Any]) -> tuple[str, str] | None:
+    geography = fact.get("geography")
+    if not isinstance(geography, Mapping):
+        return None
+    level = geography.get("level")
+    geography_id = geography.get("id")
+    if not isinstance(level, str) or not isinstance(geography_id, str):
+        return None
+    if not level or not geography_id:
+        return None
+    return (level, geography_id)
 
 
 def _local_crosswalk_rosters(

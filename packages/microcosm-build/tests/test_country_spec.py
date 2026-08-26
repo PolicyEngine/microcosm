@@ -313,12 +313,14 @@ class TestUKCountryPackage:
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
+            "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
             "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
+            "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "local_binding_adjudications.json",
             "uk_local_target_census.json",
@@ -396,12 +398,14 @@ class TestExistingPackagesGeneralize:
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
+            "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
             "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
+            "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "local_binding_adjudications.json",
             "uk_local_target_census.json",
@@ -661,6 +665,8 @@ class TestUKGatesManifest:
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
+            "uk_ledger_compile_parity_local_incumbent_2025",
+            "uk_target_surface_local_default_2025",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -694,6 +700,22 @@ class TestUKGatesManifest:
         )
         assert (
             params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
+        )
+        assert (
+            params["uk_ledger_compile_parity_local_incumbent_2025"]["target_period"]
+            == 2025
+        )
+        assert (
+            params["uk_ledger_compile_parity_local_incumbent_2025"]["registry_artifact"]
+            == "uk_ledger_compiled_local_registries"
+        )
+        assert (
+            params["uk_target_surface_local_default_2025"]["expected"]
+            == "local_default_surface"
+        )
+        assert (
+            params["uk_target_surface_local_default_2025"]["registry_artifact"]
+            == "uk_ledger_compiled_local_registries"
         )
 
     def test_strict_absent_evidence_entries_are_declared(self, manifest) -> None:

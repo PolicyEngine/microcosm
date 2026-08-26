@@ -1014,6 +1014,12 @@ class TestUsSources:
                 "calibration_diagnostics.json"
             ),
             "tools/build_uk_efrs_parity_reference.py",
+            # The UK local registry incumbent fixture keeps its one-off
+            # extractor as provenance for the frozen JSON fixture. It is not
+            # imported by package code or live gate/build paths.
+            "packages/microcosm-build/src/microcosm/build/uk/"
+            "local_registry_parity_fixture_2025.json",
+            "tools/extract_uk_local_registry_fixture.py",
             "UK_COVERAGE_PROGRESS.md",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}

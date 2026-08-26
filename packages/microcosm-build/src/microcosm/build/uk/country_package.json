@@ -193,6 +193,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "ledger_compile_parity_production_2023_signed_differences.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -219,6 +224,11 @@
     },
     {
       "path": "registry_parity_fixture_2025.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_registry_parity_fixture_2025.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

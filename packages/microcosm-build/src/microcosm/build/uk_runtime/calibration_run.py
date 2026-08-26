@@ -118,6 +118,11 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_release_family_build_stages",
     "uk_ledger_compile_parity_production_2023",
     "uk_ledger_compile_parity_incumbent_2025",
+    # The local-surface compile gates live with the same owner as the national
+    # parity pair: evaluated in tests today, run by the release-cut
+    # certification producer when it lands (#757 B5) — never by the seam.
+    "uk_ledger_compile_parity_local_incumbent_2025",
+    "uk_target_surface_local_default_2025",
     "uk_release_input_coverage",
     "uk_degenerate_release_surface",
     "uk_nonnegative_columns",

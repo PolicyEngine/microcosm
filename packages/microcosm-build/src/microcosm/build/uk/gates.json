@@ -52,6 +52,33 @@
       "notes": "Ledger-compiled UK targets at the 2025 calibration period compared with the frozen incumbent registry surface. The signed list enumerates TCL additions, exclusions, unsupported rows, and vintage drift for review."
     },
     {
+      "id": "uk_ledger_compile_parity_local_incumbent_2025",
+      "gate": "ledger_compile_parity",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "fixture_resource": "local_registry_parity_fixture_2025.json",
+        "signed_differences_resource": "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
+        "target_period": 2025,
+        "registry_artifact": "uk_ledger_compiled_local_registries"
+      },
+      "notes": "Ledger-compiled UK local-area targets at the 2025 calibration period compared with the frozen incumbent local registry surface. The incumbent's out-of-contract devolved private-rent and council-tax columns remain fixture-only and are signed with ruled rationales."
+    },
+    {
+      "id": "uk_target_surface_local_default_2025",
+      "gate": "target_surface",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "expected": "local_default_surface",
+        "registry_artifact": "uk_ledger_compiled_local_registries",
+        "target_period": 2025,
+        "crosswalk_resource": "local_area_crosswalk.json",
+        "membership_resource": "local_target_reference_membership.json"
+      },
+      "notes": "Structural, valueless local default-surface check: compose metric_names(area_type) over the committed local crosswalk roster and apply the signed area deferrals from local_target_reference_membership.json as reviewed exclusions."
+    },
+    {
       "id": "uk_stage_was_wealth_support",
       "gate": "stage_health",
       "phase": "transferred",
