@@ -2,9 +2,10 @@
 
 ## State
 
-The scorer-legacy implementation is complete and focused tests pass. Loaded
-entity H5s, legacy flat H5s, and authenticated pool H5s now share one
-current-engine ownership normalization seam before scoring.
+The scorer-legacy implementation and complete workspace verification are
+green. Loaded entity H5s, legacy flat H5s, and authenticated pool H5s now share
+one current-engine ownership normalization seam before scoring. The real
+incumbent-versus-pool scorer is the remaining acceptance step.
 
 The goal is to make head-to-head scoring deterministically remove and receipt
 formula-owned columns from loaded historical incumbent or candidate H5
@@ -31,13 +32,17 @@ artifacts, while keeping the fresh-release leaf-only export gate strict.
   missing-leaf refusal, and clean empty receipt. The full targeted scorer test
   file passes (16 passed). Its first explicit receipt run exposed and fixed an
   empty-entity pandas drop edge before full-shard verification.
+- Passed repository-wide Ruff through the required `uv run --no-sync` command
+  using a writable offline cache, and passed CI test-inventory verification for
+  all 309 tracked test files.
+- Passed all five full pytest shards in separate processes: build 6,516 passed /
+  45 skipped; frame 295 / 36; calibrate 203 / 0; data 318 / 2; fit 93 / 0.
+  Aggregate: 7,425 passed, 83 skipped, 0 failed.
 
 ## Next
 
-1. Run repository-wide Ruff, CI inventory verification, strict-builder
-   regression coverage, and all five pytest shards in separate processes.
-2. Run the real incumbent-versus-pool acceptance scorer from this worktree.
-3. Record exact evidence in `out.md`, finalize this journal, and leave a clean
+1. Run the real incumbent-versus-pool acceptance scorer from this worktree.
+2. Record exact evidence in `out.md`, finalize this journal, and leave a clean
    committed worktree.
 
 ## Historical prior lane
