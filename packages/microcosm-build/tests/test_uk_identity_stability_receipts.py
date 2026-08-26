@@ -288,3 +288,44 @@ class TestE6Receipt:
         assert receipt["nhs_age_top_code"] == UK_AGE_TOP_CODE
         assert receipt["matches_stored_columns"] is True
         assert receipt["stored_column_mismatches"] == {}
+
+
+def test_e8_carrier_recompute_is_invariant_to_the_age_tail_rewrite():
+    """The donor stage picked carriers before age_tail ran; the recompute must too.
+
+    Two adults tied at the top code at stage time: the stage's carrier is the
+    stable-order winner of that tie. After age_tail lifts one of them to 90,
+    an unclamped recompute flips the tie to the lifted person — the mechanism
+    behind the 255-donor mismatch on the first 25-stage ladder run — while the
+    stage-time clamp reproduces the stage's own choice exactly.
+    """
+
+    from microcosm.build.uk_runtime.age_tail import UK_AGE_TOP_CODE as TOP
+    from microcosm.build.uk_runtime.cgt_structure import _oldest_adult_indices
+
+    stage_time = pd.DataFrame(
+        {
+            "person_id": [0, 1],
+            "person_household_id": [7, 7],
+            "age": [float(TOP), float(TOP)],
+        }
+    )
+    after_age_tail = stage_time.assign(age=[float(TOP), 90.0])
+
+    stage_choice = _oldest_adult_indices(stage_time, household_ids={7})
+
+    unclamped = _oldest_adult_indices(after_age_tail, household_ids={7})
+    assert unclamped.tolist() != stage_choice.tolist()
+
+    clamped = after_age_tail.assign(
+        age=np.minimum(
+            pd.to_numeric(after_age_tail["age"], errors="coerce").to_numpy(
+                dtype=float
+            ),
+            float(TOP),
+        )
+    )
+    assert (
+        _oldest_adult_indices(clamped, household_ids={7}).tolist()
+        == stage_choice.tolist()
+    )

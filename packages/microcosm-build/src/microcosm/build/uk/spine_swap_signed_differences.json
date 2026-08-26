@@ -24,9 +24,10 @@
           "water_and_sewerage_charges": {
             "incumbent_share": 0.776937,
             "direction": "candidate_above",
-            "max_abs_delta": 0.100897
+            "max_abs_delta": 0.1009
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -86,49 +87,50 @@
           "communication_consumption": {
             "incumbent_share": 0.79743,
             "direction": "candidate_above",
-            "max_abs_delta": 0.08396999999999999
+            "max_abs_delta": 0.084
           },
           "domestic_energy_consumption": {
             "incumbent_share": 0.954869,
             "direction": "candidate_above",
-            "max_abs_delta": 0.040430999999999995
+            "max_abs_delta": 0.0404
           },
           "education_consumption": {
             "incumbent_share": 0.125591,
             "direction": "candidate_below",
-            "max_abs_delta": 0.10859100000000001
+            "max_abs_delta": 0.1087
           },
           "electricity_consumption": {
             "incumbent_share": 0.86209,
             "direction": "candidate_above",
-            "max_abs_delta": 0.10231000000000001
+            "max_abs_delta": 0.1024
           },
           "gas_consumption": {
             "incumbent_share": 0.953241,
             "direction": "candidate_above",
-            "max_abs_delta": 0.04195899999999997
+            "max_abs_delta": 0.042
           },
           "health_consumption": {
             "incumbent_share": 0.512849,
             "direction": "candidate_above",
-            "max_abs_delta": 0.02575099999999997
+            "max_abs_delta": 0.0258
           },
           "household_furnishings_consumption": {
             "incumbent_share": 0.813553,
             "direction": "candidate_above",
-            "max_abs_delta": 0.108047
+            "max_abs_delta": 0.1081
           },
           "miscellaneous_consumption": {
             "incumbent_share": 0.900333,
             "direction": "candidate_above",
-            "max_abs_delta": 0.09146699999999996
+            "max_abs_delta": 0.0915
           },
           "restaurants_and_hotels_consumption": {
             "incumbent_share": 0.632441,
             "direction": "candidate_above",
-            "max_abs_delta": 0.15785899999999997
+            "max_abs_delta": 0.1579
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -154,14 +156,15 @@
           "diesel_spending": {
             "incumbent_share": 0.191027,
             "direction": "candidate_below",
-            "max_abs_delta": 0.033027
+            "max_abs_delta": 0.0331
           },
           "petrol_spending": {
             "incumbent_share": 0.444632,
             "direction": "candidate_below",
-            "max_abs_delta": 0.144432
+            "max_abs_delta": 0.1445
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -187,14 +190,15 @@
           "alcohol_and_tobacco_consumption": {
             "incumbent_share": 0.560288,
             "direction": "candidate_below",
-            "max_abs_delta": 0.045287999999999995
+            "max_abs_delta": 0.0453
           },
           "transport_consumption": {
             "incumbent_share": 0.866802,
             "direction": "candidate_above",
-            "max_abs_delta": 0.02659800000000001
+            "max_abs_delta": 0.0266
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -220,14 +224,15 @@
           "bus_subsidy_spending": {
             "incumbent_share": 0.316675,
             "direction": "candidate_above",
-            "max_abs_delta": 0.23872500000000002
+            "max_abs_delta": 0.2388
           },
           "dfe_education_spending": {
             "incumbent_share": 0.000265,
             "direction": "candidate_above",
-            "max_abs_delta": 0.225535
+            "max_abs_delta": 0.2256
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -256,29 +261,30 @@
           "corporate_wealth": {
             "incumbent_share": 0.822181,
             "direction": "candidate_below",
-            "max_abs_delta": 0.04298100000000005
+            "max_abs_delta": 0.0431
           },
           "main_residence_value": {
             "incumbent_share": 0.674658,
             "direction": "candidate_below",
-            "max_abs_delta": 0.039057999999999926
+            "max_abs_delta": 0.0391
           },
           "other_residential_property_value": {
             "incumbent_share": 0.076316,
             "direction": "candidate_below",
-            "max_abs_delta": 0.03961599999999999
+            "max_abs_delta": 0.0397
           },
           "property_wealth": {
             "incumbent_share": 0.708057,
             "direction": "candidate_below",
-            "max_abs_delta": 0.04735700000000009
+            "max_abs_delta": 0.0474
           },
           "savings": {
             "incumbent_share": 0.661999,
             "direction": "candidate_below",
-            "max_abs_delta": 0.051298999999999984
+            "max_abs_delta": 0.0513
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -303,9 +309,10 @@
           "student_loan_balance": {
             "incumbent_share": 0.019707,
             "direction": "candidate_above",
-            "max_abs_delta": 0.029592999999999998
+            "max_abs_delta": 0.0297
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -332,19 +339,20 @@
           "employer_pension_contributions": {
             "incumbent_share": 0.314865,
             "direction": "candidate_below",
-            "max_abs_delta": 0.04666500000000001
+            "max_abs_delta": 0.0467
           },
           "savings_interest_income": {
             "incumbent_share": 0.424963,
             "direction": "candidate_below",
-            "max_abs_delta": 0.030362999999999973
+            "max_abs_delta": 0.0305
           },
           "tax_free_savings_income": {
             "incumbent_share": 0.189664,
             "direction": "candidate_below",
-            "max_abs_delta": 0.05446400000000001
+            "max_abs_delta": 0.0545
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {
@@ -369,9 +377,10 @@
           "employee_pension_contributions": {
             "incumbent_share": 0.273489,
             "direction": "candidate_below",
-            "max_abs_delta": 0.04888899999999999
+            "max_abs_delta": 0.0489
           }
-        }
+        },
+        "magnitude_provenance": "max_abs_delta re-measured 2026-08-26 on the 25-stage candidate spine-e (sha256 3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a) against the packaged 1.56.16 reference, rounded up at 1e-4 grain; the prior bounds were the comparison ledger's rounded quotes measured on the 24-stage pre-SPI-zero-fix build."
       }
     },
     {

@@ -726,12 +726,21 @@ def e8_identity_receipt(
             problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
 
     # (2) Band-donor selection recomputed from the committed resources.
+    # Same contract as the E6 NHS check: the donor stage ran on the top-coded
+    # FRS age surface, four stages before age_tail disaggregated it, so its
+    # oldest-adult carriers are stage-time-age-derived. Recompute on
+    # min(age, top_code) — exact, because age_tail refuses inputs above the
+    # top code and rewrites only persons at exactly it, upward.
     distribution = load_advani_summers_distribution()
     bands = _retained_size_bands(load_hmrc_cgt_size_bands())
     non_donor_ids = set(non_donor["household_id"].tolist())
     nd_person = person.loc[
         person["person_household_id"].isin(non_donor_ids)
     ].reset_index(drop=True)
+    nd_person["age"] = np.minimum(
+        pd.to_numeric(nd_person["age"], errors="coerce").to_numpy(dtype=float),
+        float(UK_AGE_TOP_CODE),
+    )
     nd_benunit = benunit.loc[
         benunit["benunit_id"].isin(set(nd_person["person_benunit_id"].tolist()))
     ].reset_index(drop=True)
@@ -801,7 +810,15 @@ def e8_identity_receipt(
             problems["donor_stored_weights"] = True
         donor_person = person.loc[
             person["person_household_id"].isin(set(stored_donors["household_id"]))
-        ]
+        ].copy()
+        # Stage-time age basis again: the stage picked each donor household's
+        # carrier before age_tail ran.
+        donor_person["age"] = np.minimum(
+            pd.to_numeric(donor_person["age"], errors="coerce").to_numpy(
+                dtype=float
+            ),
+            float(UK_AGE_TOP_CODE),
+        )
         carrier_rows = _oldest_adult_indices(
             donor_person, household_ids=set(stored_donors["household_id"])
         )
@@ -847,6 +864,7 @@ def e8_identity_receipt(
     structural_ok = not problems
     return {
         "check": "uk_e8_identity_stability",
+        "donor_age_basis": "stage_time_top_coded",
         "permutation_seed": permutation_seed,
         "identical_under_permutation": bool(
             "donor_selection_permutation" not in problems
