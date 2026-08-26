@@ -659,6 +659,7 @@ def export_family_scope(
     archive_root: str | Path,
     *,
     scope: str,
+    builds: Sequence[LogbookRow],
     families: Sequence[LogbookFamily] = (),
     family_members: Sequence[FamilyMember] = (),
     family_actions: Sequence[FamilyAction] = (),
@@ -675,7 +676,7 @@ def export_family_scope(
             family_actions,
         ),
     )
-    _validate_archive_records(combined, scope=scope)
+    _validate_archive_records(combined, scope=scope, builds=builds)
     candidates_by_type = {
         "families": families,
         "family_members": family_members,
@@ -948,6 +949,7 @@ def _validate_archive_records(
     records: FamilyArchiveRecords,
     *,
     scope: str,
+    builds: Sequence[LogbookRow] | None = None,
 ) -> None:
     expected_scope = _nonempty_text(scope, "scope")
     if expected_scope not in DECLARED_LOGBOOK_SCOPES:
@@ -976,6 +978,24 @@ def _validate_archive_records(
                 f"Family member {member.build_id} references missing family "
                 f"{member.family_id}."
             )
+    if builds is not None:
+        builds_by_id: dict[str, LogbookRow] = {}
+        for build in builds:
+            previous = builds_by_id.get(build.build_id)
+            if previous is not None and previous != build:
+                raise ValueError(
+                    f"Build {build.build_id} has conflicting records available "
+                    "for family export."
+                )
+            builds_by_id[build.build_id] = build
+        for member in records.family_members:
+            build = builds_by_id.get(member.build_id)
+            if build is None:
+                raise ValueError(
+                    f"Family member {member.family_id}/{member.build_id} "
+                    f"references missing build {member.build_id}."
+                )
+            validate_family_membership(families[member.family_id], member, build)
     for action in records.family_actions:
         if (action.family_id, action.build_id) not in members:
             raise ValueError(

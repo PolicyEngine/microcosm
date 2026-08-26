@@ -415,11 +415,13 @@ def test_family_scope_archive_exports_and_imports_in_dependency_order(
         FamilyMember.create(family_id=FAMILY_ID, build_id="family-build-2"),
     )
     action = _action()
+    builds = (_build("family-build-1"), _build("family-build-2"))
     archive_root = tmp_path / "logbook"
 
     first = export_family_scope(
         archive_root,
         scope="us",
+        builds=builds,
         families=(family,),
         family_members=members,
         family_actions=(action,),
@@ -427,6 +429,7 @@ def test_family_scope_archive_exports_and_imports_in_dependency_order(
     second = export_family_scope(
         archive_root,
         scope="us",
+        builds=builds,
         families=(family,),
         family_members=members,
         family_actions=(action,),
@@ -434,6 +437,7 @@ def test_family_scope_archive_exports_and_imports_in_dependency_order(
     no_new_actions = export_family_scope(
         archive_root,
         scope="us",
+        builds=builds,
         families=(family,),
         family_members=members,
     )
@@ -493,6 +497,7 @@ def test_family_scope_archive_rejects_cross_scope_and_missing_dependencies(
         export_family_scope(
             tmp_path,
             scope="us",
+            builds=(),
             families=(_family(chain_scope="uk/frs"),),
         )
     assert not list(tmp_path.rglob("*.jsonl"))
@@ -505,6 +510,27 @@ def test_family_scope_archive_rejects_cross_scope_and_missing_dependencies(
         export_family_scope(
             tmp_path,
             scope="us",
+            builds=(_build(),),
+            family_members=(member,),
+        )
+    assert not list(tmp_path.rglob("*.jsonl"))
+
+    with pytest.raises(ValueError, match="missing build"):
+        export_family_scope(
+            tmp_path,
+            scope="us",
+            builds=(),
+            families=(_family(),),
+            family_members=(member,),
+        )
+    assert not list(tmp_path.rglob("*.jsonl"))
+
+    with pytest.raises(ValueError, match="does not match family scope"):
+        export_family_scope(
+            tmp_path,
+            scope="us",
+            builds=(_build(pipeline="uk-frs-staging"),),
+            families=(_family(),),
             family_members=(member,),
         )
     assert not list(tmp_path.rglob("*.jsonl"))

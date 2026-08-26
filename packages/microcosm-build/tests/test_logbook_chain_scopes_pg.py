@@ -421,6 +421,19 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         (exact_k_null_rung["build_id"],),
     ) == (None,)
 
+    different_unit = _build_row(
+        "family-us-person-20000",
+        pipeline="us-stacked-pool",
+        predecessor=_digest_of(connection, exact_k_null_rung["build_id"]),
+    )
+    different_unit.update(
+        row_format_version=2,
+        requested_k=20_000,
+        realized_k=20_000,
+        record_unit="person",
+    )
+    _insert(connection, different_unit, versioned=True)
+
     uk_build = _build_row(
         "family-uk",
         pipeline="uk-frs-staging",
@@ -437,7 +450,7 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
     invalid_cardinality = _build_row(
         "invalid-cardinality",
         pipeline="us-stacked-pool",
-        predecessor=_digest_of(connection, exact_k_null_rung["build_id"]),
+        predecessor=_digest_of(connection, different_unit["build_id"]),
     )
     invalid_cardinality.update(
         row_format_version=2,
@@ -479,10 +492,20 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         "INSERT INTO logbook.family_members (family_id, build_id) "
         "VALUES (%s, %s) ON CONFLICT (family_id, build_id) DO NOTHING;"
     )
+    with pytest.raises(psycopg.errors.ForeignKeyViolation, match="does not exist"):
+        _execute(
+            connection,
+            member_insert,
+            ("32345678-1234-4234-9234-123456789abc", us_first["build_id"]),
+        )
+    with pytest.raises(psycopg.errors.ForeignKeyViolation, match="does not exist"):
+        _execute(connection, member_insert, (family_id, "missing-build"))
     for build_id in (
         us_first["build_id"],
         us_second["build_id"],
         us_mismatch["build_id"],
+        exact_k_null_rung["build_id"],
+        different_unit["build_id"],
     ):
         _execute(connection, member_insert, (family_id, build_id))
     _execute(connection, member_insert, (family_id, us_first["build_id"]))
@@ -535,6 +558,18 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         None,
     )
     _execute(connection, action_insert, replacement)
+    replacement_of_replacement = (
+        "92345678-1234-4234-9234-123456789abc",
+        family_id,
+        exact_k_null_rung["build_id"],
+        "supersedes",
+        us_second["build_id"],
+        "2026-08-21T12:01:15Z",
+        "fixture",
+        "Second corrected output",
+        None,
+    )
+    _execute(connection, action_insert, replacement_of_replacement)
     with pytest.raises(psycopg.errors.UniqueViolation, match="divergent content"):
         _execute(
             connection,
@@ -589,6 +624,25 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
                 None,
             ),
         )
+    with pytest.raises(
+        psycopg.errors.CheckViolation,
+        match="matching requested_k and record_unit",
+    ):
+        _execute(
+            connection,
+            action_insert,
+            (
+                "a2345678-1234-4234-9234-123456789abc",
+                family_id,
+                different_unit["build_id"],
+                "supersedes",
+                exact_k_null_rung["build_id"],
+                "2026-08-21T12:02:15Z",
+                "fixture",
+                "Wrong record unit",
+                None,
+            ),
+        )
 
     public_build = _fetchone(
         connection,
@@ -603,7 +657,7 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         "FROM logbook.family_members_public WHERE family_id = %s;",
         (family_id,),
     )[0]
-    assert public_cardinalities == [20_000, 20_000, 57_240]
+    assert public_cardinalities == [20_000, 20_000, 20_000, 20_000, 57_240]
     status = _fetchone(
         connection,
         "SELECT revoked, superseded_by_build_id "
@@ -611,6 +665,20 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         (us_first["build_id"],),
     )
     assert status == (False, us_second["build_id"])
+    replacement_status = _fetchone(
+        connection,
+        "SELECT revoked, superseded_by_build_id "
+        "FROM logbook.family_member_status_public WHERE build_id = %s;",
+        (us_second["build_id"],),
+    )
+    assert replacement_status == (False, exact_k_null_rung["build_id"])
+    revocation_status = _fetchone(
+        connection,
+        "SELECT revoked, superseded_by_build_id "
+        "FROM logbook.family_member_status_public WHERE build_id = %s;",
+        (us_mismatch["build_id"],),
+    )
+    assert revocation_status == (True, None)
 
     _execute(connection, "SET ROLE anon;")
     assert (

@@ -655,14 +655,20 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "family-export":
-            records = (
-                _remote_family_records(args.scope)
-                if args.remote
-                else load_family_spool(args.source)
-            )
+            if args.remote:
+                records = _remote_family_records(args.scope)
+                builds = _remote_rows(args.scope)
+            else:
+                records = load_family_spool(args.source)
+                build_archive = _scope_build_archive(args.archive_root, args.scope)
+                archived_builds = (
+                    load_logbook_file(build_archive) if build_archive.is_file() else ()
+                )
+                builds = (*archived_builds, *load_spool_rows(args.source))
             receipts = export_family_scope(
                 args.archive_root,
                 scope=args.scope,
+                builds=builds,
                 families=records.families,
                 family_members=records.family_members,
                 family_actions=records.family_actions,

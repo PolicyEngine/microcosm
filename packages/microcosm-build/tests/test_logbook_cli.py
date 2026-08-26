@@ -405,7 +405,7 @@ def test_family_archive_commands_and_queries(
     assert json.loads(capsys.readouterr().out) == action.to_mapping()
 
 
-def test_family_import_rejects_member_whose_build_has_another_scope(
+def test_family_export_rejects_member_whose_build_has_another_scope(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -421,6 +421,17 @@ def test_family_import_rejects_member_whose_build_has_another_scope(
     record_family_member(member, spool_dir=source_spool, post_remote=False)
     archive_root = tmp_path / "logbook"
     archive_root.mkdir()
+    _write_jsonl(
+        archive_root / "us.jsonl",
+        (
+            _row(
+                "uk-build",
+                predecessor=None,
+                minute=1,
+                pipeline="uk-frs-staging",
+            ),
+        ),
+    )
     cli = _load_cli()
     assert (
         cli.main(
@@ -434,38 +445,11 @@ def test_family_import_rejects_member_whose_build_has_another_scope(
                 str(source_spool),
             ]
         )
-        == 0
-    )
-    _write_jsonl(
-        archive_root / "us.jsonl",
-        (
-            _row(
-                "uk-build",
-                predecessor=None,
-                minute=1,
-                pipeline="uk-frs-staging",
-            ),
-        ),
-    )
-    capsys.readouterr()
-
-    destination = tmp_path / "destination"
-    assert (
-        cli.main(
-            [
-                "family-import",
-                "--scope",
-                "us",
-                "--archive-root",
-                str(archive_root),
-                "--spool",
-                str(destination),
-            ]
-        )
         == 1
     )
     assert "does not match family scope" in capsys.readouterr().err
-    assert not destination.exists()
+    assert not (archive_root / "families/us.jsonl").exists()
+    assert not (archive_root / "family_members/us.jsonl").exists()
 
 
 def test_cli_export_appends_jsonl_source_suffix_idempotently(
@@ -730,7 +714,14 @@ def test_cli_remote_family_export_filters_each_table_by_stored_scope(
         reason="Invalid output",
         evidence_location=None,
     )
+    build = _row(
+        member.build_id,
+        predecessor=None,
+        minute=1,
+        pipeline="us-stacked-pool",
+    )
     rows_by_table = {
+        "builds": [build.to_mapping()],
         "families": [family.to_mapping()],
         "family_members_public": [member.to_mapping()],
         "family_actions_public": [action.to_mapping()],
@@ -765,11 +756,17 @@ def test_cli_remote_family_export_filters_each_table_by_stored_scope(
     )
 
     assert load_families(archive_root / "families/us.jsonl") == (family,)
-    assert len(requests) == 3
+    assert len(requests) == 4
     for request in requests:
         query = parse_qs(urlparse(request.full_url).query)
-        assert query["chain_scope"] == ["eq.us"]
         assert request.headers["Authorization"] == "Bearer exporter-jwt"
+        table = urlparse(request.full_url).path.rsplit("/", 1)[-1]
+        if table == "builds":
+            assert query["pipeline"] == [
+                'in.("us-2024-release","us-pool-inc2","us-stacked-pool")'
+            ]
+        else:
+            assert query["chain_scope"] == ["eq.us"]
 
 
 def test_cli_remote_export_filters_nested_scope(

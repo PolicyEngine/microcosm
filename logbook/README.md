@@ -224,11 +224,11 @@ validates all family and member references before changing an archive.
 
 The family migration must be applied only after the base Logbook, prediction,
 fraction-category, and `20260818000000_logbook_chain_scopes.sql` migrations.
-Before deployment, identify the intended Supabase project and owning
-organization, record its project reference, and compare its migration history
-with this order. Do not link this repository to a project based only on a name
-match. This repository change does not deploy the migration; deployment is a
-separate, explicitly authorized operation.
+Immediately before deployment, the database owner privately identifies the
+target and compares its migration history with this order. The repository does
+not record the Supabase organization, project name, or project reference. This
+repository change neither inspects the production database nor deploys the
+migration; both are separate, explicitly authorized operations.
 
 ## UK M1 receipt
 
