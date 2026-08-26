@@ -22,6 +22,7 @@ from microcosm.data import (
     RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
+    contract,
     required_release_files,
     validate_evidence_release_dir,
     validate_release_dir,
@@ -4892,4 +4893,140 @@ def test_breach_acknowledgment_matching_is_name_delimited() -> None:
     # A dotted-name suffix is not the name.
     assert not contract_module._token_appears_delimited(
         "b.c@2024", "this names a.b.c@2024"
+    )
+
+
+# --- UK release certification (microcosm#757 B5) ---------------------------
+
+
+def _green_uk_certification(key: bytes) -> dict:
+    parts = {}
+    for part_name, scope in contract._UK_CERTIFICATION_PART_SCOPES.items():
+        parts[part_name] = {
+            "path": f"{part_name}.json",
+            "sha256": "a" * 64,
+            "release_id": "uk-757-first-certified-cut",
+            "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
+            "entry_ids": sorted(scope),
+            "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[
+                part_name
+            ]["gates_manifest_sha256"],
+            "policy_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
+                "policy_sha256"
+            ],
+            "statuses": {"passed": len(scope)},
+        }
+    certification = {
+        "schema_version": 1,
+        "kind": "uk_release_certification",
+        "country": "uk",
+        "release_id": "uk-757-first-certified-cut",
+        "candidate": {
+            "name": "microcosm_uk_2024",
+            "filename": "microcosm_uk_2024.h5",
+            "sha256": "b" * 64,
+            "size_bytes": 1,
+        },
+        "parts": parts,
+        "spec": {
+            "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
+            "policy_sha256": contract._UK_GATE_BATTERY_POLICY_SHA256,
+            "spec_fingerprint": contract._UK_GATE_BATTERY_SPEC_FINGERPRINT,
+            "declared_entry_count": len(contract._UK_GATE_BATTERY_ENTRY_IDS),
+            "declared_phases": list(contract._UK_GATE_BATTERY_PHASES),
+            "shared_gate_ids": sorted(contract._UK_CERTIFICATION_SHARED_GATE_IDS),
+        },
+        "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
+        "diagnostics_sha256": "c" * 64,
+        "score_receipt": {"filename": "score_vs_enhanced_frs.json", "sha256": "d" * 64},
+        "exclusions_evaluated_on": "2026-08-27",
+        "shippable": True,
+    }
+    attestation = {
+        "producer": "microcosm.build.uk_runtime.release_certification",
+        "signature_algorithm": "hmac-sha256",
+        "signing_key_sha256": hashlib.sha256(key).hexdigest(),
+        "signature": None,
+    }
+    certification["attestation"] = attestation
+    attestation["signature"] = hmac.new(
+        key, contract._canonical_json_bytes(certification), hashlib.sha256
+    ).hexdigest()
+    return certification
+
+
+def _certification_failures(certification, monkeypatch, key: bytes) -> list[str]:
+    monkeypatch.setenv(
+        UK_GATE_BATTERY_SIGNING_KEY_ENV, base64.b64encode(key).decode("ascii")
+    )
+    failures: list[str] = []
+    contract._check_uk_release_certification(
+        certification,
+        release_id="uk-757-first-certified-cut",
+        calibration_diagnostics_sha256="c" * 64,
+        failures=failures,
+    )
+    return failures
+
+
+def test_uk_release_certification_green(monkeypatch) -> None:
+    key = bytes(range(32))
+    certification = _green_uk_certification(key)
+    assert _certification_failures(certification, monkeypatch, key) == []
+
+
+def test_uk_release_certification_refusals(monkeypatch) -> None:
+    key = bytes(range(32))
+
+    certification = _green_uk_certification(key)
+    certification["shippable"] = False
+    assert any(
+        "does not certify a shippable candidate" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    certification["parts"]["release_cut"]["statuses"] = {"passed": 15, "failed": 1}
+    failures = _certification_failures(certification, monkeypatch, key)
+    assert any("statuses" in line for line in failures)
+    assert any("does not certify a shippable" in line for line in failures)
+
+    certification = _green_uk_certification(key)
+    certification["parts"]["spine"]["entry_ids"] = sorted(
+        set(certification["parts"]["spine"]["entry_ids"]) - {"uk_brma_enum_domain"}
+    )
+    assert any(
+        "entry_ids" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    certification["parts"]["calibration_seam"]["gates_manifest_sha256"] = "e" * 64
+    assert any(
+        "scoped manifest digest" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    certification["diagnostics_sha256"] = "f" * 64
+    assert any(
+        "diagnostics_sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # A tampered field breaks the signature: the flag flip is caught both as
+    # a verdict refusal and as a signature failure.
+    certification = _green_uk_certification(key)
+    certification["release_id"] = "uk-757-first-certified-cut"
+    certification["doctrine"] = {"payload": {}, "overrides": {}}
+    assert any(
+        "signature does not authenticate" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    del certification["score_receipt"]
+    assert any(
+        "exactly the certification fields" in line
+        for line in _certification_failures(certification, monkeypatch, key)
     )
