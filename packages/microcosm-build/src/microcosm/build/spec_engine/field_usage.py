@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_351
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_769
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_120
+EXPECTED_AUTHORED_FIELD_COUNT = 32_403
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_016
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_419
 
 
 class FieldUsageError(AssertionError):
@@ -457,12 +457,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        823,
-        "c05ebb88538195798e9365f325381c14d92b74007f846f1fef50a08268e6d27d",
+        1_031,
+        "1a8f3e74018287f184cf171cc4e6571490ba1de419cf0121a611fa93a9b7fa17",
     ),
     "resolved_seed_site_bindings": (
-        277,
-        "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        316,
+        "199ec98045871070860164b522892327ab840b48c0c6a53972ebc0ff0d7d091f",
     ),
     "resolved_vintage_authorities": (
         63,
@@ -489,8 +489,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_702,
-        "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        1_715,
+        "78227f34c3f4ef946c06693dec9177dd906069f98016854bfd4d39c4cd4c51fa",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -517,8 +517,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "29c6c1b3243e178783e7ab139993ba3a9b42d62edd4e9e4e1f3b28688daf2c6d",
     ),
     "spine_seed_site_bindings": (
-        277,
-        "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        316,
+        "bb848f38e068858ac23e964a4ffbbf5542253da50515c72fe7753d8c56912486",
     ),
     "spine_support_roles": (
         29,

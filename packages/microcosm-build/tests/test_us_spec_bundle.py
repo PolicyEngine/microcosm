@@ -190,7 +190,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097"
+        "619a974abd80c34201a0ccf813968ebc09ed52e144ff1d39722a4d9be7bd7821"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -917,7 +917,7 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
         "identity_generation": 1,
         "seed_protocol": LEGACY_V1_PROTOCOL.id,
     }
-    assert len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(LEGACY_V1_PROTOCOL.sites) == 66
     assert len(LEGACY_V1_PROTOCOL.streams) == 14
     assert LEGACY_V1_PROTOCOL.site("survey_sample_asec").default == 578
     assert LEGACY_V1_PROTOCOL.site("puf_live_aggregate_disaggregation").default == 0

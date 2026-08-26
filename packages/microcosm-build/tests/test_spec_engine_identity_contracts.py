@@ -124,7 +124,7 @@ def test_all_53_seed_sites_resolve_to_typed_real_owners(
     spine, source_stages = identity_documents
     bindings = _resolve(spine, source_stages)
 
-    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 66
     assert [binding.site for binding in bindings] == [
         site.id for site in LEGACY_V1_PROTOCOL.sites
     ]
