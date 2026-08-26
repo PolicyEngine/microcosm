@@ -466,10 +466,14 @@ def _drop_historical_formula_owned_columns(
         for entity in sorted(frame.entities)
         if set(tables[entity].columns) & formula_owned
     }
-    cleaned_tables = {
-        entity: tables[entity].drop(columns=columns_by_entity.get(entity, ()))
-        for entity in frame.entities
-    }
+    cleaned_tables = {}
+    for entity in frame.entities:
+        columns = columns_by_entity.get(entity)
+        cleaned_tables[entity] = (
+            tables[entity].drop(columns=columns)
+            if columns
+            else tables[entity].copy()
+        )
     cleaned_weights = {
         entity: frame.weights_for(entity) for entity in frame.weighted_entities
     }

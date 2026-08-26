@@ -29,7 +29,8 @@ artifacts, while keeping the fresh-release leaf-only export gate strict.
   scorer-only normalization.
 - Added the changelog fragment and three requested H5 tests: drop-and-score,
   missing-leaf refusal, and clean empty receipt. The full targeted scorer test
-  file passes.
+  file passes (16 passed). Its first explicit receipt run exposed and fixed an
+  empty-entity pandas drop edge before full-shard verification.
 
 ## Next
 
