@@ -2,10 +2,11 @@
 
 ## State
 
-Work began on 2026-08-26 from branch `release-from-gate-failed-pool` at
-`2263df3673f5`. The lane is mapping the existing release-builder and
-publication-preflight contracts before adding the explicit fail-closed opt-in.
-No pool or release has been built, published, or pushed.
+The explicit builder opt-in and release-manifest verdict carriage are
+implemented with focused tests. Default pool loading remains on the strict
+simulation-ready loader; only `--allow-gate-failed-base-pool` selects the
+existing authenticated scoring loader. No pool or release has been built,
+published, or pushed.
 
 ## Done
 
@@ -14,14 +15,21 @@ No pool or release has been built, published, or pushed.
 - Confirmed the worktree is initially clean and the pre-built environment is
   available.
 - Established this lane-specific committed journal before implementation.
+- Audited all readiness/status consumers under `tools/` and `packages/`; the
+  config-driven exact-k launcher remains intentionally green-only and the
+  pool producer still declares that calibration requires readiness.
+- Added builder parser/loader routing, red-verdict validation, and conditional
+  carriage under the existing exact-k receipt without changing either H5
+  loader contract or the default green receipt shape.
+- Added focused tests for explicit flag parsing, strict default routing and
+  refusal, alternate-loader routing, and release-manifest carriage; focused
+  Ruff and the first three tests pass.
 
 ## Next
 
-1. Audit the loader seam, manifest schemas, preflight, tests, and every
-   `simulation_ready`/`gate_failed`/`load_simulation_ready` consumer.
-2. Add the explicit builder opt-in, carried agreement-gate verdict, preflight
-   visibility, focused tests, and a changelog fragment without changing the
-   battery or loader contracts.
+1. Add manifest-only publication review and a prominent non-blocking red
+   battery banner to `tools/preflight_us_release_gates.py` with tests.
+2. Add the changelog fragment, then run focused and contract tests.
 3. Run Ruff and full pytest one process per shard, record evidence, write
    `out.md`, and leave the branch clean with coherent local commits.
 
