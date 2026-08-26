@@ -2,11 +2,12 @@
 
 ## State
 
-Containment, opt-in carriage, and preflight surfacing are implemented. Focused
-builder, authenticated-H5, and preflight tests pass. The implementation now
-rejects both redundant green-pool waivers and any release-manifest receipt that
-does not exactly match the pool authenticated by preflight; the preflight's
-historically required base/selection inputs and exit semantics are unchanged.
+Complete on 2026-08-26. Containment, opt-in carriage, and preflight surfacing
+are implemented and fully verified. The implementation rejects both redundant
+green-pool waivers and any release-manifest receipt that does not exactly match
+the pool authenticated by preflight; the preflight's historically required
+base/selection inputs and exit semantics are unchanged. No pool or release was
+built, no artifact was published, and nothing was pushed.
 
 ## Done
 
@@ -22,8 +23,8 @@ historically required base/selection inputs and exit semantics are unchanged.
   release manifests, and both preflight output modes.
 - Reviewed the salvage branch's final source and test diff line by line. Its
   shared classifier/path-binding/receipt approach closes the bypass without
-  changing either loader's contract and is suitable to retain with the two
-  coherence corrections above.
+  changing either loader's contract and was retained with the subsequent
+  coherence corrections recorded below.
 - Completed the `simulation_ready` / `gate_failed` / loader consumer audit.
   Exact-k remains deliberately strict and head-to-head scoring remains the
   existing authenticated evidence exception.
@@ -53,11 +54,23 @@ historically required base/selection inputs and exit semantics are unchanged.
   failures.
 - Passed focused Ruff and the complete builder/H5/preflight test files after
   the containment changes.
+- Passed the broader exact-k, launcher, release-contract, and publish-guard
+  regression suites.
+- Passed repository-wide Ruff and the CI test-group inventory verifier.
+- Passed every pytest shard in its own process: build 6,545 passed / 45
+  skipped; calibrate 203 passed; data 318 passed / 2 skipped; fit 93 passed;
+  frame 295 passed / 36 skipped. Aggregate: 7,454 passed, 83 skipped.
+- Confirmed `git diff --check` is clean and that no battery bounds,
+  tolerances, plans, or terminal gate logic changed.
+- Wrote the complete handoff, consumer audit, manifest schema, verification
+  receipts, and commit inventory to `out.md`.
 
 ## Next
 
-- Run the broader affected exact-k, launcher, and data-contract suites.
-- Run Ruff and every pytest shard in its own process, then write `out.md`.
+- Human review and merge of `release-from-gate-failed-pool`.
+- Any later artifact operation remains separate: an operator must deliberately
+  choose the red-pool flag, then run publication preflight and make the human
+  publication decision. This lane performed none of those operations.
 
 ## Historical prior lane
 
