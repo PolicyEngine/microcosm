@@ -625,6 +625,7 @@ def _run_plan_with_spine_sampling(
     sample_seed: int,
     spine_battery: GateBatteryRun | None = None,
     stage_evidence_provider=None,
+    gate_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[object, tuple[object, ...], dict[str, object] | None]:
     if not plan.stages or plan.stages[0].name != "frs_spine":
         frame, records = plan.run(uk_frs_spine_seed_frame())
@@ -658,6 +659,7 @@ def _run_plan_with_spine_sampling(
                 if stage_evidence_provider is not None
                 else {}
             ),
+            gate_artifacts=gate_artifacts,
         )
     if assembled_end == len(plan.stages):
         return frame, (*spine_records, *assembled_records), sampling
@@ -673,6 +675,7 @@ def _run_plan_with_spine_sampling(
                 if stage_evidence_provider is not None
                 else {}
             ),
+            gate_artifacts=gate_artifacts,
         )
     return frame, (*spine_records, *assembled_records, *tail_records), sampling
 
@@ -683,13 +686,15 @@ def _run_spine_gate_phase(
     *,
     frame,
     stage_evidence: Mapping[str, object],
+    gate_artifacts: Mapping[str, object] | None = None,
 ) -> None:
+    artifacts: dict[str, object] = {"stage_evidence": dict(stage_evidence)}
+    # The enum-domain gate resolves its domain from the live rules engine,
+    # exactly as the national terminal battery supplied it.
+    artifacts.update(dict(gate_artifacts or {}))
     battery.run_phase(
         phase,
-        EvidenceContext(
-            frame=frame,
-            artifacts={"stage_evidence": dict(stage_evidence)},
-        ),
+        EvidenceContext(frame=frame, artifacts=artifacts),
     )
     battery.enforce(phase, mode=BlockingMode.BLOCKS_ARTIFACT)
 
@@ -990,6 +995,7 @@ def main(argv: list[str] | None = None) -> int:
                 stage_names=executed,
                 implementations=implementations,
             ),
+            gate_artifacts={"rules_engine": engine},
         )
         if spine_battery is not None:
             append_phase(state, "spine_gates_evaluated")
