@@ -58,3 +58,7 @@ def test_receipt_identity_and_verdicts_are_the_accepted_ones():
     assert parity["unsigned_differences"] == 0
     assert parity["strict_failure"] is False
     assert parity["share_band"]["effective"] == parity["share_band"]["contract"]
+    battery = receipt["spine_battery"]
+    assert battery["blocked_at_phase"] is None
+    assert battery["statuses"] == {"passed": 14}
+    assert len(battery["report_sha256"]) == 64

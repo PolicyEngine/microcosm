@@ -6,9 +6,9 @@
       "household": 52846,
       "person": 113649
     },
-    "name": "spine-e",
-    "sha256": "3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a",
-    "sidecar_sha256": "5fa5f27065140a3a7d2fd56923150a9f89c5da52504648aebfb70e18da100d32",
+    "name": "spine-g",
+    "sha256": "02900abeec29d52596f16c9e29b2a8991e0acd5f5118c3be28a50ca77403787b",
+    "sidecar_sha256": "d5f4dc645c130484b05d8d7ef00f3f81ffb9c3633eff305bc9e6754c52b1ec0e",
     "stage_count": 25,
     "stage_roster": [
       "frs_spine",
@@ -64,8 +64,15 @@
   },
   "measured_on": "2026-08-26",
   "schema_version": 1,
+  "spine_battery": {
+    "blocked_at_phase": null,
+    "report_sha256": "57c4a44d9627b1e47b7a94438a71bc0d96de06073931e37ff096f1f988c3c58b",
+    "statuses": {
+      "passed": 14
+    }
+  },
   "strict_parity": {
-    "receipt_sha256": "b9e5118ef5785b4fb16f4aa13db9f302d73429e118d51d7bff6f60e7afe2513f",
+    "receipt_sha256": "8fff9bf6952f6985eb71b8e81d6adad8dfb862810a7c8e4c5da7d2c278d13bdd",
     "share_band": {
       "contract": 0.02,
       "effective": 0.02
@@ -75,9 +82,9 @@
     "verdict": "signed_parity"
   },
   "twin": {
-    "name": "spine-d",
-    "note": "Cross-commit twin: spine-d built pre-Run-1 evidence layer, spine-e post; payload_identical across all tables, keys and root attrs, so the pair is simultaneously the twin-determinism receipt and the Run-1 payload-inertness receipt.",
+    "name": "spine-e (and spine-d before it)",
+    "note": "Three code vintages, one payload: spine-d (pre-evidence-layer), spine-e (pre-battery), spine-g (full battery armed) are pairwise payload_identical across all tables, keys and root attrs \u2014 the twin-determinism receipt and the proof that receipts and gates never moved a byte of the artifact.",
     "payload_identical": true,
-    "sha256": "f3f96805102d2e147408ee03dc3a5702a55b8232df417d7dc13109ac3caf75d1"
+    "sha256": "3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a"
   }
 }
