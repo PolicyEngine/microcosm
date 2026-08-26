@@ -37,8 +37,11 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
-from microcosm.build.us_runtime.release_gate_preflight import (
-    run_preflight,  # noqa: E402
+from microcosm.build.us_runtime.h5_io import (  # noqa: E402
+    US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+)
+from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: E402
+    run_preflight,
 )
 
 _ALLOW_GATE_FAILED_BASE_POOL_FLAG = "--allow-gate-failed-base-pool"
@@ -63,16 +66,13 @@ def _load_carried_base_pool_battery(
     build = release_manifest.get("build")
     if not isinstance(build, dict):
         return None
-    exact_k_ladder = build.get("exact_k_ladder")
-    if not isinstance(exact_k_ladder, dict):
+    base_pool = build.get("base_pool")
+    if not isinstance(base_pool, dict):
         return None
-    pool = exact_k_ladder.get("pool")
-    agreement_gate_reference = exact_k_ladder.get("agreement_gate_reference")
-    if not isinstance(pool, dict):
-        return None
+    agreement_gate_reference = base_pool.get("agreement_gate_reference")
     carries_gate_failed_override = (
-        pool.get("allow_gate_failed_base_pool") is True
-        or pool.get("status") == "gate_failed"
+        base_pool.get("allow_gate_failed_base_pool") is True
+        or base_pool.get("status") == "gate_failed"
         or (
             isinstance(agreement_gate_reference, dict)
             and agreement_gate_reference.get("battery_status") == "red"
@@ -81,9 +81,10 @@ def _load_carried_base_pool_battery(
     if not carries_gate_failed_override:
         return None
     if (
-        pool.get("status") != "gate_failed"
-        or pool.get("simulation_ready") is not False
-        or pool.get("allow_gate_failed_base_pool") is not True
+        base_pool.get("artifact_kind") != US_MULTISPINE_POOL_H5_ARTIFACT_KIND
+        or base_pool.get("status") != "gate_failed"
+        or base_pool.get("simulation_ready") is not False
+        or base_pool.get("allow_gate_failed_base_pool") is not True
     ):
         raise ValueError(
             f"Release manifest {path} has an incoherent gate-failed base-pool "
@@ -92,8 +93,7 @@ def _load_carried_base_pool_battery(
     gate_reference = _json_object(
         agreement_gate_reference,
         label=(
-            f"release manifest {path} build.exact_k_ladder."
-            "agreement_gate_reference"
+            f"release manifest {path} build.base_pool.agreement_gate_reference"
         ),
     )
     failures = gate_reference.get("failures")
@@ -104,7 +104,13 @@ def _load_carried_base_pool_battery(
         gate_reference.get("passed") is not False
         or gate_reference.get("battery_status") != "red"
         or not isinstance(failures, list)
-        or not all(isinstance(failure, str) for failure in failures)
+        or not all(
+            isinstance(failure, dict)
+            and isinstance(failure.get("gate"), str)
+            and bool(failure.get("gate"))
+            and isinstance(failure.get("message"), str)
+            for failure in failures
+        )
         or type(failure_count) is not int
         or failure_count != len(failures)
         or not isinstance(gates_json_sha256, str)
@@ -115,12 +121,36 @@ def _load_carried_base_pool_battery(
         )
         or not isinstance(verdict, dict)
         or verdict.get("passed") is not False
-        or gate_reference.get("diagnostics_sha256") != gates_json_sha256
-        or pool.get("agreement_diagnostics_sha256") != gates_json_sha256
     ):
         raise ValueError(
             f"Release manifest {path} has an incomplete or inconsistent "
             "carried red agreement-battery verdict."
+        )
+    verdict_gates = verdict.get("gates")
+    if not isinstance(verdict_gates, dict):
+        raise ValueError(
+            f"Release manifest {path} has no full carried gate verdict."
+        )
+    verdict_failures: list[dict[str, str]] = []
+    for gate_name, gate_payload in verdict_gates.items():
+        if not isinstance(gate_name, str) or not isinstance(gate_payload, dict):
+            raise ValueError(
+                f"Release manifest {path} has a malformed carried gate verdict."
+            )
+        gate_failures = gate_payload.get("failures")
+        if not isinstance(gate_failures, list) or not all(
+            isinstance(failure, str) for failure in gate_failures
+        ):
+            raise ValueError(
+                f"Release manifest {path} has a malformed carried failure list."
+            )
+        verdict_failures.extend(
+            {"gate": gate_name, "message": failure} for failure in gate_failures
+        )
+    if verdict_failures != failures:
+        raise ValueError(
+            f"Release manifest {path} failure summary does not match its full "
+            "carried gate verdict."
         )
     return {
         "battery_status": "red",
@@ -130,7 +160,7 @@ def _load_carried_base_pool_battery(
         "flag": _ALLOW_GATE_FAILED_BASE_POOL_FLAG,
         "gates_json_sha256": gates_json_sha256,
         "failure_count": failure_count,
-        "failures": list(failures),
+        "failures": [dict(failure) for failure in failures],
         "agreement_gate_reference": dict(gate_reference),
         "publication_decision": "human_review_required",
         "affects_exit_code": False,
@@ -149,7 +179,10 @@ def _carried_battery_banner(carried: dict[str, object]) -> str:
         "Publication decision: HUMAN REVIEW REQUIRED",
         "This carried verdict does not alter the preflight exit code.",
     ]
-    lines.extend(f"  FAILURE: {failure}" for failure in carried["failures"])
+    lines.extend(
+        f"  FAILURE [{failure['gate']}]: {failure['message']}"
+        for failure in carried["failures"]
+    )
     lines.append("=" * 72)
     return "\n".join(lines)
 
@@ -169,6 +202,15 @@ def _parser() -> argparse.ArgumentParser:
             "Base pool H5 (read-only). Required with "
             "--selection-source-manifest unless --release-manifest is used "
             "for a manifest-only publication review."
+        ),
+    )
+    parser.add_argument(
+        "--allow-gate-failed-base-pool",
+        action="store_true",
+        help=(
+            "Allow an authenticated current stacked --base-h5 pool whose "
+            "terminal battery is red. The verdict is displayed prominently "
+            "but does not itself determine the preflight exit code."
         ),
     )
     parser.add_argument(
@@ -257,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "--base-h5 and --selection-source-manifest must be provided together."
         )
+    if args.allow_gate_failed_base_pool and not has_base_h5:
+        parser.error("--allow-gate-failed-base-pool requires --base-h5.")
     if not has_base_h5 and args.release_manifest is None:
         parser.error(
             "provide --base-h5 with --selection-source-manifest, or provide "
@@ -290,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
             target_period=target_period,
             relative_tolerance=args.relative_tolerance,
             minimum_reference_total=args.minimum_reference_total,
+            allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
         )
         print(report.human_table())
         payload = report.to_dict()
