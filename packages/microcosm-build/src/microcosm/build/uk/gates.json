@@ -75,10 +75,38 @@
           "stocks_and_shares_isa",
           "student_loan_balance"
         ],
-        "max_clipped_low_rows_by_column": {},
-        "max_clipped_high_rows_by_column": {}
+        "max_clipped_low_rows_by_column": {
+          "cash_isa": 0,
+          "corporate_wealth": 0,
+          "gross_financial_wealth": 0,
+          "main_residence_value": 0,
+          "net_financial_wealth": 0,
+          "non_residential_property_value": 0,
+          "num_vehicles": 0,
+          "other_residential_property_value": 0,
+          "owned_land": 0,
+          "property_wealth": 0,
+          "savings": 0,
+          "stocks_and_shares_isa": 0,
+          "student_loan_balance": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "cash_isa": 0,
+          "corporate_wealth": 0,
+          "gross_financial_wealth": 0,
+          "main_residence_value": 0,
+          "net_financial_wealth": 0,
+          "non_residential_property_value": 0,
+          "num_vehicles": 0,
+          "other_residential_property_value": 0,
+          "owned_land": 0,
+          "property_wealth": 0,
+          "savings": 0,
+          "stocks_and_shares_isa": 0,
+          "student_loan_balance": 0
+        }
       },
-      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate."
+      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
       "id": "uk_stage_lcfs_consumption_support",
@@ -104,17 +132,52 @@
           "petrol_spending",
           "recreation_consumption",
           "restaurants_and_hotels_consumption",
-          "transport_consumption"
+          "transport_consumption",
+          "domestic_energy_consumption",
+          "electricity_consumption",
+          "gas_consumption"
         ],
         "exempt_columns": [
           "domestic_energy_consumption",
           "electricity_consumption",
           "gas_consumption"
         ],
-        "max_clipped_low_rows_by_column": {},
-        "max_clipped_high_rows_by_column": {}
+        "max_clipped_low_rows_by_column": {
+          "alcohol_and_tobacco_consumption": 0,
+          "bus_fare_spending": 0,
+          "clothing_and_footwear_consumption": 0,
+          "communication_consumption": 0,
+          "diesel_spending": 0,
+          "education_consumption": 0,
+          "food_and_non_alcoholic_beverages_consumption": 0,
+          "health_consumption": 0,
+          "household_furnishings_consumption": 0,
+          "housing_water_and_electricity_consumption": 0,
+          "miscellaneous_consumption": 0,
+          "petrol_spending": 0,
+          "recreation_consumption": 0,
+          "restaurants_and_hotels_consumption": 0,
+          "transport_consumption": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "alcohol_and_tobacco_consumption": 0,
+          "bus_fare_spending": 0,
+          "clothing_and_footwear_consumption": 0,
+          "communication_consumption": 0,
+          "diesel_spending": 0,
+          "education_consumption": 0,
+          "food_and_non_alcoholic_beverages_consumption": 0,
+          "health_consumption": 0,
+          "household_furnishings_consumption": 0,
+          "housing_water_and_electricity_consumption": 0,
+          "miscellaneous_consumption": 0,
+          "petrol_spending": 0,
+          "recreation_consumption": 0,
+          "restaurants_and_hotels_consumption": 0,
+          "transport_consumption": 0
+        }
       },
-      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support."
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
       "id": "uk_stage_etb_vat_support",
@@ -128,10 +191,14 @@
         "columns": [
           "full_rate_vat_expenditure_rate"
         ],
-        "max_clipped_low_rows_by_column": {},
-        "max_clipped_high_rows_by_column": {}
+        "max_clipped_low_rows_by_column": {
+          "full_rate_vat_expenditure_rate": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "full_rate_vat_expenditure_rate": 0
+        }
       },
-      "notes": "Stage-time support-clip health gate over the ETB VAT receipt."
+      "notes": "Stage-time support-clip health gate over the ETB VAT receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
       "id": "uk_stage_etb_services_support",
@@ -147,10 +214,18 @@
           "dfe_education_spending",
           "rail_subsidy_spending"
         ],
-        "max_clipped_low_rows_by_column": {},
-        "max_clipped_high_rows_by_column": {}
+        "max_clipped_low_rows_by_column": {
+          "bus_subsidy_spending": 0,
+          "dfe_education_spending": 0,
+          "rail_subsidy_spending": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "bus_subsidy_spending": 0,
+          "dfe_education_spending": 0,
+          "rail_subsidy_spending": 0
+        }
       },
-      "notes": "Stage-time support-clip health gate over the ETB services receipt."
+      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
       "id": "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -162,9 +237,11 @@
         "stage": "frs_hmrc_spine_leaves",
         "check": "source_signal",
         "minimum_signal_rows": 1,
-        "structural_zero_columns": []
+        "structural_zero_columns": [
+          "hmrc_spi_incapacity_benefit_income"
+        ]
       },
-      "notes": "Stage-time source-signal gate over the retained FRS/HMRC leaves receipt."
+      "notes": "Stage-time source-signal gate over the retained FRS/HMRC leaves receipt. hmrc_spi_incapacity_benefit_income is the E7 reviewed-absent adjudication (microcosm#683, 2026-08-18): the FRS 2024-25 source carries no incapacity-benefit signal, the stage's own fence raises at build time if a future vintage does, and the reviewed list here makes the battery agree with that adjudication instead of re-litigating it every build."
     },
     {
       "id": "uk_stage_spi_support_channel_mass",

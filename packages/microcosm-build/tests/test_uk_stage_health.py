@@ -28,7 +28,7 @@ def test_support_clip_gate_requires_receipted_columns_and_wires_thresholds() -> 
         "check": "support_clip",
         "columns": ["cash_isa"],
         "max_clipped_low_rows_by_column": {"cash_isa": 1},
-        "max_clipped_high_rows_by_column": {},
+        "max_clipped_high_rows_by_column": {"cash_isa": 0},
     }
 
     assert _passed(
@@ -351,3 +351,41 @@ def test_cgt_summary_minimum_rows_parameter_is_live() -> None:
             "minimum_band_rows": 2,
         },
     ).passed
+
+
+def test_support_clip_gate_fails_closed_on_a_missing_allowance() -> None:
+    """An undeclared allowance skipped the comparison entirely, so a stage
+    clipping every row passed a release-blocking gate — the green-by-absence
+    class the #787 review named. A non-exempt column now needs both bounds
+    pinned, or the gate says so.
+    """
+
+    evidence = {
+        "stage": "was_wealth",
+        "support_clip": {
+            "columns": {
+                "cash_isa": {
+                    "donor_min": 0.0,
+                    "donor_max": 100.0,
+                    "clipped_low_rows": 0,
+                    "clipped_high_rows": 0,
+                    "rows_considered": 2,
+                }
+            }
+        },
+    }
+    result = uk_stage_health_gate(
+        evidence=evidence,
+        stage="was_wealth",
+        check="support_clip",
+        parameters={
+            "stage": "was_wealth",
+            "check": "support_clip",
+            "columns": ["cash_isa"],
+            "max_clipped_low_rows_by_column": {},
+            "max_clipped_high_rows_by_column": {},
+        },
+    )
+    assert not _passed(result)
+    assert any("no clipped_low_rows allowance" in f for f in result.failures)
+    assert any("no clipped_high_rows allowance" in f for f in result.failures)

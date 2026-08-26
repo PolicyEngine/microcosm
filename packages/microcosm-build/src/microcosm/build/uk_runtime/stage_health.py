@@ -135,11 +135,24 @@ def _support_clip_gate(
         high_rows = int(receipt.get("clipped_high_rows", -1))
         allowed_low = max_low.get(column)
         allowed_high = max_high.get(column)
-        if allowed_low is not None and low_rows > int(allowed_low):
+        # A missing allowance is not permission: without it the gate asserts
+        # receipt shape only, and a stage clipping every row would pass a
+        # release-blocking check — a green reflecting the absence of a check.
+        if allowed_low is None:
+            failures.append(
+                f"{stage}: {column!r} declares no clipped_low_rows allowance; "
+                "pin one at the receipted baseline or exempt the column."
+            )
+        elif low_rows > int(allowed_low):
             failures.append(
                 f"{stage}: {column!r} clipped_low_rows {low_rows} exceeds {allowed_low}."
             )
-        if allowed_high is not None and high_rows > int(allowed_high):
+        if allowed_high is None:
+            failures.append(
+                f"{stage}: {column!r} declares no clipped_high_rows allowance; "
+                "pin one at the receipted baseline or exempt the column."
+            )
+        elif high_rows > int(allowed_high):
             failures.append(
                 f"{stage}: {column!r} clipped_high_rows {high_rows} exceeds {allowed_high}."
             )

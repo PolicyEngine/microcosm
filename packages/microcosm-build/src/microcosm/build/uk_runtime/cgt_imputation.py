@@ -709,7 +709,13 @@ class UKCGTSpineStageTransform:
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
-        return {"evidence": self.last_result.evidence()}
+        evidence = self.last_result.evidence()
+        # The shared summary stamps the certified family's stage name; this
+        # receipt belongs to the spine stage that produced it (the E8
+        # distinct-receipts-per-family rule), and the stage-health gate
+        # rightly refuses a receipt claiming another stage.
+        evidence["stage"] = self.stage.stage
+        return {"evidence": evidence}
 
 
 def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:

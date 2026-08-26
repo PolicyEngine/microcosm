@@ -100,6 +100,11 @@ _PIPELINE = "uk-frs-spine"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
+#: The last stage of the assembled checkpoint: everything through the base
+#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: standing in for a key is correct only while two independently-maintained
+#: orderings happen to agree (the policyengine-uk-data#468 class).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 _STAGE_NAMES = (
     "frs_spine",
     "frs_employment",
@@ -195,6 +200,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Scale-ladder rung (#624): 0.01 smoke, 0.10 dev, or 1.0 full. "
             "Below 1.0 the raw FRS spine is sampled immediately after ingest, "
             "renormalized to full household mass, and treated as a receipt."
+        ),
+    )
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Evaluate the spine battery at release-candidate strictness: "
+            "evidence_absent gaps block instead of being tolerated. Explicit "
+            "by design - a full-scale developer build is not a release "
+            "candidate unless the caller says so."
         ),
     )
     parser.add_argument(
@@ -643,7 +658,17 @@ def _run_plan_with_spine_sampling(
     )
     if len(plan.stages) == 1:
         return spine_frame, spine_records, sampling
-    assembled_end = min(11, len(plan.stages))
+    names = tuple(stage.name for stage in plan.stages)
+    if UK_SPINE_ASSEMBLED_FINAL_STAGE in names:
+        assembled_end = names.index(UK_SPINE_ASSEMBLED_FINAL_STAGE) + 1
+    elif spine_battery is not None:
+        raise RuntimeError(
+            "spine battery is armed but the declared assembled-boundary stage "
+            f"{UK_SPINE_ASSEMBLED_FINAL_STAGE!r} is not in the plan; a stage "
+            "plan change must move the boundary declaration with it."
+        )
+    else:
+        assembled_end = len(plan.stages)
     frame, assembled_records = StagePlan(plan.stages[1:assembled_end]).run(spine_frame)
     # Each boundary offers only the stages that have actually run: asking a
     # later stage for checkpoint evidence would (correctly) raise, and the
@@ -980,7 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
                 spine_gate_manifest,
                 release_id=state.build_id,
                 report_path=spine_gate_path,
-                release_candidate=args.sample_fraction == 1.0,
+                release_candidate=args.release_candidate,
                 registry=UK_GATE_REGISTRY,
             )
             if spine_gate_manifest is not None
