@@ -1,7 +1,9 @@
 # Gate-failed base-pool release lane: final report
 
-Date: 2026-08-26  
-Branch: `release-from-gate-failed-pool`  
+Date: 2026-08-26
+
+Branch: `release-from-gate-failed-pool`
+
 Base: `origin/main` at `2263df36`
 
 ## Outcome
