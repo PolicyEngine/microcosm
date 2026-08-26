@@ -321,10 +321,14 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     }
 
     monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
+
+    def fake_require_dense_donor_coverage(frame, **kwargs):
+        captured["donor_coverage"] = (frame, kwargs)
+
     monkeypatch.setattr(
         builder,
         "_require_dense_donor_coverage",
-        lambda frame, **kwargs: None,
+        fake_require_dense_donor_coverage,
     )
     monkeypatch.setattr(
         builder,
@@ -390,6 +394,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert captured["manifest_path"] == manifest_path
     assert captured["puma_ladder_path"] == puma_ladder_path
     assert captured["fetch"] == (inputs_dir, manifest)
+    coverage_base, coverage_options = captured["donor_coverage"]
+    assert coverage_base is base
+    assert coverage_options == {
+        "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
+        "target_families": transfer_plan,
+    }
     actual_base, actual_source, build_options = captured["build"]
     assert actual_base is base
     assert actual_source.max_households == 7

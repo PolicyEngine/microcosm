@@ -2,20 +2,23 @@
 
 ## State
 
-The issue trace and all three claimed mechanism links have been verified in
-source on branch `local-hours-transfer-765` at the post-#763 `origin/main`
-base. The local staging transfer now grafts the exact national
-`source_operator_hours_worked` singleton into the generic ACS plan, uses that
-one extended plan for donor coverage, QRF transfer, and recipient coverage,
-and fails closed if the national ownership surface drifts. The transfer step
-is focused-, ownership-, spec-, and lint-green. No data build, release, push,
-gate/threshold tuning, or production-artifact mutation has occurred.
+Implementation and repository verification are complete on
+`local-hours-transfer-765`. The local staging builder now grafts the exact
+national `person/source_operator_hours_worked` singleton into its ACS QRF plan
+and routes one plan through donor coverage, transfer, and recipient coverage
+(`tools/_legacy/build_us_acs_multispine_base.py:80-129,267-317,397-418`).
+Local finalize now applies the unchanged shared hours plausibility bands to
+the two persisted hours leaves on ACS-spine persons only and makes failure a
+hard simulation-readiness blocker
+(`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:81-122,267-421`;
+`tools/build_us_acs_local_release.py:1196-1241,1507-1515,1537-1547,1628-1663`).
 
-The required US-extra dependency sync is complete from the exact lock. Direct
-shell access to GitHub and host process enumeration are blocked by the managed
-sandbox; both mandated commands were attempted, and the lane will invoke no
-build driver under any circumstance. The task-scoped journal draft found in
-the worktree has been reconciled to this session's observed receipts.
+The accepted workspace result is 7,247 passed / 77 skipped / 0 failed. Bundle
+and coverage freshness, Ruff, and `git diff --check` pass. No data build,
+release, push, gate/threshold tuning, or production-artifact mutation has
+occurred. The required fresh local verification remains queued for the serial
+host and its process-tree RSS monitor; its exact command is the literal end of
+`_LANE-NOTES.md`.
 
 ## Done
 
@@ -53,25 +56,57 @@ the worktree has been reconciled to this session's observed receipts.
 - Extended the local ACS staging plan with the national pre-clone
   `person/source_operator_hours_worked` family. It owns exactly
   `weekly_hours_worked_before_lsr`, copies rather than mutates the generic ACS
-  declaration, rejects duplicate ownership, and rejects national target drift.
+  declaration, rejects duplicate ownership, and rejects national target drift
+  (`tools/_legacy/build_us_acs_multispine_base.py:80-129`).
 - Routed the extended plan through the staging driver's donor-consumption
   gate, transfer call, and post-transfer coverage audit. The existing ACS QRF
   implementation therefore supplies the already-ledgered family, pattern, and
   fit/draw seed evidence without adding an RNG site or changing the authored
-  imputation bundle.
+  imputation bundle
+  (`tools/_legacy/build_us_acs_multispine_base.py:267-317,397-418`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1507-1627,3190-3204`;
+  `packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:615-684`).
 - Added local-plan anti-rot coverage and a real tiny-frame transfer fixture
-  proving ACS rows receive non-default weekly hours plus family/pattern seed
-  provenance. Receipts: 32 focused tests passed in 100.70 seconds; 104
-  ownership/spec tests passed in 1,655.35 seconds; repository-wide Ruff and
-  `git diff --check` passed.
+  proving ASEC raw-hour seeding survives the PUF support clone selected by the
+  local `auto` channel and ACS rows receive non-null, positive, nonconstant,
+  non-default weekly hours plus family/pattern seed provenance
+  (`packages/microcosm-build/tests/test_us_acs_multispine.py:297-378`).
+- Extended the shared hours summary/gate API with a validated requested-column
+  set and an aligned person mask while retaining its original default behavior
+  and bands. The local wrapper selects ACS persons and the two pool-persisted
+  leaves because `weeks_worked` is formula-owned and projected away
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:81-122,267-421`;
+  `tools/build_us_acs_local_release.py:1196-1241`).
+- Wired the ACS-scoped result into the final gate report and hard-failure list
+  after loading the consumer H5, so donor rows cannot conceal a defaulted ACS
+  column and a failure marks the release not simulation-ready
+  (`tools/build_us_acs_local_release.py:1507-1515,1537-1547,1628-1663`).
+- Added the exact silent-failure regression: the combined donor-heavy surface
+  passes, the ACS-only constant-40 surface fails, and local finalize writes
+  `hours_worked_signal` as its hard blocker
+  (`packages/microcosm-build/tests/test_us_hours_worked.py:305-351`;
+  `packages/microcosm-build/tests/test_us_acs_local_release_tool.py:49-88,278-384`).
+- Post-edit verification passed: calibrate 203; data 318 / 2 skipped; fit 93;
+  frame 295 / 36 skipped; build partitions 4,161 / 36 skipped and 2,177 / 3
+  skipped. The accepted total is **7,247 passed / 77 skipped / 0 failed**. The
+  affected four-module slice passed 60 tests after final formatting. The
+  heavier partition's measured child-process peak was 13.193 GiB and the
+  remaining package shard peak was 6.753 GiB, both below 15 GiB.
+- Regenerated and checked the US bundle at spec SHA
+  `5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e`;
+  coverage remains exact at 42,120/42,120 fields and 41/41 inventory checks.
+  The transfer reuses the authored national family and existing ledgered QRF
+  draw sites, so no spec or generated surface changed
+  (`packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:1021-1053`;
+  `packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:615-684`).
 
 ## Next
 
-1. Commit the green local-transfer implementation and test receipts.
-2. Wire the existing hours gate into local finalize, add the exact defaulted-
-   column regression, and commit with a green suite.
-3. Finish `_LANE-NOTES.md` with the serial-queue build command and David-ready
-   summary; write the final report to `FINAL_REPORT.md`.
+1. Run the exact fresh staging plus local-release command at the end of
+   `_LANE-NOTES.md` only after the current candidate relinquishes the serial
+   host, with the queue's external process-tree RSS monitor enforcing <15 GiB.
+2. Reply to David with the one-paragraph handoff immediately above that
+   command; do not reuse old local staging, checkpoints, or consumer H5.
 
 # Historical progress: stacked-pool to release CD-vintage provenance
 

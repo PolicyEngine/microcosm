@@ -11,6 +11,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime import puma_ladder
+from microcosm.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+    us_hours_worked_signal_gate,
+)
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
 
 def _load_tool_module():
     root = Path(__file__).resolve().parents[3]
@@ -36,6 +44,48 @@ def _load_staging_builder_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def _defaulted_local_hours_frame() -> Frame:
+    ids = np.arange(1, 9)
+    spines = np.asarray(["asec_puf"] * 4 + ["acs_2024_1yr"] * 4)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "person_spine": spines,
+            # Reproduce #765's published local artifact, which materialized
+            # the then-current 40-hour engine default on every ACS person.
+            "weekly_hours_worked_before_lsr": [0, 0, 35, 40, 40, 40, 40, 40],
+            "hours_worked_last_week": [0, 0, 30, 42, 0, 20, 40, 0],
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": ids,
+                    "household_spine": spines,
+                }
+            ),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.asarray([10, 10, 10, 10, 1, 1, 1, 1], dtype=np.float64),
+                WeightKind.CALIBRATED,
+            )
+        },
+    )
 
 
 def test_spine_composition_reports_per_spine_weight_and_size() -> None:
@@ -223,6 +273,115 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
 
     with pytest.raises(SystemExit, match="No calibration diagnostics"):
         module.do_finalize(args)
+
+
+def test_acs_local_hours_gate_accepts_modeled_acs_signal() -> None:
+    module = _load_tool_module()
+    frame = _defaulted_local_hours_frame()
+    person = frame.table("person")
+    acs = person["person_spine"].eq("acs_2024_1yr")
+    person.loc[acs, "weekly_hours_worked_before_lsr"] = [0, 0, 35, 40]
+
+    gate = module.acs_local_hours_worked_signal_gate(frame)
+
+    assert gate.passed
+    assert gate.details["spine"] == "acs_2024_1yr"
+    assert gate.details["checked_person_rows"] == 4
+    assert gate.details["checked_columns"] == list(US_HOURS_WORKED_POOL_OUTPUT_COLUMNS)
+
+
+def test_do_finalize_rejects_defaulted_acs_weekly_hours(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_tool_module()
+    frame = _defaulted_local_hours_frame()
+    whole_gate = us_hours_worked_signal_gate(
+        frame,
+        required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+    )
+    assert whole_gate.passed
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text("{}")
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    ladder = tmp_path / "ladder.npz"
+    ladder.write_bytes(b"ladder")
+    (ckpt / "calibration_diagnostics.json").write_text(
+        json.dumps(
+            {
+                "initial_loss": 1.0,
+                "final_loss": 0.5,
+                "mass_conserved_ratio": 1.0,
+                "effective_sample_size": 8.0,
+                "ess_fraction": 1.0,
+                "households": 8,
+                "n_targets": 0,
+            }
+        )
+    )
+    (ckpt / "targets.json").write_text("[]")
+    (ckpt / "materialize_rss.json").write_text("{}")
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps(
+            {
+                "plain_consumption": True,
+                "artifact_sha256": "fixture-sha256",
+                "per_spine": {},
+            }
+        )
+    )
+    (ckpt / "consumer_export.json").write_text(json.dumps({"filled_columns": 1}))
+    args = module._parse_args(
+        [
+            "--stage",
+            "finalize",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--ladder",
+            str(ladder),
+        ]
+    )
+    monkeypatch.setattr(module, "_load_staging_frame", lambda path: frame)
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda actual_args: {"ladder_sha256": module._sha256(ladder)},
+    )
+    monkeypatch.setattr(puma_ladder, "load_us_puma_ladder", lambda path: object())
+    monkeypatch.setattr(
+        puma_ladder,
+        "us_puma_ladder_gate",
+        lambda households, weights: GateResult(
+            name="us_puma_ladder",
+            passed=True,
+            details={},
+        ),
+    )
+
+    with pytest.raises(SystemExit, match="hours_worked_signal"):
+        module.do_finalize(args)
+
+    report = json.loads(args.gate_report.read_text())
+    hours_gate = report["gates"]["hours_worked_signal"]
+    assert not hours_gate["passed"]
+    assert hours_gate["detail"]["spine"] == "acs_2024_1yr"
+    assert hours_gate["detail"]["checked_person_rows"] == 4
+    assert any(
+        "weekly_hours_worked_before_lsr: constant" in failure
+        for failure in hours_gate["failures"]
+    )
+    summary = json.loads(args.out_summary.read_text())
+    assert not summary["simulation_ready"]
+    assert summary["simulation_readiness_blockers"] == ["hours_worked_signal"]
 
 
 def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:

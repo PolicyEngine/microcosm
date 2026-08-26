@@ -54,10 +54,11 @@
   (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:307-357`),
   and its anti-rot test pins that exclusion
   (`packages/microcosm-build/tests/test_us_acs_transfer.py:724-743`). The local
-  staging builder currently passes exactly that generic declaration through
-  donor coverage, transfer, and post-transfer coverage, so the weekly leaf is
-  never modeled there
-  (`tools/_legacy/build_us_acs_multispine_base.py:219-263,344-415,489-523`).
+  staging builder at base commit `5abda614` passed exactly that generic
+  declaration through donor coverage, transfer, and post-transfer coverage,
+  so the weekly leaf was never modeled there. The repaired local-plan routing
+  is recorded in the implementation section below
+  (`tools/_legacy/build_us_acs_multispine_base.py:80-129,267-317,398-418`).
 - Re-running the source operator on native ACS persons is not a valid fallback:
   ACS native mapping carries no ASEC `HRSWK`, `A_HRS1`, or `WKSWORK`, while the
   hours kernel requires all three and fails when any are absent
@@ -78,13 +79,14 @@
   RNG mechanism or unledgered draw site.
 - The shared signal gate rejects missing/constant hours columns and implausible
   weighted worked-share or worker-mean distributions
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:267-348`).
-  National pool/fiscal paths call it, but local finalize constructs only PUMA,
-  calibration, composition, and consumer-readiness receipts and hard-fails
-  only the PUMA/calibration/consumer trio
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:267-421`).
+  National pool/fiscal paths call it. At base commit `5abda614`, local finalize
+  constructed only PUMA, calibration, composition, and consumer-readiness
+  receipts and hard-failed only the PUMA/calibration/consumer trio; the
+  repaired ACS-scoped wiring is recorded at the literal end of this journal
   (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:1792-1821`;
   `tools/build_us_fiscal_refresh_release.py:9333-9360`;
-  `tools/build_us_acs_local_release.py:1432-1578`).
+  `tools/build_us_acs_local_release.py:1196-1235,1501-1508,1531-1541,1622-1657`).
 - Pre-change current-worktree receipts: calibrate 203 passed; data 318 passed /
   2 skipped; fit 93 passed; frame 295 passed / 36 skipped. The first serial
   build partition passed 4,156 tests / skipped 36 in 11,227.70 seconds. The
@@ -116,10 +118,12 @@
 - Anti-rot tests prove that the generic declaration remains unchanged, the
   local addition is byte-for-byte the national singleton, national drift fails
   closed, and main uses the extended plan
-  (`packages/microcosm-build/tests/test_us_acs_multispine_legacy_builder.py:166-206,323-333`).
-  A fixture-level build runs the real QRF path and proves ACS-spine persons get
-  non-null, non-default weekly hours with family and pattern seed provenance
-  (`packages/microcosm-build/tests/test_us_acs_multispine.py:290-340,425-438`).
+  (`packages/microcosm-build/tests/test_us_acs_multispine_legacy_builder.py:166-206,323-416`).
+  A fixture-level build runs the real ASEC seeder, proves the seeded weekly
+  leaf survives cloning into the local `auto` donor channel, and runs the real
+  QRF path to prove ACS-spine persons get non-null, positive, nonconstant,
+  non-default weekly hours with family and pattern seed provenance
+  (`packages/microcosm-build/tests/test_us_acs_multispine.py:297-378`).
 - Transfer-step receipts: the two affected builder/fixture modules passed 32
   tests in 100.70 seconds; the ACS declaration, generated spec bundle, spine
   agreement, and national-plan anti-rot slice passed 104 tests in 1,655.35
@@ -1231,3 +1235,141 @@ support binding and is rejected by schema-9 loading
 The six immutable raw source artifacts remain reusable, but Stage-1 stage
 checkpoints, downstream banks, the terminal manifest, and the pool H5 must be
 regenerated under the new identity.
+
+## 2026-08-25 — #765 gate, verification, and serial-queue handoff
+
+- The shared hours summary and gate now accept a validated requested-column
+  tuple plus an aligned optional person mask. Their default call still checks
+  all three national outputs, and the existing worked-share and worker-mean
+  bands remain exactly `(0.35, 0.62)` and `(30.0, 45.0)`
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:81-122,267-421`).
+  Local finalize deliberately requests the two persisted pool leaves because
+  `weeks_worked` is formula-owned and projected away, selects only
+  `acs_2024_1yr` persons, and fails closed if the spine tag or ACS population
+  is absent (`tools/build_us_acs_local_release.py:1196-1241`).
+- Finalize evaluates that ACS-scoped signal on the consumer H5 at
+  `args.out_h5`, writes its full receipt under `hours_worked_signal`, includes
+  it in the hard-failure list, and marks the summary not simulation-ready when
+  it fails
+  (`tools/build_us_acs_local_release.py:1507-1515,1537-1547,1628-1663`).
+  The exact regression uses a donor-heavy combined frame that passes the
+  whole-frame gate while all ACS weekly values equal the historical 40-hour
+  default; local finalize alone exposes the constant ACS leaf and records it
+  as the sole blocker
+  (`packages/microcosm-build/tests/test_us_hours_worked.py:305-351`;
+  `packages/microcosm-build/tests/test_us_acs_local_release_tool.py:49-88,278-384`).
+- The fixture-level transfer test starts with raw ASEC `HRSWK`, `A_HRS1`, and
+  `WKSWORK`, runs the real source operator, proves its weekly leaf is copied
+  unchanged into the PUF-detail support clone selected by local `auto`, then
+  runs the real QRF and verifies ACS output signal plus family/pattern seed
+  provenance (`packages/microcosm-build/tests/test_us_acs_multispine.py:297-378`).
+  Main-wiring anti-rot separately proves donor coverage and transfer receive
+  the same local plan
+  (`packages/microcosm-build/tests/test_us_acs_multispine_legacy_builder.py:209-416`).
+- Post-edit workspace verification is green: calibrate 203 passed; data 318
+  passed / 2 skipped; fit 93 passed; frame 295 passed / 36 skipped;
+  microcosm-build partitions 4,161 passed / 36 skipped and 2,177 passed / 3
+  skipped. Accepted total: **7,247 passed / 77 skipped / 0 failed**. The four
+  directly affected test modules passed 60 tests after final formatting. The
+  heavier build partition's measured child-process peak was 13.193 GiB; the
+  remaining package shard peak was 6.753 GiB. Ruff, `git diff --check`, bundle
+  freshness, and coverage freshness pass; the bundle remains at spec SHA
+  `5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e`
+  with 42,120/42,120 fields and 41/41 inventory checks.
+- No build driver, push, threshold edit, or gate weakening occurred. The fresh
+  verification below is intentionally deferred to the serial host queue. Its
+  staging limits are 15,000,000,000 bytes (13.97 GiB), below the binding
+  15-GiB ceiling; the queue must also attach its external process-tree RSS
+  monitor because the local release sampler records rather than enforces RSS
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/base_pool.py:56-91`;
+  `tools/_legacy/build_us_acs_multispine_base.py:73-75,1154-1175`;
+  `tools/build_us_acs_local_release.py:2059-2077`). The command refuses an
+  incomplete candidate, a running candidate driver, an unclean/wrong branch,
+  altered pinned inputs, or a pre-existing output root. It creates fresh
+  staging, checkpoints, consumer H5, and package output; old local artifacts
+  are not reusable because materialization binds the staging SHA into run
+  identity (`tools/build_us_acs_local_release.py:771-898`).
+
+David-ready reply: The local lane was feeding the generic ACS transfer plan, which deliberately omitted the runtime-owned `weekly_hours_worked_before_lsr`; native ACS rows do not carry the ASEC source columns needed by the seeder, so consumer projection silently materialized the then-current 40-hour engine default, while donor rows let a combined-surface check look healthy and local finalize never called the hours gate (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:307-357`; `packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:104-175`; `tools/build_us_acs_local_release.py:212-355,1095-1153`). The fix grafts the exact national seed-ledgered `source_operator_hours_worked` singleton into the local QRF plan, proves it through the actual PUF-detail donor channel, and hard-gates the two persisted hours leaves on ACS persons alone (`tools/_legacy/build_us_acs_multispine_base.py:80-129,267-317`; `tools/build_us_acs_local_release.py:1196-1241,1507-1663`). Rebuild fresh ACS staging and the entire local release; do not reuse old staging, checkpoints, or H5 because materialization pins the staging SHA (`tools/build_us_acs_local_release.py:771-898`).
+
+Exact local-lane verification build command for the serial host queue (run only after this branch is committed and the queue has attached its external <15-GiB process-tree monitor):
+
+    /bin/bash -lc 'source /dev/stdin' <<'LOCAL_HOURS_765'
+    set -euo pipefail
+
+    lane_worktree="/Users/maxghenis/PolicyEngine/_worktrees/microcosm-local-hours"
+    candidate_root="/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25"
+    candidate_release_id="populace-us-2024-onesurface-pkg3-legacy-sparse-116a48b9-20260825T082402Z"
+    candidate_sparse="$candidate_root/release-sparse"
+    candidate_complete="$candidate_sparse/.stage-complete"
+    base_h5="$candidate_sparse/artifacts/populace_us_2024.h5"
+    donor_manifest="$candidate_sparse/releases/$candidate_release_id/release_manifest.json"
+    acs_inputs="/Users/maxghenis/PolicyEngine/_worktrees/populace-acs-clone/inputs/acs_2024_1yr"
+    puma_ladder="/Users/maxghenis/PolicyEngine/_worktrees/populace-acs-clone/build/us/us_puma_ladder_2020.npz"
+    puma_ladder_sha="39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+    ledger_feed="/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl"
+    ledger_feed_sha="b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080"
+    output_root="/Users/maxghenis/PolicyEngine/_buildo-runtime/out/local-hours-transfer-765"
+    local_run="$output_root/run"
+    uv_bin="/Users/maxghenis/.local/bin/uv"
+    candidate_pattern='tools/build_us_(multispine_pool|fiscal_refresh_release)'
+
+    require_serial_host_idle() {
+      local pgrep_status
+      set +e
+      pgrep -f "$candidate_pattern" >/dev/null
+      pgrep_status=$?
+      set -e
+      case "$pgrep_status" in
+        0) echo "candidate build driver is still running; refusing local lane" >&2; exit 1 ;;
+        1) ;;
+        *) echo "pgrep failed with status $pgrep_status; refusing local lane" >&2; exit 1 ;;
+      esac
+    }
+
+    [[ -f "$candidate_complete" ]] || { echo "candidate sparse release is incomplete: $candidate_complete" >&2; exit 1; }
+    [[ -f "$base_h5" ]] || { echo "candidate base H5 is missing: $base_h5" >&2; exit 1; }
+    [[ -f "$donor_manifest" ]] || { echo "candidate release manifest is missing: $donor_manifest" >&2; exit 1; }
+    [[ -d "$acs_inputs" ]] || { echo "ACS archive cache is missing: $acs_inputs" >&2; exit 1; }
+    [[ -f "$puma_ladder" ]] || { echo "PUMA ladder is missing: $puma_ladder" >&2; exit 1; }
+    [[ -f "$ledger_feed" ]] || { echo "consumer-facts ledger is missing: $ledger_feed" >&2; exit 1; }
+    [[ -x "$uv_bin" ]] || { echo "uv executable is missing: $uv_bin" >&2; exit 1; }
+    [[ "$(git -C "$lane_worktree" branch --show-current)" == "local-hours-transfer-765" ]] || { echo "wrong worktree branch" >&2; exit 1; }
+    [[ -z "$(git -C "$lane_worktree" status --porcelain)" ]] || { echo "worktree is not clean" >&2; exit 1; }
+    [[ ! -e "$output_root" ]] || { echo "fresh output root already exists: $output_root" >&2; exit 1; }
+    [[ "$(shasum -a 256 "$puma_ladder" | awk '{print $1}')" == "$puma_ladder_sha" ]] || { echo "PUMA ladder SHA mismatch" >&2; exit 1; }
+    [[ "$(shasum -a 256 "$ledger_feed" | awk '{print $1}')" == "$ledger_feed_sha" ]] || { echo "consumer-facts ledger SHA mismatch" >&2; exit 1; }
+    require_serial_host_idle
+
+    mkdir -p "$local_run"
+    cd "$lane_worktree"
+    export UV_CACHE_DIR="$lane_worktree/.uv-cache"
+    export POPULACE_ACS_POOL_PEAK_LIMIT_BYTES=15000000000
+    export POPULACE_STAGING_EXPORT_PEAK_LIMIT_BYTES=15000000000
+
+    "$uv_bin" run python tools/build_us_acs_multispine_base.py \
+      --base-h5 "$base_h5" \
+      --donor-release-manifest "$donor_manifest" \
+      --out-h5 "$local_run/acs_multispine_staging.h5" \
+      --inputs-dir "$acs_inputs" \
+      --puma-ladder "$puma_ladder" \
+      --period 2024 \
+      --chunksize 100000 \
+      --acs-share 0.5 \
+      --seed 0 \
+      --geography-seed 0 \
+      --n-estimators 32 \
+      --max-targets-per-fit 8 \
+      --donor-channel auto
+
+    require_serial_host_idle
+    "$uv_bin" run python tools/build_us_acs_local_release.py \
+      --stage all \
+      --staging-h5 "$local_run/acs_multispine_staging.h5" \
+      --feed "$ledger_feed" \
+      --feed-sha256 "$ledger_feed_sha" \
+      --ladder "$puma_ladder" \
+      --checkpoint-dir "$local_run/checkpoints" \
+      --out-h5 "$local_run/populace_us_2024_acs_local.h5" \
+      --out "$local_run/release"
+    LOCAL_HOURS_765

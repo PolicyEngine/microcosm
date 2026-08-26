@@ -264,15 +264,71 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
     )
 
 
-def us_hours_worked_summary(frame: Frame) -> dict[str, object]:
-    """Weighted hours-distribution summary for gates and release manifests."""
+def _checked_hours_columns(required_columns: tuple[str, ...]) -> tuple[str, ...]:
+    checked = tuple(required_columns)
+    if not checked:
+        raise ValueError("Hours-worked signal gate requires at least one column.")
+    if len(set(checked)) != len(checked):
+        raise ValueError(
+            f"Hours-worked signal-gate columns must be unique, got {list(checked)}."
+        )
+    unknown = sorted(set(checked) - set(US_HOURS_WORKED_OUTPUT_COLUMNS))
+    if unknown:
+        raise ValueError(f"Unknown hours-worked signal-gate column(s): {unknown}.")
+    if "weekly_hours_worked_before_lsr" not in checked:
+        raise ValueError(
+            "Hours-worked signal-gate columns must include "
+            "'weekly_hours_worked_before_lsr'."
+        )
+    return checked
+
+
+def _hours_person_scope(
+    person: pd.DataFrame,
+    person_mask: np.ndarray | pd.Series | None,
+) -> np.ndarray:
+    if person_mask is None:
+        return np.ones(len(person), dtype=bool)
+    if isinstance(person_mask, pd.Series):
+        if not person_mask.index.equals(person.index):
+            raise ValueError(
+                "Hours-worked person_mask Series must be index-aligned to person."
+            )
+        mask = person_mask.to_numpy()
+    else:
+        mask = np.asarray(person_mask)
+    if mask.dtype != np.bool_:
+        raise ValueError(
+            f"Hours-worked person_mask must be boolean, got dtype {mask.dtype}."
+        )
+    if mask.shape != (len(person),):
+        raise ValueError(
+            "Hours-worked person_mask must have one element per person row "
+            f"({len(person)}), got shape {mask.shape}."
+        )
+    if not mask.any():
+        raise ValueError("Hours-worked person_mask must select at least one person.")
+    return mask
+
+
+def us_hours_worked_summary(
+    frame: Frame,
+    *,
+    required_columns: tuple[str, ...] = US_HOURS_WORKED_OUTPUT_COLUMNS,
+    person_mask: np.ndarray | pd.Series | None = None,
+) -> dict[str, object]:
+    """Summarize the requested hours leaves over an optional person scope."""
 
     person = frame.table("person")
-    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    checked = _checked_hours_columns(required_columns)
+    scope = _hours_person_scope(person, person_mask)
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)[
+        scope
+    ]
     weekly = pd.to_numeric(
         person["weekly_hours_worked_before_lsr"], errors="coerce"
     ).fillna(0.0)
-    weekly_values = weekly.to_numpy(dtype=np.float64)
+    weekly_values = weekly.to_numpy(dtype=np.float64)[scope]
     total_weight = float(weights.sum())
     positive = weekly_values > 0
     positive_weight = float(weights[positive].sum())
@@ -283,11 +339,15 @@ def us_hours_worked_summary(frame: Frame) -> dict[str, object]:
         else 0.0
     )
     unique_counts = {
-        column: int(pd.to_numeric(person[column], errors="coerce").dropna().nunique())
-        for column in US_HOURS_WORKED_OUTPUT_COLUMNS
+        column: int(
+            pd.to_numeric(person.loc[scope, column], errors="coerce").dropna().nunique()
+        )
+        for column in checked
         if column in person.columns
     }
     return {
+        "checked_columns": list(checked),
+        "checked_person_rows": int(scope.sum()),
         "worked_share": worked_share,
         "mean_weekly_hours_workers": mean_weekly_hours_workers,
         "worked_share_band": list(_WORKED_SHARE_BAND),
@@ -296,31 +356,43 @@ def us_hours_worked_summary(frame: Frame) -> dict[str, object]:
     }
 
 
-def us_hours_worked_signal_gate(frame: Frame) -> GateResult:
+def us_hours_worked_signal_gate(
+    frame: Frame,
+    *,
+    required_columns: tuple[str, ...] = US_HOURS_WORKED_OUTPUT_COLUMNS,
+    person_mask: np.ndarray | pd.Series | None = None,
+) -> GateResult:
     """Require the hours surface to carry a plausible worked distribution.
 
-    Fails when a column is missing or constant, when the weighted share of
-    persons with positive usual weekly hours leaves the plausibility band,
-    or when mean weekly hours among workers does — each of which reproduces
-    (or inverts) the everyone-works-40-hours failure of microcosm #242.
+    Fails when a requested column is missing or constant within the optional
+    person scope, when the scoped weighted share of persons with positive
+    usual weekly hours leaves the plausibility band, or when scoped mean
+    weekly hours among workers does — each of which reproduces (or inverts)
+    the everyone-works-40-hours failure of microcosm #242.
     """
 
     person = frame.table("person")
+    checked = _checked_hours_columns(required_columns)
+    scope = _hours_person_scope(person, person_mask)
     failures: list[str] = []
-    missing = [
-        column
-        for column in US_HOURS_WORKED_OUTPUT_COLUMNS
-        if column not in person.columns
-    ]
+    missing = [column for column in checked if column not in person.columns]
     if missing:
         return GateResult(
             name="hours_worked_signal",
             passed=False,
             failures=(f"person columns missing: {missing}.",),
-            details={"missing": missing},
+            details={
+                "checked_columns": list(checked),
+                "checked_person_rows": int(scope.sum()),
+                "missing": missing,
+            },
         )
 
-    summary = us_hours_worked_summary(frame)
+    summary = us_hours_worked_summary(
+        frame,
+        required_columns=checked,
+        person_mask=scope,
+    )
     for column, count in summary["unique_counts"].items():
         if count < 2:
             failures.append(

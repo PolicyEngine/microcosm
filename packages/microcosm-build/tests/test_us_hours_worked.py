@@ -10,6 +10,7 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.source_runtime import SourceRuntimeError
 from microcosm.build.us_runtime import (
     US_HOURS_WORKED_OUTPUT_COLUMNS,
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
     US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,
     US_HOURS_WORKED_STAGE_NAME,
     US_SOURCE_MANIFEST,
@@ -300,3 +301,51 @@ class TestGate:
         gate = us_hours_worked_signal_gate(frame)
         assert not gate.passed
         assert any("mean weekly hours" in failure for failure in gate.failures)
+
+    def test_pool_columns_and_person_mask_expose_defaulted_subpopulation(
+        self,
+    ) -> None:
+        rows = [
+            _worker(
+                weekly,
+                last_week,
+                0,
+                weekly_hours_worked_before_lsr=weekly,
+                hours_worked_last_week=last_week,
+            )
+            for weekly, last_week in (
+                (0, 0),
+                (0, 0),
+                (35, 30),
+                (40, 42),
+                (40, 0),
+                (40, 20),
+                (40, 40),
+                (40, 0),
+            )
+        ]
+        frame = _us_frame(
+            rows,
+            household_weights=[10, 10, 10, 10, 1, 1, 1, 1],
+        )
+
+        whole = us_hours_worked_signal_gate(
+            frame,
+            required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+        )
+        acs_like = us_hours_worked_signal_gate(
+            frame,
+            required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+            person_mask=np.asarray([False] * 4 + [True] * 4),
+        )
+
+        assert whole.passed
+        assert not acs_like.passed
+        assert acs_like.details["checked_columns"] == list(
+            US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+        )
+        assert acs_like.details["checked_person_rows"] == 4
+        assert any(
+            "weekly_hours_worked_before_lsr: constant" in failure
+            for failure in acs_like.failures
+        )

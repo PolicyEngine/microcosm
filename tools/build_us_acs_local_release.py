@@ -27,8 +27,9 @@ package; each is separately resumable):
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
-  finalize    : release-style gate report (PUMA-ladder gate, calibration
-                gate, spine-composition evidence) + the reviewed-limitations
+  finalize    : release-style gate report (PUMA-ladder gate, ACS-spine hours
+                signal gate, calibration gate, spine-composition evidence) +
+                the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -1192,6 +1193,54 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
     return composition
 
 
+def acs_local_hours_worked_signal_gate(frame):
+    """Gate persisted hours leaves on ACS-spine people alone.
+
+    The local consumer H5 projects formula-owned ``weeks_worked`` away, so it
+    checks the two pool leaves. Donor-spine hours must not mask a defaulted ACS
+    majority, which is why the shared distribution gate receives an ACS-only
+    person mask instead of the combined frame.
+    """
+
+    from microcosm.build.gates import GateResult
+    from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.hours_worked import (
+        US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+        us_hours_worked_signal_gate,
+    )
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person:
+        return GateResult(
+            name="hours_worked_signal",
+            passed=False,
+            failures=(f"person spine column missing: {tag!r}.",),
+            details={"spine": ACS_2024_1YR_SPINE, "missing": [tag]},
+        )
+    acs_mask = person[tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
+    if not acs_mask.any():
+        return GateResult(
+            name="hours_worked_signal",
+            passed=False,
+            failures=(f"no person rows for spine {ACS_2024_1YR_SPINE!r}.",),
+            details={"spine": ACS_2024_1YR_SPINE, "checked_person_rows": 0},
+        )
+
+    gate = us_hours_worked_signal_gate(
+        frame,
+        required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+        person_mask=acs_mask,
+    )
+    return GateResult(
+        name=gate.name,
+        passed=gate.passed,
+        failures=gate.failures,
+        details={"spine": ACS_2024_1YR_SPINE, **dict(gate.details)},
+    )
+
+
 def do_qa(args) -> None:
     """Chunked engine probe: per-spine SSI incidence on the calibrated artifact.
 
@@ -1460,6 +1509,7 @@ def do_finalize(args) -> None:
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
     ladder_gate = us_puma_ladder_gate(households, weights)
+    hours_worked_gate = acs_local_hours_worked_signal_gate(frame)
     composition = spine_composition(households, frame.table("person"), weights)
     del frame
     gc.collect()
@@ -1489,6 +1539,11 @@ def do_finalize(args) -> None:
             "passed": bool(ladder_gate.passed),
             "failures": list(ladder_gate.failures),
             "detail": dict(ladder_gate.details),
+        },
+        "hours_worked_signal": {
+            "passed": bool(hours_worked_gate.passed),
+            "failures": list(hours_worked_gate.failures),
+            "detail": dict(hours_worked_gate.details),
         },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
@@ -1573,7 +1628,12 @@ def do_finalize(args) -> None:
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
     hard_failures = [
         name
-        for name in ("us_puma_ladder_gate", "calibration", "consumer_ready")
+        for name in (
+            "us_puma_ladder_gate",
+            "hours_worked_signal",
+            "calibration",
+            "consumer_ready",
+        )
         if not gates[name]["passed"]
     ]
     updated_summary = dict(staging_summary)

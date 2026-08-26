@@ -18,7 +18,14 @@ from microcosm.build.us_runtime.acs_transfer import (
     AcsTransferPattern,
 )
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.hours_worked import with_us_hours_worked_inputs
+from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
+from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    support_role_series,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -291,7 +298,32 @@ def test__given_tiny_frames__then_weekly_hours_uses_seeded_national_qrf_family(
     monkeypatch,
     tmp_path,
 ) -> None:
-    base = _base_donor_frame()
+    unseeded = _base_donor_frame()
+    unseeded_person = unseeded.table("person")
+    unseeded_person.drop(columns=["weekly_hours_worked_before_lsr"], inplace=True)
+    unseeded_person["HRSWK"] = [42.0, 36.0, 20.0, 0.0]
+    unseeded_person["A_HRS1"] = [40.0, 35.0, 18.0, 0.0]
+    unseeded_person["WKSWORK"] = [52.0, 48.0, 26.0, 0.0]
+    seeded = with_us_hours_worked_inputs(unseeded, seed=0, time_period=2024)
+    assert seeded.table("person")["weekly_hours_worked_before_lsr"].tolist() == [
+        42.0,
+        36.0,
+        20.0,
+        0.0,
+    ]
+    base = clone_us_frame_for_puf_support(seeded)
+    donor_person = base.table("person")
+    donor_roles = support_role_series(donor_person, entity="person")
+    assert (
+        donor_person.loc[
+            donor_roles.eq(BASE_ASEC_SUPPORT_CHANNEL),
+            "weekly_hours_worked_before_lsr",
+        ].tolist()
+        == donor_person.loc[
+            donor_roles.eq(PUF_TAX_DETAIL_SUPPORT_CHANNEL),
+            "weekly_hours_worked_before_lsr",
+        ].tolist()
+    )
     raw_acs = _raw_acs_frame()
     source = AcsPumsSource(
         tmp_path / "csv_hus.zip",
@@ -328,8 +360,14 @@ def test__given_tiny_frames__then_weekly_hours_uses_seeded_national_qrf_family(
     acs_people = person[person[spine_column("person")] == "acs_2024_1yr"]
     modeled = acs_people["weekly_hours_worked_before_lsr"]
     assert modeled.notna().all()
+    assert modeled.gt(0.0).any()
+    assert modeled.nunique() >= 2
     assert not modeled.eq(40.0).all()
     assert modeled.between(0.0, 42.0).all()
+    assert (
+        result.provenance["fit_configuration"]["resolved_donor_channel"]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
 
     [imputed] = result.provenance["imputed_inputs"]
     assert imputed["column"] == "weekly_hours_worked_before_lsr"
