@@ -2,11 +2,12 @@
 
 ## State
 
-The explicit builder opt-in and release-manifest verdict carriage are
-implemented with focused tests. Default pool loading remains on the strict
-simulation-ready loader; only `--allow-gate-failed-base-pool` selects the
-existing authenticated scoring loader. No pool or release has been built,
-published, or pushed.
+Implementation and focused verification are complete. Default pool loading
+remains on the strict simulation-ready loader; only
+`--allow-gate-failed-base-pool` selects the existing authenticated scoring
+loader. Publication preflight now renders the carried red battery separately
+from its unchanged automated checks/exit code. No pool or release has been
+built, published, or pushed.
 
 ## Done
 
@@ -24,13 +25,17 @@ published, or pushed.
 - Added focused tests for explicit flag parsing, strict default routing and
   refusal, alternate-loader routing, and release-manifest carriage; focused
   Ruff and the first three tests pass.
+- Added manifest-only publication review, a prominent red-battery/human-review
+  banner, complete machine-readable carriage, and mixed-mode coverage proving
+  the carried verdict does not alter an existing preflight exit code.
+- Added the changelog fragment. All 25 preflight tests and focused Ruff pass.
 
 ## Next
 
-1. Add manifest-only publication review and a prominent non-blocking red
-   battery banner to `tools/preflight_us_release_gates.py` with tests.
-2. Add the changelog fragment, then run focused and contract tests.
-3. Run Ruff and full pytest one process per shard, record evidence, write
+1. Run the complete builder test file and adjacent manifest/loader/contract
+   tests; fix and commit any findings.
+2. Run repository-wide Ruff and full pytest one process per shard.
+3. Record the audit and verification evidence, write
    `out.md`, and leave the branch clean with coherent local commits.
 
 ## Historical context

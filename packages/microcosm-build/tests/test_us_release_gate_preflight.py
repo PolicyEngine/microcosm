@@ -16,8 +16,13 @@ Each failure-path test asserts the specific verdict, so deleting a check's logic
 
 from __future__ import annotations
 
+import importlib.util
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.us_runtime.release_gate_preflight import (
     PreflightReport,
@@ -34,6 +39,58 @@ from microcosm.build.us_runtime.warm_start_selection import (
 )
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+
+def _load_preflight_cli():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "preflight_us_release_gates.py"
+    spec = importlib.util.spec_from_file_location("preflight_us_release_gates", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_gate_failed_release_manifest(path: Path) -> tuple[list[str], str]:
+    failures = ["asec incidence differs", "puf_tax_detail incidence differs"]
+    gates_sha256 = "2" * 64
+    verdict = {
+        "passed": False,
+        "gates": {
+            "us_by_origin_battery": {
+                "passed": False,
+                "failures": failures,
+                "details": {"fixture": True},
+            }
+        },
+    }
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "build": {
+                    "exact_k_ladder": {
+                        "pool": {
+                            "status": "gate_failed",
+                            "simulation_ready": False,
+                            "allow_gate_failed_base_pool": True,
+                            "agreement_diagnostics_sha256": gates_sha256,
+                        },
+                        "agreement_gate_reference": {
+                            "passed": False,
+                            "battery_status": "red",
+                            "diagnostics_sha256": gates_sha256,
+                            "gates_json_sha256": gates_sha256,
+                            "failure_count": len(failures),
+                            "failures": failures,
+                            "verdict": verdict,
+                        },
+                    }
+                },
+            }
+        )
+    )
+    return failures, gates_sha256
 
 
 def _frame(households: list[dict[str, object]]) -> Frame:
@@ -639,8 +696,6 @@ def test__report__exit_code_and_status_precedence() -> None:
 
 
 def test__report__to_dict_is_json_ready() -> None:
-    import json
-
     from microcosm.build.us_runtime.release_gate_preflight import CheckResult
 
     report = PreflightReport(
@@ -658,6 +713,103 @@ def test__report__to_dict_is_json_ready() -> None:
     payload = report.to_dict()
     assert json.loads(json.dumps(payload))["exit_code"] == 1
     assert payload["checks"][0]["rows"] == [{"k": 1}]
+
+
+def test__cli__manifest_only_surfaces_carried_red_battery_without_failing(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    failures, gates_sha256 = _write_gate_failed_release_manifest(release_manifest)
+    json_out = tmp_path / "preflight.json"
+    monkeypatch.setattr(
+        cli,
+        "run_preflight",
+        lambda **kwargs: pytest.fail("manifest-only review ran static checks"),
+    )
+
+    exit_code = cli.main(
+        [
+            "--release-manifest",
+            str(release_manifest),
+            "--json-out",
+            str(json_out),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert output.startswith("=" * 72)
+    assert "CARRIED BASE-POOL AGREEMENT BATTERY: RED — 2 FAILURES" in output
+    assert "Build opt-in used: --allow-gate-failed-base-pool" in output
+    assert f"Pool gates JSON SHA-256: {gates_sha256}" in output
+    assert "Publication decision: HUMAN REVIEW REQUIRED" in output
+    assert "does not alter the preflight exit code" in output
+    assert "Static base/selection checks: NOT RUN" in output
+    assert all(f"FAILURE: {failure}" in output for failure in failures)
+    assert output.rstrip().endswith(
+        "CARRIED RED BATTERY: HUMAN REVIEW REQUIRED; automated preflight exit "
+        "remains 0."
+    )
+
+    payload = json.loads(json_out.read_text())
+    carried = payload["carried_base_pool_agreement_battery"]
+    assert payload["exit_code"] == 0
+    assert payload["static_checks_run"] is False
+    assert carried["battery_status"] == "red"
+    assert carried["failure_count"] == 2
+    assert carried["failures"] == failures
+    assert carried["gates_json_sha256"] == gates_sha256
+    assert carried["affects_exit_code"] is False
+    assert carried["agreement_gate_reference"]["verdict"]["passed"] is False
+
+
+def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    from microcosm.build.us_runtime.release_gate_preflight import CheckResult
+
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    _write_gate_failed_release_manifest(release_manifest)
+    json_out = tmp_path / "preflight.json"
+    report = PreflightReport(
+        checks=(
+            CheckResult(
+                name="existing_risk",
+                status="AT_RISK",
+                summary="existing check controls the exit",
+                at_risks=("fixture risk",),
+            ),
+        )
+    )
+    monkeypatch.setattr(cli, "run_preflight", lambda **kwargs: report)
+
+    exit_code = cli.main(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--selection-source-manifest",
+            str(tmp_path / "selection.json"),
+            "--release-manifest",
+            str(release_manifest),
+            "--json-out",
+            str(json_out),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    payload = json.loads(json_out.read_text())
+    assert exit_code == report.exit_code == 2
+    assert "[AT-RISK] existing_risk" in output
+    assert output.rstrip().endswith(
+        "CARRIED RED BATTERY: HUMAN REVIEW REQUIRED; automated preflight exit "
+        "remains 2."
+    )
+    assert payload["exit_code"] == 2
+    assert payload["carried_base_pool_agreement_battery"][
+        "affects_exit_code"
+    ] is False
 
 
 def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
