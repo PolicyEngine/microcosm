@@ -134,10 +134,10 @@ def test_uk_local_geography_targets_use_corrected_selector_vocabulary() -> None:
         assert set(target["bindings"]) == {"policyengine", "axiom"}
 
     assert targets["ons.age.0_10"]["ledger_selector"] == {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_0_10.v1",
     }
+    assert "source_name" not in targets["ons.age.70_80"]["ledger_selector"]
     assert targets["ons.age.70_80"]["ledger_selector"]["record_set_spec_id"] == (
         "uk.local_geography.population.age_70_80.v1"
     )
@@ -149,7 +149,6 @@ def test_uk_local_geography_targets_use_corrected_selector_vocabulary() -> None:
         "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1",
     }
     assert targets["ons.tenure.private_rent"]["ledger_selector"] == {
-        "source_name": "ons",
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1",
     }

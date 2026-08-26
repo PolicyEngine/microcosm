@@ -98,11 +98,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_0_10.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.10_20",
@@ -111,11 +110,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_10_20.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.20_30",
@@ -124,11 +122,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_20_30.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.30_40",
@@ -137,11 +134,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_30_40.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.40_50",
@@ -150,11 +146,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_40_50.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.50_60",
@@ -163,11 +158,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_50_60.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.60_70",
@@ -176,11 +170,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_60_70.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "ons.age.70_80",
@@ -189,11 +182,10 @@
           "source_measure_id": "population"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "population",
           "record_set_spec_id": "uk.local_geography.population.age_70_80.v1"
         },
-        "reason": "Age rows must select the band-resolved nation-neutral record-set spec; the original population selector was band-blind."
+        "reason": "Age rows must select the band-resolved nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs; the original population selector was band-blind and source-pinned."
       },
       {
         "target_id": "dwp.universal_credit.households",
@@ -315,11 +307,10 @@
           "source_measure_id": "owned_outright_households"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "households",
           "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
         },
-        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs instead of stale per-measure ids."
       },
       {
         "target_id": "ons.tenure.owned_mortgage",
@@ -328,11 +319,10 @@
           "source_measure_id": "owned_with_mortgage_households"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "households",
           "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
         },
-        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs instead of stale per-measure ids."
       },
       {
         "target_id": "ons.tenure.private_rent",
@@ -341,11 +331,10 @@
           "source_measure_id": "private_rent_households"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "households",
           "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
         },
-        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs instead of stale per-measure ids."
       },
       {
         "target_id": "ons.tenure.social_rent",
@@ -354,11 +343,10 @@
           "source_measure_id": "social_rent_households"
         },
         "corrected_selector": {
-          "source_name": "ons",
           "source_measure_id": "households",
           "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
         },
-        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec instead of stale per-measure ids."
+        "reason": "Tenure rows use the household measure and tenure-specific nation-neutral record-set spec across ONS, NRS, and NISRA publisher legs instead of stale per-measure ids."
       },
       {
         "target_id": "ons.rent.private_rent",
@@ -636,7 +624,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_0_10.v1"
       }
@@ -681,7 +668,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_10_20.v1"
       }
@@ -726,7 +712,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_20_30.v1"
       }
@@ -771,7 +756,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_30_40.v1"
       }
@@ -816,7 +800,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_40_50.v1"
       }
@@ -861,7 +844,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_50_60.v1"
       }
@@ -906,7 +888,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_60_70.v1"
       }
@@ -951,7 +932,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "population",
         "record_set_spec_id": "uk.local_geography.population.age_70_80.v1"
       }
@@ -1276,7 +1256,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
       }
@@ -1315,7 +1294,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
       }
@@ -1354,7 +1332,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
       }
@@ -1399,7 +1376,6 @@
         }
       },
       "ledger_selector": {
-        "source_name": "ons",
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
       }

@@ -266,6 +266,16 @@
       "path": "target_reference_membership.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_target_reference_membership.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

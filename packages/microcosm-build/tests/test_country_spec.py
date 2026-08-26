@@ -328,6 +328,8 @@ class TestUKCountryPackage:
             "uk_national_targets.json",
             "target_references.json",
             "target_reference_membership.json",
+            "local_target_references.json",
+            "local_target_reference_membership.json",
         )
 
     def test_uk_source_manifest_loads_twenty_seven_stages(self) -> None:
@@ -409,6 +411,8 @@ class TestExistingPackagesGeneralize:
             "uk_national_targets.json",
             "target_references.json",
             "target_reference_membership.json",
+            "local_target_references.json",
+            "local_target_reference_membership.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:

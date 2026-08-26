@@ -42,11 +42,6 @@ def main() -> None:
     args = _parser().parse_args()
     contract = json.loads(args.contract.read_text(encoding="utf-8"))
     crosswalk = json.loads(args.crosswalk.read_text(encoding="utf-8"))
-    facts = [
-        json.loads(line)
-        for line in args.ledger_facts.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
     config = AreaTargetReferenceAuthoringConfig(
         target_period=args.period,
         areas_by_geography_level=_areas_by_geography_level(crosswalk),
@@ -55,7 +50,11 @@ def main() -> None:
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         source_fact_feed=str(args.ledger_facts),
     )
-    authored = author_area_target_references(contract, facts, config)
+    authored = author_area_target_references(
+        contract,
+        _read_jsonl(args.ledger_facts),
+        config,
+    )
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -102,6 +101,13 @@ def _areas_by_geography_level(
     return result
 
 
+def _read_jsonl(path: Path):
+    with path.open(encoding="utf-8") as stream:
+        for line in stream:
+            if line.strip():
+                yield json.loads(line)
+
+
 def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]:
     operations: dict[str, str] = {}
     for target in contract.get("targets", ()):
@@ -114,6 +120,11 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         }:
             operations[target_id] = "count_x_mean"
         if target_id == "dwp.universal_credit.households.3plus_children":
+            operations[target_id] = "sum"
+        if target_id in {
+            "ons.tenure.private_rent",
+            "ons.tenure.social_rent",
+        }:
             operations[target_id] = "sum"
     return operations
 
@@ -132,8 +143,23 @@ def _area_signed_deferrals(
     ni_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "N"
     )
-    non_english_local_authorities = tuple(
-        area_id for area_id in local_authority_ids if area_id[:1] != "E"
+    scottish_local_authorities = tuple(
+        area_id for area_id in local_authority_ids if area_id[:1] == "S"
+    )
+    pipr_lad_absent_area_ids = tuple(
+        area_id
+        for area_id in ("E06000053", "E08000016", "E08000019", "E09000001")
+        if area_id in local_authority_ids
+    )
+    pipr_after_target_period_area_ids = tuple(
+        area_id
+        for area_id in local_authority_ids
+        if area_id[:1] in {"E", "W"} and area_id not in pipr_lad_absent_area_ids
+    )
+    spi_la_measure_gap_area_ids = tuple(
+        area_id
+        for area_id in ("E06000027", "E06000053")
+        if area_id in local_authority_ids
     )
     deferrals: list[AreaSignedDeferral] = []
 
@@ -160,14 +186,14 @@ def _area_signed_deferrals(
         target_id="dwp.universal_credit.households",
         geography_level="constituency",
         reason_id="uc_gb_only_ni_absent",
-        rationale="Universal Credit local-area facts are GB-only; Northern Ireland constituencies are signed absent.",
+        rationale="DWP Stat-Xplore Universal Credit local-area facts in the pinned feed cover Great Britain only: 632/650 PCON24 constituencies compile and the 18 Northern Ireland constituencies have no UC household facts.",
         area_ids=ni_constituencies,
     )
     add(
         target_id="dwp.universal_credit.households",
         geography_level="local_authority",
         reason_id="uc_gb_only_ni_absent",
-        rationale="Universal Credit local-authority facts are GB-only; Northern Ireland local authorities are signed absent.",
+        rationale="DWP Stat-Xplore Universal Credit local-authority facts in the pinned feed cover Great Britain only: 350/361 local authorities compile and the 11 Northern Ireland local authorities have no UC household facts.",
         area_ids=ni_local_authorities,
     )
     for target_id in (
@@ -180,9 +206,31 @@ def _area_signed_deferrals(
             target_id=target_id,
             geography_level="constituency",
             reason_id="uc_children_gb_only_ni_absent",
-            rationale="Universal Credit child-bucket local facts are GB-only; Northern Ireland constituencies are signed absent.",
+            rationale="DWP Stat-Xplore Universal Credit child-bucket facts in the pinned feed cover Great Britain constituencies only: 632/650 compile and the 18 Northern Ireland constituencies have no UC child-bucket household facts.",
             area_ids=ni_constituencies,
         )
+    for target_id in (
+        "hmrc.self_employment_income.amount",
+        "hmrc.self_employment_income.count",
+        "hmrc.employment_income.amount",
+        "hmrc.employment_income.count",
+    ):
+        add(
+            target_id=target_id,
+            geography_level="local_authority",
+            reason_id="spi_la_target_measure_coverage_absent",
+            rationale="HMRC SPI local-authority facts in the pinned feed publish the target count/mean measures for 359/361 crosswalk local authorities; E06000027 has only median SPI measures and E06000053 has no SPI local-authority target-measure rows.",
+            area_ids=spi_la_measure_gap_area_ids,
+        )
+    add(
+        target_id="hmrc.self_employment_income.amount",
+        geography_level="constituency",
+        reason_id="spi_pcon_self_employment_mean_absent",
+        rationale="HMRC SPI constituency facts in the pinned feed publish self_employment_income_count for 650/650 constituencies but self_employment_income_mean for 649/650; E14001416 has the count fact but no mean fact, so count_x_mean cannot form the amount.",
+        area_ids=tuple(
+            area_id for area_id in ("E14001416",) if area_id in constituency_ids
+        ),
+    )
     for target_id in (
         "ons.equiv_net_income_bhc",
         "ons.equiv_net_income_ahc",
@@ -192,15 +240,36 @@ def _area_signed_deferrals(
             target_id=target_id,
             geography_level="local_authority",
             reason_id="msoa_mean_to_la_deferred",
-            rationale="Equivalised-income facts are MSOA-grain mean-valued targets; local-authority aggregation is deferred pending the signed mean-aggregation design.",
+            rationale="ONS equivalised-income facts in the pinned feed are MSOA-grain mean-valued targets, with no local-authority rows; local-authority aggregation is deferred pending the signed mean-aggregation design.",
             area_ids=local_authority_ids,
         )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
-        reason_id="private_rent_non_english_or_masked_absent",
-        rationale="Private-rent local facts are England LA rows only in the active feed; Scotland, Wales, and Northern Ireland local authorities are signed absent pending publisher-compatible area facts.",
-        area_ids=non_english_local_authorities,
+        reason_id="private_rent_pipr_after_target_period",
+        rationale="ONS PIPR private-rent LA facts in the pinned feed are period 2026-06 for 314 crosswalk England/Wales local authorities, so none are at or before the 2025 target period compiled in this run.",
+        area_ids=pipr_after_target_period_area_ids,
+    )
+    add(
+        target_id="ons.rent.private_rent",
+        geography_level="local_authority",
+        reason_id="private_rent_pipr_english_lad_absent",
+        rationale="ONS PIPR private-rent LA facts in the pinned feed omit four English crosswalk local authorities: E06000053, E08000016, E08000019, and E09000001.",
+        area_ids=pipr_lad_absent_area_ids,
+    )
+    add(
+        target_id="ons.rent.private_rent",
+        geography_level="local_authority",
+        reason_id="private_rent_pipr_scotland_brma_grain",
+        rationale="ONS PIPR private-rent facts for Scotland in the pinned feed are published at BRMA statistical_scope grain, not local-authority grain.",
+        area_ids=scottish_local_authorities,
+    )
+    add(
+        target_id="ons.rent.private_rent",
+        geography_level="local_authority",
+        reason_id="private_rent_pipr_ni_absent",
+        rationale="ONS PIPR private-rent facts in the pinned feed include no Northern Ireland local-authority rows.",
+        area_ids=ni_local_authorities,
     )
     return deferrals
 
