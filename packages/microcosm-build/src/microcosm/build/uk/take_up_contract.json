@@ -64,15 +64,16 @@
       "output": "would_claim_uc",
       "entity": "benunit",
       "values": {
-        "2015-01-01": 0.55
+        "2015-01-01": 0.55,
+        "2024-01-01": 0.85
       },
       "source": {
-        "source": "U8 adjudication and upstream issue uk-data#452",
+        "source": "U8 re-adjudication (microcosm#757 uk_target_fit dispositions, issue comment 5427936411) and upstream issue uk-data#452",
         "agency": "PolicyEngine",
-        "citation": "Frozen at 0.55 by adjudication for parity with the incumbent UK pipeline.",
+        "citation": "Raised 0.55 to 0.85 as the pre-registered would_claim_uc lever for the seven UC caseload/two-child-limit targets. Derivation, measured on the rebind packet: at 0.55 the design-weight UC caseload mass is 3.13m benunits against the 6.76m administrative target, a 2.16x required lift the solve could not reach (it stalled at 1.49x, -31%); support scales with the rate, so 0.85 projects 4.84m initial mass and a 1.40x required lift, inside the solve's demonstrated envelope. 0.55 (dated 2015) was the incumbent-parity freeze and stays as history; no published UC take-up statistic exists to source either value (uk-data#452).",
         "status": "frozen_by_adjudication",
         "freeze": {
-          "decision": "U8",
+          "decision": "U8 (re-opened by the 2026-08-26 uk_target_fit disposition)",
           "followup": "uk-data#452"
         }
       }
