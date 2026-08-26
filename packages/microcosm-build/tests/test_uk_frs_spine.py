@@ -1837,3 +1837,40 @@ def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:
     ):
         assert (adults[column] == 0).all()
         assert person[column].notna().all()
+
+
+def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
+    """The first licensed battery run failed at the assembled boundary because
+    the evidence provider consulted all 25 implementations, and an un-run
+    stage's checkpoint hook (correctly) refuses. Each boundary must offer only
+    its executed prefix — an un-run stage being consulted is the regression.
+    """
+
+    tool = _load_tool()
+
+    class _RefusesUntilRun:
+        def __init__(self) -> None:
+            self.ran = False
+
+        def checkpoint_metadata(self) -> dict[str, object]:
+            if not self.ran:
+                raise RuntimeError(
+                    "checkpoint metadata requires a completed stage run."
+                )
+            return {"evidence": {"stage": "late_stage", "ok": True}}
+
+    late = _RefusesUntilRun()
+    implementations = {"early_stage": SimpleNamespace(), "late_stage": late}
+
+    # The assembled-boundary call: only the executed prefix is offered, so the
+    # un-run late stage is never consulted and nothing raises.
+    assembled = tool._collect_stage_evidence(
+        stage_names=("early_stage",), implementations=implementations
+    )
+    assert assembled == {}
+
+    late.ran = True
+    transferred = tool._collect_stage_evidence(
+        stage_names=("early_stage", "late_stage"), implementations=implementations
+    )
+    assert transferred == {"late_stage": {"stage": "late_stage", "ok": True}}

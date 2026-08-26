@@ -644,25 +644,34 @@ def _run_plan_with_spine_sampling(
         return spine_frame, spine_records, sampling
     assembled_end = min(11, len(plan.stages))
     frame, assembled_records = StagePlan(plan.stages[1:assembled_end]).run(spine_frame)
+    # Each boundary offers only the stages that have actually run: asking a
+    # later stage for checkpoint evidence would (correctly) raise, and the
+    # first licensed battery run did exactly that at the assembled boundary.
+    executed = tuple(stage.name for stage in plan.stages[:assembled_end])
     if spine_battery is not None:
         _run_spine_gate_phase(
             spine_battery,
             "assembled",
             frame=frame,
             stage_evidence=(
-                stage_evidence_provider() if stage_evidence_provider is not None else {}
+                stage_evidence_provider(executed)
+                if stage_evidence_provider is not None
+                else {}
             ),
         )
     if assembled_end == len(plan.stages):
         return frame, (*spine_records, *assembled_records), sampling
     frame, tail_records = StagePlan(plan.stages[assembled_end:]).run(frame)
+    executed = tuple(stage.name for stage in plan.stages)
     if spine_battery is not None:
         _run_spine_gate_phase(
             spine_battery,
             "transferred",
             frame=frame,
             stage_evidence=(
-                stage_evidence_provider() if stage_evidence_provider is not None else {}
+                stage_evidence_provider(executed)
+                if stage_evidence_provider is not None
+                else {}
             ),
         )
     return frame, (*spine_records, *assembled_records, *tail_records), sampling
@@ -977,8 +986,8 @@ def main(argv: list[str] | None = None) -> int:
             sample_fraction=args.sample_fraction,
             sample_seed=args.sample_seed,
             spine_battery=spine_battery,
-            stage_evidence_provider=lambda: _collect_stage_evidence(
-                stage_names=_STAGE_NAMES,
+            stage_evidence_provider=lambda executed: _collect_stage_evidence(
+                stage_names=executed,
                 implementations=implementations,
             ),
         )
