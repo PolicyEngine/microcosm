@@ -1,0 +1,387 @@
+"""The release-cut certification producer and its composer refusals."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.gate_battery import (
+    BlockingMode,
+    EvidenceContext,
+    FunctionBinding,
+    GateBatteryRun,
+    gate_signing_key_env,
+)
+from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime import release_certification
+from microcosm.build.uk_runtime.calibration_run import (
+    UK_CALIBRATION_GATE_SCOPE,
+    UK_NATIONAL_GATE_SCOPE,
+    UK_SHARED_GATE_IDS,
+    UK_SPINE_GATE_SCOPE,
+    _resign_gate_report,
+    _scoped_gate_manifest,
+)
+from microcosm.build.uk_runtime.release_certification import (
+    UKReleaseCertificationError,
+    compose_uk_release_certification,
+    rehydrate_uk_fit_weight_records,
+    run_uk_release_cut_battery,
+    uk_release_cut_scope_exclusions,
+)
+
+_TEST_KEY = base64.b64encode(bytes(range(32))).decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _signing_key(monkeypatch):
+    monkeypatch.setenv(gate_signing_key_env("uk"), _TEST_KEY)
+
+
+def _stub_registry():
+    """A registry that passes every declared gate, over the real spec.
+
+    Digests derive from the committed manifest alone, so parts built with
+    this registry carry the same ``gates_manifest_sha256`` / ``policy_sha256``
+    the production registry would produce — which is exactly what the
+    composer verifies.
+    """
+
+    spec = load_country_spec("uk").gates
+    parameter_keys: dict[str, set[str]] = {}
+    for entry in spec.gates:
+        parameter_keys.setdefault(entry.gate, set()).update(entry.parameters)
+
+    def _passing(name):
+        def _gate(**_kwargs):
+            return GateResult(name=name, passed=True)
+
+        return _gate
+
+    return {
+        gate: FunctionBinding(
+            name=gate,
+            gate=_passing(gate),
+            parameter_keys=frozenset(keys),
+        )
+        for gate, keys in parameter_keys.items()
+    }
+
+
+def _write_part(path: Path, scope, phases, *, release_id, release_candidate,
+                release_evidence=None, augment=None, block_phase=None):
+    registry = _stub_registry()
+    manifest = _scoped_gate_manifest(
+        frozenset(scope),
+        phases=tuple(phases),
+        policy_suffix={
+            frozenset(UK_SPINE_GATE_SCOPE): "spine_build_scope",
+            frozenset(UK_CALIBRATION_GATE_SCOPE): "calibration_seam_scope",
+            frozenset(UK_NATIONAL_GATE_SCOPE): "release_cut_scope",
+        }[frozenset(scope)],
+    )
+    battery = GateBatteryRun(
+        manifest,
+        release_id=release_id,
+        report_path=path,
+        release_candidate=release_candidate,
+        registry=registry,
+        release_evidence=release_evidence or {},
+    )
+    for phase in phases:
+        battery.run_phase(phase, EvidenceContext(artifacts={}))
+        battery.enforce(phase, mode=BlockingMode.MARKS_ARTIFACT)
+    payload = battery.report_payload()
+    if augment:
+        payload.update(augment)
+        _resign_gate_report(payload)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return payload
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.fixture
+def green_certification_inputs(tmp_path: Path):
+    """Three green signed parts plus a closed identity join."""
+
+    candidate = tmp_path / "microcosm_uk_2024.h5"
+    candidate.write_bytes(b"candidate-bytes")
+    candidate_sha = _sha(candidate)
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text('{"targets": []}', encoding="utf-8")
+    diagnostics_sha = _sha(diagnostics)
+
+    spine_report = tmp_path / "spine.spine_gates.json"
+    _write_part(
+        spine_report,
+        UK_SPINE_GATE_SCOPE,
+        ("assembled", "transferred"),
+        release_id="uk-frs-spine-test",
+        release_candidate=True,
+    )
+    seam_report = tmp_path / "terminal_gates.json"
+    _write_part(
+        seam_report,
+        UK_CALIBRATION_GATE_SCOPE,
+        ("terminal",),
+        release_id="dev-seam-test",
+        release_candidate=False,
+        release_evidence={"calibration_diagnostics_sha256": diagnostics_sha},
+        augment={
+            "posture": "calibration_seam",
+            "scope_exclusions": {},
+            "aggregate_admin_measurement": {},
+        },
+    )
+    release_cut_report = tmp_path / "release_cut_gates.json"
+    _write_part(
+        release_cut_report,
+        UK_NATIONAL_GATE_SCOPE,
+        ("preflight", "terminal"),
+        release_id="uk-757-first-certified-cut",
+        release_candidate=True,
+        release_evidence={"calibration_diagnostics_sha256": diagnostics_sha},
+        augment={
+            "posture": "release_cut",
+            "scope_exclusions": uk_release_cut_scope_exclusions(),
+            "aggregate_admin_measurement": {},
+        },
+    )
+    seam_report_sha = _sha(seam_report)
+    sidecar = {
+        "stages": ["frs_spine"],
+        "spine_gate_report": {
+            "path": str(spine_report),
+            "sha256": _sha(spine_report),
+        },
+    }
+    build_record = {
+        "run_config": {
+            "doctrine": {"epochs": 1500},
+            "doctrine_overrides": {"epochs": {"default": 256, "effective": 1500}},
+        },
+        "spine_provenance": {
+            "spine_gate_report": {"sha256": _sha(spine_report)},
+        },
+        "artifacts": {
+            "staging_h5": {"sha256": candidate_sha},
+            "diagnostics_json": {"sha256": diagnostics_sha},
+            "terminal_gate_json": {"sha256": seam_report_sha},
+        },
+    }
+    score_receipt = tmp_path / "score_vs_enhanced_frs.json"
+    score_receipt.write_text(
+        json.dumps({"candidate": {"sha256": candidate_sha}, "verdict": "scored"}),
+        encoding="utf-8",
+    )
+    return {
+        "release_id": "uk-757-first-certified-cut",
+        "candidate_name": "microcosm_uk_2024",
+        "candidate_path": candidate,
+        "candidate_sha256": candidate_sha,
+        "spine_report_path": spine_report,
+        "seam_report_path": seam_report,
+        "release_cut_report_path": release_cut_report,
+        "spine_sidecar": sidecar,
+        "build_record": build_record,
+        "score_receipt_path": score_receipt,
+        "exclusions_evaluated_on": date(2026, 8, 27),
+        "certification_path": tmp_path / "release_certification.json",
+    }
+
+
+def test_scope_exclusions_cover_every_non_national_gate():
+    exclusions = uk_release_cut_scope_exclusions()
+    declared = {entry.id for entry in load_country_spec("uk").gates.gates}
+    assert set(exclusions) | set(UK_NATIONAL_GATE_SCOPE) == declared
+    assert not set(exclusions) & set(UK_NATIONAL_GATE_SCOPE)
+    assert all(exclusions.values())
+
+
+def test_rehydrate_fit_weight_records():
+    assert rehydrate_uk_fit_weight_records({}) is None
+    records = rehydrate_uk_fit_weight_records(
+        {
+            "fit_weight_records": {
+                "was_wealth": [
+                    {"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}
+                ],
+            }
+        }
+    )
+    assert [(r.fit_name, r.weight_kind) for r in records] == [
+        ("uk_was_2018_20_wealth:savings", "design")
+    ]
+    # A fitting stage that recorded nothing coerces the whole artifact to
+    # (), which the weights-audit binding fails — never a vacuous pass.
+    assert (
+        rehydrate_uk_fit_weight_records(
+            {"fit_weight_records": {"was_wealth": []}}
+        )
+        == ()
+    )
+
+
+def test_compose_green_certification(green_certification_inputs):
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["shippable"] is True
+    assert certification["kind"] == "uk_release_certification"
+    assert set(certification["parts"]) == {"spine", "calibration_seam", "release_cut"}
+    declared = {entry.id for entry in load_country_spec("uk").gates.gates}
+    union = set()
+    for part in certification["parts"].values():
+        union.update(part["entry_ids"])
+    assert union == declared
+    assert certification["spec"]["shared_gate_ids"] == sorted(UK_SHARED_GATE_IDS)
+    assert certification["doctrine"]["overrides"] == {
+        "epochs": {"default": 256, "effective": 1500}
+    }
+    written = json.loads(
+        green_certification_inputs["certification_path"].read_text(encoding="utf-8")
+    )
+    assert written["attestation"]["signature"]
+    # The certification's own signature verifies under the release key.
+    import hmac as hmac_module
+
+    from microcosm.build.logbook import canonical_json_bytes
+
+    unsigned = json.loads(json.dumps(written))
+    unsigned["attestation"]["signature"] = None
+    recomputed = hmac_module.new(
+        base64.b64decode(_TEST_KEY), canonical_json_bytes(unsigned), hashlib.sha256
+    ).hexdigest()
+    assert recomputed == written["attestation"]["signature"]
+
+
+def test_compose_refuses_tampered_part_signature(green_certification_inputs):
+    seam_path = green_certification_inputs["seam_report_path"]
+    payload = json.loads(seam_path.read_text(encoding="utf-8"))
+    payload["release_id"] = "dev-seam-tampered"
+    seam_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    # Keep the build record's byte pin in step so the signature check is
+    # the refusal that fires, not the identity join.
+    green_certification_inputs["build_record"]["artifacts"]["terminal_gate_json"][
+        "sha256"
+    ] = _sha(seam_path)
+    with pytest.raises(UKReleaseCertificationError, match="signature"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_entry_id_gap(green_certification_inputs):
+    cut_path = green_certification_inputs["release_cut_report_path"]
+    payload = json.loads(cut_path.read_text(encoding="utf-8"))
+    payload["gates"].pop("uk_qrf_tail_concentration")
+    cut_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    with pytest.raises(UKReleaseCertificationError, match="entry ids"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_blocked_part(green_certification_inputs):
+    spine_path = green_certification_inputs["spine_report_path"]
+    payload = json.loads(spine_path.read_text(encoding="utf-8"))
+    payload["blocked_at_phase"] = "transferred"
+    spine_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    green_certification_inputs["spine_sidecar"]["spine_gate_report"]["sha256"] = _sha(
+        spine_path
+    )
+    green_certification_inputs["build_record"]["spine_provenance"][
+        "spine_gate_report"
+    ]["sha256"] = _sha(spine_path)
+    with pytest.raises(UKReleaseCertificationError, match="blocked"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_failing_release_blocking_entry(green_certification_inputs):
+    cut_path = green_certification_inputs["release_cut_report_path"]
+    payload = json.loads(cut_path.read_text(encoding="utf-8"))
+    payload["gates"]["uk_support"]["status"] = "failed"
+    payload["gates"]["uk_support"]["failures"] = ["synthetic failure"]
+    cut_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    with pytest.raises(UKReleaseCertificationError, match="release-blocking"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_sidecar_report_mismatch(green_certification_inputs):
+    green_certification_inputs["spine_sidecar"]["spine_gate_report"]["sha256"] = (
+        "0" * 64
+    )
+    with pytest.raises(UKReleaseCertificationError, match="sidecar"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_candidate_mismatch(green_certification_inputs):
+    green_certification_inputs["build_record"]["artifacts"]["staging_h5"][
+        "sha256"
+    ] = "0" * 64
+    with pytest.raises(UKReleaseCertificationError, match="staged a different"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_diagnostics_divergence(green_certification_inputs):
+    green_certification_inputs["build_record"]["artifacts"]["diagnostics_json"][
+        "sha256"
+    ] = "0" * 64
+    with pytest.raises(UKReleaseCertificationError, match="diagnostics"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_foreign_release_id(green_certification_inputs):
+    green_certification_inputs["release_id"] = "uk-some-other-cut"
+    with pytest.raises(UKReleaseCertificationError, match="release id"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_unpinned_score_receipt(green_certification_inputs):
+    green_certification_inputs["score_receipt_path"].write_text(
+        '{"verdict": "scored"}', encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="score receipt"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypatch):
+    monkeypatch.delenv(gate_signing_key_env("uk"))
+    with pytest.raises(UKReleaseCertificationError, match="must be set"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        release_certification,
+        "_aggregate_admin_totals",
+        lambda frame, manifest: ({}, {"stub": True}),
+    )
+    report_path = tmp_path / "release_cut_gates.json"
+    payload = run_uk_release_cut_battery(
+        object(),
+        report_path=report_path,
+        release_id="uk-757-first-certified-cut",
+        diagnostics_sha256="a" * 64,
+        coverage_engine=object(),
+        build_stage_names=("frs_spine",),
+        ledger_registries={2023: object(), 2025: object()},
+        parity_evidence=object(),
+        fit_weight_records=None,
+        input_mass_reference={},
+        exclusions_evaluated_on=date(2026, 8, 27),
+        gate_registry=_stub_registry(),
+    )
+    assert payload["posture"] == "release_cut"
+    assert payload["release_candidate"] is True
+    assert payload["shippable"] is True
+    assert set(payload["gates"]) == set(UK_NATIONAL_GATE_SCOPE)
+    assert payload["blocked_at_phase"] is None
+    assert set(payload["scope_exclusions"]) == (
+        set(UK_SPINE_GATE_SCOPE) | set(UK_CALIBRATION_GATE_SCOPE)
+    ) - set(UK_NATIONAL_GATE_SCOPE)
+    on_disk = json.loads(report_path.read_text(encoding="utf-8"))
+    assert on_disk["attestation"]["signature"] == payload["attestation"]["signature"]

@@ -504,6 +504,52 @@ def _collect_stage_evidence(
     return evidence_by_stage
 
 
+def _collect_fit_weight_records(
+    *,
+    stage_names: Sequence[str],
+    implementations: Mapping[str, object],
+) -> dict[str, list[dict[str, str]]]:
+    """Persist each fitting stage's resolved weight kinds into the sidecar.
+
+    The terminal weights audit (``uk_weights_audit``) consumes
+    :class:`FitWeightRecord` evidence that only exists on live stage
+    objects; the release-cut certification producer runs in a later
+    process, so the sidecar carries the records across the run boundary.
+    Duck-typed like ``stage_evidence``: every stage whose transform exposes
+    ``fit_weight_records`` contributes, in stage order. A fitting stage
+    whose records are missing, unreadable, or empty records an empty list —
+    the audit binding fails an empty record set, so the gap stays visible
+    rather than vanishing from the sidecar.
+    """
+
+    records_by_stage: dict[str, list[dict[str, str]]] = {}
+    for stage_name in stage_names:
+        implementation = implementations.get(stage_name)
+        if implementation is None:
+            continue
+        # Detect the hook without evaluating it: a raising property must
+        # count as a fitting stage with unreadable records, not vanish.
+        exposes_records = (
+            getattr(type(implementation), "fit_weight_records", None) is not None
+            or "fit_weight_records" in getattr(implementation, "__dict__", {})
+        )
+        if not exposes_records:
+            continue
+        try:
+            records = tuple(implementation.fit_weight_records or ())
+        except Exception:  # noqa: BLE001 - unreadable records fail the audit
+            records_by_stage[stage_name] = []
+            continue
+        records_by_stage[stage_name] = [
+            {
+                "fit_name": str(record.fit_name),
+                "weight_kind": str(record.weight_kind),
+            }
+            for record in records
+        ]
+    return records_by_stage
+
+
 def _build_sidecar(
     *,
     frame,
@@ -1072,6 +1118,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         if stage_evidence:
             sidecar["stage_evidence"] = stage_evidence
+        fit_weight_records = _collect_fit_weight_records(
+            stage_names=_STAGE_NAMES,
+            implementations=implementations,
+        )
+        if fit_weight_records:
+            sidecar["fit_weight_records"] = fit_weight_records
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
