@@ -2,11 +2,11 @@
 
 ## State
 
-Design and consumer review are complete. The final salvage tree is a useful
-implementation base, but it needs two additional fail-closed checks before it
-is trustworthy: reject a redundant gate-failure opt-in on a green pool, and
-bind mixed preflight inputs so a release manifest cannot display one pool's
-red verdict while static checks authenticate another pool.
+Containment, opt-in carriage, and preflight surfacing are implemented. Focused
+builder, authenticated-H5, and preflight tests pass. The implementation now
+rejects both redundant green-pool waivers and any release-manifest receipt that
+does not exactly match the pool authenticated by preflight; the preflight's
+historically required base/selection inputs and exit semantics are unchanged.
 
 ## Done
 
@@ -32,14 +32,31 @@ red verdict while static checks authenticate another pool.
   status 1 and stops shell chains; ACS-local derivatives keep a donor revision
   but do not project the nested red verdict; generic release consumers tolerate
   and ignore the additive receipt.
+- Added a release/preflight-specific authenticated pool loader over the shared
+  `require_simulation_ready` seam. The strict simulation-ready and existing
+  scoring-only loader contracts remain unchanged.
+- Closed the bare-H5 path by detecting either the canonical sibling manifest
+  or the H5's stamped pool identity, requiring the sidecar, authenticating the
+  publication triple, and binding it to the exact requested H5 path.
+- Added `--allow-gate-failed-base-pool` only to the legacy `--base-h5` arm.
+  It admits only a current authenticated stacked `gate_failed` pool, rejects a
+  green or non-pool use, and never affects the exact-k arm.
+- Added the self-contained `base_pool` receipt to both manifests, including
+  status/readiness, immutable pool identities, flag use, gates JSON SHA-256,
+  failure count/list, and the complete terminal verdict.
+- Kept the static preflight inputs mandatory, authenticated its base identically,
+  displayed red evidence prominently without changing its exit calculation,
+  and required optional release-manifest carriage to match the authenticated
+  receipt exactly.
+- Hardened carried verdict normalization so nested pass/failure pairs and the
+  aggregate verdict must be coherent and a red battery cannot report zero
+  failures.
+- Passed focused Ruff and the complete builder/H5/preflight test files after
+  the containment changes.
 
 ## Next
 
-- Import the re-reviewed salvage implementation as coherent local commits.
-- Add redundant-opt-in and mixed-preflight receipt-binding regressions and
-  enforce both contracts.
-- Run the focused containment, carriage, preflight, exact-k, and data-contract
-  suites.
+- Run the broader affected exact-k, launcher, and data-contract suites.
 - Run Ruff and every pytest shard in its own process, then write `out.md`.
 
 ## Historical prior lane
