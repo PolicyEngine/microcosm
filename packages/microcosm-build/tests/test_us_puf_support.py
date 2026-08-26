@@ -13,6 +13,7 @@ from microcosm.build.us_runtime import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
     CPS_CARRIED_SPM_UNIT_INPUTS,
+    CPS_REPORTED_COVERAGE_SOURCE_COLUMNS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
     clone_us_frame_for_puf_support,
@@ -1162,6 +1163,41 @@ def test_cps_carried_medicaid_uses_narrow_current_leaf_without_cross_talk() -> N
     assert {
         column: person[column].tolist() for column in expected_health_leaves
     } == expected_health_leaves
+
+
+def test_cps_carried_reported_coverage_mapping_is_exact_and_overlap_safe() -> None:
+    assert CPS_REPORTED_COVERAGE_SOURCE_COLUMNS == {
+        "has_champva_health_coverage_at_interview": "NOW_CHAMPVA",
+        "has_esi": "NOW_GRP",
+        "has_indian_health_service_coverage_at_interview": "NOW_IHSFLG",
+        "has_marketplace_health_coverage_at_interview": "NOW_MRK",
+        "has_medicaid_health_coverage_at_interview": "NOW_CAID",
+        "has_non_marketplace_direct_purchase_health_coverage_at_interview": "NOW_NONM",
+        "has_other_means_tested_health_coverage_at_interview": "NOW_OTHMT",
+        "has_tricare_health_coverage_at_interview": "NOW_MIL",
+        "has_va_health_coverage_at_interview": "NOW_VACARE",
+    }
+    frame = _raw_asec_predictor_frame()
+    for source in CPS_REPORTED_COVERAGE_SOURCE_COLUMNS.values():
+        frame.table("person")[source] = 1
+
+    person = derive_us_cps_carried_inputs(frame).table("person")
+
+    assert all(
+        person[output].all() for output in CPS_REPORTED_COVERAGE_SOURCE_COLUMNS
+    )
+
+
+def test_cps_carried_rejects_null_reported_coverage_vintage_as_false() -> None:
+    frame = _raw_asec_predictor_frame()
+    frame.table("person")["source_year"] = [2022, 2023, 2024]
+    frame.table("person")["NOW_IHSFLG"] = [np.nan, np.nan, 1]
+
+    with pytest.raises(
+        ValueError,
+        match=r"NOW_IHSFLG: 2 blank/non-numeric value",
+    ):
+        derive_us_cps_carried_inputs(frame)
 
 
 def test_cps_carried_derives_reported_enrollment_by_spm_unit() -> None:

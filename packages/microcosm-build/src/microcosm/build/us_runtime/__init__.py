@@ -159,6 +159,7 @@ from microcosm.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
     CPS_CARRIED_SPM_UNIT_INPUTS,
+    CPS_REPORTED_COVERAGE_SOURCE_COLUMNS,
     CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN,
     CPS_REPORTED_TANF_TYPE_RAW_COLUMN,
     CPS_REPORTED_WIC_RAW_COLUMN,
@@ -166,6 +167,7 @@ from microcosm.build.us_runtime.cps_carried import (
     derive_us_cps_carried_inputs,
     reported_tanf_enrollment_by_spm_unit,
     reported_wic_receipt_carrier,
+    validate_cps_reported_coverage_sources,
 )
 from microcosm.build.us_runtime.demographics import (
     AGE_BANDS,
@@ -1092,9 +1094,11 @@ __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
+    "CPS_REPORTED_COVERAGE_SOURCE_COLUMNS",
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
+    "validate_cps_reported_coverage_sources",
     "WIC_CARRIER_ADJUDICATION_URL",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",

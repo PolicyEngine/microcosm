@@ -14,10 +14,16 @@
   exposed in this session; round 1 also recorded a sandbox-blocked registry.
   This pass therefore uses direct source/call-site traces, checkpointed-frame
   receipts, and focused regression tests.
-- Read-only checkpoint evidence now identifies two distinct dispositions: the
-  IHS native mapper is exact and exposes a source/comparison mismatch, while
-  the other three movements come from deleting complete ESI/IHS steps from a
-  chained QRF family.
+- Read-only checkpoint evidence identifies two distinct mechanisms: the IHS
+  ACS mapper is exact but the pooled ASEC source silently treated missing
+  2022/2023 health recodes as false; Marketplace moved when complete ESI/IHS
+  latent model-draw steps were deleted from its chained QRF family, while the
+  later direct-purchase and TRICARE draws also inherit the changed narrow
+  Medicaid donor outcome.
+- The generating repairs, regression pins, and deterministic evidence are
+  implemented and the full permitted suite is green. No build has run; the
+  corrected ASEC input receipts and existing host checkpoints are read-only
+  evidence only.
 
 ## Round 2 done
 
@@ -33,16 +39,29 @@
   stable target indexes did not preserve the family chain after native holes.
 - Wrote `experiments/health_labels/ROUND2_DIAGNOSIS.md` and extended the IHS
   owner-adjudication equation without changing any comparator rule.
+- Centralized the exact nine ASEC label/source mappings and made each source
+  vintage fail closed unless the complete nonblank `{1, 2}` surface is present.
+- Restored every declared target's latent model-draw step in each partial
+  bounded ACS family, preserving complete native output cells and durable bank
+  order.
+- Bumped and regenerated the ACS transfer execution contract and invalidated
+  target banks written under the old partial-family semantics.
+- Added exact mapping/overlap, missing-vintage, native-preservation,
+  peer-invariance, and cold/warm bank regressions; all focused checks pass.
+- Verified the complete suite: build 5,979 passed/37 skipped (the 60
+  subprocess-sensitive logbook and coverage-tool tests ran as an isolated
+  green group); calibrate 201 passed; data 275 passed/1 skipped; fit 93 passed;
+  frame 294 passed/36 skipped.
+- Verified Ruff, `git diff --check`, the generated US bundle at
+  `0f9ddf0bb16469459a5c87ec1667d74b9a1425d5b3d1753f80e26dba8f000e10`,
+  and spec-engine coverage at 41,380/41,380 fields and 40/40 inventory checks.
 
 ## Round 2 next
 
-- Commit this round-2 starting checkpoint after the required quality gate.
-- Make complete family peers conditioning-only chain steps while retaining
-  target-level no-overwrite behavior and durable bank positions.
-- Pin the chain behavior and the exact label mappings with focused regressions.
-- Add mapping regressions, run the whole permitted suite under the 15 GiB RSS
-  ceiling, update `_LANE-NOTES.md` with next-run ratio expectations, and write
-  the completion report to `FINAL_REPORT.md`.
+- Commit the coherent generating-repair step with its updated journal.
+- Write the completion report to `FINAL_REPORT.md`, commit it, and leave the
+  clean branch ready for the next host-owned cold 1% run using the corrected
+  ASEC source receipts.
 
 ## State
 

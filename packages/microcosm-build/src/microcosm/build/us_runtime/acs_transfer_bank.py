@@ -31,7 +31,9 @@ ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION = 1
 # 2: The inherited pool identity now binds the complete canonical take-up
 #    contract. Version-1 banks are deliberately stale even though the H5
 #    serialization shape is unchanged: correctness takes priority over warmth.
-ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION = 2
+# 3: Partially complete target families retain every declared target as an
+#    ordered conditioning step. Version-2 banks may omit those durable steps.
+ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION = 3
 
 ACS_TRANSFER_TARGET_BANK_ARTIFACT_KIND = (
     "populace_us_multispine_acs_transfer_target_checkpoint"

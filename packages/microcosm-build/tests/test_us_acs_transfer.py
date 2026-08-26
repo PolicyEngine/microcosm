@@ -801,10 +801,10 @@ def _health_native_gap_frames() -> tuple[Frame, Frame, dict[str, pd.Series]]:
     return recipient, donor, {native_esi.name: native_esi, native_ihs.name: native_ihs}
 
 
-def test_complete_native_health_labels_are_not_refit_with_missing_family_peer(
+def test_complete_native_health_labels_remain_chain_companions_without_overwrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """HINS-backed leaves stay native while an unavailable peer is transferred."""
+    """HINS-backed leaves advance the joint chain but stay native in output."""
 
     recipient, donor, native = _health_native_gap_frames()
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
@@ -829,7 +829,13 @@ def test_complete_native_health_labels_are_not_refit_with_missing_family_peer(
     assert _MeanQRF.calls
     assert {
         tuple(call["targets"].columns) for call in _MeanQRF.calls
-    } == {("has_champva_health_coverage_at_interview",)}
+    } == {
+        (
+            "has_champva_health_coverage_at_interview",
+            "has_esi",
+            "has_indian_health_service_coverage_at_interview",
+        )
+    }
     assert {item.column for item in result.imputed_inputs} == {
         "has_champva_health_coverage_at_interview"
     }
@@ -837,11 +843,11 @@ def test_complete_native_health_labels_are_not_refit_with_missing_family_peer(
         pd.testing.assert_series_equal(result.frame.person[target], before)
 
 
-def test_banked_health_family_keeps_requested_indexes_across_native_holes(
+def test_banked_health_family_persists_complete_native_chain_companions(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Native middle targets cannot renumber the durable health target bank."""
+    """Native middle targets retain their durable chain steps and indexes."""
 
     _lock_bank_fixture_threads(monkeypatch)
     recipient, donor, native = _health_native_gap_frames()
@@ -873,14 +879,11 @@ def test_banked_health_family_keeps_requested_indexes_across_native_holes(
 
     _assert_transfer_results_exact(cold, monolithic)
     _assert_transfer_results_exact(warm, monolithic)
-    assert set(warm_bank.receipt()["targets"]) == {"0", "3"}
+    assert set(warm_bank.receipt()["targets"]) == {"0", "1", "2", "3"}
     assert {
         record["descriptor"]["model_target"]
         for record in warm_bank.receipt()["targets"].values()
-    } == {
-        "has_champva_health_coverage_at_interview",
-        "has_va_health_coverage_at_interview",
-    }
+    } == set(targets)
     assert all(
         record["source"] == "checkpoint"
         for record in warm_bank.receipt()["targets"].values()
@@ -888,6 +891,48 @@ def test_banked_health_family_keeps_requested_indexes_across_native_holes(
     for result in (monolithic, cold, warm):
         for target, before in native.items():
             pd.testing.assert_series_equal(result.frame.person[target], before)
+
+
+def test_prefilled_native_chain_companions_do_not_change_missing_peer_draws(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native output completeness cannot perturb a peer's declared QRF chain."""
+
+    _lock_bank_fixture_threads(monkeypatch)
+    recipient, donor, native = _health_native_gap_frames()
+    targets = (
+        "has_champva_health_coverage_at_interview",
+        "has_esi",
+        "has_indian_health_service_coverage_at_interview",
+        "has_va_health_coverage_at_interview",
+    )
+    families = {"person": {"model_required_boolean": targets}}
+
+    missing_native = transfer_acs_inputs(
+        _recipient_frame(),
+        donor,
+        target_families=families,
+        seed=4,
+        n_estimators=1,
+    )
+    prefilled_native = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families=families,
+        seed=4,
+        n_estimators=1,
+    )
+
+    for peer in (
+        "has_champva_health_coverage_at_interview",
+        "has_va_health_coverage_at_interview",
+    ):
+        pd.testing.assert_series_equal(
+            prefilled_native.frame.person[peer],
+            missing_native.frame.person[peer],
+        )
+    for target, before in native.items():
+        pd.testing.assert_series_equal(prefilled_native.frame.person[target], before)
 
 
 def test_declared_plan_carries_the_23_stage_base_surface() -> None:
@@ -1071,18 +1116,18 @@ def test_target_bank_cold_output_matches_unbanked_monolith(
     assert all(path.is_file() for path in _bank_paths(bank))
 
 
-def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
+def test_target_bank_materializer_v2_artifacts_fail_closed_with_named_receipts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _lock_bank_fixture_threads(monkeypatch)
-    bank_root = tmp_path / "materializer-v1-bank"
+    bank_root = tmp_path / "materializer-v2-bank"
 
     with monkeypatch.context() as legacy:
         legacy.setattr(
             acs_transfer_bank_module,
             "ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION",
-            1,
+            2,
         )
         legacy_bank = _bank_store(bank_root)
         baseline = _run_bank_fixture(legacy_bank)
@@ -1090,9 +1135,9 @@ def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
         assert all(path.is_file() for path in legacy_paths)
         for path in legacy_paths:
             metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(path)
-            assert metadata["materializer_version"] == 1
+            assert metadata["materializer_version"] == 2
 
-    assert acs_transfer_bank_module.ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION == 2
+    assert acs_transfer_bank_module.ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION == 3
     current_bank = _bank_store(bank_root)
     rebuilt = _run_bank_fixture(current_bank)
 

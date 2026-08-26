@@ -42,19 +42,19 @@
 ### Initial code trace
 
 - ASEC source flags are converted with the strict `code == 1` rule and mapped
-  into the nine PolicyEngine leaves in
-  `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:413`
-  and
-  `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:503`.
+  into the nine PolicyEngine leaves
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:57-69`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:431-438`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:555-560`).
 - The ACS loader currently selects no health fields because its required
   person tuple stops at `PWGTP` and its optional tuple is empty
   (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_pums.py:72`,
   `packages/microcosm-build/src/microcosm/build/us_runtime/acs_pums.py:88`,
   `packages/microcosm-build/src/microcosm/build/us_runtime/acs_pums.py:215`).
 - Missing ACS leaves enter the declared boolean QRF family
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:356`),
-  while complete native recipient columns are excluded from active fits
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:356-365`).
+  At round-2 entry, commit `7a66c5a9` excluded complete native recipient
+  columns from active fits (`7a66c5a9:packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2420`).
 
 ### Next
 
@@ -104,11 +104,11 @@
   (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:127-139`).
 - The ASEC Medicaid mapping now selects `NOW_CAID`; the other eight ASEC health
   mappings are unchanged
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:413-433`).
-- Complete native targets are omitted from active QRF families while missing
-  peers retain their requested target-bank positions
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:967-1029`,
-  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2420`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:57-69`).
+- In round-1 commit `7a66c5a9`, complete native targets were omitted from
+  active QRF families while missing peers retained their requested target-bank
+  positions (`7a66c5a9:packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:967-1029`,
+  `7a66c5a9:packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2420`).
 
 ### Focused regression receipt
 
@@ -160,10 +160,11 @@ impact trace used direct source call sites and focused regressions.
 
 ### Per-leg diagnosis
 
-- IHS: ASEC remains 8 positives / weight 197,606.039624; baseline ACS QRF had
-  12 / 46,033.921631. Native `HINS7 == 1` has exactly 252 / 482,171.216580,
-  producing 2.468303. No extra category enters the mapper: this is a
-  source/comparison mismatch, not a band-tunable derivation.
+- IHS, initial frame trace: ASEC has 8 positives / weight 197,606.039624;
+  baseline ACS QRF had 12 / 46,033.921631. Native `HINS7 == 1` has exactly 252
+  / 482,171.216580, producing 2.468303. No extra ACS category enters the
+  mapper. The deeper per-vintage source audit below supersedes the preliminary
+  conclusion that this was only a comparison mismatch.
 - Marketplace: ASEC remains 157 / 2,908,019.635846. ACS moved from 872 /
   2,360,680.784026 to 795 / 2,125,795.272305; 1,579 same-person rows flipped.
 - Non-Marketplace direct purchase: ASEC remains 107 / 2,028,850.769034. ACS
@@ -179,9 +180,9 @@ impact trace used direct source call sites and focused regressions.
 
 - Keep the exact HINS7 and ASEC `NOW_* == 1` mappings. Do not restore the IHS
   QRF underprediction or map `HINS2`/`HINS5` onto narrower leaves.
-- Repair family activation so complete native peers participate as
-  conditioning-only chain steps whenever a peer is missing; target null masks
-  remain the authority that prevents overwriting native cells.
+- Repair family activation so every declared target contributes its latent
+  model-draw chain step whenever a peer is missing; target null masks remain
+  the authority that prevents overwriting complete native cells.
 - `experiments/health_labels/ROUND2_DIAGNOSIS.md` carries the full mass table,
   code trace, and IHS owner-only absence equation. Marketplace, direct purchase,
   and TRICARE retain the previously documented owner-only absence equation.
@@ -192,3 +193,82 @@ impact trace used direct source call sites and focused regressions.
   and run focused cold/warm target-bank tests.
 - Run the complete permitted Ruff/package-shard gate below 15 GiB RSS.
 - End this journal with evidence-grounded next-host-run ratio expectations.
+
+## 2026-08-25 — round-2 generating repairs
+
+### Deeper IHS source diagnosis
+
+- The pooled checkpoint hid a partial input schema. All 1,368 sampled 2022
+  rows (weight 25,266,038.707667) and 1,478 sampled 2023 rows
+  (26,972,301.358297) have `NOW_IHSFLG` null; the only 8 reporters, weight
+  197,606.039624, came from the complete 2024 vintage.
+- The generic ASEC source reader filled those nulls with zero before the
+  `code == 1` operator. This was a generating defect even though the ACS
+  `HINS7` mapping itself was exact.
+- Read-only re-extraction receipt
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/receipt_720.json`
+  pins corrected 2022/2023 inputs. Joining the same sampled people yields 7
+  2022 reporters / weight 72,245.403261, 7 2023 reporters / 23,196.524112,
+  and the unchanged 8 2024 reporters / 197,606.039624: pooled ASEC mass
+  293,047.966998, incidence 0.003624519779.
+- The exact next-host input tuple is
+  `2022=/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/census_cps_2022.h5`
+  (SHA-256 `797fb7e0ea3e94a52dc6c9c7f5a01d70d28a6c5620f3c112bcbd7c6cf6cffe9f`),
+  `2023=/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/census_cps_2023.h5`
+  (`5fc2feca08aa125ac2ed127711457038e0d493a5ad1d60aff763fb8e42a9d60a`),
+  and the unchanged `2024=<receipt_720.json /2024/source_h5>`
+  (`ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d`).
+  The full three-path handoff is recorded in the experiment diagnosis, whose
+  run-scaffolding scope may name local source provenance.
+- The mapper now has one exact nine-label source contract
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:57-69`).
+  Each source is validated before pooling and must carry every column with only
+  nonblank `{1, 2}` codes
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/asec_pool.py:240-247`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:441-487`).
+  Old partial inputs now fail closed; no reporter or ratio is synthesized.
+- Corrected-sample IHS is still red at 1.664408372482. Complete receipt-backed
+  inputs give a raw ACS/ASEC incidence ratio 1.942759574413, so the documented
+  common-universe and owner-only declared-absence equations remain necessary.
+
+### Ordered-chain repair
+
+- `_missing_target_families` now activates the complete bounded family when
+  any member is incomplete. Latent ESI/IHS model draws therefore reproduce the
+  declared QRF prefix for Marketplace and later labels
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2415`).
+- Target-level null masks remain the write authority, so native outputs are
+  never overwritten or reported as imputed
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:992-1043`).
+- The transfer execution contract is advanced to schema 3 for full-prefix
+  latent-draw semantics; target-bank materializer version 3 prevents shortened
+  version-2 chains from resuming.
+- Regressions pin all nine exact ASEC mappings (including overlapping flags),
+  partial/absent/invalid-vintage rejection, latent-chain completeness without
+  native overwrite, peer-draw invariance, durable target indexes, and
+  cold/warm/monolithic equality. The focused source regressions (6) and ACS
+  transfer tests (4) pass;
+  touched-file Ruff and deterministic generated-spec checks pass.
+- Full suite receipt: build 5,979 passed/37 skipped, with the 60 logbook and
+  coverage-tool tests isolated to avoid subprocess contamination; calibrate
+  201 passed; data 275 passed/1 skipped; fit 93 passed; frame 294 passed/36
+  skipped. Ruff and `git diff --check` pass. The generated US bundle is current
+  at `0f9ddf0bb16469459a5c87ec1667d74b9a1425d5b3d1753f80e26dba8f000e10`;
+  spec-engine coverage is 41,380/41,380 fields and 40/40 inventory checks.
+
+### Expected next host-owned cold 1% ratios
+
+No build was run in this lane. Correcting the 2022/2023 ASEC IHS source changes
+the IHS donor outcome before Marketplace, so the existing checkpoints do not
+contain the restored-prefix plus corrected-IHS counterfactual. Direct purchase
+and TRICARE additionally follow the narrow `NOW_CAID` Medicaid target.
+Assigning any of those three a number would be calibration-by-guess. Their
+owner-only non-comparability equation remains in
+`experiments/health_labels/PROVENANCE.md`.
+
+| Leg | Expected next 1% ACS/ASEC ratio | Expected disposition |
+|---|---:|---|
+| IHS | `1.664408372482` with the three-path input tuple above | red; owner common-universe/absence adjudication |
+| Marketplace | host measurement required (corrected-IHS hybrid unavailable) | concept mismatch; no band tuning |
+| non-Marketplace direct purchase | host measurement required (hybrid checkpoint unavailable) | concept mismatch; no band tuning |
+| TRICARE | host measurement required (hybrid checkpoint unavailable) | concept mismatch; no band tuning |

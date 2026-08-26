@@ -46,7 +46,9 @@ label mass divided by that origin's total scoped mass
 | TRICARE | `NOW_MIL == 1`: 45 rows; 807,558.923656; 0.009988171 | 206 rows; 502,159.944901; 0.006282770 | 153 rows; 385,243.838170; 0.004819975 | -116,916.106731; ratio 0.629021 -> 0.482568 |
 
 The ASEC mapper is the strict, label-specific construction shown in
-`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:413-433`.
+`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:57-69`
+and applied at
+`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:431-438`.
 For all three adjacent labels, the emitted boolean equals the named raw
 `NOW_* == 1` indicator on every scoped row in both frames. Their regression is
 therefore wholly on the ACS transfer side.
@@ -60,7 +62,7 @@ the output transitions are:
 | non-Marketplace direct purchase | 447 / 894,202.344561 | 410 / 863,608.817861 | 857 |
 | TRICARE | 112 / 267,202.617390 | 165 / 384,118.724121 | 277 |
 
-## IHS: faithful mapping exposed non-comparability
+## IHS: faithful ACS mapping exposed an incomplete ASEC source surface
 
 Round 1 maps `HINS7` through the generic required yes/no helper to the IHS
 leaf (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:115-129`).
@@ -70,12 +72,51 @@ still equals all and only the eight `NOW_IHSFLG == 1` rows. Reverting to the
 baseline QRF's 12 positive ACS rows would recreate an underprediction and
 would not be a faithful source construction.
 
-The 2.468303 result must therefore remain visible pending owner adjudication.
-The surveys' different health-estimate population frames already require the
-common-universe equation in `experiments/health_labels/PROVENANCE.md`. If the
-owner determines that even the common scope cannot make the two reported IHS
-measures comparable, the exact owner-only declared-absence candidate is, for
-the base scope `B(r)` defined there,
+The eight ASEC positives were not the complete pooled source concept. The
+checkpoint contains 1,368 sampled 2022 rows (weight 25,266,038.707667) and
+1,478 sampled 2023 rows (26,972,301.358297) with `NOW_IHSFLG` null on every
+row; only the 1,465 sampled 2024 rows (28,613,189.211194) carry the recode.
+The generic `_source` helper filled those nulls with zero before `code == 1`,
+silently manufacturing `False` for two pooled vintages
+(`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:373-379`,
+`:555-560`).
+
+The read-only `asec-720/receipt_720.json` re-extraction receipts restore the
+published `NOW_*` recodes without changing pre-existing columns. Joining the
+same sampled people to those receipt-backed sources changes IHS as follows:
+
+| ASEC vintage | Sample rows / total weight | Original IHS true mass | Corrected IHS true mass / incidence |
+|---|---:|---:|---:|
+| 2022 | 1,368 / 25,266,038.707667 | absent -> 0 | 7 / 72,245.403261 / 0.002859388 |
+| 2023 | 1,478 / 26,972,301.358297 | absent -> 0 | 7 / 23,196.524112 / 0.000860013 |
+| 2024 | 1,465 / 28,613,189.211194 | 8 / 197,606.039624 | 8 / 197,606.039624 / 0.006906117 |
+| pooled | 4,311 / 80,851,529.277157 | 8 / 197,606.039624 | 22 / 293,047.966998 / 0.003624520 |
+
+The exact next-host source tuple pinned by that receipt is:
+
+| Year | H5 path | SHA-256 |
+|---:|---|---|
+| 2022 | `/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/census_cps_2022.h5` | `797fb7e0ea3e94a52dc6c9c7f5a01d70d28a6c5620f3c112bcbd7c6cf6cffe9f` |
+| 2023 | `/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/census_cps_2023.h5` | `5fc2feca08aa125ac2ed127711457038e0d493a5ad1d60aff763fb8e42a9d60a` |
+| 2024 | `/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2024.h5` | `ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d` |
+
+The generating repair does not synthesize reporters or tune incidence. It
+requires each raw source year to present all nine exact `NOW_*` columns with
+only nonblank `{1, 2}` codes before pooling
+(`packages/microcosm-build/src/microcosm/build/us_runtime/asec_pool.py:240-247`,
+`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:441-487`).
+The next host run must use the corrected receipt-backed inputs; the old inputs
+now fail closed instead of building a biased label.
+
+With those corrected sampled inputs, the unchanged native ACS mass implies an
+IHS ratio of `0.006032681066 / 0.003624519779 = 1.664408372482`, not 2.468303.
+That remains outside the band. On the complete receipt-backed inputs, the
+analogous raw weighted-incidence ratio is 1.942759574413. The surveys'
+different health-estimate population frames therefore still require the
+common-universe adjudication in `experiments/health_labels/PROVENANCE.md`. If
+the owner determines that even the common scope cannot make the two reported
+IHS measures comparable, the exact owner-only declared-absence candidate is,
+for the base scope `B(r)` defined there,
 
 ```text
 A_IHS(r) = B(r) * 1[channel(r) = "acs"]
@@ -119,14 +160,36 @@ the exact completed-target prefix
 (`packages/microcosm-fit/src/microcosm/fit/qrf.py:1195-1215`). Removing ESI/IHS
 therefore changed the Marketplace state-before hash and every later draw.
 
-The source-faithful repair is to retain a complete family peer as a
-conditioning-only chain step whenever another family peer needs imputation.
-Its model step and bank receipt remain part of the declared joint construction,
-while the existing target-level null mask continues to prohibit overwriting
-the native recipient value. This is a derivation invariant, not an incidence
-calibration.
+The source-faithful repair is to retain every declared family's latent
+model-draw step whenever another family peer needs imputation. Its model step
+and bank receipt remain part of the declared joint construction, while the
+existing target-level null mask continues to prohibit overwriting a complete
+native recipient value. This is a derivation invariant, not an incidence
+calibration. The implementation activates the full bounded family on any hole
+(`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2415`),
+then continues to write only null recipient cells
+(`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:992-1043`).
+Its execution contract and target-bank materializer versions were advanced so
+old shortened-chain checkpoints cannot be reused.
 
 Marketplace, non-Marketplace direct purchase, and TRICARE still lack exact ACS
 detailed counterparts. Their owner-only absence equation remains the one in
 `experiments/health_labels/PROVENANCE.md`; the chain repair must not manufacture
 `HINS2` or `HINS5` identities or claim that a red ratio is comparable.
+
+## Next cold 1% expectation
+
+No local or off-chain build was run. One ratio is identifiable exactly from
+the read-only receipts:
+
+- IHS: `1.664408372482` when the host uses the corrected ASEC sources; still
+  red pending common-universe/absence adjudication.
+
+Marketplace, non-Marketplace direct purchase, and TRICARE are intentionally
+not assigned fabricated numbers. Correcting the 2022/2023 ASEC IHS source
+changes the IHS donor outcome before Marketplace, so neither existing
+checkpoint contains the required restored-prefix plus corrected-IHS
+counterfactual. Direct purchase and TRICARE additionally occur after the
+narrow `NOW_CAID` Medicaid target. All three therefore require the next host
+measurement and remain concept-mismatch legs; the owner-only declared-absence
+equation is already recorded in `PROVENANCE.md`.

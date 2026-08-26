@@ -11,6 +11,9 @@ from microcosm.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from microcosm.build.us_runtime.cps_carried import (
+    CPS_REPORTED_COVERAGE_SOURCE_COLUMNS,
+)
 
 pytest.importorskip("microunit")
 pytest.importorskip("tables")
@@ -56,6 +59,7 @@ def _write_asec(
         tuple[int, int] | tuple[int, int, int] | tuple[int, int, int, int]
     ],
     include_relationship_recode: bool = True,
+    include_reported_coverage: bool = True,
 ) -> None:
     person_rows = []
     household_rows = []
@@ -87,6 +91,9 @@ def _write_asec(
     person = pd.DataFrame(person_rows)
     if not include_relationship_recode:
         person = person.drop(columns=["A_EXPRRP"])
+    if include_reported_coverage:
+        for column in CPS_REPORTED_COVERAGE_SOURCE_COLUMNS.values():
+            person[column] = 2
     person.to_hdf(path, key="person", mode="w")
     pd.DataFrame(household_rows).to_hdf(path, key="household", mode="a")
 
@@ -168,6 +175,59 @@ def test_pool_asec_sources_rejects_duplicate_source_years(tmp_path: Path) -> Non
                 AsecSource(year=2023, path=second),
             ]
         )
+
+
+def test_pool_asec_sources_rejects_partial_reported_coverage_vintage(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "asec_2023.h5"
+    _write_asec(
+        source,
+        households=[(1, 2)],
+        include_reported_coverage=False,
+    )
+    person = pd.read_hdf(source, key="person")
+    person["NOW_MRK"] = 2
+    person.to_hdf(source, key="person", mode="a")
+
+    with pytest.raises(
+        ValueError,
+        match=r"source year 2023.*missing source column.*NOW_IHSFLG",
+    ):
+        pool_asec_sources([AsecSource(year=2023, path=source)])
+
+
+def test_pool_asec_sources_rejects_absent_reported_coverage_vintage(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "asec_2023.h5"
+    _write_asec(
+        source,
+        households=[(1, 2)],
+        include_reported_coverage=False,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"source year 2023.*missing source column.*NOW_IHSFLG",
+    ):
+        pool_asec_sources([AsecSource(year=2023, path=source)])
+
+
+def test_pool_asec_sources_rejects_invalid_reported_coverage_code(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "asec_2023.h5"
+    _write_asec(source, households=[(1, 2)])
+    person = pd.read_hdf(source, key="person")
+    person.loc[0, "NOW_MIL"] = 0
+    person.to_hdf(source, key="person", mode="a")
+
+    with pytest.raises(
+        ValueError,
+        match=r"source year 2023.*NOW_MIL: 1 unsupported value.*expected only 1.*2",
+    ):
+        pool_asec_sources([AsecSource(year=2023, path=source)])
 
 
 def test_build_pooled_asec_unit_frame_runs_unit_assignment_on_pooled_source(

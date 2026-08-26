@@ -20,19 +20,29 @@ four-way experiment found no isolated landable arm
 `:27-32`). CHAMPVA is therefore one leg of this label audit, not its goal.
 
 The cold round-2 1% receipts are recorded in `ROUND2_DIAGNOSIS.md`. They show
-that native `HINS7 == 1` is implemented exactly but has 2.468303 times the
-ASEC `NOW_IHSFLG == 1` incidence in the current comparison scope. That is not
-permission to dilute either source indicator. It elevates IHS to an explicit
-owner decision: retain the nominally matched questions under an approved
-common population scope, or declare the ACS detailed comparison structurally
-absent using the equation below.
+that native `HINS7 == 1` is implemented exactly, while missing 2022/2023 ASEC
+recode columns had silently become false. The repaired source contract makes
+those incomplete inputs fail closed; the receipt-backed corrected sample
+would move the IHS ratio from 2.468303 to 1.664408, without changing either
+source operator. Because that faithful result remains outside the band and
+the complete-source ratio is 1.942760, IHS is still an explicit owner decision:
+retain the nominally matched questions under an approved common population
+scope, or declare the detailed comparison structurally absent using the
+equation below.
 
 ## Runtime path to clone 0
 
-1. The ASEC operator converts current-coverage source codes with the strict
-   `code == 1` rule and fills only missing PolicyEngine leaves
-   (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:413-433`,
-   `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:505-506`).
+1. The ASEC operator defines all nine source-to-leaf mappings in one exact
+   contract, requires every participating source vintage to carry the complete
+   nonblank `{1, 2}` surface, then converts `code == 1` and fills only missing
+   PolicyEngine leaves
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:57-69`,
+   `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:431-438`,
+   `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:441-487`,
+   `packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:555-560`).
+   The raw pool validates each source before the pandas union can mask a
+   missing-vintage column
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/asec_pool.py:240-247`).
    The multispine source-operator runner projects CPS-evidenced rows, executes
    that operator, and merges only its declared outputs by entity ID
    (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:2136-2174`,
@@ -56,11 +66,12 @@ absent using the equation below.
 3. All nine labels remain declared in the boolean transfer family
    (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:356-365`).
    The transfer stage is called after source completion
-   (`tools/build_us_multispine_pool.py:2454-2479`), but a target already present
-   and nonnull on every recipient row is removed from the active fit
-   (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2420`).
-   Thus native HINS1/HINS7 values survive byte-for-byte; only unavailable
-   concepts are donor-model transfers.
+   (`tools/build_us_multispine_pool.py:2454-2479`). If any bounded family member
+   needs imputation, every declared member contributes its latent model draw to
+   the ordered QRF chain; target-level null masks keep native HINS1/HINS7 values
+   byte-for-byte and write only unavailable concepts
+   (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:992-1043`,
+   `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2415`).
 4. Physical support cloning happens after pre-clone source preparation
    (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:3539-3563`).
    The origin battery then selects the registered clone index and positive
@@ -76,14 +87,14 @@ the [2024 ACS questionnaire, p. 13](https://www2.census.gov/programs-surveys/acs
 the [2024 ACS PUMS dictionary, pp. 37-38](https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf),
 and the [2024 ACS Subject Definitions, pp. 80-83](https://www2.census.gov/programs-surveys/acs/tech_docs/subject_definitions/2024_ACSSubjectDefinitions.pdf).
 Every ASEC mapping named in the table is implemented in
-`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:413-433`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:57-69`;
 every currently unavailable ACS label enters transfer through
 `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:356-365`.
 
 | PolicyEngine person label | ASEC source and derivation | ACS source or absence | Clone-0 producer after this lane | Disposition |
 |---|---|---|---|---|
 | `has_esi` | `NOW_GRP == 1` | `HINS1 == 1` (employer or union) | Native ACS mapping; ASEC source operator | **Derivation defect fixed:** loader + native mapping + receipt |
-| `has_indian_health_service_coverage_at_interview` | `NOW_IHSFLG == 1` | `HINS7 == 1` (Indian Health Service) | Native ACS mapping; ASEC source operator | **Derivation defect fixed:** loader + native mapping + receipt |
+| `has_indian_health_service_coverage_at_interview` | `NOW_IHSFLG == 1`; every pooled vintage must carry a valid recode | `HINS7 == 1` (Indian Health Service) | Native ACS mapping; validated ASEC source operator | **Two derivation defects fixed:** native ACS mapping and missing-vintage fail-closed contract; comparison still needs owner adjudication |
 | `has_marketplace_health_coverage_at_interview` | `NOW_MRK == 1` | `HINS2` identifies direct purchase; `HIMRKS` does not separate unsubsidized Marketplace from non-Marketplace direct purchase | ASEC-derived label transferred to ACS | **Concept mismatch** |
 | `has_non_marketplace_direct_purchase_health_coverage_at_interview` | `NOW_NONM == 1` | Same `HINS2`/`HIMRKS` surface as Marketplace | ASEC-derived label transferred to ACS | **Concept mismatch** |
 | `has_medicaid_health_coverage_at_interview` | `NOW_CAID == 1` after this lane; it incorrectly used composite `NOW_MCAID` before | `HINS4` combines Medicaid, Medical Assistance, and other government-assistance plans for low-income or disabled people | ASEC-derived label transferred to ACS | **ASEC derivation defect fixed; cross-survey concept mismatch remains** |

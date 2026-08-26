@@ -18,6 +18,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.cps_carried import (
+    validate_cps_reported_coverage_sources,
+)
 from microcosm.frame import (
     MICROUNIT_REQUIRED_COLUMNS,
     US_SCHEMA,
@@ -238,6 +241,10 @@ def _prepare_year_input(source: AsecSource, *, weight_scale: float) -> dict[str,
     tables = load_asec_h5_tables(source.path)
     person = tables["person"].reset_index(drop=True)
     household = tables["household"].reset_index(drop=True)
+    validate_cps_reported_coverage_sources(
+        person,
+        source=f"ASEC source year {source.year} ({source.path})",
+    )
     person, relationship_source = _with_relationship_recode(person)
     _require_columns(person, ("PH_SEQ", *MICROUNIT_REQUIRED_COLUMNS), label="person")
     _require_columns(household, ("H_SEQ", "HSUP_WGT"), label="household")

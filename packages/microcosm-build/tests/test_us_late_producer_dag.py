@@ -1063,7 +1063,7 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     assert receipts[("household", "TYPEHUGQ")] == set()
 
     execution_identity = acs_transfer_module.acs_transfer_execution_contract_identity()
-    assert execution_identity["schema_version"] == 2
+    assert execution_identity["schema_version"] == 3
     assert execution_identity["housing"]["head_source_precedence"] == [
         {"source": "is_household_head", "head_codes": [True]},
         {"source": "A_EXPRRP", "head_codes": [1, 2]},

@@ -239,7 +239,7 @@ def acs_transfer_execution_contract_identity(
     )
     adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
     payload: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
         "person_optional_predictors": list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS),
         "group_required_predictors": list(ACS_GROUP_TRANSFER_PREDICTORS),
@@ -2403,20 +2403,15 @@ def _missing_target_families(
                 )
             incomplete.append(target)
 
-        # A joint codec needs both columns to learn only observed donor pairs.
-        # The complete companion is fitted but its recipient values are not
-        # written because target-level null masks remain authoritative.
-        immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-        if immigration_pair.issubset(targets) and immigration_pair.intersection(
-            incomplete
-        ):
-            incomplete = [
-                target
-                for target in targets
-                if target in immigration_pair or target in incomplete
-            ]
+        # QRF is an ordered joint chain: every raw draw becomes a predictor for
+        # the next target. Removing a complete middle target therefore changes
+        # all downstream draws. Fit/draw the full bounded family whenever any
+        # member is incomplete; the latent model draw for every declared target
+        # advances the chain, while target-level null masks remain authoritative
+        # so complete native recipient values are never overwritten or reported
+        # as imputed.
         if incomplete:
-            active.append((entity, family, tuple(incomplete)))
+            active.append((entity, family, targets))
     return active
 
 

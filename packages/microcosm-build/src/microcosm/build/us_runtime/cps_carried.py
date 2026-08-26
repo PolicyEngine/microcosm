@@ -27,6 +27,7 @@ __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
+    "CPS_REPORTED_COVERAGE_SOURCE_COLUMNS",
     "CPS_REPORTED_SNAP_RAW_COLUMN",
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
@@ -36,6 +37,7 @@ __all__ = [
     "reported_snap_receipt_by_spm_unit",
     "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
+    "validate_cps_reported_coverage_sources",
 ]
 
 TAXABLE_INTEREST_FRACTION = 0.680
@@ -49,6 +51,22 @@ CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
 WIC_CARRIER_ADJUDICATION_URL = (
     "https://github.com/PolicyEngine/microcosm/issues/591#issuecomment-5160668979"
 )
+
+# Exact current-coverage operators from the CPS ASEC person record. Keep this
+# as one public contract so source pooling and leaf construction cannot drift.
+CPS_REPORTED_COVERAGE_SOURCE_COLUMNS: Mapping[str, str] = {
+    "has_champva_health_coverage_at_interview": "NOW_CHAMPVA",
+    "has_esi": "NOW_GRP",
+    "has_indian_health_service_coverage_at_interview": "NOW_IHSFLG",
+    "has_marketplace_health_coverage_at_interview": "NOW_MRK",
+    # NOW_MCAID also includes CHIP and other means-tested coverage; this
+    # PolicyEngine leaf represents the narrower current Medicaid concept.
+    "has_medicaid_health_coverage_at_interview": "NOW_CAID",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview": "NOW_NONM",
+    "has_other_means_tested_health_coverage_at_interview": "NOW_OTHMT",
+    "has_tricare_health_coverage_at_interview": "NOW_MIL",
+    "has_va_health_coverage_at_interview": "NOW_VACARE",
+}
 
 CPS_CARRIED_FORMULA_OWNED_COLUMNS = frozenset(
     {
@@ -411,26 +429,62 @@ def _fill_social_security_leaves(person: pd.DataFrame) -> None:
 
 
 def _fill_health_coverage_inputs(person: pd.DataFrame) -> None:
-    marketplace = _yes_code(person, "NOW_MRK")
-    _fill_bool_missing(
+    validate_cps_reported_coverage_sources(
         person,
-        "has_marketplace_health_coverage_at_interview",
-        marketplace,
+        source="ASEC person frame",
+        allow_absent=True,
     )
-    source_columns: Mapping[str, str] = {
-        "has_non_marketplace_direct_purchase_health_coverage_at_interview": "NOW_NONM",
-        # NOW_MCAID also includes CHIP and other means-tested coverage; this
-        # PolicyEngine leaf represents the narrower current Medicaid concept.
-        "has_medicaid_health_coverage_at_interview": "NOW_CAID",
-        "has_esi": "NOW_GRP",
-        "has_champva_health_coverage_at_interview": "NOW_CHAMPVA",
-        "has_tricare_health_coverage_at_interview": "NOW_MIL",
-        "has_va_health_coverage_at_interview": "NOW_VACARE",
-        "has_other_means_tested_health_coverage_at_interview": "NOW_OTHMT",
-        "has_indian_health_service_coverage_at_interview": "NOW_IHSFLG",
-    }
-    for output, source in source_columns.items():
+    for output, source in CPS_REPORTED_COVERAGE_SOURCE_COLUMNS.items():
         _fill_bool_missing(person, output, _yes_code(person, source))
+
+
+def validate_cps_reported_coverage_sources(
+    person: pd.DataFrame,
+    *,
+    source: str,
+    allow_absent: bool = False,
+) -> None:
+    """Reject partial or invalid ASEC current-coverage source surfaces.
+
+    A pooled pandas union can make a source column look present even when an
+    earlier vintage never carried it; the resulting nulls used to flow through
+    :func:`_source` as zero and become false coverage reports. Production
+    source pooling uses the strict default, including when every source column
+    is absent. Callers that support deliberately minimal non-production
+    fixtures must opt into ``allow_absent``; once any ``NOW_*`` operator is
+    present, the complete nine-column, two-code contract is mandatory.
+    """
+
+    required = tuple(CPS_REPORTED_COVERAGE_SOURCE_COLUMNS.values())
+    present = tuple(column for column in required if column in person.columns)
+    if not present and allow_absent:
+        return
+    missing = tuple(column for column in required if column not in person.columns)
+    if missing:
+        raise ValueError(
+            f"{source}: incomplete CPS ASEC reported-coverage surface; "
+            f"missing source column(s): {list(missing)}."
+        )
+
+    failures: list[str] = []
+    for column in required:
+        numeric = pd.to_numeric(person[column], errors="coerce")
+        blank_count = int(numeric.isna().sum())
+        invalid = numeric[numeric.notna() & ~numeric.isin((1, 2))]
+        if blank_count:
+            failures.append(f"{column}: {blank_count} blank/non-numeric value(s)")
+        if not invalid.empty:
+            values = sorted({str(value) for value in invalid.head(10).tolist()})
+            failures.append(
+                f"{column}: {len(invalid)} unsupported value(s) {values}; "
+                "expected only 1 (yes) or 2 (no)"
+            )
+    if failures:
+        raise ValueError(
+            f"{source}: invalid CPS ASEC reported-coverage source codes; "
+            + "; ".join(failures)
+            + "."
+        )
 
 
 def _fill_spm_unit_childcare_inputs(

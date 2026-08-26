@@ -243,7 +243,7 @@ waiver_records:
     - dependent_child_status
     - pregnancy_status
 transfer_execution:
-  schema_version: 2
+  schema_version: 3
   group_optional_names:
     __acs_transfer_employment_income: __acs_transfer_group_employment_income_sum
     __acs_transfer_interest_dividend_rental_income: __acs_transfer_group_investment_income_sum
