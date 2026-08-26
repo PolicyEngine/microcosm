@@ -226,7 +226,8 @@ Implementation and journal commits before this final report carrier:
 13. `59c5759d` Record completed release containment work
 14. `af20d3f5` Lock ordinary base-pool release wiring in tests
 
-The next/HEAD commit carries this report and the final `PROGRESS.md` state; its
-hash is available from `git log --oneline origin/main..HEAD`. Final handoff
-checks require no uncommitted paths and list that carrier with the commits
-above.
+Commits after the list carry this report, the final `PROGRESS.md` state, and
+their handoff cleanup. A report cannot embed the hash of the commit containing
+its own final bytes, so `git log --oneline origin/main..HEAD` is the
+authoritative complete inventory. At final handoff the branch is 17 commits
+ahead of `origin/main` with no uncommitted paths.
