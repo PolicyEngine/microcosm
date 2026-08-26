@@ -58,10 +58,11 @@
 
 ## Round 2 next
 
-- Commit the coherent generating-repair step with its updated journal.
-- Write the completion report to `FINAL_REPORT.md`, commit it, and leave the
-  clean branch ready for the next host-owned cold 1% run using the corrected
-  ASEC source receipts.
+- Run the next host-owned cold 1% verification with the exact three-year ASEC
+  source tuple pinned in `experiments/health_labels/ROUND2_DIAGNOSIS.md`.
+- Have the owner adjudicate the documented common-universe/declared-absence
+  equations for IHS and the three detailed concept-mismatch legs; do not tune
+  ratios or comparator bands.
 
 ## State
 
