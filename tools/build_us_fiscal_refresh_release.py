@@ -8240,6 +8240,11 @@ def _exact_k_ladder_manifest_payload(
         raise RuntimeError("Validated pool manifest lost a required receipt block.")
     agreement_gate_passed = agreement_gate.get("passed")
     gate_passed = agreement_gate_passed is True
+    allow_gate_failed_base_pool = getattr(
+        args,
+        "allow_gate_failed_base_pool",
+        False,
+    )
     is_gate_failed_pool = (
         pool_manifest.get("status") == "gate_failed"
         and pool_manifest.get("simulation_ready") is False
@@ -8250,7 +8255,7 @@ def _exact_k_ladder_manifest_payload(
             "failed agreement gate."
         )
     if not gate_passed and not (
-        args.allow_gate_failed_base_pool and is_gate_failed_pool
+        allow_gate_failed_base_pool and is_gate_failed_pool
     ):
         raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
     pool_release_id = _assert_pool_release_id_value(
@@ -8272,7 +8277,7 @@ def _exact_k_ladder_manifest_payload(
         "diagnostics_sha256": agreement_diagnostics.get("sha256"),
         "verdict": dict(agreement_gate),
     }
-    if args.allow_gate_failed_base_pool:
+    if allow_gate_failed_base_pool:
         pool_reference.update(
             {
                 "status": pool_manifest.get("status"),
