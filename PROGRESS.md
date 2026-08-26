@@ -23,3 +23,19 @@ agent instructions have been read. The working tree was clean at kickoff.
 - Implement and test the containment and opt-in behavior.
 - Audit other pool-manifest and `simulation_ready` consumers.
 - Run Ruff and every pytest shard in its own process, then write `out.md`.
+
+## Historical prior lane
+
+The stacked-pool-to-release CD-vintage provenance lane previously maintained
+this journal and completed before this work began. It authenticated and
+applied household geography after source assembly, carried that authority
+through checkpoint and publication identities, published verified CD-vintage
+H5 attributes, and reached the unchanged release guard through the shared
+fixed/table-aware reader. Its final verification was 7,241 passed, 77 skipped,
+with repository-wide Ruff and anti-rot checks green. Full details remain at
+commit `2263df36` (the parent of this lane's first journal commit).
+
+The still-earlier PolicyEngine-US 1.819.0 lock-bump lane merged into
+`origin/main` at `7b90bb18` on 2026-08-24; its final state remains at commit
+`05d254aa` and its detailed receipts remain in the historical section of
+`_LANE-NOTES.md`.
