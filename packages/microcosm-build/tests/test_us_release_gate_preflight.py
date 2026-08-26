@@ -24,6 +24,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.us_runtime.release_gate_preflight as preflight_module
+from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
 from microcosm.build.us_runtime.release_gate_preflight import (
     PreflightReport,
     check_export_mass_parity_risk,
@@ -51,15 +53,24 @@ def _load_preflight_cli():
     return module
 
 
-def _write_gate_failed_release_manifest(path: Path) -> tuple[list[str], str]:
-    failures = ["asec incidence differs", "puf_tax_detail incidence differs"]
+def _write_gate_failed_release_manifest(
+    path: Path,
+) -> tuple[list[dict[str, str]], str]:
+    failure_messages = [
+        "asec incidence differs",
+        "puf_tax_detail incidence differs",
+    ]
+    failures = [
+        {"gate": "us_by_origin_battery", "message": message}
+        for message in failure_messages
+    ]
     gates_sha256 = "2" * 64
     verdict = {
         "passed": False,
         "gates": {
             "us_by_origin_battery": {
                 "passed": False,
-                "failures": failures,
+                "failures": failure_messages,
                 "details": {"fixture": True},
             }
         },
@@ -69,17 +80,18 @@ def _write_gate_failed_release_manifest(path: Path) -> tuple[list[str], str]:
             {
                 "schema_version": 1,
                 "build": {
-                    "exact_k_ladder": {
-                        "pool": {
-                            "status": "gate_failed",
-                            "simulation_ready": False,
-                            "allow_gate_failed_base_pool": True,
-                            "agreement_diagnostics_sha256": gates_sha256,
-                        },
+                    "base_pool": {
+                        "artifact_kind": "populace_us_multispine_input_pool",
+                        "status": "gate_failed",
+                        "simulation_ready": False,
+                        "manifest_sha256": "a" * 64,
+                        "publication_run_id": "fixture-publication",
+                        "pool_h5_sha256": "1" * 64,
+                        "pool_h5_size_bytes": 123,
+                        "allow_gate_failed_base_pool": True,
                         "agreement_gate_reference": {
                             "passed": False,
                             "battery_status": "red",
-                            "diagnostics_sha256": gates_sha256,
                             "gates_json_sha256": gates_sha256,
                             "failure_count": len(failures),
                             "failures": failures,
@@ -715,6 +727,178 @@ def test__report__to_dict_is_json_ready() -> None:
     assert payload["checks"][0]["rows"] == [{"k": 1}]
 
 
+def test__report__carried_red_pool_is_prominent_but_non_blocking(tmp_path) -> None:
+    release_manifest = tmp_path / "release_manifest.json"
+    failures, gates_sha256 = _write_gate_failed_release_manifest(release_manifest)
+    base_pool = json.loads(release_manifest.read_text())["build"]["base_pool"]
+    report = PreflightReport(checks=(), base_pool=base_pool)
+
+    rendered = report.human_table()
+    assert report.status == "PASS"
+    assert report.exit_code == 0
+    assert "BASE POOL BATTERY: RED — 2 FAILURES" in rendered
+    assert "Human publication decision required" in rendered
+    assert f"Gates JSON SHA-256: {gates_sha256}" in rendered
+    assert all(
+        f"[{failure['gate']}] {failure['message']}" in rendered
+        for failure in failures
+    )
+    assert report.to_dict()["base_pool"] == base_pool
+
+
+@pytest.mark.parametrize(
+    ("allow_gate_failed", "status", "simulation_ready", "passed"),
+    (
+        (False, "simulation_ready", True, True),
+        (True, "gate_failed", False, False),
+    ),
+)
+def test__preflight_base__authenticates_pool_with_loader_selected_by_opt_in(
+    monkeypatch,
+    tmp_path,
+    allow_gate_failed,
+    status,
+    simulation_ready,
+    passed,
+) -> None:
+    base_h5 = tmp_path / "pool.h5"
+    base_h5.write_bytes(b"authenticated pool")
+    manifest_path = base_h5.with_suffix(".manifest.json")
+    failures = [] if passed else ["fixture battery failure"]
+    manifest = {
+        "status": status,
+        "simulation_ready": simulation_ready,
+        "agreement_gate": {
+            "passed": passed,
+            "gates": {
+                "us_by_origin_battery": {
+                    "passed": passed,
+                    "failures": failures,
+                }
+            },
+        },
+        "agreement_diagnostics": {"sha256": "2" * 64},
+    }
+    identity = AuthenticatedPoolH5(
+        path=base_h5.resolve(),
+        sha256="1" * 64,
+        size_bytes=base_h5.stat().st_size,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+    )
+    frame = _frame(_POOL)
+    monkeypatch.setattr(
+        preflight_module,
+        "identify_us_multispine_pool_manifest",
+        lambda path: manifest_path,
+    )
+
+    def selected(path):
+        assert path == manifest_path
+        return frame, manifest, identity
+
+    if allow_gate_failed:
+        monkeypatch.setattr(
+            preflight_module,
+            "load_authenticated_us_multispine_pool_for_scoring",
+            selected,
+        )
+        monkeypatch.setattr(
+            preflight_module,
+            "load_simulation_ready_us_multispine_pool",
+            lambda path: pytest.fail("strict loader ran after explicit opt-in"),
+        )
+    else:
+        monkeypatch.setattr(
+            preflight_module,
+            "load_simulation_ready_us_multispine_pool",
+            selected,
+        )
+        monkeypatch.setattr(
+            preflight_module,
+            "load_authenticated_us_multispine_pool_for_scoring",
+            lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
+        )
+
+    loaded, receipt, loaded_manifest_path = preflight_module._load_preflight_base(
+        base_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
+    )
+
+    assert loaded is frame
+    assert loaded_manifest_path == manifest_path
+    assert receipt["status"] == status
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(failures)
+
+
+def test__preflight_base__refuses_red_pool_without_opt_in(
+    monkeypatch, tmp_path
+) -> None:
+    base_h5 = tmp_path / "pool.h5"
+    manifest_path = base_h5.with_suffix(".manifest.json")
+    monkeypatch.setattr(
+        preflight_module,
+        "identify_us_multispine_pool_manifest",
+        lambda path: manifest_path,
+    )
+    monkeypatch.setattr(
+        preflight_module,
+        "load_authenticated_us_multispine_pool_for_scoring",
+        lambda path: pytest.fail("scoring loader ran without explicit opt-in"),
+    )
+
+    def refuse(path):
+        raise ValueError("US multispine pool manifest is not simulation-ready")
+
+    monkeypatch.setattr(
+        preflight_module,
+        "load_simulation_ready_us_multispine_pool",
+        refuse,
+    )
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        preflight_module._load_preflight_base(
+            base_h5,
+            allow_gate_failed_base_pool=False,
+        )
+
+
+def test__preflight_base__refuses_bare_stamped_pool_before_generic_load(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    import microcosm.build.us_runtime.l0_refit_export as l0_refit_export
+
+    base_h5 = tmp_path / "pool.h5"
+    with pd.HDFStore(base_h5, mode="w") as store:
+        store.put(
+            "_populace_staging_metadata",
+            pd.Series(
+                [
+                    json.dumps(
+                        {
+                            "artifact_kind": "populace_us_multispine_input_pool",
+                            "household_weight_kind": "importance",
+                            "publication_run_id": "fixture-publication",
+                        }
+                    )
+                ]
+            ),
+            format="table",
+        )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: pytest.fail("bare pool reached the generic H5 loader"),
+    )
+
+    with pytest.raises(ValueError, match="pool.manifest.json is not readable"):
+        preflight_module._load_preflight_base(
+            base_h5,
+            allow_gate_failed_base_pool=False,
+        )
+
+
 def test__cli__manifest_only_surfaces_carried_red_battery_without_failing(
     monkeypatch, tmp_path, capsys
 ) -> None:
@@ -746,7 +930,10 @@ def test__cli__manifest_only_surfaces_carried_red_battery_without_failing(
     assert "Publication decision: HUMAN REVIEW REQUIRED" in output
     assert "does not alter the preflight exit code" in output
     assert "Static base/selection checks: NOT RUN" in output
-    assert all(f"FAILURE: {failure}" in output for failure in failures)
+    assert all(
+        f"FAILURE [{failure['gate']}]: {failure['message']}" in output
+        for failure in failures
+    )
     assert output.rstrip().endswith(
         "CARRIED RED BATTERY: HUMAN REVIEW REQUIRED; automated preflight exit "
         "remains 0."
@@ -783,7 +970,13 @@ def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
             ),
         )
     )
-    monkeypatch.setattr(cli, "run_preflight", lambda **kwargs: report)
+    captured: dict[str, object] = {}
+
+    def fake_run_preflight(**kwargs):
+        captured.update(kwargs)
+        return report
+
+    monkeypatch.setattr(cli, "run_preflight", fake_run_preflight)
 
     exit_code = cli.main(
         [
@@ -791,6 +984,7 @@ def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
             str(tmp_path / "base.h5"),
             "--selection-source-manifest",
             str(tmp_path / "selection.json"),
+            "--allow-gate-failed-base-pool",
             "--release-manifest",
             str(release_manifest),
             "--json-out",
@@ -810,6 +1004,7 @@ def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
     assert payload["carried_base_pool_agreement_battery"][
         "affects_exit_code"
     ] is False
+    assert captured["allow_gate_failed_base_pool"] is True
 
 
 def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(

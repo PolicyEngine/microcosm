@@ -2,11 +2,12 @@
 
 ## State
 
-Builder containment and carriage are now corrected and focused-tested. The
-exact-k manifest arm is again unchanged and strict; the legacy `--base-h5` arm
-authenticates any positively identified pool and requires the explicit opt-in
-for a coherent current stacked red pool. No pool or release has been built,
-published, or pushed.
+Containment, carriage, and both preflight modes are now corrected and
+focused-tested. Ordinary preflight authenticates identified base pools through
+the same strict/explicit-opt-in seam; manifest-only publication review reads
+the canonical `build.base_pool` receipt and keeps the red evidence outside its
+automated exit calculation. No pool or release has been built, published, or
+pushed.
 
 ## Done
 
@@ -30,11 +31,16 @@ published, or pushed.
   and receipt, carried `base_pool` into both manifests, and added regression
   coverage for missing manifests, red/no-flag refusal, flag-on routing, and
   release-manifest visibility.
+- Applied identical base-pool authentication to ordinary preflight, added the
+  explicit flag there, surfaced authenticated and carried red receipts in both
+  human and JSON output, and passed all 30 focused preflight tests.
+- Corrected the changelog fragment to describe the closed legacy bypass rather
+  than the unchanged exact-k arm.
 
 ## Next
 
-1. Authenticate base pools in ordinary preflight and teach manifest-only review
-   the generic `build.base_pool` carriage shape.
+1. Update the release-flow guide, then run the complete affected test files and
+   adjacent release-contract tests.
 2. Run repository-wide Ruff and full pytest one process per shard.
 3. Record the audit and verification evidence, write
    `out.md`, and leave the branch clean with coherent local commits.
