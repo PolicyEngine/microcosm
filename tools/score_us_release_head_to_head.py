@@ -173,10 +173,16 @@ _CODE_CITATIONS = {
         "weight normalization)"
     ),
     "chunked_materialize_score": (
-        "tools/score_us_release_head_to_head.py:654-852,1399-1477; "
+        "tools/score_us_release_head_to_head.py:"
+        "_score_chunk_household_sliced,score_loaded_artifact; "
         "tools/build_us_fiscal_refresh_release.py:3730-3750; "
         "packages/microcosm-calibrate/src/microcosm/calibrate/"
         "matrix.py:286-355; score.py:79-142"
+    ),
+    "historical_formula_owned_column_normalization": (
+        "tools/score_us_release_head_to_head.py:"
+        "_drop_historical_formula_owned_columns; packages/microcosm-frame/src/"
+        "microcosm/frame/adapters/policyengine_us.py:327-417"
     ),
     "relative_error": (
         "packages/microcosm-calibrate/src/microcosm/calibrate/score.py:25-51"
