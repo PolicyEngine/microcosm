@@ -30,6 +30,18 @@ import pytest
 
 GOLDEN = Path(__file__).parent / "golden" / "us_trade"
 CLI = Path(__file__).resolve().parents[3] / "tools" / "build_us_import_entries.py"
+
+# Every spawn of the CLI pays its import chain before doing any work, and that
+# chain is dominated by machinery the trade code never uses: importing
+# `us_runtime.us_trade.*` executes `us_runtime/__init__`, which pulls in
+# spine_agreement and, through it, the whole policyengine-us system. Measured
+# on the same fixture as `test_cli_fails_when_margins_missing_from_window`
+# (a CLI that only reads a 2-row parquet and exits 1): 35.9 s with the engine
+# installed, 5.4 s without. That import is parameter-tree I/O, so it stretches
+# with runner disk contention — at the old 300 s this test timed out on main
+# (run 32910539480) after passing on the PR. The headroom belongs here until
+# the import is made lazy; see the note on the PR that raised this.
+CLI_TIMEOUT_SECONDS = 900
 CONTRACT = GOLDEN / "engine_entry_contract.json"
 
 
@@ -94,7 +106,7 @@ def _run(margins_dir: Path, out_dir: Path, start: str = "2026-01"):
         capture_output=True,
         text=True,
         check=False,
-        timeout=300,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
 
 
@@ -346,7 +358,7 @@ def test_override_build_registers_override_basis(tmp_path):
         capture_output=True,
         text=True,
         check=False,
-        timeout=300,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
     assert result.returncode == 0, result.stderr
     register = json.loads((out_dir / "assumptions.json").read_text())

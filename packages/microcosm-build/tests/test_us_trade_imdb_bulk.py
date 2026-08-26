@@ -38,6 +38,13 @@ from microcosm.build.us_runtime.us_trade.import_entry_facts import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BUILD_CLI = REPO_ROOT / "tools" / "build_us_import_entry_margins.py"
 
+# Same import tax as test_us_trade_entries_cli: importing `us_runtime.us_trade.*`
+# executes `us_runtime/__init__`, which drags in spine_agreement and the whole
+# policyengine-us system before this CLI does any work — measured at 33.0 s of
+# import in the engine lane. The lightweight `-c` spawns below keep their 60 s
+# budget; only the full-CLI spawns pay this.
+CLI_TIMEOUT_SECONDS = 900
+
 
 def _field(line: list[str], start: int, end: int, value: str, *, align: str) -> None:
     """Place ``value`` into the 1-indexed inclusive [start, end] span."""
@@ -822,7 +829,7 @@ def test_build_cli_end_to_end_offline(tmp_path):
         ],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
     assert result.returncode == 0, result.stderr
     report = json.loads((out_dir / "build_report.json").read_text())
@@ -905,7 +912,7 @@ def test_build_cli_failure_leaves_prior_publication_untouched(tmp_path):
         ],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
     assert result.returncode == 1
     assert "nothing was published" in result.stderr
@@ -963,7 +970,7 @@ def test_build_cli_success_replaces_prior_publication_completely(tmp_path):
         ],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
     assert result.returncode == 0, result.stderr
     assert not stale.exists()
@@ -998,7 +1005,7 @@ def test_build_cli_fails_on_control_mismatch(tmp_path):
         ],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
     assert result.returncode == 1
     assert "RECONCILIATION FAIL" in result.stderr
