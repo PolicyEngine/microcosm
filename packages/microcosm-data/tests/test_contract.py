@@ -134,13 +134,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "0b215cad96263fc8ee937facd189212b0f60639bb317ecdf6d19d7c7004689d9"
+    "5459347c9077b2acd5970a62d818e3ddd063d86d6c3dbce4d32dcacec3bdc414"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "fe580e1f39924c40f22c9826c21df8a0d02273cf0660dccf13039d173fadee85"
+    "f68e10d8ff6654b7fc707da0508ea063b0f3c96b8a813b7098298727d43b9d6d"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "c6b43744bdc2ac3187f503d719aea12d764a521d24382f0e0390bf7b92a2bd5f"
+    "2a4a8b18d024f80782b375539c87d57006592d64470553a4da5a378791254faa"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -876,8 +876,8 @@ def _terminal_gate_details(name: str) -> dict:
         return {
             "columns_checked": 1,
             "top_k": 100,
-            "max_top_share": 0.9970712395200448,
-            "min_nonzero_records": 274,
+            "max_top_share": 0.9994670564654868,
+            "min_nonzero_records": 104,
             "top_share": {"self_employment_income": 0.5},
             "carrier_counts": {"self_employment_income": 274},
             "thin_columns": {},

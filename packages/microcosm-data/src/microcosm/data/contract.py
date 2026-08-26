@@ -202,15 +202,17 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-# Spec-armed weighted-integrity thresholds (uk/gates.json parameters,
-# microcosm#630): passing reports must carry exactly the committed values,
+# Spec-armed weighted-integrity thresholds (uk/gates.json parameters;
+# input-mass pair from microcosm#630, QRF tail pair re-armed from the #686
+# L3 baselines by microcosm#757 B4): passing reports must carry exactly the
+# committed values,
 # so a re-signed report cannot loosen a fence the spec armed. Held in
 # lockstep with the committed spec by the build-shard sync tests.
 _UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
 _UK_QRF_TAIL_TOP_K = 100
-_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9970712395200448
-_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 274
+_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9994670564654868
+_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 104
 # Independent publication pin for the active reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
 # uk/gates.json reference_registry["efrs-post-calibration"].identity.
@@ -373,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "0b215cad96263fc8ee937facd189212b0f60639bb317ecdf6d19d7c7004689d9"
+    "5459347c9077b2acd5970a62d818e3ddd063d86d6c3dbce4d32dcacec3bdc414"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "fe580e1f39924c40f22c9826c21df8a0d02273cf0660dccf13039d173fadee85"
+    "f68e10d8ff6654b7fc707da0508ea063b0f3c96b8a813b7098298727d43b9d6d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "c6b43744bdc2ac3187f503d719aea12d764a521d24382f0e0390bf7b92a2bd5f"
+    "2a4a8b18d024f80782b375539c87d57006592d64470553a4da5a378791254faa"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate

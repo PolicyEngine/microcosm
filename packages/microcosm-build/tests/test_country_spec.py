@@ -727,9 +727,9 @@ class TestUKGatesManifest:
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
         assert params["uk_qrf_tail_concentration"]["top_k"] == 100
         assert (
-            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9970712395200448
+            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9994670564654868
         )
-        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 274
+        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 104
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
