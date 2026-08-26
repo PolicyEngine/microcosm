@@ -80,6 +80,13 @@ build recorded staging telemetry that never reached its repo
 publishes without the flag. Never publish or promote artifacts as a side
 effect of another task.
 
+A US release or release-gate preflight that receives a multispine pool through
+`--base-h5` must authenticate its sibling terminal manifest. A current stacked
+pool whose terminal battery is red remains fail-closed unless the operator
+passes `--allow-gate-failed-base-pool`; that opt-in carries the full red verdict
+into `release_manifest.json` for a separate human publication decision. It does
+not weaken the exact-k manifest arm or authorize publication by itself.
+
 ## Root journals are history, not state
 
 The root `PROGRESS*.md`, `FINAL_REPORT.md`, `*_COVERAGE_PROGRESS.md`, and
