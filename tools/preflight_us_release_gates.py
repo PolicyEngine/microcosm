@@ -19,8 +19,8 @@ Example (read-only against the artifacts)::
 
 Exit code: 1 on any static-check FAIL, 2 on static AT-RISK only, 0 clean. A
 carried red base-pool battery is human-review evidence and does not by itself
-change that exit code; ``--release-manifest`` also supports a manifest-only
-publication review when those static inputs do not apply.
+change that exit code. When ``--release-manifest`` is supplied, its base-pool
+receipt must exactly match the pool authenticated by this preflight.
 """
 
 from __future__ import annotations
@@ -54,10 +54,8 @@ def _json_object(value: object, *, label: str) -> dict[str, object]:
     return value
 
 
-def _load_carried_base_pool_battery(
-    path: Path,
-) -> dict[str, object] | None:
-    """Read the non-blocking red pool verdict carried by a release manifest."""
+def _load_release_base_pool_receipt(path: Path) -> dict[str, object] | None:
+    """Read one optional base-pool receipt from a built release manifest."""
 
     release_manifest = _json_object(
         json.loads(path.read_text()),
@@ -65,9 +63,25 @@ def _load_carried_base_pool_battery(
     )
     build = release_manifest.get("build")
     if not isinstance(build, dict):
+        raise ValueError(f"Release manifest {path} has no build object.")
+    if "base_pool" not in build:
         return None
     base_pool = build.get("base_pool")
     if not isinstance(base_pool, dict):
+        raise ValueError(
+            f"Release manifest {path} build.base_pool must be a JSON object."
+        )
+    return base_pool
+
+
+def _carried_base_pool_battery(
+    base_pool: dict[str, object] | None,
+    *,
+    path: Path,
+) -> dict[str, object] | None:
+    """Validate the non-blocking red verdict carried by one pool receipt."""
+
+    if base_pool is None:
         return None
     agreement_gate_reference = base_pool.get("agreement_gate_reference")
     carries_gate_failed_override = (
@@ -138,16 +152,23 @@ def _load_carried_base_pool_battery(
                 f"Release manifest {path} has a malformed carried gate verdict."
             )
         gate_failures = gate_payload.get("failures")
-        if not isinstance(gate_failures, list) or not all(
+        gate_passed = gate_payload.get("passed")
+        if type(gate_passed) is not bool or not isinstance(
+            gate_failures, list
+        ) or not all(
             isinstance(failure, str) for failure in gate_failures
         ):
             raise ValueError(
                 f"Release manifest {path} has a malformed carried failure list."
             )
+        if gate_passed is bool(gate_failures):
+            raise ValueError(
+                f"Release manifest {path} has an incoherent nested gate verdict."
+            )
         verdict_failures.extend(
             {"gate": gate_name, "message": failure} for failure in gate_failures
         )
-    if verdict_failures != failures:
+    if not verdict_failures or verdict_failures != failures:
         raise ValueError(
             f"Release manifest {path} failure summary does not match its full "
             "carried gate verdict."
@@ -165,6 +186,21 @@ def _load_carried_base_pool_battery(
         "publication_decision": "human_review_required",
         "affects_exit_code": False,
     }
+
+
+def _require_matching_release_base_pool(
+    authenticated: dict[str, object] | None,
+    carried: dict[str, object] | None,
+    *,
+    path: Path,
+) -> None:
+    """Bind a release manifest to the exact pool preflight authenticated."""
+
+    if authenticated != carried:
+        raise ValueError(
+            f"Release manifest {path} build.base_pool does not exactly match "
+            "the base-pool receipt authenticated by this preflight."
+        )
 
 
 def _carried_battery_banner(carried: dict[str, object]) -> str:
@@ -197,12 +233,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--base-h5",
+        required=True,
         type=Path,
-        help=(
-            "Base pool H5 (read-only). Required with "
-            "--selection-source-manifest unless --release-manifest is used "
-            "for a manifest-only publication review."
-        ),
+        help="Base pool H5 (read-only).",
     )
     parser.add_argument(
         "--allow-gate-failed-base-pool",
@@ -215,11 +248,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--selection-source-manifest",
+        required=True,
         type=Path,
-        help=(
-            "Frozen selection-source manifest JSON. Required with --base-h5 "
-            "for the existing static preflight checks."
-        ),
+        help="Frozen selection-source manifest JSON.",
     )
     parser.add_argument(
         "--release-manifest",
@@ -227,9 +258,8 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Optional built release_manifest.json. A carried gate-failed "
             "base-pool battery is displayed as prominent, non-blocking "
-            "evidence for the human publication decision. It may be used "
-            "alone for publication review or alongside the existing static "
-            "preflight inputs."
+            "evidence for the human publication decision after its receipt "
+            "is matched to the authenticated --base-h5 pool."
         ),
     )
     parser.add_argument(
@@ -291,66 +321,48 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _parser()
-    args = parser.parse_args(argv)
-    has_base_h5 = args.base_h5 is not None
-    has_selection_manifest = args.selection_source_manifest is not None
-    if has_base_h5 != has_selection_manifest:
-        parser.error(
-            "--base-h5 and --selection-source-manifest must be provided together."
-        )
-    if args.allow_gate_failed_base_pool and not has_base_h5:
-        parser.error("--allow-gate-failed-base-pool requires --base-h5.")
-    if not has_base_h5 and args.release_manifest is None:
-        parser.error(
-            "provide --base-h5 with --selection-source-manifest, or provide "
-            "--release-manifest for publication review."
-        )
-    carried = (
-        _load_carried_base_pool_battery(args.release_manifest)
+    args = _parser().parse_args(argv)
+    release_base_pool = (
+        _load_release_base_pool_receipt(args.release_manifest)
         if args.release_manifest is not None
         else None
     )
-    if not has_base_h5 and carried is None:
-        parser.error(
-            "manifest-only publication review requires a release manifest "
-            "carrying an explicit gate-failed base-pool verdict."
+    carried = (
+        _carried_base_pool_battery(
+            release_base_pool,
+            path=args.release_manifest,
         )
-    if carried is not None:
-        print(_carried_battery_banner(carried))
+        if args.release_manifest is not None
+        else None
+    )
 
     try:
         target_period: int | str = int(args.target_period)
     except (TypeError, ValueError):
         target_period = args.target_period
 
-    if has_base_h5:
-        report = run_preflight(
-            base_h5=args.base_h5,
-            selection_source_manifest=args.selection_source_manifest,
-            export_input_mass_reference_h5=args.export_input_mass_reference_h5,
-            ledger_facts=args.ledger_facts,
-            ledger_facts_sha256=args.ledger_facts_sha256,
-            target_period=target_period,
-            relative_tolerance=args.relative_tolerance,
-            minimum_reference_total=args.minimum_reference_total,
-            allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
+    report = run_preflight(
+        base_h5=args.base_h5,
+        selection_source_manifest=args.selection_source_manifest,
+        export_input_mass_reference_h5=args.export_input_mass_reference_h5,
+        ledger_facts=args.ledger_facts,
+        ledger_facts_sha256=args.ledger_facts_sha256,
+        target_period=target_period,
+        relative_tolerance=args.relative_tolerance,
+        minimum_reference_total=args.minimum_reference_total,
+        allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
+    )
+    if args.release_manifest is not None:
+        _require_matching_release_base_pool(
+            report.base_pool,
+            release_base_pool,
+            path=args.release_manifest,
         )
-        print(report.human_table())
-        payload = report.to_dict()
-        exit_code = report.exit_code
-    else:
-        print("US release-gate preflight (manifest-only publication review)")
-        print("Static base/selection checks: NOT RUN")
-        print("Automated exit: 0 (carried evidence requires human review)")
-        payload = {
-            "status": "PASS",
-            "exit_code": 0,
-            "inputs": {"release_manifest": str(args.release_manifest)},
-            "checks": [],
-            "static_checks_run": False,
-        }
-        exit_code = 0
+    if carried is not None:
+        print(_carried_battery_banner(carried))
+    print(report.human_table())
+    payload = report.to_dict()
+    exit_code = report.exit_code
     if carried is not None:
         payload[_CARRIED_BATTERY_PAYLOAD_KEY] = carried
     if args.json_out is not None:

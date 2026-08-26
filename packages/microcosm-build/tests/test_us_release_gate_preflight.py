@@ -897,76 +897,56 @@ def test__preflight_base__refuses_bare_stamped_pool_before_generic_load(
         )
 
 
-def test__cli__manifest_only_surfaces_carried_red_battery_without_failing(
+def test__cli__release_manifest_does_not_replace_required_static_inputs(
     monkeypatch, tmp_path, capsys
 ) -> None:
     cli = _load_preflight_cli()
     release_manifest = tmp_path / "release_manifest.json"
-    failures, gates_sha256 = _write_gate_failed_release_manifest(release_manifest)
-    json_out = tmp_path / "preflight.json"
+    _write_gate_failed_release_manifest(release_manifest)
     monkeypatch.setattr(
         cli,
         "run_preflight",
-        lambda **kwargs: pytest.fail("manifest-only review ran static checks"),
+        lambda **kwargs: pytest.fail("argument validation reached static checks"),
     )
 
-    exit_code = cli.main(
-        [
-            "--release-manifest",
-            str(release_manifest),
-            "--json-out",
-            str(json_out),
-        ]
-    )
+    with pytest.raises(SystemExit) as error:
+        cli.main(["--release-manifest", str(release_manifest)])
 
-    output = capsys.readouterr().out
-    assert exit_code == 0
-    assert output.startswith("=" * 72)
-    assert "CARRIED BASE-POOL AGREEMENT BATTERY: RED — 2 FAILURES" in output
-    assert "Build opt-in used: --allow-gate-failed-base-pool" in output
-    assert f"Pool gates JSON SHA-256: {gates_sha256}" in output
-    assert "Publication decision: HUMAN REVIEW REQUIRED" in output
-    assert "does not alter the preflight exit code" in output
-    assert "Static base/selection checks: NOT RUN" in output
-    assert all(
-        f"FAILURE [{failure['gate']}]: {failure['message']}" in output
-        for failure in failures
-    )
-    assert output.rstrip().endswith(
-        "CARRIED RED BATTERY: HUMAN REVIEW REQUIRED; automated preflight exit "
-        "remains 0."
-    )
-
-    payload = json.loads(json_out.read_text())
-    carried = payload["carried_base_pool_agreement_battery"]
-    assert payload["exit_code"] == 0
-    assert payload["static_checks_run"] is False
-    assert carried["battery_status"] == "red"
-    assert carried["failure_count"] == 2
-    assert carried["failures"] == failures
-    assert carried["gates_json_sha256"] == gates_sha256
-    assert carried["affects_exit_code"] is False
-    assert carried["agreement_gate_reference"]["verdict"]["passed"] is False
+    assert error.value.code == 2
+    stderr = capsys.readouterr().err
+    assert "--base-h5" in stderr
+    assert "--selection-source-manifest" in stderr
 
 
+@pytest.mark.parametrize(
+    ("static_status", "expected_exit"),
+    (("PASS", 0), ("AT_RISK", 2), ("FAIL", 1)),
+)
 def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
-    monkeypatch, tmp_path, capsys
+    monkeypatch,
+    tmp_path,
+    capsys,
+    static_status,
+    expected_exit,
 ) -> None:
     from microcosm.build.us_runtime.release_gate_preflight import CheckResult
 
     cli = _load_preflight_cli()
     release_manifest = tmp_path / "release_manifest.json"
-    _write_gate_failed_release_manifest(release_manifest)
+    failures, gates_sha256 = _write_gate_failed_release_manifest(release_manifest)
+    base_pool = json.loads(release_manifest.read_text())["build"]["base_pool"]
     json_out = tmp_path / "preflight.json"
     report = PreflightReport(
         checks=(
             CheckResult(
-                name="existing_risk",
-                status="AT_RISK",
+                name="existing_check",
+                status=static_status,
                 summary="existing check controls the exit",
-                at_risks=("fixture risk",),
+                failures=("fixture failure",) if static_status == "FAIL" else (),
+                at_risks=("fixture risk",) if static_status == "AT_RISK" else (),
             ),
-        )
+        ),
+        base_pool=base_pool,
     )
     captured: dict[str, object] = {}
 
@@ -992,17 +972,82 @@ def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
 
     output = capsys.readouterr().out
     payload = json.loads(json_out.read_text())
-    assert exit_code == report.exit_code == 2
-    assert "[AT-RISK] existing_risk" in output
+    assert exit_code == report.exit_code == expected_exit
+    assert output.startswith("=" * 72)
+    assert "CARRIED BASE-POOL AGREEMENT BATTERY: RED — 2 FAILURES" in output
+    assert "Build opt-in used: --allow-gate-failed-base-pool" in output
+    assert f"Pool gates JSON SHA-256: {gates_sha256}" in output
+    assert "Publication decision: HUMAN REVIEW REQUIRED" in output
+    assert "does not alter the preflight exit code" in output
+    assert all(
+        f"FAILURE [{failure['gate']}]: {failure['message']}" in output
+        for failure in failures
+    )
     assert output.rstrip().endswith(
         "CARRIED RED BATTERY: HUMAN REVIEW REQUIRED; automated preflight exit "
-        "remains 2."
+        f"remains {expected_exit}."
     )
-    assert payload["exit_code"] == 2
+    assert payload["exit_code"] == expected_exit
     assert payload["carried_base_pool_agreement_battery"][
         "affects_exit_code"
     ] is False
+    assert payload["carried_base_pool_agreement_battery"]["failures"] == failures
+    assert payload["carried_base_pool_agreement_battery"][
+        "agreement_gate_reference"
+    ]["verdict"]["passed"] is False
     assert captured["allow_gate_failed_base_pool"] is True
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    (
+        "generic_base",
+        "manifest_sha256",
+        "pool_h5_sha256",
+        "pool_h5_size_bytes",
+        "publication_run_id",
+        "gates_json_sha256",
+        "verdict",
+    ),
+)
+def test__cli__release_manifest_must_match_authenticated_base_pool(
+    monkeypatch,
+    tmp_path,
+    mismatch,
+) -> None:
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    _write_gate_failed_release_manifest(release_manifest)
+    authenticated = json.loads(
+        json.dumps(json.loads(release_manifest.read_text())["build"]["base_pool"])
+    )
+    if mismatch == "generic_base":
+        authenticated = None
+    elif mismatch == "pool_h5_size_bytes":
+        authenticated[mismatch] += 1
+    elif mismatch == "gates_json_sha256":
+        authenticated["agreement_gate_reference"][mismatch] = "3" * 64
+    elif mismatch == "verdict":
+        authenticated["agreement_gate_reference"]["verdict"]["gates"][
+            "us_by_origin_battery"
+        ]["details"] = {"fixture": "different"}
+    else:
+        authenticated[mismatch] = "different-authenticated-value"
+    report = PreflightReport(checks=(), base_pool=authenticated)
+    monkeypatch.setattr(cli, "run_preflight", lambda **kwargs: report)
+
+    with pytest.raises(ValueError, match="does not exactly match"):
+        cli.main(
+            [
+                "--base-h5",
+                str(tmp_path / "base.h5"),
+                "--selection-source-manifest",
+                str(tmp_path / "selection.json"),
+                "--allow-gate-failed-base-pool",
+                "--release-manifest",
+                str(release_manifest),
+            ]
+        )
 
 
 def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
