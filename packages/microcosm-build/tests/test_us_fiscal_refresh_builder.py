@@ -1547,6 +1547,30 @@ def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> No
     assert parsed.no_staging is True
 
 
+def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
+    builder = _load_builder_module()
+
+    parsed = builder._parse_args(_exact_k_builder_argv("20000"))
+    assert parsed.allow_gate_failed_base_pool is False
+
+    parsed = builder._parse_args(
+        [*_exact_k_builder_argv("20000"), "--allow-gate-failed-base-pool"]
+    )
+    assert parsed.allow_gate_failed_base_pool is True
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                "--allow-gate-failed-base-pool",
+            ]
+        )
+    assert "requires --pool-manifest" in capsys.readouterr().err
+
+
 def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
     builder = _load_builder_module()
     argv = _exact_k_builder_argv("20000")
@@ -1641,6 +1665,55 @@ def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
         builder.main(argv)
 
     assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    ("allow_gate_failed", "selected_loader", "unselected_loader"),
+    (
+        (
+            False,
+            "load_simulation_ready_us_multispine_pool",
+            "load_authenticated_us_multispine_pool_for_scoring",
+        ),
+        (
+            True,
+            "load_authenticated_us_multispine_pool_for_scoring",
+            "load_simulation_ready_us_multispine_pool",
+        ),
+    ),
+)
+def test_builder_selects_pool_loader_only_from_explicit_gate_failed_opt_in(
+    monkeypatch,
+    tmp_path,
+    allow_gate_failed,
+    selected_loader,
+    unselected_loader,
+) -> None:
+    builder = _load_builder_module()
+    argv = _exact_k_builder_argv("20000")
+    argv[argv.index("out")] = str(tmp_path / "out")
+    if allow_gate_failed:
+        argv.append("--allow-gate-failed-base-pool")
+
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder,
+        "_load_verified_incumbent_diagnostics_payload",
+        lambda path, *, expected_sha256: ({}, expected_sha256),
+    )
+
+    def selected(*args, **kwargs):
+        raise RuntimeError("selected pool loader")
+
+    def unselected(*args, **kwargs):
+        pytest.fail("the unselected pool loader ran")
+
+    monkeypatch.setattr(builder, selected_loader, selected)
+    monkeypatch.setattr(builder, unselected_loader, unselected)
+
+    with pytest.raises(RuntimeError, match="selected pool loader"):
+        builder.main(argv)
 
 
 def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
@@ -8714,6 +8787,149 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
             details={"requirements_checked": 1},
         ),
         default_dataset={"method": "dense_no_l0", "sparse": False},
+    )
+
+
+def _gate_failed_exact_k_receipt(builder, *, allow_gate_failed_base_pool: bool):
+    class FakeFrame:
+        @staticmethod
+        def n(entity):
+            assert entity == "household"
+            return 20_000
+
+    outcome = SimpleNamespace(
+        result=SimpleNamespace(frame=FakeFrame()),
+        selection_receipt={
+            "k": 20_000,
+            "pi_hi": 0.95,
+            "seed": 17,
+            "certainty_count": 3,
+            "boundary_pool_size": 100,
+            "design": "sampford",
+        },
+        refit_baseline_diagnostics={"method": "fixture"},
+    )
+    args = SimpleNamespace(
+        exact_k=20_000,
+        seed=17,
+        pool_release_id="fixture-publication",
+        allow_gate_failed_base_pool=allow_gate_failed_base_pool,
+    )
+    failures = ["asec incidence differs", "puf_tax_detail incidence differs"]
+    pool_manifest = {
+        "status": "gate_failed",
+        "simulation_ready": False,
+        "agreement_diagnostics": {"sha256": "2" * 64},
+        "agreement_gate": {
+            "passed": False,
+            "gates": {
+                "us_by_origin_battery": {
+                    "passed": False,
+                    "failures": failures,
+                    "details": {"fixture": True},
+                }
+            },
+        },
+    }
+    authenticated_pool_h5 = builder.AuthenticatedPoolH5(
+        path=Path("pool.h5"),
+        sha256="1" * 64,
+        size_bytes=123,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+    )
+    receipt = builder._exact_k_ladder_manifest_payload(
+        args=args,
+        outcome=outcome,
+        pool_manifest=pool_manifest,
+        authenticated_pool_h5=authenticated_pool_h5,
+        ledger_artifact={"facts_sha256": "3" * 64},
+        target_surface={"sha256": "4" * 64},
+        target_loss_basis={"method": "fixture"},
+        incumbent_diagnostics_sha256="5" * 64,
+        incumbent_fit_gate=builder.GateResult("incumbent_fit", True),
+        puf_tail_gate=builder.GateResult("puf_tail", True),
+    )
+    return receipt, failures
+
+
+def test_builder_refuses_gate_failed_pool_without_explicit_opt_in() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
+        _gate_failed_exact_k_receipt(
+            builder,
+            allow_gate_failed_base_pool=False,
+        )
+
+
+def test_gate_failed_pool_verdict_is_carried_into_release_manifest(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    ladder, failures = _gate_failed_exact_k_receipt(
+        builder,
+        allow_gate_failed_base_pool=True,
+    )
+    release_id = "populace-us-2024-k20000-gate-failed-fixture"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    builder._build_manifests(
+        exact_k_ladder=ladder,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    carried = release_manifest["build"]["exact_k_ladder"]
+    assert carried["pool"] == {
+        "release_id": "fixture-publication",
+        "release_id_source": "pool_manifest.publication_run_id",
+        "manifest_sha256": "a" * 64,
+        "publication_run_id": "fixture-publication",
+        "pool_h5_sha256": "1" * 64,
+        "pool_h5_size_bytes": 123,
+        "agreement_diagnostics_sha256": "2" * 64,
+        "status": "gate_failed",
+        "simulation_ready": False,
+        "allow_gate_failed_base_pool": True,
+    }
+    verdict = carried["agreement_gate_reference"]
+    assert verdict["passed"] is False
+    assert verdict["battery_status"] == "red"
+    assert verdict["gates_json_sha256"] == "2" * 64
+    assert verdict["failure_count"] == 2
+    assert verdict["failures"] == failures
+    assert verdict["verdict"]["gates"]["us_by_origin_battery"]["failures"] == (
+        failures
     )
 
 
