@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.age_tail import UK_AGE_TOP_CODE
 from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_DECLARED_SEEDS,
     _benunit_regions,
@@ -340,6 +341,10 @@ def e6_identity_receipt(
     Covered: the domestic-energy fold (elec + gas), the rail_usage ratio,
     petrol/diesel zeroing idempotence for non-fuel households, and the NHS
     age-gender person allocation recomputed from the committed resource.
+    The production contract is stage-time-age-derived: ``etb_services`` runs
+    on the top-coded FRS age surface, then ``age_tail`` disaggregates the
+    top-code later as calibration support. Stored NHS columns are therefore
+    checked against ``min(final_age, UK_AGE_TOP_CODE)`` rather than final age.
     The QRF chain draws and the NEED raking outcome are covered by
     twin-build determinism and the aggregate_admin NEED-margin receipt
     respectively (raking inputs are consumed by the stage and are not
@@ -378,8 +383,15 @@ def e6_identity_receipt(
                     no_fuel, 0.0, household[column].to_numpy(dtype=float)
                 )
         if {"age", "gender"} <= set(person_t.columns):
+            nhs_person = person_t.copy()
+            nhs_person["age"] = np.minimum(
+                pd.to_numeric(nhs_person["age"], errors="coerce")
+                .fillna(0)
+                .to_numpy(dtype=float),
+                UK_AGE_TOP_CODE,
+            )
             nhs = allocate_nhs_by_age_gender(
-                person_t,
+                nhs_person,
                 household_weights=household["household_weight"].to_numpy(dtype=float),
                 household=household,
                 nhs_table=None,
@@ -460,6 +472,8 @@ def e6_identity_receipt(
     return {
         "check": "uk_e6_identity_stability",
         "permutation_seed": permutation_seed,
+        "nhs_age_basis": "stage_time_top_coded",
+        "nhs_age_top_code": UK_AGE_TOP_CODE,
         "identical_under_permutation": not mismatches,
         "permutation_mismatches": mismatches,
         "matches_stored_columns": not stored_mismatches,
