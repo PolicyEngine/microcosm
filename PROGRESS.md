@@ -3,11 +3,11 @@
 ## State
 
 Containment, carriage, and both preflight modes are now corrected and
-focused-tested. Ordinary preflight authenticates identified base pools through
-the same strict/explicit-opt-in seam; manifest-only publication review reads
-the canonical `build.base_pool` receipt and keeps the red evidence outside its
-automated exit calculation. No pool or release has been built, published, or
-pushed.
+verified across the complete affected files. Ordinary preflight authenticates
+identified base pools through the same strict/explicit-opt-in seam;
+manifest-only publication review reads the canonical `build.base_pool` receipt
+and keeps red evidence outside its automated exit calculation. No pool or
+release has been built, published, or pushed.
 
 ## Done
 
@@ -38,12 +38,14 @@ pushed.
   than the unchanged exact-k arm.
 - Documented the authenticated base-pool and human publication boundary in the
   repository release-flow guide.
+- Passed the complete affected builder, pool-H5 loader, preflight, exact-k E2E,
+  exact-k launcher, and data-contract test files in one process, plus
+  repository-wide Ruff.
 
 ## Next
 
-1. Run the complete affected test files and adjacent release-contract tests.
-2. Run repository-wide Ruff and full pytest one process per shard.
-3. Record the audit and verification evidence, write
+1. Run full pytest one process per shard.
+2. Record the audit and verification evidence, write
    `out.md`, and leave the branch clean with coherent local commits.
 
 ## Historical context
