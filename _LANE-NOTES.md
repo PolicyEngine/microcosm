@@ -56,8 +56,10 @@
   (`packages/microcosm-build/tests/test_us_acs_transfer.py:724-743`). The local
   staging builder at base commit `5abda614` passed exactly that generic
   declaration through donor coverage, transfer, and post-transfer coverage,
-  so the weekly leaf was never modeled there. The repaired local-plan routing
-  is recorded in the implementation section below
+  so the weekly leaf was never modeled there
+  (`5abda614:tools/_legacy/build_us_acs_multispine_base.py:219-263,344-415,489-523`).
+  The repaired local-plan routing is recorded in the implementation section
+  below
   (`tools/_legacy/build_us_acs_multispine_base.py:80-129,267-317,398-418`).
 - Re-running the source operator on native ACS persons is not a valid fallback:
   ACS native mapping carries no ASEC `HRSWK`, `A_HRS1`, or `WKSWORK`, while the
@@ -68,8 +70,8 @@
   the consumer projection fills every reviewed null from the installed engine
   default before writing the published H5. That is the silent defaulted-column
   path, not a modeled value
-  (`tools/_legacy/build_us_acs_multispine_base.py:1066-1102`;
-  `tools/build_us_acs_local_release.py:212-263,274-355,1095-1153`).
+  (`tools/_legacy/build_us_acs_multispine_base.py:1119-1155`;
+  `tools/build_us_acs_local_release.py:259-356,1096-1155`).
 - The shared ACS QRF already derives and records the family seed, each
   availability-pattern seed, and the QRF fit/draw split
   (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1507-1627,3190-3204`);
@@ -82,11 +84,12 @@
   (`packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:267-421`).
   National pool/fiscal paths call it. At base commit `5abda614`, local finalize
   constructed only PUMA, calibration, composition, and consumer-readiness
-  receipts and hard-failed only the PUMA/calibration/consumer trio; the
+  receipts and hard-failed only the PUMA/calibration/consumer trio
+  (`5abda614:tools/build_us_acs_local_release.py:1432-1578`); the
   repaired ACS-scoped wiring is recorded at the literal end of this journal
   (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:1792-1821`;
   `tools/build_us_fiscal_refresh_release.py:9333-9360`;
-  `tools/build_us_acs_local_release.py:1196-1235,1501-1508,1531-1541,1622-1657`).
+  `tools/build_us_acs_local_release.py:1196-1241,1507-1515,1537-1547,1628-1663`).
 - Pre-change current-worktree receipts: calibrate 203 passed; data 318 passed /
   2 skipped; fit 93 passed; frame 295 passed / 36 skipped. The first serial
   build partition passed 4,156 tests / skipped 36 in 11,227.70 seconds. The
@@ -1290,7 +1293,7 @@ regenerated under the new identity.
   are not reusable because materialization binds the staging SHA into run
   identity (`tools/build_us_acs_local_release.py:771-898`).
 
-David-ready reply: The local lane was feeding the generic ACS transfer plan, which deliberately omitted the runtime-owned `weekly_hours_worked_before_lsr`; native ACS rows do not carry the ASEC source columns needed by the seeder, so consumer projection silently materialized the then-current 40-hour engine default, while donor rows let a combined-surface check look healthy and local finalize never called the hours gate (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:307-357`; `packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:104-175`; `tools/build_us_acs_local_release.py:212-355,1095-1153`). The fix grafts the exact national seed-ledgered `source_operator_hours_worked` singleton into the local QRF plan, proves it through the actual PUF-detail donor channel, and hard-gates the two persisted hours leaves on ACS persons alone (`tools/_legacy/build_us_acs_multispine_base.py:80-129,267-317`; `tools/build_us_acs_local_release.py:1196-1241,1507-1663`). Rebuild fresh ACS staging and the entire local release; do not reuse old staging, checkpoints, or H5 because materialization pins the staging SHA (`tools/build_us_acs_local_release.py:771-898`).
+David-ready reply: The local lane was feeding the generic ACS transfer plan, which deliberately omitted the runtime-owned `weekly_hours_worked_before_lsr`; native ACS rows do not carry the ASEC source columns needed by the seeder, so consumer projection silently materialized the then-current 40-hour engine default, while donor rows let a combined-surface check look healthy and local finalize never called the hours gate (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:307-357`; `packages/microcosm-build/src/microcosm/build/us_runtime/hours_worked.py:104-175`; `tools/build_us_acs_local_release.py:259-356,1096-1155`; `packages/microcosm-build/tests/test_us_acs_local_release_tool.py:49-64`). The fix grafts the exact national seed-ledgered `source_operator_hours_worked` singleton into the local QRF plan, proves it through the actual PUF-detail donor channel, and hard-gates the two persisted hours leaves on ACS persons alone (`tools/_legacy/build_us_acs_multispine_base.py:80-129,267-317`; `tools/build_us_acs_local_release.py:1196-1241,1507-1663`). Rebuild fresh ACS staging and the entire local release; do not reuse old staging, checkpoints, or H5 because materialization pins the staging SHA (`tools/build_us_acs_local_release.py:771-898`).
 
 Exact local-lane verification build command for the serial host queue (run only after this branch is committed and the queue has attached its external <15-GiB process-tree monitor):
 

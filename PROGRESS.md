@@ -99,6 +99,8 @@ host and its process-tree RSS monitor; its exact command is the literal end of
   draw sites, so no spec or generated surface changed
   (`packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:1021-1053`;
   `packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:615-684`).
+- Wrote the complete mechanism-cited outcome, verification receipts,
+  serial-host handoff, and David-ready reply to `FINAL_REPORT.md`.
 
 ## Next
 
