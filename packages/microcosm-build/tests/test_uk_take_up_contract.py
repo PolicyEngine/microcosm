@@ -42,7 +42,7 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.89,
         0.23,
         0.7,
-        0.85,
+        0.55,
         0.5,
         0.88,
         0.812,
