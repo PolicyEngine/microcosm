@@ -20,16 +20,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime.national_build import (
-    load_uk_national_frame,
-    write_uk_national_frame,
-)
 from microcosm.build.uk_runtime.national_frame import (
     UK_NATIONAL_SCHEMA,
+    UKNationalStage,
+    load_uk_national_frame,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+    write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.rowwise_dataset import (
     read_uk_single_year_weight_metadata,
@@ -108,6 +107,23 @@ def test_construction_accessors_and_residue_validation() -> None:
     )
     assert "household_weight" not in frame.table("household")
     validate_uk_national_frame(frame)
+
+
+def test_national_stage_runs_frame_transform() -> None:
+    frame = _frame()
+    stage = UKNationalStage("identity", lambda candidate: candidate)
+
+    assert stage.run(frame) is frame
+
+
+def test_national_stage_requires_named_callable_frame_transform() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        UKNationalStage("", lambda candidate: candidate)
+    with pytest.raises(TypeError, match="callable"):
+        UKNationalStage("bad", "not-callable")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="must return a microcosm Frame"):
+        UKNationalStage("bad-output", lambda candidate: object()).run(_frame())
 
 
 def test_construction_requires_the_exported_weight_column() -> None:

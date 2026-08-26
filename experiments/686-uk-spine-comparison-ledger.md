@@ -1,3 +1,5 @@
+> Historicized 2026-08-26: This is the adjudication packet and run-receipt history for the #686 UK spine-swap decision. It is superseded as live state by the signed register and the battery; the content below is retained as historical evidence, not current operational status.
+
 # UK spine comparison ledger — microcosm#686 · PR #747
 
 Every variable the E workstream manipulates, measured against the incumbent,

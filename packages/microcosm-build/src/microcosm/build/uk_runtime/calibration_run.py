@@ -174,7 +174,10 @@ def _scope_exclusions() -> dict[str, str]:
         if gate_id in spine:
             reason = "spine-construction gate; owned by the spine build's scoped battery."
         elif gate_id in national:
-            reason = "national build gate; owned by the national preflight/terminal battery."
+            reason = (
+                "owned by the release-cut certification producer; runner lands "
+                "with the certification, June runner retired"
+            )
         elif "parity" in gate_id or gate_id in _SWAP_ACCEPTANCE_GATE_IDS:
             reason = "swap-acceptance evidence; produced by the swap lane, not the calibration seam."
         else:

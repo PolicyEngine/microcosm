@@ -31,8 +31,10 @@ from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
 )
-from microcosm.build.uk_runtime.national_build import load_uk_national_frame
-from microcosm.build.uk_runtime.national_frame import uk_time_period
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
+    uk_time_period,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     load_regional_land_values_resource,
     uprate_household_property_by_region,

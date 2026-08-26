@@ -410,7 +410,7 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     assert summary["assigned_constituencies"] >= 4
     assert summary["weights"]["household_weight_kind"] == "importance"
     assert summary["weights"]["mass_conservation"]["passed"] is True
-    assert (output_dir / "populace_uk_2023_rowwise.h5").exists()
+    assert (output_dir / "staging_rowwise.h5").exists()
 
 
 def test_driver_ladder_dry_run_matches_real_assignment(
@@ -442,7 +442,7 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(plan_dir), "--dry-run"])
     assert builder.main() == 0
     plan = json.loads((plan_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
-    assert not (plan_dir / "populace_uk_2023_rowwise.h5").exists()
+    assert not (plan_dir / "staging_rowwise.h5").exists()
 
     monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(build_dir)])
     assert builder.main() == 0
@@ -453,7 +453,7 @@ def test_driver_ladder_dry_run_matches_real_assignment(
         row["area_code"]: row["rows"]
         for row in plan["realized_support"]["constituency"]["bottom"]
     }
-    with pd.HDFStore(build_dir / "populace_uk_2023_rowwise.h5", mode="r") as store:
+    with pd.HDFStore(build_dir / "staging_rowwise.h5", mode="r") as store:
         household = store["household"]
     built_counts = household["constituency_code"].value_counts()
     for code, rows in realized.items():
@@ -547,7 +547,7 @@ def test_ladder_clone_rejects_unknown_weight_kind_h5(toy_ladder, tmp_path) -> No
     pytest.importorskip("h5py")
     import h5py
 
-    from microcosm.build.uk_runtime.national_build import (
+    from microcosm.build.uk_runtime.national_frame import (
         UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
     )
 

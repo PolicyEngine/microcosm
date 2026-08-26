@@ -25,8 +25,10 @@ from microcosm.build.uk_runtime.frs_brma import (
     assign_brma_by_cell,
     load_brma_count_resource,
 )
-from microcosm.build.uk_runtime.national_build import load_uk_national_frame
-from microcosm.build.uk_runtime.national_frame import uk_time_period
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
+    uk_time_period,
+)
 
 
 def brma_cell_distribution(

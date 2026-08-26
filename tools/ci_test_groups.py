@@ -62,6 +62,7 @@ def stray_nested_test_files(flat: tuple[str, ...]) -> tuple[str, ...]:
         line
         for line in result.stdout.splitlines()
         if "/tests/" in line
+        and (ROOT / line).is_file()
         and basename(line).startswith("test_")
         and line.endswith(".py")
         and line not in known
@@ -77,7 +78,13 @@ def tracked_test_files() -> tuple[str, ...]:
         text=True,
         stdout=subprocess.PIPE,
     )
-    return tuple(sorted(line for line in result.stdout.splitlines() if line))
+    return tuple(
+        sorted(
+            line
+            for line in result.stdout.splitlines()
+            if line and (ROOT / line).is_file()
+        )
+    )
 
 
 def package(path: str) -> str:

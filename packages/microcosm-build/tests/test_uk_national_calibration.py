@@ -28,13 +28,15 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UKLedgerTargetCompilation,
     _uk_contract_targets,
 )
-from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
     _post_solve_calibration_record,
     national_calibration_mass_reason,
 )
-from microcosm.build.uk_runtime.national_frame import validate_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    validate_uk_national_frame,
+    write_uk_national_frame,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 

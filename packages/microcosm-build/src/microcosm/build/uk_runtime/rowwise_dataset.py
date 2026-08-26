@@ -21,13 +21,11 @@ from microcosm.build.uk_runtime.geography_ladder import (
     assign_uk_geography_ladder,
     uk_geography_ladder_gate,
 )
-from microcosm.build.uk_runtime.national_build import (
+from microcosm.build.uk_runtime.national_frame import (
     _mass_log_from_stored,
     _read_weight_metadata,
     _weight_kind_from_stored,
     _write_uk_single_year_tables,
-)
-from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,

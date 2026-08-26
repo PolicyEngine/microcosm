@@ -66,7 +66,7 @@ from microcosm.build.uk_runtime import (
 from microcosm.frame import engine_tables
 
 CROSSWALK_FILENAME = "uk_official_geography_crosswalk.csv.gz"
-DATASET_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise.h5"
+DATASET_FILENAME_TEMPLATE = "{input_stem}_rowwise.h5"
 MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
 DRY_RUN_PLAN_FILENAME = "rowwise_dry_run_plan.json"
@@ -135,7 +135,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dataset-filename",
         help=(
-            f"Output H5 filename within --out. Defaults to {DATASET_FILENAME_TEMPLATE}."
+            "Output H5 filename within --out. Defaults to the input H5 stem "
+            "plus '_rowwise.h5'."
         ),
     )
     parser.add_argument(
@@ -356,6 +357,7 @@ def _main_impl(
     output_h5 = _dataset_output_path(
         args.out,
         dataset_filename=args.dataset_filename,
+        input_stem=input_h5.stem,
         source_year=source_year,
     )
     _validate_output_paths(input_h5=input_h5, output_h5=output_h5, args=args)
@@ -544,10 +546,12 @@ def _dataset_output_path(
     out_dir: Path,
     *,
     dataset_filename: str | None,
+    input_stem: str,
     source_year: int,
 ) -> Path:
     filename = dataset_filename or DATASET_FILENAME_TEMPLATE.format(
-        source_year=source_year
+        input_stem=input_stem,
+        source_year=source_year,
     )
     path = Path(filename)
     if path.is_absolute() or path.name != filename or path.name in {"", ".", ".."}:

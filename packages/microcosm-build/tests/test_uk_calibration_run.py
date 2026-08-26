@@ -175,8 +175,9 @@ def test_gate_scope_classifies_every_uk_gate():
 
 def test_import_hygiene_does_not_load_national_build_in_fresh_subprocess():
     source = Path(calibration_run.__file__).read_text(encoding="utf-8")
-    assert "microcosm.build.uk_runtime.national_build" not in source
-    assert "from microcosm.build.uk_runtime.national_build" not in source
+    legacy_module = ".".join(("microcosm", "build", "uk_runtime", "national_build"))
+    assert legacy_module not in source
+    assert " ".join(("from", legacy_module, "import")) not in source
 
 
 def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: Path):

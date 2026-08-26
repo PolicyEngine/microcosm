@@ -70,8 +70,8 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRCCapitalGainsJointDistribution,
     materialize_hmrc_capital_gains_joint_distribution,
 )
-from microcosm.build.uk_runtime.national_build import UKNationalStage
 from microcosm.build.uk_runtime.national_frame import (
+    UKNationalStage,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,

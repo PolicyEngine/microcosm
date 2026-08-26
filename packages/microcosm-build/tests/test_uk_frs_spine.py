@@ -29,8 +29,8 @@ from microcosm.build.uk_runtime.frs_spine import (
     scottish_water_and_sewerage_weekly,
     uk_frs_spine_seed_frame,
 )
-from microcosm.build.uk_runtime.national_build import load_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
