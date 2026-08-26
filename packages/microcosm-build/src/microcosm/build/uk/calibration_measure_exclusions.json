@@ -45,6 +45,384 @@
       "adjudication": "microcosm#757 (the #743-audit adjudication, issue comment 5413502559)",
       "approved_on": "2026-08-25",
       "expires_on": "2026-11-25"
+    },
+    {
+      "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/employment_income_count_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/dividend_income_count_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/property_income_count_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/self_employment_income_count_income_band_1_000_000_to_inf",
+      "reason": "Zero-support channel: the SPI-derived spine carries 2 records above 1m total income (measured on candidate and incumbent alike, the #757 A2 support-channel measurement), so the cell cannot be reached by reweighting; nine of the eleven cells sit at -100% with final estimate 0.0 on the rebind packet.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "slc.repayments.england_postgraduate",
+      "reason": "Zero-support channel: no spine record carries postgraduate-plan repayments (-100%, final estimate 0.0 on the rebind packet); the student-loans stage assigns plans from the SLC liable-stocks resource and the postgraduate stock finds no eligible carriers at spine grain.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "slc.repayments.england_plan_5",
+      "reason": "Structural under-support: the E8 PLAN_5 top-up saturates the eligible pool (rate 1.0), so the plan-5 repayment mass is bound by frame composition, not by weighting (-84.4% on the rebind packet).",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "slc.borrowers.plan_5_liable",
+      "reason": "Structural under-support: the E8 PLAN_5 top-up saturates the eligible pool (rate 1.0, final England 43,055 vs 230,000 stock); the liable count is bound by frame composition, not by weighting (-81.3% on the rebind packet).",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
+      "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "policyengine-uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "obr.universal_credit_in_cap",
+      "reason": "The OBR welfare-cap boundary (UC in-cap vs outside-cap) is not measurable on the frame: the model cannot attribute UC spend to the cap concept, so the pair splits one well-measured total into two mis-attributed halves (-96.8% / +286.3% on the rebind packet while total UC spend is within band of the OBR anchor).",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "obr.universal_credit_outside_cap",
+      "reason": "The OBR welfare-cap boundary (UC in-cap vs outside-cap) is not measurable on the frame: the model cannot attribute UC spend to the cap concept, so the pair splits one well-measured total into two mis-attributed halves (-96.8% / +286.3% on the rebind packet while total UC spend is within band of the OBR anchor).",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "ons.household_composition.multi_family_households",
+      "reason": "The ONS household-composition split requires a relationship-to-head frame column the spine does not carry; without it multi-family, unrelated-adult, and lone-parent-with-non-dependent-children households are indistinguishable and the categories bleed into each other (multi_family +1618% on the rebind packet).",
+      "tracking": "microcosm#791",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "ons.household_composition.unrelated_adult_households",
+      "reason": "The ONS household-composition split requires a relationship-to-head frame column the spine does not carry; without it multi-family, unrelated-adult, and lone-parent-with-non-dependent-children households are indistinguishable and the categories bleed into each other (multi_family +1618% on the rebind packet).",
+      "tracking": "microcosm#791",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "ons.household_composition.lone_parent_non_dependent_children_households",
+      "reason": "The ONS household-composition split requires a relationship-to-head frame column the spine does not carry; this cell fits numerically (-0.03% on the rebind packet) but measures the wrong concept - the solver holds it by stuffing misclassified households into the sibling categories, so it must unbind together with them.",
+      "tracking": "microcosm#791",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
+      "reason": "Sparse cell support: the frame carries too few records in this income-band cell for the solver to hit the published value without distorting neighbouring cells; a member of the stable six-cell sparse-band set present on both the live-proof and rebind packets.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
+      "reason": "Sparse cell support: the frame carries too few records in this income-band cell for the solver to hit the published value without distorting neighbouring cells; a member of the stable six-cell sparse-band set present on both the live-proof and rebind packets.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/property_income_count_income_band_500_000_to_1_000_000",
+      "reason": "Sparse cell support: the frame carries too few records in this income-band cell for the solver to hit the published value without distorting neighbouring cells; a member of the stable six-cell sparse-band set present on both the live-proof and rebind packets.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/self_employment_income_count_income_band_500_000_to_1_000_000",
+      "reason": "Sparse cell support: the frame carries too few records in this income-band cell for the solver to hit the published value without distorting neighbouring cells; a member of the stable six-cell sparse-band set present on both the live-proof and rebind packets.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_50_000_to_70_000",
+      "reason": "Sparse cell support: the frame carries too few records in this income-band cell for the solver to hit the published value without distorting neighbouring cells; a member of the stable six-cell sparse-band set present on both the live-proof and rebind packets.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "hmrc/state_pension_income_band_50_000_to_70_000",
+      "reason": "Sparse cell support: the frame carries too few records in this income-band cell for the solver to hit the published value without distorting neighbouring cells; a member of the stable six-cell sparse-band set present on both the live-proof and rebind packets.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "obr.fuel_duties",
+      "reason": "Universe scope: the OBR fact is all-road-users receipts (including freight and business mileage) against a household frame, compounded by LCFS diary under-capture at 37% of implied litres; the binding is verified correct and the gap is scope, not measurement. The household-incidence-vs-total-receipts ledger retarget question is pending chronicle-side adjudication.",
+      "tracking": "microcosm#757",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
+      "approved_on": "2026-08-26",
+      "expires_on": "2026-11-26"
     }
   ]
 }
