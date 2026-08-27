@@ -40,7 +40,10 @@ from microcosm.build.logbook_adoption import (
 )
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
-from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+from microcosm.build.uk_runtime.calibration_run import (
+    UK_SPINE_GATE_SCOPE,
+    uk_scoped_gate_manifest,
+)
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
@@ -775,19 +778,24 @@ def _spine_gate_report_path(spine_h5: Path) -> Path:
 
 
 def _spine_gate_manifest_from_spec(spec) -> GatesManifest | None:
+    """The spine build's scoped battery manifest, from the shared helper.
+
+    A spec without a gates block leaves the battery unarmed (``None``),
+    exactly as before; when armed, the filtering runs through the one
+    scope-filtering implementation every scoped producer shares. The
+    driver passes the spec it already loaded, which is also the hermetic
+    tests' stub point. Digests are identical to the previous local copy
+    because entries, phases, and the policy suffix are unchanged.
+    """
+
     source = getattr(spec, "gates", None)
     if source is None:
         return None
-    entries = tuple(entry for entry in source.gates if entry.id in UK_SPINE_GATE_SCOPE)
-    missing = sorted(set(UK_SPINE_GATE_SCOPE) - {entry.id for entry in entries})
-    if missing:
-        raise RuntimeError(f"UK spine gate scope names undeclared gate id(s): {missing}.")
-    return GatesManifest(
-        country=source.country,
-        version=source.version,
-        policy=f"{source.policy}; spine_build_scope",
+    return uk_scoped_gate_manifest(
+        UK_SPINE_GATE_SCOPE,
         phases=("assembled", "transferred"),
-        gates=entries,
+        policy_suffix="spine_build_scope",
+        source=source,
     )
 
 

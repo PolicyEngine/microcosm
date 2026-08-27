@@ -45,19 +45,14 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
-
-# The certification shares the seam's scoped-manifest, admin-anchor, and
-# re-signing helpers deliberately: one implementation, two producers, so the
-# two reports cannot drift apart in shape. Promoting them to public names is
-# a rename this increment does not need.
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
     UK_SPINE_GATE_SCOPE,
-    _aggregate_admin_totals,
-    _resign_gate_report,
-    _scoped_gate_manifest,
+    finalize_uk_scoped_gate_report,
+    uk_aggregate_admin_totals,
+    uk_scoped_gate_manifest,
 )
 
 __all__ = [
@@ -119,7 +114,7 @@ def _uk_gates_spec() -> GatesManifest:
 def uk_national_gate_manifest() -> GatesManifest:
     """The release-cut battery's scoped manifest (preflight + terminal)."""
 
-    return _scoped_gate_manifest(
+    return uk_scoped_gate_manifest(
         UK_NATIONAL_GATE_SCOPE,
         phases=("preflight", "terminal"),
         policy_suffix="release_cut_scope",
@@ -169,18 +164,36 @@ def rehydrate_uk_fit_weight_records(
             "spine sidecar fit_weight_records must map stage names to record lists."
         )
     collected: list[FitWeightRecord] = []
-    for _stage_name, records in block.items():
-        if not isinstance(records, Sequence) or not records:
-            return ()
+    empty_stages: list[str] = []
+    for stage_name, records in block.items():
+        if not isinstance(records, Sequence) or isinstance(records, (str, bytes)):
+            raise UKReleaseCertificationError(
+                f"spine sidecar fit_weight_records[{stage_name!r}] must be a "
+                "list of records; an unreadable block is corruption, not an "
+                "empty audit."
+            )
+        if not records:
+            empty_stages.append(str(stage_name))
+            continue
         for record in records:
-            if not isinstance(record, Mapping):
-                return ()
+            if not isinstance(record, Mapping) or not (
+                {"fit_name", "weight_kind"} <= set(record)
+            ):
+                raise UKReleaseCertificationError(
+                    f"spine sidecar fit_weight_records[{stage_name!r}] carries "
+                    "a malformed record; an unreadable record is corruption, "
+                    "not an empty audit."
+                )
             collected.append(
                 FitWeightRecord(
                     fit_name=str(record["fit_name"]),
                     weight_kind=str(record["weight_kind"]),
                 )
             )
+    if empty_stages:
+        # A fitting stage that recorded nothing is a failed audit: hand the
+        # binding the empty tuple its refusal path exists for.
+        return ()
     return tuple(collected)
 
 
@@ -201,10 +214,16 @@ def uk_release_parity_evidence(
     runner's ``_stage_parity_evidence`` enforced.
     """
 
-    target_relative_errors = {
-        str(row["name"]): float(row["relative_error"])
-        for row in diagnostics_targets
-    }
+    target_relative_errors: dict[str, float] = {}
+    for row in diagnostics_targets:
+        name = str(row["name"])
+        if "@" not in name:
+            raise UKReleaseCertificationError(
+                f"diagnostics target {name!r} is not labeled at name@period "
+                "grain; the reference side is keyed name@period, so a "
+                "bare-name row would silently fall out of the comparison."
+            )
+        target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns={
             f"{entity}.{column}"
@@ -261,7 +280,7 @@ def run_uk_release_cut_battery(
     battery.run_phase("preflight", EvidenceContext(artifacts=preflight_artifacts))
     battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
 
-    admin_totals, admin_receipt = _aggregate_admin_totals(
+    admin_totals, admin_receipt = uk_aggregate_admin_totals(
         frame, uk_national_gate_manifest()
     )
     terminal_artifacts: dict[str, Any] = {
@@ -280,10 +299,12 @@ def run_uk_release_cut_battery(
     )
     battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
     payload = battery.report_payload()
-    payload["posture"] = UK_RELEASE_CUT_POSTURE
-    payload["scope_exclusions"] = uk_release_cut_scope_exclusions()
-    payload["aggregate_admin_measurement"] = admin_receipt
-    _resign_gate_report(payload)
+    finalize_uk_scoped_gate_report(
+        payload,
+        posture=UK_RELEASE_CUT_POSTURE,
+        scope_exclusions=uk_release_cut_scope_exclusions(),
+        aggregate_admin_measurement=admin_receipt,
+    )
     _write_json(report_path, payload)
     return payload
 
@@ -342,9 +363,12 @@ def compose_uk_release_certification(
         )
         part_summaries[part_name] = {
             "path": str(
-                parts_raw[part_name][2]
-                if len(parts_raw[part_name]) > 2
-                else _part_path(part_name, spine_report_path, seam_report_path, release_cut_report_path)
+                _part_path(
+                    part_name,
+                    spine_report_path,
+                    seam_report_path,
+                    release_cut_report_path,
+                )
             ),
             "sha256": hashlib.sha256(raw_bytes).hexdigest(),
             "release_id": str(payload["release_id"]),
@@ -682,12 +706,18 @@ def _verify_identity_join(
 def _verify_score_receipt(
     receipt: Mapping[str, Any], *, candidate_sha256: str
 ) -> None:
-    payload = json.dumps(receipt)
-    if candidate_sha256 not in payload:
+    artifacts = receipt.get("artifacts")
+    scored = (
+        artifacts.get("candidate", {}).get("sha256")
+        if isinstance(artifacts, Mapping)
+        else None
+    )
+    if scored != candidate_sha256:
         raise UKReleaseCertificationError(
-            "the score receipt does not name the candidate's sha256; the "
-            "rule-1 score must be measured on the candidate under "
-            "certification."
+            "the score receipt's artifacts.candidate.sha256 is "
+            f"{scored!r}, not the candidate under certification "
+            f"({candidate_sha256!r}); the rule-1 score must be measured on "
+            "this candidate's bytes."
         )
 
 
@@ -706,7 +736,7 @@ def _scoped_digests(
     phases: tuple[str, ...],
     policy_suffix: str,
 ) -> dict[str, str]:
-    manifest = _scoped_gate_manifest(
+    manifest = uk_scoped_gate_manifest(
         scope, phases=phases, policy_suffix=policy_suffix
     )
     return _manifest_digests(manifest)
@@ -725,11 +755,10 @@ def _manifest_digests(manifest: GatesManifest) -> dict[str, str]:
         release_candidate=False,
         registry=UK_GATE_REGISTRY,
     )
-    payload = run.report_payload()
     return {
-        "gates_manifest_sha256": str(payload["gates_manifest_sha256"]),
-        "policy_sha256": str(payload["policy_sha256"]),
-        "spec_fingerprint": str(payload["spec_fingerprint"]),
+        "gates_manifest_sha256": run.gates_manifest_sha256,
+        "policy_sha256": run.policy_sha256,
+        "spec_fingerprint": run.spec_fingerprint,
     }
 
 

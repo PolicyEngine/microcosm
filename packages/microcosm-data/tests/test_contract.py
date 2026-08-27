@@ -5030,3 +5030,45 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
         "exactly the certification fields" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
+
+
+def test_national_line_artifacts_require_the_certification(tmp_path) -> None:
+    # A release that ships any national-line gate part without the composed
+    # certification must refuse: the shippability verdict lives only in the
+    # certification, so its omission cannot validate clean (green-by-absence).
+    release_dir = tmp_path / "uk-757-first-certified-cut"
+    release_dir.mkdir()
+    (release_dir / "release_cut_gates.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(release_dir)
+    assert any(
+        "release_certification.json is missing while national-line" in line
+        for line in caught.value.failures
+    )
+
+    # A calibration-seam-scoped terminal report is a national-line part too.
+    seam_dir = tmp_path / "uk-757-seam-only"
+    seam_dir.mkdir()
+    (seam_dir / "terminal_gates.json").write_text(
+        '{"posture": "calibration_seam"}', encoding="utf-8"
+    )
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(seam_dir)
+    assert any(
+        "release_certification.json is missing while national-line" in line
+        for line in caught.value.failures
+    )
+
+    # With the certification present the omission failure clears (the file's
+    # own validation and the base required-files failures still apply).
+    (release_dir / "release_certification.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(release_dir)
+    assert not any(
+        "is missing while national-line" in line for line in caught.value.failures
+    )
+    assert any(
+        "must carry exactly the certification fields" in line
+        for line in caught.value.failures
+    )

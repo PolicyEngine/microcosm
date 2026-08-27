@@ -835,6 +835,24 @@ class GateBatteryRun:
                 return phase
         return None
 
+    @property
+    def gates_manifest_sha256(self) -> str:
+        """Canonical digest of the scoped manifest this run attests."""
+
+        return self._gates_manifest_sha256
+
+    @property
+    def spec_fingerprint(self) -> str:
+        """Composition fingerprint derived from the manifest digest."""
+
+        return self._spec_fingerprint
+
+    @property
+    def policy_sha256(self) -> str:
+        """Canonical digest of the declared gate policy entries."""
+
+        return self._policy_sha256()
+
     def run_phase(self, phase: str, context: EvidenceContext) -> GatePhaseReport:
         """Evaluate one phase and persist the full report before returning.
 

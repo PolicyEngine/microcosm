@@ -504,7 +504,7 @@ def _run_calibration_gate_battery(
     diagnostics_sha256: str,
 ) -> dict[str, object]:
     manifest = _calibration_gate_manifest()
-    admin_totals, admin_receipt = _aggregate_admin_totals(frame, manifest)
+    admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = {
         "national_calibration": stage.manifest,
         "parity_evidence": SimpleNamespace(
@@ -530,10 +530,12 @@ def _run_calibration_gate_battery(
     battery.run_phase("terminal", EvidenceContext(frame=frame, artifacts=artifacts))
     battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
     payload = battery.report_payload()
-    payload["posture"] = "calibration_seam"
-    payload["scope_exclusions"] = dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS)
-    payload["aggregate_admin_measurement"] = admin_receipt
-    _resign_gate_report(payload)
+    finalize_uk_scoped_gate_report(
+        payload,
+        posture="calibration_seam",
+        scope_exclusions=dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
+        aggregate_admin_measurement=admin_receipt,
+    )
     _write_json(path, payload)
     return payload
 
@@ -670,28 +672,30 @@ def _spine_provenance_from_sidecar(
 
 
 def _calibration_gate_manifest() -> GatesManifest:
-    return _scoped_gate_manifest(
+    return uk_scoped_gate_manifest(
         UK_CALIBRATION_GATE_SCOPE,
         phases=("terminal",),
         policy_suffix="calibration_seam_scope",
     )
 
 
-def _spine_gate_manifest() -> GatesManifest:
-    return _scoped_gate_manifest(
-        UK_SPINE_GATE_SCOPE,
-        phases=("assembled", "transferred"),
-        policy_suffix="spine_build_scope",
-    )
-
-
-def _scoped_gate_manifest(
-    scope: tuple[str, ...],
+def uk_scoped_gate_manifest(
+    scope: tuple[str, ...] | frozenset[str],
     *,
     phases: tuple[str, ...],
     policy_suffix: str,
+    source: GatesManifest | None = None,
 ) -> GatesManifest:
-    source = load_country_spec("uk").gates
+    """Filter the declared UK gate spec to one battery's scope.
+
+    The one scope-filtering implementation every scoped producer shares
+    (spine build, calibration seam, release cut). ``source`` lets a caller
+    that already holds a loaded spec — or a hermetic test that stubs one —
+    supply it; the default is the committed package spec.
+    """
+
+    if source is None:
+        source = load_country_spec("uk").gates
     entries = tuple(entry for entry in source.gates if entry.id in scope)
     missing = sorted(set(scope) - {entry.id for entry in entries})
     if missing:
@@ -715,7 +719,7 @@ UK_DERIVED_ADMIN_ANCHOR_MEASURES: Mapping[str, tuple[str, ...]] = {
 }
 
 
-def _aggregate_admin_totals(
+def uk_aggregate_admin_totals(
     frame: Frame, manifest: GatesManifest
 ) -> tuple[dict[str, float], list[dict[str, object]]]:
     """Measure every declared admin anchor, fail-loud on absent evidence.
@@ -876,7 +880,29 @@ def _gate_summary(report: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _resign_gate_report(payload: dict[str, object]) -> None:
+def finalize_uk_scoped_gate_report(
+    payload: dict[str, object],
+    *,
+    posture: str,
+    scope_exclusions: Mapping[str, str],
+    aggregate_admin_measurement: object,
+) -> None:
+    """Graft the scoped-report trio onto a battery payload and re-sign it.
+
+    Every scoped UK producer (the calibration seam, the release-cut
+    certification) declares its posture, the rationale for each gate it
+    does not run, and its admin-anchor measurement receipt, then signs the
+    augmented bytes. One implementation, shared, so the parts the
+    certification composes over cannot drift apart in shape.
+    """
+
+    payload["posture"] = posture
+    payload["scope_exclusions"] = dict(scope_exclusions)
+    payload["aggregate_admin_measurement"] = aggregate_admin_measurement
+    resign_uk_gate_report(payload)
+
+
+def resign_uk_gate_report(payload: dict[str, object]) -> None:
     attestation = payload.get("attestation")
     if not isinstance(attestation, dict):
         raise RuntimeError("gate report has no attestation block.")

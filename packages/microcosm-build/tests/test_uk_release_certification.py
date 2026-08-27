@@ -25,8 +25,8 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
     UK_SPINE_GATE_SCOPE,
-    _resign_gate_report,
-    _scoped_gate_manifest,
+    resign_uk_gate_report,
+    uk_scoped_gate_manifest,
 )
 from microcosm.build.uk_runtime.release_certification import (
     UKReleaseCertificationError,
@@ -77,7 +77,7 @@ def _stub_registry():
 def _write_part(path: Path, scope, phases, *, release_id, release_candidate,
                 release_evidence=None, augment=None, block_phase=None):
     registry = _stub_registry()
-    manifest = _scoped_gate_manifest(
+    manifest = uk_scoped_gate_manifest(
         frozenset(scope),
         phases=tuple(phases),
         policy_suffix={
@@ -100,7 +100,7 @@ def _write_part(path: Path, scope, phases, *, release_id, release_candidate,
     payload = battery.report_payload()
     if augment:
         payload.update(augment)
-        _resign_gate_report(payload)
+        resign_uk_gate_report(payload)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return payload
 
@@ -180,7 +180,15 @@ def green_certification_inputs(tmp_path: Path):
     }
     score_receipt = tmp_path / "score_vs_enhanced_frs.json"
     score_receipt.write_text(
-        json.dumps({"candidate": {"sha256": candidate_sha}, "verdict": "scored"}),
+        json.dumps(
+            {
+                "artifacts": {
+                    "candidate": {"sha256": candidate_sha, "size_bytes": 15},
+                    "incumbent": {"sha256": "9" * 64, "size_bytes": 1},
+                },
+                "candidate_target_wins": 293,
+            }
+        ),
         encoding="utf-8",
     )
     return {
@@ -229,6 +237,59 @@ def test_rehydrate_fit_weight_records():
         )
         == ()
     )
+    # A malformed block is corruption, not an empty audit: it raises rather
+    # than degrading to (), keeping "no weights" and "weights we could not
+    # read" distinguishable.
+    with pytest.raises(UKReleaseCertificationError, match="unreadable block"):
+        rehydrate_uk_fit_weight_records(
+            {"fit_weight_records": {"was_wealth": "not-a-list"}}
+        )
+    with pytest.raises(UKReleaseCertificationError, match="malformed record"):
+        rehydrate_uk_fit_weight_records(
+            {"fit_weight_records": {"was_wealth": [{"fit_name": "x"}]}}
+        )
+    with pytest.raises(UKReleaseCertificationError, match="malformed record"):
+        rehydrate_uk_fit_weight_records(
+            {"fit_weight_records": {"was_wealth": ["not-a-mapping"]}}
+        )
+
+
+def test_parity_evidence_refuses_bare_name_grain():
+    # Both parity sides share the name@period grain; a diagnostics row
+    # missing the period label refuses loudly instead of silently falling
+    # out of the comparison.
+    from microcosm.build.uk_runtime.release_certification import (
+        uk_release_parity_evidence,
+    )
+
+    class _Frame:
+        entities = ()
+
+        def table(self, entity):  # pragma: no cover - never reached
+            raise AssertionError
+
+    class _Registry:
+        specs = ()
+
+    class _Reference:
+        input_entities = {}
+
+    with pytest.raises(UKReleaseCertificationError, match="name@period"):
+        uk_release_parity_evidence(
+            _Frame(),
+            diagnostics_targets=[{"name": "dwp.uc.households", "relative_error": 0.1}],
+            reference_registry=_Registry(),
+            parity_reference=_Reference(),
+        )
+    evidence = uk_release_parity_evidence(
+        _Frame(),
+        diagnostics_targets=[
+            {"name": "dwp.uc.households@2025", "relative_error": 0.1}
+        ],
+        reference_registry=_Registry(),
+        parity_reference=_Reference(),
+    )
+    assert evidence.candidate_targets == {"dwp.uc.households@2025"}
 
 
 def test_compose_green_certification(green_certification_inputs):
@@ -348,6 +409,31 @@ def test_compose_refuses_unpinned_score_receipt(green_certification_inputs):
         compose_uk_release_certification(**green_certification_inputs)
 
 
+def test_compose_refuses_score_receipt_scored_on_another_artifact(
+    green_certification_inputs,
+):
+    # The candidate digest appearing elsewhere in the document (an inputs
+    # list, a provenance pin) must not satisfy the cross-pin: only
+    # artifacts.candidate.sha256 names what was scored.
+    candidate_sha = green_certification_inputs["candidate_sha256"]
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "candidate": {"sha256": "8" * 64},
+                    "incumbent": {"sha256": candidate_sha},
+                },
+                "provenance": {"inputs": [candidate_sha]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        UKReleaseCertificationError, match="artifacts.candidate.sha256"
+    ):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
 def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypatch):
     monkeypatch.delenv(gate_signing_key_env("uk"))
     with pytest.raises(UKReleaseCertificationError, match="must be set"):
@@ -357,7 +443,7 @@ def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypa
 def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         release_certification,
-        "_aggregate_admin_totals",
+        "uk_aggregate_admin_totals",
         lambda frame, manifest: ({}, {"stub": True}),
     )
     report_path = tmp_path / "release_cut_gates.json"

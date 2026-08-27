@@ -523,6 +523,7 @@ _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
 # that _check_uk_gate_battery_report applies to one unfiltered report apply
 # here per-certification (the 5413502559 audit's nine refusal points).
 _UK_RELEASE_CERTIFICATION_FILE = "release_certification.json"
+_UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
@@ -4357,6 +4358,33 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 )
 
     certification_path = release_dir / _UK_RELEASE_CERTIFICATION_FILE
+    # A release that ships any national-line part must ship the composed
+    # verdict: the shippability claim lives only in the certification, so a
+    # directory carrying a release-cut report, or a calibration-seam-scoped
+    # terminal report, without release_certification.json is refused rather
+    # than validating clean by omission. (The id-keyed required-files rule
+    # lands with the national publication integration, once the canonical
+    # national release-id form exists.)
+    national_line_parts = []
+    if (release_dir / _UK_RELEASE_CUT_GATE_REPORT_FILE).is_file():
+        national_line_parts.append(_UK_RELEASE_CUT_GATE_REPORT_FILE)
+    seam_terminal_path = release_dir / _UK_TERMINAL_GATE_REPORT_FILE
+    if seam_terminal_path.is_file():
+        try:
+            probe = json.loads(seam_terminal_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            probe = None
+        if isinstance(probe, Mapping) and probe.get("posture") == "calibration_seam":
+            national_line_parts.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} (posture calibration_seam)"
+            )
+    if national_line_parts and not certification_path.is_file():
+        failures.append(
+            f"{_UK_RELEASE_CERTIFICATION_FILE} is missing while national-line "
+            f"gate artifacts are present ({', '.join(national_line_parts)}); "
+            "a candidate's shippability verdict comes only from the "
+            "certification, so its omission cannot validate clean."
+        )
     if certification_path.is_file():
         certification = _load_json(certification_path, failures)
         if certification is not None:
