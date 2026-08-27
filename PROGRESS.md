@@ -7,10 +7,10 @@ Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
 adopted and implementation is in progress for the nonfemale-pregnancy producer
 defect and the owner-approved rung-aware prior-year availability release floor.
 Both fixes are implemented and their focused runtime suites are green; the
-source-attested spec/coverage repin and full repository verification are in
-progress. The authored 0.05 floor, upper bound, all other bands, thresholds,
-seeds, and batteries remain unchanged. This lane will not build, publish, or
-push pool or release artifacts.
+source-attested spec/coverage repins are committed, and only the clean build-
+shard rerun and final report remain. The authored 0.05 floor, upper bound, all
+other bands, thresholds, seeds, and batteries remain unchanged. This lane will
+not build, publish, or push pool or release artifacts.
 
 ## Done
 
@@ -109,10 +109,10 @@ push pool or release artifacts.
   provenance golden needed the new additive `structural_receipt: null` field
   on an unrelated transfer record. Updated only that JSON-ready shape; the
   complete optional-ACS multispine test file and focused Ruff pass.
+- Committed the additive optional-ACS provenance fixture repin as `7caf69ac`.
 
 ## Next
 
-- Commit the additive optional-ACS provenance fixture repin.
 - Restart the full build shard from zero; the other four final-state shards,
   repository Ruff, generated/coverage/inventory checks already pass.
 - Write and commit the complete handoff to `out.md`.
