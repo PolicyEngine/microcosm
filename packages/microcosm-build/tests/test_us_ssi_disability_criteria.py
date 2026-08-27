@@ -47,6 +47,35 @@ requires_us = pytest.mark.skipif(
 )
 
 
+def test_reported_ssi_anchor_coalesces_native_asec_and_harmonized_acs() -> None:
+    person = pd.DataFrame(
+        {
+            "SSI_VAL": [1_200.0, np.nan, np.nan],
+            "ssi_reported": [np.nan, 900.0, np.nan],
+        }
+    )
+
+    values = module._reported_ssi_anchor(
+        person,
+        age=np.asarray([40.0, 50.0, 10.0]),
+    )
+
+    np.testing.assert_array_equal(values, [1_200.0, 900.0, 0.0])
+    assert pd.isna(person.loc[2, "ssi_reported"])
+
+
+def test_reported_ssi_anchor_refuses_an_adult_universe_blank() -> None:
+    person = pd.DataFrame(
+        {
+            "SSI_VAL": [np.nan],
+            "ssi_reported": [np.nan],
+        }
+    )
+
+    with pytest.raises(ValueError, match="blank only below"):
+        module._reported_ssi_anchor(person, age=np.asarray([40.0]))
+
+
 def _source_row(
     ssuid: str,
     pnum: int,

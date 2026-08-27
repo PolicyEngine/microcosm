@@ -57,17 +57,41 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   group-quarters blanks belong to the non-owner bin. Confirmed the SSI model's
   `SSI_VAL` use is only the `> 0` reporter anchor and that native ACS `SSIP` is
   already carried as harmonized `ssi_reported`, observed exactly from age 15.
+- Added the dedicated `acs_release_predictors` release boundary. It verifies
+  the two canonical archive pins before opening either zip, streams only
+  selected households, validates exact archive members and headers, rejects
+  raw/person/clone collisions, binds retained pool lineage to
+  `(SERIALNO, SPORDER)`, requires total one-to-one source-person matching, and
+  fans mapped values to clones only through `person_source_id`.
+- Added explicit disability, race/Hispanic, 530-code occupation, and tenure
+  tables. A canonical crosswalk payload is pinned at SHA-256
+  `cf21e20831dd15479e8f5704743dc5e22e5b8a8b78546107ba5024f22d8f3f1b`
+  and rides the JSON-ready join receipt with per-model/per-predictor
+  ASEC-native, ACS-joined, and still-null counts.
+- Preserved CPS disability universe semantics (`-1` below the question age)
+  and the POCCU2 age universe (0 below 15, consumed no-occupation code 53 for
+  older ACS OCCP blanks). The explicit occupation table covers every one of
+  the 530 codes in the pinned ACS person archive and every consumed POCCU2 bin.
+- Changed the SSI-disability reporter read, without source routing, to
+  row-wise coalesce measured ASEC `SSI_VAL` with harmonized native ACS
+  `ssi_reported`. Adult blanks and conflicting dual reporters fail; genuine
+  below-age-15 ACS blanks remain null in the frame and become false only for
+  the consumer's `> 0` predicate.
+- Added focused tests for crosswalk identity/all consumed bins, exact join and
+  clone invariance, ASEC byte preservation, receipt contents, missing joins,
+  raw and source-identity collisions, hash refusal, no-ACS identity, and SSI
+  coalescing/universe refusal. The new join file passes all 7 tests; the SSI
+  and source-blindness suites passed alongside it before the final join-only
+  merge-indicator repair, and focused Ruff is green.
 
 ## Next
 
-- Implement the SHA-pinned streaming loaders, explicit crosswalk identity,
-  strict semantic-key join, clone fan-out, `ssi_reported` anchor bridge, and
-  per-model/predictor receipt with focused refusal/totality tests.
 - Add the paired release CLI inputs and carry the receipt into both build and
   release manifests before the six archived model stages, without changing
   their feature/selection logic or any gate threshold.
-- Add the changelog fragment, run focused then full shard verification, and
-  write the final `out.md` report.
+- Re-run the complete focused SSI/source-blindness group, exercise the join
+  read-only against the supplied pool and canonical zips, add the changelog
+  fragment, then run full shard verification and write `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
