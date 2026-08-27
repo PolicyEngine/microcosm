@@ -2,17 +2,16 @@
 
 ## State
 
-In progress on 2026-08-27. Real-pool provenance has refuted the proposed
+Complete on 2026-08-27. Real-pool provenance has refuted the proposed
 post-transfer amount-mapping mechanism: every fractional week is an ACS-origin
 non-native clone prediction outside the calibration's clone-0 recipient scope.
 The source codec, weeks-gate architecture, source-scope, clone-layout, and
 stable-identity repairs are implemented and focused-tested. The complete
 release-call roster is classified; six archived-model input assumptions require
 owner rulings and are deliberately reported instead of guessed. Repository-wide
-Ruff, the CI inventory verifier, and four of five full pytest shards pass. The
-first post-repin build-shard run reached 100% with one stale live-spec SHA
-expectation and no other failures; that expectation is corrected, its complete
-test file is running, and a clean full-shard rerun follows.
+Ruff, the CI inventory verifier, and all five full pytest shards pass in their
+required independent processes. The completed provenance, audit, verification,
+judgment calls, and host-owned checkpoint-rerun consequence are in `out.md`.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -171,13 +170,22 @@ build is in scope.
   still expected the former live US spec SHA. Updated only that live-binding
   expectation to the regenerated final SHA; the separate arbitrary checkpoint
   identity fixture remains deliberately unchanged.
+- Passed the complete multispine-pool-tool file after that correction and
+  committed the coherent fixture repin as `12a918ed`.
+- Reran the entire build shard from zero in one process: 6,608 tests collected,
+  100% reached, and pytest exited 0 with expected skips only. All five full
+  package shards, repository-wide Ruff, generated-artifact checks, the spec
+  coverage proof, the CI test inventory, and `git diff --check` are green.
+- Wrote the final provenance tables, mechanism verdict, per-file rationale,
+  exhaustive release-gate audit, owner-ruling list, verification evidence, and
+  judgment calls to `out.md`.
 
 ## Next
 
-- Finish the complete multispine-tool test file, commit its live-spec fixture
-  repin, then rerun the full build-shard pytest process from zero.
-- Write the final provenance, audit evidence, verification receipts, and
-  judgment calls to `out.md`, then leave a clean committed worktree.
+- Host session: rerun `late_transfer -> simulated -> terminal-gates` from the
+  candidate checkpoints because the discrete weeks codec changes pool content.
+- Review the six archived-model owner rulings in `out.md`; do not reinterpret
+  their missing ACS predictors through a gate-only threshold/scope change.
 
 # Historical: gate-failed base-pool release lane
 
