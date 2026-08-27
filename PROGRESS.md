@@ -97,12 +97,19 @@ push pool or release artifacts.
   spec SHA is `11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`;
   no authored YAML changed. Regenerated coverage remains complete at
   42,154/42,154 fields and 41/41 inventory checks.
+- Committed the fixture, exact-boolean, nested-manifest-type, tamper-test, and
+  final US identity repair as `e59ab046`. Final-state calibrate, data, fit, and
+  frame shard runs then passed.
+- The restarted build shard reached 11% and exposed only the expected shared
+  source-attestation cascade in BE, UK, and the rich-minimal golden spec hashes.
+  Re-pinned those three observed semantic identities; the complete country-
+  bundle/loader/spec-only/country-spec focused matrix passes.
 
 ## Next
 
-- Commit the fixture/type-hardening integration repair and journal state.
-- Run repository Ruff, generated/coverage/inventory checks, and all five pytest
-  shards in independent processes, restarting the build shard from zero.
+- Commit the shared country/minimal source-attestation repin.
+- Restart the full build shard from zero; the other four final-state shards,
+  repository Ruff, generated/coverage/inventory checks already pass.
 - Write and commit the complete handoff to `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance
