@@ -80,6 +80,11 @@ build is in scope.
   now consumes that API rather than reading provenance columns directly, and
   both repository source-blindness tripwires pass alongside the stacked and
   legacy provenance/weekly-signal suites.
+- Made WIC's deterministic draw key prefer the assembly-unique
+  `person_source_id` on multispine frames, before the source-local raw identity
+  triple. Distinct ASEC/ACS records can no longer collide when their vintages
+  align, while all support clones of one assembled person retain the same draw
+  and the legacy key order remains unchanged.
 - Completed the release-tool call-roster audit. It found unambiguous physical
   ASEC scoping repairs in SSI take-up, workers' compensation, alimony,
   retirement contributions/distributions, and Medicare; clone-2 layout fixes
