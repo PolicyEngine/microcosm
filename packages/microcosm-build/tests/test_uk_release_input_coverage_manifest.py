@@ -55,7 +55,7 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
     assert evidence["nonzero_shares"]["household_weight"] == 0.626224
     assert evidence["nondefault_shares"]["household_weight"] == 1.0
     assert evidence["nondefault_shares"]["employment_income"] == 0.478282
-    assert evidence["effective_signal_columns"] == 143
+    assert evidence["effective_signal_columns"] == 146
     assert evidence["insufficient_effective_mass_columns"] == [
         "charitable_investment_gifts",
         "gift_aid",
@@ -80,8 +80,8 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     }
     assert gaps["candidate_evidence"]["missing_columns"] == []
     assert gaps["candidate_evidence"]["default_only_columns"] == []
-    assert gaps["candidate_evidence"]["signal_columns"] == 145
-    assert gaps["candidate_evidence"]["effective_signal_columns"] == 143
+    assert gaps["candidate_evidence"]["signal_columns"] == 148
+    assert gaps["candidate_evidence"]["effective_signal_columns"] == 146
     assert gaps["exclusion_policy"]["reason"] == (
         "not yet ported from enhanced FRS pipeline — pending review"
     )
@@ -175,9 +175,9 @@ def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 145,
+        "required": 148,
         "reviewed_exclusion": 0,
-        "total": 145,
+        "total": 148,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
     assert all(

@@ -70,8 +70,8 @@ class TestEfrsParityReference:
     def test_reference_loads_with_populated_layers(self) -> None:
         reference = load_efrs_parity_reference()
         assert reference.schema_version == 3
-        assert len(reference.nonzero_shares) == 145
-        assert len(reference.populated_layers) == 145
+        assert len(reference.nonzero_shares) == 148
+        assert len(reference.populated_layers) == 148
         assert all(share > 0.0 for share in reference.nonzero_shares.values())
         assert set(reference.input_entities) == set(reference.nonzero_shares)
         assert set(reference.input_entities.values()) == {

@@ -1,7 +1,7 @@
 {
  "description": "Frozen enhanced-FRS parity reference for the UK release input-coverage contract. Every PolicyEngine-UK loader variable the pinned artifact populates is recorded as its unweighted owning-entity nonzero share. This includes formula-owned persisted overrides because the UK Simulation loader passes every engine-known H5 column to set_input; pipeline scratch columns, structural IDs, and all-zero loader layers are not requirements.",
  "engine": {
-  "engine_known_persisted_variable_count": 866,
+  "engine_known_persisted_variable_count": 881,
   "formula_owned_persisted_overrides_included": [
    "current_education",
    "is_benunit_head",
@@ -22,7 +22,7 @@
    "employee_pension_contributions": "employee_pension_contributions_reported",
    "employment_income": "employment_income_before_lsr"
   },
-  "input_variable_count": 223,
+  "input_variable_count": 227,
   "input_variable_scope": "Every CountryTaxBenefitSystem variable persisted in the H5: Simulation.build_from_multi_year_dataset calls set_input for all engine-known columns, including formula-owned overrides",
   "package": "policyengine-uk",
   "structural_columns_excluded": [
@@ -33,10 +33,8 @@
    "household_id"
   ],
   "unknown_export_columns_excluded": [
-   "bus_fare_spending",
    "clone_index",
    "constituency_code_oa",
-   "employment_sector",
    "esa_health_condition_proxy",
    "esa_support_group_proxy",
    "free_school_breakfasts",
@@ -53,11 +51,10 @@
    "region_code_oa",
    "salary_sacrifice_asked",
    "salary_sacrifice_reported",
-   "sic_industry_division",
    "source_household_id",
    "source_year"
   ],
-  "version": "2.89.0",
+  "version": "2.92.0",
   "zero_share_input_columns_excluded": [
    "disabled_students_allowance_eligible_expenses",
    "incapacity_benefit_reported",
@@ -73,14 +70,14 @@
   },
   "household": {
    "export_columns": 66,
-   "input_columns": 51,
-   "populated_input_columns": 51,
+   "input_columns": 52,
+   "populated_input_columns": 52,
    "records": 52846
   },
   "person": {
    "export_columns": 99,
-   "input_columns": 87,
-   "populated_input_columns": 84,
+   "input_columns": 89,
+   "populated_input_columns": 86,
    "records": 113617
   }
  },
@@ -98,6 +95,7 @@
   "attends_private_school_random_draw": "person",
   "brma": "household",
   "bsp_reported": "person",
+  "bus_fare_spending": "household",
   "bus_subsidy_spending": "household",
   "capital_gains": "person",
   "carers_allowance_reported": "person",
@@ -127,6 +125,7 @@
   "employee_pension_contributions": "person",
   "employer_pension_contributions": "person",
   "employment_income": "person",
+  "employment_sector": "person",
   "employment_status": "person",
   "esa_contrib_reported": "person",
   "esa_income_reported": "person",
@@ -204,6 +203,7 @@
   "savings_interest_income": "person",
   "sda_reported": "person",
   "self_employment_income": "person",
+  "sic_industry_division": "person",
   "ssmg_reported": "person",
   "state_pension_reported": "person",
   "statutory_maternity_pay": "person",
@@ -245,6 +245,7 @@
   "attends_private_school_random_draw": 1.0,
   "brma": 1.0,
   "bsp_reported": 0.004929,
+  "bus_fare_spending": 0.202872,
   "bus_subsidy_spending": 0.316675,
   "capital_gains": 0.23375,
   "carers_allowance_reported": 0.010535,
@@ -274,6 +275,7 @@
   "employee_pension_contributions": 0.273489,
   "employer_pension_contributions": 0.314865,
   "employment_income": 0.492928,
+  "employment_sector": 1.0,
   "employment_status": 1.0,
   "esa_contrib_reported": 0.008053,
   "esa_income_reported": 0.009558,
@@ -351,6 +353,7 @@
   "savings_interest_income": 0.424963,
   "sda_reported": 8.8e-05,
   "self_employment_income": 0.054939,
+  "sic_industry_division": 0.734371,
   "ssmg_reported": 0.000405,
   "state_pension_reported": 0.245694,
   "statutory_maternity_pay": 0.002139,

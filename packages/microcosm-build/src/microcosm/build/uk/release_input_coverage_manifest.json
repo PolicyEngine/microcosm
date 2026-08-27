@@ -47,6 +47,9 @@
   "bsp_reported": {
    "status": "required"
   },
+  "bus_fare_spending": {
+   "status": "required"
+  },
   "bus_subsidy_spending": {
    "status": "required"
   },
@@ -132,6 +135,9 @@
    "status": "required"
   },
   "employment_income": {
+   "status": "required"
+  },
+  "employment_sector": {
    "status": "required"
   },
   "employment_status": {
@@ -365,6 +371,9 @@
   "self_employment_income": {
    "status": "required"
   },
+  "sic_industry_division": {
+   "status": "required"
+  },
   "ssmg_reported": {
    "status": "required"
   },
@@ -445,9 +454,9 @@
   }
  },
  "counts": {
-  "required": 145,
+  "required": 148,
   "reviewed_exclusion": 0,
-  "total": 145
+  "total": 148
  },
  "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' when the sha-pinned candidate evidence records non-default signal on at least the reviewed owning-entity effective-mass share OR the column is pinned in restored_required_columns after a source-family restoration; all remaining surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. The final release gate applies the same effective-mass floor, and distributional restorations must pass it on their required source channel.",
  "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
@@ -840,7 +849,7 @@
   "derived_from": "efrs_parity_reference.json",
   "filename": "enhanced_frs_2024_25.h5",
   "period": "2024",
-  "populated_input_columns": 145,
+  "populated_input_columns": 148,
   "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
   "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
   "vintage": "2024_25"
