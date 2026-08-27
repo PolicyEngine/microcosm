@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
+from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.calibrate import TargetRegistry
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -160,8 +161,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "seam's scoped battery cannot sign shippability; run the "
             "release-cut certification producer instead"
         )
-    if _CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id) or (
-        args.release_id == _UK_JUNE_RELEASE_ID
+    if (
+        _CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id)
+        or args.release_id == _UK_JUNE_RELEASE_ID
+        or args.release_id == UK_NATIONAL_RELEASE_ID
     ):
         parser.error(
             "canonical UK release ids belong to the release-cut "

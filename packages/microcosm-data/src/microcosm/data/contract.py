@@ -524,6 +524,12 @@ _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
 # here per-certification (the 5413502559 audit's nine refusal points).
 _UK_RELEASE_CERTIFICATION_FILE = "release_certification.json"
 _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
+# The certified national line's constant release id (ruling 2026-08-27):
+# ordering and run identity live in the Logbook and versioning, so the id
+# stays fixed across cuts. Mirrored from
+# microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
+# data shard cannot import the build shard); lockstep-tested.
+_UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
@@ -633,6 +639,12 @@ def required_release_files(release_id: str) -> tuple[str, ...]:
         return (*REQUIRED_RELEASE_FILES, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
     if _is_uk_exact_k_release_id(release_id):
         return (*REQUIRED_RELEASE_FILES, _UK_TERMINAL_GATE_REPORT_FILE)
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        # The certified national line ships its composed verdict: the
+        # shippability claim lives only in the certification, so a national
+        # release without one is refused at the required-files layer, not
+        # just when part artifacts happen to be present.
+        return (*REQUIRED_RELEASE_FILES, _UK_RELEASE_CERTIFICATION_FILE)
     return REQUIRED_RELEASE_FILES
 
 

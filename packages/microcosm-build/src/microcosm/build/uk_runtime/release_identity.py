@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 __all__ = [
+    "UK_NATIONAL_RELEASE_ID",
     "UK_RELEASE_TIERS",
     "UK_RELEASE_TIER_CPS_TRANSFER",
     "UK_RELEASE_TIER_FRS",
@@ -30,6 +31,14 @@ UK_RELEASE_TIERS = frozenset(
     }
 )
 
+
+#: The certified UK national line's release id (ruling 2026-08-27): one
+#: constant name across cuts — run identity and ordering live in the
+#: Logbook chain and artifact versioning, not in the id. The "2024-25"
+#: vintage segment follows the uk-data survey-year convention; the
+#: "-national" segment keeps the id disjoint from the exact-k ladder's
+#: "-k<N>" shape and may retire as the migration moves on.
+UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 
 def validate_uk_release_tier(tier: object) -> str:
     """Return a ratified UK source tier, rejecting every other token."""

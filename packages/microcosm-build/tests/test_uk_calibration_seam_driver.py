@@ -192,3 +192,14 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
     assert call["measure_resolver"].kwargs["simulation_source"] == call["paths"].input_h5
     assert call["source_pins"]["ledger_facts"] == {"sha256": "b" * 64, "size_bytes": 2}
     assert "uk_target_fit" in capsys.readouterr().out
+
+
+def test_driver_refuses_the_national_release_id(tmp_path: Path):
+    # The constant national id names a shippable release (ruling 2026-08-27);
+    # the seam runs under staging or dev ids only.
+    driver = _load_driver_module()
+    base = _args(tmp_path)
+    args = [*base]
+    args[base.index("--release-id") + 1] = "microcosm-uk-2024-25-national"
+    with pytest.raises(SystemExit):
+        driver._parse_args(args)

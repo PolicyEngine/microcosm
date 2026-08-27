@@ -367,3 +367,10 @@ class TestCertificationMirrors:
         assert data_contract._UK_RELEASE_CERTIFICATION_KIND == (
             release_certification.UK_RELEASE_CERTIFICATION_KIND
         )
+
+    def test_national_release_id_mirrors_the_build_shard(self) -> None:
+        from microcosm.build.uk_runtime.release_identity import (
+            UK_NATIONAL_RELEASE_ID,
+        )
+
+        assert data_contract._UK_NATIONAL_RELEASE_ID == UK_NATIONAL_RELEASE_ID

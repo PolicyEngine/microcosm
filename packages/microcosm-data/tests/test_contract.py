@@ -5072,3 +5072,13 @@ def test_national_line_artifacts_require_the_certification(tmp_path) -> None:
         "must carry exactly the certification fields" in line
         for line in caught.value.failures
     )
+
+
+def test_national_release_id_requires_the_certification() -> None:
+    from microcosm.data.contract import required_release_files
+
+    required = required_release_files("microcosm-uk-2024-25-national")
+    assert "release_certification.json" in required
+    assert "release_certification.json" not in required_release_files(
+        "dev-757-rebind-proof"
+    )
