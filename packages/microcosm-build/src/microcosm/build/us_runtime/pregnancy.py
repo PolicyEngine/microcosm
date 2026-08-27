@@ -20,15 +20,15 @@ The rate is data, not code: it lives in the ``pregnancy`` stage of
 ``microcosm/build/us/source_stages.json`` with its citation and reaches
 this module as a manifest operation parameter.
 
-Selection draws are seeded blake2b hashes keyed by the person's stable
-source identity (``source_year`` / ``source_household_id`` /
-``source_person_id`` when present), so support-channel clones of one
-source person always receive the same flag and reruns are
-bit-reproducible.
+Selection draws are seeded blake2b hashes keyed by the person's stable source
+identity (``source_year`` / ``source_household_id`` / ``source_person_id``
+when present), so support-channel clones of one source person always receive
+the same flag and reruns are bit-reproducible.
 
-Healing behavior: a frame that already carries ``is_pregnant`` with
-signal passes through untouched (idempotent). A constant column —
-indistinguishable from the engine's broadcast default — is reseeded.
+Healing behavior: a frame that already carries a complete, structurally valid
+``is_pregnant`` signal passes through untouched (idempotent). A constant
+column — indistinguishable from the engine's broadcast default — is reseeded.
+Preexisting or final domain violations and clone disagreement are refused.
 """
 
 from __future__ import annotations
@@ -83,6 +83,7 @@ US_PREGNANCY_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 
 _FEMALE_SEX_CODE = 2
 _CHILDBEARING_AGE_RANGE = (15, 44)
+_PERSON_SOURCE_ID_COLUMN = "person_source_id"
 
 #: Weighted share of all persons flagged pregnant must land in this band.
 #: Expected ≈ rate (4.1%) x the female-15-44 share of the population
@@ -163,6 +164,131 @@ def _stable_person_draws(persons: pd.DataFrame, *, seed: int) -> np.ndarray:
     )
 
 
+def _pregnancy_eligibility(person: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Return female and age-domain masks from mapped or raw source columns."""
+
+    if {"is_female", "age"} <= set(person.columns):
+        female_source = person["is_female"]
+        age_source = person["age"]
+        try:
+            female_numeric = female_source.to_numpy(dtype=np.float64, na_value=np.nan)
+        except (TypeError, ValueError) as exc:
+            raise SourceRuntimeError(
+                "Pregnancy structural policy requires boolean is_female."
+            ) from exc
+        female = np.isclose(female_numeric, 1.0)
+        invalid_female = ~np.isfinite(female_numeric) | ~np.isin(
+            female_numeric,
+            [0.0, 1.0],
+        )
+    elif set(US_PREGNANCY_REQUIRED_SOURCE_COLUMNS) <= set(person.columns):
+        female_source = person["A_SEX"]
+        age_source = person["A_AGE"]
+        female_numeric = pd.to_numeric(female_source, errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        female = female_numeric == _FEMALE_SEX_CODE
+        invalid_female = ~np.isfinite(female_numeric)
+    else:
+        raise SourceRuntimeError(
+            "Pregnancy structural policy requires either mapped age/is_female "
+            "or raw A_AGE/A_SEX columns."
+        )
+    age = pd.to_numeric(age_source, errors="coerce").to_numpy(dtype=np.float64)
+    invalid_age = ~np.isfinite(age)
+    if invalid_age.any() or invalid_female.any():
+        raise SourceRuntimeError(
+            "Pregnancy structural policy requires complete sex and age; found "
+            f"invalid_sex_rows={int(invalid_female.sum())}, "
+            f"invalid_age_rows={int(invalid_age.sum())}."
+        )
+    low, high = _CHILDBEARING_AGE_RANGE
+    return female, female & (age >= low) & (age <= high)
+
+
+def _pregnancy_boolean_masks(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Return observed/true masks and count non-boolean physical values."""
+
+    values = person[US_PREGNANCY_OUTPUT_COLUMN]
+    observed = values.notna().to_numpy(dtype=bool)
+    try:
+        numeric = values.to_numpy(dtype=np.float64, na_value=np.nan)
+    except (TypeError, ValueError):
+        return observed, np.zeros(len(values), dtype=bool), int(observed.sum())
+    valid = ~observed | np.isclose(numeric, 0.0) | np.isclose(numeric, 1.0)
+    return observed, observed & np.isclose(numeric, 1.0), int((~valid).sum())
+
+
+def _pregnancy_structural_counts(person: pd.DataFrame) -> dict[str, int]:
+    """Count every hard-domain and all-clone structural condition."""
+
+    female, eligible = _pregnancy_eligibility(person)
+    observed, pregnant, non_boolean = _pregnancy_boolean_masks(person)
+    missing = int((~observed).sum())
+    nonfemale = int((pregnant & ~female).sum())
+    outside_age = int((pregnant & female & ~eligible).sum())
+    ineligible = int((pregnant & ~eligible).sum())
+    source_persons = clone_disagreements = malformed_source_ids = 0
+    if _PERSON_SOURCE_ID_COLUMN in person:
+        source_ids = person[_PERSON_SOURCE_ID_COLUMN]
+        malformed_source_ids = int(source_ids.isna().sum())
+        if not malformed_source_ids:
+            source_persons = int(source_ids.nunique())
+            work = pd.DataFrame(
+                {
+                    "_source": source_ids.to_numpy(),
+                    "_observed": observed,
+                    "_pregnant": pregnant,
+                }
+            )
+            observed_work = work.loc[work["_observed"]]
+            clone_disagreements = int(
+                observed_work.groupby("_source", sort=False)["_pregnant"]
+                .nunique()
+                .gt(1)
+                .sum()
+            )
+    return {
+        "missing_rows": missing,
+        "non_boolean_rows": non_boolean,
+        "pregnant_nonfemale_rows": nonfemale,
+        "pregnant_female_outside_age_range_rows": outside_age,
+        "pregnant_ineligible_rows": ineligible,
+        "source_persons_checked": source_persons,
+        "clone_disagreement_source_persons": clone_disagreements,
+        "malformed_source_id_rows": malformed_source_ids,
+    }
+
+
+def _require_valid_pregnancy_structure(
+    person: pd.DataFrame,
+    *,
+    boundary: str,
+    require_complete: bool,
+) -> dict[str, int]:
+    """Refuse a persisted pregnancy surface that violates its hard contract."""
+
+    counts = _pregnancy_structural_counts(person)
+    refused = {
+        "non_boolean_rows": counts["non_boolean_rows"],
+        "pregnant_ineligible_rows": counts["pregnant_ineligible_rows"],
+        "clone_disagreement_source_persons": counts[
+            "clone_disagreement_source_persons"
+        ],
+        "malformed_source_id_rows": counts["malformed_source_id_rows"],
+    }
+    if require_complete:
+        refused["missing_rows"] = counts["missing_rows"]
+    if any(refused.values()):
+        rendered = ", ".join(f"{key}={value}" for key, value in refused.items())
+        raise SourceRuntimeError(
+            f"{boundary}: pregnancy structural policy refused {rendered}."
+        )
+    return counts
+
+
 def derive_us_pregnancy_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -221,10 +347,10 @@ def _pregnancy_carries_signal(person: pd.DataFrame) -> bool:
 def with_us_pregnancy_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
     """Run the ``pregnancy`` manifest stage over a US frame.
 
-    A frame already carrying a non-constant ``is_pregnant`` passes through
-    untouched (idempotent). Any other surface — column missing, or
-    constant at the engine default — is reseeded from the raw ASEC
-    columns.
+    A frame already carrying a complete, non-constant, structurally valid
+    ``is_pregnant`` passes through untouched (idempotent). Any other valid
+    surface — column missing, or constant at the engine default — is reseeded
+    from the raw ASEC columns. Domain violations are refused.
 
     Args:
         frame: A US-schema frame whose person table still carries the raw
@@ -245,10 +371,15 @@ def with_us_pregnancy_inputs(frame: Frame, *, seed: int, time_period: int) -> Fr
     if frame.schema != US_SCHEMA:
         raise ValueError("US pregnancy inputs require the US schema.")
     person = frame.table("person")
-    if US_PREGNANCY_OUTPUT_COLUMN in person.columns and _pregnancy_carries_signal(
-        person
-    ):
-        return frame
+    if US_PREGNANCY_OUTPUT_COLUMN in person.columns:
+        carries_signal = _pregnancy_carries_signal(person)
+        _require_valid_pregnancy_structure(
+            person,
+            boundary="US pregnancy preexisting input",
+            require_complete=carries_signal,
+        )
+        if carries_signal:
+            return frame
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
@@ -271,6 +402,11 @@ def with_us_pregnancy_inputs(frame: Frame, *, seed: int, time_period: int) -> Fr
     tables["person"][US_PREGNANCY_OUTPUT_COLUMN] = aligned[
         US_PREGNANCY_OUTPUT_COLUMN
     ].to_numpy(dtype=bool)
+    _require_valid_pregnancy_structure(
+        tables["person"],
+        boundary="US pregnancy stage output",
+        require_complete=True,
+    )
     return Frame(
         tables,
         frame.schema,
@@ -287,7 +423,7 @@ def us_pregnancy_summary(frame: Frame) -> dict[str, object]:
     person = frame.table("person")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
-    pregnant = person[US_PREGNANCY_OUTPUT_COLUMN].astype(bool).to_numpy()
+    _observed, pregnant, _non_boolean = _pregnancy_boolean_masks(person)
     pregnant_share = (
         float(weights[pregnant].sum()) / total_weight if total_weight > 0 else 0.0
     )
@@ -295,6 +431,7 @@ def us_pregnancy_summary(frame: Frame) -> dict[str, object]:
         "pregnant_share": pregnant_share,
         "pregnant_share_band": list(_PREGNANT_SHARE_BAND),
         "unique_count": int(person[US_PREGNANCY_OUTPUT_COLUMN].dropna().nunique()),
+        **_pregnancy_structural_counts(person),
     }
 
 
@@ -316,7 +453,15 @@ def us_pregnancy_signal_gate(frame: Frame) -> GateResult:
         )
 
     failures: list[str] = []
-    summary = us_pregnancy_summary(frame)
+    try:
+        summary = us_pregnancy_summary(frame)
+    except SourceRuntimeError as exc:
+        return GateResult(
+            name="pregnancy_signal",
+            passed=False,
+            failures=(str(exc),),
+            details={"structural_error": str(exc)},
+        )
     if int(summary["unique_count"]) < 2:
         failures.append(
             f"{US_PREGNANCY_OUTPUT_COLUMN}: constant column (one observed "
@@ -328,6 +473,16 @@ def us_pregnancy_signal_gate(frame: Frame) -> GateResult:
         failures.append(
             f"pregnant share {share:.4f} outside plausibility band [{low}, {high}]."
         )
+    for count_key, label in (
+        ("missing_rows", "missing pregnancy row(s)"),
+        ("non_boolean_rows", "non-boolean pregnancy row(s)"),
+        ("pregnant_ineligible_rows", "pregnant row(s) outside female ages 15--44"),
+        ("clone_disagreement_source_persons", "source-person clone disagreement(s)"),
+        ("malformed_source_id_rows", "malformed person_source_id row(s)"),
+    ):
+        count = int(summary[count_key])
+        if count:
+            failures.append(f"{US_PREGNANCY_OUTPUT_COLUMN}: {count} {label}.")
     return GateResult(
         name="pregnancy_signal",
         passed=not failures,

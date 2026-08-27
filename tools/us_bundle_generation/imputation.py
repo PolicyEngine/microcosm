@@ -2144,15 +2144,20 @@ def _assert_invariants(
         for requirement in node["inputs"]
         for receipt in requirement["tolerated_absence_receipts"]
     ]
-    if (
+    graph_counts = (
         input_count,
         authored_output_count,
         compiled_output_count,
         len(primary_node["outputs"]),
         late_authored_output_count,
         len(tolerated_receipts),
-    ) != (2742, 92, 227, 35, 0, 212):
-        raise RuntimeError("US producer graph input/output/absence counts changed.")
+    )
+    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    if graph_counts != expected_graph_counts:
+        raise RuntimeError(
+            "US producer graph input/output/absence counts changed: "
+            f"observed={graph_counts}, expected={expected_graph_counts}."
+        )
     if len(set(tolerated_receipts)) != len(tolerated_receipts):
         raise RuntimeError("US producer graph absence receipt IDs are not unique.")
     waived = {

@@ -248,6 +248,57 @@ class TestFrameIntegration:
         with pytest.raises(SourceRuntimeError, match="A_SEX"):
             with_us_pregnancy_inputs(stripped, seed=0, time_period=TIME_PERIOD)
 
+    @pytest.mark.parametrize(
+        "invalid_row",
+        (
+            {"A_SEX": _MALE, "A_AGE": 25, "is_pregnant": True},
+            {"A_SEX": _FEMALE, "A_AGE": 14, "is_pregnant": True},
+            {"A_SEX": _FEMALE, "A_AGE": 45, "is_pregnant": True},
+        ),
+    )
+    def test_preexisting_domain_violations_are_refused(
+        self,
+        invalid_row: dict[str, object],
+    ) -> None:
+        rows = [
+            invalid_row,
+            {"A_SEX": _FEMALE, "A_AGE": 25, "is_pregnant": False},
+        ]
+        with pytest.raises(
+            SourceRuntimeError,
+            match=r"pregnant_ineligible_rows=1",
+        ):
+            with_us_pregnancy_inputs(
+                _us_frame(rows),
+                seed=0,
+                time_period=TIME_PERIOD,
+            )
+
+    def test_preexisting_clone_disagreement_is_refused(self) -> None:
+        rows = [
+            {
+                "A_SEX": _FEMALE,
+                "A_AGE": 25,
+                "person_source_id": 42,
+                "is_pregnant": True,
+            },
+            {
+                "A_SEX": _FEMALE,
+                "A_AGE": 25,
+                "person_source_id": 42,
+                "is_pregnant": False,
+            },
+        ]
+        with pytest.raises(
+            SourceRuntimeError,
+            match=r"clone_disagreement_source_persons=1",
+        ):
+            with_us_pregnancy_inputs(
+                _us_frame(rows),
+                seed=0,
+                time_period=TIME_PERIOD,
+            )
+
 
 class TestGate:
     def test_plausible_seeded_share_passes(self) -> None:
@@ -277,3 +328,15 @@ class TestGate:
         gate = us_pregnancy_signal_gate(_us_frame(rows))
         assert not gate.passed
         assert any("pregnant share" in failure for failure in gate.failures)
+
+    def test_domain_violation_fails_with_structural_counts(self) -> None:
+        rows = [
+            {"A_SEX": _MALE, "A_AGE": 25, "is_pregnant": True},
+            {"A_SEX": _FEMALE, "A_AGE": 25, "is_pregnant": False},
+        ]
+        gate = us_pregnancy_signal_gate(_us_frame(rows))
+
+        assert not gate.passed
+        assert gate.details["pregnant_nonfemale_rows"] == 1
+        assert gate.details["pregnant_ineligible_rows"] == 1
+        assert any("outside female ages 15--44" in item for item in gate.failures)

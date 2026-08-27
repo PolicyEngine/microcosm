@@ -1430,6 +1430,296 @@ def test_integer_supported_weeks_predictions_snap_to_observed_donor_support(
     assert "weeks_unemployed" in contract["discrete_numeric_targets"]
 
 
+def _pregnancy_donor() -> Frame:
+    return _with_columns(
+        _with_columns(
+            _donor_frame(),
+            "person",
+            {
+                "age": [30.0] * 8,
+                "is_female": [True] * 8,
+            },
+        ),
+        "person",
+        {"is_pregnant": [True] * 6 + [False] * 2},
+    )
+
+
+def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = _with_full_us_schema(_recipient_frame())
+    assembled = assemble_spines(
+        {"asec": base, "acs": base},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    recipient = clone_us_frame_for_puf_support(assembled)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        _with_full_us_schema(_pregnancy_donor()),
+        target_families={"person": {"pregnancy": ("is_pregnant",)}},
+        donor_channel=None,
+        seed=9,
+        n_estimators=1,
+    )
+
+    person = result.frame.person
+    eligible = (
+        person["is_female"].astype(bool)
+        & person["age"].between(15, 44, inclusive="both")
+    )
+    assert person.loc[eligible, "is_pregnant"].all()
+    assert not person.loc[~eligible, "is_pregnant"].any()
+    assert (
+        person.groupby("person_source_id", sort=False)["is_pregnant"]
+        .nunique()
+        .eq(1)
+        .all()
+    )
+    expected_qrf_sources = int(
+        pd.DataFrame(
+            {
+                "source": person["person_source_id"],
+                "eligible": eligible,
+            }
+        )
+        .groupby("source", sort=False)["eligible"]
+        .first()
+        .sum()
+    )
+    record = next(item for item in result.imputed_inputs if item.column == "is_pregnant")
+    receipt = record.structural_receipt
+    assert receipt is not None
+    assert sum(pattern.recipient_rows for pattern in record.patterns) == (
+        expected_qrf_sources
+    )
+    assert receipt["qrf_draw_source_persons"] == expected_qrf_sources
+    assert receipt["qrf_draw_rows"] == expected_qrf_sources
+    assert receipt["qrf_fanout_rows"] == expected_qrf_sources
+    assert receipt["final_domain_violation_rows"] == 0
+    assert receipt["final_clone_disagreement_source_persons"] == 0
+
+
+def test_pregnancy_all_ineligible_recipients_bypass_qrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "age": [30.0] * 6,
+            "is_female": [False] * 6,
+        },
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        _pregnancy_donor(),
+        target_families={"person": {"pregnancy": ("is_pregnant",)}},
+        donor_channel=None,
+        n_estimators=1,
+    )
+
+    assert not result.frame.person["is_pregnant"].any()
+    assert not _MeanQRF.calls
+    record = result.imputed_inputs[0]
+    assert record.weight_kind == "structural"
+    receipt = record.structural_receipt
+    assert receipt is not None
+    assert receipt["qrf_draw_source_persons"] == 0
+    assert receipt["qrf_draw_rows"] == 0
+    assert receipt["ineligible_rows_assigned_false"] == 6
+
+
+def test_pregnancy_partial_clone_fanout_receipt_categories_are_disjoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = _with_full_us_schema(_recipient_frame())
+    assembled = assemble_spines(
+        {"asec": base, "acs": base},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned = clone_us_frame_for_puf_support(assembled)
+    person = cloned.person
+    clone_zero = person["person_support_clone_index"].eq(0).to_numpy()
+    pregnancy = pd.array([pd.NA] * len(person), dtype="boolean")
+    pregnancy[clone_zero] = False
+    recipient = _with_columns(
+        cloned,
+        "person",
+        {"is_pregnant": pregnancy},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        _with_full_us_schema(_pregnancy_donor()),
+        target_families={"person": {"pregnancy": ("is_pregnant",)}},
+        donor_channel=None,
+        n_estimators=1,
+    )
+
+    assert not _MeanQRF.calls
+    output = result.frame.person
+    assert not output["is_pregnant"].any()
+    missing = ~clone_zero
+    eligible = (
+        output["is_female"].astype(bool).to_numpy()
+        & output["age"].between(15, 44, inclusive="both").to_numpy()
+    )
+    record = result.imputed_inputs[0]
+    receipt = record.structural_receipt
+    assert receipt is not None
+    assert receipt["preexisting_value_fanout_rows"] == int(
+        (missing & eligible).sum()
+    )
+    assert receipt["ineligible_rows_assigned_false"] == int(
+        (missing & ~eligible).sum()
+    )
+    assert (
+        receipt["preexisting_value_fanout_rows"]
+        + receipt["ineligible_rows_assigned_false"]
+        == record.imputed_recipient_rows
+    )
+
+
+def test_pregnancy_invalid_donor_is_refused_before_qrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {"is_pregnant": [True] + [False] * 7},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    with pytest.raises(
+        ValueError,
+        match=r"1 preexisting donor domain violation",
+    ):
+        transfer_acs_inputs(
+            _recipient_frame(),
+            donor,
+            target_families={"person": {"pregnancy": ("is_pregnant",)}},
+            donor_channel=None,
+            n_estimators=1,
+        )
+    assert not _MeanQRF.calls
+
+
+def test_pregnancy_complete_invalid_recipient_is_still_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {"is_pregnant": [True] + [False] * 5},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    with pytest.raises(
+        ValueError,
+        match=r"1 preexisting recipient domain violation",
+    ):
+        transfer_acs_inputs(
+            recipient,
+            _pregnancy_donor(),
+            target_families={"person": {"pregnancy": ("is_pregnant",)}},
+            donor_channel=None,
+            n_estimators=1,
+        )
+    assert not _MeanQRF.calls
+
+
+def test_complete_invalid_pregnancy_is_refused_before_other_active_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {"is_pregnant": [True] + [False] * 5},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    with pytest.raises(
+        ValueError,
+        match=r"1 preexisting recipient domain violation",
+    ):
+        transfer_acs_inputs(
+            recipient,
+            _pregnancy_donor(),
+            target_families={
+                "person": {
+                    "pregnancy": ("is_pregnant",),
+                    "income": ("qualified_dividend_income",),
+                }
+            },
+            donor_channel=None,
+            n_estimators=1,
+        )
+    assert not _MeanQRF.calls
+
+
+def test_pregnancy_complete_valid_recipient_retains_structural_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {"is_pregnant": [False] * 6},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        _pregnancy_donor(),
+        target_families={"person": {"pregnancy": ("is_pregnant",)}},
+        donor_channel=None,
+        n_estimators=1,
+    )
+
+    assert not _MeanQRF.calls
+    assert len(result.imputed_inputs) == 1
+    record = result.imputed_inputs[0]
+    assert record.imputed_recipient_rows == 0
+    assert record.unmodeled_recipient_rows == 0
+    assert record.structural_receipt is not None
+    assert record.structural_receipt["status"] == "verified"
+
+
+def test_pregnancy_policy_is_bound_into_transfer_execution_identity() -> None:
+    enabled = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("is_pregnant",),
+        derive_schedule_d=False,
+    )
+    disabled = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=(),
+        derive_schedule_d=False,
+    )
+
+    policy = enabled["structural_target_policies"]["is_pregnant"]
+    assert policy["enabled"] is True
+    assert policy["eligibility"] == {
+        "is_female": True,
+        "minimum_age_inclusive": 15,
+        "maximum_age_inclusive": 44,
+    }
+    assert policy["qrf_scope"] == "one_eligible_representative_per_source_person"
+    assert policy["preexisting_domain_violations"] == "refuse"
+    assert disabled["structural_target_policies"]["is_pregnant"]["enabled"] is False
+    assert enabled["sha256"] != disabled["sha256"]
+
+
 def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

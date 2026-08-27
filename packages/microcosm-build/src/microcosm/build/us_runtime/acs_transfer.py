@@ -138,6 +138,50 @@ _DISCRETE_NUMERIC_TARGETS = frozenset(
     }
 )
 
+_PREGNANCY_TARGET = "is_pregnant"
+_PREGNANCY_AGE_RANGE = (15, 44)
+_PERSON_SOURCE_ID_COLUMN = "person_source_id"
+_PERSON_ID_COLUMN = "person_id"
+_PERSON_CLONE_INDEX_COLUMN = "person_support_clone_index"
+
+
+def _pregnancy_structural_policy_identity(*, enabled: bool) -> dict[str, object]:
+    """Return the complete hard-domain and clone-fanout transfer policy."""
+
+    payload: dict[str, object] = {
+        "enabled": enabled,
+        "target": _PREGNANCY_TARGET,
+        "eligibility": {
+            "is_female": True,
+            "minimum_age_inclusive": _PREGNANCY_AGE_RANGE[0],
+            "maximum_age_inclusive": _PREGNANCY_AGE_RANGE[1],
+        },
+        "source_person_key_precedence": [
+            _PERSON_SOURCE_ID_COLUMN,
+            _PERSON_ID_COLUMN,
+        ],
+        "assembled_representative": {
+            "clone_index_column": _PERSON_CLONE_INDEX_COLUMN,
+            "clone_index": 0,
+        },
+        "qrf_scope": "one_eligible_representative_per_source_person",
+        "ineligible_missing_value": False,
+        "fanout": "one_source_person_result_to_every_missing_clone",
+        "preexisting_domain_violations": "refuse",
+        "preexisting_clone_disagreement": "refuse",
+        "final_domain_violations": "refuse",
+        "final_clone_disagreement": "refuse",
+    }
+    payload["sha256"] = hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return payload
+
 _IMMIGRATION_STATUS_TARGETS = (
     "ssn_card_type",
     "immigration_status_str",
@@ -269,6 +313,11 @@ def acs_transfer_execution_contract_identity(
         "immigration_status_targets": list(_IMMIGRATION_STATUS_TARGETS),
         "immigration_status_model_target": _IMMIGRATION_STATUS_MODEL_TARGET,
         "discrete_numeric_targets": sorted(_DISCRETE_NUMERIC_TARGETS),
+        "structural_target_policies": {
+            _PREGNANCY_TARGET: _pregnancy_structural_policy_identity(
+                enabled=_PREGNANCY_TARGET in requested_targets,
+            )
+        },
         "post_transfer_structure": {
             "schedule_d_capital_gain_distributions": {
                 "enabled": schedule_d_enabled,
@@ -445,6 +494,9 @@ class AcsImputedInput:
     #: Post-fit structural reconciliation counts, when the column's surface
     #: was adjusted to a statute contract after prediction.
     reconciliation: Mapping[str, int] | None = None
+    #: Hard-domain and source-person fanout proof for structurally constrained
+    #: transfer targets. This is receipt-only and never enters the frame.
+    structural_receipt: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -557,6 +609,19 @@ class _TargetEncoding:
     categories: tuple[Any, ...] = ()
     model_target: str = ""
     category_position: int | None = None
+
+
+@dataclass(frozen=True)
+class _PregnancyStructuralPlan:
+    """Pre-QRF pregnancy scope plus enough state for deterministic fanout."""
+
+    qrf_missing: np.ndarray
+    source_codes: np.ndarray
+    source_values: np.ndarray
+    qrf_source_groups: np.ndarray
+    representative_positions: np.ndarray
+    eligibility: np.ndarray
+    receipt: Mapping[str, object]
 
 
 def required_acs_transfer_inputs() -> frozenset[str]:
@@ -905,6 +970,331 @@ def assert_acs_transfer_targets_are_input_leaves(
         )
 
 
+def _pregnancy_eligibility(table: pd.DataFrame, *, role: str) -> np.ndarray:
+    """Resolve the hard female-age domain without coercing missing predictors."""
+
+    _require_columns(
+        table,
+        ("age", "is_female"),
+        context=f"ACS transfer pregnancy {role} domain",
+    )
+    try:
+        age = _as_float_array(table["age"])
+        female = _as_float_array(table["is_female"])
+    except (TypeError, ValueError) as exc:
+        raise TypeError(
+            f"ACS transfer pregnancy {role} domain requires numeric age and "
+            "boolean is_female."
+        ) from exc
+    invalid_age = ~np.isfinite(age)
+    invalid_female = ~np.isfinite(female) | ~np.isin(female, [0.0, 1.0])
+    if invalid_age.any() or invalid_female.any():
+        raise ValueError(
+            f"ACS transfer pregnancy {role} domain requires complete finite age "
+            "and boolean is_female; found "
+            f"invalid_age_rows={int(invalid_age.sum())}, "
+            f"invalid_is_female_rows={int(invalid_female.sum())}."
+        )
+    low, high = _PREGNANCY_AGE_RANGE
+    return (female == 1.0) & (age >= low) & (age <= high)
+
+
+def _pregnancy_boolean_values(
+    series: pd.Series,
+    *,
+    role: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return observed/true masks while refusing non-boolean physical values."""
+
+    observed = series.notna().to_numpy(dtype=bool)
+    try:
+        values = _as_float_array(series)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(
+            f"ACS transfer pregnancy {role} values must be physical booleans."
+        ) from exc
+    valid = ~observed | np.isclose(values, 0.0) | np.isclose(values, 1.0)
+    if not valid.all():
+        raise ValueError(
+            f"ACS transfer pregnancy {role} values contain "
+            f"{int((~valid).sum())} non-boolean row(s)."
+        )
+    return observed, observed & np.isclose(values, 1.0)
+
+
+def _pregnancy_source_groups(
+    table: pd.DataFrame,
+) -> tuple[np.ndarray, int, str, np.ndarray]:
+    """Return stable source-person codes and one canonical representative."""
+
+    has_clone_index = _PERSON_CLONE_INDEX_COLUMN in table
+    if has_clone_index and _PERSON_SOURCE_ID_COLUMN not in table:
+        raise ValueError(
+            "ACS transfer pregnancy clone fanout requires person_source_id when "
+            f"{_PERSON_CLONE_INDEX_COLUMN} is present."
+        )
+    key_column = (
+        _PERSON_SOURCE_ID_COLUMN
+        if _PERSON_SOURCE_ID_COLUMN in table
+        else _PERSON_ID_COLUMN
+    )
+    _require_columns(
+        table,
+        (key_column,),
+        context="ACS transfer pregnancy source-person identity",
+    )
+    keys = table[key_column]
+    if keys.isna().any():
+        raise ValueError(
+            f"ACS transfer pregnancy source-person identity {key_column!r} has "
+            f"{int(keys.isna().sum())} missing row(s)."
+        )
+    codes, unique_keys = pd.factorize(keys, sort=False)
+    if (codes < 0).any():  # pragma: no cover - missing keys refused above
+        raise AssertionError("Pregnancy source-person factorization lost a key.")
+    group_count = len(unique_keys)
+    representatives = np.full(group_count, -1, dtype=np.int64)
+    positions = np.arange(len(table), dtype=np.int64)
+
+    if not has_clone_index:
+        _, first_positions = np.unique(codes, return_index=True)
+        representatives[:] = first_positions
+        return codes, group_count, key_column, representatives
+
+    clone_numeric = pd.to_numeric(
+        table[_PERSON_CLONE_INDEX_COLUMN],
+        errors="coerce",
+    ).to_numpy(dtype=np.float64)
+    invalid_clone = (
+        ~np.isfinite(clone_numeric)
+        | (clone_numeric < 0.0)
+        | (clone_numeric != np.floor(clone_numeric))
+    )
+    if invalid_clone.any():
+        raise ValueError(
+            "ACS transfer pregnancy clone fanout found "
+            f"{int(invalid_clone.sum())} invalid clone-index row(s)."
+        )
+    clone_index = clone_numeric.astype(np.int64)
+    duplicate_pairs = pd.DataFrame(
+        {"_source": codes, "_clone": clone_index}
+    ).duplicated()
+    if duplicate_pairs.any():
+        raise ValueError(
+            "ACS transfer pregnancy clone fanout found "
+            f"{int(duplicate_pairs.sum())} duplicate source-person/clone row(s)."
+        )
+    clone_zero = clone_index == 0
+    clone_zero_counts = np.bincount(codes[clone_zero], minlength=group_count)
+    bad_groups = clone_zero_counts != 1
+    if bad_groups.any():
+        raise ValueError(
+            "ACS transfer pregnancy clone fanout requires exactly one clone-0 "
+            f"representative for every source person; {int(bad_groups.sum())} "
+            "source person(s) violate that contract."
+        )
+    representatives[codes[clone_zero]] = positions[clone_zero]
+    return codes, group_count, key_column, representatives
+
+
+def _prepare_pregnancy_structural_plan(
+    donor: Frame,
+    recipient: Frame,
+    *,
+    target_missing: np.ndarray,
+) -> _PregnancyStructuralPlan:
+    """Refuse invalid inputs and select one eligible QRF row per source person."""
+
+    donor_table = donor.table(donor.schema.person_entity)
+    donor_eligible = _pregnancy_eligibility(donor_table, role="donor")
+    donor_observed, donor_true = _pregnancy_boolean_values(
+        donor_table[_PREGNANCY_TARGET],
+        role="donor",
+    )
+    donor_domain_violations = donor_observed & donor_true & ~donor_eligible
+    if donor_domain_violations.any():
+        raise ValueError(
+            "ACS transfer pregnancy structural policy refused "
+            f"{int(donor_domain_violations.sum())} preexisting donor domain "
+            "violation row(s); pregnancy requires female ages 15 through 44."
+        )
+
+    table = recipient.table(recipient.schema.person_entity)
+    eligibility = _pregnancy_eligibility(table, role="recipient")
+    if _PREGNANCY_TARGET in table:
+        observed, true_values = _pregnancy_boolean_values(
+            table[_PREGNANCY_TARGET],
+            role="recipient",
+        )
+    else:
+        observed = np.zeros(len(table), dtype=bool)
+        true_values = np.zeros(len(table), dtype=bool)
+    recipient_domain_violations = observed & true_values & ~eligibility
+    if recipient_domain_violations.any():
+        raise ValueError(
+            "ACS transfer pregnancy structural policy refused "
+            f"{int(recipient_domain_violations.sum())} preexisting recipient "
+            "domain violation row(s); pregnancy requires female ages 15 "
+            "through 44."
+        )
+
+    source_codes, group_count, key_column, representatives = (
+        _pregnancy_source_groups(table)
+    )
+    eligible_min = np.ones(group_count, dtype=np.int8)
+    eligible_max = np.zeros(group_count, dtype=np.int8)
+    np.minimum.at(eligible_min, source_codes, eligibility.astype(np.int8))
+    np.maximum.at(eligible_max, source_codes, eligibility.astype(np.int8))
+    inconsistent_domain_groups = eligible_min != eligible_max
+    if inconsistent_domain_groups.any():
+        raise ValueError(
+            "ACS transfer pregnancy structural policy refused "
+            f"{int(inconsistent_domain_groups.sum())} source person(s) whose "
+            "clones disagree on female-age eligibility."
+        )
+
+    group_has_true = (
+        np.bincount(source_codes[observed & true_values], minlength=group_count) > 0
+    )
+    group_has_false = (
+        np.bincount(source_codes[observed & ~true_values], minlength=group_count) > 0
+    )
+    preexisting_disagreement = group_has_true & group_has_false
+    if preexisting_disagreement.any():
+        raise ValueError(
+            "ACS transfer pregnancy structural policy refused "
+            f"{int(preexisting_disagreement.sum())} source person(s) with "
+            "preexisting clone disagreement."
+        )
+
+    missing = np.asarray(target_missing, dtype=bool)
+    if missing.shape != (len(table),):
+        raise ValueError("ACS pregnancy target-missing mask has the wrong row count.")
+    group_observed = group_has_true | group_has_false
+    group_eligible = eligibility[representatives]
+    qrf_source_groups = ~group_observed & group_eligible
+    qrf_missing = np.zeros(len(table), dtype=bool)
+    qrf_missing[representatives[qrf_source_groups]] = True
+
+    source_values = np.full(group_count, np.nan, dtype=np.float64)
+    source_values[group_observed] = group_has_true[group_observed].astype(np.float64)
+    source_values[~group_eligible] = 0.0
+    group_sizes = np.bincount(source_codes, minlength=group_count)
+    missing_by_group = np.bincount(
+        source_codes,
+        weights=missing.astype(np.int64),
+        minlength=group_count,
+    ).astype(np.int64)
+    qrf_group_count = int(qrf_source_groups.sum())
+    policy = _pregnancy_structural_policy_identity(enabled=True)
+    receipt: dict[str, object] = {
+        "policy_sha256": policy["sha256"],
+        "source_person_key": key_column,
+        "source_persons_checked": group_count,
+        "physical_rows_checked": int(len(table)),
+        "clone_rows_checked": int(len(table) - group_count),
+        "donor_rows_checked": int(len(donor_table)),
+        "qrf_draw_source_persons": qrf_group_count,
+        "qrf_draw_rows": qrf_group_count,
+        "qrf_fanout_rows": int(
+            missing_by_group[qrf_source_groups].sum() - qrf_group_count
+        ),
+        "preexisting_value_fanout_rows": int(
+            missing_by_group[group_observed & group_eligible].sum()
+        ),
+        "ineligible_rows_assigned_false": int((missing & ~eligibility).sum()),
+        "donor_preexisting_domain_violation_rows": 0,
+        "recipient_preexisting_domain_violation_rows": 0,
+        "preexisting_clone_disagreement_source_persons": 0,
+        "inconsistent_eligibility_source_persons": 0,
+        "maximum_clones_per_source_person": int(group_sizes.max(initial=0)),
+    }
+    return _PregnancyStructuralPlan(
+        qrf_missing=qrf_missing,
+        source_codes=source_codes,
+        source_values=source_values,
+        qrf_source_groups=qrf_source_groups,
+        representative_positions=representatives,
+        eligibility=eligibility,
+        receipt=receipt,
+    )
+
+
+def _fan_pregnancy_predictions(
+    plan: _PregnancyStructuralPlan,
+    prediction: np.ndarray | pd.api.extensions.ExtensionArray | None,
+) -> np.ndarray:
+    """Fan one decoded QRF result across each source person's missing clones."""
+
+    source_values = plan.source_values.copy()
+    if plan.qrf_source_groups.any():
+        if prediction is None:  # pragma: no cover - caller invariant
+            raise RuntimeError("Pregnancy structural plan is missing its QRF draw.")
+        predicted = _as_float_array(pd.Series(prediction))
+        positions = plan.representative_positions[plan.qrf_source_groups]
+        values = predicted[positions]
+        valid = np.isfinite(values) & (
+            np.isclose(values, 0.0) | np.isclose(values, 1.0)
+        )
+        if not valid.all():
+            raise ValueError(
+                "ACS transfer pregnancy QRF produced "
+                f"{int((~valid).sum())} invalid representative result(s)."
+            )
+        source_values[plan.qrf_source_groups] = np.isclose(values, 1.0).astype(
+            np.float64
+        )
+    if not np.isfinite(source_values).all():  # pragma: no cover - plan invariant
+        raise RuntimeError("Pregnancy structural fanout left unresolved source people.")
+    return np.isclose(source_values[plan.source_codes], 1.0)
+
+
+def _finalize_pregnancy_structural_receipt(
+    table: pd.DataFrame,
+    plan: _PregnancyStructuralPlan,
+) -> dict[str, object]:
+    """Refuse post-transfer violations and seal the successful count receipt."""
+
+    eligibility = _pregnancy_eligibility(table, role="post-transfer")
+    observed, true_values = _pregnancy_boolean_values(
+        table[_PREGNANCY_TARGET],
+        role="post-transfer",
+    )
+    incomplete = ~observed
+    domain_violations = observed & true_values & ~eligibility
+    group_count = len(plan.source_values)
+    group_has_true = (
+        np.bincount(
+            plan.source_codes[observed & true_values],
+            minlength=group_count,
+        )
+        > 0
+    )
+    group_has_false = (
+        np.bincount(
+            plan.source_codes[observed & ~true_values],
+            minlength=group_count,
+        )
+        > 0
+    )
+    clone_disagreements = group_has_true & group_has_false
+    if incomplete.any() or domain_violations.any() or clone_disagreements.any():
+        raise ValueError(
+            "ACS transfer pregnancy structural postcondition refused output: "
+            f"incomplete_rows={int(incomplete.sum())}, "
+            f"domain_violation_rows={int(domain_violations.sum())}, "
+            "clone_disagreement_source_persons="
+            f"{int(clone_disagreements.sum())}."
+        )
+    return {
+        **dict(plan.receipt),
+        "final_incomplete_rows": 0,
+        "final_domain_violation_rows": 0,
+        "final_clone_disagreement_source_persons": 0,
+        "status": "verified",
+    }
+
+
 def transfer_acs_inputs(
     recipient: Frame,
     donor: Frame,
@@ -1025,21 +1415,88 @@ def transfer_acs_inputs(
             )
             for entity, family, active_targets in active
         ]
+    structural_records: tuple[AcsImputedInput, ...] = ()
+    fit_donor: Frame | None = None
+    resolved_channel: str | None = None
+    pregnancy_plan: _PregnancyStructuralPlan | None = None
+    pregnancy_request = next(
+        (
+            item
+            for item in requested
+            if item[0] == recipient.schema.person_entity
+            and _PREGNANCY_TARGET in item[2]
+        ),
+        None,
+    )
+    if pregnancy_request is not None:
+        _validate_donor_source(
+            donor_spine=donor_spine,
+            donor_channel=donor_channel,
+        )
+        fit_donor, resolved_channel = resolve_acs_donor_channel(
+            donor,
+            donor_channel,
+        )
+        person = recipient.table(recipient.schema.person_entity)
+        pregnancy_missing = (
+            person[_PREGNANCY_TARGET].isna().to_numpy(dtype=bool)
+            if _PREGNANCY_TARGET in person
+            else np.ones(len(person), dtype=bool)
+        )
+        pregnancy_plan = _prepare_pregnancy_structural_plan(
+            fit_donor,
+            recipient,
+            target_missing=pregnancy_missing,
+        )
+        if not pregnancy_missing.any():
+            structural_receipt = _finalize_pregnancy_structural_receipt(
+                person,
+                pregnancy_plan,
+            )
+            pregnancy_entity, pregnancy_family, pregnancy_targets = (
+                pregnancy_request
+            )
+            if pregnancy_targets != (_PREGNANCY_TARGET,):  # pragma: no cover
+                raise AssertionError(
+                    "Pregnancy structural target was not isolated before receipt."
+                )
+            structural_records = (
+                AcsImputedInput(
+                    column=_PREGNANCY_TARGET,
+                    entity=pregnancy_entity,
+                    family=pregnancy_family,
+                    donor_spine=donor_spine,
+                    donor_channel=resolved_channel,
+                    predictors=ACS_PERSON_TRANSFER_PREDICTORS,
+                    seed=_family_seed(
+                        seed,
+                        entity=pregnancy_entity,
+                        family=pregnancy_family,
+                    ),
+                    weight_kind="structural",
+                    structural_receipt=structural_receipt,
+                ),
+            )
+
     if not active:
         return AcsTransferResult(
             frame=canonicalize_frame_string_dtypes(
                 recipient,
                 boundary="ACS transfer result",
             ),
+            imputed_inputs=structural_records,
             deferred_inputs=deferred_inputs,
+            resolved_donor_channel=resolved_channel,
         )
 
-    _validate_donor_source(donor_spine=donor_spine, donor_channel=donor_channel)
-    fit_donor, resolved_channel = resolve_acs_donor_channel(donor, donor_channel)
+    if fit_donor is None:
+        _validate_donor_source(donor_spine=donor_spine, donor_channel=donor_channel)
+        fit_donor, resolved_channel = resolve_acs_donor_channel(donor, donor_channel)
+    assert fit_donor is not None
     output_tables = {
         entity: recipient.table(entity).copy() for entity in recipient.entities
     }
-    provenance: list[AcsImputedInput] = []
+    provenance = list(structural_records)
     fit_records: list[FitWeightRecord] = []
     imputed_masks: dict[tuple[str, str], np.ndarray] = {}
     ordered_bank_targets = [
@@ -1062,14 +1519,34 @@ def transfer_acs_inputs(
             )
             for target in targets
         }
-        if target_bank is None:
+        active_pregnancy_plan: _PregnancyStructuralPlan | None = None
+        fit_target_missing = target_missing
+        if _PREGNANCY_TARGET in targets:
+            if targets != (_PREGNANCY_TARGET,):
+                raise AssertionError(
+                    "Pregnancy structural target was not isolated before QRF."
+                )
+            if pregnancy_plan is None:  # pragma: no cover - preflight invariant
+                raise AssertionError("Pregnancy structural plan was not prepared.")
+            active_pregnancy_plan = pregnancy_plan
+            fit_target_missing = {
+                _PREGNANCY_TARGET: active_pregnancy_plan.qrf_missing,
+            }
+
+        fitted: _FamilyFit | None
+        if (
+            active_pregnancy_plan is not None
+            and not active_pregnancy_plan.qrf_missing.any()
+        ):
+            fitted = None
+        elif target_bank is None:
             fitted = _fit_family_patterns(
                 fit_donor,
                 recipient,
                 entity=entity,
                 family=family,
                 targets=targets,
-                target_missing=target_missing,
+                target_missing=fit_target_missing,
                 seed=seed,
                 n_estimators=n_estimators,
                 regime_evidence_targets=family_regime_evidence_targets,
@@ -1081,7 +1558,7 @@ def transfer_acs_inputs(
                 entity=entity,
                 family=family,
                 targets=targets,
-                target_missing=target_missing,
+                target_missing=fit_target_missing,
                 seed=seed,
                 n_estimators=n_estimators,
                 target_bank=target_bank,
@@ -1094,16 +1571,29 @@ def transfer_acs_inputs(
             )
         patterns_without_regimes = (
             tuple(replace(pattern, target_regimes=()) for pattern in fitted.patterns)
-            if family_regime_evidence_targets
+            if fitted is not None and family_regime_evidence_targets
             else fitted.patterns
+            if fitted is not None
+            else ()
         )
         for target in targets:
-            predicted = _prediction_values(
-                fitted.predictions[target],
-                encoding=fitted.target_encodings[target],
-                entity=entity,
-                target=target,
+            decoded = (
+                _prediction_values(
+                    fitted.predictions[target],
+                    encoding=fitted.target_encodings[target],
+                    entity=entity,
+                    target=target,
+                )
+                if fitted is not None
+                else None
             )
+            predicted = (
+                _fan_pregnancy_predictions(active_pregnancy_plan, decoded)
+                if active_pregnancy_plan is not None
+                else decoded
+            )
+            if predicted is None:  # pragma: no cover - structural invariant
+                raise AssertionError("ACS transfer target has no prediction values.")
             merged, imputed = _fill_recipient_nulls(
                 output_tables[entity],
                 target=target,
@@ -1114,6 +1604,14 @@ def transfer_acs_inputs(
             missing_rows = target_missing[target]
             if not missing_rows.any():
                 continue
+            structural_receipt = (
+                _finalize_pregnancy_structural_receipt(
+                    output_tables[entity],
+                    active_pregnancy_plan,
+                )
+                if active_pregnancy_plan is not None
+                else None
+            )
             provenance.append(
                 AcsImputedInput(
                     column=target,
@@ -1121,19 +1619,32 @@ def transfer_acs_inputs(
                     family=family,
                     donor_spine=donor_spine,
                     donor_channel=resolved_channel,
-                    predictors=fitted.predictors,
-                    seed=fitted.family_seed,
-                    weight_kind=fitted.weight_kind,
+                    predictors=(
+                        fitted.predictors
+                        if fitted is not None
+                        else ACS_PERSON_TRANSFER_PREDICTORS
+                    ),
+                    seed=(
+                        fitted.family_seed
+                        if fitted is not None
+                        else _family_seed(seed, entity=entity, family=family)
+                    ),
+                    weight_kind=(
+                        fitted.weight_kind if fitted is not None else "structural"
+                    ),
                     patterns=(
                         fitted.patterns
-                        if target in family_regime_evidence_targets
+                        if fitted is not None
+                        and target in family_regime_evidence_targets
                         else patterns_without_regimes
                     ),
                     imputed_recipient_rows=int(imputed.sum()),
                     unmodeled_recipient_rows=int((missing_rows & ~imputed).sum()),
+                    structural_receipt=structural_receipt,
                 )
             )
-        fit_records.extend(fitted.fit_records)
+        if fitted is not None:
+            fit_records.extend(fitted.fit_records)
 
     _apply_post_transfer_structure(
         output_tables,
@@ -2629,7 +3140,7 @@ def _split_large_target_families(
     *,
     max_targets_per_fit: int,
 ) -> list[tuple[str, str, tuple[str, ...]]]:
-    """Bound retained QRF forests without separating joint categorical codecs."""
+    """Bound retained QRF forests and isolate hard-domain target draws."""
 
     bounded: list[tuple[str, str, tuple[str, ...]]] = []
     immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
@@ -2647,6 +3158,12 @@ def _split_large_target_families(
         batches: list[tuple[str, ...]] = []
         current: list[str] = []
         for atom in atoms:
+            if atom == (_PREGNANCY_TARGET,):
+                if current:
+                    batches.append(tuple(current))
+                    current = []
+                batches.append(atom)
+                continue
             if current and len(current) + len(atom) > max_targets_per_fit:
                 batches.append(tuple(current))
                 current = []

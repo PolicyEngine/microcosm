@@ -6,9 +6,11 @@ Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
 `stacked-release-gate-alignment` at `606cbd69`. The root-cause findings are
 adopted and implementation is in progress for the nonfemale-pregnancy producer
 defect and the owner-approved rung-aware prior-year availability release floor.
-The authored 0.05 floor, upper bound, all other bands, thresholds, seeds, and
-batteries remain unchanged. This lane will not build, publish, or push pool or
-release artifacts.
+Both fixes are implemented and their focused runtime suites are green; the
+source-attested spec/coverage repin and full repository verification are in
+progress. The authored 0.05 floor, upper bound, all other bands, thresholds,
+seeds, and batteries remain unchanged. This lane will not build, publish, or
+push pool or release artifacts.
 
 ## Done
 
@@ -53,18 +55,41 @@ release artifacts.
   original gate. The prior-year and H5 focused suites pass (23 and 60 tests),
   focused Ruff and `git diff --check` pass, and the real candidate-25 manifest
   validates at factor 0.25.
+- Implemented pregnancy's hard female-age-15--44 policy before any requested
+  pregnancy QRF. The transfer validates donor and recipient structure up
+  front, draws only one eligible clone-0 representative per assembled source
+  person, fans that value to missing clones, assigns structural false to
+  ineligible missing rows, and refuses preexisting/final domain or clone
+  disagreement with explicit counts.
+- Added a sealed structural receipt with disjoint QRF, clone-fanout,
+  preexisting-value-fanout, and ineligible-false accounting. Production receipt
+  validation authenticates the policy digest, zero-violation postconditions,
+  source-person topology, and exact equality to the transferred row count.
+- Bound the policy into the transfer execution contract used by late-stage
+  checkpoint/target-bank identity, isolated pregnancy from unrelated bounded
+  QRF families, declared its structural source-person input, and regenerated
+  the authored US imputation spec/schema projection.
+- Closed two adversarial restart cases: partial ineligible clone surfaces no
+  longer double-count receipt categories, and a complete pregnancy surface is
+  still preflighted and carries a zero-imputation structural proof even when a
+  different requested family remains active.
+- Added source, transfer, gate, receipt, identity, all-ineligible, clone-fanout,
+  mixed-active, and stacked-execution regressions. The complete pregnancy and
+  ACS-transfer files, the complete stacked-spine file before the final
+  preflight refactor, and focused post-refactor tests pass; focused Ruff and
+  `git diff --check` pass.
+- Extended the real-pool pregnancy decomposition: the 108 pregnant nonfemale
+  rows are joined by 58 pregnant female rows outside ages 15--44, for 166 hard-
+  domain violations, all on ACS and all isolated to one clone. ASEC has zero.
 
 ## Next
 
-- Implement hard pregnancy eligibility before QRF, one source-person result
-  fanned across clones, refusing pre-existing/final domain violations and
-  recording structural counts.
-- Bind the pregnancy structural policy into checkpointed transfer execution
-  identity and add transfer/source/gate regressions.
-- Complete and focused-test the pregnancy source/transfer/gate structural
-  policy, receipt authentication, and checkpoint execution identity.
-- Run the charter's repository Ruff and independent full-shard pytest boundary,
-  then write the complete handoff to `out.md`.
+- Complete the source-attested spec/coverage repin and rerun all directly
+  affected spec, transfer, and stacked suites.
+- Commit the coherent pregnancy implementation and journal state.
+- Run repository Ruff, generated/coverage/inventory checks, and all five pytest
+  shards in independent processes.
+- Write and commit the complete handoff to `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
