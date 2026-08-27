@@ -213,9 +213,10 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "patterns": [],
                 "imputed_recipient_rows": 0,
                 "unmodeled_recipient_rows": 0,
-                "derivation": None,
-                "reconciliation": None,
-            }
+                    "derivation": None,
+                    "reconciliation": None,
+                    "structural_receipt": None,
+                }
         ],
         "deferred_inputs": ["congressional_district_geoid"],
         "adult_care_recipient_gate": None,

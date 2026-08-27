@@ -104,10 +104,15 @@ push pool or release artifacts.
   source-attestation cascade in BE, UK, and the rich-minimal golden spec hashes.
   Re-pinned those three observed semantic identities; the complete country-
   bundle/loader/spec-only/country-spec focused matrix passes.
+- Committed the shared semantic-hash repin as `d2b75e1e`. The next clean build
+  run passed that boundary and reached 39%, where the legacy optional-ACS
+  provenance golden needed the new additive `structural_receipt: null` field
+  on an unrelated transfer record. Updated only that JSON-ready shape; the
+  complete optional-ACS multispine test file and focused Ruff pass.
 
 ## Next
 
-- Commit the shared country/minimal source-attestation repin.
+- Commit the additive optional-ACS provenance fixture repin.
 - Restart the full build shard from zero; the other four final-state shards,
   repository Ruff, generated/coverage/inventory checks already pass.
 - Write and commit the complete handoff to `out.md`.
