@@ -176,7 +176,7 @@ def _pregnancy_eligibility(person: pd.DataFrame) -> tuple[np.ndarray, np.ndarray
             raise SourceRuntimeError(
                 "Pregnancy structural policy requires boolean is_female."
             ) from exc
-        female = np.isclose(female_numeric, 1.0)
+        female = female_numeric == 1.0
         invalid_female = ~np.isfinite(female_numeric) | ~np.isin(
             female_numeric,
             [0.0, 1.0],
@@ -217,8 +217,8 @@ def _pregnancy_boolean_masks(
         numeric = values.to_numpy(dtype=np.float64, na_value=np.nan)
     except (TypeError, ValueError):
         return observed, np.zeros(len(values), dtype=bool), int(observed.sum())
-    valid = ~observed | np.isclose(numeric, 0.0) | np.isclose(numeric, 1.0)
-    return observed, observed & np.isclose(numeric, 1.0), int((~valid).sum())
+    valid = ~observed | (numeric == 0.0) | (numeric == 1.0)
+    return observed, observed & (numeric == 1.0), int((~valid).sum())
 
 
 def _pregnancy_structural_counts(person: pd.DataFrame) -> dict[str, int]:

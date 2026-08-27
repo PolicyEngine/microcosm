@@ -1013,13 +1013,13 @@ def _pregnancy_boolean_values(
         raise TypeError(
             f"ACS transfer pregnancy {role} values must be physical booleans."
         ) from exc
-    valid = ~observed | np.isclose(values, 0.0) | np.isclose(values, 1.0)
+    valid = ~observed | (values == 0.0) | (values == 1.0)
     if not valid.all():
         raise ValueError(
             f"ACS transfer pregnancy {role} values contain "
             f"{int((~valid).sum())} non-boolean row(s)."
         )
-    return observed, observed & np.isclose(values, 1.0)
+    return observed, observed & (values == 1.0)
 
 
 def _pregnancy_source_groups(
@@ -1233,20 +1233,16 @@ def _fan_pregnancy_predictions(
         predicted = _as_float_array(pd.Series(prediction))
         positions = plan.representative_positions[plan.qrf_source_groups]
         values = predicted[positions]
-        valid = np.isfinite(values) & (
-            np.isclose(values, 0.0) | np.isclose(values, 1.0)
-        )
+        valid = np.isfinite(values) & ((values == 0.0) | (values == 1.0))
         if not valid.all():
             raise ValueError(
                 "ACS transfer pregnancy QRF produced "
                 f"{int((~valid).sum())} invalid representative result(s)."
             )
-        source_values[plan.qrf_source_groups] = np.isclose(values, 1.0).astype(
-            np.float64
-        )
+        source_values[plan.qrf_source_groups] = (values == 1.0).astype(np.float64)
     if not np.isfinite(source_values).all():  # pragma: no cover - plan invariant
         raise RuntimeError("Pregnancy structural fanout left unresolved source people.")
-    return np.isclose(source_values[plan.source_codes], 1.0)
+    return source_values[plan.source_codes] == 1.0
 
 
 def _finalize_pregnancy_structural_receipt(

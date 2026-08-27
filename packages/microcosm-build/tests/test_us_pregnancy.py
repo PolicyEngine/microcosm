@@ -299,6 +299,18 @@ class TestFrameIntegration:
                 time_period=TIME_PERIOD,
             )
 
+    def test_preexisting_near_boolean_value_is_refused(self) -> None:
+        rows = [
+            {"A_SEX": _FEMALE, "A_AGE": 25, "is_pregnant": 1.0 + 1e-12},
+            {"A_SEX": _FEMALE, "A_AGE": 25, "is_pregnant": False},
+        ]
+        with pytest.raises(SourceRuntimeError, match=r"non_boolean_rows=1"):
+            with_us_pregnancy_inputs(
+                _us_frame(rows),
+                seed=0,
+                time_period=TIME_PERIOD,
+            )
+
 
 class TestGate:
     def test_plausible_seeded_share_passes(self) -> None:

@@ -328,6 +328,8 @@ def _validated_stacked_sampling_manifest_binding(
         isinstance(sampling_seed, bool)
         or not isinstance(sampling_seed, int)
         or sampling_seed < 0
+        or isinstance(stack_seed, bool)
+        or not isinstance(stack_seed, int)
         or stack_seed != sampling_seed
     ):
         raise ValueError(
@@ -358,22 +360,31 @@ def _validated_stacked_sampling_manifest_binding(
             survey_samples[channel],
             label=f"{label}.stack_manifest.survey_samples.{channel}",
         )
-        if sample.get("fraction") != sampling_fraction:
+        sample_fraction = sample.get("fraction")
+        if type(sample_fraction) is not float or sample_fraction != sampling_fraction:
             raise ValueError(
                 f"{label} {channel} survey-sample fraction differs from the "
                 "production sampling rung."
             )
-        if sample.get("seed") != sampling_seed:
+        sample_seed = sample.get("seed")
+        if (
+            isinstance(sample_seed, bool)
+            or not isinstance(sample_seed, int)
+            or sample_seed != sampling_seed
+        ):
             raise ValueError(
                 f"{label} {channel} survey-sample seed differs from the "
                 "production sample seed."
             )
         realized = sample.get("realized_household_count")
+        top_realized = realized_households[channel]
         if (
             isinstance(realized, bool)
             or not isinstance(realized, int)
             or realized < 1
-            or realized_households[channel] != realized
+            or isinstance(top_realized, bool)
+            or not isinstance(top_realized, int)
+            or top_realized != realized
         ):
             raise ValueError(
                 f"{label} {channel} realized-household count is malformed or "

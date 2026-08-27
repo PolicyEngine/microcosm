@@ -81,14 +81,28 @@ push pool or release artifacts.
 - Extended the real-pool pregnancy decomposition: the 108 pregnant nonfemale
   rows are joined by 58 pregnant female rows outside ages 15--44, for 166 hard-
   domain violations, all on ACS and all isolated to one clone. ASEC has zero.
+- Committed the coherent pregnancy implementation, generated authority,
+  coverage proof, changelog, tests, and journal as `01a80f49`.
+- An adversarial pre-certification audit found that two canonical late-DAG test
+  fixtures predated the required pregnancy structural receipt. Stopped the
+  preliminary build-shard run, attached valid zero-imputation proofs to both
+  fixtures, and added a forged-policy regression.
+- Tightened structural types while that integration repair was open: near-0/1
+  pregnancy values no longer pass as booleans, and nested stack/arm
+  fraction/seed/count fields no longer accept JSON boolean equality aliases.
+  Added source, transfer, and four manifest-alias regressions. The complete
+  combined pregnancy/ACS/H5 run reached its final live-spec fixture with every
+  preceding test green; the repinned fixture and forged-policy controls pass.
+- Recomputed the source-attested identity after hardening: final resolved US
+  spec SHA is `11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`;
+  no authored YAML changed. Regenerated coverage remains complete at
+  42,154/42,154 fields and 41/41 inventory checks.
 
 ## Next
 
-- Complete the source-attested spec/coverage repin and rerun all directly
-  affected spec, transfer, and stacked suites.
-- Commit the coherent pregnancy implementation and journal state.
+- Commit the fixture/type-hardening integration repair and journal state.
 - Run repository Ruff, generated/coverage/inventory checks, and all five pytest
-  shards in independent processes.
+  shards in independent processes, restarting the build shard from zero.
 - Write and commit the complete handoff to `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance

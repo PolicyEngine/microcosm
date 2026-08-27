@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
@@ -884,6 +885,35 @@ def _canonical_late_calibration_owner_receipt(
     return owner
 
 
+def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
+    policy = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("is_pregnant",),
+        derive_schedule_d=False,
+    )["structural_target_policies"]["is_pregnant"]
+    return {
+        "policy_sha256": policy["sha256"],
+        "source_person_key": "person_source_id",
+        "source_persons_checked": 1,
+        "physical_rows_checked": 1,
+        "clone_rows_checked": 0,
+        "donor_rows_checked": 1,
+        "qrf_draw_source_persons": 0,
+        "qrf_draw_rows": 0,
+        "qrf_fanout_rows": 0,
+        "preexisting_value_fanout_rows": 0,
+        "ineligible_rows_assigned_false": 0,
+        "donor_preexisting_domain_violation_rows": 0,
+        "recipient_preexisting_domain_violation_rows": 0,
+        "preexisting_clone_disagreement_source_persons": 0,
+        "inconsistent_eligibility_source_persons": 0,
+        "maximum_clones_per_source_person": 1,
+        "final_incomplete_rows": 0,
+        "final_domain_violation_rows": 0,
+        "final_clone_disagreement_source_persons": 0,
+        "status": "verified",
+    }
+
+
 def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
     """Build a signed fixture receipt over the live canonical contracts."""
 
@@ -945,6 +975,11 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             }
             for target in group.targets
         }
+        pregnancy_key = f"{group.entity}/{group.family}/is_pregnant"
+        if pregnancy_key in group_targets:
+            group_targets[pregnancy_key]["structural_policy"] = (
+                _canonical_pregnancy_structural_receipt()
+            )
         calibrated_keys = sorted(set(group_targets) & set(late_specs))
         for key in calibrated_keys:
             group_targets[key]["post_transfer_calibration"] = (
@@ -1496,6 +1531,47 @@ def test_ready_stacked_pool_loader_rejects_malformed_sampling_receipt(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ValueError, match="sample_fraction.*finite float"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    (
+        ("stack_seed_bool", "same non-negative integer"),
+        ("arm_fraction_bool", "survey-sample fraction differs"),
+        ("arm_seed_bool", "survey-sample seed differs"),
+        ("top_realized_bool", "realized-household count is malformed"),
+    ),
+)
+def test_ready_stacked_pool_loader_rejects_boolean_sampling_aliases(
+    tmp_path: Path,
+    mutation: str,
+    error_match: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    stack = manifest["stack_manifest"]
+    samples = stack["survey_samples"]
+    if mutation == "stack_seed_bool":
+        manifest["sampling"]["sample_seed"] = 1
+        stack["sample_seed"] = True
+        for sample in samples.values():
+            sample["seed"] = 1
+    elif mutation == "arm_fraction_bool":
+        samples["asec"]["fraction"] = True
+    elif mutation == "arm_seed_bool":
+        manifest["sampling"]["sample_seed"] = 1
+        stack["sample_seed"] = 1
+        samples["asec"]["seed"] = True
+        samples["acs"]["seed"] = 1
+    else:
+        samples["asec"]["realized_household_count"] = 1
+        manifest["sampling"]["realized_households"]["asec"] = True
+    manifest["sampling"]["stack_manifest_sha256"] = _json_sha256(stack)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error_match):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 

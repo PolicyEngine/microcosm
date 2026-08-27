@@ -1614,6 +1614,28 @@ def test_pregnancy_invalid_donor_is_refused_before_qrf(
     assert not _MeanQRF.calls
 
 
+def test_pregnancy_near_boolean_recipient_is_refused_before_qrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {"is_pregnant": [1.0 + 1e-12] + [False] * 5},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    with pytest.raises(ValueError, match=r"1 non-boolean row"):
+        transfer_acs_inputs(
+            recipient,
+            _pregnancy_donor(),
+            target_families={"person": {"pregnancy": ("is_pregnant",)}},
+            donor_channel=None,
+            n_estimators=1,
+        )
+    assert not _MeanQRF.calls
+
+
 def test_pregnancy_complete_invalid_recipient_is_still_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
