@@ -2,29 +2,53 @@
 
 ## State
 
-In progress on 2026-08-27. The branch and clean `origin/main` base have been
-verified, repository instructions have been read, and the supplied release-log
-symptoms are ready for direct source/artifact tracing. No network access,
-artifact build, publication, push, pool build, or release build is in scope.
+In progress on 2026-08-27. Real-pool provenance has refuted the proposed
+post-transfer amount-mapping mechanism: every fractional week is an ACS-origin
+non-native clone prediction outside the calibration's clone-0 recipient scope.
+The source codec and release-gate architecture fixes are now being designed.
+No network access, artifact build, publication, push, pool build, or release
+build is in scope.
 
 ## Done
 
 - Read `CLAUDE.md` and the GitNexus debugging workflow.
 - Confirmed branch `stacked-release-gate-alignment` is clean at `4f453746`.
 - Confirmed the local GitNexus CLI is installed but the repository is not yet
-  indexed; an offline local index may be generated for call-path tracing.
+  indexed. Its offline analyzer parsed the repository but could not register
+  the index because the sandbox forbids writes to `~/.gitnexus`; the generated
+  local index was moved out of the worktree to `/private/tmp`.
 - Recorded the four requested workstreams: fractional-week provenance and PUF
   misclassification; integer-support calibration repair; stacked/legacy weeks
   gate alignment; and the full release-side gate archaeology sweep.
 - Recorded the required verification boundary: repository Ruff plus one pytest
   process per shard, with no pool/release builds.
+- Read the fixed-format HDF5 blocks directly and classified all 369 noninteger
+  `weeks_unemployed` rows: 360 are ACS clone 1 (355 UC=0, 5 UC>0) and 9 are ACS
+  clone 2 (all UC=0); all are positive, all 369 values are distinct, and the
+  exact range is 1.0003521955067698--37.796501228614694.
+- Confirmed zero nonintegers on ASEC rows and ACS clone 0. The receipted
+  calibration covers exactly the 856,626 ACS clone-0 rows, maps 8,419 carrier
+  amounts onto observed ASEC support with zero donor-support violations, and
+  records QED 0.5882352941176471 to 0.0.
+- Reproduced the 5,218-row false "PUF" classification: the legacy role helper
+  calls every clone index above zero `puf_tax_detail`, regardless of raw source
+  channel. The rows are all ACS-origin clones: 4,733 integer clone-1 rows, 355
+  fractional clone-1 rows, 121 integer clone-2 rows, and 9 fractional clone-2
+  rows with nonzero weeks while UC is nonpositive.
+- Traced the actual fractional mechanism to the ACS transfer target codec:
+  PolicyEngine-US declares `weeks_unemployed` as physical `float`, so the
+  generic QRF path treats it as continuous even though its reviewed source
+  contract is integer-supported. The later calibration repairs clone 0 only.
 
 ## Next
 
-- Trace the release-gate roster and weeks/calibration call paths.
-- Read the supplied pool and manifests to classify every noninteger week row
-  and diagnose the 5,218-row channel error.
-- Implement and test only evidence-supported source and architecture fixes.
+- Bind `weeks_unemployed` to observed integer donor support in the actual ACS
+  transfer codec and ensure the authority/receipt contract records that policy.
+- Modernize the weeks gate to use raw assembled channels when present, scope
+  LKWEEKS reconciliation to ASEC-source rows, and scope UC consistency to the
+  rows for which the source constraint is defined.
+- Complete the full release-gate roster audit and implement only unambiguous
+  stacked-awareness repairs.
 - Audit all release-side gates, run the complete prescribed verification, and
   write the final evidence and judgment calls to `out.md`.
 
