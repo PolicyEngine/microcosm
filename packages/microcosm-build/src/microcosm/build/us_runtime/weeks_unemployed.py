@@ -41,11 +41,11 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
-    spine_source_id_column,
-    support_channel_column,
     support_clone_index_column,
     support_role_series,
+    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -1334,7 +1334,7 @@ def _weeks_unemployed_gate_scopes(
     # Validate complete channel/clone metadata even when an assembled frame's
     # raw source channels, rather than its compatibility roles, own the gate.
     roles = support_role_series(person, entity="person")
-    assembled = spine_source_id_column("person") in person
+    assembled = has_assembled_support_metadata(person, entity="person")
     if not assembled:
         channel = roles.to_numpy(dtype=object, copy=True)
         roster = tuple(
@@ -1351,9 +1351,11 @@ def _weeks_unemployed_gate_scopes(
             channel == _PUF_CHANNEL,
         )
 
-    channel_column = support_channel_column("person")
     clone_column = support_clone_index_column("person")
-    source_channel = person[channel_column].to_numpy(dtype=object, copy=True)
+    source_channel = support_source_channel_series(
+        person,
+        entity="person",
+    ).to_numpy(dtype=object, copy=True)
     observed = {str(value) for value in source_channel}
     if _ASEC_CHANNEL not in observed:
         raise ValueError("US weeks-unemployed support has no ASEC source rows.")

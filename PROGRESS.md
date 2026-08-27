@@ -6,7 +6,9 @@ In progress on 2026-08-27. Real-pool provenance has refuted the proposed
 post-transfer amount-mapping mechanism: every fractional week is an ACS-origin
 non-native clone prediction outside the calibration's clone-0 recipient scope.
 The source codec and weeks-gate architecture fixes are implemented and
-focused-tested; the broader release-gate audit and repairs are now in progress.
+focused-tested. The complete release-call roster is classified; the
+unambiguous source-scope and clone-layout repairs are now in progress, while
+three archived-model input assumptions require owner rulings.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -73,13 +75,25 @@ build is in scope.
   weights. It now reports 234,133 valid ASEC source rows, 108,073 exact native
   reconciliation rows, 982,686 UC-constrained rows, zero source/UC failures,
   both unchanged channel bands passing, and only the genuine 369 nonintegers.
+- Added a centralized provenance-owner API that distinguishes validated
+  physical source channels from legacy clone-operator roles. The weeks gate
+  now consumes that API rather than reading provenance columns directly, and
+  both repository source-blindness tripwires pass alongside the stacked and
+  legacy provenance/weekly-signal suites.
+- Completed the release-tool call-roster audit. It found unambiguous physical
+  ASEC scoping repairs in SSI take-up, workers' compensation, alimony,
+  retirement contributions/distributions, and Medicare; clone-2 layout fixes
+  in Head Start, voluntary filing, and prior-year income; and a stable-key fix
+  in WIC. Archived ASEC-only predictor assumptions in SSI disability, SCF
+  wealth, SCF auto loans, and SIPP vehicles require explicit model-owner
+  rulings and will be reported rather than guessed.
 
 ## Next
 
-- Complete the full release-gate roster audit and implement only unambiguous
-  stacked-awareness repairs.
-- Audit all release-side gates, run the complete prescribed verification, and
-  write the final evidence and judgment calls to `out.md`.
+- Implement and focused-test the unambiguous source-scope, clone-layout, and
+  stable-key repairs.
+- Run the complete prescribed verification and write the final provenance,
+  audit evidence, and judgment calls to `out.md`.
 
 # Historical: gate-failed base-pool release lane
 

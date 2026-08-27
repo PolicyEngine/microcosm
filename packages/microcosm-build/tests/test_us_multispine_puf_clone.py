@@ -10,6 +10,7 @@ from microcosm.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     clone_us_frame_for_puf_support,
+    has_assembled_support_metadata,
     has_support_role_metadata,
     prepare_us_puf_tax_detail_chain_inputs,
     puf_tax_detail_clone_mask,
@@ -17,6 +18,7 @@ from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
     support_clone_index_column,
     support_role_series,
+    support_source_channel_series,
     support_source_id_column,
 )
 from microcosm.build.us_runtime.support_provenance import spine_assembly_manifest
@@ -111,6 +113,13 @@ def test_puf_clone_preserves_source_spines_and_routes_by_clone_index() -> None:
             PUF_TAX_DETAIL_SUPPORT_CHANNEL,
             PUF_TAX_DETAIL_SUPPORT_CHANNEL,
         ]
+        assert has_assembled_support_metadata(table, entity=entity)
+        assert support_source_channel_series(table, entity=entity).tolist() == [
+            "asec",
+            "acs",
+            "asec",
+            "acs",
+        ]
         assert puf_tax_detail_clone_mask(table, entity=entity).tolist() == [
             False,
             False,
@@ -176,6 +185,11 @@ def test_support_role_legacy_fallback_is_closed_to_known_roles() -> None:
     )
 
     assert has_support_role_metadata(legacy, entity="person")
+    assert not has_assembled_support_metadata(legacy, entity="person")
+    assert support_source_channel_series(legacy, entity="person").tolist() == [
+        BASE_ASEC_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    ]
     assert support_role_series(legacy, entity="person").tolist() == [
         BASE_ASEC_SUPPORT_CHANNEL,
         PUF_TAX_DETAIL_SUPPORT_CHANNEL,
