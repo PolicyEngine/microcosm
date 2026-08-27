@@ -1,3 +1,37 @@
+# ACS predictor release join
+
+## State
+
+In progress on 2026-08-27. Implementing the owner-approved release-time join
+from stacked-pool ACS person source IDs to the sha-pinned 2024 one-year ACS
+person/household CSV zips. Scope is limited to populating the six archived
+donor models' CPS-named predictors through reviewed native-ACS crosswalks,
+strict join/receipt contracts, unchanged model selection logic, and unchanged
+gate thresholds. No network access, pool build, release build, publication,
+push, retraining, threshold change, or launcher-contract edit is in scope.
+
+## Done
+
+- Read `CLAUDE.md` and the prior weeksgate report's six owner-ruling items with
+  their release-call and model-consumer evidence.
+- Confirmed the requested branch `acs-predictor-release-join` is clean at
+  `606cbd69`, based on `stacked-release-gate-alignment`.
+- Read the GitNexus exploration and impact-analysis workflows. This workspace
+  exposes neither GitNexus repository resources nor query tools, so the same
+  call/dependency analysis will be performed directly from source and tests.
+- Recorded the required source zips and SHA-256 pins, strict exact/total join
+  contract, explicit crosswalk and receipt requirements, and verification
+  boundary.
+
+## Next
+
+- Prove the `person_source_id` encoding from assembly source and bind it to
+  `SERIALNO`/`SPORDER`, including collision and totality invariants.
+- Establish each ACS/CPS code semantic from repository evidence; implement
+  only mappings supported by that evidence and report any unresolved field.
+- Add pinned CLI inputs, the release join, receipts, crosswalk/join tests,
+  changelog fragment, full shard verification, and the final `out.md` report.
+
 # Weeksgate: stacked release gates and integer-week provenance
 
 ## State
