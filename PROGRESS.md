@@ -17,13 +17,37 @@ seeds, batteries, or publish/build pool artifacts.
   changelog, repository Ruff, and independent full-shard pytest boundary.
 - Recorded Task 2 as diagnosis-only unless the evidence proves an unambiguous
   transfer defect.
+- Rebuilt a transient local GitNexus graph offline and queried pregnancy/WIC
+  execution paths. Registration alone failed because the sandbox forbids the
+  CLI's global `~/.gitnexus` registry; the usable worktree-local index remains
+  untracked and will be removed before handoff.
+- Inspected all 1,970,973 person rows in the supplied 25% pool. There are 108
+  `is_pregnant=true` nonfemale rows, all on physical ACS records: 45 clone 0,
+  61 clone 1, and 2 clone 2. ASEC has zero; sex/channel/clone assembly is
+  internally consistent.
+- Localized the pregnancy defect to the ACS QRF path. The ASEC producer hard-
+  conditions its stable draw on female ages 15--44, while ACS transfer treats
+  sex and age only as soft predictors, models physical clone rows separately,
+  and has no pregnancy-domain postcondition. The pool has 11,287 ACS source
+  people whose clones disagree on pregnancy and zero ASEC disagreements.
+- Proved the prior-year shortfall is not ACS dilution or an ACS transfer hole.
+  Physical ASEC and ACS are both about 4.3% available because assembly samples
+  each raw ASEC year independently before the adjacent-year `PERIDNUM` join.
+  Of 18,518 sampled current rows that match the intact full predecessor files,
+  only 4,724 retain a predecessor after sampled-to-sampled joining: weighted
+  match survival is 25.4117%, the expected 25% rung effect. Full pooled ASEC
+  availability is 16.9147%, and selected current rows joined to intact prior
+  files are 16.9541%.
 
 ## Next
 
-- Query the local code graph and trace the pregnancy producer/transfer path.
-- Inspect all affected real-pool rows by channel, clone, sex, and age.
-- Decompose prior-year availability by physical channel and clone, then compare
-  physical ASEC alone with the assembled population and intended ACS behavior.
+- Implement hard pregnancy eligibility before QRF, one source-person result
+  fanned across clones, refusing pre-existing/final domain violations and
+  recording structural counts.
+- Bind the pregnancy structural policy into checkpointed transfer execution
+  identity and add transfer/source/gate regressions.
+- Finalize Task 2 as a sampling-order verdict with no band or implementation
+  change absent a reviewed ownership decision about pre-sampling joins.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
