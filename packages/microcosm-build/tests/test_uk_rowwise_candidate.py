@@ -286,7 +286,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     ]
     assert seed["approved_by"] == "juaristi22"
     assert seed["approved_on"] == "2026-08-27"
-    assert seed["expires_on"] == "2027-02-27"
+    assert seed["expires_on"] == "2026-11-27"
     assert adjudications["dormant"] == []
     assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert manifest["gate"]["passed"] is True
