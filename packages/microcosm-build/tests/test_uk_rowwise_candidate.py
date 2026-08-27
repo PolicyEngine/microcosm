@@ -275,6 +275,19 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["candidate_scope"] == "adjudicated_partial"
     assert manifest["bound_target_families"] == ["census_households/constituency"]
+    adjudications = manifest["binding_adjudications"]
+    assert adjudications["register_resource"] == "local_binding_adjudications.json"
+    assert adjudications["bound_families"] == [
+        "census_households/constituency"
+    ]
+    assert adjudications["evaluated_on"]
+    seed = adjudications["stood_on"]["census_households/constituency"][
+        "census_disclosure_control_noise"
+    ]
+    assert seed["approved_by"] == "juaristi22"
+    assert seed["approved_on"] == "2026-08-27"
+    assert seed["expires_on"] == "2027-02-27"
+    assert adjudications["dormant"] == []
     assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert manifest["gate"]["passed"] is True
     assert manifest["gate"]["phase"] == "post_calibration"
@@ -406,6 +419,17 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     plan = json.loads(captured.out)
     assert plan["dry_run"] is True
     assert plan["bound_target_families"] == ["census_households/constituency"]
+    adjudications = plan["binding_adjudications"]
+    assert adjudications["register_resource"] == "local_binding_adjudications.json"
+    assert adjudications["bound_families"] == [
+        "census_households/constituency"
+    ]
+    assert adjudications["evaluated_on"]
+    assert (
+        "census_disclosure_control_noise"
+        in adjudications["stood_on"]["census_households/constituency"]
+    )
+    assert adjudications["dormant"] == []
     assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert plan["shapes"]["person"][0] == 8
     assert plan["shapes"]["benunit"][0] == 8
@@ -472,6 +496,64 @@ def test_candidate_refusal_records_receipt_and_reraises(
         "verdict": "failed",
         "receipt": f"{_local_ref(refusal_path)}#/gate",
     }
+    assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+    assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
+
+
+def test_candidate_binding_adjudication_failure_records_failed_row(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(input_h5)
+    _write_ladder(ladder_path)
+
+    import microcosm.build.uk_runtime.local_rowwise as local_rowwise
+
+    monkeypatch.setattr(
+        local_rowwise,
+        "load_uk_reviewed_exclusion_register",
+        lambda *_args, **_kwargs: {},
+    )
+
+    def unexpected_solve(*_args, **_kwargs):
+        raise AssertionError("solve should not run without adjudication")
+
+    monkeypatch.setattr(
+        builder,
+        "solve_uk_rowwise_weights_under_doctrine",
+        unexpected_solve,
+    )
+
+    with pytest.raises(ValueError, match="census_disclosure_control_noise"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(output_dir),
+                "--n-clones",
+                "2",
+                "--seed",
+                "7",
+                "--epochs",
+                "2",
+            ]
+        )
+
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    assert "cloned" in row.phases_reached
+    assert "targets_bound" not in row.phases_reached
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 

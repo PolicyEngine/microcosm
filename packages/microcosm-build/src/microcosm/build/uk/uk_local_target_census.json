@@ -542,6 +542,6 @@
     "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
     "pinned_in_ladder": "The product is downloaded and sha-pinned per build by the UK OA ladder artifact tool, which records every source hash in the artifact metadata; target values derive from the artifact's own sums.",
-    "review_required_before_binding": "The fence is a reviewed adjudication requirement recorded for binding work; execution-time enforcement in the local solve configuration lands with the solve-doctrine increment of microcosm#495."
+    "review_required_before_binding": "The fence is a reviewed adjudication requirement enforced by the rowwise doctrine solve (local_rowwise.require_adjudicated_uk_local_binding): binding a family whose fences lack an in-force entry in local_binding_adjudications.json is refused before any solve runs."
   }
 }

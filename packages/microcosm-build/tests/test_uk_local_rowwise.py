@@ -12,19 +12,27 @@ one area).
 
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import (
+    UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_TARGET_LOSS_CAP,
     build_uk_rowwise_local_matrix,
+    load_uk_local_target_census,
+    require_adjudicated_uk_local_binding,
     rowwise_area_support_summary,
     rowwise_calibration_mass_reason,
     solve_uk_rowwise_weights_under_doctrine,
     uk_household_weight_kind,
     uk_national_frame,
+)
+from microcosm.build.uk_runtime.weighted_integrity import (
+    load_uk_reviewed_exclusion_register,
 )
 from microcosm.frame import WeightKind
 
@@ -53,8 +61,8 @@ def _clone_frame(weights=(1.0, 1.0, 1.0)):
 def _metrics() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "population": [2.0, 1.0, 3.0],
-            "uc_households": [1.0, 0.0, 1.0],
+            "households": [2.0, 1.0, 3.0],
+            "tenure/social_rent": [1.0, 0.0, 1.0],
         },
         index=[101, 102, 103],
     )
@@ -68,30 +76,62 @@ def _targets() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "code": ["E001", "S001"],
-            "population": [4.0, 2.0],
+            "households": [4.0, 2.0],
+            "tenure/social_rent": [1.0, 1.0],
+        }
+    )
+
+
+def _uc_problem():
+    metrics = pd.DataFrame(
+        {"uc_households": [1.0, 0.0, 1.0]},
+        index=[101, 102, 103],
+    )
+    targets = pd.DataFrame(
+        {
+            "code": ["E001", "S001"],
             "uc_households": [1.0, 1.0],
         }
     )
+    return build_uk_rowwise_local_matrix(metrics, _assigned(), targets)
+
+
+def _reviewed_register_entry(
+    *,
+    approved_on: str = "2026-01-01",
+    expires_on: str = "2027-01-01",
+) -> dict[str, str]:
+    return {
+        "reason": (
+            "Accept the stated basis for test evidence. Evidence: "
+            "uk_local_target_census.json#/binding_fences/"
+            "census_disclosure_control_noise."
+        ),
+        "approved_by": "tester",
+        "adjudication": "microcosm#760-test",
+        "approved_on": approved_on,
+        "expires_on": expires_on,
+    }
 
 
 def test_matrix_builder_places_support_only_in_assigned_area() -> None:
     problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
     assert problem.matrix.shape == (4, 3)
     assert problem.area_codes == ("E001", "S001")
-    assert problem.metric_names == ("population", "uc_households")
+    assert problem.metric_names == ("households", "tenure/social_rent")
     assert problem.household_ids == (101, 102, 103)
 
     dense = problem.matrix.toarray()
     frame = problem.target_frame
     # E001 rows carry only households 101/102; S001 rows only household 103.
     e_pop = int(
-        frame[(frame["area_code"] == "E001") & (frame["metric"] == "population")][
+        frame[(frame["area_code"] == "E001") & (frame["metric"] == "households")][
             "target_index"
         ].iloc[0]
     )
     assert dense[e_pop].tolist() == [2.0, 1.0, 0.0]
     s_pop = int(
-        frame[(frame["area_code"] == "S001") & (frame["metric"] == "population")][
+        frame[(frame["area_code"] == "S001") & (frame["metric"] == "households")][
             "target_index"
         ].iloc[0]
     )
@@ -112,7 +152,7 @@ def test_matrix_builder_validates_alignment_and_finiteness() -> None:
         build_uk_rowwise_local_matrix(_metrics(), misaligned, _targets())
 
     bad = _metrics()
-    bad.loc[101, "population"] = np.nan
+    bad.loc[101, "households"] = np.nan
     with pytest.raises(ValueError, match="finite"):
         build_uk_rowwise_local_matrix(bad, _assigned(), _targets())
 
@@ -124,7 +164,10 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     result = solve_uk_rowwise_weights_under_doctrine(
         frame,
         problem,
-        bound_families=["census_households/constituency"],
+        bound_families=[
+            "census_households/constituency",
+            "tenure/constituency",
+        ],
         epochs=60,
         learning_rate=0.2,
         seed=1,
@@ -158,6 +201,111 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
         result.frame.weights_for("household").values,
         result.weights,
     )
+    receipt = result.binding_adjudications
+    assert (
+        receipt["register_resource"]
+        == UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
+    )
+    assert receipt["dormant"] == []
+    stood_on = receipt["stood_on"]["census_households/constituency"]
+    seed = stood_on["census_disclosure_control_noise"]
+    assert seed["approved_by"] == "juaristi22"
+    assert seed["approved_on"] == "2026-08-27"
+    assert seed["expires_on"] == "2027-02-27"
+    assert receipt["stood_on"]["tenure/constituency"] == {}
+
+
+def test_rowwise_binding_refuses_unadjudicated_committed_fence() -> None:
+    problem = _uc_problem()
+    with pytest.raises(ValueError, match="uc_unit_vs_household_grain"):
+        require_adjudicated_uk_local_binding(
+            ["uc_households/constituency"],
+            problem.target_frame,
+        )
+
+
+def test_rowwise_binding_refuses_declared_derived_mismatch() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    with pytest.raises(ValueError, match="missing.*tenure/constituency"):
+        require_adjudicated_uk_local_binding(
+            ["census_households/constituency"],
+            problem.target_frame,
+        )
+    with pytest.raises(ValueError, match="extra.*private_rent/constituency"):
+        require_adjudicated_uk_local_binding(
+            [
+                "census_households/constituency",
+                "tenure/constituency",
+                "private_rent/constituency",
+            ],
+            problem.target_frame,
+        )
+
+
+def test_rowwise_binding_refuses_unknown_family_and_bad_area_type() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    with pytest.raises(ValueError, match="unknown census family"):
+        require_adjudicated_uk_local_binding(
+            ["not_a_family/constituency"],
+            problem.target_frame,
+        )
+    with pytest.raises(ValueError, match="unsupported area_type"):
+        require_adjudicated_uk_local_binding(
+            ["census_households/ward"],
+            problem.target_frame,
+        )
+
+
+def test_rowwise_binding_refuses_expired_and_premature_adjudications() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    expired_register = {
+        "census_disclosure_control_noise": _reviewed_register_entry(
+            approved_on="2026-01-01",
+            expires_on="2026-02-01",
+        )
+    }
+    with pytest.raises(ValueError, match="correct the underlying gap or renew"):
+        require_adjudicated_uk_local_binding(
+            [
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
+            problem.target_frame,
+            register=expired_register,
+            now=date(2026, 3, 1),
+        )
+
+    premature_register = {
+        "census_disclosure_control_noise": _reviewed_register_entry(
+            approved_on="2026-04-01",
+            expires_on="2027-04-01",
+        )
+    }
+    with pytest.raises(ValueError, match="correct the underlying gap or renew"):
+        require_adjudicated_uk_local_binding(
+            [
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
+            problem.target_frame,
+            register=premature_register,
+            now=date(2026, 3, 1),
+        )
+
+
+def test_committed_local_binding_register_references_committed_census() -> None:
+    census = load_uk_local_target_census()
+    fence_ids = {row["fence_id"] for row in census["binding_fences"]}
+    register = load_uk_reviewed_exclusion_register(
+        None,
+        resource=UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
+    )
+    assert set(register) <= fence_ids
+    for fence_id, record in register.items():
+        assert f"uk_local_target_census.json#/binding_fences/{fence_id}" in (
+            record.reason
+        )
+        assert len(record.reason) > 100
 
 
 def test_rowwise_doctrine_solve_exposes_no_knobs() -> None:
@@ -178,7 +326,10 @@ def test_rowwise_doctrine_solve_exposes_no_knobs() -> None:
         solve_uk_rowwise_weights_under_doctrine(
             _clone_frame(),
             problem,
-            bound_families=["census_households/constituency"],
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
             target_loss_weights=[1.0] * 4,
         )
 
@@ -198,7 +349,10 @@ def test_rowwise_doctrine_solve_refuses_duplicate_surface() -> None:
         solve_uk_rowwise_weights_under_doctrine(
             _clone_frame(),
             doctored,
-            bound_families=["census_households/constituency"],
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
             epochs=1,
         )
 
@@ -226,27 +380,27 @@ def test_matrix_builder_fails_closed_on_unreachable_nonzero_targets() -> None:
     targets = pd.DataFrame(
         {
             "code": ["E001", "S001", "W001"],
-            "population": [4.0, 2.0, 5.0],
-            "uc_households": [1.0, 1.0, 0.0],
+            "households": [4.0, 2.0, 5.0],
+            "tenure/social_rent": [1.0, 1.0, 0.0],
         }
     )
-    with pytest.raises(ValueError, match="W001/population"):
+    with pytest.raises(ValueError, match="W001/households"):
         build_uk_rowwise_local_matrix(_metrics(), _assigned(), targets)
 
     zero_ok = targets.copy()
-    zero_ok.loc[zero_ok["code"] == "W001", "population"] = 0.0
+    zero_ok.loc[zero_ok["code"] == "W001", "households"] = 0.0
     problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), zero_ok)
     assert problem.n_areas == 3
 
 
 def test_matrix_builder_refuses_duplicate_and_metadata_metric_labels() -> None:
     duplicated = _metrics()
-    duplicated.columns = ["population", "population"]
+    duplicated.columns = ["households", "households"]
     with pytest.raises(ValueError, match="duplicate column label"):
         build_uk_rowwise_local_matrix(duplicated, _assigned(), _targets())
 
-    metadata = _metrics().rename(columns={"uc_households": "area_index"})
-    targets = _targets().rename(columns={"uc_households": "area_index"})
+    metadata = _metrics().rename(columns={"tenure/social_rent": "area_index"})
+    targets = _targets().rename(columns={"tenure/social_rent": "area_index"})
     with pytest.raises(ValueError, match="metadata"):
         build_uk_rowwise_local_matrix(metadata, _assigned(), targets)
 
@@ -257,7 +411,10 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
         solve_uk_rowwise_weights_under_doctrine(
             _clone_frame([1.0, 0.0, 1.0]),
             problem,
-            bound_families=["census_households/constituency"],
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
             epochs=1,
         )
 
@@ -290,7 +447,10 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
         solve_uk_rowwise_weights_under_doctrine(
             reordered,
             reordered_problem,
-            bound_families=["census_households/constituency"],
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
             epochs=1,
         )
 
@@ -312,7 +472,10 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
         solve_uk_rowwise_weights_under_doctrine(
             misaligned,
             problem,
-            bound_families=["census_households/constituency"],
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
             epochs=1,
         )
 
@@ -365,7 +528,10 @@ def test_doctrine_solve_forwards_declared_bounds_to_the_front_door(
     solve_uk_rowwise_weights_under_doctrine(
         _clone_frame(),
         problem,
-        bound_families=["census_households/constituency"],
+        bound_families=[
+            "census_households/constituency",
+            "tenure/constituency",
+        ],
         seed=3,
     )
 
@@ -405,6 +571,9 @@ def test_doctrine_solve_refuses_reordered_diagnostics(monkeypatch) -> None:
         solve_uk_rowwise_weights_under_doctrine(
             _clone_frame(),
             problem,
-            bound_families=["census_households/constituency"],
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+            ],
             epochs=1,
         )

@@ -24,13 +24,14 @@ Design rules:
   ``documented_unpinned`` and move to ``pinned_in_ladder`` when a build
   artifact sha-pins them per build, mirroring the HMRC/SPI source-contract
   discipline.
-* **Fences by reference, enforcement declared.** The banded HMRC facts stay
+* **Fences by reference, enforced at binding.** The banded HMRC facts stay
   fenced exactly as the national replay adjudicated them
   (``FULL_FRS_TI_BAND_FENCE_ID``, ``HMRC_SPI_TARGET_RECORD_COUNT`` are
   imported, never copied), and every census fence declares its enforcement
-  status: these are reviewed adjudication requirements recorded for binding
-  work — execution-time enforcement in the local solve lands with the solve
-  doctrine increment of microcosm#495.
+  status: the rowwise doctrine solve
+  (``local_rowwise.require_adjudicated_uk_local_binding``) refuses binding a
+  family whose fences lack an in-force entry in
+  ``local_binding_adjudications.json``.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ __all__ = [
     "CENSUS_KIND",
     "CENSUS_RESOURCE",
     "CENSUS_SCHEMA_VERSION",
+    "family_for_metric",
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
     "SOURCE_STATUS_PINNED_IN_LADDER",
@@ -549,10 +551,11 @@ _STATUS_DEFINITIONS: dict[str, str] = {
         "sums."
     ),
     FENCE_ENFORCEMENT_REVIEW: (
-        "The fence is a reviewed adjudication requirement recorded for "
-        "binding work; execution-time enforcement in the local solve "
-        "configuration lands with the solve-doctrine increment of "
-        "microcosm#495."
+        "The fence is a reviewed adjudication requirement enforced by the "
+        "rowwise doctrine solve "
+        "(local_rowwise.require_adjudicated_uk_local_binding): binding a "
+        "family whose fences lack an in-force entry in "
+        "local_binding_adjudications.json is refused before any solve runs."
     ),
 }
 
@@ -706,6 +709,12 @@ def _family_for_metric(name: str) -> str:
         "_PREFIX_FAMILY_RULES with its official source(s) before shipping "
         "it."
     )
+
+
+family_for_metric = _family_for_metric
+family_for_metric.__doc__ = (
+    "Public alias for the fail-closed UK local metric-to-family classifier."
+)
 
 
 def _require_unique_ids(

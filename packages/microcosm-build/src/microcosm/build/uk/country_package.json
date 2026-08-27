@@ -228,6 +228,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "local_binding_adjudications.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "uk_local_target_census.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
