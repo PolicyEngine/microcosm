@@ -296,18 +296,6 @@ class TestFrameStageAndGate:
         assert not failed.passed
         assert any("MCARE" in failure for failure in failed.failures)
 
-    def test_stacked_derivation_preserves_non_source_outputs(self) -> None:
-        person = _stacked_frame().table("person").copy()
-        acs = person["person_support_channel"].eq("acs")
-        person.loc[acs, _OUTPUT] = np.asarray([True, False, True, False])
-        before = person.loc[acs, _OUTPUT].copy()
-
-        result = _derive(person)
-
-        pd.testing.assert_series_equal(result.loc[acs, _OUTPUT], before)
-        expected = person.loc[~acs, _SOURCE].to_numpy() == 1
-        np.testing.assert_array_equal(result.loc[~acs, _OUTPUT], expected)
-
     def test_gate_rejects_missing_constant_bad_share_and_mismatch(self) -> None:
         missing = _frame()
         assert not us_medicare_take_up_signal_gate(missing).passed

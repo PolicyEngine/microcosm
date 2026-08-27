@@ -168,16 +168,7 @@ def derive_us_medicare_take_up_from_manifest(
             f"expected {_EXPECTED_PARAMETERS}, got {parameters}."
         )
     result = frame.copy(deep=True)
-    source_mask = _asec_source_mask(result)
-    source_values = (
-        _source_codes(result.loc[source_mask], _SOURCE) == _ENROLLED_CODE
-    )
-    if source_mask.all():
-        result[_OUTPUT] = source_values
-    else:
-        if _OUTPUT not in result:
-            result[_OUTPUT] = pd.Series(pd.NA, index=result.index, dtype="boolean")
-        result.loc[source_mask, _OUTPUT] = source_values
+    result[_OUTPUT] = _source_codes(result, _SOURCE) == _ENROLLED_CODE
     return result
 
 
@@ -188,15 +179,10 @@ def _surface_matches_source(frame: Frame) -> bool:
     if _SOURCE not in person:
         return True
     try:
-        source_mask = _asec_source_mask(person)
-        expected = (
-            _source_codes(person.loc[source_mask], _SOURCE) == _ENROLLED_CODE
-        )
+        expected = _source_codes(person, _SOURCE) == _ENROLLED_CODE
     except SourceRuntimeError:
         return False
-    observed = (
-        person.loc[source_mask, _OUTPUT].fillna(False).astype(bool).to_numpy()
-    )
+    observed = person[_OUTPUT].fillna(False).astype(bool).to_numpy()
     return bool(np.array_equal(observed, expected))
 
 

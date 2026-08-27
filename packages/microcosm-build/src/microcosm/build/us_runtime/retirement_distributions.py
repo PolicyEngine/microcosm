@@ -324,8 +324,7 @@ def derive_us_retirement_distributions_from_manifest(
         )
     output_by_code = _manifest_output_by_code(operation)
     result = frame.copy(deep=True)
-    source_mask = _asec_source_mask(result)
-    derived = _derived_outputs(result.loc[source_mask], output_by_code)
+    derived = _derived_outputs(result, output_by_code)
     preserved_puf_taxable_ira: np.ndarray | None = None
     puf_mask: np.ndarray | None = None
     if has_support_role_metadata(result, entity="person"):
@@ -353,12 +352,7 @@ def derive_us_retirement_distributions_from_manifest(
             )
 
     for output, values in derived.items():
-        if source_mask.all():
-            result[output] = values
-        else:
-            if output not in result:
-                result[output] = np.nan
-            result.loc[source_mask, output] = values
+        result[output] = values
         if output == "taxable_ira_distributions" and puf_mask is not None:
             assert preserved_puf_taxable_ira is not None
             result.loc[puf_mask, output] = preserved_puf_taxable_ira[puf_mask]

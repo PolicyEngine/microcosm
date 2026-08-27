@@ -223,17 +223,15 @@ def derive_us_retirement_contributions_from_manifest(
     shares = _share_parameters(operation)
 
     result = frame.copy(deep=True)
-    source_mask = _asec_source_mask(result)
-    source = result.loc[source_mask]
-    retirement_contributions = _numeric_source(source, "RETCB_VAL")
+    retirement_contributions = _numeric_source(result, "RETCB_VAL")
     negative_source = int(np.count_nonzero(retirement_contributions < 0))
     if negative_source:
         raise SourceRuntimeError(
             "US retirement-contribution source 'RETCB_VAL' contains "
             f"{negative_source} negative value(s)."
         )
-    has_wages = _numeric_source(source, "WSAL_VAL") > 0
-    has_self_employment = _numeric_source(source, "SEMP_VAL") > 0
+    has_wages = _numeric_source(result, "WSAL_VAL") > 0
+    has_self_employment = _numeric_source(result, "SEMP_VAL") > 0
     has_earned_income = has_wages | has_self_employment
 
     self_employed = np.where(
@@ -249,24 +247,17 @@ def derive_us_retirement_contributions_from_manifest(
     )
     ira_pool = np.where(has_earned_income, remaining - dc_pool, 0.0)
 
-    derived = {
-        "traditional_401k_contributions_desired": dc_pool
-        * (1.0 - shares["roth_dc_share"]),
-        "roth_401k_contributions_desired": dc_pool * shares["roth_dc_share"],
-        "traditional_ira_contributions_desired": ira_pool
-        * shares["traditional_ira_share"],
-        "roth_ira_contributions_desired": ira_pool
-        * (1.0 - shares["traditional_ira_share"]),
-        "self_employed_pension_contributions_desired": self_employed,
-    }
-    if source_mask.all():
-        for column, values in derived.items():
-            result[column] = values
-    else:
-        for column, values in derived.items():
-            if column not in result:
-                result[column] = np.nan
-            result.loc[source_mask, column] = values
+    result["traditional_401k_contributions_desired"] = dc_pool * (
+        1.0 - shares["roth_dc_share"]
+    )
+    result["roth_401k_contributions_desired"] = dc_pool * shares["roth_dc_share"]
+    result["traditional_ira_contributions_desired"] = (
+        ira_pool * shares["traditional_ira_share"]
+    )
+    result["roth_ira_contributions_desired"] = ira_pool * (
+        1.0 - shares["traditional_ira_share"]
+    )
+    result["self_employed_pension_contributions_desired"] = self_employed
     return result
 
 

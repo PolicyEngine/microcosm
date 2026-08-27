@@ -200,30 +200,6 @@ def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> 
         us_retirement_contributions_summary(stacked)
 
 
-def test_stacked_derivation_preserves_non_source_recipient_outputs() -> None:
-    person = _stacked_frame().table("person").copy()
-    acs = person["person_support_channel"].eq("acs")
-    sentinels = np.arange(
-        np.count_nonzero(acs) * len(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
-        dtype=float,
-    ).reshape(np.count_nonzero(acs), -1)
-    person.loc[acs, list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)] = sentinels
-    before = person.loc[
-        acs,
-        list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
-    ].copy()
-
-    result = _derive(person)
-
-    pd.testing.assert_frame_equal(
-        result.loc[acs, list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)],
-        before,
-    )
-    assert np.isfinite(
-        result.loc[~acs, list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)]
-    ).all(axis=None)
-
-
 def test_puf_half_uses_qrf_predictions_and_applies_income_constraints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

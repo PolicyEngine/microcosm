@@ -101,6 +101,13 @@ build is in scope.
   prior-year income with all-clone grouping on assembled source IDs, so a
   clone-2-only divergence is now detected. Focused tests and Ruff passed for
   all three module/test pairs.
+- Scoped Medicare and retirement release diagnostics to physical ASEC source
+  rows, separating raw-source validity from native direct-carry reconciliation
+  where transferred clones intentionally differ. Kept the producer kernels
+  origin-blind: the authenticated-pool release path skips those producers, and
+  indirect physical-source routing would violate the repository's population-
+  operator boundary. Their 60 focused module/source-blindness tests and Ruff
+  pass after that review correction.
 
 ## Next
 
