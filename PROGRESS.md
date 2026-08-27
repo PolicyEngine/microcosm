@@ -1,4 +1,34 @@
-# Gate-failed base-pool release lane
+# Weeksgate: stacked release gates and integer-week provenance
+
+## State
+
+In progress on 2026-08-27. The branch and clean `origin/main` base have been
+verified, repository instructions have been read, and the supplied release-log
+symptoms are ready for direct source/artifact tracing. No network access,
+artifact build, publication, push, pool build, or release build is in scope.
+
+## Done
+
+- Read `CLAUDE.md` and the GitNexus debugging workflow.
+- Confirmed branch `stacked-release-gate-alignment` is clean at `4f453746`.
+- Confirmed the local GitNexus CLI is installed but the repository is not yet
+  indexed; an offline local index may be generated for call-path tracing.
+- Recorded the four requested workstreams: fractional-week provenance and PUF
+  misclassification; integer-support calibration repair; stacked/legacy weeks
+  gate alignment; and the full release-side gate archaeology sweep.
+- Recorded the required verification boundary: repository Ruff plus one pytest
+  process per shard, with no pool/release builds.
+
+## Next
+
+- Trace the release-gate roster and weeks/calibration call paths.
+- Read the supplied pool and manifests to classify every noninteger week row
+  and diagnose the 5,218-row channel error.
+- Implement and test only evidence-supported source and architecture fixes.
+- Audit all release-side gates, run the complete prescribed verification, and
+  write the final evidence and judgment calls to `out.md`.
+
+# Historical: gate-failed base-pool release lane
 
 ## State
 
