@@ -48,7 +48,6 @@ from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
     support_role_series,
-    support_source_channel_series,
     support_source_id_column,
     validate_assembly_provenance,
 )
@@ -88,7 +87,6 @@ __all__ = [
     "support_channel_column",
     "support_clone_index_column",
     "support_role_series",
-    "support_source_channel_series",
     "support_source_id_column",
     "validate_puf_clone_attachment",
 ]

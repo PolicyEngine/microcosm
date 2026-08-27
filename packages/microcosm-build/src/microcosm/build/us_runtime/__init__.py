@@ -603,7 +603,6 @@ from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
     support_clone_index_column,
     support_role_series,
-    support_source_channel_series,
     support_source_id_column,
 )
 from microcosm.build.us_runtime.puma_ladder import (
@@ -1962,7 +1961,6 @@ __all__ = [
     "support_channel_column",
     "support_clone_index_column",
     "support_role_series",
-    "support_source_channel_series",
     "support_source_id_column",
     "transfer_puf_capital_gains_tail",
     "build_puf_e01000_reconciliation_basis",

@@ -25,8 +25,8 @@ from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
-    support_source_channel_series,
 )
 from microcosm.frame import Frame
 
@@ -296,7 +296,7 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
         source_reconciliation_mask = source_mask.copy()
         if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                support_source_channel_series(person, entity="person")
+                support_gate_source_channel_series(person, entity="person")
                 .eq(BASE_ASEC_SUPPORT_CHANNEL)
                 .to_numpy()
             )

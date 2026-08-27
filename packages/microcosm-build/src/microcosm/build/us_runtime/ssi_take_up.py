@@ -77,8 +77,8 @@ from microcosm.build.us_runtime.support_provenance import (
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     has_support_role_metadata,
     support_clone_index_column,
+    support_gate_source_channel_series,
     support_role_series,
-    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -531,7 +531,7 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
     if person[_SOURCE_ID].isna().any():
         raise ValueError("US SSI take-up reporter lineage requires provenance.")
     source_ids = _decoded_strings(person[_SOURCE_ID])
-    source_channels = support_source_channel_series(person, entity="person")
+    source_channels = support_gate_source_channel_series(person, entity="person")
     asec_source = source_channels.eq(_ASEC_CHANNEL).to_numpy()
     reported = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
         dtype=np.float64

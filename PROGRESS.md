@@ -122,6 +122,11 @@ build is in scope.
   The existing decision not to make divergence gate-fatal remains unchanged
   for an owner ruling; the complete focused file and source-blindness checks
   pass.
+- Narrowed physical-channel resolution to a gate/reporter-only provenance API,
+  removed its general runtime/PUF-support re-exports, and added a static exact-
+  caller contract (including internal mask-helper callers). A future derive,
+  impute, or wrapper use now fails the source-blindness suite instead of
+  passing through indirection.
 
 ## Next
 

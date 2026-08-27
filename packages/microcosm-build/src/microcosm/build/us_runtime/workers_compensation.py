@@ -30,8 +30,8 @@ from microcosm.build.source_runtime import (
 from microcosm.build.us_runtime.support_provenance import (
     has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
-    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -575,7 +575,9 @@ def us_workers_compensation_summary(frame: Frame) -> dict[str, object]:
         source_reconciliation_mask = source_mask.copy()
         if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                support_source_channel_series(person, entity="person").to_numpy()
+                support_gate_source_channel_series(
+                    person, entity="person"
+                ).to_numpy()
                 == _BASE_ASEC_SUPPORT_CHANNEL
             )
             source_reconciliation_mask = source_mask.copy()

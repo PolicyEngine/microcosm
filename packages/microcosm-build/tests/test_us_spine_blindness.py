@@ -174,6 +174,36 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "workers_compensation.py",
 )
 
+_GATE_SOURCE_CHANNEL_ACCESSOR = "support_gate_source_channel_series"
+_GATE_SOURCE_CHANNEL_CALLERS = {
+    "alimony.py": frozenset({"us_alimony_signal_gate"}),
+    "medicare_take_up.py": frozenset({"_asec_source_mask"}),
+    "retirement_contributions.py": frozenset({"_asec_source_mask"}),
+    "retirement_distributions.py": frozenset({"_asec_source_mask"}),
+    "ssi_take_up.py": frozenset({"us_ssi_take_up_reporter_source_ids"}),
+    "weeks_unemployed.py": frozenset({"_weeks_unemployed_gate_scopes"}),
+    "workers_compensation.py": frozenset({"us_workers_compensation_summary"}),
+}
+_GATE_SOURCE_SCOPE_HELPER_CALLERS = {
+    ("medicare_take_up.py", "_asec_source_mask"): frozenset(
+        {"us_medicare_take_up_summary"}
+    ),
+    ("retirement_contributions.py", "_asec_source_mask"): frozenset(
+        {"_source_reconciliation_mask", "us_retirement_contributions_summary"}
+    ),
+    (
+        "retirement_contributions.py",
+        "_source_reconciliation_mask",
+    ): frozenset({"us_retirement_contributions_summary"}),
+    ("retirement_distributions.py", "_asec_source_mask"): frozenset(
+        {"_source_reconciliation_mask", "us_retirement_distributions_summary"}
+    ),
+    (
+        "retirement_distributions.py",
+        "_source_reconciliation_mask",
+    ): frozenset({"us_retirement_distributions_summary"}),
+}
+
 # Every runtime module must be deliberately classified. This allowlist does
 # not exempt a module from the all-runtime AST scan below; it only records
 # modules outside the migrated population-treatment registry. Keeping the
@@ -3071,6 +3101,46 @@ def _called_function_names(source: str) -> set[str]:
     }
 
 
+def _function_callers(source: str, callee: str) -> tuple[tuple[str, int], ...]:
+    """Return function names and lines that call one imported or local name."""
+
+    tree = ast.parse(source)
+    aliases = {callee}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        aliases.update(
+            alias.asname or alias.name
+            for alias in node.names
+            if alias.name == callee
+        )
+
+    class CallerVisitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.function_stack: list[str] = []
+            self.callers: list[tuple[str, int]] = []
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self.function_stack.append(node.name)
+            self.generic_visit(node)
+            self.function_stack.pop()
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self.function_stack.append(node.name)
+            self.generic_visit(node)
+            self.function_stack.pop()
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if _call_name(node) in aliases:
+                caller = self.function_stack[-1] if self.function_stack else "<module>"
+                self.callers.append((caller, node.lineno))
+            self.generic_visit(node)
+
+    visitor = CallerVisitor()
+    visitor.visit(tree)
+    return tuple(visitor.callers)
+
+
 def _imported_us_runtime_modules(source: str) -> tuple[str, ...]:
     """Return statically imported, flat ``us_runtime`` module filenames."""
 
@@ -3264,6 +3334,48 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
         "Registered population operators must use support_role_series() or "
         "support clone indices instead of source-channel columns. "
         f"Found: {offenders}"
+    )
+
+
+def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
+    """Origin-aware diagnostics must not become population treatments."""
+
+    actual: dict[str, frozenset[str]] = {}
+    call_details: dict[str, tuple[tuple[str, int], ...]] = {}
+    for path in sorted(_US_RUNTIME.glob("*.py")):
+        if path.name == "support_provenance.py":
+            continue
+        callers = _function_callers(path.read_text(), _GATE_SOURCE_CHANNEL_ACCESSOR)
+        if callers:
+            actual[path.name] = frozenset(caller for caller, _line in callers)
+            call_details[path.name] = callers
+    assert actual == _GATE_SOURCE_CHANNEL_CALLERS, (
+        "The physical support-channel accessor is restricted to reviewed "
+        "release gates and reporter capture; population derivation, imputation, "
+        f"or wrapper use is forbidden. Found callers: {call_details}"
+    )
+
+    for (module_name, helper), expected_callers in (
+        _GATE_SOURCE_SCOPE_HELPER_CALLERS.items()
+    ):
+        callers = _function_callers((_US_RUNTIME / module_name).read_text(), helper)
+        actual_callers = frozenset(caller for caller, _line in callers)
+        assert actual_callers == expected_callers, (
+            f"Physical source-scope helper {module_name}:{helper} may be called "
+            "only by its reviewed gate-summary chain; "
+            f"expected={sorted(expected_callers)}, found={callers}."
+        )
+
+
+def test_physical_source_accessor_guard_rejects_a_derivation_call() -> None:
+    source = """
+from owner import support_gate_source_channel_series as channels
+
+def derive_population(frame):
+    return channels(frame, entity=\"person\")
+"""
+    assert _function_callers(source, _GATE_SOURCE_CHANNEL_ACCESSOR) == (
+        ("derive_population", 5),
     )
 
 

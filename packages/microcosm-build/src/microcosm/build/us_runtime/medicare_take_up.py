@@ -30,8 +30,8 @@ from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
-    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -136,7 +136,7 @@ def _asec_source_mask(person: pd.DataFrame) -> np.ndarray:
 
     if not has_assembled_support_metadata(person, entity="person"):
         return np.ones(len(person), dtype=bool)
-    source_channels = support_source_channel_series(person, entity="person")
+    source_channels = support_gate_source_channel_series(person, entity="person")
     mask = source_channels.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
     if not mask.any():
         raise SourceRuntimeError(

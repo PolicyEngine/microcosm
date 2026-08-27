@@ -26,7 +26,7 @@ __all__ = [
     "support_channel_column",
     "support_clone_index_column",
     "support_role_series",
-    "support_source_channel_series",
+    "support_gate_source_channel_series",
     "support_source_id_column",
     "us_reported_coverage_vintage_signal_gate",
     "validate_assembly_provenance",
@@ -493,19 +493,20 @@ def support_role_series(
     )
 
 
-def support_source_channel_series(
+def support_gate_source_channel_series(
     table: pd.DataFrame,
     *,
     entity: str,
 ) -> pd.Series:
-    """Return validated physical source channels with a legacy fallback.
+    """Return physical source channels for read-only gates and reporters.
 
     Assembled frames retain their receipt-declared physical channels (for
     example, ``asec`` and ``acs``). Historical frames have no raw spine ID and
     use the exact ``asec``/``puf_tax_detail`` operator roles as their channels.
-    Keeping this resolution in the provenance owner lets reporting and release
-    gates inspect source coverage without teaching population operators how to
-    read provenance columns directly.
+    This deliberately narrow accessor must not route population treatments.
+    Keeping resolution in the provenance owner lets reporting and release gates
+    inspect source coverage without teaching operators how to read provenance
+    columns directly. A static call-site contract pins its reviewed consumers.
     """
 
     roles = support_role_series(table, entity=entity)

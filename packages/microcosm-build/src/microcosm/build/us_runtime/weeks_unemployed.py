@@ -44,8 +44,8 @@ from microcosm.build.us_runtime.support_provenance import (
     has_assembled_support_metadata,
     has_support_role_metadata,
     support_clone_index_column,
+    support_gate_source_channel_series,
     support_role_series,
-    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -1352,7 +1352,7 @@ def _weeks_unemployed_gate_scopes(
         )
 
     clone_column = support_clone_index_column("person")
-    source_channel = support_source_channel_series(
+    source_channel = support_gate_source_channel_series(
         person,
         entity="person",
     ).to_numpy(dtype=object, copy=True)
