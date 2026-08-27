@@ -5,10 +5,12 @@
 In progress on 2026-08-27. Real-pool provenance has refuted the proposed
 post-transfer amount-mapping mechanism: every fractional week is an ACS-origin
 non-native clone prediction outside the calibration's clone-0 recipient scope.
-The source codec and weeks-gate architecture fixes are implemented and
-focused-tested. The complete release-call roster is classified; the
-unambiguous source-scope and clone-layout repairs are now in progress, while
-three archived-model input assumptions require owner rulings.
+The source codec, weeks-gate architecture, source-scope, clone-layout, and
+stable-identity repairs are implemented and focused-tested. The complete
+release-call roster is classified; six archived-model input assumptions require
+owner rulings and are deliberately reported instead of guessed. Repository-wide
+Ruff, the CI inventory verifier, and four of five full pytest shards pass; the
+build shard is still running.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -127,13 +129,28 @@ build is in scope.
   caller contract (including internal mask-helper callers). A future derive,
   impute, or wrapper use now fails the source-blindness suite instead of
   passing through indirection.
+- Replayed the repaired release gates read-only against the supplied pool.
+  Alimony, Medicare, retirement contributions/distributions, workers'
+  compensation, and SSI reporter capture pass; the weeks gate now fails only
+  on the genuine 369 fractional values. Prior-year income remains outside its
+  unchanged availability band and WIC finds pregnant nonfemale rows, both
+  genuine data/spec outcomes rather than stacked-layout archaeology.
+- Completed an adversarial review of the repaired code and focused tests with
+  no additional implementation defect found. It confirmed six owner-ruling
+  items: SSI disability criteria, SCF wealth, SCF auto loans, SIPP vehicles,
+  SIPP tips, and ORG wages/FLSA all consume ASEC-only archived predictors on a
+  frame whose 1,736,840 physical ACS rows carry null source cells. ORG is
+  guaranteed to fail its unchanged race/occupation bands; SIPP tips can
+  silently pass its global band while the ACS channel is dead.
+- Passed repository-wide Ruff and the CI test-group inventory verifier. The
+  calibrate, data, fit, and frame shards pass in four independent pytest
+  processes; the build shard remains in progress.
 
 ## Next
 
-- Implement and focused-test the unambiguous source-scope, clone-layout, and
-  stable-key repairs.
-- Run the complete prescribed verification and write the final provenance,
-  audit evidence, and judgment calls to `out.md`.
+- Finish the full build-shard pytest process.
+- Write the final provenance, audit evidence, verification receipts, and
+  judgment calls to `out.md`, then leave a clean committed worktree.
 
 # Historical: gate-failed base-pool release lane
 
