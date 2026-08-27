@@ -10,7 +10,8 @@ stable-identity repairs are implemented and focused-tested. The complete
 release-call roster is classified; six archived-model input assumptions require
 owner rulings and are deliberately reported instead of guessed. Repository-wide
 Ruff, the CI inventory verifier, and four of five full pytest shards pass; the
-build shard is still running.
+build shard is pending restart after its fail-closed spec-engine receipts were
+coherently re-pinned.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -58,8 +59,10 @@ build is in scope.
 - Regenerated the checked-in US imputation authority so
   `transfer_execution.discrete_numeric_targets` includes `weeks_unemployed`.
   The generator's compile and byte-staleness checks pass at bundle spec SHA
-  `821d5838da3ac368170e61e017f1a72648f93e8a011aa40e33b8c2b4b14511f3`;
-  the spec-bundle and imputation-semantics suites pass.
+  `821d5838da3ac368170e61e017f1a72648f93e8a011aa40e33b8c2b4b14511f3`
+  at that source-fix step; the later runtime/seed identity repin below
+  supersedes this intermediate digest. The spec-bundle and imputation-
+  semantics suites pass.
 - Passed the complete ACS-transfer test file (65 tests), the complete
   post-transfer calibration receipt-contract file (47 tests), focused Ruff,
   and `git diff --check` using the prebuilt `.venv` directly. `uv run --no-sync`
@@ -144,11 +147,28 @@ build is in scope.
   silently pass its global band while the ACS channel is dead.
 - Passed repository-wide Ruff and the CI test-group inventory verifier. The
   calibrate, data, fit, and frame shards pass in four independent pytest
-  processes; the build shard remains in progress.
+  processes.
+- Corrected the reviewed WIC seed protocol to match the implemented assembled-
+  multispine key precedence: assembly-unique `person_source_id` first, then the
+  unchanged legacy raw/support/person fallbacks. An exact seed-grammar test now
+  binds that order.
+- Re-pinned the fail-closed spec-engine proof after adding one authored
+  transfer-execution field and one resolved seed-protocol field: 42,122 total
+  fields (32,352 authored and 9,770 resolved), complete exact-pointer claims,
+  and all 41 inventory checks. Regenerated the committed coverage report and
+  validated the final US spec SHA
+  `5f44d96d45e9aabcea2d565ef063d68bfc0652df1b38b08aa31ce6896d15f371`.
+- Verified in a detached `origin/main` worktree, using the same prebuilt venv,
+  that the old BE, UK, and minimal-spec golden vectors still pass there. Their
+  current repins therefore reflect this branch's attested runtime and seed-
+  protocol changes rather than environment drift. All 102 tests in the eight
+  directly affected spec-engine files pass; generated-bundle and coverage-
+  report byte checks, focused Ruff, and `git diff --check` also pass.
 
 ## Next
 
-- Finish the full build-shard pytest process.
+- Restart and finish the full build-shard pytest process after the committed
+  spec-engine repin.
 - Write the final provenance, audit evidence, verification receipts, and
   judgment calls to `out.md`, then leave a clean committed worktree.
 
