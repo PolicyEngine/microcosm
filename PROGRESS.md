@@ -92,6 +92,15 @@ build is in scope.
   in WIC. Archived ASEC-only predictor assumptions in SSI disability, SCF
   wealth, SCF auto loans, and SIPP vehicles require explicit model-owner
   rulings and will be reported rather than guessed.
+- Reworked the assembled Head Start and voluntary-filing receiver layouts to
+  key by assembly-unique source ID plus explicit clone index, accept clone 2
+  and later, reject duplicate source/clone rows, choose clone 0 (or the lowest
+  surviving clone) deterministically, and fan one source-level decision to all
+  clones. Their legacy role-only duplicate contract remains unchanged.
+- Replaced occurrence-pair clone diagnostics in voluntary filing and
+  prior-year income with all-clone grouping on assembled source IDs, so a
+  clone-2-only divergence is now detected. Focused tests and Ruff passed for
+  all three module/test pairs.
 
 ## Next
 
