@@ -143,6 +143,16 @@ def compile_uk_target_registry(
     )
 
 
+def load_uk_local_area_crosswalk() -> dict[str, Any]:
+    """The committed local-area crosswalk (roster + vintages per level)."""
+
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_area_crosswalk.json")
+        .read_text(encoding="utf-8")
+    )
+
+
 def compile_uk_local_target_registry(
     facts: Iterable[Mapping[str, Any]],
     *,

@@ -1,6 +1,6 @@
 """Certify a calibrated UK national candidate for release.
 
-The release-cut certification producer (microcosm#757 item B5): runs the 16
+The release-cut certification producer (microcosm#757 item B5): runs the 18
 declared national preflight/terminal gates over the calibrated candidate —
 the executable home the June driver's retirement left empty — then composes
 the multi-part certification over the spine build's battery report, the
@@ -41,7 +41,11 @@ from microcosm.build.logbook_adoption import (
     write_error_receipt,
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
-from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
+from microcosm.build.uk_runtime.ledger_targets import (
+    compile_uk_local_target_registry,
+    compile_uk_target_registry,
+    load_uk_local_area_crosswalk,
+)
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
@@ -66,6 +70,7 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PIPELINE = "uk-frs-release-certification"
 _LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
+_LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -180,10 +185,14 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     )
     ledger_registries = {}
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
-        compilation = compile_uk_target_registry(
-            artifact.facts, target_period=period
-        )
+        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
         ledger_registries[period] = compilation.registry
+    local_compilation = compile_uk_local_target_registry(
+        artifact.facts,
+        target_period=_LOCAL_COMPILE_PARITY_PERIOD,
+        crosswalk=load_uk_local_area_crosswalk(),
+    )
+    local_ledger_registries = {_LOCAL_COMPILE_PARITY_PERIOD: local_compilation.registry}
     calibration_year = load_uk_frs_release().calibration_year
     if calibration_year in ledger_registries:
         reference_compiled = ledger_registries[calibration_year]
@@ -214,20 +223,17 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         coverage_engine=engine,
         build_stage_names=sidecar["stages"],
         ledger_registries=ledger_registries,
+        local_ledger_registries=local_ledger_registries,
         parity_evidence=parity_evidence,
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
-        input_mass_reference=load_uk_input_mass_reference(
-            args.input_mass_reference
-        ),
+        input_mass_reference=load_uk_input_mass_reference(args.input_mass_reference),
         exclusions_evaluated_on=evaluated_on,
     )
     append_phase(state, "release_cut_gates_evaluated")
     for gate_id, payload in report["gates"].items():
         state.gate_verdicts[gate_id] = {
             "verdict": payload["status"],
-            "receipt": (
-                f"local://{args.release_cut_gate_json.name}#/gates/{gate_id}"
-            ),
+            "receipt": (f"local://{args.release_cut_gate_json.name}#/gates/{gate_id}"),
         }
 
     certification = compose_uk_release_certification(
@@ -285,9 +291,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         args.release_cut_gate_json
         or args.candidate_h5.with_suffix(".release_cut_gates.json")
     )
-    args.certification_json = (
-        args.certification_json
-        or args.candidate_h5.with_suffix(".release_certification.json")
+    args.certification_json = args.certification_json or args.candidate_h5.with_suffix(
+        ".release_certification.json"
     )
     distinct = {
         "--candidate-h5": args.candidate_h5,

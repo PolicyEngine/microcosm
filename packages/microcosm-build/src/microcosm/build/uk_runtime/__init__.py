@@ -253,6 +253,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UKLedgerTargetCompilation,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
+    load_uk_local_area_crosswalk,
     materialize_uk_ledger_targets,
 )
 from microcosm.build.uk_runtime.local_doctrine import (
@@ -730,6 +731,7 @@ __all__ = [
     "compute_household_metrics",
     "constituency_household_targets",
     "compile_uk_local_target_registry",
+    "load_uk_local_area_crosswalk",
     "create_uk_spi_support_tables",
     "derive_council_tax",
     "derive_current_education",

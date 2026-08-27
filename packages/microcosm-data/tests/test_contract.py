@@ -4959,9 +4959,9 @@ def _green_uk_certification(key: bytes) -> dict:
             "release_id": "uk-757-first-certified-cut",
             "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
             "entry_ids": sorted(scope),
-            "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[
-                part_name
-            ]["gates_manifest_sha256"],
+            "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
+                "gates_manifest_sha256"
+            ],
             "policy_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
                 "policy_sha256"
             ],

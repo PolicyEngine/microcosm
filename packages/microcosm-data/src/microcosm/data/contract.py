@@ -2858,9 +2858,7 @@ def _check_uk_release_certification(
                 f"{file} parts.{part_name}.phases must be {expected_phases}, "
                 f"got {part.get('phases')!r}."
             )
-        for field, expected_digest in _UK_CERTIFICATION_PART_DIGESTS[
-            part_name
-        ].items():
+        for field, expected_digest in _UK_CERTIFICATION_PART_DIGESTS[part_name].items():
             if part.get(field) != expected_digest:
                 failures.append(
                     f"{file} parts.{part_name}.{field} does not match the "
@@ -2891,8 +2889,7 @@ def _check_uk_release_certification(
             union[gate_id] = union.get(gate_id, 0) + 1
     if set(union) != _UK_GATE_BATTERY_ENTRY_IDS:
         failures.append(
-            f"{file} mirrored part scopes do not union to the declared "
-            "gate-entry set."
+            f"{file} mirrored part scopes do not union to the declared gate-entry set."
         )
     overlap = sorted(
         gate_id
@@ -2926,8 +2923,7 @@ def _check_uk_release_certification(
             )
         if list(spec.get("declared_phases", ())) != list(_UK_GATE_BATTERY_PHASES):
             failures.append(
-                f"{file} spec.declared_phases must be "
-                f"{list(_UK_GATE_BATTERY_PHASES)}."
+                f"{file} spec.declared_phases must be {list(_UK_GATE_BATTERY_PHASES)}."
             )
         if list(spec.get("shared_gate_ids", ())) != sorted(
             _UK_CERTIFICATION_SHARED_GATE_IDS
