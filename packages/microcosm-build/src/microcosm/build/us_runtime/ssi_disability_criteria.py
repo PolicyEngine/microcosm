@@ -42,6 +42,7 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
     support_role_series,
 )
@@ -1137,12 +1138,16 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
                     "value": values,
                 }
             )
-            clone_table["source_occurrence"] = clone_table.groupby(
-                ["source_id", "role"], sort=False
-            ).cumcount()
-            unique = clone_table.groupby(
-                ["source_id", "source_occurrence"], sort=False
-            )["value"].nunique(dropna=False)
+            if has_assembled_support_metadata(person, entity="person"):
+                clone_groups = ["source_id"]
+            else:
+                clone_table["source_occurrence"] = clone_table.groupby(
+                    ["source_id", "role"], sort=False
+                ).cumcount()
+                clone_groups = ["source_id", "source_occurrence"]
+            unique = clone_table.groupby(clone_groups, sort=False)["value"].nunique(
+                dropna=False
+            )
             clone_divergence_source_people = int((unique > 1).sum())
 
     reporter_mismatches = 0

@@ -584,6 +584,23 @@ def test_signal_gate_requires_each_channel_but_allows_clone_divergence(
     )
 
 
+def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
+    stacked = _replace_person(
+        _frame(3),
+        **{
+            "person_source_id": np.asarray([10, 10, 10]),
+            "person_spine_source_id": np.asarray([1, 1, 1]),
+            "person_support_channel": np.asarray(["acs", "acs", "acs"]),
+            "person_support_clone_index": np.asarray([0, 1, 2]),
+            _OUTPUT: np.asarray([False, False, True]),
+        },
+    )
+
+    summary = us_ssi_disability_criteria_summary(stacked)
+
+    assert summary["clone_divergence_source_people"] == 1
+
+
 def test_gate_requires_complete_support_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

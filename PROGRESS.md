@@ -117,6 +117,11 @@ build is in scope.
   blind: it consumes the source-ID set captured before L0, or obtains that set
   through the reporter helper when no explicit set is supplied. The complete
   SSI take-up file passes (71 tests).
+- Fixed SSI-disability's non-fatal clone-divergence diagnostic to group every
+  assembled clone by source person, so clone-2-only divergence is reported.
+  The existing decision not to make divergence gate-fatal remains unchanged
+  for an owner ruling; the complete focused file and source-blindness checks
+  pass.
 
 ## Next
 
