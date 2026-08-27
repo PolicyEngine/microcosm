@@ -2006,6 +2006,96 @@ def test_sipp_vehicle_donor_override_parses(monkeypatch) -> None:
     assert args.sipp_vehicle_donor == Path("pu2023.csv")
 
 
+def test_acs_release_archive_options_parse_as_one_pinned_pair() -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--acs-person-zip",
+            "csv_pus.zip",
+            "--acs-person-sha256",
+            "a" * 64,
+            "--acs-household-zip",
+            "csv_hus.zip",
+            "--acs-household-sha256",
+            "b" * 64,
+        ]
+    )
+
+    assert args.acs_person_zip == Path("csv_pus.zip")
+    assert args.acs_person_sha256 == "a" * 64
+    assert args.acs_household_zip == Path("csv_hus.zip")
+    assert args.acs_household_sha256 == "b" * 64
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--acs-person-zip", "csv_pus.zip"],
+        [
+            "--acs-person-zip",
+            "csv_pus.zip",
+            "--acs-person-sha256",
+            "A" * 64,
+            "--acs-household-zip",
+            "csv_hus.zip",
+            "--acs-household-sha256",
+            "b" * 64,
+        ],
+    ],
+)
+def test_acs_release_archive_options_fail_closed(extra: list[str]) -> None:
+    builder = _load_builder_module()
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                *extra,
+            ]
+        )
+
+
+def test_acs_predictor_join_precedes_all_six_archived_model_stages() -> None:
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    join_position = source.index("join_acs_release_predictors(")
+
+    for stage in (
+        "with_us_scf_wealth_inputs(",
+        "with_us_ssi_disability_criteria(",
+        "with_us_scf_auto_loan_inputs(",
+        "with_us_sipp_vehicle_inputs(",
+        "with_us_sipp_tip_inputs(",
+        "with_us_org_wages_inputs(",
+    ):
+        assert join_position < source.index(stage)
+
+    manifest_calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    receipt_keyword = next(
+        keyword
+        for keyword in manifest_calls[0].keywords
+        if keyword.arg == "acs_predictor_join"
+    )
+    assert isinstance(receipt_keyword.value, ast.Name)
+    assert receipt_keyword.value.id == "acs_predictor_join_receipt"
+
+
 def test_scf_full_extract_override_parses(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setattr(
@@ -4151,6 +4241,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     base_h5 = tmp_path / "base.h5"
     pool_manifest = tmp_path / "pool.manifest.json"
     weeks_source = tmp_path / "asecpub23csv.zip"
+    acs_person_zip = tmp_path / "csv_pus.zip"
+    acs_household_zip = tmp_path / "csv_hus.zip"
     facts = tmp_path / "facts.jsonl"
     out = tmp_path / "out"
     base_h5.write_bytes(b"h5")
@@ -4286,6 +4378,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
     if terminal_mode not in {"telemetry", "puf_tail"}:
         argv.append("--no-staging")
+    argv += [
+        "--acs-person-zip",
+        str(acs_person_zip),
+        "--acs-person-sha256",
+        "d" * 64,
+        "--acs-household-zip",
+        str(acs_household_zip),
+        "--acs-household-sha256",
+        "f" * 64,
+    ]
     if terminal_mode == "crash":
         # Nonexistent incumbent: the degraded-mode guard must record the
         # load failure, null the path for the writer (no re-hash replay of
@@ -5032,6 +5134,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_join_acs_release_predictors(frame, **kwargs):
+        captured["source_stage_events"].append("acs_predictor_join")
+        captured["acs_predictor_join_kwargs"] = kwargs
+        return SimpleNamespace(
+            frame=frame,
+            receipt={"enabled": True, "join": {"acs_source_people": 3}},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "join_acs_release_predictors",
+        fake_join_acs_release_predictors,
+    )
     monkeypatch.setattr(
         builder,
         "fetch_scf_2022_summary_extract",
@@ -5068,6 +5184,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_with_scf_wealth_inputs(
         frame, *, seed, time_period, scf_donor, sipp_donor=None
     ):
+        captured["source_stage_events"].append("scf_wealth")
         captured["sipp_scf_wealth_blend_called"] = sipp_donor is not None
         return frame
 
@@ -6121,6 +6238,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["weeks_unemployed_stage_period"] == builder.PERIOD
     assert isinstance(captured["weeks_unemployed_stage_source"], pd.DataFrame)
     assert captured["weeks_unemployed_gate_called"] is True
+    assert captured["acs_predictor_join_kwargs"] == {
+        "person_zip": acs_person_zip,
+        "person_sha256": "d" * 64,
+        "household_zip": acs_household_zip,
+        "household_sha256": "f" * 64,
+    }
+    assert captured["source_stage_events"].index("acs_predictor_join") < captured[
+        "source_stage_events"
+    ].index("scf_wealth")
     assert captured["source_stage_events"].index("weeks_stage") < captured[
         "source_stage_events"
     ].index("ssi_reporters")
@@ -8836,10 +8962,22 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             "n_exported_households": 57_240,
             "l0_lambda_share": 0.8,
         },
+        acs_predictor_join={
+            "enabled": True,
+            "crosswalk": {"sha256": "c" * 64},
+            "join": {"acs_source_people": 856_626},
+        },
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    expected_acs_join = {
+        "enabled": True,
+        "crosswalk": {"sha256": "c" * 64},
+        "join": {"acs_source_people": 856_626},
+    }
+    assert build_manifest["acs_predictor_join"] == expected_acs_join
+    assert manifest["build"]["acs_predictor_join"] == expected_acs_join
     assert build_manifest["gates"]["target_profile_coverage"]["passed"]
     assert (
         build_manifest["gates"]["target_profile_coverage"]["details"][

@@ -99,11 +99,20 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   and gate-side ACS reporter preservation. The complete join, SSI, and
   source-blindness test files pass together, and focused Ruff is green.
 
+- The release CLI now accepts the person/household zip and lowercase 64-hex
+  SHA-256 options as an all-or-none set. It invokes the authenticated join
+  after the last unrelated native-input gate and before SCF wealth, therefore
+  before all six archived donor-model stages, then carries the complete join
+  receipt into both `build_manifest.json` and `release_manifest.json`.
+- Added parser refusal tests, a source-order contract over all six model calls,
+  an end-to-end mocked main corridor that verifies the exact four join
+  arguments and runtime ordering, an AST contract that binds the saved receipt
+  to the sole manifest call, and JSON round-trip assertions for both manifests.
+  Focused Ruff, five parser/order/manifest cases, and all six parametrized main
+  corridor cases pass.
+
 ## Next
 
-- Add the paired release CLI inputs and carry the receipt into both build and
-  release manifests before the six archived model stages, without changing
-  their feature/selection logic or any gate threshold.
 - Exercise the join read-only against the supplied pool and canonical zips,
   add the changelog fragment, then run full shard verification and write
   `out.md`.
