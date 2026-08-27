@@ -1,0 +1,1 @@
+Banded calibration targets now derive upper edges from the compiled pre-exclusion register, fixing microcosm#792 so excluding a banded target no longer widens its surviving lower neighbour. The materialization seam now refuses a pruned register unless callers provide its compiled band-edge source.

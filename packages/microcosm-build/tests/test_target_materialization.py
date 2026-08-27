@@ -512,6 +512,63 @@ def test_bands_slice_the_population_and_partition_it():
     assert list(total) == [1.0, 1.0, 1.0]
 
 
+def test_band_measures_are_roster_invariant_under_sibling_exclusion():
+    registry = _banded_registry()
+    full_adapter = StubAdapter()
+
+    result = materialize_target_bindings(
+        full_adapter, registry, _BANDED_CONTRACT, period=2025
+    )
+
+    assert result.skipped == ()
+    snapshots = {
+        label: full_adapter.tables["person"][f"income_band_{label}"].copy()
+        for label in ("0", "20", "40")
+    }
+
+    middle_pruned = TargetRegistry(
+        [spec for spec in registry.specs if spec.name != "band_20"],
+        country="uk",
+    )
+    middle_adapter = StubAdapter()
+
+    result = materialize_target_bindings(
+        middle_adapter,
+        middle_pruned,
+        _BANDED_CONTRACT,
+        period=2025,
+        band_edge_registry=registry,
+    )
+
+    assert result.skipped == ()
+    for label in ("0", "40"):
+        assert np.array_equal(
+            middle_adapter.tables["person"][f"income_band_{label}"],
+            snapshots[label],
+        )
+
+    top_pruned = TargetRegistry(
+        [spec for spec in registry.specs if spec.name != "band_40"],
+        country="uk",
+    )
+    top_adapter = StubAdapter()
+
+    result = materialize_target_bindings(
+        top_adapter,
+        top_pruned,
+        _BANDED_CONTRACT,
+        period=2025,
+        band_edge_registry=registry,
+    )
+
+    assert result.skipped == ()
+    for label in ("0", "20"):
+        assert np.array_equal(
+            top_adapter.tables["person"][f"income_band_{label}"],
+            snapshots[label],
+        )
+
+
 def test_adjacent_bands_are_not_identical():
     # The regression that would have caught the unsliced-measure defect:
     # before banding was implemented every band returned the same unsliced
@@ -580,6 +637,137 @@ def test_published_range_labels_band_in_model_units():
     # income is [10, 20, 30]: only 20 falls inside [12.12, 24.12).
     assert list(adapter.tables["person"]["award_low"]) == [0.0, 1.0, 0.0]
     assert list(adapter.tables["person"]["award_high"]) == [0.0, 0.0, 1.0]
+
+
+def test_published_range_label_edges_survive_sibling_exclusion():
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="award_low",
+                entity="person",
+                measure="award_low",
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_family_type": "Single, no children",
+                    "ledger_filter_monthly_award_bands": "£1.01 to £2.00",
+                },
+            ),
+            TargetSpec(
+                name="award_high",
+                entity="person",
+                measure="award_high",
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_monthly_award_bands": "£2.01 to £3.00",
+                },
+            ),
+        ],
+        country="uk",
+    )
+    contract = {
+        "uc.award_bands": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "person_count",
+                    "groupby_variable": "income",
+                    "from_entity": "person",
+                    "band_period_factor": 12,
+                }
+            }
+        }
+    }
+    pruned = TargetRegistry(
+        [spec for spec in registry.specs if spec.name != "award_high"],
+        country="uk",
+    )
+    adapter = StubAdapter()
+
+    result = materialize_target_bindings(
+        adapter,
+        pruned,
+        contract,
+        period=2025,
+        band_edge_registry=registry,
+    )
+
+    assert result.skipped == ()
+    assert list(adapter.tables["person"]["award_low"]) == [0.0, 1.0, 0.0]
+
+
+def test_band_bounds_refuse_a_spec_absent_from_the_band_edge_register():
+    registry = TargetRegistry([_banded_registry().specs[0]], country="uk")
+    adapter = StubAdapter()
+
+    result = materialize_target_bindings(
+        adapter,
+        registry,
+        _BANDED_CONTRACT,
+        period=2025,
+        band_edge_registry=TargetRegistry([], country="uk"),
+    )
+
+    assert len(result.skipped) == 1
+    assert result.skipped[0].name == "band_0"
+    assert "absent from its contract target's band-edge set" in result.skipped[0].reason
+    assert "income_band_0" not in adapter.tables["person"]
+
+
+def test_resolve_target_measures_threads_the_band_edge_registry():
+    class BandedInputProvider(StubMeasureProvider):
+        def compute(self, entity, variable):
+            assert (entity, variable) == ("person", "input_a")
+            return np.array([1.0, 2.0, 3.0]), "stub:person.input_a"
+
+    source = {
+        "person": pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "income": [10.0, 20.0, 30.0],
+            }
+        )
+    }
+    registry = _banded_registry()
+    pruned = TargetRegistry(
+        [spec for spec in registry.specs if spec.name != "band_20"],
+        country="uk",
+    )
+    probes = []
+
+    def adapter_factory():
+        adapter = ResolutionAdapter(source)
+        probes.append(adapter)
+        return adapter
+
+    resolution = resolve_target_measures(
+        adapter_factory,
+        pruned,
+        BandedInputProvider(),
+        period=2025,
+        contract_targets={
+            "spi.income_by_band": {
+                "bindings": {
+                    "policyengine": {
+                        "value_variable": "input_a",
+                        "groupby_variable": "income",
+                        "from_entity": "person",
+                    }
+                }
+            }
+        },
+        band_edge_registry=registry,
+    )
+
+    assert resolution.receipt["attached"] == {
+        "person.input_a": "stub:person.input_a"
+    }
+    assert list(probes[-1].tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
+    assert list(probes[-1].tables["person"]["income_band_40"]) == [0.0, 0.0, 0.0]
 
 
 def test_unreadable_band_is_skipped_not_silently_unsliced():

@@ -21,9 +21,11 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # encodings are in use — a numeric lower bound (HMRC SPI income bands) and a
 # published range label (DWP award bands, in monthly units, hence
 # ``band_period_factor``) — and both reduce to one lower edge, because no
-# reference anywhere declares an upper bound. A band's upper edge is
-# therefore its sibling's lower edge within the same contract target, and the
-# top band runs to infinity.
+# reference anywhere declares an upper bound. A band's upper edge is its
+# sibling's lower edge within the same compiled contract target. Edges must
+# never derive from an exclusion-pruned roster, or excluding a band silently
+# widens its lower neighbour; only the compiled register's top band runs to
+# infinity.
 # Entity-count indicators: a value of one per record of the owning entity.
 _COUNT_VALUE_VARIABLES = frozenset(
     {"household_count", "person_count", "benunit_count"}
@@ -126,6 +128,7 @@ def resolve_target_measures(
     period: int | str,
     max_rounds: int = 8,
     contract_targets: Mapping[str, Mapping[str, Any]] | None = None,
+    band_edge_registry: TargetRegistry | None = None,
 ) -> MeasureResolution:
     """Resolve provider-computed inputs until target materialization binds.
 
@@ -159,6 +162,7 @@ def resolve_target_measures(
             registry,
             contract,
             period=period,
+            band_edge_registry=band_edge_registry,
         )
         skipped = tuple(result.skipped)
         round_receipt = {
@@ -414,6 +418,13 @@ def _band_bounds(
             f"groupby_variable {binding['groupby_variable']!r} but its spec "
             "carries no readable band edge"
         )
+    if lower not in band_edges:
+        raise ValueError(
+            f"banded measure {getattr(spec, 'measure', '?')!r} carries band lower edge "
+            f"{lower!r} that is absent from its contract target's band-edge set "
+            f"{list(band_edges)!r}; the band-edge register does not cover this spec's "
+            "band — pass the compiled (pre-exclusion) register this spec was pruned from."
+        )
     upper = math.inf
     for edge in band_edges:
         if edge > lower:
@@ -429,11 +440,15 @@ def materialize_target_bindings(
     *,
     period: int | str,
     providers: Mapping[str, Provider] | None = None,
+    band_edge_registry: TargetRegistry | None = None,
 ) -> TargetMaterializationResult:
     """Prepare measure columns declared by compiled Ledger target specs."""
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
-    band_edges = _band_edges_by_group(registry, contract_targets)
+    band_edges = _band_edges_by_group(
+        registry if band_edge_registry is None else band_edge_registry,
+        contract_targets,
+    )
     skipped: list[MaterializationSkip] = []
     for spec in registry.specs:
         if hasattr(adapter, "has_column") and adapter.has_column(
