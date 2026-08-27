@@ -22,15 +22,52 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
 - Recorded the required source zips and SHA-256 pins, strict exact/total join
   contract, explicit crosswalk and receipt requirements, and verification
   boundary.
+- Proved that `person_source_id` is not a reversible ACS key: ACS people are
+  sorted by `(SERIALNO, SPORDER)`, receive a zero-based raw spine ID, and then
+  receive a collision-dependent assembly offset. The pool retains the raw
+  spine ID, `source_row_id`, `source_person_id`, household `SERIALNO`, and clone
+  metadata, so the release join will use the retained semantic
+  `(SERIALNO, integral SPORDER)` key and treat `person_source_id` only as the
+  one-to-many clone fan-out identity.
+- Audited the supplied candidate pool read-only: 856,626 distinct ACS source
+  people expand to 1,736,840 rows (856,626 clone 0, 856,626 clone 1, and
+  23,588 clone 2), with no duplicate `(person_source_id, clone_index)` pair.
+  Every ACS row agrees with its raw spine/source lineage, and all selected
+  people match the pinned raw person archive exactly.
+- Verified both local archives against the charter pins. The person archive
+  has 3,422,888 unique `(SERIALNO, SPORDER)` rows and no household orphans;
+  the household archive has 1,631,969 unique serials, including 1,531,614
+  occupied records. Both contain every requested native predictor.
+- Established the disability universes from the pinned archive and the
+  archived repository mapping: DEAR/DEYE are complete at every age;
+  DREM/DPHY/DDRS are asked from age 5; DOUT from age 15; native code 1 is the
+  consumer's difficulty bin and code 2 (plus an age-valid universe blank) is
+  its non-difficulty bin.
+- Established the consumed race/Hispanic bins: both SCF models distinguish
+  White, Black, Asian, Hispanic, and Other; ORG distinguishes Hispanic,
+  non-Hispanic White, non-Hispanic Black, and Other. `RAC1P`/`HISP` can map
+  exactly to those bins without inventing detailed CPS combinations.
+- Recovered the complete 2024 Census detailed-occupation-to-`POCCU2` consumed
+  grouping from the native ASEC relationship and confirmed that ACS `OCCP`
+  uses the same detailed codes. `PEIOOCC` is therefore a direct carry, while
+  `POCCU2` will use an explicit reviewed 53-bin table; blank out-of-universe
+  occupation maps to code 0, military to 52, and code 9920 to 53.
+- Confirmed ACS `TEN` maps to the SPM vehicle model's three consumed tenure
+  bins (mortgaged owner, outright owner, non-owner); no-cash-rent and verified
+  group-quarters blanks belong to the non-owner bin. Confirmed the SSI model's
+  `SSI_VAL` use is only the `> 0` reporter anchor and that native ACS `SSIP` is
+  already carried as harmonized `ssi_reported`, observed exactly from age 15.
 
 ## Next
 
-- Prove the `person_source_id` encoding from assembly source and bind it to
-  `SERIALNO`/`SPORDER`, including collision and totality invariants.
-- Establish each ACS/CPS code semantic from repository evidence; implement
-  only mappings supported by that evidence and report any unresolved field.
-- Add pinned CLI inputs, the release join, receipts, crosswalk/join tests,
-  changelog fragment, full shard verification, and the final `out.md` report.
+- Implement the SHA-pinned streaming loaders, explicit crosswalk identity,
+  strict semantic-key join, clone fan-out, `ssi_reported` anchor bridge, and
+  per-model/predictor receipt with focused refusal/totality tests.
+- Add the paired release CLI inputs and carry the receipt into both build and
+  release manifests before the six archived model stages, without changing
+  their feature/selection logic or any gate threshold.
+- Add the changelog fragment, run focused then full shard verification, and
+  write the final `out.md` report.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
