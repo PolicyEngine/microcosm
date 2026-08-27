@@ -45,6 +45,14 @@ release artifacts.
   floor by the assembly's sampled-to-sampled match-survival factor, recorded in
   or derived from the pool manifest. Rung 1.0 must remain byte-identical to the
   existing gate; the authored 0.05 constant and upper bound do not change.
+- Implemented the owner-approved prior-year gate policy in `f5284a07`. An
+  authenticated production stacked manifest now restores its version-4 sample
+  receipt to the loaded frame; the availability gate scales only the authored
+  lower floor by that rung, conditionally receipts the factor/applied floor,
+  and leaves full-rung output byte-identical. Legacy/no-rung frames retain the
+  original gate. The prior-year and H5 focused suites pass (23 and 60 tests),
+  focused Ruff and `git diff --check` pass, and the real candidate-25 manifest
+  validates at factor 0.25.
 
 ## Next
 
@@ -53,9 +61,8 @@ release artifacts.
   recording structural counts.
 - Bind the pregnancy structural policy into checkpointed transfer execution
   identity and add transfer/source/gate regressions.
-- Implement and receipt the ruling-approved sampling-rung scaling of only the
-  prior-year availability floor, with exact rung-1 compatibility and focused
-  release-gate regressions.
+- Complete and focused-test the pregnancy source/transfer/gate structural
+  policy, receipt authentication, and checkpoint execution identity.
 - Run the charter's repository Ruff and independent full-shard pytest boundary,
   then write the complete handoff to `out.md`.
 
