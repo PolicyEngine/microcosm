@@ -6,9 +6,8 @@ Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
 `stacked-release-gate-alignment` at `606cbd69`. The root-cause findings and
 implementations are complete for the nonfemale-pregnancy producer defect and
 the owner-approved rung-aware prior-year availability release floor.
-Both fixes are implemented and their focused runtime suites are green; the
-source-attested spec/coverage repins and full repository verification are
-complete, and only the final report remains. The authored 0.05 floor, upper
+Both fixes, source-attested spec/coverage repins, full repository verification,
+and the final `out.md` handoff are complete. The authored 0.05 floor, upper
 bound, all other bands, thresholds, seeds, and batteries remain unchanged. This
 lane did not build, publish, or push pool or release artifacts.
 
@@ -116,12 +115,18 @@ lane did not build, publish, or push pool or release artifacts.
   final-state calibrate, data, fit, and frame shard processes, repository Ruff,
   generated authority/coverage checks, and CI test inventory, this completes
   the charter's verification boundary.
+- Replaced the stale prior-lane output with the complete pregprior report in
+  `out.md`: both real-pool decompositions, source and gate mechanisms, receipt
+  and identity chains, regressions, verification, judgment calls, and the
+  host-owned next action are recorded there.
 
 ## Next
 
-- Write and commit the complete handoff to `out.md`.
+- Host session: rebuild the affected pregnancy transfer from the invalidated
+  checkpoint/target bank, then run terminal pool/release gates. This headless
+  lane performed none of those artifact operations.
 
-# Weeksgate: stacked release gates and integer-week provenance
+# Historical: Weeksgate stacked release gates and integer-week provenance
 
 ## State
 
@@ -134,7 +139,8 @@ release-call roster is classified; six archived-model input assumptions require
 owner rulings and are deliberately reported instead of guessed. Repository-wide
 Ruff, the CI inventory verifier, and all five full pytest shards pass in their
 required independent processes. The completed provenance, audit, verification,
-judgment calls, and host-owned checkpoint-rerun consequence are in `out.md`.
+judgment calls, and host-owned checkpoint-rerun consequence were recorded in
+`out.md` at commit `606cbd69`.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -301,14 +307,15 @@ build is in scope.
   coverage proof, the CI test inventory, and `git diff --check` are green.
 - Wrote the final provenance tables, mechanism verdict, per-file rationale,
   exhaustive release-gate audit, owner-ruling list, verification evidence, and
-  judgment calls to `out.md`.
+  judgment calls to `out.md`, preserved at commit `606cbd69`.
 
 ## Next
 
 - Host session: rerun `late_transfer -> simulated -> terminal-gates` from the
   candidate checkpoints because the discrete weeks codec changes pool content.
-- Review the six archived-model owner rulings in `out.md`; do not reinterpret
-  their missing ACS predictors through a gate-only threshold/scope change.
+- Review the six archived-model owner rulings recorded in `out.md` at commit
+  `606cbd69`; do not reinterpret their missing ACS predictors through a
+  gate-only threshold/scope change.
 
 # Historical: gate-failed base-pool release lane
 
