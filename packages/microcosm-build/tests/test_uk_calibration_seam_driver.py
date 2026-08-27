@@ -129,6 +129,7 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
     driver = _load_driver_module()
     calls = []
     registry = _registry()
+    pruned_registry = TargetRegistry([], country="uk")
     artifact = SimpleNamespace(
         path=tmp_path / "ledger",
         facts=({"fact": 1},),
@@ -152,7 +153,7 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
     monkeypatch.setattr(
         driver,
         "apply_uk_calibration_measure_exclusions",
-        lambda reg, exclusions: (reg, {"excluded": "reviewed"}),
+        lambda reg, exclusions: (pruned_registry, {"excluded": "reviewed"}),
     )
 
     class FakeResolver:
@@ -183,7 +184,8 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
 
     assert result == 0
     call = calls[0]
-    assert call["register_registry"] is registry
+    assert call["register_registry"] is pruned_registry
+    assert call["band_edge_registry"] is registry
     assert call["calibration_year"] == 2025
     assert call["exclusion_receipt"] == {"excluded": "reviewed"}
     assert call["doctrine"].epochs == 128

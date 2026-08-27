@@ -48,6 +48,7 @@ class UKNationalCalibrationStage:
         period: int,
         doctrine: UKNationalSolveDoctrine = UK_NATIONAL_SOLVE_DOCTRINE,
         measure_resolver: object | None = None,
+        band_edge_registry: TargetRegistry | None = None,
     ) -> None:
         self.compilation = (
             registry
@@ -55,6 +56,9 @@ class UKNationalCalibrationStage:
             else UKLedgerTargetCompilation(registry=registry, unsupported=())
         )
         self.registry = self.compilation.registry
+        self.band_edge_registry = (
+            band_edge_registry if band_edge_registry is not None else self.registry
+        )
         # The materialization period is the declared calibration year the
         # registry was compiled at — never the input frame's base-year
         # time_period, which lags it (survey 2024, calibration 2025).
@@ -90,6 +94,7 @@ class UKNationalCalibrationStage:
             adapter,
             self.registry,
             period=self.period,
+            band_edge_registry=self.band_edge_registry,
         )
         if materialized.skipped:
             skipped = [skip.__dict__ for skip in materialized.skipped]
@@ -209,12 +214,14 @@ class UKNationalCalibrationStage:
                 lambda: _CalibrationFrameAdapter(frame),
                 self.registry,
                 period=self.period,
+                band_edge_registry=self.band_edge_registry,
             )
         return resolve_target_measures(
             lambda: _CalibrationFrameAdapter(frame),
             self.registry,
             self.measure_resolver,
             period=self.period,
+            band_edge_registry=self.band_edge_registry,
         )
 
     def checkpoint_metadata(self) -> Mapping[str, object]:

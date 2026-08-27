@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_TARGET_LOSS_CAP,
     UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
+    national_calibration,
     uk_doctrine_with_overrides,
     uk_national_target_loss_weights,
 )
@@ -370,6 +371,43 @@ def test_stage_manifest_omits_measure_resolution_without_resolver() -> None:
     stage(_frame())
 
     assert "measure_resolution" not in stage.manifest
+
+
+def test_stage_threads_band_edge_registry_to_materialization(monkeypatch) -> None:
+    captured = []
+    real_materialize = national_calibration.materialize_uk_ledger_targets
+
+    def capture_materialize(*args, **kwargs):
+        captured.append(kwargs)
+        return real_materialize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        national_calibration,
+        "materialize_uk_ledger_targets",
+        capture_materialize,
+    )
+    sentinel = TargetRegistry([], country="uk")
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
+        band_edge_registry=sentinel,
+    )
+
+    stage(_frame())
+
+    assert captured[-1]["band_edge_registry"] is sentinel
+
+    captured.clear()
+    default_stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
+    )
+
+    default_stage(_frame())
+
+    assert captured[-1]["band_edge_registry"] is default_stage.registry
 
 
 def test_activated_unresolvable_compiled_reference_aborts_loudly() -> None:
