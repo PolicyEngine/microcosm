@@ -594,7 +594,6 @@ def _source_table(
 
     source_ids = _decoded_strings(person[_SOURCE_ID])
     channels = support_role_series(person, entity="person")
-    source_channels = support_source_channel_series(person, entity="person")
     if source_ids.str.strip().eq("").any():
         raise ValueError("US SSI take-up source identities must be nonblank.")
     observed_channels = set(channels.unique())
@@ -605,27 +604,19 @@ def _source_table(
             f"unsupported {sorted(observed_channels - _KNOWN_CHANNELS)}."
         )
 
-    asec_source = source_channels.eq(_ASEC_CHANNEL).to_numpy()
-    if not np.isfinite(reported[asec_source]).all():
-        raise ValueError(
-            "US SSI take-up SSI_VAL anchors must be finite on physical ASEC "
-            "source rows."
-        )
-    direct_anchor = (reported > 0.0) & asec_source
     if reporter_source_ids is None:
-        anchored_source_ids = frozenset(source_ids[direct_anchor])
+        anchored_source_ids = us_ssi_take_up_reporter_source_ids(frame)
     else:
         anchored_source_ids = frozenset(str(value) for value in reporter_source_ids)
         if not anchored_source_ids:
             raise ValueError("US SSI take-up reporter lineage cannot be empty.")
         if any(not value.strip() for value in anchored_source_ids):
             raise ValueError("US SSI take-up reporter source identities are nonblank.")
-        omitted_direct = sorted(set(source_ids[direct_anchor]) - anchored_source_ids)
-        if omitted_direct:
-            raise ValueError(
-                "US SSI take-up reporter lineage omitted direct ASEC anchors; "
-                f"examples {omitted_direct[:5]}."
-            )
+    anchored_rows = source_ids.isin(anchored_source_ids).to_numpy()
+    if not np.isfinite(reported[anchored_rows]).all():
+        raise ValueError(
+            "US SSI take-up SSI_VAL anchors must be finite on anchored source rows."
+        )
 
     rows = pd.DataFrame(
         {
