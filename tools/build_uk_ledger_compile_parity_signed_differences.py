@@ -124,7 +124,10 @@ _UC_METRICS = frozenset(
 )
 
 _UC_DRIFT_RATIONALE = (
-    "Incumbent-defect class, not calibration drift: policyengine-uk-data#468 — "
+    # Cite the issue in the repo's short form: the live tree may not name the
+    # retired data package (test_us_plan's incumbent-reference guard), and the
+    # exceptions are reserved for artifacts that must carry it as provenance.
+    "Incumbent-defect class, not calibration drift: uk-data#468 — "
     "the incumbent's local UC targets are positionally misaligned (name-only "
     "spreadsheet rows joined by position to code files in a different order; "
     "the constituency vector is PCON24-native yet boundary-mapped 2010->2024 on "
