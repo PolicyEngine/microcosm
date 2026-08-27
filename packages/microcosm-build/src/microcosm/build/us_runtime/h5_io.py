@@ -16,6 +16,7 @@ import re
 import shutil
 import uuid
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,6 +95,15 @@ _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _STACKED_PIPELINE = "us-stacked-pool"
+_STACKED_SPINE_MANIFEST_VERSION = 4
+_STACKED_SURVEY_CHANNELS = ("asec", "acs")
+_STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
+    0.01: "f001",
+    0.04: "f004",
+    0.10: "f010",
+    0.25: "f025",
+    1.00: "f100",
+}
 US_STACKED_POOL_OPERATOR_ORDER = (
     "assemble_stacked_spine",
     "assign_us_puma_ladder",
@@ -139,6 +149,8 @@ _REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
     {
         "pipeline",
         "operator_order",
+        "sampling",
+        "stack_manifest",
         "geography_assignment",
         "stage_receipts",
     }
@@ -253,6 +265,139 @@ def _validated_pool_manifest_envelope(
         f"US multispine pool manifest {manifest_path} has an unsupported "
         "artifact binding."
     )
+
+
+def _validated_stacked_sampling_manifest_binding(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> Mapping[str, object] | None:
+    """Authenticate the production-wide survey rung carried by a stack.
+
+    The adjacent-year ASEC join runs after the two survey arms are sampled.
+    Release gates may therefore consume the configured production rung only
+    after the pool manifest proves that its top-level sampling receipt, frozen
+    stack manifest, and both per-arm sample receipts all name the same value.
+    Legacy two-spine manifests have no production-wide stack receipt and return
+    ``None``.
+    """
+
+    if manifest.get("pipeline") != _STACKED_PIPELINE:
+        return None
+
+    label = f"US stacked pool manifest {manifest_path}"
+    sampling = _mapping(manifest.get("sampling"), label=f"{label}.sampling")
+    stack_manifest = _mapping(
+        manifest.get("stack_manifest"),
+        label=f"{label}.stack_manifest",
+    )
+    if stack_manifest.get("version") != _STACKED_SPINE_MANIFEST_VERSION:
+        raise ValueError(
+            f"{label} stack manifest must have production version "
+            f"{_STACKED_SPINE_MANIFEST_VERSION}."
+        )
+
+    sampling_fraction = sampling.get("sample_fraction")
+    stack_fraction = stack_manifest.get("sample_fraction")
+    for location, value in (
+        ("sampling.sample_fraction", sampling_fraction),
+        ("stack_manifest.sample_fraction", stack_fraction),
+    ):
+        if (
+            type(value) is not float
+            or not np.isfinite(value)
+            or not 0.0 < value <= 1.0
+        ):
+            raise ValueError(
+                f"{label} {location} must be a finite float in (0, 1]."
+            )
+    if sampling_fraction != stack_fraction:
+        raise ValueError(
+            f"{label} sampling.sample_fraction differs from "
+            "stack_manifest.sample_fraction."
+        )
+    expected_token = _STACKED_SAMPLE_RUNG_TOKENS.get(sampling_fraction)
+    if expected_token is None or sampling.get("fraction_token") != expected_token:
+        raise ValueError(
+            f"{label} sampling fraction/token pair is not an approved stacked rung."
+        )
+
+    sampling_seed = sampling.get("sample_seed")
+    stack_seed = stack_manifest.get("sample_seed")
+    if (
+        isinstance(sampling_seed, bool)
+        or not isinstance(sampling_seed, int)
+        or sampling_seed < 0
+        or stack_seed != sampling_seed
+    ):
+        raise ValueError(
+            f"{label} sampling.sample_seed and stack_manifest.sample_seed must "
+            "be the same non-negative integer."
+        )
+
+    survey_samples = _mapping(
+        stack_manifest.get("survey_samples"),
+        label=f"{label}.stack_manifest.survey_samples",
+    )
+    if set(survey_samples) != set(_STACKED_SURVEY_CHANNELS):
+        raise ValueError(
+            f"{label} stack survey samples must exactly cover "
+            f"{list(_STACKED_SURVEY_CHANNELS)}."
+        )
+    realized_households = _mapping(
+        sampling.get("realized_households"),
+        label=f"{label}.sampling.realized_households",
+    )
+    if set(realized_households) != set(_STACKED_SURVEY_CHANNELS):
+        raise ValueError(
+            f"{label} realized-household counts must exactly cover "
+            f"{list(_STACKED_SURVEY_CHANNELS)}."
+        )
+    for channel in _STACKED_SURVEY_CHANNELS:
+        sample = _mapping(
+            survey_samples[channel],
+            label=f"{label}.stack_manifest.survey_samples.{channel}",
+        )
+        if sample.get("fraction") != sampling_fraction:
+            raise ValueError(
+                f"{label} {channel} survey-sample fraction differs from the "
+                "production sampling rung."
+            )
+        if sample.get("seed") != sampling_seed:
+            raise ValueError(
+                f"{label} {channel} survey-sample seed differs from the "
+                "production sample seed."
+            )
+        realized = sample.get("realized_household_count")
+        if (
+            isinstance(realized, bool)
+            or not isinstance(realized, int)
+            or realized < 1
+            or realized_households[channel] != realized
+        ):
+            raise ValueError(
+                f"{label} {channel} realized-household count is malformed or "
+                "inconsistent."
+            )
+
+    expected_stack_sha256 = sampling.get("stack_manifest_sha256")
+    if (
+        not isinstance(expected_stack_sha256, str)
+        or _LOWERCASE_SHA256.fullmatch(expected_stack_sha256) is None
+    ):
+        raise ValueError(f"{label} sampling stack-manifest SHA-256 is malformed.")
+    canonical_stack = json.dumps(
+        stack_manifest,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    if hashlib.sha256(canonical_stack).hexdigest() != expected_stack_sha256:
+        raise ValueError(
+            f"{label} sampling stack-manifest SHA-256 does not match its receipt."
+        )
+    return stack_manifest
 
 
 class AuthenticatedPoolH5MismatchError(RuntimeError):
@@ -614,6 +759,10 @@ def _load_authenticated_us_multispine_pool_manifest(
             f"US multispine pool manifest {manifest_path} is not simulation-ready."
         )
     envelope = _validated_pool_manifest_envelope(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    _validated_stacked_sampling_manifest_binding(
         manifest,
         manifest_path=manifest_path,
     )
@@ -1587,6 +1736,16 @@ def _load_us_multispine_pool(
         manifest_path=manifest_path,
     )
     frame_metadata: dict[str, object] = {}
+    stack_manifest = _validated_stacked_sampling_manifest_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    if stack_manifest is not None:
+        from microcosm.build.us_runtime.stacked_spine import (
+            STACKED_SPINE_MANIFEST_KEY,
+        )
+
+        frame_metadata[STACKED_SPINE_MANIFEST_KEY] = deepcopy(stack_manifest)
     if late_transition is not None:
         _dag, transition_authority, _transition_authority_sha256 = late_transition
         from microcosm.build.us_runtime.stacked_spine import (
