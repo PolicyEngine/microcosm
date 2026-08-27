@@ -1,4 +1,8 @@
-"""UK WAS wealth imputation stage."""
+"""UK WAS wealth imputation stage.
+
+The WAS pension component is emitted separately from corporate wealth under
+uk-data#452 M2 / microcosm#750.
+"""
 
 from __future__ import annotations
 
@@ -58,6 +62,7 @@ UK_WAS_ENGINE_PREDICTORS = (
 UK_WAS_WEALTH_OUTPUT_COLUMNS = (
     "owned_land",
     "property_wealth",
+    "private_pension_wealth",
     "corporate_wealth",
     "gross_financial_wealth",
     "net_financial_wealth",
@@ -283,10 +288,9 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
         values = cleaned[column]
         cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
     cleaned["is_renting"] = cleaned["private_rent_code"] == 1
+    cleaned["private_pension_wealth"] = cleaned["pensions"] - cleaned["db_pensions"]
     cleaned["corporate_wealth_excl_isa"] = (
-        cleaned["pensions"]
-        - cleaned["db_pensions"]
-        + cleaned["emp_shares_options"]
+        cleaned["emp_shares_options"]
         + cleaned["uk_shares"]
         + cleaned["unit_investment_trusts"]
     )
@@ -427,19 +431,33 @@ def impute_was_wealth(
 
     base = encoded_predictors
     run_segment(base, ("owned_land", "property_wealth"))
+    donor_encoded["private_pension_wealth"] = donor_encoded[
+        "private_pension_wealth"
+    ].astype(float)
     donor_encoded["corporate_wealth"] = donor_encoded["corporate_wealth"].astype(float)
     recipient_encoded["owned_land"] = raw["owned_land"]
     recipient_encoded["property_wealth"] = raw["property_wealth"]
     run_segment(
         (*base, "owned_land", "property_wealth"),
-        ("corporate_wealth_excl_isa", "stocks_and_shares_isa"),
+        (
+            "private_pension_wealth",
+            "corporate_wealth_excl_isa",
+            "stocks_and_shares_isa",
+        ),
     )
     raw["corporate_wealth"] = (
         raw["corporate_wealth_excl_isa"] + raw["stocks_and_shares_isa"]
     )
+    recipient_encoded["private_pension_wealth"] = raw["private_pension_wealth"]
     recipient_encoded["corporate_wealth"] = raw["corporate_wealth"]
     run_segment(
-        (*base, "owned_land", "property_wealth", "corporate_wealth"),
+        (
+            *base,
+            "owned_land",
+            "property_wealth",
+            "private_pension_wealth",
+            "corporate_wealth",
+        ),
         (
             "gross_financial_wealth",
             "net_financial_wealth",

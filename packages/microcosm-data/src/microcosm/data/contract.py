@@ -375,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5459347c9077b2acd5970a62d818e3ddd063d86d6c3dbce4d32dcacec3bdc414"
+    "8584de8e792e03ab18a7c7c12855393bb0a4358c529566aac1e3cef89e6c6fe6"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f68e10d8ff6654b7fc707da0508ea063b0f3c96b8a813b7098298727d43b9d6d"
+    "23b3adb8618d7edd905d8c32620914fdc26b2c8feb68e2e48805ed992e58686e"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "2a4a8b18d024f80782b375539c87d57006592d64470553a4da5a378791254faa"
+    "bfed261f7af3077d1c3fc0351adf6a9dc717e5ea1e3b50e980637608ac99223f"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -591,10 +591,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "1605cf3fe1be4983cfb4ed806a34d69375cdc3e4e0c8883cc49481ac5870399a"
+            "af18105ef46720574c4a3a347656d689d2ccc239a2897fda8b694bef7144e8dd"
         ),
         "policy_sha256": (
-            "3d14ad24eff7f5afd343164560db24095d27fafb36c619ddf725c32e00b35a69"
+            "7f9ba299c1e756f6ba217d35431334678815f66258540e1eea4fcdd143b183f1"
         ),
     },
     "calibration_seam": {
@@ -607,10 +607,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "18f07f40eead198a4436de7a43d4c0b13b9f2a9335bc84d4ab6b6a2ed75e597e"
+            "70c4c938767fdbae4c07d915a2e1cdc036cdb2f4a3e1af2cee7437cdf94ab7d7"
         ),
         "policy_sha256": (
-            "b2a6446da0ffc53c0a894618795d918163368a266ef01a2a3609587085162115"
+            "e73dcbcaa07e34d23c8cf40b251f19fd00d9d2b85202647ca0ea13cb1021769a"
         ),
     },
 }
