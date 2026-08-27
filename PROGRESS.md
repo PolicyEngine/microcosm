@@ -5,8 +5,8 @@
 In progress on 2026-08-27. Real-pool provenance has refuted the proposed
 post-transfer amount-mapping mechanism: every fractional week is an ACS-origin
 non-native clone prediction outside the calibration's clone-0 recipient scope.
-The source codec fix is implemented and focused-tested; release-gate
-architecture fixes and the broader audit are now in progress.
+The source codec and weeks-gate architecture fixes are implemented and
+focused-tested; the broader release-gate audit and repairs are now in progress.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -60,12 +60,22 @@ build is in scope.
   post-transfer calibration receipt-contract file (47 tests), focused Ruff,
   and `git diff --check` using the prebuilt `.venv` directly. `uv run --no-sync`
   is unavailable because this sandbox forbids uv's read of `~/.cache/uv`.
+- Modernized the weeks summary/gate to derive its roster from actual assembled
+  source channels, while retaining the legacy ASEC/PUF role path. The ASEC
+  source-validity scope, direct native-clone reconciliation scope, and reviewed
+  UC-constraint scope are now distinct and explicitly receipted in details.
+- Kept all four plausibility-band tuples and every numeric threshold unchanged;
+  non-ASEC assembled channels use the unchanged legacy recipient band.
+- Added stacked ASEC+ACS and legacy ASEC+PUF fixtures covering roster detection,
+  raw-source scoping, native reconciliation, and UC constraint ownership. The
+  complete weeks file passes (26 passed, 1 skipped) with focused Ruff.
+- Replayed the updated gate over the supplied pool's exact live arrays and
+  weights. It now reports 234,133 valid ASEC source rows, 108,073 exact native
+  reconciliation rows, 982,686 UC-constrained rows, zero source/UC failures,
+  both unchanged channel bands passing, and only the genuine 369 nonintegers.
 
 ## Next
 
-- Modernize the weeks gate to use raw assembled channels when present, scope
-  LKWEEKS reconciliation to ASEC-source rows, and scope UC consistency to the
-  rows for which the source constraint is defined.
 - Complete the full release-gate roster audit and implement only unambiguous
   stacked-awareness repairs.
 - Audit all release-side gates, run the complete prescribed verification, and

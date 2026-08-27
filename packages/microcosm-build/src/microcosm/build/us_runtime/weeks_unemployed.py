@@ -42,6 +42,9 @@ from microcosm.build.source_runtime import (
 )
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
+    spine_source_id_column,
+    support_channel_column,
+    support_clone_index_column,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -1220,14 +1223,18 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
     in_range = integer & (values >= 0.0) & (values <= 52.0)
     positive = in_range & (values > 0.0)
 
-    if has_support_role_metadata(person, entity="person"):
-        channel = support_role_series(person, entity="person").to_numpy()
-    else:
-        channel = np.full(len(person), _ASEC_CHANNEL, dtype=object)
+    (
+        channel,
+        channel_roster,
+        source_rows,
+        source_reconciliation_rows,
+        uc_constraint_rows,
+    ) = _weeks_unemployed_gate_scopes(person)
     channels: dict[str, dict[str, float | int]] = {}
-    for name in (_ASEC_CHANNEL, _PUF_CHANNEL):
+    for name in channel_roster:
         mask = channel == name
         channel_weight = float(weights[mask].sum())
+        plausibility_role = _ASEC_CHANNEL if name == _ASEC_CHANNEL else _PUF_CHANNEL
         channels[name] = {
             "rows": int(np.count_nonzero(mask)),
             "positive_rows": int(np.count_nonzero(mask & positive)),
@@ -1243,8 +1250,12 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
                 if channel_weight > 0.0
                 else 0.0
             ),
-            "positive_share_band": list(_CHANNEL_POSITIVE_SHARE_BANDS[name]),
-            "weighted_mean_weeks_band": list(_CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[name]),
+            "positive_share_band": list(
+                _CHANNEL_POSITIVE_SHARE_BANDS[plausibility_role]
+            ),
+            "weighted_mean_weeks_band": list(
+                _CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[plausibility_role]
+            ),
         }
 
     source_missing = _SOURCE not in person
@@ -1253,25 +1264,32 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
         source_raw = pd.to_numeric(person[_SOURCE], errors="coerce").to_numpy(
             dtype=np.float64
         )
-        asec_mask = channel == _ASEC_CHANNEL
         source_valid = np.isfinite(source_raw) & (source_raw == np.floor(source_raw))
         source_valid &= (source_raw == -1.0) | (
             (source_raw >= 0.0) & (source_raw <= 52.0)
         )
-        source_invalid = int(np.count_nonzero(asec_mask & ~source_valid))
+        source_invalid = int(np.count_nonzero(source_rows & ~source_valid))
         expected = np.where(source_raw == -1.0, 0.0, source_raw)
         source_mismatch = int(
-            np.count_nonzero(asec_mask & source_valid & finite & (values != expected))
+            np.count_nonzero(
+                source_reconciliation_rows
+                & source_valid
+                & finite
+                & (values != expected)
+            )
         )
-    puf_uc_zero_mismatch = 0
+    uc_constraint_mismatch = 0
     if _OPTIONAL_UC_PREDICTOR in person:
         uc = pd.to_numeric(person[_OPTIONAL_UC_PREDICTOR], errors="coerce").to_numpy(
             dtype=np.float64
         )
-        puf_mask = channel == _PUF_CHANNEL
-        puf_uc_zero_mismatch = int(
+        uc_constraint_mismatch = int(
             np.count_nonzero(
-                puf_mask & np.isfinite(uc) & (uc <= 0.0) & finite & (values != 0.0)
+                uc_constraint_rows
+                & np.isfinite(uc)
+                & (uc <= 0.0)
+                & finite
+                & (values != 0.0)
             )
         )
 
@@ -1284,15 +1302,84 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
         "positive_share": float(weights[positive].sum() / weights.sum()),
         "weighted_weeks": float(np.dot(weights, np.nan_to_num(values))),
         "source_missing": source_missing,
+        "source_rows": int(np.count_nonzero(source_rows)),
+        "source_reconciliation_rows": int(
+            np.count_nonzero(source_reconciliation_rows)
+        ),
         "source_invalid": source_invalid,
         "source_mismatch_count": source_mismatch,
-        "puf_uc_zero_mismatch_count": puf_uc_zero_mismatch,
+        "uc_constraint_rows": int(np.count_nonzero(uc_constraint_rows)),
+        "uc_constraint_mismatch_count": uc_constraint_mismatch,
+        "channel_roster": list(channel_roster),
         "channels": channels,
     }
 
 
+def _weeks_unemployed_gate_scopes(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray, tuple[str, ...], np.ndarray, np.ndarray, np.ndarray]:
+    """Resolve source channels and the two reviewed constraint scopes."""
+
+    rows = len(person)
+    if not has_support_role_metadata(person, entity="person"):
+        all_rows = np.ones(rows, dtype=bool)
+        return (
+            np.full(rows, _ASEC_CHANNEL, dtype=object),
+            (_ASEC_CHANNEL,),
+            all_rows,
+            all_rows.copy(),
+            np.zeros(rows, dtype=bool),
+        )
+
+    # Validate complete channel/clone metadata even when an assembled frame's
+    # raw source channels, rather than its compatibility roles, own the gate.
+    roles = support_role_series(person, entity="person")
+    assembled = spine_source_id_column("person") in person
+    if not assembled:
+        channel = roles.to_numpy(dtype=object, copy=True)
+        roster = tuple(
+            name for name in (_ASEC_CHANNEL, _PUF_CHANNEL) if np.any(channel == name)
+        )
+        source_rows = channel == _ASEC_CHANNEL
+        if not np.any(source_rows):
+            raise ValueError("US weeks-unemployed support has no ASEC source rows.")
+        return (
+            channel,
+            roster,
+            source_rows,
+            source_rows.copy(),
+            channel == _PUF_CHANNEL,
+        )
+
+    channel_column = support_channel_column("person")
+    clone_column = support_clone_index_column("person")
+    source_channel = person[channel_column].to_numpy(dtype=object, copy=True)
+    observed = {str(value) for value in source_channel}
+    if _ASEC_CHANNEL not in observed:
+        raise ValueError("US weeks-unemployed support has no ASEC source rows.")
+    roster = (_ASEC_CHANNEL, *sorted(observed - {_ASEC_CHANNEL}))
+    clone_index = pd.to_numeric(person[clone_column], errors="raise").to_numpy(
+        dtype=np.int64
+    )
+    native = clone_index == 0
+    source_rows = source_channel == _ASEC_CHANNEL
+    # Native ASEC rows are the direct LKWEEKS carry. Non-native ASEC rows are
+    # the reviewed PUF-detail imputation; native non-ASEC rows are the reviewed
+    # post-transfer calibration scope. Other non-native source rows have no UC
+    # zero rule in either producer contract.
+    source_reconciliation_rows = source_rows & native
+    uc_constraint_rows = (source_rows & ~native) | (~source_rows & native)
+    return (
+        source_channel,
+        roster,
+        source_rows,
+        source_reconciliation_rows,
+        uc_constraint_rows,
+    )
+
+
 def us_weeks_unemployed_signal_gate(frame: Frame) -> GateResult:
-    """Require exact ASEC carry and integer, nondefault signal on both halves."""
+    """Require exact ASEC carry and integer signal on every support channel."""
 
     person = frame.table("person")
     if _OUTPUT not in person:
@@ -1330,15 +1417,12 @@ def us_weeks_unemployed_signal_gate(frame: Frame) -> GateResult:
             f"{_OUTPUT} has {summary['source_mismatch_count']} ASEC source "
             "reconciliation mismatch(es)."
         )
-    if int(summary["puf_uc_zero_mismatch_count"]):
+    if int(summary["uc_constraint_mismatch_count"]):
         failures.append(
-            f"{_OUTPUT} has {summary['puf_uc_zero_mismatch_count']} PUF row(s) "
-            "positive without unemployment compensation."
+            f"{_OUTPUT} has {summary['uc_constraint_mismatch_count']} row(s) "
+            "positive outside the unemployment-compensation constraint."
         )
-    has_support_roles = has_support_role_metadata(person, entity="person")
-    required_channels = (
-        (_ASEC_CHANNEL, _PUF_CHANNEL) if has_support_roles else (_ASEC_CHANNEL,)
-    )
+    required_channels = tuple(summary["channel_roster"])
     channels = summary["channels"]
     for name in required_channels:
         channel = channels[name]
