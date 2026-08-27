@@ -659,10 +659,10 @@
       "parameters": {
         "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
         "top_k": 100,
-        "max_top_share": 0.9970712395200448,
-        "min_nonzero_records": 274
+        "max_top_share": 0.9994670564654868,
+        "min_nonzero_records": 104
       },
-      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Thresholds sit at the measured edges from the microcosm#630 measurement pass: top_k 100 as the grid anchor, max_top_share at the exact measured maximum, and min_nonzero_records at the thinnest measured column, with no headroom. A future thinner column goes thin visibly in the signed details, never a silent pass. Reviewed exclusions live in the named register resource of this package."
+      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Armed from the #686 L3 baselines per #757 B4, each threshold recording the run that measured it: the 47-column qrf_tail grids of uk_weighted_integrity_baselines_686.json (sha256 8b3f6c4e9c522445bf3e05d3451ee8557f4e14d25524ceac3af8bfe05401a146, licensed acceptance dir 686-spine-swap), measured on spine-a.h5 (sha256 a65f2132736d1dcecb91709a513a0d54a5887635ea03760629cc888d188ee306, 113,649 person rows, design weights) for the #609/#578 threshold adjudication. top_k 100 is the measurement grid anchor [10, 100, 500, 1000]; max_top_share is the exact measured maximum over the checked surface (hmrc_spi_other_social_security_income, 104 carriers), no headroom; min_nonzero_records is the thinnest measured column above the grid anchor (the same column) - the policy domain requires min_nonzero_records > top_k, so the three saturated sub-anchor columns (hmrc_spi_taxable_termination_pay 12, charitable_investment_gifts 22, sda_reported 24 carriers, each top-100 share 1.0) sit below it and go thin visibly in the signed details on every run, never a silent pass. The baselines are design-weight measurements and the terminal gate runs on the calibrated release frame; a calibrated-weight breach names its column and is a finding, not noise. The 12 household_qrf_tail grids (was_wealth surface) are measured in the same baselines file and not yet armed - a household-surface gate entry is a declared follow-up. Reviewed exclusions live in the named register resource of this package."
     }
   ]
 }

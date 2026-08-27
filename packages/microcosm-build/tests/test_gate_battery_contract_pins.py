@@ -311,3 +311,66 @@ class TestProducerRoundTrip:
             if any(needle in line for needle in self.MIRROR_DRIFT_NEEDLES)
         ]
         assert drifted == [], drifted
+
+
+class TestCertificationMirrors:
+    """The data shard's certification mirrors track the build shard."""
+
+    def test_part_scopes_mirror_the_ownership_partition(self) -> None:
+        from microcosm.build.uk_runtime.calibration_run import (
+            UK_CALIBRATION_GATE_SCOPE,
+            UK_NATIONAL_GATE_SCOPE,
+            UK_SHARED_GATE_IDS,
+            UK_SPINE_GATE_SCOPE,
+        )
+
+        assert data_contract._UK_CERTIFICATION_PART_SCOPES["spine"] == frozenset(
+            UK_SPINE_GATE_SCOPE
+        )
+        assert data_contract._UK_CERTIFICATION_PART_SCOPES[
+            "calibration_seam"
+        ] == frozenset(UK_CALIBRATION_GATE_SCOPE)
+        assert data_contract._UK_CERTIFICATION_PART_SCOPES[
+            "release_cut"
+        ] == frozenset(UK_NATIONAL_GATE_SCOPE)
+        assert data_contract._UK_CERTIFICATION_SHARED_GATE_IDS == frozenset(
+            UK_SHARED_GATE_IDS
+        )
+
+    def test_part_digests_mirror_the_live_scoped_manifests(self) -> None:
+        from microcosm.build.uk_runtime.release_certification import (
+            _PART_SCOPES,
+            _scoped_digests,
+        )
+
+        for part_name, spec in _PART_SCOPES.items():
+            live = _scoped_digests(
+                frozenset(spec["scope"]),
+                phases=tuple(spec["phases"]),
+                policy_suffix=str(spec["policy_suffix"]),
+            )
+            mirrored = data_contract._UK_CERTIFICATION_PART_DIGESTS[part_name]
+            assert mirrored["gates_manifest_sha256"] == (
+                live["gates_manifest_sha256"]
+            ), part_name
+            assert mirrored["policy_sha256"] == live["policy_sha256"], part_name
+            assert list(
+                data_contract._UK_CERTIFICATION_PART_PHASES[part_name]
+            ) == list(spec["phases"])
+
+    def test_certification_identity_mirrors(self) -> None:
+        from microcosm.build.uk_runtime import release_certification
+
+        assert data_contract._UK_RELEASE_CERTIFICATION_SCHEMA_VERSION == (
+            release_certification.UK_RELEASE_CERTIFICATION_SCHEMA_VERSION
+        )
+        assert data_contract._UK_RELEASE_CERTIFICATION_KIND == (
+            release_certification.UK_RELEASE_CERTIFICATION_KIND
+        )
+
+    def test_national_release_id_mirrors_the_build_shard(self) -> None:
+        from microcosm.build.uk_runtime.release_identity import (
+            UK_NATIONAL_RELEASE_ID,
+        )
+
+        assert data_contract._UK_NATIONAL_RELEASE_ID == UK_NATIONAL_RELEASE_ID

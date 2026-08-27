@@ -1741,6 +1741,44 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
     assert "frs_spine" not in evidence
 
 
+def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
+    tool = _load_tool()
+
+    class _Record:
+        def __init__(self, fit_name, weight_kind):
+            self.fit_name = fit_name
+            self.weight_kind = weight_kind
+
+    class _Broken:
+        @property
+        def fit_weight_records(self):
+            raise RuntimeError("records unreadable")
+
+    implementations = {
+        "frs_spine": SimpleNamespace(),
+        "was_wealth": SimpleNamespace(
+            fit_weight_records=(_Record("uk_was_2018_20_wealth:savings", "design"),)
+        ),
+        "etb_vat": SimpleNamespace(fit_weight_records=()),
+        "lcfs_consumption": _Broken(),
+    }
+    records = tool._collect_fit_weight_records(
+        stage_names=("frs_spine", "was_wealth", "etb_vat", "lcfs_consumption"),
+        implementations=implementations,
+    )
+    # Stages without the hook contribute nothing; a fitting stage with no or
+    # unreadable records persists an empty list, so the release-cut weights
+    # audit fails visibly instead of the gap vanishing from the sidecar.
+    assert records == {
+        "was_wealth": [
+            {"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}
+        ],
+        "etb_vat": [],
+        "lcfs_consumption": [],
+    }
+    assert "frs_spine" not in records
+
+
 class TestScottishWaterAndSewerage:
     """The FRS 2024-25 cell retirement, at the three shapes the tab presents.
 

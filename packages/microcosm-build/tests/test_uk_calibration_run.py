@@ -184,7 +184,7 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
         calibration_run,
-        "_aggregate_admin_totals",
+        "uk_aggregate_admin_totals",
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
@@ -215,7 +215,6 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
         measure_resolver=None,
         source_pins=source_pins,
         run_config_extra={"calibration_year": 2025},
-        release_candidate=False,
         release_id="test-run",
     )
 
@@ -226,6 +225,16 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     assert result.build_record["artifacts"]["staging_h5"]["sha256"] == _sha(paths.staging_h5)
     assert result.build_record["artifacts"]["diagnostics_json"]["sha256"] == _sha(paths.diagnostics_json)
     assert result.build_record["artifacts"]["terminal_gate_json"]["sha256"] == _sha(paths.terminal_gate_json)
+    # The record makes no shippability claim of its own — the hand-written
+    # literal retired with the #757 release-cut audit — and instead points
+    # at the certification artifact whose verdict is authoritative.
+    assert "shippable" not in result.build_record
+    assert "shippable_reason" not in result.build_record
+    certification = result.build_record["certification"]
+    assert certification["producer"] == "tools/certify_uk_release_cut.py"
+    assert certification["expected_artifact"] == str(
+        paths.staging_h5.with_suffix(".release_certification.json")
+    )
     spine_provenance = result.build_record["spine_provenance"]
     assert spine_provenance["stages"] == spine_sidecar["stages"]
     assert spine_provenance["stage_records"] == spine_sidecar["stage_records"]
@@ -282,8 +291,7 @@ def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
                 "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
             },
             run_config_extra={"calibration_year": 2025},
-            release_candidate=False,
-            release_id="bad-sha",
+                release_id="bad-sha",
         )
     assert not paths.staging_h5.exists()
     assert not paths.diagnostics_json.exists()
@@ -319,8 +327,7 @@ def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
                 }
             },
             run_config_extra={"calibration_year": 2025},
-            release_candidate=False,
-            release_id="missing-sidecar",
+                release_id="missing-sidecar",
         )
 
     assert not paths.staging_h5.exists()
@@ -372,8 +379,7 @@ def test_run_uk_calibration_refuses_unbound_input_sidecar(
                 }
             },
             run_config_extra={"calibration_year": 2025},
-            release_candidate=False,
-            release_id="unbound-sidecar",
+                release_id="unbound-sidecar",
         )
 
     assert not paths.staging_h5.exists()
@@ -393,7 +399,7 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(
         calibration_run,
-        "_aggregate_admin_totals",
+        "uk_aggregate_admin_totals",
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
@@ -438,7 +444,6 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
             "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
         },
         run_config_extra={},
-        release_candidate=False,
         release_id="invariant-run",
     )
 
@@ -462,7 +467,7 @@ def test_aggregate_admin_measurement_convention_and_refusals():
     frame = _frame()
     manifest = calibration_run._calibration_gate_manifest()
 
-    totals, receipt = calibration_run._aggregate_admin_totals(frame, manifest)
+    totals, receipt = calibration_run.uk_aggregate_admin_totals(frame, manifest)
 
     # Small anchors (NEED means) measure as the weighted mean over carriers;
     # the NHS total measures as the person total under mapped household
@@ -480,7 +485,7 @@ def test_aggregate_admin_measurement_convention_and_refusals():
     stripped = _frame()
     stripped.table("household").drop(columns=["electricity_consumption"], inplace=True)
     with pytest.raises(ValueError, match="household.electricity_consumption"):
-        calibration_run._aggregate_admin_totals(stripped, manifest)
+        calibration_run.uk_aggregate_admin_totals(stripped, manifest)
 
 
 def test_nhs_anchor_composes_from_the_columns_the_spine_actually_carries():
@@ -499,7 +504,7 @@ def test_nhs_anchor_composes_from_the_columns_the_spine_actually_carries():
     person["nhs_outpatient_spending"] = [5.0, 5.0, 5.0, 5.0]
     manifest = calibration_run._calibration_gate_manifest()
 
-    totals, receipt = calibration_run._aggregate_admin_totals(frame, manifest)
+    totals, receipt = calibration_run.uk_aggregate_admin_totals(frame, manifest)
 
     # Same 4 persons x 50.0 x weight 10.0 as the single-column fixture.
     assert totals["nhs_spending_total"] == pytest.approx(2000.0)
@@ -518,7 +523,7 @@ def test_partly_carried_derived_anchor_refuses_and_names_the_missing_part():
     manifest = calibration_run._calibration_gate_manifest()
 
     with pytest.raises(ValueError, match="nhs_admitted_patient_spending"):
-        calibration_run._aggregate_admin_totals(frame, manifest)
+        calibration_run.uk_aggregate_admin_totals(frame, manifest)
 
 
 def test_seam_pipeline_derives_a_ratified_logbook_scope():
@@ -572,8 +577,7 @@ def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
                 }
             },
             run_config_extra={"calibration_year": 2025},
-            release_candidate=False,
-            release_id="refused-run",
+                release_id="refused-run",
         )
 
     # Every terminal disposition is a row; a refusal that left the chain
@@ -597,7 +601,7 @@ def test_attempt_ids_are_unique_across_reruns_of_one_release(
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
         calibration_run,
-        "_aggregate_admin_totals",
+        "uk_aggregate_admin_totals",
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
@@ -629,8 +633,7 @@ def test_attempt_ids_are_unique_across_reruns_of_one_release(
             measure_resolver=None,
             source_pins=source_pins,
             run_config_extra={"calibration_year": 2025},
-            release_candidate=False,
-            release_id="one-release-id",
+                release_id="one-release-id",
         )
         build_ids.append(result.build_record["build_id"])
 
@@ -644,7 +647,7 @@ def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
         calibration_run,
-        "_aggregate_admin_totals",
+        "uk_aggregate_admin_totals",
         lambda frame, manifest: (_admin_anchor_values(), []),
     )
     input_h5 = tmp_path / "input.h5"
@@ -683,7 +686,6 @@ def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path
             "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
         },
         run_config_extra={"calibration_year": 2025},
-        release_candidate=False,
         release_id="ledger-identity",
     )
 

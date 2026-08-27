@@ -204,7 +204,6 @@ def run_uk_calibration(
     measure_resolver: object | None,
     source_pins: Mapping[str, Mapping[str, object]],
     run_config_extra: Mapping[str, object],
-    release_candidate: bool,
     release_id: str,
     logbook_prev_row_digest: str | None = None,
 ) -> UKCalibrationRunResult:
@@ -253,7 +252,6 @@ def run_uk_calibration(
             doctrine_overrides=doctrine_overrides,
             measure_resolver=measure_resolver,
             source_pins=source_pins,
-            release_candidate=release_candidate,
             release_id=release_id,
             state=state,
             run_config=run_config,
@@ -344,7 +342,6 @@ def _run_uk_calibration_attempt(
     doctrine_overrides: Mapping[str, Mapping[str, object]],
     measure_resolver: object | None,
     source_pins: Mapping[str, Mapping[str, object]],
-    release_candidate: bool,
     release_id: str,
     state: AttemptState,
     run_config: Mapping[str, object],
@@ -421,7 +418,6 @@ def _run_uk_calibration_attempt(
         calibrated,
         stage,
         paths.terminal_gate_json,
-        release_candidate=release_candidate,
         release_id=release_id,
         diagnostics_sha256=diagnostics_sha,
     )
@@ -448,11 +444,15 @@ def _run_uk_calibration_attempt(
         "register": build_block["register"],
         "calibration": stage.manifest,
         "gate_summary": _gate_summary(gate_report),
-        "shippable": False,
-        "shippable_reason": (
-            "calibration-scoped battery; release certification is the "
-            "release-cut producer's job"
-        ),
+        # No shippability claim lives here: the calibration-scoped battery
+        # covers 6 of the declared gate entries. The release verdict is the
+        # release-cut certification's, produced over this record.
+        "certification": {
+            "expected_artifact": str(
+                paths.staging_h5.with_suffix(".release_certification.json")
+            ),
+            "producer": "tools/certify_uk_release_cut.py",
+        },
         "artifacts": {
             "staging_h5": {"path": str(paths.staging_h5), "sha256": staging_sha},
             "diagnostics_json": {
@@ -500,12 +500,11 @@ def _run_calibration_gate_battery(
     stage: UKNationalCalibrationStage,
     path: Path,
     *,
-    release_candidate: bool,
     release_id: str,
     diagnostics_sha256: str,
 ) -> dict[str, object]:
     manifest = _calibration_gate_manifest()
-    admin_totals, admin_receipt = _aggregate_admin_totals(frame, manifest)
+    admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = {
         "national_calibration": stage.manifest,
         "parity_evidence": SimpleNamespace(
@@ -519,18 +518,24 @@ def _run_calibration_gate_battery(
     battery = GateBatteryRun(
         manifest,
         release_id=release_id,
+        # The seam never runs release-candidate posture: its scoped battery
+        # covers 6 of the declared entries and must never sign a
+        # shippability claim (the #757 release-cut audit). Shippability
+        # comes only from the release-cut certification.
         report_path=path,
-        release_candidate=release_candidate,
+        release_candidate=False,
         registry=UK_GATE_REGISTRY,
         release_evidence={"calibration_diagnostics_sha256": diagnostics_sha256},
     )
     battery.run_phase("terminal", EvidenceContext(frame=frame, artifacts=artifacts))
     battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
     payload = battery.report_payload()
-    payload["posture"] = "calibration_seam"
-    payload["scope_exclusions"] = dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS)
-    payload["aggregate_admin_measurement"] = admin_receipt
-    _resign_gate_report(payload)
+    finalize_uk_scoped_gate_report(
+        payload,
+        posture="calibration_seam",
+        scope_exclusions=dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
+        aggregate_admin_measurement=admin_receipt,
+    )
     _write_json(path, payload)
     return payload
 
@@ -667,28 +672,30 @@ def _spine_provenance_from_sidecar(
 
 
 def _calibration_gate_manifest() -> GatesManifest:
-    return _scoped_gate_manifest(
+    return uk_scoped_gate_manifest(
         UK_CALIBRATION_GATE_SCOPE,
         phases=("terminal",),
         policy_suffix="calibration_seam_scope",
     )
 
 
-def _spine_gate_manifest() -> GatesManifest:
-    return _scoped_gate_manifest(
-        UK_SPINE_GATE_SCOPE,
-        phases=("assembled", "transferred"),
-        policy_suffix="spine_build_scope",
-    )
-
-
-def _scoped_gate_manifest(
-    scope: tuple[str, ...],
+def uk_scoped_gate_manifest(
+    scope: tuple[str, ...] | frozenset[str],
     *,
     phases: tuple[str, ...],
     policy_suffix: str,
+    source: GatesManifest | None = None,
 ) -> GatesManifest:
-    source = load_country_spec("uk").gates
+    """Filter the declared UK gate spec to one battery's scope.
+
+    The one scope-filtering implementation every scoped producer shares
+    (spine build, calibration seam, release cut). ``source`` lets a caller
+    that already holds a loaded spec — or a hermetic test that stubs one —
+    supply it; the default is the committed package spec.
+    """
+
+    if source is None:
+        source = load_country_spec("uk").gates
     entries = tuple(entry for entry in source.gates if entry.id in scope)
     missing = sorted(set(scope) - {entry.id for entry in entries})
     if missing:
@@ -712,7 +719,7 @@ UK_DERIVED_ADMIN_ANCHOR_MEASURES: Mapping[str, tuple[str, ...]] = {
 }
 
 
-def _aggregate_admin_totals(
+def uk_aggregate_admin_totals(
     frame: Frame, manifest: GatesManifest
 ) -> tuple[dict[str, float], list[dict[str, object]]]:
     """Measure every declared admin anchor, fail-loud on absent evidence.
@@ -873,7 +880,29 @@ def _gate_summary(report: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _resign_gate_report(payload: dict[str, object]) -> None:
+def finalize_uk_scoped_gate_report(
+    payload: dict[str, object],
+    *,
+    posture: str,
+    scope_exclusions: Mapping[str, str],
+    aggregate_admin_measurement: object,
+) -> None:
+    """Graft the scoped-report trio onto a battery payload and re-sign it.
+
+    Every scoped UK producer (the calibration seam, the release-cut
+    certification) declares its posture, the rationale for each gate it
+    does not run, and its admin-anchor measurement receipt, then signs the
+    augmented bytes. One implementation, shared, so the parts the
+    certification composes over cannot drift apart in shape.
+    """
+
+    payload["posture"] = posture
+    payload["scope_exclusions"] = dict(scope_exclusions)
+    payload["aggregate_admin_measurement"] = aggregate_admin_measurement
+    resign_uk_gate_report(payload)
+
+
+def resign_uk_gate_report(payload: dict[str, object]) -> None:
     attestation = payload.get("attestation")
     if not isinstance(attestation, dict):
         raise RuntimeError("gate report has no attestation block.")
