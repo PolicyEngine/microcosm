@@ -108,6 +108,15 @@ build is in scope.
   indirect physical-source routing would violate the repository's population-
   operator boundary. Their 60 focused module/source-blindness tests and Ruff
   pass after that review correction.
+- Scoped alimony and workers' compensation raw validity to every physical ASEC
+  clone and exact source-carry checks to physical ASEC native rows, leaving all
+  clone-operator plausibility bands unchanged. Stacked ASEC+ACS and legacy
+  ASEC+PUF fixtures pass (28 alimony and 21 workers' compensation tests).
+- Changed SSI reporter-lineage capture to validate `SSI_VAL` only on physical
+  ASEC rows and accept null ACS raw-source cells. Assignment remains source-
+  blind: it consumes the source-ID set captured before L0, or obtains that set
+  through the reporter helper when no explicit set is supplied. The complete
+  SSI take-up file passes (71 tests).
 
 ## Next
 
