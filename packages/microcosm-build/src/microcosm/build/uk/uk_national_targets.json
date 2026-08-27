@@ -677,8 +677,8 @@
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "ons.population.female_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
-      "ons.population.male_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+      "ons.population.female_90_plus": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "ons.population.male_90_plus": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -708,7 +708,7 @@
       "salary_sacrifice_obr_near_equivalents": "The contract separately maps OBR near-equivalents obr/salary_sacrifice_employee_ni_relief and obr/salary_sacrifice_employer_ni_relief onto hmrc.salary_sacrifice.nics_relief_employee and hmrc.salary_sacrifice.nics_relief_employer.",
       "two_child_limit_year_surface": "Chronicle's 15 dwp/uc/two_child_limit/* facts are the April-2025 publication (period month 2025-04) and are the only TCL facts; there are no 2026 Ledger facts. At 12a1e028, the incumbent pins the same published numbers at {2026}, so at calibration year 2025 Ledger activates all 15 TCL targets while the incumbent drops them from the 652-row union to the 637-row effective surface; the 2026 effective surface remains 652. The same 12a1e028 refresh adds the new incumbent dwp/uc/households row. Fixture B treats the 15 TCL rows as enumerated ledger-side additions.",
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
-      "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+      "ons_terminal_sex_band_split": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
     }
   },
   "targets": [
@@ -756,10 +756,10 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/ni",
-          "value_variable": "ni_employee",
+          "value_variable": "total_national_insurance",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data binds this EFO total-NI line to ni_employee only, while separate employee/employer/self-employed lines are also calibrated - suspected binding defect carried as-is for parity; adjudicate in microcosm#622."
+          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity \u2014 final estimate bit-identical to obr.ni_employee \u2014 fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
         },
         "axiom": {
           "metric_name": "obr/ni",
@@ -7842,10 +7842,17 @@
               "reduce": "sum",
               "operator": "<",
               "value": 65
+            },
+            {
+              "variable": "age",
+              "entity": "person",
+              "reduce": "count",
+              "operator": "==",
+              "value": 1
             }
           ],
           "value_variable": "household_count",
-          "notes": "uk-data reads ctx.pe('age') - person ages summed to household - as the head's age; exact only for single-person households (compute/households.py:12)."
+          "notes": "ONS 'one person household': person count == 1 makes the category exact, and the age-sum reduction becomes the person's own age, so the head-age proxy note no longer applies. Without the restriction every all-adult SINGLE-benunit sharer household was also counted here (microcosm#757 audit partition, 2026-08-26)."
         },
         "axiom": {
           "metric_name": "ons/lone_households_under_65",
@@ -7897,10 +7904,17 @@
               "reduce": "sum",
               "operator": ">=",
               "value": 65
+            },
+            {
+              "variable": "age",
+              "entity": "person",
+              "reduce": "count",
+              "operator": "==",
+              "value": 1
             }
           ],
           "value_variable": "household_count",
-          "notes": "uk-data reads ctx.pe('age') - person ages summed to household - as the head's age; exact only for single-person households (compute/households.py:12)."
+          "notes": "ONS 'one person household': person count == 1 makes the category exact, and the age-sum reduction becomes the person's own age, so the head-age proxy note no longer applies. Without the restriction every all-adult SINGLE-benunit sharer household was also counted here (microcosm#757 audit partition, 2026-08-26)."
         },
         "axiom": {
           "metric_name": "ons/lone_households_over_65",
@@ -7992,9 +8006,17 @@
               "reduce": "any",
               "operator": "==",
               "value": "COUPLE_NO_CHILDREN"
+            },
+            {
+              "variable": "age",
+              "entity": "person",
+              "reduce": "count",
+              "operator": "==",
+              "value": 2
             }
           ],
-          "value_variable": "household_count"
+          "value_variable": "household_count",
+          "notes": "ONS Table 7 'one family only: couple, no children' is the household being exactly one childless couple and nobody else; with the childless-couple benunit present, person count == 2 is equivalent to the one-family restriction. Without it the binding counted every household *containing* such a couple \u2014 a 1.84m overlap with the couple-non-dependent-children and multi-family categories (microcosm#757 audit partition, 2026-08-26)."
         },
         "axiom": {
           "metric_name": "ons/couple_no_children_households",

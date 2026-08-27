@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,9 @@ import pandas as pd
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
+)
+from microcosm.build.uk_runtime.weighted_integrity import (
+    exclusion_evaluation_date,
 )
 from microcosm.calibrate import TargetRegistry
 
@@ -156,6 +160,22 @@ class UKMeasureResolver:
         return dict(self._receipt)
 
 
+#: Every field a reviewed measure exclusion must carry (the
+#: ``weighted_integrity`` reviewed-exclusion record shape, microcosm#757 /
+#: the #743-audit adjudication): an exclusion narrows the calibrated target
+#: surface, so it names who approved the narrowing, under which adjudication,
+#: and for how long — nothing lapses silently and nothing lives forever.
+_UK_MEASURE_EXCLUSION_FIELDS = (
+    "name",
+    "reason",
+    "tracking",
+    "approved_by",
+    "adjudication",
+    "approved_on",
+    "expires_on",
+)
+
+
 def load_uk_calibration_measure_exclusions(
     path: Path | None = None,
 ) -> tuple[dict[str, str], ...]:
@@ -174,8 +194,8 @@ def load_uk_calibration_measure_exclusions(
     unknown = sorted(set(payload) - allowed_top)
     if unknown:
         raise ValueError(f"unknown top-level exclusion key(s): {unknown}")
-    if payload.get("schema_version") != 1:
-        raise ValueError("UK calibration measure exclusions schema_version must be 1.")
+    if payload.get("schema_version") != 2:
+        raise ValueError("UK calibration measure exclusions schema_version must be 2.")
     exclusions = payload.get("exclusions")
     if not isinstance(exclusions, list):
         raise ValueError("UK calibration measure exclusions must contain a list.")
@@ -184,33 +204,71 @@ def load_uk_calibration_measure_exclusions(
     for entry in exclusions:
         if not isinstance(entry, dict):
             raise ValueError("UK calibration measure exclusion entries must be objects.")
-        name = str(entry.get("name", ""))
-        reason = str(entry.get("reason", ""))
-        tracking = str(entry.get("tracking", ""))
+        unknown_fields = sorted(set(entry) - set(_UK_MEASURE_EXCLUSION_FIELDS))
+        if unknown_fields:
+            raise ValueError(
+                "unknown UK calibration measure exclusion field(s) "
+                f"{unknown_fields} on {entry.get('name')!r}."
+            )
+        record = {field: str(entry.get(field, "")) for field in _UK_MEASURE_EXCLUSION_FIELDS}
+        name = record["name"]
         if name in seen:
             raise ValueError(f"duplicate UK calibration measure exclusion {name!r}.")
-        if not reason.strip():
-            raise ValueError(f"UK calibration measure exclusion {name!r} has empty reason.")
-        if not tracking.strip():
+        for field in _UK_MEASURE_EXCLUSION_FIELDS:
+            if not record[field].strip():
+                raise ValueError(
+                    f"UK calibration measure exclusion {name!r} has empty {field}; "
+                    "a narrowed target surface names why, where it is being "
+                    "resolved, who approved it, and for how long."
+                )
+        for field in ("approved_on", "expires_on"):
+            try:
+                parsed = date.fromisoformat(record[field])
+            except ValueError:
+                parsed = None
+            if parsed is None or parsed.isoformat() != record[field]:
+                raise ValueError(
+                    f"UK calibration measure exclusion {name!r} {field} must be "
+                    f"canonical ISO (YYYY-MM-DD), got {record[field]!r}."
+                )
+        if record["expires_on"] <= record["approved_on"]:
             raise ValueError(
-                f"UK calibration measure exclusion {name!r} has empty tracking; "
-                "a narrowed target surface must name where it is being resolved."
+                f"UK calibration measure exclusion {name!r} expires_on must be "
+                "after approved_on."
             )
         seen.add(name)
-        loaded.append({"name": name, "reason": reason, "tracking": tracking})
+        loaded.append(record)
     return tuple(loaded)
 
 
 def apply_uk_calibration_measure_exclusions(
-    registry: TargetRegistry, exclusions: tuple[dict[str, str], ...]
+    registry: TargetRegistry,
+    exclusions: tuple[dict[str, str], ...],
+    *,
+    now: date | None = None,
 ) -> tuple[TargetRegistry, dict[str, dict[str, str]]]:
     """Remove reviewed excluded references from a UK target registry.
 
     The receipt carries every field the register declares, tracking included:
     an exclusion narrows the calibrated target surface, so the run evidence
-    must say where each narrowing is being resolved, not only why.
+    must say where each narrowing is being resolved, not only why. The window
+    is enforced at apply time — outside ``approved_on``..``expires_on`` the
+    run fails with a correct-or-renew message rather than the narrowing
+    lapsing silently or living forever.
     """
 
+    evaluated_on = exclusion_evaluation_date(now)
+    for entry in exclusions:
+        approved = date.fromisoformat(entry["approved_on"])
+        expires = date.fromisoformat(entry["expires_on"])
+        if not approved <= evaluated_on <= expires:
+            raise ValueError(
+                f"UK calibration measure exclusion {entry['name']!r} is outside "
+                f"its reviewed window ({entry['approved_on']}..{entry['expires_on']}, "
+                f"evaluated {evaluated_on.isoformat()}): correct the underlying "
+                f"gap ({entry['tracking']}) or renew the adjudication with a new "
+                "approval and expiry."
+            )
     declared = {entry["name"]: entry for entry in exclusions}
     matched = {spec.name for spec in registry.specs if spec.name in declared}
     stale = sorted(set(declared) - matched)
@@ -222,11 +280,14 @@ def apply_uk_calibration_measure_exclusions(
     kept = [spec for spec in registry.specs if spec.name not in declared]
     receipt = {
         name: {
-            "reason": declared[name]["reason"],
-            "tracking": declared[name]["tracking"],
+            field: declared[name][field]
+            for field in _UK_MEASURE_EXCLUSION_FIELDS
+            if field != "name"
         }
         for name in sorted(matched)
     }
+    for record in receipt.values():
+        record["evaluated_on"] = evaluated_on.isoformat()
     return TargetRegistry(kept, country=registry.country), receipt
 
 

@@ -29,6 +29,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+from typing import Any
 
 __all__ = [
     "UK_SPINE_SWAP_SIGNED_DIFFERENCES_RESOURCE",
@@ -83,6 +84,10 @@ SIGNED_DIFFERENCE_EXPECTATIONS = frozenset(
     }
 )
 
+SIGNED_DIFFERENCE_SHARE_DIRECTIONS = frozenset(
+    {"candidate_above", "candidate_below"}
+)
+
 _ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -120,6 +125,7 @@ class UKSignedDifference:
     evidence: str
     adjudicator: str
     adjudicated_on: str
+    quantitative: Mapping[str, Any] | None = None
 
     def covers(
         self,
@@ -274,6 +280,122 @@ def _require_str_tuple(
     )
 
 
+def _require_number(
+    value: object,
+    *,
+    field_name: str,
+    resource: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{resource}: field {field_name!r} must be a number.")
+    number = float(value)
+    if not (float("-inf") < number < float("inf")):
+        raise ValueError(f"{resource}: field {field_name!r} must be finite.")
+    if minimum is not None and number < minimum:
+        raise ValueError(
+            f"{resource}: field {field_name!r} must be >= {minimum}, got {number}."
+        )
+    if maximum is not None and number > maximum:
+        raise ValueError(
+            f"{resource}: field {field_name!r} must be <= {maximum}, got {number}."
+        )
+    return number
+
+
+def _require_quantitative(
+    value: object,
+    *,
+    surface: str,
+    expectation: str,
+    columns: tuple[str, ...],
+    resource: str,
+    where: str,
+) -> Mapping[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{resource}: {where}.quantitative must be an object.")
+
+    quantitative = dict(value)
+    if surface == "nonzero_shares" and expectation == "column_differs":
+        raw_shares = quantitative.get("shares")
+        if not isinstance(raw_shares, Mapping):
+            raise ValueError(
+                f"{resource}: {where}.quantitative.shares must be an object."
+            )
+        missing = sorted(set(columns) - set(raw_shares))
+        extra = sorted(set(raw_shares) - set(columns))
+        if missing or extra:
+            raise ValueError(
+                f"{resource}: {where}.quantitative.shares must exactly cover "
+                f"the scoped columns; missing={missing}, extra={extra}."
+            )
+        shares: dict[str, dict[str, float | str]] = {}
+        for column in columns:
+            raw_entry = raw_shares[column]
+            if not isinstance(raw_entry, Mapping):
+                raise ValueError(
+                    f"{resource}: {where}.quantitative.shares[{column!r}] "
+                    "must be an object."
+                )
+            direction = _require_member(
+                raw_entry.get("direction"),
+                allowed=SIGNED_DIFFERENCE_SHARE_DIRECTIONS,
+                field_name=f"{where}.quantitative.shares[{column!r}].direction",
+                resource=resource,
+            )
+            shares[column] = {
+                "incumbent_share": _require_number(
+                    raw_entry.get("incumbent_share"),
+                    field_name=(
+                        f"{where}.quantitative.shares[{column!r}]."
+                        "incumbent_share"
+                    ),
+                    resource=resource,
+                    minimum=0.0,
+                    maximum=1.0,
+                ),
+                "direction": direction,
+                "max_abs_delta": _require_number(
+                    raw_entry.get("max_abs_delta"),
+                    field_name=(
+                        f"{where}.quantitative.shares[{column!r}].max_abs_delta"
+                    ),
+                    resource=resource,
+                    minimum=0.0,
+                ),
+            }
+        quantitative["shares"] = shares
+    elif surface == "entity_counts" and expectation == "count_differs":
+        raw_deltas = quantitative.get("expected_deltas")
+        if not isinstance(raw_deltas, Mapping):
+            raise ValueError(
+                f"{resource}: {where}.quantitative.expected_deltas must be an "
+                "object."
+            )
+        expected_entities = set(columns)
+        missing = sorted(expected_entities - set(raw_deltas))
+        extra = sorted(set(raw_deltas) - expected_entities)
+        if missing or extra:
+            raise ValueError(
+                f"{resource}: {where}.quantitative.expected_deltas must exactly "
+                f"cover the scoped entities; missing={missing}, extra={extra}."
+            )
+        deltas: dict[str, int] = {}
+        for entity in columns:
+            delta = raw_deltas[entity]
+            if isinstance(delta, bool) or not isinstance(delta, int):
+                raise ValueError(
+                    f"{resource}: {where}.quantitative.expected_deltas[{entity!r}] "
+                    "must be an integer."
+                )
+            deltas[entity] = delta
+        quantitative["expected_deltas"] = deltas
+    return quantitative
+
+
 def load_uk_spine_swap_signed_differences(
     resource: str = UK_SPINE_SWAP_SIGNED_DIFFERENCES_RESOURCE,
 ) -> UKSignedDifferenceRegister:
@@ -343,6 +465,12 @@ def load_uk_spine_swap_signed_differences(
             field_name=f"{where}.scope.surface",
             resource=resource,
         )
+        expectation = _require_member(
+            raw.get("expectation"),
+            allowed=SIGNED_DIFFERENCE_EXPECTATIONS,
+            field_name=f"{where}.expectation",
+            resource=resource,
+        )
         columns = _require_str_tuple(
             raw_scope.get("columns"),
             field_name=f"{where}.scope.columns",
@@ -382,12 +510,7 @@ def load_uk_spine_swap_signed_differences(
                     resource=resource,
                 ),
                 surface=surface,
-                expectation=_require_member(
-                    raw.get("expectation"),
-                    allowed=SIGNED_DIFFERENCE_EXPECTATIONS,
-                    field_name=f"{where}.expectation",
-                    resource=resource,
-                ),
+                expectation=expectation,
                 columns=columns,
                 entities=entities,
                 magnitude_evidence=_require_str(
@@ -406,6 +529,14 @@ def load_uk_spine_swap_signed_differences(
                     resource=resource,
                 ),
                 adjudicated_on=adjudicated_on,
+                quantitative=_require_quantitative(
+                    raw.get("quantitative"),
+                    surface=surface,
+                    expectation=expectation,
+                    columns=columns,
+                    resource=resource,
+                    where=where,
+                ),
             )
         )
 

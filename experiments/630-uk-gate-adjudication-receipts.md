@@ -1,3 +1,5 @@
+> Historicized 2026-08-26: This is the adjudication packet and run-receipt history for the #630 UK gate adjudication. It is superseded as live state by the signed register and the battery; the content below is retained as historical evidence, not current operational status.
+
 # microcosm#630 gate adjudication — measurement and verification receipts
 
 Campaign runs for the #630 close-out PR (#706). All full-scale runs: certified input

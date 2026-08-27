@@ -412,6 +412,8 @@ class TestUKCompatibility:
             registry=UK_GATE_REGISTRY,
         )
         run.run_phase("preflight", EvidenceContext())
+        run.run_phase("assembled", EvidenceContext())
+        run.run_phase("transferred", EvidenceContext())
         run.run_phase("terminal", EvidenceContext())
         report = run.report_payload()
 
@@ -450,10 +452,12 @@ class TestBatteryRegressions:
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
         # 11 as on main (uk_nonnegative_columns passes with zero required
-        # columns — the scheduled stages declare none), the two E4 stochastic
-        # gates, the E5 support gate, the E6 aggregate-admin gate, and the E8
-        # student-loan enum gate; their evaluators have direct tests.
-        assert len(passed) == 16
+        # columns — the scheduled stages declare none), the take-up signal
+        # gate, the E5 support gate, the E6 aggregate-admin gate, and the E8
+        # student-loan enum gate; their evaluators have direct tests. The BRMA
+        # enum gate is no longer among them: it moved to the spine battery's
+        # assembled boundary, where its column is first written.
+        assert len(passed) == 15
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]

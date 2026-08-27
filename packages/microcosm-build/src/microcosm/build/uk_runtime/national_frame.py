@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,6 +52,7 @@ __all__ = [
     "UK_NATIONAL_H5_TABLES",
     "UK_NATIONAL_SCHEMA",
     "UK_TIME_PERIOD_METADATA_KEY",
+    "UKNationalStage",
     "UKStagingProvenance",
     "load_uk_national_frame",
     "uk_household_weight_kind",
@@ -225,6 +226,33 @@ class UKStagingProvenance:
 
     source_h5: Path
     fingerprint: _UKSourceFileFingerprint
+
+
+@dataclass(frozen=True)
+class UKNationalStage:
+    """One named ``Frame -> Frame`` national transform.
+
+    The June national driver is retired, but a few stage factories still expose
+    this small callable container as their compatibility surface.
+    """
+
+    name: str
+    transform: Callable[[Frame], Frame]
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("UKNationalStage.name must be non-empty.")
+        if not callable(self.transform):
+            raise TypeError("UKNationalStage.transform must be callable.")
+
+    def run(self, frame: Frame) -> Frame:
+        result = self.transform(frame)
+        if not isinstance(result, Frame):
+            raise TypeError(
+                f"UK national stage {self.name!r} must return a microcosm Frame, "
+                f"got {type(result).__name__}."
+            )
+        return result
 
 
 def _read_uk_national_tables(

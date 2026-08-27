@@ -468,10 +468,10 @@ def test_driver_full_build_records_weight_chain_and_lineage(
     assert lineage["immediate"] is None
     assert manifest["base_dataset"]["distinct_source_households"] is None
 
-    output_h5 = output_dir / "populace_uk_2023_rowwise.h5"
+    output_h5 = output_dir / "pool_rowwise.h5"
     import h5py
 
-    from microcosm.build.uk_runtime.national_build import (
+    from microcosm.build.uk_runtime.national_frame import (
         UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
     )
 

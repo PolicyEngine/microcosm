@@ -301,7 +301,7 @@ def test_build_uk_rowwise_dataset_counts_blank_geography(monkeypatch, tmp_path):
 def test_build_uk_rowwise_dataset_infers_source_year_from_h5(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = _load_builder_module()
-    input_h5 = tmp_path / "populace_uk_2024.h5"
+    input_h5 = tmp_path / "microcosm_uk_2024.h5"
     crosswalk_path = tmp_path / "crosswalk.csv.gz"
     output_dir = tmp_path / "out"
     _write_toy_h5(input_h5, time_period="2024")
@@ -329,8 +329,8 @@ def test_build_uk_rowwise_dataset_infers_source_year_from_h5(monkeypatch, tmp_pa
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["parameters"]["source_year"] == 2024
     assert manifest["rowwise_dataset"]["time_period"] == "2024"
-    assert (output_dir / "populace_uk_2024_rowwise.h5").exists()
-    with pd.HDFStore(output_dir / "populace_uk_2024_rowwise.h5", mode="r") as store:
+    assert (output_dir / "microcosm_uk_2024_rowwise.h5").exists()
+    with pd.HDFStore(output_dir / "microcosm_uk_2024_rowwise.h5", mode="r") as store:
         household = store["household"]
     assert household["source_year"].unique().tolist() == [2024]
     assert household["source_household_key"].tolist() == [
@@ -489,6 +489,7 @@ def test_dataset_output_path_rejects_paths_and_reserved_names(
         builder._dataset_output_path(
             tmp_path,
             dataset_filename=dataset_filename,
+            input_stem="microcosm_uk_2024",
             source_year=2023,
         )
 
@@ -596,12 +597,14 @@ def test_build_uk_rowwise_dataset_rejects_overwriting_input(monkeypatch, tmp_pat
         "argv",
         [
             "build_uk_rowwise_dataset.py",
-            "--input-h5",
-            str(input_h5),
-            "--out",
-            str(tmp_path),
-        ],
-    )
+                "--input-h5",
+                str(input_h5),
+                "--out",
+                str(tmp_path),
+                "--dataset-filename",
+                input_h5.name,
+            ],
+        )
 
     with pytest.raises(ValueError, match="must differ"):
         builder.main()

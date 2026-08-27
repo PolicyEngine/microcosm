@@ -98,25 +98,11 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         "expires_on": "2027-02-20",
     },
     "owned_land": {
-        "reason": (
-            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
-            "nonzero share) whose weighted total is dominated by a handful "
-            "of large farm/estate records: the E5 stability receipt "
-            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
-            "measures a 37.7 percent national and 2.41x London swing "
-            "between adjacent seeds, the same realization-variance class "
-            "the archived incumbent data repo records at uk-data#448 (4.6x "
-            "Wales swing across releases). Register parity at this grain "
-            "is not meaningful "
-            "until the whole-spine comparison; the "
-            "one-month expiry enforces the end-of-workstream revisit "
-            "registered on microcosm#145 (winsorised donor or separate "
-            "land imputation are the candidate remedies)."
-        ),
+        "reason": "Sparse heavy-tailed WAS donor column (0.7 percent weighted nonzero share) whose weighted total is dominated by a handful of large farm/estate records: the spine-e stability receipt (data/ukds/acceptance/757-swap/owned_land_stability_receipt_spine_e.json) measures a 53.8 percent national and 96.7 percent West Midlands swing between adjacent seeds on the 25-stage candidate \u2014 the realization-variance class the archived incumbent data repo records at uk-data#448 (4.6x Wales swing across releases), reproduced from the E5 instrument's method. Register parity at this grain stays not meaningful; the one-month expiry keeps the end-of-workstream revisit registered on microcosm#145 live (winsorised donor or separate land imputation are the candidate remedies).",
         "approved_by": "juaristi22",
         "adjudication": "microcosm#714",
-        "approved_on": "2026-08-20",
-        "expires_on": "2026-09-20",
+        "approved_on": "2026-08-26",
+        "expires_on": "2026-09-26",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -148,19 +134,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "623f340ddde6f705717c3a6306522f8cf46c1c17a067f9e89df190ecc690f0fc"
+    "0b215cad96263fc8ee937facd189212b0f60639bb317ecdf6d19d7c7004689d9"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4f66eea7e593b795da93217e9ac8b3b53ca1f82375ec346b3a2ecbb558b89cb6"
+    "fe580e1f39924c40f22c9826c21df8a0d02273cf0660dccf13039d173fadee85"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "26fdbcccfaa01e9afa116339cfaa870f76fc6ed3bd5db57fec498781ff3efc64"
+    "c6b43744bdc2ac3187f503d719aea12d764a521d24382f0e0390bf7b92a2bd5f"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "16093e8605ac4bf9cf63fd66967c7b50fa80e29761443e8c6d37551e2d3b1fee"
+    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -180,6 +166,51 @@ UK_GATE_BATTERY_ENTRIES = {
         "preflight",
         None,
     ),
+    "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support": ("stage_health", "transferred", None),
+    "uk_stage_frs_hmrc_spine_leaves_signal": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_spi_support_channel_mass": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_hmrc_spi_income_spine_identity": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_incidence_clone_mass": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_band_donors_support": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_hmrc_cgt_gains_spine_summary": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_salary_sacrifice_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_age_tail_targets": ("stage_health", "transferred", None),
     "uk_release_input_coverage": (
         "release_input_coverage",
         "terminal",
@@ -203,7 +234,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
-    "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
+    "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_student_loan_plan_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1050,7 +1081,48 @@ def _gate_battery_payload(
 ) -> tuple[dict, dict[str, str]]:
     """A fully-armed, all-passing, signed schema-4 battery report."""
 
-    stage_names = ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
+    stage_names = [
+        "frs_spine",
+        "frs_employment",
+        "frs_council_tax",
+        "frs_disability",
+        "frs_education",
+        "frs_legacy_proxies",
+        "frs_education_grant_split",
+        "frs_take_up",
+        "frs_person_draws",
+        "frs_household_draws",
+        "frs_brma",
+        "was_wealth",
+        "regional_property_uprating",
+        "lcfs_consumption",
+        "etb_vat",
+        "etb_services",
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "hmrc_spi_income_spine",
+        "cgt_incidence_clone",
+        "cgt_band_donors",
+        "hmrc_cgt_gains_spine",
+        "salary_sacrifice",
+        "student_loans",
+        "age_tail",
+    ]
+    stage_health_stages = {
+        "uk_stage_was_wealth_support": "was_wealth",
+        "uk_stage_lcfs_consumption_support": "lcfs_consumption",
+        "uk_stage_etb_vat_support": "etb_vat",
+        "uk_stage_etb_services_support": "etb_services",
+        "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_spi_support_channel_mass": "spi_support_channel",
+        "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
+        "uk_stage_cgt_band_donors_support": "cgt_band_donors",
+        "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
+        "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
+        "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_age_tail_targets": "age_tail",
+    }
     gates: dict[str, dict] = {}
     for entry_id, (gate, phase, detail_name) in UK_GATE_BATTERY_ENTRIES.items():
         if entry_id == "uk_release_input_coverage_manifest_current":
@@ -1073,6 +1145,11 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif gate == "stage_health":
+            details = {
+                "stage": stage_health_stages[entry_id],
+                "check": "fixture",
+            }
         else:
             details = _terminal_gate_details(detail_name)
         gates[entry_id] = {
@@ -1107,6 +1184,8 @@ def _gate_battery_payload(
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
     }
+    for entry_id, stage in stage_health_stages.items():
+        evidence[entry_id] = _canonical_sha256({stage: {"stage": stage}})
     payload = {
         "schema_version": 4,
         "country": "uk",
@@ -1114,8 +1193,8 @@ def _gate_battery_payload(
         "release_candidate": True,
         "spec_fingerprint": UK_GATE_BATTERY_SPEC_FINGERPRINT,
         "gates_manifest_sha256": UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
-        "phases": ["preflight", "terminal"],
-        "phases_evaluated": ["preflight", "terminal"],
+        "phases": ["preflight", "assembled", "transferred", "terminal"],
+        "phases_evaluated": ["preflight", "assembled", "transferred", "terminal"],
         "blocked_at_phase": None,
         "shippable": True,
         "gates": gates,

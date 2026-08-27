@@ -31,6 +31,7 @@ from microcosm.build.uk_runtime.hmrc_replay import (
     CANONICAL_HMRC_FACT_FENCES,
     FULL_FRS_TI_BAND_FENCE_ID,
 )
+from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIER_FRS
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS,
@@ -63,6 +64,11 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 
 __all__ = [
+    "CERTIFIED_UK_CANDIDATE_FILENAME",
+    "CERTIFIED_UK_CANDIDATE_REVISION",
+    "CERTIFIED_UK_CANDIDATE_SHA256",
+    "CERTIFIED_UK_CANDIDATE_SIZE_BYTES",
+    "CERTIFIED_UK_CANDIDATE_TIER",
     "HMRC_DISTRIBUTIONAL_INPUTS",
     "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
     "assert_uk_hmrc_income_source_contract_current",
@@ -75,6 +81,13 @@ HMRC_DISTRIBUTIONAL_INPUTS = (
     "gift_aid",
     "charitable_investment_gifts",
 )
+CERTIFIED_UK_CANDIDATE_FILENAME = "populace_uk_2023.h5"
+CERTIFIED_UK_CANDIDATE_REVISION = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+CERTIFIED_UK_CANDIDATE_TIER = UK_RELEASE_TIER_FRS
+CERTIFIED_UK_CANDIDATE_SHA256 = (
+    "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
+)
+CERTIFIED_UK_CANDIDATE_SIZE_BYTES = 1_315_880_118
 _STAGE2_SOURCE_FAITHFUL_INCOME_PREDICTORS = (
     "employment_income",
     "self_employment_income",
@@ -131,40 +144,36 @@ def assert_uk_hmrc_income_source_contract_current(
     _expect(failures, "stage.stage", stage.get("stage"), "hmrc_spi_income")
     _expect(failures, "stage.grain", stage.get("grain"), "person")
 
-    # Imported lazily to keep the candidate identity constants in their runtime
-    # owner without introducing an import cycle at module import time.
-    from microcosm.build.uk_runtime import hmrc_restoration
-
     base = _mapping(stage.get("base_candidate"), "base_candidate", failures)
     _expect(
         failures,
         "base_candidate.filename",
         base.get("filename"),
-        hmrc_restoration.CERTIFIED_UK_CANDIDATE_FILENAME,
+        CERTIFIED_UK_CANDIDATE_FILENAME,
     )
     _expect(
         failures,
         "base_candidate.tier",
         base.get("tier"),
-        hmrc_restoration.CERTIFIED_UK_CANDIDATE_TIER,
+        CERTIFIED_UK_CANDIDATE_TIER,
     )
     _expect(
         failures,
         "base_candidate.revision",
         base.get("revision"),
-        hmrc_restoration.CERTIFIED_UK_CANDIDATE_REVISION,
+        CERTIFIED_UK_CANDIDATE_REVISION,
     )
     _expect(
         failures,
         "base_candidate.sha256",
         base.get("sha256"),
-        hmrc_restoration.CERTIFIED_UK_CANDIDATE_SHA256,
+        CERTIFIED_UK_CANDIDATE_SHA256,
     )
     _expect(
         failures,
         "base_candidate.size_bytes",
         base.get("size_bytes"),
-        hmrc_restoration.CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
+        CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
     )
     _expect(
         failures,

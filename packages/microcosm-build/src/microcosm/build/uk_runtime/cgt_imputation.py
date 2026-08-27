@@ -56,7 +56,7 @@ says nothing about losses, so the stage neither redraws nor zeroes them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -70,8 +70,8 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRCCapitalGainsJointDistribution,
     materialize_hmrc_capital_gains_joint_distribution,
 )
-from microcosm.build.uk_runtime.national_build import UKNationalStage
 from microcosm.build.uk_runtime.national_frame import (
+    UKNationalStage,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -441,6 +441,15 @@ class UKCGTImputationSummary:
     published_taxpayer_mass: float
     remainder_mass: float
 
+    def evidence(self) -> dict[str, object]:
+        return {
+            "stage": UK_CGT_IMPUTATION_STAGE_NAME,
+            "rows": self.rows.to_dict(orient="records"),
+            "taxpayer_mass": self.taxpayer_mass,
+            "published_taxpayer_mass": self.published_taxpayer_mass,
+            "remainder_mass": self.remainder_mass,
+        }
+
 
 def impute_uk_capital_gains(
     frame: Frame,
@@ -668,10 +677,45 @@ def uk_cgt_spine_stage_transform(
     """
 
     _assert_cgt_spine_stage_parameters(stage)
-    return uk_capital_gains_imputation_stage(
-        ods_path,
-        mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
-    ).transform
+    return UKCGTSpineStageTransform(stage=stage, ods_path=Path(ods_path))
+
+
+@dataclass(frozen=True)
+class UKCGTSpineStageTransform:
+    """Source-plan CGT amounts redraw with a stage-time summary receipt."""
+
+    stage: SourceStageSpec
+    ods_path: Path
+    last_result: UKCGTImputationSummary | None = field(default=None, init=False)
+
+    def __call__(self, frame: Frame) -> Frame:
+        _assert_cgt_spine_stage_parameters(self.stage)
+        distribution = materialize_hmrc_capital_gains_joint_distribution(
+            self.ods_path,
+            tax_year=HMRC_CGT_SOURCE_VINTAGE,
+        )
+        parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+        result = impute_uk_capital_gains(
+            frame,
+            distribution,
+            parameters,
+            seed=UK_CGT_IMPUTATION_SEED,
+            mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+        )
+        summary = summarize_uk_cgt_imputation(frame, result, distribution, parameters)
+        object.__setattr__(self, "last_result", summary)
+        return result
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_result is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        evidence = self.last_result.evidence()
+        # The shared summary stamps the certified family's stage name; this
+        # receipt belongs to the spine stage that produced it (the E8
+        # distinct-receipts-per-family rule), and the stage-health gate
+        # rightly refuses a receipt claiming another stage.
+        evidence["stage"] = self.stage.stage
+        return {"evidence": evidence}
 
 
 def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from decimal import ROUND_HALF_UP, Decimal
 from importlib.resources import files
 from pathlib import Path
 
@@ -67,6 +68,26 @@ def _github_anchors(path: Path) -> set[str]:
         text = re.sub(r"[^\w\s-]", "", matched.group(1).lower())
         anchors.add(re.sub(r"\s", "-", text))
     return anchors
+
+
+_DECIMAL = r"(?P<value>\d+\.\d{4,})"
+
+
+def _incumbent_share_quotes(text: str, column: str) -> list[str]:
+    """Incumbent share figures quoted beside a scoped column name."""
+
+    column_pattern = re.escape(column)
+    patterns = [
+        rf"{column_pattern}[^;]*?incumbent(?:'s)?(?:\s+\w+)?\s+{_DECIMAL}",
+        rf"{column_pattern}[^;]*?donor\s+\d+\.\d{{4,}}\s+against\s+{_DECIMAL}\s+and",
+        rf"{column_pattern}[^;]*?incumbent\s+carries[^;]*?share\s+of\s+{_DECIMAL}",
+        rf"{column_pattern}[\s\S]{{0,220}}?Unweighted\s+share\s+{_DECIMAL}\s+for\s+the\s+incumbent",
+    ]
+    quotes: list[str] = []
+    for pattern in patterns:
+        for matched in re.finditer(pattern, text):
+            quotes.append(matched.group("value"))
+    return quotes
 
 
 class TestCommittedRegister:
@@ -171,6 +192,71 @@ class TestCommittedRegister:
         )
         for entry in payload["differences"]:
             assert "expires_on" not in entry
+
+    def test_committed_quantitative_blocks_match_the_reference(self) -> None:
+        reference = json.loads(
+            files("microcosm.build.uk")
+            .joinpath("efrs_parity_reference.json")
+            .read_text(encoding="utf-8")
+        )
+        for difference in load_uk_spine_swap_signed_differences().differences:
+            assert difference.quantitative is not None, (
+                f"{difference.id} has no quantitative block; the verifier "
+                "would have no bound to check against."
+            )
+            if (
+                difference.surface == "nonzero_shares"
+                and difference.expectation == "column_differs"
+            ):
+                shares = difference.quantitative["shares"]
+                assert set(shares) == set(difference.columns)
+                for column in difference.columns:
+                    measured = shares[column]
+                    incumbent = reference["nonzero_shares"][column]
+                    assert measured["incumbent_share"] == incumbent
+                    assert measured["direction"] in {
+                        "candidate_above",
+                        "candidate_below",
+                    }
+                    assert measured["max_abs_delta"] > 0.0
+            elif difference.surface == "entity_counts":
+                assert difference.quantitative["expected_deltas"] == {
+                    "benunit": -12,
+                    "person": 32,
+                }
+
+    def test_committed_incumbent_share_quotes_match_the_reference(self) -> None:
+        reference = json.loads(
+            files("microcosm.build.uk")
+            .joinpath("efrs_parity_reference.json")
+            .read_text(encoding="utf-8")
+        )
+        checked: list[tuple[str, str, str]] = []
+        for difference in load_uk_spine_swap_signed_differences().differences:
+            if (
+                difference.surface != "nonzero_shares"
+                or difference.expectation != "column_differs"
+            ):
+                continue
+            for column in difference.columns:
+                for quote in _incumbent_share_quotes(
+                    difference.magnitude_evidence, column
+                ):
+                    checked.append((difference.id, column, quote))
+                    places = len(quote.rsplit(".", 1)[1])
+                    expected = Decimal(str(reference["nonzero_shares"][column]))
+                    quantized = expected.quantize(
+                        Decimal("1").scaleb(-places), rounding=ROUND_HALF_UP
+                    )
+                    assert Decimal(quote) == quantized, (
+                        f"{difference.id} quotes {column} incumbent share as "
+                        f"{quote}, but the packaged reference rounds to "
+                        f"{quantized} at {places} decimals."
+                    )
+        assert len(checked) >= 10, (
+            "The prose quote check matched too little evidence; it is likely "
+            "not enforcing the committed register."
+        )
 
 
 class TestLookup:

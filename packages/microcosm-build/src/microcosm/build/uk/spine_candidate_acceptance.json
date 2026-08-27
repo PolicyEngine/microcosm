@@ -1,0 +1,90 @@
+{
+  "artifact_kind": "uk_spine_candidate_acceptance",
+  "candidate": {
+    "entity_row_counts": {
+      "benunit": 61211,
+      "household": 52846,
+      "person": 113649
+    },
+    "name": "spine-g",
+    "sha256": "02900abeec29d52596f16c9e29b2a8991e0acd5f5118c3be28a50ca77403787b",
+    "sidecar_sha256": "d5f4dc645c130484b05d8d7ef00f3f81ffb9c3633eff305bc9e6754c52b1ec0e",
+    "stage_count": 25,
+    "stage_roster": [
+      "frs_spine",
+      "frs_employment",
+      "frs_council_tax",
+      "frs_disability",
+      "frs_education",
+      "frs_legacy_proxies",
+      "frs_education_grant_split",
+      "frs_take_up",
+      "frs_person_draws",
+      "frs_household_draws",
+      "frs_brma",
+      "was_wealth",
+      "regional_property_uprating",
+      "lcfs_consumption",
+      "etb_vat",
+      "etb_services",
+      "frs_hmrc_spine_leaves",
+      "spi_support_channel",
+      "hmrc_spi_income_spine",
+      "cgt_incidence_clone",
+      "cgt_band_donors",
+      "hmrc_cgt_gains_spine",
+      "salary_sacrifice",
+      "student_loans",
+      "age_tail"
+    ]
+  },
+  "identity_ladder": {
+    "e4": {
+      "identical_under_permutation": true,
+      "matches_stored_columns": true
+    },
+    "e5": {
+      "identical_under_permutation": true,
+      "matches_stored_columns": true
+    },
+    "e6": {
+      "identical_under_permutation": true,
+      "matches_stored_columns": true,
+      "nhs_age_basis": "stage_time_top_coded"
+    },
+    "e7": {
+      "identical_under_permutation": true,
+      "matches_stored_columns": true
+    },
+    "e8": {
+      "donor_age_basis": "stage_time_top_coded",
+      "identical_under_permutation": true,
+      "matches_stored_columns": true
+    }
+  },
+  "measured_on": "2026-08-26",
+  "schema_version": 1,
+  "spine_battery": {
+    "blocked_at_phase": null,
+    "report_sha256": "57c4a44d9627b1e47b7a94438a71bc0d96de06073931e37ff096f1f988c3c58b",
+    "statuses": {
+      "passed": 14
+    }
+  },
+  "strict_parity": {
+    "receipt_sha256": "8fff9bf6952f6985eb71b8e81d6adad8dfb862810a7c8e4c5da7d2c278d13bdd",
+    "share_band": {
+      "contract": 0.02,
+      "effective": 0.02
+    },
+    "strict_failure": false,
+    "unsigned_differences": 0,
+    "verdict": "signed_parity"
+  },
+  "twin": {
+    "name": "spine-e (and spine-d before it)",
+    "note": "Three code vintages, one payload: spine-d (pre-evidence-layer), spine-e (pre-battery), spine-g (full battery armed) are pairwise payload_identical across all tables, keys and root attrs \u2014 the twin-determinism receipt and the proof that receipts and gates never moved a byte of the artifact.",
+    "payload_identical": true,
+    "sha256": "3c8799970851c409e4cb8578d33a180acb30ae600f4bd99ca3a190f9c5eb870a"
+  }
+}

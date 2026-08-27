@@ -69,10 +69,12 @@ __all__ = [
     "uk_zero_weight_strata_gate",
 ]
 
-UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
+UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024"
 # The label names the pinned reference artifact exactly: the 2024-25 line's
 # published enhanced_frs_2024_25.h5 (no separate "recalibrated" variant
 # exists at this vintage; the June report strings keep their own label).
+# After the swap, "reference" becomes the previous certified microcosm line
+# once a second certified cut exists; that later increment flips this value.
 UK_REFERENCE_DATASET_NAME = "enhanced_frs_2024_25"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 

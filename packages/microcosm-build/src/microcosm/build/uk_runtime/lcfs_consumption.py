@@ -25,6 +25,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.support_clip import (
+    UKSupportClipReceipt,
+    UKSupportClipResult,
+    support_clip_to_donor_with_receipt,
+)
 from microcosm.build.uk_runtime.was_wealth import (
     clean_was_household_table,
     encode_qrf_predictor_pair,
@@ -172,6 +177,21 @@ UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
 UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2023_24_consumption"
 UK_LCFS_HAS_FUEL_FIT_NAME = "uk_was_2018_20_has_fuel"
+UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
+
+
+@dataclass
+class UKLCFSConsumptionResult:
+    """Transformed frame and donor-support clip receipt."""
+
+    frame: Frame
+    support_clip: UKSupportClipReceipt
+
+    def evidence(self) -> dict[str, object]:
+        return {
+            "stage": UK_LCFS_CONSUMPTION_STAGE_NAME,
+            "support_clip": self.support_clip.evidence(),
+        }
 
 
 @dataclass
@@ -191,6 +211,7 @@ class UKLCFSConsumptionStageTransform:
         init=False,
         repr=False,
     )
+    last_result: UKLCFSConsumptionResult | None = field(default=None, init=False)
 
     @property
     def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
@@ -245,7 +266,7 @@ class UKLCFSConsumptionStageTransform:
             seed=_operation_seed(self.stage, "fit_weighted_qrf_chain"),
             n_estimators=_qrf_n_estimators(self.stage),
         )
-        household_draws = support_clip_to_donor(
+        clip_result = support_clip_to_donor(
             imputation.draws,
             donor,
             exempt={
@@ -254,6 +275,7 @@ class UKLCFSConsumptionStageTransform:
                 "domestic_energy_consumption",
             },
         )
+        household_draws = clip_result.clipped
         household_draws = rake_energy_to_need(
             household_draws.join(recipient[["household_gross_income"]]),
             weights=frame.weights_for("household").values,
@@ -286,11 +308,20 @@ class UKLCFSConsumptionStageTransform:
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = (bridge_record, *imputation.fit_weight_records)
+        self.last_result = UKLCFSConsumptionResult(
+            frame=result,
+            support_clip=clip_result.receipt,
+        )
         return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_result is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_result.evidence()}
 
 
 @dataclass(frozen=True)
@@ -528,20 +559,14 @@ def support_clip_to_donor(
     donor: pd.DataFrame,
     *,
     exempt: set[str] | None = None,
-) -> pd.DataFrame:
-    clipped = draws.copy()
-    exempt = exempt or set()
-    for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
-        if column in exempt or column not in clipped or column not in donor:
-            continue
-        values = pd.to_numeric(donor[column], errors="coerce")
-        finite = values[np.isfinite(values)]
-        if finite.empty:
-            continue
-        clipped[column] = clipped[column].clip(
-            lower=float(finite.min()), upper=float(finite.max())
-        )
-    return clipped
+) -> UKSupportClipResult:
+    return support_clip_to_donor_with_receipt(
+        draws,
+        donor,
+        columns=UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+        stage=UK_LCFS_CONSUMPTION_STAGE_NAME,
+        exempt=exempt,
+    )
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
