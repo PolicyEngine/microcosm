@@ -5,7 +5,8 @@
 In progress on 2026-08-27. Real-pool provenance has refuted the proposed
 post-transfer amount-mapping mechanism: every fractional week is an ACS-origin
 non-native clone prediction outside the calibration's clone-0 recipient scope.
-The source codec and release-gate architecture fixes are now being designed.
+The source codec fix is implemented and focused-tested; release-gate
+architecture fixes and the broader audit are now in progress.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -39,11 +40,24 @@ build is in scope.
   PolicyEngine-US declares `weeks_unemployed` as physical `float`, so the
   generic QRF path treats it as continuous even though its reviewed source
   contract is integer-supported. The later calibration repairs clone 0 only.
+- Bound every final fractional value bit-for-bit to the late-transfer target
+  bank. Its raw QRF draw contains 711 nonintegers: 342 ACS clone 0, 360 clone 1,
+  and 9 clone 2. Post-transfer calibration changes 13,417 clone-0 rows and
+  eliminates all 342 clone-0 fractions; the 369 out-of-scope clone fractions
+  pass through unchanged.
+- Added `weeks_unemployed` to the ACS transfer's authority-bound discrete
+  numeric target registry. The existing codec now snaps every prediction to
+  actual observed ASEC donor support, and the execution-contract identity
+  receipts the policy alongside the two mortgage-year targets.
+- Added a focused ACS-transfer regression proving weeks predictions retain
+  observed integer support and the execution contract declares the target.
+- Passed the complete ACS-transfer test file (65 tests), the complete
+  post-transfer calibration receipt-contract file (47 tests), focused Ruff,
+  and `git diff --check` using the prebuilt `.venv` directly. `uv run --no-sync`
+  is unavailable because this sandbox forbids uv's read of `~/.cache/uv`.
 
 ## Next
 
-- Bind `weeks_unemployed` to observed integer donor support in the actual ACS
-  transfer codec and ensure the authority/receipt contract records that policy.
 - Modernize the weeks gate to use raw assembled channels when present, scope
   LKWEEKS reconciliation to ASEC-source rows, and scope UC consistency to the
   rows for which the source constraint is defined.

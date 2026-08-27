@@ -1388,6 +1388,48 @@ def test_discrete_year_predictions_snap_to_observed_donor_support(
     assert pd.api.types.is_integer_dtype(values.dtype)
 
 
+def test_integer_supported_weeks_predictions_snap_to_observed_donor_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor_support = {0.0, 1.0, 3.0, 8.0, 13.0}
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "weeks_unemployed": [
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                3.0,
+                3.0,
+                8.0,
+                13.0,
+            ]
+        },
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        _recipient_frame(),
+        donor,
+        target_families={
+            "person": {"weeks": ("weeks_unemployed",)},
+        },
+        seed=2,
+        n_estimators=1,
+    )
+
+    values = result.frame.table("person")["weeks_unemployed"]
+    assert set(values).issubset(donor_support)
+    assert pd.api.types.is_integer_dtype(values.dtype)
+    contract = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("weeks_unemployed",),
+    )
+    assert "weeks_unemployed" in contract["discrete_numeric_targets"]
+
+
 def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
