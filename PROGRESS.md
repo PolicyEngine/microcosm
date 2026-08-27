@@ -131,11 +131,14 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   accepting object-wrapped real numbers while still refusing strings,
   nonfinite values, nulls, and negative SSI. A focused H5-shape regression and
   all 15 join tests pass before the successful full-pool rerun.
+- Added `changelog.d/acs-release-predictor-join.fixed.md`, describing the
+  pinned release join, reviewed mappings, fail-closed lineage, dual-manifest
+  receipts, and unchanged model/gate behavior.
 
 ## Next
 
-- Add the changelog fragment, then run full shard verification and write
-  `out.md`.
+- Run repository Ruff, the CI inventory verifier, and every full pytest shard
+  in its own process; then write and commit `out.md` and the completed journal.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
