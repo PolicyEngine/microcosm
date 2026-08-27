@@ -51,6 +51,11 @@ build is in scope.
   receipts the policy alongside the two mortgage-year targets.
 - Added a focused ACS-transfer regression proving weeks predictions retain
   observed integer support and the execution contract declares the target.
+- Regenerated the checked-in US imputation authority so
+  `transfer_execution.discrete_numeric_targets` includes `weeks_unemployed`.
+  The generator's compile and byte-staleness checks pass at bundle spec SHA
+  `821d5838da3ac368170e61e017f1a72648f93e8a011aa40e33b8c2b4b14511f3`;
+  the spec-bundle and imputation-semantics suites pass.
 - Passed the complete ACS-transfer test file (65 tests), the complete
   post-transfer calibration receipt-contract file (47 tests), focused Ruff,
   and `git diff --check` using the prebuilt `.venv` directly. `uv run --no-sync`

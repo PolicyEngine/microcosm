@@ -408,6 +408,7 @@ transfer_execution:
   discrete_numeric_targets:
   - first_home_mortgage_origination_year
   - second_home_mortgage_origination_year
+  - weeks_unemployed
   predictor_bindings:
     person_required: acs_person_required
     person_optional:
