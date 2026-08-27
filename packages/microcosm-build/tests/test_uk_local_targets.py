@@ -102,7 +102,7 @@ def test_metric_names_can_come_from_ledger_target_profile() -> None:
                 ["constituency", "local_authority"],
             ),
             _profile_target(
-                "dwp.uc.households.3plus_children",
+                "dwp.uc.households_by_area_children_3plus",
                 "uc_hh_3plus_children",
                 ["constituency"],
             ),
@@ -136,7 +136,7 @@ def test_compute_household_metrics_can_use_ledger_profile_subset() -> None:
             ),
             _profile_target("ons.age.0_10", "age/0_10", ["constituency"]),
             _profile_target(
-                "dwp.uc.households",
+                "dwp.uc.households_by_area",
                 "uc_households",
                 ["constituency"],
             ),

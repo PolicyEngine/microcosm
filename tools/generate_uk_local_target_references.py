@@ -18,13 +18,14 @@ from microcosm.build.target_reference_authoring import (
 
 DESCRIPTION = (
     "UK local-area Ledger target references for constituency and local-authority "
-    "calibration. Rows are generated from uk_local_geography_targets.json and "
+    "calibration. Rows are generated from the local rows in uk_population_targets.json and "
     "local_area_crosswalk.json: name is target_id@geography_id, ledger_selector "
     "is the contract selector plus geography_level/geography_id pins, entity "
     "and measure come from the policyengine binding, and observed values stay "
     "in Ledger facts. Deferred area absences are recorded in the membership "
     "report."
 )
+LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
 
 POLICYENGINE_BINDING_KEYS = frozenset(
     {
@@ -40,7 +41,10 @@ POLICYENGINE_BINDING_KEYS = frozenset(
 
 def main() -> None:
     args = _parser().parse_args()
-    contract = json.loads(args.contract.read_text(encoding="utf-8"))
+    contract = _filter_contract_by_geography_levels(
+        json.loads(args.contract.read_text(encoding="utf-8")),
+        allowed_levels=LOCAL_GEOGRAPHY_LEVELS,
+    )
     crosswalk = json.loads(args.crosswalk.read_text(encoding="utf-8"))
     config = AreaTargetReferenceAuthoringConfig(
         target_period=args.period,
@@ -82,6 +86,20 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _filter_contract_by_geography_levels(
+    contract: Mapping[str, Any],
+    *,
+    allowed_levels: frozenset[str],
+) -> dict[str, Any]:
+    filtered = dict(contract)
+    filtered["targets"] = [
+        target
+        for target in contract.get("targets", ())
+        if set(target.get("geography_levels") or ()) & allowed_levels
+    ]
+    return filtered
+
+
 def _areas_by_geography_level(
     crosswalk: Mapping[str, Any],
 ) -> dict[str, tuple[str, ...]]:
@@ -119,7 +137,7 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
             "hmrc.employment_income.amount",
         }:
             operations[target_id] = "count_x_mean"
-        if target_id == "dwp.universal_credit.households.3plus_children":
+        if target_id == "dwp.uc.households_by_area_children_3plus":
             operations[target_id] = "sum"
         if target_id in {
             "ons.tenure.private_rent",
@@ -183,24 +201,24 @@ def _area_signed_deferrals(
             )
 
     add(
-        target_id="dwp.universal_credit.households",
+        target_id="dwp.uc.households_by_area",
         geography_level="constituency",
         reason_id="uc_gb_only_ni_absent",
         rationale="DWP Stat-Xplore Universal Credit local-area facts in the pinned feed cover Great Britain only: 632/650 PCON24 constituencies compile and the 18 Northern Ireland constituencies have no UC household facts.",
         area_ids=ni_constituencies,
     )
     add(
-        target_id="dwp.universal_credit.households",
+        target_id="dwp.uc.households_by_area",
         geography_level="local_authority",
         reason_id="uc_gb_only_ni_absent",
         rationale="DWP Stat-Xplore Universal Credit local-authority facts in the pinned feed cover Great Britain only: 350/361 local authorities compile and the 11 Northern Ireland local authorities have no UC household facts.",
         area_ids=ni_local_authorities,
     )
     for target_id in (
-        "dwp.universal_credit.households.0_children",
-        "dwp.universal_credit.households.1_child",
-        "dwp.universal_credit.households.2_children",
-        "dwp.universal_credit.households.3plus_children",
+        "dwp.uc.households_by_area_children_0",
+        "dwp.uc.households_by_area_children_1",
+        "dwp.uc.households_by_area_children_2",
+        "dwp.uc.households_by_area_children_3plus",
     ):
         add(
             target_id=target_id,

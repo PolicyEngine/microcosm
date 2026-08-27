@@ -315,8 +315,13 @@ def _policyengine_uk_module() -> Any:
 def _uk_contract_targets() -> dict[str, Any]:
     payload = (
         importlib_resources.files("microcosm.build.uk")
-        .joinpath("uk_national_targets.json")
+        .joinpath("uk_population_targets.json")
         .read_text(encoding="utf-8")
     )
     contract = json.loads(payload)
-    return {target["target_id"]: target for target in contract["targets"]}
+    national_geography_levels = {"country", "region"}
+    return {
+        target["target_id"]: target
+        for target in contract["targets"]
+        if set(target.get("geography_levels") or ()) <= national_geography_levels
+    }

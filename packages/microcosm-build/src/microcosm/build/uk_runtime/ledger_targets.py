@@ -36,6 +36,8 @@ class UKLedgerTargetCompilation:
 
 
 LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE = "local_registry_parity_fixture_2025.json"
+UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
+UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 
 
 def align_uk_local_registry_parity_fixture(
@@ -484,11 +486,16 @@ class UKFrameTargetAdapter:
 def _uk_contract_targets() -> dict[str, Mapping[str, Any]]:
     payload = (
         importlib_resources.files("microcosm.build.uk")
-        .joinpath("uk_national_targets.json")
+        .joinpath(UK_POPULATION_TARGETS_RESOURCE)
         .read_text()
     )
     contract = json.loads(payload)
-    return {target["target_id"]: target for target in contract["targets"]}
+    return {
+        target["target_id"]: target
+        for target in contract["targets"]
+        if set(target.get("geography_levels") or ())
+        <= UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS
+    }
 
 
 def _uk_parameter_gated_threshold(

@@ -277,7 +277,7 @@ def _load_crosswalk() -> dict:
 def _local_metric_by_target_id() -> dict[str, str]:
     contract = json.loads(
         importlib_resources.files(UK_PACKAGE)
-        .joinpath("uk_local_geography_targets.json")
+        .joinpath("uk_population_targets.json")
         .read_text()
     )
     mapping: dict[str, str] = {}
