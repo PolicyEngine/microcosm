@@ -1,3 +1,30 @@
+# Pregnancy / prior-year defect lane (issues #798 and #799)
+
+## State
+
+In progress on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
+`stacked-release-gate-alignment` at `606cbd69`. This headless lane is fixing the
+nonfemale-pregnancy producer defect and diagnosing the prior-year-availability
+shortfall against the supplied 25% pool. It will not change bands, thresholds,
+seeds, batteries, or publish/build pool artifacts.
+
+## Done
+
+- Read `CLAUDE.md` and the GitNexus debugging workflow.
+- Confirmed the assigned branch starts clean at `606cbd69`.
+- Recorded the required source fix, structural refusal guard and receipt,
+  checkpoint-identity review, focused regressions, real-pool decompositions,
+  changelog, repository Ruff, and independent full-shard pytest boundary.
+- Recorded Task 2 as diagnosis-only unless the evidence proves an unambiguous
+  transfer defect.
+
+## Next
+
+- Query the local code graph and trace the pregnancy producer/transfer path.
+- Inspect all affected real-pool rows by channel, clone, sex, and age.
+- Decompose prior-year availability by physical channel and clone, then compare
+  physical ASEC alone with the assembled population and intended ACS behavior.
+
 # Weeksgate: stacked release gates and integer-week provenance
 
 ## State
