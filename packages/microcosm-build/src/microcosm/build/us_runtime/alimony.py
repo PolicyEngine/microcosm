@@ -24,7 +24,7 @@ from microcosm.build.source_manifest import SourceStageSpec, load_source_manifes
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     has_support_role_metadata,
-    support_role_series,
+    support_source_channel_series,
 )
 from microcosm.frame import Frame
 
@@ -293,7 +293,7 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
         source_mask = np.ones(len(person), dtype=bool)
         if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                support_role_series(person, entity="person")
+                support_source_channel_series(person, entity="person")
                 .eq(BASE_ASEC_SUPPORT_CHANNEL)
                 .to_numpy()
             )
