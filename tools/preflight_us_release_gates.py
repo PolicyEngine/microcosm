@@ -17,7 +17,10 @@ Example (read-only against the artifacts)::
         --selection-source-manifest inputs/buildm_keogh_swap_selection_source.json \
         --export-input-mass-reference-h5 forensics/populace_us_2024.h5
 
-Exit code: 1 on any FAIL, 2 on AT-RISK only, 0 clean.
+Exit code: 1 on any static-check FAIL, 2 on static AT-RISK only, 0 clean. A
+carried red base-pool battery is human-review evidence and does not by itself
+change that exit code. When ``--release-manifest`` is supplied, its base-pool
+receipt must exactly match the pool authenticated by this preflight.
 """
 
 from __future__ import annotations
@@ -34,9 +37,190 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parents[1] / "packages" / "microcosm-build" / "src")
 )
 
+from microcosm.build.us_runtime.h5_io import (  # noqa: E402
+    US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+)
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: E402
     run_preflight,
 )
+
+_ALLOW_GATE_FAILED_BASE_POOL_FLAG = "--allow-gate-failed-base-pool"
+_CARRIED_BATTERY_PAYLOAD_KEY = "carried_base_pool_agreement_battery"
+
+
+def _json_object(value: object, *, label: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object.")
+    return value
+
+
+def _load_release_base_pool_receipt(path: Path) -> dict[str, object] | None:
+    """Read one optional base-pool receipt from a built release manifest."""
+
+    release_manifest = _json_object(
+        json.loads(path.read_text()),
+        label=f"release manifest {path}",
+    )
+    build = release_manifest.get("build")
+    if not isinstance(build, dict):
+        raise ValueError(f"Release manifest {path} has no build object.")
+    if "base_pool" not in build:
+        return None
+    base_pool = build.get("base_pool")
+    if not isinstance(base_pool, dict):
+        raise ValueError(
+            f"Release manifest {path} build.base_pool must be a JSON object."
+        )
+    return base_pool
+
+
+def _carried_base_pool_battery(
+    base_pool: dict[str, object] | None,
+    *,
+    path: Path,
+) -> dict[str, object] | None:
+    """Validate the non-blocking red verdict carried by one pool receipt."""
+
+    if base_pool is None:
+        return None
+    agreement_gate_reference = base_pool.get("agreement_gate_reference")
+    carries_gate_failed_override = (
+        base_pool.get("allow_gate_failed_base_pool") is True
+        or base_pool.get("status") == "gate_failed"
+        or (
+            isinstance(agreement_gate_reference, dict)
+            and agreement_gate_reference.get("battery_status") == "red"
+        )
+    )
+    if not carries_gate_failed_override:
+        return None
+    if (
+        base_pool.get("artifact_kind") != US_MULTISPINE_POOL_H5_ARTIFACT_KIND
+        or base_pool.get("status") != "gate_failed"
+        or base_pool.get("simulation_ready") is not False
+        or base_pool.get("allow_gate_failed_base_pool") is not True
+    ):
+        raise ValueError(
+            f"Release manifest {path} has an incoherent gate-failed base-pool "
+            "carriage receipt."
+        )
+    gate_reference = _json_object(
+        agreement_gate_reference,
+        label=(
+            f"release manifest {path} build.base_pool.agreement_gate_reference"
+        ),
+    )
+    failures = gate_reference.get("failures")
+    failure_count = gate_reference.get("failure_count")
+    gates_json_sha256 = gate_reference.get("gates_json_sha256")
+    verdict = gate_reference.get("verdict")
+    if (
+        gate_reference.get("passed") is not False
+        or gate_reference.get("battery_status") != "red"
+        or not isinstance(failures, list)
+        or not all(
+            isinstance(failure, dict)
+            and isinstance(failure.get("gate"), str)
+            and bool(failure.get("gate"))
+            and isinstance(failure.get("message"), str)
+            for failure in failures
+        )
+        or type(failure_count) is not int
+        or failure_count != len(failures)
+        or not isinstance(gates_json_sha256, str)
+        or len(gates_json_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in gates_json_sha256
+        )
+        or not isinstance(verdict, dict)
+        or verdict.get("passed") is not False
+    ):
+        raise ValueError(
+            f"Release manifest {path} has an incomplete or inconsistent "
+            "carried red agreement-battery verdict."
+        )
+    verdict_gates = verdict.get("gates")
+    if not isinstance(verdict_gates, dict):
+        raise ValueError(
+            f"Release manifest {path} has no full carried gate verdict."
+        )
+    verdict_failures: list[dict[str, str]] = []
+    for gate_name, gate_payload in verdict_gates.items():
+        if not isinstance(gate_name, str) or not isinstance(gate_payload, dict):
+            raise ValueError(
+                f"Release manifest {path} has a malformed carried gate verdict."
+            )
+        gate_failures = gate_payload.get("failures")
+        gate_passed = gate_payload.get("passed")
+        if type(gate_passed) is not bool or not isinstance(
+            gate_failures, list
+        ) or not all(
+            isinstance(failure, str) for failure in gate_failures
+        ):
+            raise ValueError(
+                f"Release manifest {path} has a malformed carried failure list."
+            )
+        if gate_passed is bool(gate_failures):
+            raise ValueError(
+                f"Release manifest {path} has an incoherent nested gate verdict."
+            )
+        verdict_failures.extend(
+            {"gate": gate_name, "message": failure} for failure in gate_failures
+        )
+    if not verdict_failures or verdict_failures != failures:
+        raise ValueError(
+            f"Release manifest {path} failure summary does not match its full "
+            "carried gate verdict."
+        )
+    return {
+        "battery_status": "red",
+        "pool_status": "gate_failed",
+        "simulation_ready": False,
+        "allow_gate_failed_base_pool": True,
+        "flag": _ALLOW_GATE_FAILED_BASE_POOL_FLAG,
+        "gates_json_sha256": gates_json_sha256,
+        "failure_count": failure_count,
+        "failures": [dict(failure) for failure in failures],
+        "agreement_gate_reference": dict(gate_reference),
+        "publication_decision": "human_review_required",
+        "affects_exit_code": False,
+    }
+
+
+def _require_matching_release_base_pool(
+    authenticated: dict[str, object] | None,
+    carried: dict[str, object] | None,
+    *,
+    path: Path,
+) -> None:
+    """Bind a release manifest to the exact pool preflight authenticated."""
+
+    if authenticated != carried:
+        raise ValueError(
+            f"Release manifest {path} build.base_pool does not exactly match "
+            "the base-pool receipt authenticated by this preflight."
+        )
+
+
+def _carried_battery_banner(carried: dict[str, object]) -> str:
+    count = int(carried["failure_count"])
+    noun = "FAILURE" if count == 1 else "FAILURES"
+    lines = [
+        "=" * 72,
+        f"CARRIED BASE-POOL AGREEMENT BATTERY: RED — {count} {noun}",
+        "Pool status: gate_failed; simulation_ready: false",
+        f"Build opt-in used: {carried['flag']}",
+        f"Pool gates JSON SHA-256: {carried['gates_json_sha256']}",
+        "Publication decision: HUMAN REVIEW REQUIRED",
+        "This carried verdict does not alter the preflight exit code.",
+    ]
+    lines.extend(
+        f"  FAILURE [{failure['gate']}]: {failure['message']}"
+        for failure in carried["failures"]
+    )
+    lines.append("=" * 72)
+    return "\n".join(lines)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,10 +238,29 @@ def _parser() -> argparse.ArgumentParser:
         help="Base pool H5 (read-only).",
     )
     parser.add_argument(
+        "--allow-gate-failed-base-pool",
+        action="store_true",
+        help=(
+            "Allow an authenticated current stacked --base-h5 pool whose "
+            "terminal battery is red. The verdict is displayed prominently "
+            "but does not itself determine the preflight exit code."
+        ),
+    )
+    parser.add_argument(
         "--selection-source-manifest",
         required=True,
         type=Path,
         help="Frozen selection-source manifest JSON.",
+    )
+    parser.add_argument(
+        "--release-manifest",
+        type=Path,
+        help=(
+            "Optional built release_manifest.json. A carried gate-failed "
+            "base-pool battery is displayed as prominent, non-blocking "
+            "evidence for the human publication decision after its receipt "
+            "is matched to the authenticated --base-h5 pool."
+        ),
     )
     parser.add_argument(
         "--export-input-mass-reference-h5",
@@ -119,6 +322,20 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    release_base_pool = (
+        _load_release_base_pool_receipt(args.release_manifest)
+        if args.release_manifest is not None
+        else None
+    )
+    carried = (
+        _carried_base_pool_battery(
+            release_base_pool,
+            path=args.release_manifest,
+        )
+        if args.release_manifest is not None
+        else None
+    )
+
     try:
         target_period: int | str = int(args.target_period)
     except (TypeError, ValueError):
@@ -133,18 +350,34 @@ def main(argv: list[str] | None = None) -> int:
         target_period=target_period,
         relative_tolerance=args.relative_tolerance,
         minimum_reference_total=args.minimum_reference_total,
+        allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
     )
-
+    if args.release_manifest is not None:
+        _require_matching_release_base_pool(
+            report.base_pool,
+            release_base_pool,
+            path=args.release_manifest,
+        )
+    if carried is not None:
+        print(_carried_battery_banner(carried))
     print(report.human_table())
     payload = report.to_dict()
+    exit_code = report.exit_code
+    if carried is not None:
+        payload[_CARRIED_BATTERY_PAYLOAD_KEY] = carried
     if args.json_out is not None:
         args.json_out.write_text(json.dumps(payload, indent=2, sort_keys=False))
         print(f"\nWrote machine-readable report to {args.json_out}")
     else:
         print("\n--- machine-readable report ---")
         print(json.dumps(payload, indent=2, sort_keys=False))
+    if carried is not None:
+        print(
+            "\nCARRIED RED BATTERY: HUMAN REVIEW REQUIRED; "
+            f"automated preflight exit remains {exit_code}."
+        )
 
-    return report.exit_code
+    return exit_code
 
 
 if __name__ == "__main__":

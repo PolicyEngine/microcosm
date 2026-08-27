@@ -228,7 +228,11 @@ from microcosm.build.us_runtime.fiscal_targets import (
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
+    identify_us_multispine_pool_manifest,
+    load_authenticated_us_multispine_pool_for_release,
     load_simulation_ready_us_multispine_pool,
+    require_authenticated_us_multispine_pool_h5,
+    us_multispine_pool_release_receipt,
 )
 from microcosm.build.us_runtime.input_mass import us_input_mass_totals
 from microcosm.build.us_runtime.l0_refit_export import (
@@ -846,6 +850,18 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Simulation-ready build_us_multispine_pool.py manifest. The "
             "manifest, rather than a bare H5, is the readiness authority. "
             "Mutually exclusive with --base-h5."
+        ),
+    )
+    parser.add_argument(
+        "--allow-gate-failed-base-pool",
+        action="store_true",
+        help=(
+            "Explicitly allow --base-h5 to consume an authenticated current "
+            "stacked pool with status=gate_failed and simulation_ready=false. "
+            "The red agreement-gate verdict is carried into the release "
+            "manifest for a separate human publication decision. Without "
+            "this flag an identified pool H5 remains fail-closed. The exact-k "
+            "--pool-manifest arm is always simulation-ready-only."
         ),
     )
     parser.add_argument(
@@ -1537,6 +1553,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
         parser.error("--evidence-failure-owners requires --evidence-release.")
+    if args.allow_gate_failed_base_pool and args.base_h5 is None:
+        parser.error("--allow-gate-failed-base-pool requires --base-h5.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
             "--evidence-release is incompatible with --exact-k: ladder "
@@ -1673,6 +1691,41 @@ def _legacy_base_h5_sha256(path: Path) -> str:
     """Hash only the non-pool base path selected by main's legacy branch."""
 
     return _sha256(path)
+
+
+def _load_base_pool_if_identified(
+    path: Path,
+    *,
+    allow_gate_failed_base_pool: bool,
+) -> tuple[Frame | None, dict[str, object] | None, AuthenticatedPoolH5 | None]:
+    """Authenticate a pool supplied through legacy ``--base-h5`` if present."""
+
+    manifest_path = identify_us_multispine_pool_manifest(path)
+    if manifest_path is None:
+        if allow_gate_failed_base_pool:
+            raise ValueError(
+                "--allow-gate-failed-base-pool was set, but --base-h5 does not "
+                "identify as a US multispine pool."
+            )
+        return None, None, None
+
+    frame, manifest, authenticated_pool_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=allow_gate_failed_base_pool,
+        )
+    )
+    require_authenticated_us_multispine_pool_h5(
+        path,
+        authenticated_pool_h5,
+        consumer="US fiscal refresh release builder --base-h5",
+    )
+    receipt = us_multispine_pool_release_receipt(
+        manifest,
+        authenticated_pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed_base_pool,
+    )
+    return frame, receipt, authenticated_pool_h5
 
 
 def _copy_base_h5_for_local_audit(
@@ -7460,6 +7513,7 @@ def _build_manifests(
     calibration_key: str = "populace_us_2024_calibration",
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
+    base_pool: Mapping[str, object] | None = None,
     evidence_known_failures: Sequence[Mapping[str, str]] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
@@ -7526,6 +7580,7 @@ def _build_manifests(
             if exact_k_ladder is not None
             else {}
         ),
+        **({"base_pool": dict(base_pool)} if base_pool is not None else {}),
         "dataset": {
             "filename": dataset_filename,
             "sha256": dataset_sha,
@@ -7749,6 +7804,7 @@ def _build_manifests(
                 if exact_k_ladder is not None
                 else {}
             ),
+            **({"base_pool": dict(base_pool)} if base_pool is not None else {}),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
@@ -8532,6 +8588,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
     pool_original_household_ids: np.ndarray | None = None
     pool_original_household_weights: np.ndarray | None = None
     pool_manifest_payload: dict[str, object] | None = None
+    base_pool_receipt: dict[str, object] | None = None
     authenticated_pool_h5: AuthenticatedPoolH5 | None = None
     if args.pool_manifest is not None:
         pool_frame, pool_manifest_payload, authenticated_pool_h5 = (
@@ -8564,7 +8621,19 @@ def _main(argv: Sequence[str] | None = None) -> None:
         base_h5 = authenticated_pool_h5.path
     else:
         base_h5 = args.base_h5 or _download_base_h5()
-        base_dataset_sha256 = _legacy_base_h5_sha256(base_h5)
+        pool_frame, base_pool_receipt, authenticated_pool_h5 = (
+            _load_base_pool_if_identified(
+                base_h5,
+                allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
+            )
+        )
+        if authenticated_pool_h5 is None:
+            base_dataset_sha256 = _legacy_base_h5_sha256(base_h5)
+        else:
+            base_dataset_sha256 = authenticated_pool_h5.verified_digest(
+                consumer="builder base dataset identity"
+            )
+            base_h5 = authenticated_pool_h5.path
     digest = base_dataset_sha256[:7]
     build_timestamp = datetime.now(UTC)
     full_commit = _git_output("rev-parse", "HEAD")
@@ -8912,8 +8981,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
             "method": "preserve_validated_multispine_pool_weights",
             "applied": False,
             "reason": (
-                "Exact-k selection and HT-with-q refit retain the validated "
-                "pool artifact's original importance-weight baseline."
+                "The authenticated multispine input retains the published "
+                "pool artifact's original importance-weight baseline; "
+                "pool-owned preparation stages are not replayed."
             ),
             "initial_population": pool_population,
             "benchmark": US_BASE_PERSON_POPULATION_BENCHMARK,
@@ -11721,6 +11791,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         calibration_key=calibration_key,
         calibration_filename=calibration_filename,
         exact_k_ladder=exact_k_ladder_provenance,
+        base_pool=base_pool_receipt,
         evidence_known_failures=evidence_known_failures,
     )
     if telemetry is not None:
