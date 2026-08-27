@@ -422,11 +422,27 @@ def test_signal_gate_reconciles_physical_asec_rows_in_stacked_pool() -> None:
         & person["person_support_clone_index"].eq(1)
     )
     person.loc[asec_clone.idxmax(), "miscellaneous_income"] = 1.0
-    mismatch = us_alimony_signal_gate(  # type: ignore[arg-type]
+    transferred_clone = us_alimony_signal_gate(  # type: ignore[arg-type]
         _PersonFrame(person)
     )
+    assert transferred_clone.passed, transferred_clone.failures
+
+    asec_native = (
+        person["person_support_channel"].eq("asec")
+        & person["person_support_clone_index"].eq(0)
+    )
+    person.loc[asec_native.idxmax(), "miscellaneous_income"] = 1.0
+    mismatch = us_alimony_signal_gate(_PersonFrame(person))  # type: ignore[arg-type]
     assert not mismatch.passed
     assert any("does not conserve OI_VAL" in failure for failure in mismatch.failures)
+
+    person.loc[asec_native.idxmax(), "miscellaneous_income"] = 0.0
+    person.loc[asec_clone.idxmax(), "OI_VAL"] = np.nan
+    invalid_source = us_alimony_signal_gate(  # type: ignore[arg-type]
+        _PersonFrame(person)
+    )
+    assert not invalid_source.passed
+    assert invalid_source.details["asec_source_invalid"] == 1
 
 
 def test_signal_gate_preserves_legacy_asec_puf_source_scope() -> None:
@@ -436,6 +452,10 @@ def test_signal_gate_preserves_legacy_asec_puf_source_scope() -> None:
         "asec",
         "puf_tax_detail",
     )
+    asec = person["person_support_channel"].eq("asec")
+    person.loc[asec, ["OI_OFF", "OI_VAL"]] = person.loc[
+        asec, ["OI_OFF", "OI_VAL"]
+    ].fillna(0.0)
     puf = person["person_support_channel"].eq("puf_tax_detail")
     person.loc[puf, ["OI_OFF", "OI_VAL"]] = np.nan
 

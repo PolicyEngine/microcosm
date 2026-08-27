@@ -23,7 +23,9 @@ from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_role_series,
     support_source_channel_series,
 )
 from microcosm.frame import Frame
@@ -291,18 +293,41 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
                 details=summary,
             )
         source_mask = np.ones(len(person), dtype=bool)
+        source_reconciliation_mask = source_mask.copy()
         if has_support_role_metadata(person, entity="person"):
             source_mask = (
                 support_source_channel_series(person, entity="person")
                 .eq(BASE_ASEC_SUPPORT_CHANNEL)
                 .to_numpy()
             )
-        amounts = pd.to_numeric(person["OI_VAL"], errors="coerce").to_numpy(
+            source_reconciliation_mask = source_mask.copy()
+            if has_assembled_support_metadata(person, entity="person"):
+                source_reconciliation_mask &= (
+                    support_role_series(person, entity="person")
+                    .eq(BASE_ASEC_SUPPORT_CHANNEL)
+                    .to_numpy()
+                )
+        raw_amounts = pd.to_numeric(person["OI_VAL"], errors="coerce").to_numpy(
             dtype=np.float64
-        )[source_mask]
-        codes = pd.to_numeric(person["OI_OFF"], errors="coerce").to_numpy(
+        )
+        raw_codes = pd.to_numeric(person["OI_OFF"], errors="coerce").to_numpy(
             dtype=np.float64
-        )[source_mask]
+        )
+        source_invalid = source_mask & (
+            ~np.isfinite(raw_amounts) | ~np.isfinite(raw_codes)
+        )
+        summary["asec_source_rows"] = int(np.count_nonzero(source_mask))
+        summary["asec_source_invalid"] = int(np.count_nonzero(source_invalid))
+        summary["asec_source_reconciliation_rows"] = int(
+            np.count_nonzero(source_reconciliation_mask)
+        )
+        if bool(source_invalid.any()):
+            failures.append(
+                "ASEC OI_VAL/OI_OFF contain nonfinite source values on "
+                f"{int(np.count_nonzero(source_invalid))} row(s)."
+            )
+        amounts = raw_amounts[source_reconciliation_mask]
+        codes = raw_codes[source_reconciliation_mask]
         if bool(np.isfinite(amounts).all() and np.isfinite(codes).all()):
             integer_codes = codes.astype(np.int64)
             expected_alimony = np.where(
@@ -321,13 +346,16 @@ def us_alimony_signal_gate(frame: Frame) -> GateResult:
                 amounts,
             )
             actual_alimony = pd.to_numeric(
-                person.loc[source_mask, "alimony_income"], errors="coerce"
+                person.loc[source_reconciliation_mask, "alimony_income"],
+                errors="coerce",
             ).to_numpy(dtype=np.float64)
             actual_strike_benefits = pd.to_numeric(
-                person.loc[source_mask, "strike_benefits"], errors="coerce"
+                person.loc[source_reconciliation_mask, "strike_benefits"],
+                errors="coerce",
             ).to_numpy(dtype=np.float64)
             actual_miscellaneous = pd.to_numeric(
-                person.loc[source_mask, "miscellaneous_income"], errors="coerce"
+                person.loc[source_reconciliation_mask, "miscellaneous_income"],
+                errors="coerce",
             ).to_numpy(dtype=np.float64)
             alimony_mismatch = ~np.isclose(actual_alimony, expected_alimony)
             strike_benefits_mismatch = ~np.isclose(
