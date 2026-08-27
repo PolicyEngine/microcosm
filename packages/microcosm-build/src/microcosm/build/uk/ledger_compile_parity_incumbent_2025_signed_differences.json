@@ -1,11 +1,11 @@
 {
- "compiled_count": 388,
+ "compiled_count": 408,
  "counts_by_kind": {
-  "calibration_drift": 163,
-  "fixture_only": 287,
+  "calibration_drift": 170,
+  "fixture_only": 267,
   "ledger_only": 38
  },
- "difference_count": 488,
+ "difference_count": 475,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1222,146 +1222,6 @@
    "fixture_value": 302000.0,
    "kind": "fixture_only",
    "name": "ons/yorkshire_and_the_humber_age_80_89",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 498707.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_a",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 583705.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_b",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 426388.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_c",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 369621.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_d",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 366881.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_e",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 221282.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_f",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 142084.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_g",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 14481.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.band_h",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 2623149.0,
-   "kind": "fixture_only",
-   "name": "scotgov.council_tax_stock.total",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 471000000.0,
-   "kind": "fixture_only",
-   "name": "scotgov.scottish_child_payment_spending",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 3985000.0,
-   "kind": "fixture_only",
-   "name": "slc.borrowers.plan_2_above_threshold",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 8940000.0,
-   "kind": "fixture_only",
-   "name": "slc.borrowers.plan_2_liable",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 0.0,
-   "kind": "fixture_only",
-   "name": "slc.borrowers.plan_5_above_threshold",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 10000.0,
-   "kind": "fixture_only",
-   "name": "slc.borrowers.plan_5_liable",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 18611.0,
-   "kind": "fixture_only",
-   "name": "slc.support.adult_dependants_grant_recipients",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 55364917.0,
-   "kind": "fixture_only",
-   "name": "slc.support.adult_dependants_grant_spend",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 1159761.0,
-   "kind": "fixture_only",
-   "name": "slc.support.maintenance_loan_recipients",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 8591659718.0,
-   "kind": "fixture_only",
-   "name": "slc.support.maintenance_loan_spend",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 99645.0,
-   "kind": "fixture_only",
-   "name": "slc.support.parents_learning_allowance_recipients",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 181421659.0,
-   "kind": "fixture_only",
-   "name": "slc.support.parents_learning_allowance_spend",
    "period": 2025,
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
@@ -3571,6 +3431,38 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
+   "fixture_value": 3985000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 4460000.0,
+   "name": "slc.borrowers.plan_2_above_threshold",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 8940000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 9710000.0,
+   "name": "slc.borrowers.plan_2_liable",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 0.0,
+   "kind": "calibration_drift",
+   "ledger_value": 35000.0,
+   "name": "slc.borrowers.plan_5_above_threshold",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 10000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 230000.0,
+   "name": "slc.borrowers.plan_5_liable",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
    "fixture_value": 346409713.95,
    "kind": "calibration_drift",
    "ledger_value": 346409713.95000005,
@@ -3583,6 +3475,30 @@
    "kind": "calibration_drift",
    "ledger_value": 5018231834.949999,
    "name": "slc.repayments.england_total_higher_education",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 55364917.0,
+   "kind": "calibration_drift",
+   "ledger_value": 55364916.81,
+   "name": "slc.support.adult_dependants_grant_spend",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 8591659718.0,
+   "kind": "calibration_drift",
+   "ledger_value": 8591659718.080004,
+   "name": "slc.support.maintenance_loan_spend",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 181421659.0,
+   "kind": "calibration_drift",
+   "ledger_value": 181421659.32,
+   "name": "slc.support.parents_learning_allowance_spend",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   }

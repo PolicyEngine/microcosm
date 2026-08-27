@@ -1,8 +1,8 @@
 {
- "compiled_count": 211,
+ "compiled_count": 217,
  "counts_by_kind": {
-  "calibration_drift": 6,
-  "fixture_only": 131,
+  "calibration_drift": 12,
+  "fixture_only": 125,
   "ledger_only": 193
  },
  "difference_count": 330,
@@ -879,48 +879,6 @@
    "fixture_value": 287000.0,
    "kind": "fixture_only",
    "name": "ons/yorkshire_and_the_humber_age_80_89",
-   "period": 2023,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 20226.0,
-   "kind": "fixture_only",
-   "name": "slc.support.adult_dependants_grant_recipients",
-   "period": 2023,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 54638997.0,
-   "kind": "fixture_only",
-   "name": "slc.support.adult_dependants_grant_spend",
-   "period": 2023,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 1151607.0,
-   "kind": "fixture_only",
-   "name": "slc.support.maintenance_loan_recipients",
-   "period": 2023,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 8594103415.0,
-   "kind": "fixture_only",
-   "name": "slc.support.maintenance_loan_spend",
-   "period": 2023,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 89283.0,
-   "kind": "fixture_only",
-   "name": "slc.support.parents_learning_allowance_recipients",
-   "period": 2023,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 153266251.0,
-   "kind": "fixture_only",
-   "name": "slc.support.parents_learning_allowance_spend",
    "period": 2023,
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
@@ -2320,6 +2278,54 @@
    "kind": "calibration_drift",
    "ledger_value": 6089000.0,
    "name": "ons.public_sector_employment",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 20226.0,
+   "kind": "calibration_drift",
+   "ledger_value": 17960.0,
+   "name": "slc.support.adult_dependants_grant_recipients",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 54638997.0,
+   "kind": "calibration_drift",
+   "ledger_value": 51719575.64,
+   "name": "slc.support.adult_dependants_grant_spend",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1151607.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1154427.0,
+   "name": "slc.support.maintenance_loan_recipients",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 8594103415.0,
+   "kind": "calibration_drift",
+   "ledger_value": 8881701386.559977,
+   "name": "slc.support.maintenance_loan_spend",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 89283.0,
+   "kind": "calibration_drift",
+   "ledger_value": 95287.0,
+   "name": "slc.support.parents_learning_allowance_recipients",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 153266251.0,
+   "kind": "calibration_drift",
+   "ledger_value": 168349636.59,
+   "name": "slc.support.parents_learning_allowance_spend",
    "period": 2023,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   }
