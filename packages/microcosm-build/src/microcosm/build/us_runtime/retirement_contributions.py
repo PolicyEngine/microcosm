@@ -38,8 +38,10 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
     support_role_series,
+    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -167,6 +169,30 @@ def _numeric_source(frame: pd.DataFrame, column: str) -> np.ndarray:
     return values
 
 
+def _asec_source_mask(frame: pd.DataFrame) -> np.ndarray:
+    """Select physical ASEC rows while retaining the legacy all-row source."""
+
+    if not has_assembled_support_metadata(frame, entity="person"):
+        return np.ones(len(frame), dtype=bool)
+    source_channels = support_source_channel_series(frame, entity="person")
+    mask = source_channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    if not mask.any():
+        raise SourceRuntimeError(
+            "US retirement-contribution support has no physical ASEC source rows."
+        )
+    return mask
+
+
+def _source_reconciliation_mask(frame: pd.DataFrame) -> np.ndarray:
+    """Select direct ASEC operator rows whose allocation remains source-exact."""
+
+    source_mask = _asec_source_mask(frame)
+    if not has_assembled_support_metadata(frame, entity="person"):
+        return source_mask
+    roles = support_role_series(frame, entity="person").to_numpy()
+    return source_mask & (roles == _BASE_ASEC_SUPPORT_CHANNEL)
+
+
 def derive_us_retirement_contributions_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -197,15 +223,17 @@ def derive_us_retirement_contributions_from_manifest(
     shares = _share_parameters(operation)
 
     result = frame.copy(deep=True)
-    retirement_contributions = _numeric_source(result, "RETCB_VAL")
+    source_mask = _asec_source_mask(result)
+    source = result.loc[source_mask]
+    retirement_contributions = _numeric_source(source, "RETCB_VAL")
     negative_source = int(np.count_nonzero(retirement_contributions < 0))
     if negative_source:
         raise SourceRuntimeError(
             "US retirement-contribution source 'RETCB_VAL' contains "
             f"{negative_source} negative value(s)."
         )
-    has_wages = _numeric_source(result, "WSAL_VAL") > 0
-    has_self_employment = _numeric_source(result, "SEMP_VAL") > 0
+    has_wages = _numeric_source(source, "WSAL_VAL") > 0
+    has_self_employment = _numeric_source(source, "SEMP_VAL") > 0
     has_earned_income = has_wages | has_self_employment
 
     self_employed = np.where(
@@ -221,17 +249,24 @@ def derive_us_retirement_contributions_from_manifest(
     )
     ira_pool = np.where(has_earned_income, remaining - dc_pool, 0.0)
 
-    result["traditional_401k_contributions_desired"] = dc_pool * (
-        1.0 - shares["roth_dc_share"]
-    )
-    result["roth_401k_contributions_desired"] = dc_pool * shares["roth_dc_share"]
-    result["traditional_ira_contributions_desired"] = (
-        ira_pool * shares["traditional_ira_share"]
-    )
-    result["roth_ira_contributions_desired"] = ira_pool * (
-        1.0 - shares["traditional_ira_share"]
-    )
-    result["self_employed_pension_contributions_desired"] = self_employed
+    derived = {
+        "traditional_401k_contributions_desired": dc_pool
+        * (1.0 - shares["roth_dc_share"]),
+        "roth_401k_contributions_desired": dc_pool * shares["roth_dc_share"],
+        "traditional_ira_contributions_desired": ira_pool
+        * shares["traditional_ira_share"],
+        "roth_ira_contributions_desired": ira_pool
+        * (1.0 - shares["traditional_ira_share"]),
+        "self_employed_pension_contributions_desired": self_employed,
+    }
+    if source_mask.all():
+        for column, values in derived.items():
+            result[column] = values
+    else:
+        for column, values in derived.items():
+            if column not in result:
+                result[column] = np.nan
+            result.loc[source_mask, column] = values
     return result
 
 
@@ -569,11 +604,16 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         )
         for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS
     }
-    source = (
-        _numeric_source(person, "RETCB_VAL")
-        if "RETCB_VAL" in person
-        else np.zeros(len(person), dtype=np.float64)
-    )
+    source = np.full(len(person), np.nan, dtype=np.float64)
+    source_mask = np.zeros(len(person), dtype=bool)
+    reconciliation_mask = np.zeros(len(person), dtype=bool)
+    if "RETCB_VAL" in person:
+        source_mask = _asec_source_mask(person)
+        source[source_mask] = _numeric_source(
+            person.loc[source_mask],
+            "RETCB_VAL",
+        )
+        reconciliation_mask = _source_reconciliation_mask(person)
     combined = np.sum(np.column_stack(tuple(contributions.values())), axis=1)
 
     def _share(values: np.ndarray) -> float:
@@ -590,7 +630,7 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         column: int(np.count_nonzero(values < 0))
         for column, values in contributions.items()
     }
-    source_positive = source > 0
+    source_positive = reconciliation_mask & (source > 0)
     allocation_mismatch = source_positive & ~np.isclose(
         combined,
         source,
@@ -608,9 +648,13 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         "nonzero_share_band": list(_NONZERO_SHARE_BAND),
         "nonfinite": nonfinite,
         "negative": negative,
+        "source_rows": int(np.count_nonzero(source_mask)),
+        "source_reconciliation_rows": int(np.count_nonzero(reconciliation_mask)),
         "source_positive_rows": int(np.count_nonzero(source_positive)),
         "allocation_mismatch_rows": int(np.count_nonzero(allocation_mismatch)),
-        "source_total": float(np.sum(source * weights)),
+        "source_total": float(
+            np.sum(np.where(reconciliation_mask, source, 0.0) * weights)
+        ),
         "allocated_total": float(np.sum(np.nan_to_num(combined) * weights)),
     }
 

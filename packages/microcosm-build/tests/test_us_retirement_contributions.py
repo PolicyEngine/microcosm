@@ -14,6 +14,7 @@ from microcosm.build.us_runtime.retirement_contributions import (
     derive_us_retirement_contributions_from_manifest,
     us_retirement_contributions_signal_gate,
     us_retirement_contributions_stage_spec,
+    us_retirement_contributions_summary,
     with_us_retirement_contribution_inputs,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -87,6 +88,26 @@ def _derive(frame: pd.DataFrame) -> pd.DataFrame:
     return derive_us_retirement_contributions_from_manifest(frame, operation, None)
 
 
+def _stacked_frame() -> Frame:
+    direct = with_us_retirement_contribution_inputs(
+        _frame(),
+        seed=0,
+        time_period=2024,
+    )
+    stacked = clone_us_frame_for_puf_support(direct)
+    person = stacked.table("person")
+    source_record = np.tile(np.arange(4, dtype=np.int64), 2)
+    person["person_spine_source_id"] = source_record
+    person["person_support_channel"] = np.where(
+        source_record < 2,
+        "asec",
+        "acs",
+    )
+    acs = person["person_support_channel"].eq("acs")
+    person.loc[acs, ["RETCB_VAL", "WSAL_VAL", "SEMP_VAL"]] = np.nan
+    return stacked
+
+
 def test_stage_manifest_pins_sources_operations_and_five_desired_leaves() -> None:
     spec = us_retirement_contributions_stage_spec()
 
@@ -158,6 +179,49 @@ def test_with_inputs_materializes_signal_and_preserves_reported_total() -> None:
     allocated = person[list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)].sum(axis=1)
     np.testing.assert_allclose(allocated.iloc[:3], person["RETCB_VAL"].iloc[:3])
     assert allocated.iloc[3] == 0.0
+
+
+def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> None:
+    stacked = _stacked_frame()
+
+    gate = us_retirement_contributions_signal_gate(stacked)
+
+    assert gate.passed, gate.failures
+    assert gate.details["source_rows"] == 4
+    assert gate.details["source_reconciliation_rows"] == 2
+    assert gate.details["allocation_mismatch_rows"] == 0
+
+    person = stacked.table("person")
+    asec_puf_role = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(1)
+    person.loc[person.index[asec_puf_role][0], "RETCB_VAL"] = np.nan
+    with pytest.raises(SourceRuntimeError, match="RETCB_VAL"):
+        us_retirement_contributions_summary(stacked)
+
+
+def test_stacked_derivation_preserves_non_source_recipient_outputs() -> None:
+    person = _stacked_frame().table("person").copy()
+    acs = person["person_support_channel"].eq("acs")
+    sentinels = np.arange(
+        np.count_nonzero(acs) * len(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
+        dtype=float,
+    ).reshape(np.count_nonzero(acs), -1)
+    person.loc[acs, list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)] = sentinels
+    before = person.loc[
+        acs,
+        list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
+    ].copy()
+
+    result = _derive(person)
+
+    pd.testing.assert_frame_equal(
+        result.loc[acs, list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)],
+        before,
+    )
+    assert np.isfinite(
+        result.loc[~acs, list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS)]
+    ).all(axis=None)
 
 
 def test_puf_half_uses_qrf_predictions_and_applies_income_constraints(
