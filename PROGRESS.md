@@ -3,14 +3,14 @@
 ## State
 
 Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
-`stacked-release-gate-alignment` at `606cbd69`. The root-cause findings are
-adopted and implementation is in progress for the nonfemale-pregnancy producer
-defect and the owner-approved rung-aware prior-year availability release floor.
+`stacked-release-gate-alignment` at `606cbd69`. The root-cause findings and
+implementations are complete for the nonfemale-pregnancy producer defect and
+the owner-approved rung-aware prior-year availability release floor.
 Both fixes are implemented and their focused runtime suites are green; the
-source-attested spec/coverage repins are committed, and only the clean build-
-shard rerun and final report remain. The authored 0.05 floor, upper bound, all
-other bands, thresholds, seeds, and batteries remain unchanged. This lane will
-not build, publish, or push pool or release artifacts.
+source-attested spec/coverage repins and full repository verification are
+complete, and only the final report remains. The authored 0.05 floor, upper
+bound, all other bands, thresholds, seeds, and batteries remain unchanged. This
+lane did not build, publish, or push pool or release artifacts.
 
 ## Done
 
@@ -23,8 +23,8 @@ not build, publish, or push pool or release artifacts.
   transfer defect.
 - Rebuilt a transient local GitNexus graph offline and queried pregnancy/WIC
   execution paths. Registration alone failed because the sandbox forbids the
-  CLI's global `~/.gitnexus` registry; the usable worktree-local index remains
-  untracked and will be removed before handoff.
+  CLI's global `~/.gitnexus` registry; the usable worktree-local index was
+  removed before final verification.
 - Inspected all 1,970,973 person rows in the supplied 25% pool. There are 108
   `is_pregnant=true` nonfemale rows, all on physical ACS records: 45 clone 0,
   61 clone 1, and 2 clone 2. ASEC has zero; sex/channel/clone assembly is
@@ -95,7 +95,8 @@ not build, publish, or push pool or release artifacts.
   preceding test green; the repinned fixture and forged-policy controls pass.
 - Recomputed the source-attested identity after hardening: final resolved US
   spec SHA is `11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`;
-  no authored YAML changed. Regenerated coverage remains complete at
+  hardening required no additional authored YAML edit beyond the already-
+  generated pregnancy authority. Regenerated coverage remains complete at
   42,154/42,154 fields and 41/41 inventory checks.
 - Committed the fixture, exact-boolean, nested-manifest-type, tamper-test, and
   final US identity repair as `e59ab046`. Final-state calibrate, data, fit, and
@@ -110,11 +111,14 @@ not build, publish, or push pool or release artifacts.
   on an unrelated transfer record. Updated only that JSON-ready shape; the
   complete optional-ACS multispine test file and focused Ruff pass.
 - Committed the additive optional-ACS provenance fixture repin as `7caf69ac`.
+- Restarted the complete build shard from zero on final implementation state:
+  `6601 passed, 45 skipped` in 55m20s, exit 0. Together with the already-green
+  final-state calibrate, data, fit, and frame shard processes, repository Ruff,
+  generated authority/coverage checks, and CI test inventory, this completes
+  the charter's verification boundary.
 
 ## Next
 
-- Restart the full build shard from zero; the other four final-state shards,
-  repository Ruff, generated/coverage/inventory checks already pass.
 - Write and commit the complete handoff to `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance
