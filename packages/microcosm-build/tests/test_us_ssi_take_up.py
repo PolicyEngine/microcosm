@@ -150,6 +150,29 @@ def _frame(*, stale_output: bool = False) -> tuple[Frame, np.ndarray]:
     return frame, np.asarray(potential, dtype=np.float64)
 
 
+def _stacked_frame() -> tuple[Frame, np.ndarray]:
+    """Convert the legacy operator fixture to physical ASEC/ACS channels."""
+
+    frame, potential = _frame()
+    person = frame.table("person").copy()
+    source_number = person["person_source_id"].str.rsplit(":").str[-1].astype(int)
+    legacy_roles = person["person_support_channel"].copy()
+    person["person_spine_source_id"] = person["person_source_id"]
+    person["person_support_clone_index"] = np.where(
+        legacy_roles.eq("asec"),
+        0,
+        1,
+    )
+    person["person_support_channel"] = np.where(
+        source_number.le(6),
+        "asec",
+        "acs",
+    )
+    acs_source = person["person_support_channel"].eq("acs")
+    person.loc[acs_source, US_SSI_TAKE_UP_ANCHOR] = np.nan
+    return _replace_person(frame, person), potential
+
+
 def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["person"] = person
@@ -307,6 +330,45 @@ def test_puf_only_ssi_value_is_not_promoted_to_reporter_anchor() -> None:
         result.table("person")[_OUTPUT], baseline.table("person")[_OUTPUT]
     )
     assert diagnostics["age_bands"] == baseline_diagnostics["age_bands"]
+
+
+def test_stacked_asec_sources_own_reporters_across_operator_clones() -> None:
+    frame, potential = _stacked_frame()
+
+    reporter_source_ids = us_ssi_take_up_reporter_source_ids(frame)
+    expected = frozenset(
+        f"{band}:{source_number}"
+        for band in _AGES
+        for source_number in (0, 6)
+    )
+    assert reporter_source_ids == expected
+
+    result, diagnostics = with_us_ssi_take_up(
+        frame,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+    )
+    assert diagnostics["reporter_anchor_lost_count"] == 0
+    assert result.table("person").loc[
+        result.table("person")["person_source_id"].isin(expected), _OUTPUT
+    ].all()
+
+    person = frame.table("person").copy()
+    asec_clone = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(1)
+    person.loc[asec_clone.idxmax(), US_SSI_TAKE_UP_ANCHOR] = np.nan
+    invalid = _replace_person(frame, person)
+    with pytest.raises(ValueError, match="physical ASEC source rows"):
+        us_ssi_take_up_reporter_source_ids(invalid)
+    with pytest.raises(ValueError, match="physical ASEC source rows"):
+        with_us_ssi_take_up(
+            invalid,
+            uncapped_ssi=potential,
+            seed=17,
+            targets=_TARGETS,
+        )
 
 
 def test_reporter_lineage_survives_when_l0_keeps_only_the_puf_clone() -> None:

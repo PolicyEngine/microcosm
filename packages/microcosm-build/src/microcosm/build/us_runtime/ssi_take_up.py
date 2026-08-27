@@ -78,6 +78,7 @@ from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_clone_index_column,
     support_role_series,
+    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -530,17 +531,20 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
     if person[_SOURCE_ID].isna().any():
         raise ValueError("US SSI take-up reporter lineage requires provenance.")
     source_ids = _decoded_strings(person[_SOURCE_ID])
-    roles = support_role_series(person, entity="person")
+    source_channels = support_source_channel_series(person, entity="person")
+    asec_source = source_channels.eq(_ASEC_CHANNEL).to_numpy()
     reported = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    if source_ids.str.strip().eq("").any() or not np.isfinite(reported).all():
+    if source_ids.str.strip().eq("").any() or not np.isfinite(
+        reported[asec_source]
+    ).all():
         raise ValueError(
             "US SSI take-up reporter lineage requires nonblank identities and "
-            "finite SSI_VAL values."
+            "finite SSI_VAL values on physical ASEC source rows."
         )
     reporter_ids = frozenset(
-        source_ids[roles.eq(_ASEC_CHANNEL).to_numpy() & (reported > 0.0)]
+        source_ids[asec_source & (reported > 0.0)]
     )
     if not reporter_ids:
         raise ValueError("US SSI take-up found no direct ASEC SSI reporters.")
@@ -576,8 +580,6 @@ def _source_table(
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     if not np.isfinite(age).all() or (age < 0).any():
         raise ValueError("US SSI take-up ages must be finite and nonnegative.")
-    if not np.isfinite(reported).all():
-        raise ValueError("US SSI take-up SSI_VAL anchors must be finite.")
     if not np.isfinite(potential).all():
         raise ValueError("US SSI take-up uncapped_ssi values must be finite.")
     if not (np.isfinite(weights) & (weights >= 0)).all() or weights.sum() <= 0:
@@ -592,6 +594,7 @@ def _source_table(
 
     source_ids = _decoded_strings(person[_SOURCE_ID])
     channels = support_role_series(person, entity="person")
+    source_channels = support_source_channel_series(person, entity="person")
     if source_ids.str.strip().eq("").any():
         raise ValueError("US SSI take-up source identities must be nonblank.")
     observed_channels = set(channels.unique())
@@ -602,7 +605,13 @@ def _source_table(
             f"unsupported {sorted(observed_channels - _KNOWN_CHANNELS)}."
         )
 
-    direct_anchor = (reported > 0.0) & channels.eq(_ASEC_CHANNEL).to_numpy()
+    asec_source = source_channels.eq(_ASEC_CHANNEL).to_numpy()
+    if not np.isfinite(reported[asec_source]).all():
+        raise ValueError(
+            "US SSI take-up SSI_VAL anchors must be finite on physical ASEC "
+            "source rows."
+        )
+    direct_anchor = (reported > 0.0) & asec_source
     if reporter_source_ids is None:
         anchored_source_ids = frozenset(source_ids[direct_anchor])
     else:
@@ -627,9 +636,9 @@ def _source_table(
             "weight": weights,
             "candidate": potential > 0.0,
             # Capture lineage on the full support before L0. When pruning keeps
-            # only a PUF clone, the explicit source-ID set still preserves the
-            # underlying direct ASEC measurement without promoting PUF-only
-            # SSI_VAL copies into independent anchors.
+            # only a donor-role clone, the explicit source-ID set still
+            # preserves the underlying physical ASEC measurement without
+            # promoting non-ASEC SSI_VAL values into independent anchors.
             "anchor": source_ids.isin(anchored_source_ids).to_numpy(),
         },
         index=person.index,
