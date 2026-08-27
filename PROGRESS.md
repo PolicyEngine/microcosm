@@ -2,13 +2,15 @@
 
 ## State
 
-In progress on 2026-08-27. Implementing the owner-approved release-time join
-from stacked-pool ACS person source IDs to the sha-pinned 2024 one-year ACS
-person/household CSV zips. Scope is limited to populating the six archived
-donor models' CPS-named predictors through reviewed native-ACS crosswalks,
-strict join/receipt contracts, unchanged model selection logic, and unchanged
-gate thresholds. No network access, pool build, release build, publication,
-push, retraining, threshold change, or launcher-contract edit is in scope.
+Complete on 2026-08-27. The owner-approved release-time join from stacked-pool
+ACS source lineage to the SHA-pinned 2024 one-year ACS person/household zips is
+implemented, receipted, real-pool exercised, and fully verified. It populates
+the six archived donor models' CPS-named predictors through reviewed
+native-ACS crosswalks with strict hash, lineage, collision, totality, universe,
+and clone-fan-out contracts. Model selection logic and every gate threshold
+remain unchanged. The completed evidence and handoff are in `out.md`. No
+network access, pool build, release build, publication, push, retraining,
+threshold change, or launcher-contract edit occurred.
 
 ## Done
 
@@ -116,8 +118,9 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   The current official loader refuses that older candidate before H5 loading
   because its archived primary-QRF worker binding predates this branch's
   execution identity; this is an existing candidate/code-version mismatch.
-  Loading those already-authenticated bytes with their frozen assembly receipt
-  allowed the join boundary itself to be tested without writing an artifact.
+  Loading those independently manifest-hash-verified bytes with their frozen
+  assembly receipt allowed the join boundary itself to be tested without
+  writing an artifact.
 - The real join passed every source, raw-key, universe, SSI-attestation,
   totality, collision, and clone-fan-out check: 856,626 unique ACS source
   people matched 856,626 raw people in 382,903 households and populated
@@ -153,12 +156,17 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   focused Ruff pass. The US bundle generator `--check` passes at the new spec
   identity, and coverage `--check` passes at 42,122/42,122 fields and 41/41
   inventory checks.
+- Re-ran the complete build shard after the reviewed repin: 6,586 passed and
+  45 skipped, with exit code 0. Re-ran final repository Ruff, the 310-file CI
+  inventory verifier, both retained spec `--check` commands, and
+  `git diff --check`; all pass. Wrote the required final report to `out.md`.
 
 ## Next
 
-- Re-run the complete build shard after the reviewed source-identity repin,
-  re-run final repository Ruff, then write and commit `out.md` and the
-  completed journal.
+- No work remains in this lane. The dispatcher owns rebasing and the launcher
+  contract update. A future authorized build must produce a pool whose current
+  source-attested worker identity passes the official release loader; the
+  supplied older candidate is useful join evidence but cannot be promoted.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
