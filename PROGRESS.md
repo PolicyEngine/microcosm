@@ -2,11 +2,13 @@
 
 ## State
 
-In progress on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
-`stacked-release-gate-alignment` at `606cbd69`. This headless lane is fixing the
-nonfemale-pregnancy producer defect and diagnosing the prior-year-availability
-shortfall against the supplied 25% pool. It will not change bands, thresholds,
-seeds, batteries, or publish/build pool artifacts.
+Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
+`stacked-release-gate-alignment` at `606cbd69`. The root-cause findings are
+adopted and implementation is in progress for the nonfemale-pregnancy producer
+defect and the owner-approved rung-aware prior-year availability release floor.
+The authored 0.05 floor, upper bound, all other bands, thresholds, seeds, and
+batteries remain unchanged. This lane will not build, publish, or push pool or
+release artifacts.
 
 ## Done
 
@@ -38,6 +40,11 @@ seeds, batteries, or publish/build pool artifacts.
   match survival is 25.4117%, the expected 25% rung effect. Full pooled ASEC
   availability is 16.9147%, and selected current rows joined to intact prior
   files are 16.9541%.
+- Received the owner ruling that assembly-before-join sampling is the accepted
+  mechanism verdict. The prior-year release gate may scale only its availability
+  floor by the assembly's sampled-to-sampled match-survival factor, recorded in
+  or derived from the pool manifest. Rung 1.0 must remain byte-identical to the
+  existing gate; the authored 0.05 constant and upper bound do not change.
 
 ## Next
 
@@ -46,8 +53,11 @@ seeds, batteries, or publish/build pool artifacts.
   recording structural counts.
 - Bind the pregnancy structural policy into checkpointed transfer execution
   identity and add transfer/source/gate regressions.
-- Finalize Task 2 as a sampling-order verdict with no band or implementation
-  change absent a reviewed ownership decision about pre-sampling joins.
+- Implement and receipt the ruling-approved sampling-rung scaling of only the
+  prior-year availability floor, with exact rung-1 compatibility and focused
+  release-gate regressions.
+- Run the charter's repository Ruff and independent full-shard pytest boundary,
+  then write the complete handoff to `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
