@@ -134,11 +134,31 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
 - Added `changelog.d/acs-release-predictor-join.fixed.md`, describing the
   pinned release join, reviewed mappings, fail-closed lineage, dual-manifest
   receipts, and unchanged model/gate behavior.
+- Repository Ruff passes, and the CI inventory verifier reports 310 tracked
+  tests with `verification=ok`. Four complete pytest shards pass in separate
+  processes: frame 295 passed/36 skipped, fit 93 passed, calibrate 203 passed,
+  and data 318 passed/2 skipped.
+- The first complete build-shard process reached 100% with 6,575 passed and 45
+  skipped, plus five failures and six fixture errors. All eleven were the same
+  expected source-attestation drift: `ssi_disability_criteria.py` belongs to
+  both the direct and QRF seed-kernel inventories, so this task's runtime edit
+  moved the seed protocol, compiled US seed map, every country spec identity,
+  the minimal loader golden, and the generated coverage evidence. No ACS join,
+  release CLI, manifest, archived-model behavior, or gate test failed.
+- Applied the repository's established five-file source-identity repin only:
+  seed protocol `59a098f9...31d8b`, US seed map `ce3850d8...e42ab`, US spec
+  `16b7d5e6...dca38`, UK spec `2f921e4c...33a62`, BE spec
+  `c87a0012...34ba`, and minimal-loader golden `b4946105...f2af`; regenerated
+  `docs/evidence/spec-engine/us-f0-coverage.json`. All 25 affected cases and
+  focused Ruff pass. The US bundle generator `--check` passes at the new spec
+  identity, and coverage `--check` passes at 42,122/42,122 fields and 41/41
+  inventory checks.
 
 ## Next
 
-- Run repository Ruff, the CI inventory verifier, and every full pytest shard
-  in its own process; then write and commit `out.md` and the completed journal.
+- Re-run the complete build shard after the reviewed source-identity repin,
+  re-run final repository Ruff, then write and commit `out.md` and the
+  completed journal.
 
 # Weeksgate: stacked release gates and integer-week provenance
 
