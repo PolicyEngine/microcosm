@@ -630,6 +630,31 @@ def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
     assert summary["clone_divergence_source_people"] == 1
 
 
+def test_summary_checks_harmonized_ssi_on_native_role() -> None:
+    expanded = clone_us_frame_for_puf_support(_frame())
+    person = expanded.table("person")
+    person["ssi_reported"] = np.nan
+    native = person["person_support_channel"].astype(str).eq("asec")
+    source_two = person["person_source_id"].eq(2)
+    person.loc[native & source_two, "SSI_VAL"] = np.nan
+    person.loc[native & source_two, "ssi_reported"] = 900.0
+    preserved_existing_anchor = (
+        native & person["person_source_id"].eq(1)
+    ).to_numpy()
+    invalid = _replace_person(
+        expanded,
+        **{_OUTPUT: preserved_existing_anchor},
+    )
+
+    summary = us_ssi_disability_criteria_summary(invalid)
+    gate = us_ssi_disability_criteria_signal_gate(invalid)
+
+    assert summary["reporter_anchor_mismatches"] == 1
+    assert any(
+        "native-role SSI reporter anchor" in failure for failure in gate.failures
+    )
+
+
 def test_gate_requires_complete_support_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

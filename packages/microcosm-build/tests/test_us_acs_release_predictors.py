@@ -126,6 +126,8 @@ def _raw_person() -> pd.DataFrame:
             "HISP": [1, 1, 2],
             "OCCP": [np.nan, 1005, 9800],
             "ESR": [np.nan, 1, 4],
+            "SSIP": [np.nan, 900.0, 0.0],
+            "ADJINC": [1_000_000, 1_000_000, 1_000_000],
         }
     )
 
@@ -261,7 +263,7 @@ def test_release_join_is_exact_total_clone_stable_and_receipted(
     assert sorted(by_source["PEDISDRS"].tolist()) == [-1.0, 2.0, 2.0]
     assert sorted(by_source["PRDTRACE"].tolist()) == [1.0, 2.0, 4.0]
     assert sorted(by_source["PRDTHSP"].tolist()) == [0.0, 0.0, 1.0]
-    assert sorted(by_source["PEIOOCC"].tolist()) == [0.0, 1005.0, 9800.0]
+    assert sorted(by_source["PEIOOCC"].tolist()) == [-1.0, 1005.0, 9800.0]
     assert sorted(by_source["POCCU2"].tolist()) == [0.0, 8.0, 52.0]
     assert sorted(by_source["SPM_TENMORTSTATUS"].tolist()) == [1.0, 1.0, 3.0]
 
@@ -294,6 +296,63 @@ def test_release_join_is_exact_total_clone_stable_and_receipted(
 
     repeated = _join(result.frame, _archives(tmp_path / "again"), monkeypatch)
     assert_frame_equal(repeated.frame.table("person"), person)
+
+
+def test_occupation_crosswalk_preserves_age_15_source_universe_gap() -> None:
+    rows = pd.concat([_raw_person().iloc[[1]]] * 2, ignore_index=True)
+    rows["SERIALNO"] = ["age15", "age16"]
+    rows["SPORDER"] = [1, 1]
+    rows["AGEP"] = [15, 16]
+    rows["OCCP"] = np.nan
+    rows["ESR"] = [np.nan, 6]
+    rows["person_source_id"] = [1, 2]
+
+    mapped = module._crosswalk_people(rows)
+
+    assert mapped["PEIOOCC"].tolist() == [-1, -1]
+    assert mapped["POCCU2"].tolist() == [0, 53]
+
+
+def test_occupation_crosswalk_refuses_malformed_esr_universe() -> None:
+    row = _raw_person().iloc[[1]].copy()
+    row["ESR"] = "not-a-code"
+    row["person_source_id"] = 1
+
+    with pytest.raises(ValueError, match="ESR code/universe mismatch"):
+        module._crosswalk_people(row)
+
+
+@pytest.mark.parametrize("bad_ssi", [np.nan, -1.0, np.inf, "not-a-number"])
+def test_release_join_refuses_malformed_native_asec_ssi(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_ssi: object,
+) -> None:
+    frame = _stacked_frame()
+    person = frame.table("person")
+    asec = person["person_support_channel"].eq("asec")
+    if isinstance(bad_ssi, str):
+        person["SSI_VAL"] = person["SSI_VAL"].astype(object)
+    person.loc[asec, "SSI_VAL"] = bad_ssi
+
+    with pytest.raises(ValueError, match="native ASEC inputs"):
+        _join(frame, _archives(tmp_path), monkeypatch)
+
+
+def test_release_join_attests_native_ssi_against_raw_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _stacked_frame()
+    person = frame.table("person")
+    acs_native = person["person_support_channel"].eq("acs") & person[
+        "person_support_clone_index"
+    ].eq(0)
+    adult = acs_native & person["age"].eq(40)
+    person.loc[adult, "ssi_reported"] = 901.0
+
+    with pytest.raises(ValueError, match="ssi_reported disagrees"):
+        _join(frame, _archives(tmp_path), monkeypatch)
 
 
 def test_release_join_refuses_a_missing_raw_person(

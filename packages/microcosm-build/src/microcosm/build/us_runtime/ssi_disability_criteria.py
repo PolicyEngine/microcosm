@@ -1200,16 +1200,16 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
             )
             clone_divergence_source_people = int((unique > 1).sum())
 
-    reporter_mismatches = 0
-    if "SSI_VAL" in person:
-        reported = pd.to_numeric(person["SSI_VAL"], errors="coerce").fillna(0.0) > 0.0
-        age_column = "age" if "age" in person else "A_AGE"
-        age = pd.to_numeric(person[age_column], errors="coerce")
-        asec = pd.Series(True, index=person.index)
-        if channel_values is not None:
-            asec = channel_values.eq(_BASE_ASEC_SUPPORT_CHANNEL)
-        anchor = (reported & age.lt(65.0) & asec).to_numpy()
-        reporter_mismatches = int(np.count_nonzero(anchor & ~positive))
+    age_column = "age" if "age" in person else "A_AGE"
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    reported = _reported_ssi_anchor(person, age=age) > 0.0
+    native_role = np.ones(len(person), dtype=bool)
+    if channel_values is not None:
+        native_role = channel_values.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    anchor = reported & (age < 65.0) & native_role
+    reporter_mismatches = int(np.count_nonzero(anchor & ~positive))
 
     return {
         "weighted_true_share": float(weights[positive].sum()) / total_weight,
@@ -1263,8 +1263,8 @@ def us_ssi_disability_criteria_signal_gate(frame: Frame) -> GateResult:
         failures.append(f"{_OUTPUT}: weighted false total is not positive.")
     if summary["reporter_anchor_mismatches"]:
         failures.append(
-            f"{_OUTPUT}: {summary['reporter_anchor_mismatches']} under-65 ASEC "
-            "SSI reporter anchor(s) were lost."
+            f"{_OUTPUT}: {summary['reporter_anchor_mismatches']} under-65 "
+            "native-role SSI reporter anchor(s) were lost."
         )
     if summary["support_provenance_missing"]:
         failures.append(

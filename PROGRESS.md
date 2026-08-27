@@ -65,33 +65,48 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   fans mapped values to clones only through `person_source_id`.
 - Added explicit disability, race/Hispanic, 530-code occupation, and tenure
   tables. A canonical crosswalk payload is pinned at SHA-256
-  `cf21e20831dd15479e8f5704743dc5e22e5b8a8b78546107ba5024f22d8f3f1b`
+  `1d4906242e9c73e31b3283659e5cad8242b8cbc42914ab6fa59547a10c8770e9`
   and rides the JSON-ready join receipt with per-model/per-predictor
   ASEC-native, ACS-joined, and still-null counts.
 - Preserved CPS disability universe semantics (`-1` below the question age)
-  and the POCCU2 age universe (0 below 15, consumed no-occupation code 53 for
-  older ACS OCCP blanks). The explicit occupation table covers every one of
-  the 530 codes in the pinned ACS person archive and every consumed POCCU2 bin.
+  and the ACS occupation universe. Blank `PEIOOCC` uses the CPS NIU sentinel
+  `-1`; blank `POCCU2` remains 0 through age 15 and maps to the consumed
+  no-occupation code 53 only from age 16. This explicitly preserves the
+  one-year ACS/CPS source-universe gap instead of assigning every ACS
+  15-year-old a never-worked status without source evidence. The explicit
+  occupation table covers every one of the 530 codes in the pinned ACS person
+  archive and every consumed POCCU2 bin.
 - Changed the SSI-disability reporter read, without source routing, to
   row-wise coalesce measured ASEC `SSI_VAL` with harmonized native ACS
   `ssi_reported`. Adult blanks and conflicting dual reporters fail; genuine
   below-age-15 ACS blanks remain null in the frame and become false only for
   the consumer's `> 0` predicate.
+- Hardened the join after independent crosswalk review: raw ACS `SSIP` and
+  `ADJINC` now travel through the pinned join and must agree exactly with every
+  native clone-0 `ssi_reported` value under the established adjusted-dollar
+  formula. Raw `ESR`/`OCCP` must obey their exact age-16 universes, and all
+  ASEC predictor receipt cells must be numeric and finite with complete,
+  nonnegative `SSI_VAL`.
+- Updated the SSI signal diagnostic to use the same row-wise reporter coalesce
+  as the model consumer, while retaining the archived native-role anchor
+  scope. A lost positive ACS-native reporter can therefore no longer evade the
+  release gate merely because `SSI_VAL` is null on physical ACS rows.
 - Added focused tests for crosswalk identity/all consumed bins, exact join and
   clone invariance, ASEC byte preservation, receipt contents, missing joins,
   raw and source-identity collisions, hash refusal, no-ACS identity, and SSI
-  coalescing/universe refusal. The new join file passes all 7 tests; the SSI
-  and source-blindness suites passed alongside it before the final join-only
-  merge-indicator repair, and focused Ruff is green.
+  coalescing/universe refusal. Coverage now also fixes the age-15 occupation
+  gap, malformed ESR refusal, malformed ASEC SSI refusal, raw SSI attestation,
+  and gate-side ACS reporter preservation. The complete join, SSI, and
+  source-blindness test files pass together, and focused Ruff is green.
 
 ## Next
 
 - Add the paired release CLI inputs and carry the receipt into both build and
   release manifests before the six archived model stages, without changing
   their feature/selection logic or any gate threshold.
-- Re-run the complete focused SSI/source-blindness group, exercise the join
-  read-only against the supplied pool and canonical zips, add the changelog
-  fragment, then run full shard verification and write `out.md`.
+- Exercise the join read-only against the supplied pool and canonical zips,
+  add the changelog fragment, then run full shard verification and write
+  `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance
 

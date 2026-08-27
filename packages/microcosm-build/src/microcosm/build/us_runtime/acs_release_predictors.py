@@ -75,7 +75,7 @@ ACS_2024_HOUSEHOLD_ZIP_SHA256 = (
 )
 ACS_RELEASE_PREDICTOR_CROSSWALK_VERSION = 1
 ACS_RELEASE_PREDICTOR_CROSSWALK_SHA256 = (
-    "cf21e20831dd15479e8f5704743dc5e22e5b8a8b78546107ba5024f22d8f3f1b"
+    "1d4906242e9c73e31b3283659e5cad8242b8cbc42914ab6fa59547a10c8770e9"
 )
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -100,6 +100,8 @@ _PERSON_RAW_COLUMNS = (
     "HISP",
     "OCCP",
     "ESR",
+    "SSIP",
+    "ADJINC",
 )
 _HOUSEHOLD_RAW_COLUMNS = ("SERIALNO", "NP", "TYPEHUGQ", "TEN")
 
@@ -149,7 +151,8 @@ _ACS_HISP_TO_CONSUMED_PRDTHSP: Mapping[int, int] = {
 # used by the archived ORG/FLSA consumer. The table is intentionally explicit:
 # the canonical archive pin and crosswalk digest jointly refuse a new Census
 # code until its consumed category is reviewed. Blank OCCP is handled
-# separately: PEIOOCC uses 0, while POCCU2 preserves its age universe.
+# separately: PEIOOCC uses the CPS NIU sentinel -1, while POCCU2 preserves
+# the ACS age universe rather than inventing an occupation for 15-year-olds.
 ACS_OCCP_TO_POCCU2: Mapping[int, int] = {
     10: 1,
     20: 1,
@@ -742,11 +745,22 @@ def acs_release_predictor_crosswalk_payload() -> dict[str, Any]:
             },
         },
         "occupation": {
-            "OCCP_to_PEIOOCC": "identity; blank out-of-universe to 0",
+            "OCCP_to_PEIOOCC": {
+                "observed": "identity",
+                "blank": -1,
+                "blank_semantic": "CPS not-in-universe sentinel",
+            },
             "OCCP_to_POCCU2": {
                 str(key): value for key, value in ACS_OCCP_TO_POCCU2.items()
             },
-            "blank_OCCP_to_POCCU2": {"age_below_15": 0, "age_15_plus": 53},
+            "blank_OCCP_to_POCCU2": {
+                "age_below_16": 0,
+                "age_16_plus": 53,
+                "age_15_source_target_universe_gap": (
+                    "ACS OCCP is not asked; retain the out-of-universe sentinel "
+                    "instead of fabricating CPS no-occupation code 53"
+                ),
+            },
         },
         "tenure": {
             "TEN_to_SPM_TENMORTSTATUS": {
@@ -910,7 +924,7 @@ def join_acs_release_predictors(
 
     mapped = _crosswalk_people(joined)
     mapped["SPM_TENMORTSTATUS"] = joined["SERIALNO"].map(tenure_by_serial).to_numpy()
-    _canonical_ssi_reporter_values(frame, canonical)
+    _validate_canonical_ssi_reporter_values(frame, canonical, joined)
     if mapped.loc[:, list(_OUTPUT_COLUMNS)].isna().any().any():
         missing = {
             column: int(mapped[column].isna().sum())
@@ -1377,20 +1391,52 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"ACS HISP contains unsupported code(s): {unknown_hisp}.")
     result["PRDTHSP"] = hisp.map(_ACS_HISP_TO_CONSUMED_PRDTHSP).to_numpy(dtype=np.int16)
 
-    occupation = pd.to_numeric(joined["OCCP"], errors="coerce")
-    employment = pd.to_numeric(joined["ESR"], errors="coerce")
-    invalid_blank = occupation.isna() & ~(employment.isna() | employment.eq(6))
+    occupation_raw = joined["OCCP"]
+    occupation = pd.to_numeric(occupation_raw, errors="coerce")
+    employment_raw = joined["ESR"]
+    employment = pd.to_numeric(employment_raw, errors="coerce")
+    invalid_employment = (
+        (employment_raw.notna() & employment.isna())
+        | (age.lt(16) & employment.notna())
+        | (age.ge(16) & ~employment.isin(range(1, 7)))
+    )
+    if invalid_employment.any():
+        bad = joined.loc[invalid_employment, ["SERIALNO", "SPORDER", "AGEP", "ESR"]]
+        raise ValueError(
+            "ACS ESR code/universe mismatch (blank below age 16; codes 1--6 "
+            "from age 16); examples="
+            f"{bad.head().to_dict('records')}."
+        )
+    invalid_occupation = occupation_raw.notna() & occupation.isna()
+    invalid_observed_universe = occupation.notna() & age.lt(16)
+    invalid_blank = occupation.isna() & age.ge(16) & ~employment.eq(6)
+    if invalid_occupation.any() or invalid_observed_universe.any():
+        bad_mask = invalid_occupation | invalid_observed_universe
+        bad = joined.loc[
+            bad_mask,
+            ["SERIALNO", "SPORDER", "AGEP", "OCCP", "ESR"],
+        ]
+        raise ValueError(
+            "ACS OCCP code/universe mismatch (blank below age 16); examples="
+            f"{bad.head().to_dict('records')}."
+        )
     if invalid_blank.any():
-        bad = joined.loc[invalid_blank, ["SERIALNO", "SPORDER", "OCCP", "ESR"]]
+        bad = joined.loc[
+            invalid_blank,
+            ["SERIALNO", "SPORDER", "AGEP", "OCCP", "ESR"],
+        ]
         raise ValueError(
             "ACS OCCP is blank inside its observed employment universe; examples="
             f"{bad.head().to_dict('records')}."
         )
     observed = occupation.notna()
     observed_values = occupation.loc[observed].to_numpy(dtype=np.float64)
-    if not np.equal(observed_values, np.floor(observed_values)).all():
-        raise ValueError("ACS OCCP contains non-integer code(s).")
-    occupation_codes = occupation.fillna(0).astype(np.int64)
+    if (
+        not np.isfinite(observed_values).all()
+        or not np.equal(observed_values, np.floor(observed_values)).all()
+    ):
+        raise ValueError("ACS OCCP contains nonfinite or non-integer code(s).")
+    occupation_codes = occupation.fillna(-1).astype(np.int64)
     unknown_occupation = sorted(
         set(occupation_codes.loc[observed]) - set(ACS_OCCP_TO_POCCU2)
     )
@@ -1399,19 +1445,21 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
             f"ACS OCCP contains unsupported code(s): {unknown_occupation}."
         )
     result["PEIOOCC"] = occupation_codes.to_numpy(dtype=np.int16)
-    poccu2 = occupation_codes.map(ACS_OCCP_TO_POCCU2)
-    # CPS POCCU2 is in universe from age 15 and uses 53 for the no-occupation /
-    # never-worked consumed bin. ACS OCCP starts at age 16, so age-15 blanks
-    # also belong to 53; younger children retain the CPS out-of-universe 0.
-    poccu2.loc[occupation.isna()] = np.where(age.loc[occupation.isna()].ge(15), 53, 0)
+    poccu2 = occupation.map(ACS_OCCP_TO_POCCU2)
+    # ACS OCCP starts at age 16, one year later than CPS POCCU2. Preserve the
+    # ACS NIU state for age 15 instead of fabricating no-occupation evidence.
+    # From age 16, a blank is admitted only for ESR=6 and maps to the consumed
+    # no-occupation / never-worked bin 53.
+    poccu2.loc[occupation.isna()] = np.where(age.loc[occupation.isna()].ge(16), 53, 0)
     result["POCCU2"] = poccu2.to_numpy(dtype=np.int16)
     return result
 
 
-def _canonical_ssi_reporter_values(
+def _validate_canonical_ssi_reporter_values(
     frame: Frame,
     canonical: pd.DataFrame,
-) -> np.ndarray:
+    joined: pd.DataFrame,
+) -> None:
     person = frame.table("person")
     source_id_column = support_source_id_column("person")
     channel_column = support_channel_column("person")
@@ -1449,27 +1497,89 @@ def _canonical_ssi_reporter_values(
             "canonical raw join."
         )
     by_source = pd.Series(reported.to_numpy(), index=native[source_id_column])
-    aligned = canonical["person_source_id"].map(by_source)
-    return aligned.to_numpy(dtype=np.float64)
+    pool_aligned = canonical["person_source_id"].map(by_source).to_numpy(
+        dtype=np.float64
+    )
+
+    raw_ssip = pd.to_numeric(joined["SSIP"], errors="coerce")
+    raw_adjinc = pd.to_numeric(joined["ADJINC"], errors="coerce")
+    raw_age = _required_integral(joined["AGEP"], label="ACS AGEP", minimum=0)
+    invalid_ssip = (
+        (joined["SSIP"].notna() & raw_ssip.isna())
+        | (raw_ssip.notna() & ~np.isfinite(raw_ssip.fillna(0.0)))
+        | raw_ssip.lt(0)
+        | (raw_age.lt(15) & raw_ssip.notna())
+        | (raw_age.ge(15) & raw_ssip.isna())
+    )
+    invalid_adjinc = raw_ssip.notna() & (
+        raw_adjinc.isna() | ~np.isfinite(raw_adjinc.fillna(0.0)) | raw_adjinc.le(0)
+    )
+    if invalid_ssip.any() or invalid_adjinc.any():
+        invalid = invalid_ssip | invalid_adjinc
+        bad = joined.loc[
+            invalid,
+            ["SERIALNO", "SPORDER", "AGEP", "SSIP", "ADJINC"],
+        ]
+        raise ValueError(
+            "ACS raw SSIP/ADJINC violates the age-15 adjusted-dollar contract; "
+            f"examples={bad.head().to_dict('records')}."
+        )
+    raw_aligned = raw_ssip.to_numpy(dtype=np.float64) * (
+        raw_adjinc.to_numpy(dtype=np.float64) / 1_000_000.0
+    )
+    equal = (np.isnan(pool_aligned) & np.isnan(raw_aligned)) | np.equal(
+        pool_aligned,
+        raw_aligned,
+    )
+    if not equal.all():
+        bad = joined.loc[
+            ~equal,
+            ["person_source_id", "SERIALNO", "SPORDER", "SSIP", "ADJINC"],
+        ].copy()
+        bad["ssi_reported_pool"] = pool_aligned[~equal]
+        bad["ssi_reported_raw"] = raw_aligned[~equal]
+        raise ValueError(
+            "ACS native ssi_reported disagrees with pinned raw "
+            "SSIP * ADJINC / 1_000_000; examples="
+            f"{bad.head().to_dict('records')}."
+        )
 
 
 def _require_asec_native_predictors(person: pd.DataFrame) -> None:
     channel_column = support_channel_column("person")
     asec = person[channel_column].eq(_ASEC_CHANNEL)
-    missing = [column for column in _OUTPUT_COLUMNS if column not in person]
+    required = (*_OUTPUT_COLUMNS, "SSI_VAL")
+    missing = [column for column in required if column not in person]
     if missing:
         raise ValueError(
             f"ACS release join requires native ASEC predictor column(s): {missing}."
         )
     null_counts = {
         column: int(person.loc[asec, column].isna().sum())
-        for column in _OUTPUT_COLUMNS
+        for column in required
         if person.loc[asec, column].isna().any()
     }
     if null_counts:
         raise ValueError(
             "ACS release predictor receipt requires complete native ASEC inputs; "
             f"null_counts={null_counts}."
+        )
+    malformed: dict[str, int] = {}
+    for column in required:
+        values = person.loc[asec, column]
+        numeric = pd.to_numeric(values, errors="coerce")
+        invalid = numeric.isna() | ~np.isfinite(numeric.to_numpy(dtype=np.float64))
+        if not pd.api.types.is_numeric_dtype(values.dtype):
+            invalid = pd.Series(True, index=values.index)
+        if column == "SSI_VAL":
+            invalid |= numeric.lt(0)
+        if invalid.any():
+            malformed[column] = int(invalid.sum())
+    if malformed:
+        raise ValueError(
+            "ACS release predictor receipt requires numeric finite native ASEC "
+            "inputs and nonnegative SSI_VAL; malformed_counts="
+            f"{malformed}."
         )
 
 
