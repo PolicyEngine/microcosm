@@ -9,9 +9,10 @@ The source codec, weeks-gate architecture, source-scope, clone-layout, and
 stable-identity repairs are implemented and focused-tested. The complete
 release-call roster is classified; six archived-model input assumptions require
 owner rulings and are deliberately reported instead of guessed. Repository-wide
-Ruff, the CI inventory verifier, and four of five full pytest shards pass; the
-build shard is pending restart after its fail-closed spec-engine receipts were
-coherently re-pinned.
+Ruff, the CI inventory verifier, and four of five full pytest shards pass. The
+first post-repin build-shard run reached 100% with one stale live-spec SHA
+expectation and no other failures; that expectation is corrected, its complete
+test file is running, and a clean full-shard rerun follows.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -65,8 +66,9 @@ build is in scope.
   semantics suites pass.
 - Passed the complete ACS-transfer test file (65 tests), the complete
   post-transfer calibration receipt-contract file (47 tests), focused Ruff,
-  and `git diff --check` using the prebuilt `.venv` directly. `uv run --no-sync`
-  is unavailable because this sandbox forbids uv's read of `~/.cache/uv`.
+  and `git diff --check` using the prebuilt `.venv` directly. A task-local
+  `UV_CACHE_DIR` later allowed the required `uv run --no-sync` commands to run
+  against that same prebuilt environment without accessing `~/.cache/uv`.
 - Modernized the weeks summary/gate to derive its roster from actual assembled
   source channels, while retaining the legacy ASEC/PUF role path. The ASEC
   source-validity scope, direct native-clone reconciliation scope, and reviewed
@@ -143,8 +145,8 @@ build is in scope.
   items: SSI disability criteria, SCF wealth, SCF auto loans, SIPP vehicles,
   SIPP tips, and ORG wages/FLSA all consume ASEC-only archived predictors on a
   frame whose 1,736,840 physical ACS rows carry null source cells. ORG is
-  guaranteed to fail its unchanged race/occupation bands; SIPP tips can
-  silently pass its global band while the ACS channel is dead.
+  guaranteed to fail its unchanged race/occupation bands; SIPP tips' unchanged
+  tipped-occupation band passes while the ACS channel is dead.
 - Passed repository-wide Ruff and the CI test-group inventory verifier. The
   calibrate, data, fit, and frame shards pass in four independent pytest
   processes.
@@ -164,11 +166,16 @@ build is in scope.
   protocol changes rather than environment drift. All 102 tests in the eight
   directly affected spec-engine files pass; generated-bundle and coverage-
   report byte checks, focused Ruff, and `git diff --check` also pass.
+- Ran the full build shard after that coherent spec repin. It reached 100% with
+  exactly one failure and no errors: the multispine constants-adapter fixture
+  still expected the former live US spec SHA. Updated only that live-binding
+  expectation to the regenerated final SHA; the separate arbitrary checkpoint
+  identity fixture remains deliberately unchanged.
 
 ## Next
 
-- Restart and finish the full build-shard pytest process after the committed
-  spec-engine repin.
+- Finish the complete multispine-tool test file, commit its live-spec fixture
+  repin, then rerun the full build-shard pytest process from zero.
 - Write the final provenance, audit evidence, verification receipts, and
   judgment calls to `out.md`, then leave a clean committed worktree.
 
