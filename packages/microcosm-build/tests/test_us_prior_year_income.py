@@ -410,6 +410,42 @@ def test_signal_gate_accepts_signed_source_signal_and_rejects_defaults() -> None
     assert "availability" in " ".join(failing.failures)
 
 
+def test_clone_availability_checks_all_assembled_clones_and_legacy_pairs() -> None:
+    assembled = _frame(
+        pd.DataFrame(
+            {
+                "person_source_id": [10, 10, 10, 20, 20, 20],
+                "person_spine_source_id": [1, 1, 1, 2, 2, 2],
+                "person_support_channel": ["acs"] * 6,
+                "person_support_clone_index": [0, 1, 2, 0, 1, 2],
+                "self_employment_income_last_year": [10, 10, 10, -5, -5, -5],
+                "previous_year_income_available": [True, True, False] + [False] * 3,
+            }
+        )
+    )
+    assembled_summary = module.us_prior_year_income_summary(assembled)
+    assert assembled_summary["clone_availability_mismatches"] == 1
+    assembled_gate = us_prior_year_income_signal_gate(assembled)
+    assert any("1 source person" in failure for failure in assembled_gate.failures)
+
+    legacy = _frame(
+        pd.DataFrame(
+            {
+                "person_source_id": [10, 10, 20, 20],
+                "person_support_channel": [
+                    BASE_ASEC_SUPPORT_CHANNEL,
+                    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                ]
+                * 2,
+                "self_employment_income_last_year": [10, 10, -5, -5],
+                "previous_year_income_available": [True, True, False, False],
+            }
+        )
+    )
+    legacy_summary = module.us_prior_year_income_summary(legacy)
+    assert legacy_summary["clone_availability_mismatches"] == 0
+
+
 def test_source_reconciliation_detects_plausible_but_wrong_asec_carry() -> None:
     derived = with_us_prior_year_income_inputs(
         _source_frame(), seed=0, time_period=2024
