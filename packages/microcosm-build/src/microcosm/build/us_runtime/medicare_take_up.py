@@ -27,8 +27,11 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    has_assembled_support_metadata,
     has_support_role_metadata,
     support_role_series,
+    support_source_channel_series,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -128,6 +131,20 @@ def _source_codes(person: pd.DataFrame, source: str) -> np.ndarray:
     return numeric.astype(np.int8)
 
 
+def _asec_source_mask(person: pd.DataFrame) -> np.ndarray:
+    """Select physical ASEC rows without changing legacy source semantics."""
+
+    if not has_assembled_support_metadata(person, entity="person"):
+        return np.ones(len(person), dtype=bool)
+    source_channels = support_source_channel_series(person, entity="person")
+    mask = source_channels.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    if not mask.any():
+        raise SourceRuntimeError(
+            "US Medicare take-up support has no physical ASEC source rows."
+        )
+    return mask
+
+
 def derive_us_medicare_take_up_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -151,7 +168,16 @@ def derive_us_medicare_take_up_from_manifest(
             f"expected {_EXPECTED_PARAMETERS}, got {parameters}."
         )
     result = frame.copy(deep=True)
-    result[_OUTPUT] = _source_codes(result, _SOURCE) == _ENROLLED_CODE
+    source_mask = _asec_source_mask(result)
+    source_values = (
+        _source_codes(result.loc[source_mask], _SOURCE) == _ENROLLED_CODE
+    )
+    if source_mask.all():
+        result[_OUTPUT] = source_values
+    else:
+        if _OUTPUT not in result:
+            result[_OUTPUT] = pd.Series(pd.NA, index=result.index, dtype="boolean")
+        result.loc[source_mask, _OUTPUT] = source_values
     return result
 
 
@@ -162,10 +188,15 @@ def _surface_matches_source(frame: Frame) -> bool:
     if _SOURCE not in person:
         return True
     try:
-        expected = _source_codes(person, _SOURCE) == _ENROLLED_CODE
+        source_mask = _asec_source_mask(person)
+        expected = (
+            _source_codes(person.loc[source_mask], _SOURCE) == _ENROLLED_CODE
+        )
     except SourceRuntimeError:
         return False
-    observed = person[_OUTPUT].fillna(False).astype(bool).to_numpy()
+    observed = (
+        person.loc[source_mask, _OUTPUT].fillna(False).astype(bool).to_numpy()
+    )
     return bool(np.array_equal(observed, expected))
 
 
@@ -228,10 +259,14 @@ def us_medicare_take_up_summary(frame: Frame) -> dict[str, object]:
         "missing_count": int(person[_OUTPUT].isna().sum()),
     }
     if _SOURCE in person:
-        source_values = _source_codes(person, _SOURCE) == _ENROLLED_CODE
-        summary["source_mismatch_count"] = int(
-            np.count_nonzero(values != source_values)
+        source_mask = _asec_source_mask(person)
+        source_values = (
+            _source_codes(person.loc[source_mask], _SOURCE) == _ENROLLED_CODE
         )
+        summary["source_mismatch_count"] = int(
+            np.count_nonzero(values[source_mask] != source_values)
+        )
+        summary["source_rows"] = int(np.count_nonzero(source_mask))
     if has_support_role_metadata(person, entity="person"):
         channel_shares: dict[str, float] = {}
         channels = support_role_series(person, entity="person").to_numpy()

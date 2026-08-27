@@ -109,6 +109,21 @@ def _operation() -> SourceOperationSpec:
     )
 
 
+def _stacked_frame() -> Frame:
+    derived = with_us_medicare_take_up_input(_frame(), seed=0, time_period=2024)
+    stacked = clone_us_frame_for_puf_support(derived)
+    person = stacked.table("person")
+    source_record = np.tile(np.arange(5, dtype=np.int64), 2)
+    person["person_spine_source_id"] = source_record
+    person["person_support_channel"] = np.where(
+        source_record < 3,
+        "asec",
+        "acs",
+    )
+    person.loc[person["person_support_channel"].eq("acs"), _SOURCE] = np.nan
+    return stacked
+
+
 def _derive(person: pd.DataFrame) -> pd.DataFrame:
     return derive_us_medicare_take_up_from_manifest(person, _operation(), None)
 
@@ -260,6 +275,38 @@ class TestFrameStageAndGate:
             PUF_TAX_DETAIL_SUPPORT_CHANNEL: pytest.approx(0.2),
         }
         assert us_medicare_take_up_signal_gate(cloned).passed
+
+    def test_stacked_gate_reconciles_only_physical_asec_source_rows(self) -> None:
+        stacked = _stacked_frame()
+
+        gate = us_medicare_take_up_signal_gate(stacked)
+
+        assert gate.passed, gate.failures
+        assert gate.details["source_rows"] == 6
+        assert gate.details["source_mismatch_count"] == 0
+        assert gate.details["channel_weighted_enrolled_shares"] == {
+            "asec": pytest.approx(0.2),
+            PUF_TAX_DETAIL_SUPPORT_CHANNEL: pytest.approx(0.2),
+        }
+
+        person = stacked.table("person")
+        asec = person["person_support_channel"].eq("asec")
+        person.loc[person.index[asec][0], _SOURCE] = np.nan
+        failed = us_medicare_take_up_signal_gate(stacked)
+        assert not failed.passed
+        assert any("MCARE" in failure for failure in failed.failures)
+
+    def test_stacked_derivation_preserves_non_source_outputs(self) -> None:
+        person = _stacked_frame().table("person").copy()
+        acs = person["person_support_channel"].eq("acs")
+        person.loc[acs, _OUTPUT] = np.asarray([True, False, True, False])
+        before = person.loc[acs, _OUTPUT].copy()
+
+        result = _derive(person)
+
+        pd.testing.assert_series_equal(result.loc[acs, _OUTPUT], before)
+        expected = person.loc[~acs, _SOURCE].to_numpy() == 1
+        np.testing.assert_array_equal(result.loc[~acs, _OUTPUT], expected)
 
     def test_gate_rejects_missing_constant_bad_share_and_mismatch(self) -> None:
         missing = _frame()
