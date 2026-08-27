@@ -1568,9 +1568,12 @@ def _require_asec_native_predictors(person: pd.DataFrame) -> None:
     for column in required:
         values = person.loc[asec, column]
         numeric = pd.to_numeric(values, errors="coerce")
-        invalid = numeric.isna() | ~np.isfinite(numeric.to_numpy(dtype=np.float64))
-        if not pd.api.types.is_numeric_dtype(values.dtype):
-            invalid = pd.Series(True, index=values.index)
+        numeric_cells = values.map(pd.api.types.is_number)
+        invalid = (
+            ~numeric_cells
+            | numeric.isna()
+            | ~np.isfinite(numeric.to_numpy(dtype=np.float64))
+        )
         if column == "SSI_VAL":
             invalid |= numeric.lt(0)
         if invalid.any():

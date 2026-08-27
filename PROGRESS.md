@@ -110,11 +110,31 @@ push, retraining, threshold change, or launcher-contract edit is in scope.
   to the sole manifest call, and JSON round-trip assertions for both manifests.
   Focused Ruff, five parser/order/manifest cases, and all six parametrized main
   corridor cases pass.
+- Exercised the hardened join read-only on the complete supplied candidate.
+  The 3,239,263,147-byte H5 matches its frozen manifest SHA-256
+  `871b7e6467675a1e9475b54fd1baf64c53c0f75a3258b8357303a8df0d53642d`.
+  The current official loader refuses that older candidate before H5 loading
+  because its archived primary-QRF worker binding predates this branch's
+  execution identity; this is an existing candidate/code-version mismatch.
+  Loading those already-authenticated bytes with their frozen assembly receipt
+  allowed the join boundary itself to be tested without writing an artifact.
+- The real join passed every source, raw-key, universe, SSI-attestation,
+  totality, collision, and clone-fan-out check: 856,626 unique ACS source
+  people matched 856,626 raw people in 382,903 households and populated
+  1,736,840 support rows (856,626 each at clone indices 0 and 1, plus 23,588
+  at clone index 2). Every CPS-named predictor consumed by the six models has
+  234,133 valid ASEC-native and 1,736,840 ACS-joined cells with zero nulls.
+  The logical SSI reporter anchor has 234,133 ASEC cells, 1,475,235 observed
+  ACS cells, and exactly 261,605 preserved child-universe null support rows.
+- The first real-data attempt exposed fixed-format HDF's expected object dtype
+  for mixed-source columns. Tightened the ASEC validator to inspect each cell,
+  accepting object-wrapped real numbers while still refusing strings,
+  nonfinite values, nulls, and negative SSI. A focused H5-shape regression and
+  all 15 join tests pass before the successful full-pool rerun.
 
 ## Next
 
-- Exercise the join read-only against the supplied pool and canonical zips,
-  add the changelog fragment, then run full shard verification and write
+- Add the changelog fragment, then run full shard verification and write
   `out.md`.
 
 # Weeksgate: stacked release gates and integer-week provenance

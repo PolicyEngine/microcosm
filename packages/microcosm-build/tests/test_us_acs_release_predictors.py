@@ -355,6 +355,20 @@ def test_release_join_attests_native_ssi_against_raw_archive(
         _join(frame, _archives(tmp_path), monkeypatch)
 
 
+def test_release_join_accepts_h5_object_wrapped_native_numbers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _stacked_frame()
+    person = frame.table("person")
+    for column in (*module._OUTPUT_COLUMNS, "SSI_VAL"):
+        person[column] = person[column].astype(object)
+
+    result = _join(frame, _archives(tmp_path), monkeypatch)
+
+    assert result.receipt["enabled"] is True
+
+
 def test_release_join_refuses_a_missing_raw_person(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
