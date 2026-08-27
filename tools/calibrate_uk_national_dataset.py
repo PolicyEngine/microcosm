@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         input_sha256=args.input_sha256,
         ledger_artifact=artifact,
         register_registry=registry,
+        band_edge_registry=compilation.registry,
         calibration_year=calibration_year,
         exclusion_receipt=exclusion_receipt,
         doctrine=doctrine,
