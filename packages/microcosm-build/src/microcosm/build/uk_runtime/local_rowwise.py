@@ -62,6 +62,8 @@ __all__ = [
     "build_uk_rowwise_local_matrix",
     "past_cap_census",
     "require_adjudicated_uk_local_binding",
+    "uk_area_support_summary",
+    "uk_ladder_area_support_summary",
     "rowwise_calibration_mass_reason",
     "rowwise_area_support_summary",
     "solve_uk_rowwise_weights_under_doctrine",
@@ -940,50 +942,154 @@ def rowwise_area_support_summary(
 ) -> pd.DataFrame:
     """Per-area support of a rowwise weight vector, all target areas included."""
 
+    return uk_area_support_summary(
+        problem.assigned_areas,
+        weights,
+        area_codes=problem.area_codes,
+        source_household_ids=(
+            problem.household_ids
+            if source_household_ids is None
+            else source_household_ids
+        ),
+    )
+
+
+def uk_area_support_summary(
+    assigned_areas: Sequence[Any],
+    weights: Sequence[float],
+    *,
+    area_codes: Sequence[Any],
+    source_household_ids: Sequence[Any],
+) -> pd.DataFrame:
+    """Summarize row and weighted support for a declared roster of areas."""
+
     values = np.asarray(weights, dtype=np.float64)
     if values.ndim != 1:
         raise ValueError(f"weights must be one-dimensional, got shape {values.shape}.")
-    if len(values) != problem.n_households:
+    assigned = np.asarray(assigned_areas, dtype=object)
+    if assigned.ndim != 1:
+        raise ValueError(
+            f"assigned_areas must be one-dimensional, got shape {assigned.shape}."
+        )
+    if len(values) != len(assigned):
         raise ValueError(
             "weights must align with households, got "
-            f"{len(values)} weights for {problem.n_households} households."
+            f"{len(values)} weights for {len(assigned)} households."
         )
     if not np.isfinite(values).all() or (values < 0).any():
         raise ValueError("weights must be finite and non-negative.")
-    sources_list = (
-        list(problem.household_ids)
-        if source_household_ids is None
-        else list(source_household_ids)
-    )
-    if len(sources_list) != problem.n_households:
+    sources_list = list(source_household_ids)
+    if len(sources_list) != len(assigned):
         raise ValueError(
             "source_household_ids must align with households, got "
-            f"{len(sources_list)} for {problem.n_households}."
+            f"{len(sources_list)} for {len(assigned)}."
         )
-    sources = np.empty(problem.n_households, dtype=object)
+    sources = np.empty(len(assigned), dtype=object)
     for index, source in enumerate(sources_list):
         sources[index] = source
-    assigned = np.asarray(problem.assigned_areas, dtype=object)
-    rows: list[dict[str, Any]] = []
-    for area_code in problem.area_codes:
-        members = np.flatnonzero(assigned == area_code)
-        member_weights = values[members]
-        positive = member_weights > 0
-        weight_sum = float(member_weights.sum())
-        square_sum = float(np.square(member_weights).sum())
-        rows.append(
-            {
-                "area_code": area_code,
-                "assigned_households": int(len(members)),
-                "nonzero_households": int(positive.sum()),
-                "nonzero_source_households": int(
-                    len(set(sources[members][positive].tolist()))
-                ),
-                "weight_sum": weight_sum,
-                "max_weight": (float(member_weights.max()) if len(members) else 0.0),
-                "effective_sample_size": (
-                    weight_sum**2 / square_sum if square_sum > 0 else 0.0
-                ),
-            }
+    area_roster = np.asarray(area_codes, dtype=object)
+    if area_roster.ndim != 1:
+        raise ValueError(
+            f"area_codes must be one-dimensional, got shape {area_roster.shape}."
         )
-    return pd.DataFrame(rows)
+
+    source_codes, _ = pd.factorize(
+        pd.Series(sources, dtype=object),
+        sort=False,
+        use_na_sentinel=False,
+    )
+    positive = values > 0
+    rows = pd.DataFrame(
+        {
+            "area_code": assigned,
+            "weight": values,
+            "weight_squared": np.square(values),
+            "positive": positive,
+            "positive_source_code": np.where(positive, source_codes, -1),
+        }
+    )
+    grouped = rows.groupby("area_code", sort=False, dropna=False).agg(
+        assigned_households=("weight", "size"),
+        nonzero_households=("positive", "sum"),
+        nonzero_source_households=(
+            "positive_source_code",
+            lambda codes: int(codes[codes >= 0].nunique()),
+        ),
+        weight_sum=("weight", "sum"),
+        max_weight=("weight", "max"),
+        weight_square_sum=("weight_squared", "sum"),
+    )
+    support = pd.DataFrame({"area_code": area_roster}).merge(
+        grouped,
+        how="left",
+        left_on="area_code",
+        right_index=True,
+        sort=False,
+    )
+    count_columns = (
+        "assigned_households",
+        "nonzero_households",
+        "nonzero_source_households",
+    )
+    support[list(count_columns)] = (
+        support[list(count_columns)].fillna(0).astype(np.int64)
+    )
+    support[["weight_sum", "max_weight", "weight_square_sum"]] = support[
+        ["weight_sum", "max_weight", "weight_square_sum"]
+    ].fillna(0.0)
+    effective_sample_size = np.zeros(len(support), dtype=np.float64)
+    np.divide(
+        np.square(support["weight_sum"].to_numpy(dtype=np.float64)),
+        support["weight_square_sum"].to_numpy(dtype=np.float64),
+        out=effective_sample_size,
+        where=support["weight_square_sum"].to_numpy(dtype=np.float64) > 0,
+    )
+    support["effective_sample_size"] = effective_sample_size
+    return support[
+        [
+            "area_code",
+            "assigned_households",
+            "nonzero_households",
+            "nonzero_source_households",
+            "weight_sum",
+            "max_weight",
+            "effective_sample_size",
+        ]
+    ]
+
+
+def uk_ladder_area_support_summary(
+    household: pd.DataFrame,
+    ladder: Any,
+    *,
+    weight_column: str = "household_weight",
+    source_column: str = "source_household_id",
+) -> dict[str, pd.DataFrame]:
+    """Return matrix-free constituency and LA support on the ladder roster."""
+
+    if source_column not in household.columns:
+        raise ValueError(
+            f"household table must contain source column {source_column!r}; "
+            "distinct-source honesty requires it (pass source_column="
+            "'household_id' explicitly for row-grain sources)."
+        )
+    if weight_column not in household.columns:
+        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+
+    summaries: dict[str, pd.DataFrame] = {}
+    for area_type, assigned_column, ladder_codes in (
+        ("constituency", "constituency_code", ladder.constituency_code),
+        ("la", "local_authority_code", ladder.local_authority_code),
+    ):
+        if assigned_column not in household.columns:
+            raise ValueError(
+                f"household table must contain assigned area column "
+                f"{assigned_column!r}."
+            )
+        summaries[area_type] = uk_area_support_summary(
+            household[assigned_column],
+            household[weight_column],
+            area_codes=np.unique(ladder_codes),
+            source_household_ids=household[source_column],
+        )
+    return summaries

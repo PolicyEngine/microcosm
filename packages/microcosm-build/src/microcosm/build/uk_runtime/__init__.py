@@ -148,6 +148,7 @@ from microcosm.build.uk_runtime.geography_ladder import (
     load_uk_oa_ladder,
     uk_geography_ladder_assignment_summary,
     uk_geography_ladder_gate,
+    uk_region_mix,
 )
 from microcosm.build.uk_runtime.geography_sources import (
     ENGLAND_LAD_REGION_URL,
@@ -276,6 +277,8 @@ from microcosm.build.uk_runtime.local_rowwise import (
     rowwise_area_support_summary,
     rowwise_calibration_mass_reason,
     solve_uk_rowwise_weights_under_doctrine,
+    uk_area_support_summary,
+    uk_ladder_area_support_summary,
 )
 from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_KIND,
@@ -819,6 +822,9 @@ __all__ = [
     "uk_legacy_jsa_policy",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
+    "uk_region_mix",
+    "uk_area_support_summary",
+    "uk_ladder_area_support_summary",
     "uk_release_input_coverage_gate",
     "uk_release_input_coverage_required_columns",
     "uk_release_input_coverage_reviewed_exclusions",

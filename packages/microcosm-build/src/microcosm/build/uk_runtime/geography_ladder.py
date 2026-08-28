@@ -495,6 +495,45 @@ def expected_uk_ladder_area_support(
     )
 
 
+def uk_region_mix(
+    household: pd.DataFrame,
+    *,
+    region_column: str = "region",
+    weight_column: str = "household_weight",
+) -> pd.DataFrame:
+    """Summarize household row and weight shares by normalized UK region."""
+
+    if region_column not in household.columns:
+        raise ValueError(f"household table must contain region column {region_column!r}.")
+    if weight_column not in household.columns:
+        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+
+    region_codes = _household_region_codes(
+        household[region_column],
+        label=region_column,
+    )
+    weights = pd.to_numeric(household[weight_column], errors="raise").to_numpy(
+        dtype=np.float64
+    )
+    if not np.isfinite(weights).all() or (weights < 0).any():
+        raise ValueError(f"{weight_column} must be finite and non-negative.")
+    if len(weights) == 0:
+        raise ValueError("household table must contain at least one row for region mix.")
+    total_weight = float(weights.sum())
+    if total_weight <= 0:
+        raise ValueError(f"{weight_column} must carry positive total weight.")
+
+    frame = pd.DataFrame({"region_code": region_codes, "weight": weights})
+    mix = (
+        frame.groupby("region_code", sort=True)
+        .agg(rows=("weight", "size"), weight_sum=("weight", "sum"))
+        .reset_index()
+    )
+    mix["row_share"] = mix["rows"] / len(frame)
+    mix["weight_share"] = mix["weight_sum"] / total_weight
+    return mix[["region_code", "rows", "row_share", "weight_share"]]
+
+
 def uk_geography_ladder_assignment_summary(
     household: pd.DataFrame,
     ladder: UkOaLadder,
@@ -1021,6 +1060,7 @@ __all__ = [
     "assign_uk_geography_ladder",
     "expected_uk_ladder_area_support",
     "load_uk_oa_ladder",
+    "uk_region_mix",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
 ]

@@ -401,7 +401,7 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     import json
     import sys
 
-    _, ladder_path = toy_ladder
+    ladder, ladder_path = toy_ladder
     builder = _load_builder_module()
     input_h5 = tmp_path / "staging.h5"
     _write_seam_h5(input_h5)
@@ -438,6 +438,50 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     assert summary["weights"]["household_weight_kind"] == "importance"
     assert summary["weights"]["mass_conservation"]["passed"] is True
     assert summary["source_lineage"]["explicit"] is None
+    assert summary["area_support"]["source_basis"] == "source_household_id"
+    assert summary["area_support"]["constituency"]["n_areas"] == len(
+        np.unique(ladder.constituency_code)
+    )
+    assert summary["area_support"]["la"]["n_areas"] == len(
+        np.unique(ladder.local_authority_code)
+    )
+    assert set(summary["area_support"]["constituency"]) == {
+        "n_areas",
+        "min_rows",
+        "median_rows",
+        "min_ess",
+        "median_ess",
+        "min_distinct_sources",
+        "median_distinct_sources",
+        "bottom_by_rows",
+        "bottom_by_ess",
+    }
+    assert sum(row["row_share"] for row in summary["region_mix"]) == pytest.approx(
+        1.0
+    )
+    assert sum(
+        row["weight_share"] for row in summary["region_mix"]
+    ) == pytest.approx(1.0)
+    area_support_path = output_dir / builder.AREA_SUPPORT_FILENAME
+    assert area_support_path.exists()
+    assert manifest["outputs"]["area_support_summary"]["path"] == str(
+        area_support_path
+    )
+    area_support = pd.read_csv(area_support_path)
+    assert area_support.columns.tolist() == [
+        "area_type",
+        "area_code",
+        "assigned_households",
+        "nonzero_households",
+        "nonzero_source_households",
+        "weight_sum",
+        "max_weight",
+        "effective_sample_size",
+    ]
+    assert area_support["area_type"].tolist() == [
+        *(["constituency"] * len(np.unique(ladder.constituency_code))),
+        *(["la"] * len(np.unique(ladder.local_authority_code))),
+    ]
     assert (output_dir / "staging_rowwise.h5").exists()
 
 
@@ -500,6 +544,8 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     assert manifest["inputs"]["dataset"]["pin_verified"] is True
     assert manifest["inputs"]["ladder"]["pin_verified"] is True
     assert manifest["inputs"]["ladder"]["matches_local_area_crosswalk_pin"] is False
+    assert plan["area_support"] == manifest["rowwise_dataset"]["area_support"]
+    assert plan["region_mix"] == manifest["rowwise_dataset"]["region_mix"]
 
     # The dry-run's realized support is exact: identical draws to the build.
     realized = {
@@ -555,6 +601,11 @@ def test_driver_ladder_spine_lineage_plan_manifest_parity(
 
     explicit = plan["source_lineage"]["explicit"]
     assert explicit == manifest["rowwise_dataset"]["source_lineage"]["explicit"]
+    assert plan["area_support"]["source_basis"] == "source_household_id"
+    assert (
+        manifest["rowwise_dataset"]["area_support"]["source_basis"]
+        == "source_household_id"
+    )
     assert explicit == {
         "basis": "explicit_lineage_columns",
         "columns_present": [

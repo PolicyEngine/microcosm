@@ -61,6 +61,8 @@ from microcosm.build.uk_runtime import (
     read_uk_single_year_weight_metadata,
     uk_geography_ladder_gate,
     uk_household_weight_kind,
+    uk_ladder_area_support_summary,
+    uk_region_mix,
     uk_time_period,
     validate_geography_coverage,
     write_geography_crosswalk,
@@ -76,6 +78,7 @@ DATASET_FILENAME_TEMPLATE = "{input_stem}_rowwise.h5"
 MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
 DRY_RUN_PLAN_FILENAME = "rowwise_dry_run_plan.json"
+AREA_SUPPORT_FILENAME = "area_support_summary.csv"
 EXPECTED_SUPPORT_BOTTOM_AREAS = 15
 _UK_ROWWISE_PIPELINE = "uk-local-rowwise"
 _REPOSITORY = Path(__file__).resolve().parents[1]
@@ -396,6 +399,7 @@ def _main_impl(
             (args.out / COVERAGE_FILENAME).resolve(),
             (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
             (args.out / CROSSWALK_FILENAME).resolve(),
+            (args.out / AREA_SUPPORT_FILENAME).resolve(),
         }
         if args.ladder.resolve() in sidecars:
             raise ValueError(
@@ -415,6 +419,8 @@ def _main_impl(
             source_year=source_year,
             attempt=attempt,
         )
+    if not args.dry_run:
+        (args.out / AREA_SUPPORT_FILENAME).unlink(missing_ok=True)
     crosswalk_source = _load_or_build_crosswalk(args)
     crosswalk = crosswalk_source.frame
     crosswalk_path = crosswalk_source.path
@@ -506,6 +512,7 @@ def _main_impl(
                 _artifact_info(crosswalk_path) if crosswalk_source.generated else None
             ),
             "coverage_summary": coverage_artifact,
+            "area_support_summary": None,
         },
         "base_dataset": base_summary,
         "rowwise_dataset": rowwise_summary,
@@ -583,6 +590,7 @@ def _dataset_output_path(
         MANIFEST_FILENAME,
         COVERAGE_FILENAME,
         DRY_RUN_PLAN_FILENAME,
+        AREA_SUPPORT_FILENAME,
     }
     if path.name in reserved:
         raise ValueError(
@@ -601,6 +609,7 @@ def _validate_output_paths(
         (args.out / MANIFEST_FILENAME).resolve(),
         (args.out / COVERAGE_FILENAME).resolve(),
         (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
+        (args.out / AREA_SUPPORT_FILENAME).resolve(),
     }
     generated_crosswalk_path = (args.out / CROSSWALK_FILENAME).resolve()
     reserved_paths = {
@@ -956,6 +965,15 @@ def _run_ladder_route(
         "passed": bool(result.gate.passed),
         "details": dict(result.gate.details),
     }
+    household = _result_household(result)
+    area_support, area_support_long = _ladder_area_support_diagnostics(
+        household,
+        ladder,
+    )
+    rowwise_summary["area_support"] = area_support
+    rowwise_summary["region_mix"] = uk_region_mix(household).to_dict("records")
+    area_support_path = args.out / AREA_SUPPORT_FILENAME
+    area_support_long.to_csv(area_support_path, index=False)
     manifest = {
         "schema_version": 1,
         "build_kind": "uk_rowwise_local_geography_dataset",
@@ -970,6 +988,7 @@ def _run_ladder_route(
             "dataset": _artifact_info(output_h5),
             "crosswalk": None,
             "coverage_summary": None,
+            "area_support_summary": _artifact_info(area_support_path),
         },
         "base_dataset": base_summary,
         "rowwise_dataset": rowwise_summary,
@@ -1059,8 +1078,13 @@ def _ladder_dry_run_plan(
         raise ValueError("household weights must carry positive total mass.")
     _kind, mass_log = read_uk_single_year_weight_metadata(input_h5)
     _assert_mass_log_current(mass_log, float(weight_values.sum()))
+    household_for_clone = household.copy()
+    if "source_household_id" not in household_for_clone.columns:
+        household_for_clone["source_household_id"] = household_for_clone[
+            "household_id"
+        ]
     cloned = clone_entity_frame(
-        household,
+        household_for_clone,
         id_columns=("household_id",),
         n_clones=args.n_clones,
         id_multiplier=id_multiplier,
@@ -1091,6 +1115,11 @@ def _ladder_dry_run_plan(
         ladder,
         n_clones=args.n_clones,
     )
+    area_support, _area_support_long = _ladder_area_support_diagnostics(
+        assigned,
+        ladder,
+    )
+    region_mix = uk_region_mix(assigned).to_dict("records")
     table_rows = {
         name: base_summary["tables"][name][0]
         for name in ("person", "benunit", "household")
@@ -1145,6 +1174,8 @@ def _ladder_dry_run_plan(
                 for area_type in ("constituency", "la")
             },
         },
+        "area_support": area_support,
+        "region_mix": region_mix,
         "source_lineage": _source_lineage_report(
             household,
             modulus=args.source_lineage_modulus,
@@ -1299,6 +1330,79 @@ def _support_summary(
                 "rows": float(row.expected_rows),
             }
             for row in ordered.itertuples(index=False)
+        ],
+    }
+
+
+def _result_household(result: Any) -> pd.DataFrame:
+    if isinstance(result, UKLadderRowwiseDatasetResult):
+        return engine_tables(result.frame, weighted_entities=("household",))[
+            "household"
+        ]
+    return result.household
+
+
+def _ladder_area_support_diagnostics(
+    household: pd.DataFrame,
+    ladder: Any,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    source_basis = (
+        "source_household_id"
+        if "source_household_id" in household.columns
+        else "household_id"
+    )
+    summaries = uk_ladder_area_support_summary(
+        household,
+        ladder,
+        source_column=source_basis,
+    )
+    block = {
+        "source_basis": source_basis,
+        **{
+            area_type: _area_support_stats(summaries[area_type])
+            for area_type in ("constituency", "la")
+        },
+    }
+    long_frames = []
+    for area_type in ("constituency", "la"):
+        frame = summaries[area_type].copy()
+        frame.insert(0, "area_type", area_type)
+        long_frames.append(frame)
+    return block, pd.concat(long_frames, ignore_index=True)
+
+
+def _area_support_stats(support: pd.DataFrame) -> dict[str, Any]:
+    rows = support["assigned_households"]
+    ess = support["effective_sample_size"]
+    sources = support["nonzero_source_households"]
+    bottom_by_rows = support.sort_values(
+        ["assigned_households", "area_code"],
+        kind="mergesort",
+    ).head(EXPECTED_SUPPORT_BOTTOM_AREAS)
+    bottom_by_ess = support.sort_values(
+        ["effective_sample_size", "area_code"],
+        kind="mergesort",
+    ).head(EXPECTED_SUPPORT_BOTTOM_AREAS)
+    return {
+        "n_areas": int(len(support)),
+        "min_rows": int(rows.min()) if len(rows) else 0,
+        "median_rows": float(rows.median()) if len(rows) else 0.0,
+        "min_ess": float(ess.min()) if len(ess) else 0.0,
+        "median_ess": float(ess.median()) if len(ess) else 0.0,
+        "min_distinct_sources": int(sources.min()) if len(sources) else 0,
+        "median_distinct_sources": (
+            float(sources.median()) if len(sources) else 0.0
+        ),
+        "bottom_by_rows": [
+            {"area_code": str(row.area_code), "rows": int(row.assigned_households)}
+            for row in bottom_by_rows.itertuples(index=False)
+        ],
+        "bottom_by_ess": [
+            {
+                "area_code": str(row.area_code),
+                "ess": float(row.effective_sample_size),
+            }
+            for row in bottom_by_ess.itertuples(index=False)
         ],
     }
 

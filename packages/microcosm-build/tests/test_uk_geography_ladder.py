@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime import (
     load_uk_oa_ladder,
     uk_geography_ladder_assignment_summary,
     uk_geography_ladder_gate,
+    uk_region_mix,
 )
 
 
@@ -359,6 +360,30 @@ def test_expected_support_agrees_with_large_realized_assignment(tmp_path) -> Non
             row.expected_rows,
             rel=0.03,
         )
+
+
+def test_region_mix_row_and_weight_shares_sum_to_one() -> None:
+    household = pd.DataFrame(
+        {
+            "region": ["LONDON", "London", "WALES"],
+            "household_weight": [1.0, 2.0, 7.0],
+        }
+    )
+
+    mix = uk_region_mix(household)
+
+    assert mix.columns.tolist() == [
+        "region_code",
+        "rows",
+        "row_share",
+        "weight_share",
+    ]
+    assert mix["row_share"].sum() == pytest.approx(1.0)
+    assert mix["weight_share"].sum() == pytest.approx(1.0)
+    london = mix.set_index("region_code").loc["E12000007"]
+    assert london["rows"] == 2
+    assert london["row_share"] == pytest.approx(2 / 3)
+    assert london["weight_share"] == pytest.approx(0.3)
 
 
 def test_assignment_requires_region(tmp_path) -> None:

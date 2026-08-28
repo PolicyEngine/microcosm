@@ -181,6 +181,9 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     _write_toy_h5(input_h5)
     input_sha256 = builder._sha256(input_h5)
     _crosswalk_frame().to_csv(crosswalk_path, index=False)
+    output_dir.mkdir()
+    stale_area_support = output_dir / builder.AREA_SUPPORT_FILENAME
+    stale_area_support.write_text("stale")
     pd.DataFrame({"code": ["E14000001", "W07000041", "S14000001", "N05000001"]}).to_csv(
         constituency_codes, index=False
     )
@@ -221,6 +224,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     assert output_h5.exists()
     assert manifest_path.exists()
     assert coverage_path.exists()
+    assert not stale_area_support.exists()
     manifest = json.loads(manifest_path.read_text())
     assert manifest["build_kind"] == "uk_rowwise_local_geography_dataset"
     assert manifest["parameters"]["n_clones"] == 2
@@ -235,6 +239,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     assert manifest["rowwise_dataset"]["assigned_local_authorities"] == 2
     assert manifest["coverage"][0]["covered_areas"] == 4
     assert manifest["outputs"]["crosswalk"] is None
+    assert manifest["outputs"]["area_support_summary"] is None
     with pd.HDFStore(output_h5, mode="r") as store:
         assert store["household"].shape[0] == 4
         assert store["person"].shape[0] == 6
@@ -404,6 +409,7 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
                 "ward_code": ["E05000001", "W05000001"],
                 "constituency_code": ["E14000001", "W07000041"],
                 "region_code": ["E12000007", "W99999999"],
+                "region": ["LONDON", "WALES"],
                 "itl3_code": ["TLI", "TLL"],
                 "itl2_code": ["TL", "TL"],
                 "itl1_code": ["T", "T"],
@@ -431,7 +437,17 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
             },
         )()
 
-    monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: object())
+    ladder = type(
+        "Ladder",
+        (),
+        {
+            "constituency_code": pd.Series(["E14000001", "W07000041"]).to_numpy(),
+            "local_authority_code": pd.Series(
+                ["E06000063", "W06000001"]
+            ).to_numpy(),
+        },
+    )()
+    monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: ladder)
     monkeypatch.setattr(
         builder,
         "clone_uk_dataset_with_ladder_geography",
@@ -456,6 +472,10 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
     assert builder.main() == 0
 
     manifest_path = output_dir / builder.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["rowwise_dataset"]["area_support"]["source_basis"] == (
+        "household_id"
+    )
     rows = _spool_rows(output_dir)
     assert len(rows) == 1
     assert rows[0].gate_verdicts == {
@@ -517,6 +537,7 @@ def test_build_uk_rowwise_dataset_failure_records_pipeline_error(
         "/tmp/escaped.h5",
         "rowwise_build_manifest.json",
         "geography_coverage_summary.csv",
+        "area_support_summary.csv",
         "uk_official_geography_crosswalk.csv.gz",
     ],
 )
@@ -556,7 +577,11 @@ def test_validate_output_paths_rejects_crosswalk_collision(tmp_path):
 
 @pytest.mark.parametrize(
     "sidecar_name",
-    ["rowwise_build_manifest.json", "geography_coverage_summary.csv"],
+    [
+        "rowwise_build_manifest.json",
+        "geography_coverage_summary.csv",
+        "area_support_summary.csv",
+    ],
 )
 def test_validate_output_paths_rejects_supplied_crosswalk_sidecar_collision(
     sidecar_name,
