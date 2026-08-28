@@ -1097,7 +1097,13 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            if isinstance(revision, str) and revision != release_id:
+            revision_matches_release = revision == release_id or (
+                release_id == _UK_NATIONAL_RELEASE_ID
+                and isinstance(revision, str)
+                and revision.startswith(release_id + "-")
+                and len(revision) > len(release_id) + 1
+            )
+            if isinstance(revision, str) and not revision_matches_release:
                 failures.append(
                     f"release_manifest.json artifact {key!r} revision is "
                     f"{revision!r}, expected the release id {release_id!r}."
@@ -1425,6 +1431,8 @@ def _check_compatible_package_entries(
 def _expected_model_package(release_id: str) -> str | None:
     if release_id.startswith("populace-us-"):
         return "policyengine-us"
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        return "policyengine-uk"
     if release_id.startswith("populace-uk-"):
         return "policyengine-uk"
     return None
@@ -4322,8 +4330,11 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 failures,
                 grandfathered_uk_june=release_id == _UK_JUNE_RELEASE_ID,
             )
-            if _is_uk_exact_k_release_id(release_id):
+            if _is_uk_exact_k_release_id(
+                release_id
+            ) or release_id == _UK_NATIONAL_RELEASE_ID:
                 _check_uk_calibration_diagnostics(diagnostics, failures)
+            if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
                 )

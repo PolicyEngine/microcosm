@@ -324,16 +324,16 @@ def publish_release(
         )
     artifact_revisions = _release_manifest_artifact_revisions(release_dir)
     tag = tag_name or release_id
-    if release_id in artifact_revisions and not create_tag:
+    if artifact_revisions and not create_tag:
         raise ValueError(
-            "release_manifest.json pins artifacts to the release id; "
+            "release_manifest.json pins artifacts to revisions; "
             "publish_release must create the matching Hugging Face tag before "
             "updating latest.json."
         )
-    if tag != release_id and release_id in artifact_revisions:
+    if artifact_revisions and artifact_revisions != {tag}:
         raise ValueError(
-            "release_manifest.json pins artifacts to the release id; tag_name "
-            "must match the release id."
+            "release_manifest.json pins artifacts to revisions; tag_name must "
+            "match the release id or uniform per-cut artifact revision."
         )
     if root_artifacts and artifact_root is None:
         raise ValueError(

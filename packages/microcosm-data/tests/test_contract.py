@@ -31,6 +31,8 @@ from microcosm.data import (
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
+UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -312,7 +314,7 @@ DEDUCTION_CRITICAL_TARGETS = (
 
 
 def _model_package(release_id: str) -> tuple[str, str]:
-    if release_id.startswith("populace-uk-"):
+    if release_id.startswith("populace-uk-") or release_id == UK_NATIONAL_RELEASE_ID:
         return ("policyengine-uk", "2.89.0")
     return ("policyengine-us", "1.729.0")
 
@@ -1415,6 +1417,42 @@ def _copy_real_uk_june_release(tmp_path: Path) -> Path:
     return directory
 
 
+def _write_uk_national_release_dir(tmp_path: Path) -> Path:
+    """Build the constant-id national fixture from the green exact-k shape."""
+
+    directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID, tier="frs")
+    national = directory.with_name(UK_NATIONAL_RELEASE_ID)
+    directory.replace(national)
+
+    build_path = national / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["build_id"] = UK_NATIONAL_RELEASE_ID
+    build_path.write_text(json.dumps(build))
+
+    release_path = national / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = UK_NATIONAL_CUT_TAG
+
+    certification = _green_uk_certification(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        release_id=UK_NATIONAL_RELEASE_ID,
+        diagnostics_sha256=_sha256(national / "calibration_diagnostics.json"),
+    )
+    certification_path = national / "release_certification.json"
+    certification_path.write_text(json.dumps(certification))
+    release["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": "release_certification.json",
+        "repo_id": "policyengine/populace-uk-private",
+        "revision": UK_NATIONAL_CUT_TAG,
+        "sha256": _sha256(certification_path),
+    }
+    release_path.write_text(json.dumps(release))
+    return national
+
+
 def _rewrite_exact_k_fixture_to_two_records(directory: Path) -> None:
     """Reproduce Sol's internally consistent k535080/n_records=2 probe."""
 
@@ -2033,6 +2071,78 @@ def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+def test_uk_national_release_dir_validates(tmp_path: Path) -> None:
+    validate_release_dir(_write_uk_national_release_dir(tmp_path))
+
+
+def test_uk_national_release_requires_uk_diagnostics(tmp_path: Path) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    diagnostics.pop("uk_diagnostics")
+    diagnostics_path.write_text(json.dumps(diagnostics))
+
+    with pytest.raises(ReleaseContractError, match="require a 'uk_diagnostics'"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_policyengine_uk_runtime(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["runtime"].pop("policyengine-uk")
+    build_path.write_text(json.dumps(build))
+
+    with pytest.raises(ReleaseContractError, match="runtime.policyengine-uk"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_policyengine_uk_model_pin(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["build"]["built_with_model_package"]["name"] = "policyengine-us"
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="built_with_model_package.name.*policyengine-uk",
+    ):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize("revision", ["main", UK_NATIONAL_RELEASE_ID + "-"])
+def test_uk_national_release_rejects_invalid_artifact_revisions(
+    tmp_path: Path,
+    revision: str,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = revision
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(directory)
+
+
+def test_us_release_rejects_dash_suffixed_artifact_revision(
+    release_dir: Path,
+) -> None:
+    release_path = release_dir / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["populace_us_2024"]["revision"] = RELEASE_ID + "-cut"
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(release_dir)
 
 
 @pytest.mark.parametrize(
@@ -4950,13 +5060,18 @@ def test_breach_acknowledgment_matching_is_name_delimited() -> None:
 # --- UK release certification (microcosm#757 B5) ---------------------------
 
 
-def _green_uk_certification(key: bytes) -> dict:
+def _green_uk_certification(
+    key: bytes,
+    *,
+    release_id: str = "uk-757-first-certified-cut",
+    diagnostics_sha256: str = "c" * 64,
+) -> dict:
     parts = {}
     for part_name, scope in contract._UK_CERTIFICATION_PART_SCOPES.items():
         parts[part_name] = {
             "path": f"{part_name}.json",
             "sha256": "a" * 64,
-            "release_id": "uk-757-first-certified-cut",
+            "release_id": release_id,
             "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
             "entry_ids": sorted(scope),
             "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
@@ -4971,7 +5086,7 @@ def _green_uk_certification(key: bytes) -> dict:
         "schema_version": 1,
         "kind": "uk_release_certification",
         "country": "uk",
-        "release_id": "uk-757-first-certified-cut",
+        "release_id": release_id,
         "candidate": {
             "name": "microcosm_uk_2024",
             "filename": "microcosm_uk_2024.h5",
@@ -4988,7 +5103,7 @@ def _green_uk_certification(key: bytes) -> dict:
             "shared_gate_ids": sorted(contract._UK_CERTIFICATION_SHARED_GATE_IDS),
         },
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
-        "diagnostics_sha256": "c" * 64,
+        "diagnostics_sha256": diagnostics_sha256,
         "score_receipt": {"filename": "score_vs_enhanced_frs.json", "sha256": "d" * 64},
         "exclusions_evaluated_on": "2026-08-27",
         "shippable": True,
