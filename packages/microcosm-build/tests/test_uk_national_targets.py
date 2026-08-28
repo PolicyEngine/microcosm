@@ -358,6 +358,47 @@ def test_uk_uc_households_target_counts_benunits():
     }
 
 
+def test_uk_uc_composition_and_disability_children_targets_are_rebound():
+    resource = _load()
+    composition_target_ids = {
+        "dwp.uc.households_children_1",
+        "dwp.uc.households_children_2",
+        "dwp.uc.households_children_3",
+        "dwp.uc.households_children_4",
+        "dwp.uc.households_children_5_or_more",
+        "dwp.uc.households_single_no_children",
+        "dwp.uc.households_single_with_children",
+        "dwp.uc.households_couple_no_children",
+        "dwp.uc.households_couple_with_children",
+    }
+    allowed_filter_variables = {
+        "universal_credit",
+        "num_children",
+        "family_type",
+    }
+
+    for target_id in composition_target_ids:
+        binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
+        assert binding["from_entity"] == "benunit"
+        assert binding["value_variable"] == "benunit_count"
+        assert "household_conditions" not in binding
+        assert "reduce" not in binding
+        assert all(
+            predicate["variable"] in allowed_filter_variables
+            for predicate in binding["filters"]
+        )
+
+    for target_id in {
+        "dwp.uc.two_child_limit.children_claimant_pip",
+        "dwp.uc.two_child_limit.children_disabled_child_element",
+    }:
+        binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
+        assert binding["value_variable"] == "is_child"
+        assert binding["value_reduction"]["variable"] == "is_child"
+        assert binding["kind"] == "baseline_flag_crosstab"
+        assert binding["affected_flag_variable"] == "uc_is_child_limit_affected"
+
+
 def test_uk_national_cgt_contract_names_match_runtime_specs():
     resource = _load()
 
