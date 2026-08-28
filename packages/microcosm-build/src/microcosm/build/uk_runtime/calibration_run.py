@@ -197,6 +197,7 @@ def run_uk_calibration(
     input_sha256: str,
     ledger_artifact: Any,
     register_registry: TargetRegistry,
+    band_edge_registry: TargetRegistry,
     calibration_year: int,
     exclusion_receipt: Mapping[str, Mapping[str, str]],
     doctrine: Any,
@@ -211,6 +212,15 @@ def run_uk_calibration(
 
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
+    # Pure-argument validation precedes every environment probe: an
+    # incoherent register/receipt/band-edge triple must refuse identically
+    # whether or not a git checkout or Logbook chain is reachable.
+    _validate_band_edge_registry(
+        register_registry=register_registry,
+        band_edge_registry=band_edge_registry,
+        exclusion_receipt=exclusion_receipt,
+    )
+    edge_registry = band_edge_registry
     code_pin = git_code_pin(_REPOSITORY)
     # Predecessor configuration is validated before anything is written: a
     # disagreeing chain must refuse with no artifact on disk, not after a
@@ -230,6 +240,7 @@ def run_uk_calibration(
         "ledger": _ledger_provenance(ledger_artifact),
         **dict(run_config_extra),
     }
+    run_config["band_edge_register_sha256"] = edge_registry.version
     state = AttemptState(
         # Attempts are distinct rows even when they re-run one release: both
         # the local chain and the store refuse a repeated build id.
@@ -246,6 +257,7 @@ def run_uk_calibration(
             input_sha256=input_sha256,
             ledger_artifact=ledger_artifact,
             register_registry=register_registry,
+            band_edge_registry=edge_registry,
             calibration_year=calibration_year,
             exclusion_receipt=exclusion_receipt,
             doctrine=doctrine,
@@ -285,6 +297,45 @@ def _new_calibration_attempt_id(*, timestamp: datetime) -> str:
         "uk-frs-calibration-attempt-"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     )
+
+
+def _validate_band_edge_registry(
+    *,
+    register_registry: TargetRegistry,
+    band_edge_registry: TargetRegistry,
+    exclusion_receipt: Mapping[str, Mapping[str, str]],
+) -> None:
+    """Require the band-edge register to reconstitute the compiled roster.
+
+    The reconciliation always runs — an empty receipt is a claim that nothing
+    was pruned, so the two rosters must then be name-identical; it is never
+    permission to skip the check. Receipt keys are spec names by the
+    applier's construction: ``apply_uk_calibration_measure_exclusions``
+    builds the receipt from the matched ``spec.name`` set and raises on any
+    exclusion matching zero registry specs, so ``pruned + receipt keys ==
+    compiled`` is an exact identity, not a heuristic.
+    """
+
+    register_names = _registry_spec_names(register_registry)
+    edge_names = _registry_spec_names(band_edge_registry)
+    excluded_names = {str(name) for name in exclusion_receipt}
+    if not register_names <= edge_names:
+        missing = sorted(register_names - edge_names)
+        raise ValueError(
+            "band-edge register must include every materialized registry spec; "
+            f"missing={missing}."
+        )
+    extra = edge_names - register_names
+    if extra != excluded_names:
+        raise ValueError(
+            "band-edge register extra spec names must match the measure "
+            f"exclusion receipt; extra={sorted(extra)}, "
+            f"receipt={sorted(excluded_names)}."
+        )
+
+
+def _registry_spec_names(registry: TargetRegistry) -> set[str]:
+    return {str(spec.name) for spec in registry.specs}
 
 
 def _record_failed_attempt(
@@ -336,6 +387,7 @@ def _run_uk_calibration_attempt(
     input_sha256: str,
     ledger_artifact: Any,
     register_registry: TargetRegistry,
+    band_edge_registry: TargetRegistry,
     calibration_year: int,
     exclusion_receipt: Mapping[str, Mapping[str, str]],
     doctrine: Any,
@@ -374,6 +426,7 @@ def _run_uk_calibration_attempt(
         period=calibration_year,
         doctrine=doctrine,
         measure_resolver=measure_resolver,
+        band_edge_registry=band_edge_registry,
     )
     calibrated = stage(frame)
     append_phase(state, "national_calibration_solved")

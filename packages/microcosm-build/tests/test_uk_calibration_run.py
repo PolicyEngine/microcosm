@@ -87,6 +87,16 @@ def _registry():
     )
 
 
+def _paths(tmp_path: Path) -> UKCalibrationRunPaths:
+    return UKCalibrationRunPaths(
+        input_h5=tmp_path / "input.h5",
+        staging_h5=tmp_path / "staged.h5",
+        diagnostics_json=tmp_path / "diagnostics.json",
+        build_record_json=tmp_path / "build_record.json",
+        terminal_gate_json=tmp_path / "terminal_gates.json",
+    )
+
+
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -208,6 +218,7 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
         input_sha256=_sha(input_h5),
         ledger_artifact=object(),
         register_registry=_registry(),
+        band_edge_registry=_registry(),
         calibration_year=2025,
         exclusion_receipt={},
         doctrine=UKNationalSolveDoctrine(epochs=5),
@@ -265,6 +276,162 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     assert result.logbook_spool.exists()
 
 
+def test_run_uk_calibration_requires_the_band_edge_register(
+    tmp_path: Path,
+):
+    # Required, never defaulted: an empty receipt is a claim that nothing was
+    # pruned, not permission to skip the reconciliation, so the seam takes no
+    # register-without-edges path at all (#803 review findings 1 and 3).
+    paths = _paths(tmp_path)
+
+    with pytest.raises(TypeError, match="band_edge_registry"):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256="a" * 64,
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            calibration_year=2025,
+            exclusion_receipt={"excluded.target": {"reason": "reviewed"}},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={},
+            run_config_extra={},
+            release_id="pruned-without-edge-register",
+        )
+
+    assert not paths.staging_h5.exists()
+    assert not paths.diagnostics_json.exists()
+    assert not paths.build_record_json.exists()
+
+
+def test_run_uk_calibration_reconciles_an_empty_receipt_as_no_prunes(
+    tmp_path: Path,
+):
+    # A pruned register handed in with an empty receipt must refuse: with
+    # nothing declared excluded, the two rosters have to be name-identical.
+    paths = _paths(tmp_path)
+    full = _registry()
+    pruned = TargetRegistry([], country="uk")
+
+    with pytest.raises(ValueError, match="exclusion receipt"):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256="a" * 64,
+            ledger_artifact=object(),
+            register_registry=pruned,
+            band_edge_registry=full,
+            calibration_year=2025,
+            exclusion_receipt={},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={},
+            run_config_extra={},
+            release_id="empty-receipt-pruned-register",
+        )
+
+    assert not paths.staging_h5.exists()
+    assert not paths.diagnostics_json.exists()
+    assert not paths.build_record_json.exists()
+
+
+def test_run_uk_calibration_refuses_incoherent_band_edge_register(tmp_path: Path):
+    paths = _paths(tmp_path)
+    edge_registry = TargetRegistry(
+        [
+            *_registry().specs,
+            TargetSpec(
+                name="different.excluded",
+                entity="benunit",
+                measure="different/excluded",
+                value=1.0,
+                source="test",
+                metadata={"contract_target_id": "different.excluded"},
+            ),
+        ],
+        country="uk",
+    )
+
+    with pytest.raises(ValueError, match="exclusion receipt"):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256="a" * 64,
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            band_edge_registry=edge_registry,
+            calibration_year=2025,
+            exclusion_receipt={"other.excluded": {"reason": "reviewed"}},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={},
+            run_config_extra={},
+            release_id="incoherent-edge-register",
+        )
+
+    assert not paths.staging_h5.exists()
+    assert not paths.diagnostics_json.exists()
+    assert not paths.build_record_json.exists()
+
+
+def test_run_uk_calibration_records_band_edge_register_sha256(
+    monkeypatch, tmp_path: Path
+):
+    pytest.importorskip("tables")  # pandas HDF backend
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_aggregate_admin_totals",
+        lambda frame, manifest: (_admin_anchor_values(), []),
+    )
+    input_h5 = tmp_path / "input.h5"
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
+    paths = _paths(tmp_path)
+    register = _registry()
+    edge_registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households",
+                entity="benunit",
+                measure="dwp/uc/households",
+                value=99.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={"contract_target_id": "dwp.uc.households"},
+            )
+        ],
+        country="uk",
+    )
+
+    result = run_uk_calibration(
+        paths=paths,
+        input_sha256=_sha(input_h5),
+        ledger_artifact=object(),
+        register_registry=register,
+        band_edge_registry=edge_registry,
+        calibration_year=2025,
+        exclusion_receipt={},
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        doctrine_overrides={},
+        measure_resolver=None,
+        source_pins={
+            "input_h5": {
+                "sha256": _sha(input_h5),
+                "size_bytes": input_h5.stat().st_size,
+            }
+        },
+        run_config_extra={},
+        release_id="band-edge-provenance",
+    )
+
+    assert (
+        result.build_record["run_config"]["band_edge_register_sha256"]
+        == edge_registry.version
+    )
+
+
 def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
     pytest.importorskip("tables")  # pandas HDF backend
     input_h5 = tmp_path / "input.h5"
@@ -282,6 +449,7 @@ def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
             input_sha256="0" * 64,
             ledger_artifact=object(),
             register_registry=_registry(),
+            band_edge_registry=_registry(),
             calibration_year=2025,
             exclusion_receipt={},
             doctrine=UKNationalSolveDoctrine(epochs=1),
@@ -315,6 +483,7 @@ def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
             input_sha256=_sha(input_h5),
             ledger_artifact=object(),
             register_registry=_registry(),
+            band_edge_registry=_registry(),
             calibration_year=2025,
             exclusion_receipt={},
             doctrine=UKNationalSolveDoctrine(epochs=1),
@@ -367,6 +536,7 @@ def test_run_uk_calibration_refuses_unbound_input_sidecar(
             input_sha256=_sha(input_h5),
             ledger_artifact=object(),
             register_registry=_registry(),
+            band_edge_registry=_registry(),
             calibration_year=2025,
             exclusion_receipt={},
             doctrine=UKNationalSolveDoctrine(epochs=1),
@@ -435,6 +605,7 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
         input_sha256=_sha(input_h5),
         ledger_artifact=object(),
         register_registry=pulling_registry,
+        band_edge_registry=pulling_registry,
         calibration_year=2025,
         exclusion_receipt={},
         doctrine=UKNationalSolveDoctrine(epochs=50),
@@ -565,6 +736,7 @@ def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
             input_sha256="0" * 64,
             ledger_artifact=object(),
             register_registry=_registry(),
+            band_edge_registry=_registry(),
             calibration_year=2025,
             exclusion_receipt={},
             doctrine=UKNationalSolveDoctrine(epochs=1),
@@ -626,6 +798,7 @@ def test_attempt_ids_are_unique_across_reruns_of_one_release(
             input_sha256=_sha(input_h5),
             ledger_artifact=object(),
             register_registry=_registry(),
+            band_edge_registry=_registry(),
             calibration_year=2025,
             exclusion_receipt={},
             doctrine=UKNationalSolveDoctrine(epochs=5),
@@ -677,6 +850,7 @@ def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path
         input_sha256=_sha(input_h5),
         ledger_artifact=artifact,
         register_registry=_registry(),
+        band_edge_registry=_registry(),
         calibration_year=2025,
         exclusion_receipt={},
         doctrine=UKNationalSolveDoctrine(epochs=5),

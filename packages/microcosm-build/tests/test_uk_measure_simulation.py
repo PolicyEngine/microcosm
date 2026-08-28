@@ -289,8 +289,10 @@ def test_packaged_exclusions_load():
             assert entry["tracking"] == "microcosm#791", entry["name"]
 
     # The lever targets are deliberately NOT excluded: the six UC
-    # caseload / two-child-limit cells ride the would_claim_uc lever run,
-    # and the two expected-to-resolve cells ride the exclusion re-run.
+    # caseload / two-child-limit cells ride the would_claim_uc lever run.
+    # Exclusions cannot move surviving cells because band edges are pinned
+    # to the compiled register (#792); the non-excluded cells are expected
+    # to pass at published band widths on the next seam run.
     excluded = set(names)
     for riding in (
         "dwp.uc.households",
