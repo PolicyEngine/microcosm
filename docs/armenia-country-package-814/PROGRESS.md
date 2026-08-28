@@ -12,6 +12,9 @@ package has not yet been drafted.
   package changes.
 - Started parallel inspection of the Belgium spec-only package, the country-spec
   schema and tests, the New Zealand v1 plan, and the calibration doctrine.
+- Moved this journal under `docs/`, following the New Zealand planning-doc
+  convention. Country directories are closed spec inventories: in-package
+  Markdown would make `am/` fail both its loader and spec-only tests.
 
 ## Next
 
