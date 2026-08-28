@@ -71,7 +71,7 @@ MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
 DRY_RUN_PLAN_FILENAME = "rowwise_dry_run_plan.json"
 EXPECTED_SUPPORT_BOTTOM_AREAS = 15
-_UK_ROWWISE_PIPELINE = "uk-locals-rowwise"
+_UK_ROWWISE_PIPELINE = "uk-local-rowwise"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 
 
@@ -203,7 +203,7 @@ def _new_rowwise_build_id(
 ) -> str:
     instant = timestamp.astimezone(UTC)
     return (
-        f"uk-locals-rowwise-{route}-f100-s{seed}-"
+        f"uk-local-rowwise-{route}-f100-s{seed}-"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     )
 
