@@ -204,14 +204,14 @@
    "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
   },
   {
-   "fixture_value": 5231.0,
+   "fixture_value": 5232.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area_children_0@N05000001",
    "period": 2025,
    "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
   },
   {
-   "fixture_value": 8237.0,
+   "fixture_value": 8238.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area_children_0@N05000002",
    "period": 2025,
@@ -442,7 +442,7 @@
    "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
   },
   {
-   "fixture_value": 2751.0,
+   "fixture_value": 2750.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area_children_1@N05000017",
    "period": 2025,
@@ -491,7 +491,7 @@
    "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
   },
   {
-   "fixture_value": 2011.0,
+   "fixture_value": 2010.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area_children_2@N05000006",
    "period": 2025,
@@ -533,7 +533,7 @@
    "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
   },
   {
-   "fixture_value": 1869.0,
+   "fixture_value": 1868.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area_children_2@N05000012",
    "period": 2025,
@@ -638,7 +638,7 @@
    "reason": "Signed deferral: DWP Stat-Xplore publishes UC for Great Britain only, so the Northern Ireland areas have no UC facts in the pinned feed. The incumbent fills NI from the DfC May-2025 supplementary tables, which are requested as a Chronicle port in chronicle#200; the child splits stay deferred regardless (no NI child-count source; the incumbent imputes them from GB proportions)."
   },
   {
-   "fixture_value": 1044.0,
+   "fixture_value": 1045.0,
    "kind": "fixture_only",
    "name": "dwp.uc.households_by_area_children_3plus@N05000009",
    "period": 2025,
@@ -57340,7 +57340,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5064.0,
+   "fixture_value": 5063.0,
    "kind": "calibration_drift",
    "ledger_value": 5593.0,
    "name": "dwp.uc.households_by_area_children_0@E14001077",
@@ -57388,7 +57388,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3685.0,
+   "fixture_value": 3686.0,
    "kind": "calibration_drift",
    "ledger_value": 4732.0,
    "name": "dwp.uc.households_by_area_children_0@E14001083",
@@ -57540,7 +57540,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 7941.0,
+   "fixture_value": 7942.0,
    "kind": "calibration_drift",
    "ledger_value": 8883.0,
    "name": "dwp.uc.households_by_area_children_0@E14001102",
@@ -57636,7 +57636,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 6643.0,
+   "fixture_value": 6644.0,
    "kind": "calibration_drift",
    "ledger_value": 8080.0,
    "name": "dwp.uc.households_by_area_children_0@E14001114",
@@ -57660,7 +57660,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3166.0,
+   "fixture_value": 3167.0,
    "kind": "calibration_drift",
    "ledger_value": 3490.0,
    "name": "dwp.uc.households_by_area_children_0@E14001117",
@@ -57788,7 +57788,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4614.0,
+   "fixture_value": 4613.0,
    "kind": "calibration_drift",
    "ledger_value": 5911.0,
    "name": "dwp.uc.households_by_area_children_0@E14001133",
@@ -57924,7 +57924,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4184.0,
+   "fixture_value": 4183.0,
    "kind": "calibration_drift",
    "ledger_value": 4710.0,
    "name": "dwp.uc.households_by_area_children_0@E14001150",
@@ -57964,7 +57964,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2797.0,
+   "fixture_value": 2796.0,
    "kind": "calibration_drift",
    "ledger_value": 3019.0,
    "name": "dwp.uc.households_by_area_children_0@E14001155",
@@ -57988,7 +57988,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1978.0,
+   "fixture_value": 1979.0,
    "kind": "calibration_drift",
    "ledger_value": 2366.0,
    "name": "dwp.uc.households_by_area_children_0@E14001158",
@@ -58140,7 +58140,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2958.0,
+   "fixture_value": 2959.0,
    "kind": "calibration_drift",
    "ledger_value": 3342.0,
    "name": "dwp.uc.households_by_area_children_0@E14001177",
@@ -58348,7 +58348,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3306.0,
+   "fixture_value": 3307.0,
    "kind": "calibration_drift",
    "ledger_value": 3643.0,
    "name": "dwp.uc.households_by_area_children_0@E14001203",
@@ -58652,7 +58652,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2958.0,
+   "fixture_value": 2957.0,
    "kind": "calibration_drift",
    "ledger_value": 3390.0,
    "name": "dwp.uc.households_by_area_children_0@E14001241",
@@ -58860,7 +58860,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5311.0,
+   "fixture_value": 5312.0,
    "kind": "calibration_drift",
    "ledger_value": 5847.0,
    "name": "dwp.uc.households_by_area_children_0@E14001267",
@@ -58924,7 +58924,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4184.0,
+   "fixture_value": 4183.0,
    "kind": "calibration_drift",
    "ledger_value": 4657.0,
    "name": "dwp.uc.households_by_area_children_0@E14001275",
@@ -58972,7 +58972,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3322.0,
+   "fixture_value": 3323.0,
    "kind": "calibration_drift",
    "ledger_value": 3744.0,
    "name": "dwp.uc.households_by_area_children_0@E14001281",
@@ -58980,7 +58980,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3979.0,
+   "fixture_value": 3980.0,
    "kind": "calibration_drift",
    "ledger_value": 4827.0,
    "name": "dwp.uc.households_by_area_children_0@E14001282",
@@ -58988,7 +58988,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2818.0,
+   "fixture_value": 2817.0,
    "kind": "calibration_drift",
    "ledger_value": 3051.0,
    "name": "dwp.uc.households_by_area_children_0@E14001283",
@@ -59140,7 +59140,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5963.0,
+   "fixture_value": 5962.0,
    "kind": "calibration_drift",
    "ledger_value": 6953.0,
    "name": "dwp.uc.households_by_area_children_0@E14001302",
@@ -59292,7 +59292,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3598.0,
+   "fixture_value": 3599.0,
    "kind": "calibration_drift",
    "ledger_value": 4540.0,
    "name": "dwp.uc.households_by_area_children_0@E14001321",
@@ -59452,7 +59452,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 6643.0,
+   "fixture_value": 6644.0,
    "kind": "calibration_drift",
    "ledger_value": 8297.0,
    "name": "dwp.uc.households_by_area_children_0@E14001341",
@@ -59580,7 +59580,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3043.0,
+   "fixture_value": 3042.0,
    "kind": "calibration_drift",
    "ledger_value": 3206.0,
    "name": "dwp.uc.households_by_area_children_0@E14001357",
@@ -59612,7 +59612,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3927.0,
+   "fixture_value": 3928.0,
    "kind": "calibration_drift",
    "ledger_value": 4558.0,
    "name": "dwp.uc.households_by_area_children_0@E14001361",
@@ -59716,7 +59716,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2058.0,
+   "fixture_value": 2057.0,
    "kind": "calibration_drift",
    "ledger_value": 2395.0,
    "name": "dwp.uc.households_by_area_children_0@E14001374",
@@ -59748,7 +59748,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 7247.0,
+   "fixture_value": 7246.0,
    "kind": "calibration_drift",
    "ledger_value": 9544.0,
    "name": "dwp.uc.households_by_area_children_0@E14001378",
@@ -59772,7 +59772,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3091.0,
+   "fixture_value": 3090.0,
    "kind": "calibration_drift",
    "ledger_value": 3574.0,
    "name": "dwp.uc.households_by_area_children_0@E14001381",
@@ -59956,7 +59956,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3338.0,
+   "fixture_value": 3339.0,
    "kind": "calibration_drift",
    "ledger_value": 3716.0,
    "name": "dwp.uc.households_by_area_children_0@E14001404",
@@ -59980,7 +59980,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4014.0,
+   "fixture_value": 4015.0,
    "kind": "calibration_drift",
    "ledger_value": 4139.0,
    "name": "dwp.uc.households_by_area_children_0@E14001407",
@@ -60020,7 +60020,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5431.0,
+   "fixture_value": 5432.0,
    "kind": "calibration_drift",
    "ledger_value": 6571.0,
    "name": "dwp.uc.households_by_area_children_0@E14001412",
@@ -60060,7 +60060,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3321.0,
+   "fixture_value": 3320.0,
    "kind": "calibration_drift",
    "ledger_value": 4019.0,
    "name": "dwp.uc.households_by_area_children_0@E14001417",
@@ -60124,7 +60124,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 8509.0,
+   "fixture_value": 8508.0,
    "kind": "calibration_drift",
    "ledger_value": 9443.0,
    "name": "dwp.uc.households_by_area_children_0@E14001425",
@@ -60212,7 +60212,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5051.0,
+   "fixture_value": 5052.0,
    "kind": "calibration_drift",
    "ledger_value": 5938.0,
    "name": "dwp.uc.households_by_area_children_0@E14001436",
@@ -60324,7 +60324,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4583.0,
+   "fixture_value": 4582.0,
    "kind": "calibration_drift",
    "ledger_value": 5492.0,
    "name": "dwp.uc.households_by_area_children_0@E14001450",
@@ -60484,7 +60484,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5881.0,
+   "fixture_value": 5882.0,
    "kind": "calibration_drift",
    "ledger_value": 6811.0,
    "name": "dwp.uc.households_by_area_children_0@E14001470",
@@ -60644,7 +60644,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2125.0,
+   "fixture_value": 2124.0,
    "kind": "calibration_drift",
    "ledger_value": 2160.0,
    "name": "dwp.uc.households_by_area_children_0@E14001490",
@@ -60660,7 +60660,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5471.0,
+   "fixture_value": 5472.0,
    "kind": "calibration_drift",
    "ledger_value": 7360.0,
    "name": "dwp.uc.households_by_area_children_0@E14001492",
@@ -60892,7 +60892,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5588.0,
+   "fixture_value": 5589.0,
    "kind": "calibration_drift",
    "ledger_value": 6279.0,
    "name": "dwp.uc.households_by_area_children_0@E14001521",
@@ -60924,7 +60924,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 7834.0,
+   "fixture_value": 7833.0,
    "kind": "calibration_drift",
    "ledger_value": 9711.0,
    "name": "dwp.uc.households_by_area_children_0@E14001525",
@@ -61004,7 +61004,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2337.0,
+   "fixture_value": 2338.0,
    "kind": "calibration_drift",
    "ledger_value": 2959.0,
    "name": "dwp.uc.households_by_area_children_0@E14001535",
@@ -61036,7 +61036,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2160.0,
+   "fixture_value": 2159.0,
    "kind": "calibration_drift",
    "ledger_value": 2571.0,
    "name": "dwp.uc.households_by_area_children_0@E14001539",
@@ -61164,7 +61164,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2961.0,
+   "fixture_value": 2962.0,
    "kind": "calibration_drift",
    "ledger_value": 3466.0,
    "name": "dwp.uc.households_by_area_children_0@E14001555",
@@ -61180,7 +61180,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3689.0,
+   "fixture_value": 3690.0,
    "kind": "calibration_drift",
    "ledger_value": 4921.0,
    "name": "dwp.uc.households_by_area_children_0@E14001557",
@@ -61268,7 +61268,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4572.0,
+   "fixture_value": 4573.0,
    "kind": "calibration_drift",
    "ledger_value": 5264.0,
    "name": "dwp.uc.households_by_area_children_0@E14001568",
@@ -61316,7 +61316,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 6314.0,
+   "fixture_value": 6313.0,
    "kind": "calibration_drift",
    "ledger_value": 7184.0,
    "name": "dwp.uc.households_by_area_children_0@E14001574",
@@ -61428,7 +61428,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2957.0,
+   "fixture_value": 2956.0,
    "kind": "calibration_drift",
    "ledger_value": 3377.0,
    "name": "dwp.uc.households_by_area_children_0@E14001588",
@@ -61724,7 +61724,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3479.0,
+   "fixture_value": 3478.0,
    "kind": "calibration_drift",
    "ledger_value": 3963.0,
    "name": "dwp.uc.households_by_area_children_0@S14000074",
@@ -61740,7 +61740,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4065.0,
+   "fixture_value": 4066.0,
    "kind": "calibration_drift",
    "ledger_value": 4524.0,
    "name": "dwp.uc.households_by_area_children_0@S14000076",
@@ -61772,7 +61772,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2695.0,
+   "fixture_value": 2696.0,
    "kind": "calibration_drift",
    "ledger_value": 3292.0,
    "name": "dwp.uc.households_by_area_children_0@S14000080",
@@ -61852,7 +61852,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 6767.0,
+   "fixture_value": 6768.0,
    "kind": "calibration_drift",
    "ledger_value": 7636.0,
    "name": "dwp.uc.households_by_area_children_0@S14000090",
@@ -61900,7 +61900,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3881.0,
+   "fixture_value": 3880.0,
    "kind": "calibration_drift",
    "ledger_value": 4201.0,
    "name": "dwp.uc.households_by_area_children_0@S14000096",
@@ -61932,7 +61932,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3166.0,
+   "fixture_value": 3167.0,
    "kind": "calibration_drift",
    "ledger_value": 3627.0,
    "name": "dwp.uc.households_by_area_children_0@S14000100",
@@ -61956,7 +61956,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3991.0,
+   "fixture_value": 3992.0,
    "kind": "calibration_drift",
    "ledger_value": 4599.0,
    "name": "dwp.uc.households_by_area_children_0@S14000103",
@@ -62028,7 +62028,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 5960.0,
+   "fixture_value": 5959.0,
    "kind": "calibration_drift",
    "ledger_value": 7245.0,
    "name": "dwp.uc.households_by_area_children_0@W07000081",
@@ -62092,7 +62092,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 6338.0,
+   "fixture_value": 6339.0,
    "kind": "calibration_drift",
    "ledger_value": 7824.0,
    "name": "dwp.uc.households_by_area_children_0@W07000089",
@@ -62260,7 +62260,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4423.0,
+   "fixture_value": 4422.0,
    "kind": "calibration_drift",
    "ledger_value": 5142.0,
    "name": "dwp.uc.households_by_area_children_0@W07000110",
@@ -62268,7 +62268,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4629.0,
+   "fixture_value": 4628.0,
    "kind": "calibration_drift",
    "ledger_value": 5209.0,
    "name": "dwp.uc.households_by_area_children_0@W07000111",
@@ -62316,7 +62316,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 946.0,
+   "fixture_value": 945.0,
    "kind": "calibration_drift",
    "ledger_value": 1071.0,
    "name": "dwp.uc.households_by_area_children_1@E14001067",
@@ -62356,7 +62356,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1372.0,
+   "fixture_value": 1373.0,
    "kind": "calibration_drift",
    "ledger_value": 1574.0,
    "name": "dwp.uc.households_by_area_children_1@E14001072",
@@ -62460,7 +62460,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2559.0,
+   "fixture_value": 2558.0,
    "kind": "calibration_drift",
    "ledger_value": 2437.0,
    "name": "dwp.uc.households_by_area_children_1@E14001085",
@@ -62516,7 +62516,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3039.0,
+   "fixture_value": 3040.0,
    "kind": "calibration_drift",
    "ledger_value": 2608.0,
    "name": "dwp.uc.households_by_area_children_1@E14001092",
@@ -62564,7 +62564,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4793.0,
+   "fixture_value": 4792.0,
    "kind": "calibration_drift",
    "ledger_value": 4062.0,
    "name": "dwp.uc.households_by_area_children_1@E14001098",
@@ -62580,7 +62580,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3963.0,
+   "fixture_value": 3962.0,
    "kind": "calibration_drift",
    "ledger_value": 3294.0,
    "name": "dwp.uc.households_by_area_children_1@E14001100",
@@ -62604,7 +62604,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3712.0,
+   "fixture_value": 3713.0,
    "kind": "calibration_drift",
    "ledger_value": 3537.0,
    "name": "dwp.uc.households_by_area_children_1@E14001103",
@@ -62636,7 +62636,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2609.0,
+   "fixture_value": 2610.0,
    "kind": "calibration_drift",
    "ledger_value": 2714.0,
    "name": "dwp.uc.households_by_area_children_1@E14001107",
@@ -62652,7 +62652,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1927.0,
+   "fixture_value": 1928.0,
    "kind": "calibration_drift",
    "ledger_value": 2112.0,
    "name": "dwp.uc.households_by_area_children_1@E14001109",
@@ -62660,7 +62660,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2992.0,
+   "fixture_value": 2991.0,
    "kind": "calibration_drift",
    "ledger_value": 2900.0,
    "name": "dwp.uc.households_by_area_children_1@E14001110",
@@ -62668,7 +62668,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3814.0,
+   "fixture_value": 3815.0,
    "kind": "calibration_drift",
    "ledger_value": 3707.0,
    "name": "dwp.uc.households_by_area_children_1@E14001111",
@@ -62684,7 +62684,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3146.0,
+   "fixture_value": 3145.0,
    "kind": "calibration_drift",
    "ledger_value": 3066.0,
    "name": "dwp.uc.households_by_area_children_1@E14001113",
@@ -62732,7 +62732,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3322.0,
+   "fixture_value": 3323.0,
    "kind": "calibration_drift",
    "ledger_value": 3368.0,
    "name": "dwp.uc.households_by_area_children_1@E14001119",
@@ -62900,7 +62900,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1379.0,
+   "fixture_value": 1380.0,
    "kind": "calibration_drift",
    "ledger_value": 1418.0,
    "name": "dwp.uc.households_by_area_children_1@E14001140",
@@ -62924,7 +62924,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2070.0,
+   "fixture_value": 2071.0,
    "kind": "calibration_drift",
    "ledger_value": 2240.0,
    "name": "dwp.uc.households_by_area_children_1@E14001143",
@@ -62964,7 +62964,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1880.0,
+   "fixture_value": 1879.0,
    "kind": "calibration_drift",
    "ledger_value": 1947.0,
    "name": "dwp.uc.households_by_area_children_1@E14001148",
@@ -63028,7 +63028,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1048.0,
+   "fixture_value": 1047.0,
    "kind": "calibration_drift",
    "ledger_value": 1294.0,
    "name": "dwp.uc.households_by_area_children_1@E14001156",
@@ -63172,7 +63172,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2241.0,
+   "fixture_value": 2242.0,
    "kind": "calibration_drift",
    "ledger_value": 2055.0,
    "name": "dwp.uc.households_by_area_children_1@E14001174",
@@ -63204,7 +63204,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1014.0,
+   "fixture_value": 1013.0,
    "kind": "calibration_drift",
    "ledger_value": 1083.0,
    "name": "dwp.uc.households_by_area_children_1@E14001178",
@@ -63268,7 +63268,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2617.0,
+   "fixture_value": 2618.0,
    "kind": "calibration_drift",
    "ledger_value": 2736.0,
    "name": "dwp.uc.households_by_area_children_1@E14001186",
@@ -63356,7 +63356,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1255.0,
+   "fixture_value": 1256.0,
    "kind": "calibration_drift",
    "ledger_value": 1466.0,
    "name": "dwp.uc.households_by_area_children_1@E14001197",
@@ -63364,7 +63364,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2905.0,
+   "fixture_value": 2904.0,
    "kind": "calibration_drift",
    "ledger_value": 2845.0,
    "name": "dwp.uc.households_by_area_children_1@E14001198",
@@ -63524,7 +63524,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1376.0,
+   "fixture_value": 1375.0,
    "kind": "calibration_drift",
    "ledger_value": 1502.0,
    "name": "dwp.uc.households_by_area_children_1@E14001218",
@@ -63548,7 +63548,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 4065.0,
+   "fixture_value": 4066.0,
    "kind": "calibration_drift",
    "ledger_value": 4544.0,
    "name": "dwp.uc.households_by_area_children_1@E14001221",
@@ -63620,7 +63620,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 994.0,
+   "fixture_value": 993.0,
    "kind": "calibration_drift",
    "ledger_value": 1141.0,
    "name": "dwp.uc.households_by_area_children_1@E14001230",
@@ -63740,7 +63740,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1650.0,
+   "fixture_value": 1649.0,
    "kind": "calibration_drift",
    "ledger_value": 1844.0,
    "name": "dwp.uc.households_by_area_children_1@E14001245",
@@ -63812,7 +63812,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2157.0,
+   "fixture_value": 2158.0,
    "kind": "calibration_drift",
    "ledger_value": 2294.0,
    "name": "dwp.uc.households_by_area_children_1@E14001254",
@@ -64084,7 +64084,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1371.0,
+   "fixture_value": 1370.0,
    "kind": "calibration_drift",
    "ledger_value": 1553.0,
    "name": "dwp.uc.households_by_area_children_1@E14001288",
@@ -64324,7 +64324,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1337.0,
+   "fixture_value": 1336.0,
    "kind": "calibration_drift",
    "ledger_value": 1365.0,
    "name": "dwp.uc.households_by_area_children_1@E14001318",
@@ -64460,7 +64460,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1188.0,
+   "fixture_value": 1187.0,
    "kind": "calibration_drift",
    "ledger_value": 1339.0,
    "name": "dwp.uc.households_by_area_children_1@E14001335",
@@ -64780,7 +64780,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1496.0,
+   "fixture_value": 1495.0,
    "kind": "calibration_drift",
    "ledger_value": 1540.0,
    "name": "dwp.uc.households_by_area_children_1@E14001375",
@@ -64860,7 +64860,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1628.0,
+   "fixture_value": 1627.0,
    "kind": "calibration_drift",
    "ledger_value": 1684.0,
    "name": "dwp.uc.households_by_area_children_1@E14001385",
@@ -64996,7 +64996,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1108.0,
+   "fixture_value": 1109.0,
    "kind": "calibration_drift",
    "ledger_value": 1362.0,
    "name": "dwp.uc.households_by_area_children_1@E14001402",
@@ -65052,7 +65052,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2167.0,
+   "fixture_value": 2166.0,
    "kind": "calibration_drift",
    "ledger_value": 1980.0,
    "name": "dwp.uc.households_by_area_children_1@E14001409",
@@ -65444,7 +65444,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 942.0,
+   "fixture_value": 943.0,
    "kind": "calibration_drift",
    "ledger_value": 1080.0,
    "name": "dwp.uc.households_by_area_children_1@E14001458",
@@ -65532,7 +65532,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2952.0,
+   "fixture_value": 2951.0,
    "kind": "calibration_drift",
    "ledger_value": 2959.0,
    "name": "dwp.uc.households_by_area_children_1@E14001469",
@@ -65548,7 +65548,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1762.0,
+   "fixture_value": 1763.0,
    "kind": "calibration_drift",
    "ledger_value": 1999.0,
    "name": "dwp.uc.households_by_area_children_1@E14001471",
@@ -65556,7 +65556,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1444.0,
+   "fixture_value": 1443.0,
    "kind": "calibration_drift",
    "ledger_value": 1639.0,
    "name": "dwp.uc.households_by_area_children_1@E14001472",
@@ -65692,7 +65692,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1095.0,
+   "fixture_value": 1094.0,
    "kind": "calibration_drift",
    "ledger_value": 1236.0,
    "name": "dwp.uc.households_by_area_children_1@E14001489",
@@ -65708,7 +65708,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1214.0,
+   "fixture_value": 1213.0,
    "kind": "calibration_drift",
    "ledger_value": 1393.0,
    "name": "dwp.uc.households_by_area_children_1@E14001491",
@@ -65732,7 +65732,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1136.0,
+   "fixture_value": 1137.0,
    "kind": "calibration_drift",
    "ledger_value": 1310.0,
    "name": "dwp.uc.households_by_area_children_1@E14001494",
@@ -65740,7 +65740,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 994.0,
+   "fixture_value": 993.0,
    "kind": "calibration_drift",
    "ledger_value": 1155.0,
    "name": "dwp.uc.households_by_area_children_1@E14001495",
@@ -65860,7 +65860,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1451.0,
+   "fixture_value": 1452.0,
    "kind": "calibration_drift",
    "ledger_value": 1482.0,
    "name": "dwp.uc.households_by_area_children_1@E14001511",
@@ -65956,7 +65956,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1093.0,
+   "fixture_value": 1094.0,
    "kind": "calibration_drift",
    "ledger_value": 1290.0,
    "name": "dwp.uc.households_by_area_children_1@E14001523",
@@ -66020,7 +66020,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2420.0,
+   "fixture_value": 2419.0,
    "kind": "calibration_drift",
    "ledger_value": 2222.0,
    "name": "dwp.uc.households_by_area_children_1@E14001531",
@@ -66532,7 +66532,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3832.0,
+   "fixture_value": 3833.0,
    "kind": "calibration_drift",
    "ledger_value": 3940.0,
    "name": "dwp.uc.households_by_area_children_1@E14001595",
@@ -66620,7 +66620,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 978.0,
+   "fixture_value": 979.0,
    "kind": "calibration_drift",
    "ledger_value": 1113.0,
    "name": "dwp.uc.households_by_area_children_1@S14000021",
@@ -66668,7 +66668,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1445.0,
+   "fixture_value": 1446.0,
    "kind": "calibration_drift",
    "ledger_value": 1399.0,
    "name": "dwp.uc.households_by_area_children_1@S14000061",
@@ -66700,7 +66700,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1535.0,
+   "fixture_value": 1534.0,
    "kind": "calibration_drift",
    "ledger_value": 1641.0,
    "name": "dwp.uc.households_by_area_children_1@S14000065",
@@ -66780,7 +66780,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2564.0,
+   "fixture_value": 2565.0,
    "kind": "calibration_drift",
    "ledger_value": 2479.0,
    "name": "dwp.uc.households_by_area_children_1@S14000075",
@@ -67124,7 +67124,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1485.0,
+   "fixture_value": 1486.0,
    "kind": "calibration_drift",
    "ledger_value": 1518.0,
    "name": "dwp.uc.households_by_area_children_1@W07000087",
@@ -67260,7 +67260,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2873.0,
+   "fixture_value": 2874.0,
    "kind": "calibration_drift",
    "ledger_value": 3040.0,
    "name": "dwp.uc.households_by_area_children_1@W07000104",
@@ -67292,7 +67292,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2910.0,
+   "fixture_value": 2911.0,
    "kind": "calibration_drift",
    "ledger_value": 2776.0,
    "name": "dwp.uc.households_by_area_children_1@W07000108",
@@ -67348,7 +67348,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 848.0,
+   "fixture_value": 847.0,
    "kind": "calibration_drift",
    "ledger_value": 881.0,
    "name": "dwp.uc.households_by_area_children_2@E14001065",
@@ -67388,7 +67388,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2359.0,
+   "fixture_value": 2360.0,
    "kind": "calibration_drift",
    "ledger_value": 2428.0,
    "name": "dwp.uc.households_by_area_children_2@E14001070",
@@ -67412,7 +67412,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3508.0,
+   "fixture_value": 3507.0,
    "kind": "calibration_drift",
    "ledger_value": 4426.0,
    "name": "dwp.uc.households_by_area_children_2@E14001073",
@@ -67428,7 +67428,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2410.0,
+   "fixture_value": 2411.0,
    "kind": "calibration_drift",
    "ledger_value": 2656.0,
    "name": "dwp.uc.households_by_area_children_2@E14001075",
@@ -67500,7 +67500,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2202.0,
+   "fixture_value": 2201.0,
    "kind": "calibration_drift",
    "ledger_value": 2141.0,
    "name": "dwp.uc.households_by_area_children_2@E14001084",
@@ -67532,7 +67532,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1152.0,
+   "fixture_value": 1153.0,
    "kind": "calibration_drift",
    "ledger_value": 1204.0,
    "name": "dwp.uc.households_by_area_children_2@E14001088",
@@ -67772,7 +67772,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3516.0,
+   "fixture_value": 3517.0,
    "kind": "calibration_drift",
    "ledger_value": 3783.0,
    "name": "dwp.uc.households_by_area_children_2@E14001118",
@@ -67844,7 +67844,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1365.0,
+   "fixture_value": 1366.0,
    "kind": "calibration_drift",
    "ledger_value": 1331.0,
    "name": "dwp.uc.households_by_area_children_2@E14001127",
@@ -67860,7 +67860,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1896.0,
+   "fixture_value": 1897.0,
    "kind": "calibration_drift",
    "ledger_value": 1540.0,
    "name": "dwp.uc.households_by_area_children_2@E14001129",
@@ -67884,7 +67884,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2057.0,
+   "fixture_value": 2056.0,
    "kind": "calibration_drift",
    "ledger_value": 1745.0,
    "name": "dwp.uc.households_by_area_children_2@E14001132",
@@ -67916,7 +67916,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 962.0,
+   "fixture_value": 963.0,
    "kind": "calibration_drift",
    "ledger_value": 1214.0,
    "name": "dwp.uc.households_by_area_children_2@E14001136",
@@ -67940,7 +67940,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1654.0,
+   "fixture_value": 1653.0,
    "kind": "calibration_drift",
    "ledger_value": 2060.0,
    "name": "dwp.uc.households_by_area_children_2@E14001139",
@@ -68020,7 +68020,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1253.0,
+   "fixture_value": 1252.0,
    "kind": "calibration_drift",
    "ledger_value": 1126.0,
    "name": "dwp.uc.households_by_area_children_2@E14001149",
@@ -68380,7 +68380,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3152.0,
+   "fixture_value": 3151.0,
    "kind": "calibration_drift",
    "ledger_value": 3268.0,
    "name": "dwp.uc.households_by_area_children_2@E14001194",
@@ -68468,7 +68468,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2205.0,
+   "fixture_value": 2206.0,
    "kind": "calibration_drift",
    "ledger_value": 1792.0,
    "name": "dwp.uc.households_by_area_children_2@E14001205",
@@ -68500,7 +68500,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2613.0,
+   "fixture_value": 2614.0,
    "kind": "calibration_drift",
    "ledger_value": 2747.0,
    "name": "dwp.uc.households_by_area_children_2@E14001209",
@@ -68564,7 +68564,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1019.0,
+   "fixture_value": 1018.0,
    "kind": "calibration_drift",
    "ledger_value": 1223.0,
    "name": "dwp.uc.households_by_area_children_2@E14001217",
@@ -68828,7 +68828,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 969.0,
+   "fixture_value": 970.0,
    "kind": "calibration_drift",
    "ledger_value": 1222.0,
    "name": "dwp.uc.households_by_area_children_2@E14001250",
@@ -68916,7 +68916,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1654.0,
+   "fixture_value": 1653.0,
    "kind": "calibration_drift",
    "ledger_value": 1984.0,
    "name": "dwp.uc.households_by_area_children_2@E14001261",
@@ -68972,7 +68972,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 597.0,
+   "fixture_value": 598.0,
    "kind": "calibration_drift",
    "ledger_value": 719.0,
    "name": "dwp.uc.households_by_area_children_2@E14001268",
@@ -69100,7 +69100,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1365.0,
+   "fixture_value": 1366.0,
    "kind": "calibration_drift",
    "ledger_value": 1486.0,
    "name": "dwp.uc.households_by_area_children_2@E14001284",
@@ -69228,7 +69228,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1952.0,
+   "fixture_value": 1951.0,
    "kind": "calibration_drift",
    "ledger_value": 2242.0,
    "name": "dwp.uc.households_by_area_children_2@E14001300",
@@ -69308,7 +69308,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1965.0,
+   "fixture_value": 1966.0,
    "kind": "calibration_drift",
    "ledger_value": 1199.0,
    "name": "dwp.uc.households_by_area_children_2@E14001310",
@@ -69348,7 +69348,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2127.0,
+   "fixture_value": 2126.0,
    "kind": "calibration_drift",
    "ledger_value": 2109.0,
    "name": "dwp.uc.households_by_area_children_2@E14001315",
@@ -69364,7 +69364,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2489.0,
+   "fixture_value": 2490.0,
    "kind": "calibration_drift",
    "ledger_value": 2614.0,
    "name": "dwp.uc.households_by_area_children_2@E14001317",
@@ -69588,7 +69588,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2092.0,
+   "fixture_value": 2091.0,
    "kind": "calibration_drift",
    "ledger_value": 2399.0,
    "name": "dwp.uc.households_by_area_children_2@E14001345",
@@ -69692,7 +69692,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1597.0,
+   "fixture_value": 1598.0,
    "kind": "calibration_drift",
    "ledger_value": 1701.0,
    "name": "dwp.uc.households_by_area_children_2@E14001358",
@@ -69700,7 +69700,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 918.0,
+   "fixture_value": 919.0,
    "kind": "calibration_drift",
    "ledger_value": 1265.0,
    "name": "dwp.uc.households_by_area_children_2@E14001359",
@@ -69836,7 +69836,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1051.0,
+   "fixture_value": 1052.0,
    "kind": "calibration_drift",
    "ledger_value": 1125.0,
    "name": "dwp.uc.households_by_area_children_2@E14001376",
@@ -69884,7 +69884,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1949.0,
+   "fixture_value": 1948.0,
    "kind": "calibration_drift",
    "ledger_value": 1951.0,
    "name": "dwp.uc.households_by_area_children_2@E14001382",
@@ -69996,7 +69996,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1021.0,
+   "fixture_value": 1020.0,
    "kind": "calibration_drift",
    "ledger_value": 1064.0,
    "name": "dwp.uc.households_by_area_children_2@E14001396",
@@ -70004,7 +70004,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1089.0,
+   "fixture_value": 1090.0,
    "kind": "calibration_drift",
    "ledger_value": 1160.0,
    "name": "dwp.uc.households_by_area_children_2@E14001397",
@@ -70068,7 +70068,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1509.0,
+   "fixture_value": 1510.0,
    "kind": "calibration_drift",
    "ledger_value": 1620.0,
    "name": "dwp.uc.households_by_area_children_2@E14001405",
@@ -70076,7 +70076,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2616.0,
+   "fixture_value": 2617.0,
    "kind": "calibration_drift",
    "ledger_value": 2761.0,
    "name": "dwp.uc.households_by_area_children_2@E14001406",
@@ -70236,7 +70236,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1877.0,
+   "fixture_value": 1878.0,
    "kind": "calibration_drift",
    "ledger_value": 2201.0,
    "name": "dwp.uc.households_by_area_children_2@E14001426",
@@ -70300,7 +70300,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1654.0,
+   "fixture_value": 1653.0,
    "kind": "calibration_drift",
    "ledger_value": 1581.0,
    "name": "dwp.uc.households_by_area_children_2@E14001434",
@@ -70524,7 +70524,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2042.0,
+   "fixture_value": 2043.0,
    "kind": "calibration_drift",
    "ledger_value": 2312.0,
    "name": "dwp.uc.households_by_area_children_2@E14001462",
@@ -70572,7 +70572,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 548.0,
+   "fixture_value": 547.0,
    "kind": "calibration_drift",
    "ledger_value": 497.0,
    "name": "dwp.uc.households_by_area_children_2@E14001468",
@@ -70700,7 +70700,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1125.0,
+   "fixture_value": 1126.0,
    "kind": "calibration_drift",
    "ledger_value": 1234.0,
    "name": "dwp.uc.households_by_area_children_2@E14001484",
@@ -70796,7 +70796,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 940.0,
+   "fixture_value": 941.0,
    "kind": "calibration_drift",
    "ledger_value": 1068.0,
    "name": "dwp.uc.households_by_area_children_2@E14001496",
@@ -70836,7 +70836,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2213.0,
+   "fixture_value": 2214.0,
    "kind": "calibration_drift",
    "ledger_value": 2199.0,
    "name": "dwp.uc.households_by_area_children_2@E14001501",
@@ -70852,7 +70852,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2889.0,
+   "fixture_value": 2890.0,
    "kind": "calibration_drift",
    "ledger_value": 2782.0,
    "name": "dwp.uc.households_by_area_children_2@E14001503",
@@ -70884,7 +70884,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1012.0,
+   "fixture_value": 1011.0,
    "kind": "calibration_drift",
    "ledger_value": 1053.0,
    "name": "dwp.uc.households_by_area_children_2@E14001507",
@@ -70940,7 +70940,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 841.0,
+   "fixture_value": 840.0,
    "kind": "calibration_drift",
    "ledger_value": 917.0,
    "name": "dwp.uc.households_by_area_children_2@E14001514",
@@ -71044,7 +71044,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2583.0,
+   "fixture_value": 2582.0,
    "kind": "calibration_drift",
    "ledger_value": 2174.0,
    "name": "dwp.uc.households_by_area_children_2@E14001527",
@@ -71148,7 +71148,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1391.0,
+   "fixture_value": 1390.0,
    "kind": "calibration_drift",
    "ledger_value": 1494.0,
    "name": "dwp.uc.households_by_area_children_2@E14001540",
@@ -71204,7 +71204,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2885.0,
+   "fixture_value": 2884.0,
    "kind": "calibration_drift",
    "ledger_value": 3337.0,
    "name": "dwp.uc.households_by_area_children_2@E14001547",
@@ -71276,7 +71276,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 981.0,
+   "fixture_value": 982.0,
    "kind": "calibration_drift",
    "ledger_value": 931.0,
    "name": "dwp.uc.households_by_area_children_2@E14001556",
@@ -71292,7 +71292,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1782.0,
+   "fixture_value": 1783.0,
    "kind": "calibration_drift",
    "ledger_value": 1842.0,
    "name": "dwp.uc.households_by_area_children_2@E14001558",
@@ -71308,7 +71308,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1930.0,
+   "fixture_value": 1931.0,
    "kind": "calibration_drift",
    "ledger_value": 1970.0,
    "name": "dwp.uc.households_by_area_children_2@E14001560",
@@ -71356,7 +71356,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1261.0,
+   "fixture_value": 1262.0,
    "kind": "calibration_drift",
    "ledger_value": 1238.0,
    "name": "dwp.uc.households_by_area_children_2@E14001566",
@@ -71436,7 +71436,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 3619.0,
+   "fixture_value": 3618.0,
    "kind": "calibration_drift",
    "ledger_value": 3855.0,
    "name": "dwp.uc.households_by_area_children_2@E14001576",
@@ -71492,7 +71492,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1521.0,
+   "fixture_value": 1520.0,
    "kind": "calibration_drift",
    "ledger_value": 1460.0,
    "name": "dwp.uc.households_by_area_children_2@E14001583",
@@ -71548,7 +71548,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 965.0,
+   "fixture_value": 964.0,
    "kind": "calibration_drift",
    "ledger_value": 1184.0,
    "name": "dwp.uc.households_by_area_children_2@E14001591",
@@ -71636,7 +71636,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2597.0,
+   "fixture_value": 2596.0,
    "kind": "calibration_drift",
    "ledger_value": 2836.0,
    "name": "dwp.uc.households_by_area_children_2@E14001602",
@@ -71644,7 +71644,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1420.0,
+   "fixture_value": 1421.0,
    "kind": "calibration_drift",
    "ledger_value": 1628.0,
    "name": "dwp.uc.households_by_area_children_2@E14001603",
@@ -71724,7 +71724,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1285.0,
+   "fixture_value": 1284.0,
    "kind": "calibration_drift",
    "ledger_value": 1346.0,
    "name": "dwp.uc.households_by_area_children_2@S14000062",
@@ -71876,7 +71876,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1277.0,
+   "fixture_value": 1276.0,
    "kind": "calibration_drift",
    "ledger_value": 1083.0,
    "name": "dwp.uc.households_by_area_children_2@S14000081",
@@ -71940,7 +71940,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1858.0,
+   "fixture_value": 1857.0,
    "kind": "calibration_drift",
    "ledger_value": 1639.0,
    "name": "dwp.uc.households_by_area_children_2@S14000089",
@@ -71972,7 +71972,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1561.0,
+   "fixture_value": 1560.0,
    "kind": "calibration_drift",
    "ledger_value": 1494.0,
    "name": "dwp.uc.households_by_area_children_2@S14000093",
@@ -72220,7 +72220,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1189.0,
+   "fixture_value": 1188.0,
    "kind": "calibration_drift",
    "ledger_value": 1283.0,
    "name": "dwp.uc.households_by_area_children_2@W07000093",
@@ -72228,7 +72228,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1255.0,
+   "fixture_value": 1256.0,
    "kind": "calibration_drift",
    "ledger_value": 1396.0,
    "name": "dwp.uc.households_by_area_children_2@W07000094",
@@ -72324,7 +72324,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1708.0,
+   "fixture_value": 1707.0,
    "kind": "calibration_drift",
    "ledger_value": 1834.0,
    "name": "dwp.uc.households_by_area_children_2@W07000106",
@@ -72332,7 +72332,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2185.0,
+   "fixture_value": 2184.0,
    "kind": "calibration_drift",
    "ledger_value": 2291.0,
    "name": "dwp.uc.households_by_area_children_2@W07000107",
@@ -72604,7 +72604,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1884.0,
+   "fixture_value": 1883.0,
    "kind": "calibration_drift",
    "ledger_value": 1672.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001091",
@@ -72636,7 +72636,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2626.0,
+   "fixture_value": 2625.0,
    "kind": "calibration_drift",
    "ledger_value": 4292.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001095",
@@ -72916,7 +72916,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1076.0,
+   "fixture_value": 1077.0,
    "kind": "calibration_drift",
    "ledger_value": 407.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001130",
@@ -73028,7 +73028,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1239.0,
+   "fixture_value": 1238.0,
    "kind": "calibration_drift",
    "ledger_value": 1463.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001144",
@@ -73084,7 +73084,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1015.0,
+   "fixture_value": 1016.0,
    "kind": "calibration_drift",
    "ledger_value": 1005.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001151",
@@ -73188,7 +73188,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 545.0,
+   "fixture_value": 546.0,
    "kind": "calibration_drift",
    "ledger_value": 477.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001164",
@@ -73244,7 +73244,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 564.0,
+   "fixture_value": 563.0,
    "kind": "calibration_drift",
    "ledger_value": 521.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001171",
@@ -73356,7 +73356,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1226.0,
+   "fixture_value": 1227.0,
    "kind": "calibration_drift",
    "ledger_value": 1283.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001185",
@@ -73396,7 +73396,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1300.0,
+   "fixture_value": 1301.0,
    "kind": "calibration_drift",
    "ledger_value": 1190.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001190",
@@ -73404,7 +73404,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1074.0,
+   "fixture_value": 1073.0,
    "kind": "calibration_drift",
    "ledger_value": 1238.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001191",
@@ -73508,7 +73508,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1524.0,
+   "fixture_value": 1523.0,
    "kind": "calibration_drift",
    "ledger_value": 1918.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001204",
@@ -73524,7 +73524,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1037.0,
+   "fixture_value": 1038.0,
    "kind": "calibration_drift",
    "ledger_value": 1140.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001206",
@@ -73540,7 +73540,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2002.0,
+   "fixture_value": 2001.0,
    "kind": "calibration_drift",
    "ledger_value": 2185.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001208",
@@ -73828,7 +73828,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1376.0,
+   "fixture_value": 1377.0,
    "kind": "calibration_drift",
    "ledger_value": 1296.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001244",
@@ -73980,7 +73980,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 662.0,
+   "fixture_value": 661.0,
    "kind": "calibration_drift",
    "ledger_value": 748.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001263",
@@ -74100,7 +74100,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1123.0,
+   "fixture_value": 1122.0,
    "kind": "calibration_drift",
    "ledger_value": 1234.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001278",
@@ -74188,7 +74188,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 685.0,
+   "fixture_value": 684.0,
    "kind": "calibration_drift",
    "ledger_value": 706.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001289",
@@ -74236,7 +74236,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1548.0,
+   "fixture_value": 1549.0,
    "kind": "calibration_drift",
    "ledger_value": 1206.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001295",
@@ -74572,7 +74572,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1230.0,
+   "fixture_value": 1231.0,
    "kind": "calibration_drift",
    "ledger_value": 1088.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001337",
@@ -74588,7 +74588,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1973.0,
+   "fixture_value": 1972.0,
    "kind": "calibration_drift",
    "ledger_value": 1853.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001339",
@@ -74596,7 +74596,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1560.0,
+   "fixture_value": 1561.0,
    "kind": "calibration_drift",
    "ledger_value": 1200.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001340",
@@ -74620,7 +74620,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 941.0,
+   "fixture_value": 942.0,
    "kind": "calibration_drift",
    "ledger_value": 971.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001343",
@@ -74652,7 +74652,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 663.0,
+   "fixture_value": 662.0,
    "kind": "calibration_drift",
    "ledger_value": 509.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001347",
@@ -74668,7 +74668,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1025.0,
+   "fixture_value": 1024.0,
    "kind": "calibration_drift",
    "ledger_value": 942.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001349",
@@ -74708,7 +74708,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 880.0,
+   "fixture_value": 879.0,
    "kind": "calibration_drift",
    "ledger_value": 799.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001354",
@@ -74772,7 +74772,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 547.0,
+   "fixture_value": 548.0,
    "kind": "calibration_drift",
    "ledger_value": 512.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001362",
@@ -74812,7 +74812,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2258.0,
+   "fixture_value": 2257.0,
    "kind": "calibration_drift",
    "ledger_value": 2650.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001367",
@@ -74892,7 +74892,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2189.0,
+   "fixture_value": 2190.0,
    "kind": "calibration_drift",
    "ledger_value": 2522.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001377",
@@ -75028,7 +75028,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 632.0,
+   "fixture_value": 633.0,
    "kind": "calibration_drift",
    "ledger_value": 694.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001395",
@@ -75068,7 +75068,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 990.0,
+   "fixture_value": 989.0,
    "kind": "calibration_drift",
    "ledger_value": 1011.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001400",
@@ -75292,7 +75292,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1367.0,
+   "fixture_value": 1368.0,
    "kind": "calibration_drift",
    "ledger_value": 1398.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001428",
@@ -75348,7 +75348,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 2228.0,
+   "fixture_value": 2227.0,
    "kind": "calibration_drift",
    "ledger_value": 1882.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001435",
@@ -75396,7 +75396,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1052.0,
+   "fixture_value": 1051.0,
    "kind": "calibration_drift",
    "ledger_value": 1128.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001441",
@@ -75684,7 +75684,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1778.0,
+   "fixture_value": 1779.0,
    "kind": "calibration_drift",
    "ledger_value": 2672.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001477",
@@ -75852,7 +75852,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 890.0,
+   "fixture_value": 889.0,
    "kind": "calibration_drift",
    "ledger_value": 885.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001498",
@@ -76276,7 +76276,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1321.0,
+   "fixture_value": 1320.0,
    "kind": "calibration_drift",
    "ledger_value": 1027.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001551",
@@ -76340,7 +76340,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1662.0,
+   "fixture_value": 1661.0,
    "kind": "calibration_drift",
    "ledger_value": 1362.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001559",
@@ -76380,7 +76380,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 1107.0,
+   "fixture_value": 1108.0,
    "kind": "calibration_drift",
    "ledger_value": 953.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001564",
@@ -76420,7 +76420,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 629.0,
+   "fixture_value": 628.0,
    "kind": "calibration_drift",
    "ledger_value": 622.0,
    "name": "dwp.uc.households_by_area_children_3plus@E14001569",
@@ -76892,7 +76892,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 681.0,
+   "fixture_value": 680.0,
    "kind": "calibration_drift",
    "ledger_value": 701.0,
    "name": "dwp.uc.households_by_area_children_3plus@S14000077",
@@ -76900,7 +76900,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 919.0,
+   "fixture_value": 920.0,
    "kind": "calibration_drift",
    "ledger_value": 683.0,
    "name": "dwp.uc.households_by_area_children_3plus@S14000078",
@@ -76932,7 +76932,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 467.0,
+   "fixture_value": 466.0,
    "kind": "calibration_drift",
    "ledger_value": 521.0,
    "name": "dwp.uc.households_by_area_children_3plus@S14000082",
@@ -77012,7 +77012,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 936.0,
+   "fixture_value": 937.0,
    "kind": "calibration_drift",
    "ledger_value": 909.0,
    "name": "dwp.uc.households_by_area_children_3plus@S14000092",
@@ -77060,7 +77060,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 635.0,
+   "fixture_value": 636.0,
    "kind": "calibration_drift",
    "ledger_value": 750.0,
    "name": "dwp.uc.households_by_area_children_3plus@S14000098",
@@ -77188,7 +77188,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 876.0,
+   "fixture_value": 875.0,
    "kind": "calibration_drift",
    "ledger_value": 846.0,
    "name": "dwp.uc.households_by_area_children_3plus@W07000083",
@@ -77212,7 +77212,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 888.0,
+   "fixture_value": 887.0,
    "kind": "calibration_drift",
    "ledger_value": 772.0,
    "name": "dwp.uc.households_by_area_children_3plus@W07000086",
@@ -77292,7 +77292,7 @@
    "reason": "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published class: on top of the uk-data#468 alignment correction and the national rescale, the incumbent's child splits are a COUNTRY-share imputation (GB proportions applied to each area's total), while ours are the published Stat-Xplore per-area child-count buckets. The per-area scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic variation in family size that the imputation flattens."
   },
   {
-   "fixture_value": 818.0,
+   "fixture_value": 817.0,
    "kind": "calibration_drift",
    "ledger_value": 974.0,
    "name": "dwp.uc.households_by_area_children_3plus@W07000096",

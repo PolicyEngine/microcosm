@@ -74,11 +74,19 @@ def _corrected_uc_by_code(parsed, name_column, roster):
     Every roster area must resolve or the extraction fails."""
 
     by_name = {}
+    raw_names = {}
     for name, count in zip(parsed[name_column], parsed["household_count"], strict=True):
         key = _normalized_area_name(name)
         if key in by_name:
-            raise ValueError(f"uc: duplicate publisher area name {name!r}.")
+            other = raw_names[key]
+            if str(other) == str(name):
+                raise ValueError(f"uc: duplicate publisher area name {name!r}.")
+            raise ValueError(
+                "uc: normalization collision - distinct publisher areas "
+                f"{other!r} and {name!r} normalize to the same key {key!r}."
+            )
         by_name[key] = float(count)
+        raw_names[key] = name
     corrected = {}
     missing = []
     for code, roster_name in roster:
@@ -90,6 +98,16 @@ def _corrected_uc_by_code(parsed, name_column, roster):
     if missing:
         raise ValueError(
             f"uc: {len(missing)} roster area(s) have no publisher row: {missing[:5]}"
+        )
+    if len(by_name) != len(roster):
+        # The reverse direction: publisher rows matching no roster area would
+        # otherwise drop silently, letting a superset or renamed-area extract
+        # pass (re-review finding 4).
+        matched = {_normalized_area_name(name) for _, name in roster}
+        orphans = sorted(str(raw_names[key]) for key in by_name if key not in matched)
+        raise ValueError(
+            f"uc: {len(by_name)} publisher row(s) for a {len(roster)}-area "
+            f"roster; unmatched publisher rows: {orphans[:5]}"
         )
     return corrected
 
@@ -108,7 +126,16 @@ def _assert_code_aligned(frame, codes, family):
         raise ValueError(
             f"{family}: source has {len(frame)} rows for a {len(codes)}-code roster."
         )
-    if "code" in frame.columns and list(frame["code"]) != list(codes):
+    if "code" not in frame.columns:
+        # A source that cannot be code-checked is a fact worth failing on: a
+        # bare length comparison passes any permutation of the right size,
+        # which is the uk-data#468 failure mode surviving inside the guard
+        # written to prevent it (re-review finding 2).
+        raise ValueError(
+            f"{family}: source carries no 'code' column, so positional "
+            "consumption cannot be proven code-aligned."
+        )
+    if list(frame["code"]) != list(codes):
         raise ValueError(
             f"{family}: source code order disagrees with the roster order."
         )
@@ -219,8 +246,25 @@ def constituency_surface():
     for code in codes:
         proportions = country_buckets.get(code[0], country_buckets["N"])
         shares = proportions / proportions.sum()
+        # Largest-remainder allocation: independent per-bucket rounding lets
+        # the four splits drift up to +/-2 households from the total, and a
+        # reference fixture must prove its parts sum to its whole
+        # (re-review finding 1).
+        total = round(corrected[code])
+        exact = [corrected[code] * share for share in shares]
+        floors = [int(value) for value in exact]
+        order = sorted(
+            range(len(exact)), key=lambda j: exact[j] - floors[j], reverse=True
+        )
+        for j in order[: total - sum(floors)]:
+            floors[j] += 1
+        if sum(floors) != total:
+            raise ValueError(
+                f"uc splits: allocation for {code} sums to {sum(floors)}, "
+                f"total is {total}."
+            )
         for j, col in enumerate(split_cols):
-            splits[col].append(round(corrected[code] * shares[j]))
+            splits[col].append(floors[j])
     for col in split_cols:
         for frame in (raw_mapped, cal_mapped):
             frame[col] = np.array(splits[col], dtype=float)

@@ -221,7 +221,14 @@ def _assert_local_fact_vintages(
     level = str(selector.get("geography_level") or "")
     expected = rosters.get(level, {}).get("expected_vintage", "")
     if not expected:
-        return
+        # A level the crosswalk declares no vintage for cannot be proven onto
+        # any boundary frame (re-review finding 3: the silent escapes are the
+        # cases the gate most needs to catch).
+        raise ValueError(
+            f"UK local target reference {reference.name!r} is at level "
+            f"{level!r}, which declares no expected boundary vintage in the "
+            "crosswalk."
+        )
     for fact in facts:
         geography = fact.get("geography")
         if not isinstance(geography, Mapping):
@@ -231,13 +238,24 @@ def _assert_local_fact_vintages(
         if isinstance(expected, Mapping):
             wanted = expected.get(code[:1])
             if wanted is None:
-                continue
+                raise ValueError(
+                    f"UK local target reference {reference.name!r} matched a "
+                    f"fact at {code!r}, whose prefix has no declared boundary "
+                    f"vintage in the crosswalk for level {level!r}."
+                )
         else:
             wanted = expected
         accepted = (
             {str(wanted)} if isinstance(wanted, str) else {str(v) for v in wanted}
         )
-        if vintage and vintage not in accepted:
+        if not vintage:
+            raise ValueError(
+                f"UK local target reference {reference.name!r} matched a fact "
+                f"at {code!r} that declares no boundary vintage; the gate "
+                "exists to prove the frame, and an unstamped fact is the case "
+                "it most needs to catch."
+            )
+        if vintage not in accepted:
             raise ValueError(
                 f"UK local target reference {reference.name!r} matched a fact "
                 f"at {code!r} with boundary vintage {vintage!r}; the crosswalk "
