@@ -51,6 +51,7 @@ from microcosm.build.uk_runtime import (
     clone_entity_frame,
     clone_uk_dataset_with_ladder_geography,
     clone_uk_dataset_with_rowwise_geography,
+    expected_uk_ladder_area_support,
     expected_uk_rowwise_area_support,
     geography_coverage_summary,
     id_multiplier_for_values,
@@ -1085,6 +1086,11 @@ def _ladder_dry_run_plan(
             + "; ".join(gate.failures)
         )
     realized = _ladder_realized_support(assigned, ladder)
+    expected = expected_uk_ladder_area_support(
+        household,
+        ladder,
+        n_clones=args.n_clones,
+    )
     table_rows = {
         name: base_summary["tables"][name][0]
         for name in ("person", "benunit", "household")
@@ -1125,6 +1131,17 @@ def _ladder_dry_run_plan(
             ),
             **{
                 area_type: _support_summary(realized, area_type)
+                for area_type in ("constituency", "la")
+            },
+        },
+        "expected_support": {
+            "basis": (
+                "analytic expectation: constituency household-count share "
+                "within region x the input's region mix x n_clones; OA "
+                "population shares within constituency for LA support"
+            ),
+            **{
+                area_type: _support_summary(expected, area_type)
                 for area_type in ("constituency", "la")
             },
         },

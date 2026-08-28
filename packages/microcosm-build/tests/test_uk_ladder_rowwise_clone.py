@@ -477,6 +477,19 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     assert builder.main() == 0
     plan = json.loads((plan_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
     assert not (plan_dir / "staging_rowwise.h5").exists()
+    expected_support = plan["expected_support"]
+    assert expected_support["basis"] == (
+        "analytic expectation: constituency household-count share within region x "
+        "the input's region mix x n_clones; OA population shares within "
+        "constituency for LA support"
+    )
+    for area_type in ("constituency", "la"):
+        area_support = expected_support[area_type]
+        assert area_support["n_areas"] <= builder.EXPECTED_SUPPORT_BOTTOM_AREAS
+        assert len(area_support["bottom"]) == area_support["n_areas"]
+        assert sum(row["rows"] for row in area_support["bottom"]) == pytest.approx(
+            plan["plan"]["rows"]["household"]
+        )
 
     monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(build_dir)])
     assert builder.main() == 0

@@ -365,18 +365,11 @@ def assign_uk_geography_ladder(
                 f"({expected_constituency_vintage!r})."
             )
 
-    region_codes = _household_region_codes(
-        household[region_column], label=region_column
+    region_codes = _validated_household_ladder_region_codes(
+        household,
+        ladder,
+        region_column=region_column,
     )
-    ladder_regions = set(np.unique(ladder.region_code).tolist())
-    missing_regions = sorted(set(region_codes.tolist()) - ladder_regions)
-    if missing_regions:
-        raise ValueError(
-            "UK OA ladder has no output areas for household region(s): "
-            f"{missing_regions}. The household regions and the ladder artifact "
-            "must share coverage (Scotland and Northern Ireland rungs are not "
-            "in an England-&-Wales ladder)."
-        )
 
     assigned_index = _sample_oa_indices(
         region_codes.to_numpy(),
@@ -417,6 +410,89 @@ def assign_uk_geography_ladder(
     assigned["itl2_code"] = _itl_prefix(itl3, width=4)
     assigned["itl1_code"] = _itl_prefix(itl3, width=3)
     return assigned
+
+
+def expected_uk_ladder_area_support(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    *,
+    n_clones: int = 1,
+    region_column: str = "region",
+) -> pd.DataFrame:
+    """Return analytic expected rows per constituency and local authority.
+
+    The expectation follows the assignment sampler's two stages exactly:
+    constituency household-count shares within each input region, followed by
+    OA population shares within each chosen constituency. Every constituency
+    and local authority in the ladder is returned, including zero-support
+    areas.
+    """
+
+    if isinstance(n_clones, bool) or not isinstance(n_clones, int) or n_clones <= 0:
+        raise ValueError("n_clones must be a positive integer.")
+
+    region_codes = _validated_household_ladder_region_codes(
+        household,
+        ladder,
+        region_column=region_column,
+    )
+    constituency_expected = {
+        str(code): 0.0 for code in np.unique(ladder.constituency_code).tolist()
+    }
+    local_authority_expected = {
+        str(code): 0.0 for code in np.unique(ladder.local_authority_code).tolist()
+    }
+    frame = _ladder_sampling_frame(ladder)
+    region_counts = region_codes.value_counts(sort=False).sort_index()
+
+    for region_code, n_region in region_counts.items():
+        region_rows, constituency_weight = _constituency_household_weights(
+            frame,
+            region_code=str(region_code),
+        )
+        region_households = float(constituency_weight.sum())
+        for constituency_code, household_count in constituency_weight.items():
+            expected_rows = (
+                n_clones
+                * int(n_region)
+                * float(household_count)
+                / region_households
+            )
+            constituency_key = str(constituency_code)
+            constituency_expected[constituency_key] += expected_rows
+            if expected_rows == 0.0:
+                continue
+
+            oa_rows, oa_weights = _constituency_oa_population_weights(
+                region_rows,
+                region_code=str(region_code),
+                constituency_code=constituency_key,
+            )
+            constituency_population = float(oa_weights.sum())
+            local_authority_population = oa_rows.groupby(
+                "local_authority_code", sort=True
+            )["population"].sum()
+            for local_authority_code, population in local_authority_population.items():
+                local_authority_expected[str(local_authority_code)] += (
+                    expected_rows * float(population) / constituency_population
+                )
+
+    rows = [
+        {
+            "area_type": area_type,
+            "area_code": area_code,
+            "expected_rows": expected_rows,
+        }
+        for area_type, expected_by_area in (
+            ("constituency", constituency_expected),
+            ("la", local_authority_expected),
+        )
+        for area_code, expected_rows in expected_by_area.items()
+    ]
+    return pd.DataFrame(
+        rows,
+        columns=("area_type", "area_code", "expected_rows"),
+    )
 
 
 def uk_geography_ladder_assignment_summary(
@@ -659,32 +735,18 @@ def _sample_oa_indices(
     n = len(region_codes)
     assigned_index = np.full(n, -1, dtype=np.int64)
 
-    frame = pd.DataFrame(
-        {
-            "constituency_code": ladder.constituency_code,
-            "region_code": ladder.region_code,
-            "population": ladder.population,
-            "households": ladder.households,
-            "ladder_index": np.arange(len(ladder), dtype=np.int64),
-        }
-    )
+    frame = _ladder_sampling_frame(ladder)
     household_positions = pd.Series(np.arange(n, dtype=np.int64))
 
     for region_code, region_positions in household_positions.groupby(
         pd.Series(region_codes), sort=True
     ):
-        region_rows = frame[frame["region_code"] == region_code]
-        # Stage one: constituency household-count weights within the region.
-        constituency_weight = region_rows.groupby("constituency_code", sort=True)[
-            "households"
-        ].sum()
+        region_rows, constituency_weight = _constituency_household_weights(
+            frame,
+            region_code=str(region_code),
+        )
         constituencies = constituency_weight.index.to_numpy()
         weights = constituency_weight.to_numpy(dtype=np.float64)
-        if weights.sum() <= 0:
-            raise ValueError(
-                f"region {region_code!r} has zero household weight for the "
-                "constituency draw."
-            )
         positions = region_positions.to_numpy()
         chosen_constituency = rng.choice(
             constituencies,
@@ -697,9 +759,12 @@ def _sample_oa_indices(
         for constituency_code, local_positions in pd.Series(positions).groupby(
             chosen_series, sort=True
         ):
-            oa_rows = region_rows[region_rows["constituency_code"] == constituency_code]
+            oa_rows, oa_weights = _constituency_oa_population_weights(
+                region_rows,
+                region_code=str(region_code),
+                constituency_code=str(constituency_code),
+            )
             oa_indices = oa_rows["ladder_index"].to_numpy()
-            oa_weights = oa_rows["population"].to_numpy(dtype=np.float64)
             drawn = rng.choice(
                 oa_indices,
                 size=len(local_positions),
@@ -711,6 +776,58 @@ def _sample_oa_indices(
     if (assigned_index < 0).any():
         raise ValueError("internal error: some households received no OA draw.")
     return assigned_index
+
+
+def _ladder_sampling_frame(ladder: UkOaLadder) -> pd.DataFrame:
+    """Aligned ladder columns used by both sampling and its expectation."""
+
+    return pd.DataFrame(
+        {
+            "constituency_code": ladder.constituency_code,
+            "region_code": ladder.region_code,
+            "local_authority_code": ladder.local_authority_code,
+            "population": ladder.population,
+            "households": ladder.households,
+            "ladder_index": np.arange(len(ladder), dtype=np.int64),
+        }
+    )
+
+
+def _constituency_household_weights(
+    frame: pd.DataFrame,
+    *,
+    region_code: str,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Stage-one constituency weights for one household region."""
+
+    region_rows = frame[frame["region_code"] == region_code]
+    constituency_weight = region_rows.groupby("constituency_code", sort=True)[
+        "households"
+    ].sum()
+    if constituency_weight.sum() <= 0:
+        raise ValueError(
+            f"region {region_code!r} has zero household weight for the "
+            "constituency draw."
+        )
+    return region_rows, constituency_weight
+
+
+def _constituency_oa_population_weights(
+    region_rows: pd.DataFrame,
+    *,
+    region_code: str,
+    constituency_code: str,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Stage-two OA weights for one region-constituency pair."""
+
+    oa_rows = region_rows[region_rows["constituency_code"] == constituency_code]
+    oa_weights = oa_rows["population"].to_numpy(dtype=np.float64)
+    if oa_weights.sum() <= 0:
+        raise ValueError(
+            f"constituency {constituency_code!r} in region {region_code!r} has "
+            "zero population weight for the OA draw."
+        )
+    return oa_rows, oa_weights
 
 
 def _metadata_from_scalar(value: np.ndarray) -> dict[str, Any]:
@@ -841,6 +958,34 @@ def _household_region_codes(values: Any, *, label: str) -> pd.Series:
     return mapped
 
 
+def _validated_household_ladder_region_codes(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    *,
+    region_column: str,
+) -> pd.Series:
+    """Normalize household regions and require matching ladder coverage."""
+
+    if region_column not in household.columns:
+        raise ValueError(
+            f"household table must contain {region_column!r} before geography-"
+            "ladder assignment (assign regions first)."
+        )
+    region_codes = _household_region_codes(
+        household[region_column], label=region_column
+    )
+    ladder_regions = set(np.unique(ladder.region_code).tolist())
+    missing_regions = sorted(set(region_codes.tolist()) - ladder_regions)
+    if missing_regions:
+        raise ValueError(
+            "UK OA ladder has no output areas for household region(s): "
+            f"{missing_regions}. The household regions and the ladder artifact "
+            "must share coverage (Scotland and Northern Ireland rungs are not "
+            "in an England-&-Wales ladder)."
+        )
+    return region_codes
+
+
 def _region_code_for_value(value: Any) -> str | None:
     text = str(value).strip()
     if not text:
@@ -874,6 +1019,7 @@ __all__ = [
     "UK_OA_LADDER_SCHEMA_VERSION",
     "UkOaLadder",
     "assign_uk_geography_ladder",
+    "expected_uk_ladder_area_support",
     "load_uk_oa_ladder",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
