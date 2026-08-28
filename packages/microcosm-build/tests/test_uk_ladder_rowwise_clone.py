@@ -261,6 +261,19 @@ def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:
         )
 
 
+def test_ladder_clone_refuses_preassigned_geography(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+    preassigned = _seam_frame(
+        household=_household_frame().assign(oa_code="stale-oa"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="pre-assigned geography cannot be silently overwritten",
+    ):
+        clone_uk_dataset_with_ladder_geography(preassigned, ladder, n_clones=1)
+
+
 def test_ladder_clone_refuses_uncovered_region(tmp_path) -> None:
     frame = _ladder_frame()
     england_only = frame[frame["region_code"].str.startswith("E")]
@@ -558,6 +571,42 @@ def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path
         ],
     )
     with pytest.raises(ValueError, match="mutually exclusive"):
+        builder.main()
+
+
+def test_driver_ladder_dry_run_refuses_legacy_preassigned_geography(
+    monkeypatch, toy_ladder, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "preassigned.h5"
+    household = _household_frame().assign(
+        constituency_code_oa="stale-constituency"
+    )
+    _write_seam_h5(input_h5, household=household)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--out",
+            str(tmp_path / "plan"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"stale \*_oa columns cannot ride through",
+    ):
         builder.main()
 
 

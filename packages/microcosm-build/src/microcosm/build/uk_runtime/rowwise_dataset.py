@@ -87,6 +87,29 @@ def ladder_clone_index_column(entity: str) -> str:
     return f"{entity}_{ARTIFACT_CLONE_INDEX_COLUMN}"
 
 
+def _refuse_preassigned_geography(
+    table: pd.DataFrame,
+    *,
+    label: str,
+) -> None:
+    preassigned_columns = [
+        column
+        for column in (
+            *UK_GEOGRAPHY_LADDER_COLUMNS,
+            "la_code_oa",
+            "constituency_code_oa",
+            "region_code_oa",
+        )
+        if column in table.columns
+    ]
+    if preassigned_columns:
+        raise ValueError(
+            f"{label} carries pre-assigned geography column(s) "
+            f"{preassigned_columns!r}; pre-assigned geography cannot be "
+            "silently overwritten and stale *_oa columns cannot ride through."
+        )
+
+
 @dataclass(frozen=True)
 class UKRowwiseDatasetResult:
     """Cloned UK single-year tables and row-wise geography metadata.
@@ -307,6 +330,7 @@ def clone_uk_dataset_tables_with_ladder_geography(
         household_id_column="household_id",
         household_weight_column="household_weight",
     )
+    _refuse_preassigned_geography(household_frame, label="household")
     # The artifact's clone_index names the rowwise clone dimension. A
     # candidate-tier clone_index inherited from the staging input (SPI/pool
     # lineage) is replaced, exactly as the pre-Frame clone overwrote the

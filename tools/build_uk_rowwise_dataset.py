@@ -63,7 +63,10 @@ from microcosm.build.uk_runtime import (
     validate_geography_coverage,
     write_geography_crosswalk,
 )
-from microcosm.build.uk_runtime.rowwise_dataset import UK_SPINE_LINEAGE_COLUMNS
+from microcosm.build.uk_runtime.rowwise_dataset import (
+    UK_SPINE_LINEAGE_COLUMNS,
+    _refuse_preassigned_geography,
+)
 from microcosm.frame import engine_tables
 
 CROSSWALK_FILENAME = "uk_official_geography_crosswalk.csv.gz"
@@ -1005,6 +1008,7 @@ def _ladder_dry_run_plan(
         person_ids=person_ids,
         benunit_ids=benunit_ids,
     )
+    _refuse_preassigned_geography(household, label="household")
     id_multiplier = id_multiplier_for_values(
         household["household_id"],
         person_ids["person_id"],
