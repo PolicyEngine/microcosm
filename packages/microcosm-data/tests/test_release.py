@@ -1158,6 +1158,56 @@ def test_per_cut_artifact_revision_refuses_dangling_default_tag(
     assert hub.tags == []
 
 
+def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    # A non-string revision must not shrink the pin set into vacuous guards:
+    # the empty set may only ever mean "no artifacts declared", never
+    # "artifacts whose pins could not be read".
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = 123
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="missing or non-string revisions"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
+def test_empty_artifact_revisions_refuse_publication(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"] = {}
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="declares no artifact revisions"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:
     (release_dir / "build_manifest.json").unlink()
     with pytest.raises(ReleaseContractError):

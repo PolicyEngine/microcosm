@@ -2117,7 +2117,22 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
         validate_release_dir(directory)
 
 
-@pytest.mark.parametrize("revision", ["main", UK_NATIONAL_RELEASE_ID + "-"])
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "main",
+        UK_NATIONAL_RELEASE_ID + "-",
+        # Prefixed but outside the attempt-derived cut-tag grammar: the
+        # contract validates the same <YYYYMMDDTHHMMSSZ>-<uuid8> shape the
+        # assembler mints, so a hand-edited suffix cannot claim a cut.
+        UK_NATIONAL_RELEASE_ID + "-hotfix",
+        UK_NATIONAL_RELEASE_ID + "-20260828t101112Z-1a2b3c4d",
+        UK_NATIONAL_RELEASE_ID + "-20260828T101112Z-1A2B3C4D",
+        # Present but non-string: must fail loudly rather than vanish from
+        # the publish layer's string-only revision collection.
+        123,
+    ],
+)
 def test_uk_national_release_rejects_invalid_artifact_revisions(
     tmp_path: Path,
     revision: str,

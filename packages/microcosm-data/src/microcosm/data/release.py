@@ -322,15 +322,32 @@ def publish_release(
             "latest-evidence.json are written only by the publisher itself, "
             "never as release artifacts."
         )
-    artifact_revisions = _release_manifest_artifact_revisions(release_dir)
+    artifact_revisions, unreadable_revisions = _release_manifest_artifact_revisions(
+        release_dir
+    )
     tag = tag_name or release_id
-    if artifact_revisions and not create_tag:
+    # These guards must fail closed: an empty revision set may only ever mean
+    # "no artifacts declared" (which the contract refuses anyway), never
+    # "artifacts whose pins could not be read" — either silence would publish
+    # artifacts under a tag their manifest never pinned.
+    if unreadable_revisions:
+        raise ValueError(
+            "release_manifest.json artifacts have missing or non-string "
+            f"revisions: {sorted(unreadable_revisions)}; every artifact must "
+            "pin a revision string."
+        )
+    if not artifact_revisions:
+        raise ValueError(
+            "release_manifest.json declares no artifact revisions; releases "
+            "publish only revision-pinned artifacts."
+        )
+    if not create_tag:
         raise ValueError(
             "release_manifest.json pins artifacts to revisions; "
             "publish_release must create the matching Hugging Face tag before "
             "updating latest.json."
         )
-    if artifact_revisions and artifact_revisions != {tag}:
+    if artifact_revisions != {tag}:
         raise ValueError(
             "release_manifest.json pins artifacts to revisions; tag_name must "
             "match the release id or uniform per-cut artifact revision."
@@ -648,19 +665,31 @@ def _ordered_unique(names: tuple[str, ...]) -> list[str]:
     return ordered
 
 
-def _release_manifest_artifact_revisions(release_dir: Path) -> set[str]:
+def _release_manifest_artifact_revisions(
+    release_dir: Path,
+) -> tuple[set[str], list[str]]:
+    """Every artifact's pinned revision, and the artifacts whose pin is unreadable.
+
+    A missing, empty, or non-string revision lands in the unreadable list
+    instead of silently shrinking the revision set: an empty set must mean "no
+    artifacts declared", never "artifacts whose pins could not be read".
+    """
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     artifacts = manifest.get("artifacts", {})
-    if not isinstance(artifacts, dict):  # pragma: no cover - validated already
-        return set()
+    if not isinstance(artifacts, dict):
+        return set(), ["artifacts"]
     revisions: set[str] = set()
-    for artifact in artifacts.values():
-        if not isinstance(artifact, dict):  # pragma: no cover - validated already
+    unreadable: list[str] = []
+    for key, artifact in artifacts.items():
+        if not isinstance(artifact, dict):
+            unreadable.append(str(key))
             continue
         revision = artifact.get("revision")
         if isinstance(revision, str) and revision:
             revisions.add(revision)
-    return revisions
+        else:
+            unreadable.append(str(key))
+    return revisions, unreadable
 
 
 def _commit_revision(commit_info: Any) -> str | None:
