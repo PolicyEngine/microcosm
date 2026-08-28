@@ -79,7 +79,8 @@ PROPERTY_INCOME_SIGNED_EXCLUSION_RATIONALE = (
 
 DESCRIPTION = (
     "UK active-subset Ledger target references for the FRS 2024-25 line. "
-    "Rows are generated from uk_national_targets.json: name is the contract "
+    "Rows are generated from the national rows in uk_population_targets.json: "
+    "name is the contract "
     "target_id or an incumbent-compatible fan-out row name; ledger_selector "
     "is the contract selector plus geography pins; entity is from_entity, "
     "then map_to, then household; measure is the prepared-column metric name "
@@ -92,11 +93,15 @@ DESCRIPTION = (
     "measures are prepared columns produced from the contract binding payload "
     "referenced by metadata.contract_target_id."
 )
+NATIONAL_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 
 
 def main() -> None:
     args = _parser().parse_args()
-    contract = json.loads(args.contract.read_text())
+    contract = _filter_contract_by_geography_levels(
+        json.loads(args.contract.read_text()),
+        allowed_levels=NATIONAL_GEOGRAPHY_LEVELS,
+    )
     facts = [
         json.loads(line)
         for line in args.ledger_facts.read_text().splitlines()
@@ -143,6 +148,20 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--membership-report", type=Path, required=True)
     return parser
+
+
+def _filter_contract_by_geography_levels(
+    contract: Mapping[str, Any],
+    *,
+    allowed_levels: frozenset[str],
+) -> dict[str, Any]:
+    filtered = dict(contract)
+    filtered["targets"] = [
+        target
+        for target in contract.get("targets", ())
+        if set(target.get("geography_levels") or ()) <= allowed_levels
+    ]
+    return filtered
 
 
 def _registry_inverse(contract: Mapping[str, Any]) -> dict[str, list[str]]:

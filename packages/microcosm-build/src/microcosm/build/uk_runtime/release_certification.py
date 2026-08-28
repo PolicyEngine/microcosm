@@ -251,17 +251,21 @@ def run_uk_release_cut_battery(
     coverage_engine: Any,
     build_stage_names: Sequence[str],
     ledger_registries: Mapping[object, Any],
+    local_ledger_registries: Mapping[object, Any],
     parity_evidence: Any,
     fit_weight_records: tuple[FitWeightRecord, ...] | None,
     input_mass_reference: Mapping[str, Any],
     exclusions_evaluated_on: date,
     gate_registry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run the 16 national gates over the calibrated candidate, signed.
+    """Run the 18 national gates over the calibrated candidate, signed.
 
     Always release-candidate strict: this battery exists to certify a cut,
     so an ``evidence_absent`` gap blocks rather than being tolerated, and a
     blocked phase persists its report and raises before any composition.
+    The local-surface compile gates run here too: the certification is the
+    declared owner of the whole national scope, so the caller supplies both
+    the national and the local compiled registries.
     """
 
     battery = GateBatteryRun(
@@ -276,6 +280,7 @@ def run_uk_release_cut_battery(
         "coverage_engine": coverage_engine,
         "build_stage_names": tuple(str(name) for name in build_stage_names),
         "uk_ledger_compiled_registries": dict(ledger_registries),
+        "uk_ledger_compiled_local_registries": dict(local_ledger_registries),
     }
     battery.run_phase("preflight", EvidenceContext(artifacts=preflight_artifacts))
     battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
@@ -517,8 +522,7 @@ def _verify_part(
         )
     if posture is not None and payload.get("posture") != posture:
         raise UKReleaseCertificationError(
-            f"{part_name}: posture must be {posture!r}, got "
-            f"{payload.get('posture')!r}."
+            f"{part_name}: posture must be {posture!r}, got {payload.get('posture')!r}."
         )
     gates = payload.get("gates")
     if not isinstance(gates, Mapping) or set(gates) != set(scope):
@@ -606,8 +610,7 @@ def _verify_union(
     )
     if overlap:
         raise UKReleaseCertificationError(
-            "certification overlap beyond the declared shared ids: "
-            f"{overlap}."
+            f"certification overlap beyond the declared shared ids: {overlap}."
         )
     for shared in sorted(UK_SHARED_GATE_IDS):
         if len(seen.get(shared, [])) < 2:
@@ -671,8 +674,7 @@ def _verify_identity_join(
     recorded_seam = artifacts.get("terminal_gate_json", {})
     if recorded_seam.get("sha256") != seam_report_sha:
         raise UKReleaseCertificationError(
-            "the seam battery report bytes do not match the build record's "
-            "binding."
+            "the seam battery report bytes do not match the build record's binding."
         )
     diagnostics_sha = artifacts.get("diagnostics_json", {}).get("sha256")
     for part_name, payload in (
@@ -694,8 +696,7 @@ def _verify_identity_join(
         )
     if release_cut_payload.get("release_candidate") is not True:
         raise UKReleaseCertificationError(
-            "the release-cut battery must run at release-candidate "
-            "strictness."
+            "the release-cut battery must run at release-candidate strictness."
         )
     if release_cut_payload.get("shippable") is not True:
         raise UKReleaseCertificationError(
@@ -703,9 +704,7 @@ def _verify_identity_join(
         )
 
 
-def _verify_score_receipt(
-    receipt: Mapping[str, Any], *, candidate_sha256: str
-) -> None:
+def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) -> None:
     artifacts = receipt.get("artifacts")
     scored = (
         artifacts.get("candidate", {}).get("sha256")

@@ -313,18 +313,24 @@ class TestUKCountryPackage:
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
+            "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
             "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
+            "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "local_binding_adjudications.json",
             "uk_local_target_census.json",
-            "uk_national_targets.json",
+            "uk_population_targets.json",
+            "uk_firms_targets.json",
+            "local_area_crosswalk.json",
             "target_references.json",
             "target_reference_membership.json",
+            "local_target_references.json",
+            "local_target_reference_membership.json",
         )
 
     def test_uk_source_manifest_loads_twenty_seven_stages(self) -> None:
@@ -391,18 +397,24 @@ class TestExistingPackagesGeneralize:
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
+            "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
             "parity_fixture_production_2023.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "registry_parity_fixture_2025.json",
+            "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "local_binding_adjudications.json",
             "uk_local_target_census.json",
-            "uk_national_targets.json",
+            "uk_population_targets.json",
+            "uk_firms_targets.json",
+            "local_area_crosswalk.json",
             "target_references.json",
             "target_reference_membership.json",
+            "local_target_references.json",
+            "local_target_reference_membership.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
@@ -638,6 +650,8 @@ class TestUKGatesManifest:
             "uk_release_family_build_stages",
             "uk_ledger_compile_parity_production_2023",
             "uk_ledger_compile_parity_incumbent_2025",
+            "uk_ledger_compile_parity_local_incumbent_2025",
+            "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_etb_vat_support",
@@ -684,6 +698,22 @@ class TestUKGatesManifest:
         )
         assert (
             params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
+        )
+        assert (
+            params["uk_ledger_compile_parity_local_incumbent_2025"]["target_period"]
+            == 2025
+        )
+        assert (
+            params["uk_ledger_compile_parity_local_incumbent_2025"]["registry_artifact"]
+            == "uk_ledger_compiled_local_registries"
+        )
+        assert (
+            params["uk_target_surface_local_default_2025"]["expected"]
+            == "local_default_surface"
+        )
+        assert (
+            params["uk_target_surface_local_default_2025"]["registry_artifact"]
+            == "uk_ledger_compiled_local_registries"
         )
 
     def test_strict_absent_evidence_entries_are_declared(self, manifest) -> None:
@@ -981,6 +1011,120 @@ class TestRefusals:
         spec = load_country_spec(package_dir)
 
         assert spec.target_references[0].value_operation == "sum"
+
+    def test_local_target_reference_roundtrips_with_crosswalk_roster(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"].extend(
+            ["local_area_crosswalk.json", "local_target_references.json"]
+        )
+        files["local_area_crosswalk.json"] = {
+            "country": "xx",
+            "levels": {
+                "constituency": {
+                    "expected_vintage": "test_vintage",
+                    "area_ids": ["A1"],
+                }
+            },
+        }
+        files["local_target_references.json"] = {
+            "country": "xx",
+            "target_references": [
+                {
+                    "name": "ons.age.0_10@A1",
+                    "ledger_selector": {
+                        "source_name": "ons",
+                        "source_measure_id": "population",
+                        "geography_level": "constituency",
+                        "geography_id": "A1",
+                    },
+                    "value_operation": "sum",
+                    "entity": "person",
+                    "measure": "age/0_10",
+                    "metadata": {"contract_target_id": "ons.age.0_10"},
+                }
+            ],
+        }
+        package_dir = _write_package(tmp_path, files)
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.target_references == ()
+        assert len(spec.local_target_references) == 1
+        assert spec.local_target_references[0].name == "ons.age.0_10@A1"
+
+    def test_local_target_reference_refuses_unknown_roster_area(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"].extend(
+            ["local_area_crosswalk.json", "local_target_references.json"]
+        )
+        files["local_area_crosswalk.json"] = {
+            "country": "xx",
+            "levels": {
+                "constituency": {
+                    "expected_vintage": "test_vintage",
+                    "area_ids": ["A1"],
+                }
+            },
+        }
+        files["local_target_references.json"] = {
+            "country": "xx",
+            "target_references": [
+                {
+                    "name": "ons.age.0_10@A2",
+                    "ledger_selector": {
+                        "source_name": "ons",
+                        "source_measure_id": "population",
+                        "geography_level": "constituency",
+                        "geography_id": "A2",
+                    },
+                    "entity": "person",
+                    "measure": "age/0_10",
+                    "metadata": {"contract_target_id": "ons.age.0_10"},
+                }
+            ],
+        }
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="test_vintage"):
+            load_country_spec(package_dir)
+
+    def test_local_target_reference_refuses_unpinned_name(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"].extend(
+            ["local_area_crosswalk.json", "local_target_references.json"]
+        )
+        files["local_area_crosswalk.json"] = {
+            "country": "xx",
+            "levels": {
+                "constituency": {
+                    "expected_vintage": "test_vintage",
+                    "area_ids": ["A1"],
+                }
+            },
+        }
+        files["local_target_references.json"] = {
+            "country": "xx",
+            "target_references": [
+                {
+                    "name": "ons.age.0_10",
+                    "ledger_selector": {
+                        "source_name": "ons",
+                        "source_measure_id": "population",
+                        "geography_level": "constituency",
+                        "geography_id": "A1",
+                    },
+                    "entity": "person",
+                    "measure": "age/0_10",
+                    "metadata": {"contract_target_id": "ons.age.0_10"},
+                }
+            ],
+        }
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="target_id@geography_id"):
+            load_country_spec(package_dir)
 
     def test_restricted_licence_requires_a_private_repo(self, tmp_path) -> None:
         files = _minimal_package()

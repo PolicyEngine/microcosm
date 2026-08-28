@@ -727,6 +727,10 @@ class TestPreflightBindings:
             "uk_release_family_build_stages": GateStatus.PASSED,
             "uk_ledger_compile_parity_production_2023": (GateStatus.EVIDENCE_ABSENT),
             "uk_ledger_compile_parity_incumbent_2025": GateStatus.EVIDENCE_ABSENT,
+            "uk_ledger_compile_parity_local_incumbent_2025": (
+                GateStatus.EVIDENCE_ABSENT
+            ),
+            "uk_target_surface_local_default_2025": GateStatus.EVIDENCE_ABSENT,
         }
 
     def test_ledger_compile_parity_selects_the_declared_period_registry(self) -> None:
@@ -767,6 +771,95 @@ class TestPreflightBindings:
 
         assert _ledger_compile_parity_registry(context, 2023) is registry_2023
         assert _ledger_compile_parity_registry(context, 2025) is registry_2025
+
+    def test_ledger_compile_parity_can_select_the_local_registry_artifact(
+        self,
+    ) -> None:
+        national = TargetRegistry(
+            (
+                TargetSpec(
+                    name="target",
+                    entity="household",
+                    measure="measure",
+                    value=1.0,
+                    period=2025,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        local = TargetRegistry(
+            (
+                TargetSpec(
+                    name="local_target",
+                    entity="household",
+                    measure="measure",
+                    value=2.0,
+                    period=2025,
+                    source="synthetic",
+                ),
+            ),
+            country="uk",
+        )
+        context = EvidenceContext(
+            artifacts={
+                "uk_ledger_compiled_registries": {2025: national},
+                "uk_ledger_compiled_local_registries": {2025: local},
+            }
+        )
+
+        assert _ledger_compile_parity_registry(context, 2025) is national
+        assert (
+            _ledger_compile_parity_registry(
+                context,
+                2025,
+                registry_artifact="uk_ledger_compiled_local_registries",
+            )
+            is local
+        )
+
+    def test_local_default_target_surface_uses_metric_names_and_signed_deferrals(
+        self, uk_gates
+    ) -> None:
+        spec = load_country_spec("uk")
+        registry = TargetRegistry(
+            (
+                TargetSpec(
+                    name=reference.name,
+                    entity=reference.entity,
+                    measure=reference.measure,
+                    value=1.0,
+                    period=2025,
+                    source="synthetic",
+                )
+                for reference in spec.local_target_references
+            ),
+            country="uk",
+        )
+        entry = {entry.id: entry for entry in uk_gates.gates}[
+            "uk_target_surface_local_default_2025"
+        ]
+        result = UK_GATE_REGISTRY["target_surface"].evaluate(
+            EvidenceContext(
+                artifacts={"uk_ledger_compiled_local_registries": {2025: registry}}
+            ),
+            entry.parameters,
+        )
+
+        assert result.passed is True
+        assert result.details["candidate_targets"] == 17_077
+        assert result.details["reference_targets"] == 19_642
+        # 1,554 signed area deferrals from the membership file plus the 1,011
+        # ladder-derived households@area rows: census_households binds from the
+        # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
+        # in-code default surface excludes it by rule rather than by absence.
+        exclusions = result.details["reviewed_exclusions"]
+        assert len(exclusions) == 1_554 + 1_011
+        households = [
+            name for name in exclusions if str(name).startswith("households@")
+        ]
+        assert len(households) == 1_011
+        assert result.details["missing_reference_targets"] == []
 
     def test_missing_required_stage_fails_with_the_assertion_text(
         self, uk_gates

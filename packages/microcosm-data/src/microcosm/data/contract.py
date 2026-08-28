@@ -375,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "955d56d8a6ce608615b863a51c5040bdf3b5db16afb92cf1035979c6f55719b8"
+    "12c8a7fd526932decf19954881f43a123451f0454ac2603ff5ab08b0d246e37a"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "7a8b261a2a9dd87e3a57579c55469d769deaa0002f6ee006370629ab0af8b4e0"
+    "2a7cb1441d9c9bab3afde33ad1a2957484c7bde46f93c65386b98dd7a665b812"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e4c4a8fc302f79379e2e2ae75962428781c6cb3c0c31c825fd698240bfe6c89e"
+    "65a2c85db2abd8edd935fda79e5c5ef8e15f89ba59ec4e2763d485c5170fd550"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -448,6 +448,11 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "transferred"),
+    "uk_ledger_compile_parity_local_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
+    "uk_target_surface_local_default_2025": ("target_surface", "preflight"),
     "uk_release_input_coverage": ("release_input_coverage", "terminal"),
     "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
     "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
@@ -479,6 +484,8 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_release_family_build_stages",
         "uk_ledger_compile_parity_production_2023",
         "uk_ledger_compile_parity_incumbent_2025",
+        "uk_ledger_compile_parity_local_incumbent_2025",
+        "uk_target_surface_local_default_2025",
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
@@ -574,6 +581,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_export_surface",
             "uk_input_mass_parity",
             "uk_ledger_compile_parity_incumbent_2025",
+            "uk_ledger_compile_parity_local_incumbent_2025",
+            "uk_target_surface_local_default_2025",
             "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
             "uk_qrf_tail_concentration",
@@ -607,10 +616,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "2c698843042584af8976196f92b2baf097beca93b846fca74671a1cc3cc879aa"
+            "cb480ea8735648bd089322bb434ce87f48fb71b7ad62f55f091d7e7356049c55"
         ),
         "policy_sha256": (
-            "e73dcbcaa07e34d23c8cf40b251f19fd00d9d2b85202647ca0ea13cb1021769a"
+            "775d7a91fa1fc4aebb312bd45f18e5d9a077bb38d936fc408a2f812c341ecc95"
         ),
     },
 }
@@ -2851,9 +2860,7 @@ def _check_uk_release_certification(
                 f"{file} parts.{part_name}.phases must be {expected_phases}, "
                 f"got {part.get('phases')!r}."
             )
-        for field, expected_digest in _UK_CERTIFICATION_PART_DIGESTS[
-            part_name
-        ].items():
+        for field, expected_digest in _UK_CERTIFICATION_PART_DIGESTS[part_name].items():
             if part.get(field) != expected_digest:
                 failures.append(
                     f"{file} parts.{part_name}.{field} does not match the "
@@ -2884,8 +2891,7 @@ def _check_uk_release_certification(
             union[gate_id] = union.get(gate_id, 0) + 1
     if set(union) != _UK_GATE_BATTERY_ENTRY_IDS:
         failures.append(
-            f"{file} mirrored part scopes do not union to the declared "
-            "gate-entry set."
+            f"{file} mirrored part scopes do not union to the declared gate-entry set."
         )
     overlap = sorted(
         gate_id
@@ -2919,8 +2925,7 @@ def _check_uk_release_certification(
             )
         if list(spec.get("declared_phases", ())) != list(_UK_GATE_BATTERY_PHASES):
             failures.append(
-                f"{file} spec.declared_phases must be "
-                f"{list(_UK_GATE_BATTERY_PHASES)}."
+                f"{file} spec.declared_phases must be {list(_UK_GATE_BATTERY_PHASES)}."
             )
         if list(spec.get("shared_gate_ids", ())) != sorted(
             _UK_CERTIFICATION_SHARED_GATE_IDS

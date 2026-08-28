@@ -22,6 +22,9 @@ from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_SCHEMA_VERSION,
     METRIC_STATUS_BOUND_IN_CODE,
     SOURCE_STATUS_DOCUMENTED_UNPINNED,
+    SOURCE_STATUS_PINNED_IN_LADDER,
+    SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+    SOURCE_STATUS_SIGNED_DEFERRED,
     assert_uk_local_target_census_current,
     build_uk_local_target_census,
     committed_uk_local_target_census_path,
@@ -85,6 +88,8 @@ def test_census_families_partition_metrics_and_reference_known_ids() -> None:
 
 def test_census_source_rows_are_reviewed_pointers() -> None:
     census = build_uk_local_target_census()
+    statuses = {source["status"] for source in census["sources"]}
+    assert SOURCE_STATUS_DOCUMENTED_UNPINNED not in statuses
     for source in census["sources"]:
         assert source["url"].startswith("https://"), source["source_id"]
         assert source["publisher"], source["source_id"]
@@ -92,8 +97,19 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         assert source["verified_on"], source["source_id"]
         assert source["status"] in {
             SOURCE_STATUS_DOCUMENTED_UNPINNED,
-            "pinned_in_ladder",
+            SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+            SOURCE_STATUS_PINNED_IN_LADDER,
+            SOURCE_STATUS_SIGNED_DEFERRED,
         }
+        if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
+            pin = source["ledger_fact_pin"]
+            assert pin["facts_sha256"] == (
+                "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48"
+            )
+            assert pin["source_commit"] == "33ca98a"
+        if source["status"] == SOURCE_STATUS_SIGNED_DEFERRED:
+            assert source["signed_reason_id"], source["source_id"]
+            assert source["signed_rationale"], source["source_id"]
         assert source["geographies"], source["source_id"]
         assert set(source["geographies"]) <= {"constituency", "la", "msoa"}
 

@@ -193,6 +193,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ledger_compile_parity_local_incumbent_2025_signed_differences.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "ledger_compile_parity_production_2023_signed_differences.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -223,6 +228,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "local_registry_parity_fixture_2025.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "was_wealth_support_bounds.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -238,7 +248,17 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "uk_national_targets.json",
+      "path": "uk_population_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_firms_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_area_crosswalk.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -249,6 +269,16 @@
     },
     {
       "path": "target_reference_membership.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_target_reference_membership.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

@@ -74,8 +74,17 @@ def _stub_registry():
     }
 
 
-def _write_part(path: Path, scope, phases, *, release_id, release_candidate,
-                release_evidence=None, augment=None, block_phase=None):
+def _write_part(
+    path: Path,
+    scope,
+    phases,
+    *,
+    release_id,
+    release_candidate,
+    release_evidence=None,
+    augment=None,
+    block_phase=None,
+):
     registry = _stub_registry()
     manifest = uk_scoped_gate_manifest(
         frozenset(scope),
@@ -221,7 +230,10 @@ def test_rehydrate_fit_weight_records():
         {
             "fit_weight_records": {
                 "was_wealth": [
-                    {"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}
+                    {
+                        "fit_name": "uk_was_2018_20_wealth:savings",
+                        "weight_kind": "design",
+                    }
                 ],
             }
         }
@@ -232,9 +244,7 @@ def test_rehydrate_fit_weight_records():
     # A fitting stage that recorded nothing coerces the whole artifact to
     # (), which the weights-audit binding fails — never a vacuous pass.
     assert (
-        rehydrate_uk_fit_weight_records(
-            {"fit_weight_records": {"was_wealth": []}}
-        )
+        rehydrate_uk_fit_weight_records({"fit_weight_records": {"was_wealth": []}})
         == ()
     )
     # A malformed block is corruption, not an empty audit: it raises rather
@@ -283,9 +293,7 @@ def test_parity_evidence_refuses_bare_name_grain():
         )
     evidence = uk_release_parity_evidence(
         _Frame(),
-        diagnostics_targets=[
-            {"name": "dwp.uc.households@2025", "relative_error": 0.1}
-        ],
+        diagnostics_targets=[{"name": "dwp.uc.households@2025", "relative_error": 0.1}],
         reference_registry=_Registry(),
         parity_reference=_Reference(),
     )
@@ -327,7 +335,9 @@ def test_compose_refuses_tampered_part_signature(green_certification_inputs):
     seam_path = green_certification_inputs["seam_report_path"]
     payload = json.loads(seam_path.read_text(encoding="utf-8"))
     payload["release_id"] = "dev-seam-tampered"
-    seam_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    seam_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
     # Keep the build record's byte pin in step so the signature check is
     # the refusal that fires, not the identity join.
     green_certification_inputs["build_record"]["artifacts"]["terminal_gate_json"][
@@ -350,13 +360,15 @@ def test_compose_refuses_blocked_part(green_certification_inputs):
     spine_path = green_certification_inputs["spine_report_path"]
     payload = json.loads(spine_path.read_text(encoding="utf-8"))
     payload["blocked_at_phase"] = "transferred"
-    spine_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    spine_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
     green_certification_inputs["spine_sidecar"]["spine_gate_report"]["sha256"] = _sha(
         spine_path
     )
-    green_certification_inputs["build_record"]["spine_provenance"][
-        "spine_gate_report"
-    ]["sha256"] = _sha(spine_path)
+    green_certification_inputs["build_record"]["spine_provenance"]["spine_gate_report"][
+        "sha256"
+    ] = _sha(spine_path)
     with pytest.raises(UKReleaseCertificationError, match="blocked"):
         compose_uk_release_certification(**green_certification_inputs)
 
@@ -380,9 +392,9 @@ def test_compose_refuses_sidecar_report_mismatch(green_certification_inputs):
 
 
 def test_compose_refuses_candidate_mismatch(green_certification_inputs):
-    green_certification_inputs["build_record"]["artifacts"]["staging_h5"][
-        "sha256"
-    ] = "0" * 64
+    green_certification_inputs["build_record"]["artifacts"]["staging_h5"]["sha256"] = (
+        "0" * 64
+    )
     with pytest.raises(UKReleaseCertificationError, match="staged a different"):
         compose_uk_release_certification(**green_certification_inputs)
 
@@ -428,9 +440,7 @@ def test_compose_refuses_score_receipt_scored_on_another_artifact(
         ),
         encoding="utf-8",
     )
-    with pytest.raises(
-        UKReleaseCertificationError, match="artifacts.candidate.sha256"
-    ):
+    with pytest.raises(UKReleaseCertificationError, match="artifacts.candidate.sha256"):
         compose_uk_release_certification(**green_certification_inputs)
 
 
@@ -455,6 +465,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         coverage_engine=object(),
         build_stage_names=("frs_spine",),
         ledger_registries={2023: object(), 2025: object()},
+        local_ledger_registries={2025: object()},
         parity_evidence=object(),
         fit_weight_records=None,
         input_mass_reference={},

@@ -51,9 +51,18 @@ from microcosm.build.gates import (
     ledger_compile_parity_gate,
     nonnegative_columns_gate,
     support_gate,
+    target_surface_gate,
     weights_audit_gate,
 )
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
+from microcosm.build.uk_runtime.ledger_targets import (
+    LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
+    align_uk_local_registry_parity_fixture,
+)
+from microcosm.build.uk_runtime.local_targets import (
+    load_uk_local_geography_contract,
+    metric_names,
+)
 from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -119,6 +128,9 @@ class UKGateBinding:
             evaluator error. Fail-closed empty by default.
         artifact_keys: Context artifact keys the gate needs; missing keys
             resolve to ``evidence_absent`` before evaluation.
+        artifact_selector: Optional parameter-dependent override of
+            ``artifact_keys`` for bindings whose evidence artifact follows a
+            declared parameter.
         needs_frame: Whether the gate reads the phase frame.
         frame_predicate: Optional parameter-dependent override of
             ``needs_frame`` for bindings that serve more than one declared
@@ -135,12 +147,15 @@ class UKGateBinding:
     evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
     parameter_keys: frozenset[str] = frozenset()
     artifact_keys: frozenset[str] = frozenset()
+    artifact_selector: Callable[[Mapping[str, Any]], frozenset[str]] | None = None
     needs_frame: bool = True
     frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
     legacy_name: str | None = None
     evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
 
     def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
+        if self.artifact_selector is not None:
+            return self.artifact_selector(parameters)
         return self.artifact_keys
 
     def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
@@ -644,12 +659,203 @@ def _evaluate_export_surface(
 def _evaluate_target_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    if parameters.get("expected") == "local_default_surface":
+        return _evaluate_local_default_target_surface(context, parameters)
+    # National path: declared parameters forward to the gate unchanged, so an
+    # entry that later declares reviewed exclusions keeps working and an
+    # unknown parameter still fails closed inside the gate call (PR #795
+    # review finding 4 restored the forward the local branch had dropped).
     parity = context.artifacts["parity_evidence"]
     return uk_target_surface_gate(
         parity.candidate_targets,
         parity.reference_targets,
         **dict(parameters),
     )
+
+
+def _evaluate_local_default_target_surface(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
+    if registry_artifact != "uk_ledger_compiled_local_registries":
+        raise ValueError(
+            "local_default_surface target_surface requires "
+            "registry_artifact='uk_ledger_compiled_local_registries'."
+        )
+    target_period = parameters["target_period"]
+    registry = _ledger_compile_parity_registry(
+        context,
+        target_period,
+        registry_artifact=registry_artifact,
+    )
+    crosswalk_resource = str(parameters["crosswalk_resource"])
+    membership_resource = str(parameters["membership_resource"])
+    reviewed = dict(_local_default_reviewed_exclusions(membership_resource))
+    reviewed.update(_ladder_derived_households_exclusions(crosswalk_resource))
+    return target_surface_gate(
+        _local_default_candidate_surface(registry),
+        _local_default_expected_surface(crosswalk_resource),
+        candidate_name="UK local compiled Ledger surface",
+        reference_name="UK local default metric surface",
+        reviewed_exclusions=reviewed,
+    )
+
+
+_LADDER_DERIVED_HOUSEHOLDS_RATIONALE = (
+    "census_households is ladder-derived: the households column binds from the "
+    "OA-ladder artifact's census household counts (the ladder sha is its "
+    "provenance), never from Chronicle facts, so no ledger reference exists by "
+    "design. See uk_local_target_census.json (source status pinned_in_ladder) "
+    "and microcosm#542, which bound the family from the ladder."
+)
+
+
+def _ladder_derived_households_exclusions(crosswalk_resource: str) -> dict[str, str]:
+    crosswalk = json.loads(
+        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
+    )
+    levels = crosswalk.get("levels")
+    if not isinstance(levels, Mapping):
+        raise ValueError(f"{crosswalk_resource} must expose levels.")
+    reviewed: dict[str, str] = {}
+    for geography_level in ("constituency", "local_authority"):
+        level = levels.get(geography_level)
+        if not isinstance(level, Mapping):
+            raise ValueError(f"{crosswalk_resource} must expose {geography_level!r}.")
+        for area_id in level.get("area_ids", ()):
+            reviewed[f"households@{area_id}"] = _LADDER_DERIVED_HOUSEHOLDS_RATIONALE
+    return reviewed
+
+
+def _target_surface_required_artifacts(
+    parameters: Mapping[str, Any],
+) -> frozenset[str]:
+    if parameters.get("expected") == "local_default_surface":
+        return frozenset({_ledger_compile_parity_registry_artifact(parameters)})
+    return frozenset({"parity_evidence"})
+
+
+def _target_surface_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object | None:
+    if parameters.get("expected") != "local_default_surface":
+        return None
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
+    target_period = parameters["target_period"]
+    registry = _ledger_compile_parity_registry(
+        context,
+        target_period,
+        registry_artifact=registry_artifact,
+    )
+    crosswalk_resource = str(parameters["crosswalk_resource"])
+    membership_resource = str(parameters["membership_resource"])
+    crosswalk_text = (
+        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
+    )
+    membership_text = (
+        files("microcosm.build.uk").joinpath(membership_resource).read_text()
+    )
+    candidate_targets = sorted(_local_default_candidate_surface(registry))
+    reference_targets = sorted(_local_default_expected_surface(crosswalk_resource))
+    reviewed_exclusions = _local_default_reviewed_exclusions(membership_resource)
+    return {
+        "expected": "local_default_surface",
+        "registry_artifact": registry_artifact,
+        "registry_count": len(registry) if hasattr(registry, "__len__") else None,
+        "target_period": target_period,
+        "crosswalk_resource": crosswalk_resource,
+        "crosswalk_sha256": hashlib.sha256(crosswalk_text.encode("utf-8")).hexdigest(),
+        "membership_resource": membership_resource,
+        "membership_sha256": hashlib.sha256(
+            membership_text.encode("utf-8")
+        ).hexdigest(),
+        "candidate_targets": candidate_targets,
+        "reference_targets": reference_targets,
+        "reviewed_exclusions": {
+            name: reviewed_exclusions[name] for name in sorted(reviewed_exclusions)
+        },
+    }
+
+
+def _local_default_candidate_surface(registry: object) -> frozenset[str]:
+    targets: set[str] = set()
+    for spec in registry:
+        name = str(spec.name)
+        if "@" not in name:
+            raise ValueError(
+                f"UK local compiled target {name!r} is missing the @ area suffix."
+            )
+        area_id = name.split("@", 1)[1]
+        measure = str(spec.measure)
+        if not measure:
+            raise ValueError(f"UK local compiled target {name!r} has no measure.")
+        targets.add(f"{measure}@{area_id}")
+    return frozenset(targets)
+
+
+def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
+    crosswalk = json.loads(
+        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
+    )
+    levels = crosswalk.get("levels")
+    if not isinstance(levels, Mapping):
+        raise ValueError(f"{crosswalk_resource} must expose levels.")
+    expected: set[str] = set()
+    for area_type, geography_level in (
+        ("constituency", "constituency"),
+        ("la", "local_authority"),
+    ):
+        level = levels.get(geography_level)
+        if not isinstance(level, Mapping):
+            raise ValueError(f"{crosswalk_resource} must expose {geography_level!r}.")
+        area_ids = level.get("area_ids")
+        if not isinstance(area_ids, (list, tuple)):
+            raise ValueError(
+                f"{crosswalk_resource} level {geography_level!r} must expose area_ids."
+            )
+        for metric_name in metric_names(area_type):
+            expected.update(f"{metric_name}@{area_id}" for area_id in area_ids)
+    return frozenset(expected)
+
+
+def _local_default_reviewed_exclusions(
+    membership_resource: str,
+) -> dict[str, str]:
+    membership = json.loads(
+        files("microcosm.build.uk").joinpath(membership_resource).read_text()
+    )
+    metric_by_target_id = _local_metric_by_target_id()
+    reviewed: dict[str, str] = {}
+    for deferral in membership.get("signed_deferrals", ()):
+        if not isinstance(deferral, Mapping):
+            continue
+        target_id = str(deferral.get("target_id", ""))
+        metric_name = metric_by_target_id.get(target_id)
+        if metric_name is None:
+            continue
+        rationale = str(deferral.get("rationale", ""))
+        for area_id in deferral.get("area_ids", ()):
+            reviewed[f"{metric_name}@{area_id}"] = rationale
+    return reviewed
+
+
+def _local_metric_by_target_id() -> dict[str, str]:
+    contract = load_uk_local_geography_contract()
+    mapping: dict[str, str] = {}
+    for target in contract.get("targets", ()):
+        if not isinstance(target, Mapping):
+            continue
+        target_id = target.get("target_id")
+        bindings = target.get("bindings")
+        if not isinstance(target_id, str) or not isinstance(bindings, Mapping):
+            continue
+        policyengine = bindings.get("policyengine")
+        if not isinstance(policyengine, Mapping):
+            continue
+        metric_name = policyengine.get("metric_name")
+        if isinstance(metric_name, str):
+            mapping[target_id] = metric_name
+    return mapping
 
 
 def _evaluate_target_fit(
@@ -756,9 +962,7 @@ def _evaluate_ledger_compile_parity(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     fixture_resource = str(parameters["fixture_resource"])
-    fixture = json.loads(
-        files("microcosm.build.uk").joinpath(fixture_resource).read_text()
-    )
+    fixture = _load_ledger_compile_parity_fixture(fixture_resource)
     signed_differences = parameters.get("signed_differences", ())
     signed_resource = parameters.get("signed_differences_resource")
     if signed_resource is not None:
@@ -767,20 +971,39 @@ def _evaluate_ledger_compile_parity(
         )["differences"]
     target_period = parameters["target_period"]
     return ledger_compile_parity_gate(
-        _ledger_compile_parity_registry(context, target_period),
+        _ledger_compile_parity_registry(
+            context,
+            target_period,
+            registry_artifact=_ledger_compile_parity_registry_artifact(parameters),
+        ),
         fixture,
         signed_differences=signed_differences,
     )
+
+
+def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]:
+    fixture = json.loads(
+        files("microcosm.build.uk").joinpath(fixture_resource).read_text()
+    )
+    if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
+        return align_uk_local_registry_parity_fixture(fixture)
+    return fixture
 
 
 def _ledger_compile_parity_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
     target_period = parameters["target_period"]
-    registry = _ledger_compile_parity_registry(context, target_period)
+    registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
+    registry = _ledger_compile_parity_registry(
+        context,
+        target_period,
+        registry_artifact=registry_artifact,
+    )
     fixture_resource = str(parameters["fixture_resource"])
     fixture_text = files("microcosm.build.uk").joinpath(fixture_resource).read_text()
     return {
+        "registry_artifact": registry_artifact,
         "registry_version": getattr(registry, "version", None),
         "registry_count": len(registry) if hasattr(registry, "__len__") else None,
         "fixture_resource": fixture_resource,
@@ -794,21 +1017,49 @@ def _ledger_compile_parity_evidence(
 def _ledger_compile_parity_registry(
     context: EvidenceContext,
     target_period: object,
+    *,
+    registry_artifact: str = "uk_ledger_compiled_registries",
 ) -> object:
-    registries = context.artifacts["uk_ledger_compiled_registries"]
+    registries = context.artifacts[registry_artifact]
     if not isinstance(registries, Mapping):
-        raise TypeError(
-            "uk_ledger_compiled_registries must map target periods to registries."
-        )
+        raise TypeError(f"{registry_artifact} must map target periods to registries.")
     if target_period in registries:
         return registries[target_period]
     target_period_key = str(target_period)
     if target_period_key in registries:
         return registries[target_period_key]
     raise KeyError(
-        f"UK Ledger compile parity has no registry for target period "
-        f"{target_period!r}; available periods: {sorted(map(str, registries))}."
+        f"UK Ledger compile parity artifact {registry_artifact!r} has no registry "
+        f"for target period {target_period!r}; available periods: "
+        f"{sorted(map(str, registries))}."
     )
+
+
+_LEDGER_COMPILE_PARITY_REGISTRY_ARTIFACTS = frozenset(
+    {
+        "uk_ledger_compiled_registries",
+        "uk_ledger_compiled_local_registries",
+    }
+)
+
+
+def _ledger_compile_parity_registry_artifact(
+    parameters: Mapping[str, Any],
+) -> str:
+    artifact = str(parameters.get("registry_artifact", "uk_ledger_compiled_registries"))
+    if artifact not in _LEDGER_COMPILE_PARITY_REGISTRY_ARTIFACTS:
+        raise ValueError(
+            "ledger_compile_parity registry_artifact must be one of "
+            f"{sorted(_LEDGER_COMPILE_PARITY_REGISTRY_ARTIFACTS)}, got "
+            f"{artifact!r}."
+        )
+    return artifact
+
+
+def _ledger_compile_parity_required_artifacts(
+    parameters: Mapping[str, Any],
+) -> frozenset[str]:
+    return frozenset({_ledger_compile_parity_registry_artifact(parameters)})
 
 
 # ---------------------------------------------------------------------------
@@ -949,8 +1200,18 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "target_surface": UKGateBinding(
         name="target_surface",
         evaluator=_evaluate_target_surface,
-        artifact_keys=frozenset({"parity_evidence"}),
+        parameter_keys=frozenset(
+            {
+                "expected",
+                "registry_artifact",
+                "target_period",
+                "crosswalk_resource",
+                "membership_resource",
+            }
+        ),
+        artifact_selector=_target_surface_required_artifacts,
         needs_frame=False,
+        evidence=_target_surface_evidence,
     ),
     "target_fit": UKGateBinding(
         name="target_fit",
@@ -998,9 +1259,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "signed_differences",
                 "signed_differences_resource",
                 "target_period",
+                "registry_artifact",
             }
         ),
-        artifact_keys=frozenset({"uk_ledger_compiled_registries"}),
+        artifact_selector=_ledger_compile_parity_required_artifacts,
         needs_frame=False,
         evidence=_ledger_compile_parity_evidence,
     ),

@@ -59,7 +59,7 @@ def _load_uk_resource(name: str) -> dict:
 
 
 def _contract_targets_by_id() -> dict[str, dict]:
-    contract = _load_uk_resource("uk_national_targets.json")
+    contract = _load_uk_resource("uk_population_targets.json")
     return {target["target_id"]: target for target in contract["targets"]}
 
 
@@ -199,7 +199,7 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     pin and stay held: activating them needs contract redesign (per-nation
     repayment rows; an England-and-Wales PIP binding), not a pin change.
     """
-    contract = _load_uk_resource("uk_national_targets.json")
+    contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
     scotgov_ids = {
         str(target["target_id"])
@@ -445,7 +445,7 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
 
 
 def test_uk_generator_assigns_calendar_average_to_uc_benefit_unit_targets() -> None:
-    contract = _load_uk_resource("uk_national_targets.json")
+    contract = _load_uk_resource("uk_population_targets.json")
     facts = [
         _uc_benefit_units_fact("2025-04", value=6_380_000.0),
         *(

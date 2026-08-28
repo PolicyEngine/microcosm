@@ -266,7 +266,7 @@ def uk_target_geography_levels(registry: TargetRegistry) -> dict[str, str]:
 
     payload = json.loads(
         importlib_resources.files("microcosm.build.uk")
-        .joinpath("uk_national_targets.json")
+        .joinpath("uk_population_targets.json")
         .read_text(encoding="utf-8")
     )
     targets = {row["target_id"]: row for row in payload["targets"]}

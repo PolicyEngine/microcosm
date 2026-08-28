@@ -21,9 +21,10 @@ Design rules:
   contract and are explicitly out of scope here.
 * **Reviewed pointers, not scraped claims.** Source rows document official
   products verified by a human-reviewed fetch on ``verified_on``. They start
-  ``documented_unpinned`` and move to ``pinned_in_ladder`` when a build
-  artifact sha-pins them per build, mirroring the HMRC/SPI source-contract
-  discipline.
+  ``documented_unpinned`` and move to a pinned status once a sha-pinned build
+  artifact or Ledger consumer fact feed owns the facts, mirroring the
+  HMRC/SPI source-contract discipline. Rows that remain unsuitable for this
+  surface carry a signed deferral reason.
 * **Fences by reference, enforced at binding.** The banded HMRC facts stay
   fenced exactly as the national replay adjudicated them
   (``FULL_FRS_TI_BAND_FENCE_ID``, ``HMRC_SPI_TARGET_RECORD_COUNT`` are
@@ -53,7 +54,9 @@ __all__ = [
     "family_for_metric",
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
+    "SOURCE_STATUS_PINNED_IN_LEDGER_FACTS",
     "SOURCE_STATUS_PINNED_IN_LADDER",
+    "SOURCE_STATUS_SIGNED_DEFERRED",
     "assert_uk_local_target_census_current",
     "build_uk_local_target_census",
     "committed_uk_local_target_census_path",
@@ -67,12 +70,25 @@ CENSUS_RESOURCE = "uk_local_target_census.json"
 
 METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
 SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
+SOURCE_STATUS_PINNED_IN_LEDGER_FACTS = "pinned_in_ledger_facts"
 SOURCE_STATUS_PINNED_IN_LADDER = "pinned_in_ladder"
+SOURCE_STATUS_SIGNED_DEFERRED = "signed_deferred"
 FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 
 #: Review date for every source row below: each URL was fetched and its
 #: product description checked on this date (microcosm#495 scoping).
 _SOURCES_VERIFIED_ON = "2026-07-22"
+
+_LEDGER_FACT_FEED_PIN: dict[str, str] = {
+    "artifact": ".codex-work/consumer_facts_uk.jsonl",
+    "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+    "facts_sha256": (
+        "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48"
+    ),
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "33ca98a",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+}
 
 _SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
 _FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"
@@ -191,18 +207,21 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "url": "https://www.gov.uk/government/collections/personal-incomes-statistics",
         "geographies": ["constituency", "la"],
         "latest_vintage": "tax year 2023 to 2024 (published 2026-04-29)",
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "Unbanded area statistics — a different surface from the "
+            "Unbanded area statistics in the pinned Ledger fact feed supply "
+            "the local HMRC count targets directly and the amount targets via "
+            "the signed count_x_mean construction. The feed publishes SPI "
+            "target count/mean measures for 650/650 constituencies except "
+            "self_employment_income_mean at E14001416 (so that one amount "
+            "row is signed deferred), and for 359/361 crosswalk local "
+            "authorities; E06000027 has only median SPI measures and "
+            "E06000053 has no SPI local-authority target-measure rows. This "
+            "remains a different surface from the "
             f"{HMRC_SPI_TARGET_RECORD_COUNT} banded Total Income facts held "
-            "fenced by the national adjudication. The constituency vintage "
-            "used by each table edition must be pinned at binding time (2024 "
-            "boundaries vs earlier). Historical table layouts publish "
-            "taxpayer counts with mean/median amounts; whether published "
-            "amount totals exist, or the amount metric needs a declared "
-            "count-times-mean construction with rounding-error bounds, must "
-            "be verified when the exact tables are pinned."
+            "fenced by the national adjudication."
         ),
     },
     {
@@ -222,14 +241,15 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "mid-2022 on this page; estimates for 2012 onwards now released "
             "via Nomis (ONS notice dated 2024-11-25)"
         ),
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "Binding must pin the Nomis release carrying 2024-constituency "
-            "(PCON24) estimates to match the geography ladder's constituency "
-            "vintage, plus the Scotland/Northern Ireland equivalents. "
-            "Mid-year estimates cover the total usual-resident population — "
-            "see the population_universe_private_households adjudication."
+            "The pinned Ledger fact feed carries the PCON24 constituency "
+            "population age specs for all 650 constituencies across the "
+            "ONS, NRS, and NISRA publisher legs. Mid-year estimates cover "
+            "the total usual-resident population — see the "
+            "population_universe_private_households adjudication."
         ),
     },
     {
@@ -242,11 +262,13 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "url": "https://www.nomisweb.co.uk/datasets/pestsyoala",
         "geographies": ["la"],
         "latest_vintage": "mid-2024",
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "UK-wide coverage at local-authority grain. Covers the total "
-            "usual-resident population — see the "
+            "The pinned Ledger fact feed carries local-authority population "
+            "age specs for all 361 crosswalk local authorities. Covers the "
+            "total usual-resident population — see the "
             "population_universe_private_households adjudication."
         ),
     },
@@ -316,16 +338,16 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "UC statistics release cadence per DWP schedule (next noted "
             "release 2026-08-18 at verification)"
         ),
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "Exact table definitions (households vs people, child-count "
-            "bands, constituency vintage) are chosen inside the tool and "
-            "must be pinned per tabulation at binding time. DWP UC official "
-            "statistics cover Great Britain: Northern Ireland Universal "
-            "Credit statistics are published separately by the NI Department "
-            "for Communities and are not yet documented here, so NI has no "
-            "declared supplier for this family. DWP counts UC claim "
+            "The pinned Ledger fact feed carries DWP Stat-Xplore UC "
+            "household facts for 632/650 constituencies and 350/361 local "
+            "authorities, plus the four constituency child-bucket specs. "
+            "DWP UC official statistics in this feed cover Great Britain; "
+            "the 18 Northern Ireland constituencies and 11 Northern Ireland "
+            "local authorities are signed deferred. DWP counts UC claim "
             "households — see the uc_unit_vs_household_grain adjudication."
         ),
     },
@@ -345,15 +367,22 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
         "geographies": ["msoa"],
         "latest_vintage": "financial year ending 2023",
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_SIGNED_DEFERRED,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "signed_reason_id": "msoa_mean_to_la_deferred",
+        "signed_rationale": (
+            "The pinned Ledger fact feed carries ONS equivalised-income facts "
+            "at MSOA grain, not local-authority grain; the local-authority "
+            "mean aggregation design is deferred."
+        ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
             "Model-based estimates built from the Family Resources Survey — "
             "see the frs_model_based_target_circularity adjudication. The "
             "BHC and AHC measures are independently modelled and not "
             "directly comparable — see the ons_bhc_ahc_noncomparable "
-            "adjudication. MSOA-to-local-authority aggregation method must "
-            "be declared at binding time; England and Wales only."
+            "adjudication. MSOA-to-local-authority aggregation is signed "
+            "deferred for this run; England and Wales only."
         ),
     },
     {
@@ -366,13 +395,15 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "url": "https://www.nomisweb.co.uk/datasets/c2021ts054",
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "England and Wales only; Scotland's Census 2022 and Northern "
-            "Ireland's Census 2021 tenure tables need separate pinning for "
-            "full-UK coverage. Census tenure classes must be crosswalked to "
-            "the runtime's four tenure metrics explicitly."
+            "The pinned Ledger fact feed carries tenure specs for all 361 "
+            "crosswalk local authorities across ONS Census 2021, NRS Census "
+            "2022, and NISRA Census 2021 publisher legs. Private-rent and "
+            "social-rent tenure rows are additive over publisher-native "
+            "subclasses and compile through the signed sum operation."
         ),
     },
     {
@@ -388,16 +419,23 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
         "geographies": ["la"],
         "latest_vintage": "release of 2026-07-22 at verification",
-        "status": SOURCE_STATUS_DOCUMENTED_UNPINNED,
+        "status": SOURCE_STATUS_SIGNED_DEFERRED,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "signed_reason_id": "private_rent_pipr_partial_coverage_2025",
+        "signed_rationale": (
+            "The pinned Ledger fact feed carries PIPR LA facts at 2026-06 "
+            "for 314 crosswalk England/Wales local authorities, which are "
+            "after the 2025 target period; four English crosswalk local "
+            "authorities are absent, Scotland is BRMA statistical_scope "
+            "grain, and Northern Ireland has no LA rows."
+        ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "The dataset landing page was verified. PIPR publishes average "
-            "rent price levels, not additive rent totals, and per the PIPR "
-            "QMI its local-authority granularity applies to England and "
-            "Wales with different geographies for Scotland and Northern "
-            "Ireland — so the runtime's additive private-rent metric needs "
-            "a declared count-times-mean construction and a declared "
-            "Scotland/NI treatment when the exact table is pinned."
+            "PIPR publishes average rent price levels, not additive rent "
+            "totals. The staged feed's LA rows are signed deferred for the "
+            "2025 local target compile because every matching England/Wales "
+            "LA fact is period 2026-06 and the remaining crosswalk areas "
+            "lack LA-grain facts."
         ),
     },
 )
@@ -544,11 +582,20 @@ _STATUS_DEFINITIONS: dict[str, str] = {
         "on verified_on, but no exact table, vintage, or hash is pinned; "
         "binding work pins it per family."
     ),
+    SOURCE_STATUS_PINNED_IN_LEDGER_FACTS: (
+        "The official product's target facts are present in the sha-pinned "
+        "Ledger consumer fact feed recorded on the source row."
+    ),
     SOURCE_STATUS_PINNED_IN_LADDER: (
         "The product is downloaded and sha-pinned per build by the UK OA "
         "ladder artifact tool, which records every source hash in the "
         "artifact metadata; target values derive from the artifact's own "
         "sums."
+    ),
+    SOURCE_STATUS_SIGNED_DEFERRED: (
+        "The official product is present or documented, but this target "
+        "surface does not bind it in the current compile; the source row "
+        "carries signed_reason_id and signed_rationale."
     ),
     FENCE_ENFORCEMENT_REVIEW: (
         "The fence is a reviewed adjudication requirement enforced by the "

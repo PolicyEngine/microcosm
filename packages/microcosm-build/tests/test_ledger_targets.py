@@ -183,6 +183,63 @@ def _monthly_consumer_fact_row(source_period: str, *, value: float):
     )
 
 
+def _spi_area_fact(
+    measure_id: str,
+    *,
+    value: float,
+    aggregation: str,
+    fact_key: str,
+) -> dict[str, object]:
+    return _consumer_fact_row(
+        aggregate_fact_key=fact_key,
+        legacy_fact_key=fact_key.replace("aggregate_fact.v2", "fact.v1"),
+        semantic_fact_key=fact_key.replace("aggregate_fact.v2", "semantic_fact.v2"),
+        lineage={
+            "source_record_id": f"hmrc.spi.local.{measure_id}",
+            "source_cell_keys": ["ledger.source_cell.v1:spi"],
+            "source_row_keys": [],
+        },
+        value=value,
+        period={"type": "tax_year", "value": 2025},
+        geography={
+            "level": "constituency",
+            "id": "E14000001",
+            "name": "Example constituency",
+            "vintage": "pcon_2024",
+        },
+        entity={"name": "person", "role": "taxpayer"},
+        observed_measure={
+            "source_name": "hmrc",
+            "source_measure_id": measure_id,
+            "source_concept": f"hmrc.{measure_id}",
+            "unit": "count" if measure_id.endswith("_count") else "gbp",
+        },
+        concept_alignment={
+            "source_concept": f"hmrc.{measure_id}",
+            "canonical_concept": f"hmrc.{measure_id}",
+            "relation": "exact",
+            "authority": "hmrc",
+            "legal_vintage": "tax_year_2025",
+        },
+        aggregation={"method": aggregation},
+        source={
+            "source_name": "hmrc",
+            "source_table": "Synthetic SPI local income by area",
+            "source_file": "synthetic.ods",
+            "url": "https://example.invalid/synthetic-spi",
+            "vintage": "tax_year_2025",
+        },
+        dimensions={},
+        layout={
+            "record_set_id": "hmrc.spi.local.by_area",
+            "record_set_spec_id": "uk.local_geography.spi_income.by_constituency.v1",
+            "groupby_dimension": "",
+            "groupby_value_id": "",
+            "measure_id": measure_id,
+        },
+    )
+
+
 def _hierarchy_target(
     name: str,
     *,
@@ -1347,6 +1404,120 @@ def test__given_sum_reference_matches_two_vintages__then_latest_partition_wins()
     assert spec.metadata["ledger_member_fact_count"] == "2"
     assert "old-first" not in spec.metadata["ledger_member_fact_keys"]
     assert "new-first" in spec.metadata["ledger_member_fact_keys"]
+
+
+def test__given_selector_uses_record_set_spec_id__then_layout_spec_id_matches() -> None:
+    row = _consumer_fact_row_for_period(2023, value=100.0)
+    row["layout"]["record_set_spec_id"] = "irs_soi.table_1_1.v1"
+    other = _consumer_fact_row_for_period(2023, value=250.0)
+    other["aggregate_fact_key"] = "ledger.aggregate_fact.v2:other-spec"
+    other["layout"]["record_set_spec_id"] = "irs_soi.table_1_2.v1"
+    reference = LedgerTargetReference(
+        name="spec selected",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "record_set_spec_id": "irs_soi.table_1_1.v1",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references([other, row], [reference], country="us")
+
+    spec = registry.specs[0]
+    assert spec.value == 100.0
+    assert spec.metadata["ledger_layout_record_set_spec_id"] == "irs_soi.table_1_1.v1"
+    assert spec.metadata["ledger_selector_record_set_spec_id"] == (
+        "irs_soi.table_1_1.v1"
+    )
+
+
+def test__given_count_x_mean_reference__then_amount_multiplies_ordered_members() -> (
+    None
+):
+    count = _spi_area_fact(
+        "employment_income_count",
+        value=25.0,
+        aggregation="sum",
+        fact_key="ledger.aggregate_fact.v2:employment-count",
+    )
+    mean = _spi_area_fact(
+        "employment_income_mean",
+        value=40_000.0,
+        aggregation="mean",
+        fact_key="ledger.aggregate_fact.v2:employment-mean",
+    )
+    reference = LedgerTargetReference(
+        name="employment amount",
+        ledger_selector={
+            "source_name": "hmrc",
+            "source_measure_id": [
+                "employment_income_count",
+                "employment_income_mean",
+            ],
+            "record_set_spec_id": "uk.local_geography.spi_income.by_constituency.v1",
+            "geography_level": "constituency",
+            "geography_id": "E14000001",
+            "entity_name": "person",
+        },
+        value_operation="count_x_mean",
+        entity="person",
+        measure="hmrc/employment_income/amount",
+        period=2025,
+        family="hmrc",
+    )
+
+    registry = compile_ledger_target_references(
+        [mean, count], [reference], country="uk"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 1_000_000.0
+    assert spec.metadata["ledger_value_operation"] == "count_x_mean"
+    assert spec.metadata["ledger_member_fact_count"] == "2"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:employment-count",
+        "ledger.aggregate_fact.v2:employment-mean",
+    ]
+    assert (
+        spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:employment-mean"
+    )
+
+
+def test__given_count_x_mean_reference_without_pair__then_refuses() -> None:
+    count = _spi_area_fact(
+        "employment_income_count",
+        value=25.0,
+        aggregation="sum",
+        fact_key="ledger.aggregate_fact.v2:employment-count",
+    )
+    reference = LedgerTargetReference(
+        name="employment amount",
+        ledger_selector={
+            "source_name": "hmrc",
+            "source_measure_id": [
+                "employment_income_count",
+                "employment_income_mean",
+            ],
+            "record_set_spec_id": "uk.local_geography.spi_income.by_constituency.v1",
+            "geography_level": "constituency",
+            "geography_id": "E14000001",
+            "entity_name": "person",
+        },
+        value_operation="count_x_mean",
+        entity="person",
+        measure="hmrc/employment_income/amount",
+        period=2025,
+        family="hmrc",
+    )
+
+    with pytest.raises(ValueError, match="exactly one count fact and one mean fact"):
+        compile_ledger_target_references([count], [reference], country="uk")
 
 
 def test__given_calendar_year_average_reference__then_monthly_mean_compiles() -> None:

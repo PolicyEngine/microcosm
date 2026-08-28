@@ -118,6 +118,12 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_release_family_build_stages",
     "uk_ledger_compile_parity_production_2023",
     "uk_ledger_compile_parity_incumbent_2025",
+    # The local-surface compile gates live with the same owner as the national
+    # parity pair: the release-cut certification producer
+    # (tools/certify_uk_release_cut.py) compiles and supplies both registry
+    # artifacts — never the seam.
+    "uk_ledger_compile_parity_local_incumbent_2025",
+    "uk_target_surface_local_default_2025",
     "uk_release_input_coverage",
     "uk_degenerate_release_surface",
     "uk_nonnegative_columns",
@@ -132,9 +138,7 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_weights_audit",
 )
 
-_SWAP_ACCEPTANCE_GATE_IDS = frozenset(
-    {"uk_export_surface", "uk_target_surface"}
-)
+_SWAP_ACCEPTANCE_GATE_IDS = frozenset({"uk_export_surface", "uk_target_surface"})
 
 #: Gate ids two batteries both own, on purpose. A release certification unions
 #: the scoped reports, so a gate appearing twice has to be a declared duplicate
@@ -172,7 +176,9 @@ def _scope_exclusions() -> dict[str, str]:
     rationales: dict[str, str] = {}
     for gate_id in sorted(full - set(UK_CALIBRATION_GATE_SCOPE)):
         if gate_id in spine:
-            reason = "spine-construction gate; owned by the spine build's scoped battery."
+            reason = (
+                "spine-construction gate; owned by the spine build's scoped battery."
+            )
         elif gate_id in national:
             reason = (
                 "owned by the release-cut certification producer; runner lands "
@@ -373,9 +379,7 @@ def _record_failed_attempt(
         code_pin=code_pin,
         # An operator interrupt is a discarded attempt, not a failed one; the
         # row says which so the chain reads honestly.
-        disposition=(
-            "discarded" if isinstance(error, KeyboardInterrupt) else "failed"
-        ),
+        disposition=("discarded" if isinstance(error, KeyboardInterrupt) else "failed"),
         predecessor=predecessor,
         spool_dir=spool_dir,
     )
@@ -788,9 +792,7 @@ def uk_aggregate_admin_totals(
         if entry.id == "uk_aggregate_admin":
             anchors = list(entry.parameters.get("anchors", ()))
             break
-    household_weights = np.asarray(
-        frame.weights_for("household").values, dtype=float
-    )
+    household_weights = np.asarray(frame.weights_for("household").values, dtype=float)
     totals: dict[str, float] = {}
     receipt: list[dict[str, object]] = []
     for anchor in anchors:
