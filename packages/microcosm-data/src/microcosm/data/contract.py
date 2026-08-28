@@ -537,6 +537,11 @@ _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 # microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
 # data shard cannot import the build shard); lockstep-tested.
 _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+# The per-cut tag grammar the assembler mints from the calibration attempt id
+# (tools/assemble_uk_release_dir.py). The contract validates the same shape so
+# a hand-edited or stale revision cannot claim a cut the attempt chain never
+# produced.
+_UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
@@ -1101,12 +1106,27 @@ def _check_release_manifest(
                 release_id == _UK_NATIONAL_RELEASE_ID
                 and isinstance(revision, str)
                 and revision.startswith(release_id + "-")
-                and len(revision) > len(release_id) + 1
+                and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
+                    revision[len(release_id) + 1 :]
+                )
+                is not None
             )
-            if isinstance(revision, str) and not revision_matches_release:
+            # A present-but-non-string revision must fail here rather than
+            # slide past the isinstance guard: publish collects only string
+            # revisions, so a numeric revision would otherwise vanish into an
+            # empty pin set and publish under a dangling tag.
+            if revision and (
+                not isinstance(revision, str) or not revision_matches_release
+            ):
+                expected = (
+                    f"the release id {release_id!r} or a "
+                    f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
+                    if release_id == _UK_NATIONAL_RELEASE_ID
+                    else f"the release id {release_id!r}"
+                )
                 failures.append(
                     f"release_manifest.json artifact {key!r} revision is "
-                    f"{revision!r}, expected the release id {release_id!r}."
+                    f"{revision!r}, expected {expected}."
                 )
             if isinstance(entry, Mapping):
                 _check_sha256_field(

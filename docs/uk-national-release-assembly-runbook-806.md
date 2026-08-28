@@ -100,8 +100,9 @@ uv run --no-sync python tools/assemble_uk_release_dir.py \
 The output is
 `releases/microcosm-uk-2024-25-national/`. The JSON summary records every
 digest, the derived cut tag, and the exact publication command. Use
-`--cut-tag microcosm-uk-2024-25-national-<suffix>` only to override the derived
-tag deliberately. `--runtime-version PACKAGE=VERSION` is available when a
+`--cut-tag microcosm-uk-2024-25-national-<YYYYMMDDTHHMMSSZ>-<uuid8>` only to
+override the derived tag deliberately; the override must keep that grammar,
+which the contract validates on every artifact revision. `--runtime-version PACKAGE=VERSION` is available when a
 package's runtime version cannot be resolved from the assembly environment.
 
 ## 4. Publish for inspection

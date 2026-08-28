@@ -332,9 +332,69 @@ def test_assemble_refuses_missing_score_receipt(assembler_inputs) -> None:
 
 
 def test_assemble_refuses_unprefixed_cut_tag(assembler_inputs) -> None:
-    with pytest.raises(SystemExit, match="must start with"):
+    with pytest.raises(SystemExit, match="--cut-tag must be"):
         _load_driver_module().main(
             [*assembler_inputs["argv"], "--cut-tag", "not-a-national-cut"]
+        )
+
+
+def _rewrite_spine(assembler_inputs, frame) -> None:
+    """Replace the spine H5 and re-pin its digest in the build record."""
+    write_uk_national_frame(frame, assembler_inputs["spine"])
+    record_path = assembler_inputs["diagnostics"].parent / "build_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["input_posture"]["sha256"] = sha256(assembler_inputs["spine"])
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+
+def test_assemble_refuses_spine_with_different_household_count(
+    assembler_inputs,
+) -> None:
+    _rewrite_spine(
+        assembler_inputs,
+        _frame([1.0, 2.0, 3.0], weight_kind=WeightKind.DESIGN),
+    )
+    with pytest.raises(SystemExit, match="misaligned.*2 vs 3 household rows"):
+        _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_spine_with_different_household_ids(
+    assembler_inputs,
+) -> None:
+    ids = np.asarray([5, 6], dtype="int64")
+    _rewrite_spine(
+        assembler_inputs,
+        uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": ids,
+                    "person_benunit_id": ids,
+                    "person_household_id": ids,
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": ids}),
+            household=pd.DataFrame(
+                {
+                    "household_id": ids,
+                    "household_weight": np.asarray([1.0, 2.0], dtype="float64"),
+                }
+            ),
+            time_period="2024",
+            weight_kind=WeightKind.DESIGN,
+        ),
+    )
+    with pytest.raises(SystemExit, match="misaligned.*household ids differ"):
+        _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_cut_tag_outside_the_grammar(assembler_inputs) -> None:
+    with pytest.raises(SystemExit, match="YYYYMMDDTHHMMSSZ"):
+        _load_driver_module().main(
+            [
+                *assembler_inputs["argv"],
+                "--cut-tag",
+                f"{UK_NATIONAL_RELEASE_ID}-hotfix",
+            ]
         )
 
 

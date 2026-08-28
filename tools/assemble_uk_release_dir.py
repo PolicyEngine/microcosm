@@ -178,6 +178,25 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         args.candidate_h5
     )
     spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)
+    # The NPZ pairs the two weight vectors row by row, so the household axes
+    # must be identical — same ids, same order — before the pairing is
+    # digested and shipped as authoritative. A digest over mis-paired bytes
+    # authenticates the bytes, not the pairing.
+    candidate_ids = candidate_frame.table("household")["household_id"].to_numpy()
+    spine_ids = spine_frame.table("household")["household_id"].to_numpy()
+    if candidate_ids.shape != spine_ids.shape or not np.array_equal(
+        candidate_ids, spine_ids
+    ):
+        detail = (
+            f"{candidate_ids.shape[0]} vs {spine_ids.shape[0]} household rows"
+            if candidate_ids.shape != spine_ids.shape
+            else "household ids differ"
+        )
+        raise SystemExit(
+            f"error: candidate and spine household axes are misaligned "
+            f"({detail}); the calibration NPZ would pair weights across "
+            "different households"
+        )
     household_weight = np.asarray(
         candidate_frame.weights_for("household").values, dtype=np.float64
     )
@@ -503,9 +522,14 @@ def _diagnostics_code_pin(diagnostics: Mapping[str, object]) -> str:
 def _cut_tag(attempt_id: str, override: str | None) -> str:
     prefix = UK_NATIONAL_RELEASE_ID + "-"
     if override is not None:
-        if not override.startswith(prefix) or len(override) == len(prefix):
+        # The override may re-tag a cut but never leave the grammar the
+        # contract validates: prefix plus an attempt-shaped suffix.
+        if not override.startswith(prefix) or not _ATTEMPT_SUFFIX.fullmatch(
+            override[len(prefix) :]
+        ):
             raise SystemExit(
-                f"error: --cut-tag must start with {prefix!r} and include a suffix"
+                f"error: --cut-tag must be "
+                f"{prefix}<YYYYMMDDTHHMMSSZ>-<uuid8>"
             )
         return override
     if not attempt_id.startswith(_ATTEMPT_PREFIX):
