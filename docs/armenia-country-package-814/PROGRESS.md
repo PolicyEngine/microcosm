@@ -2,9 +2,11 @@
 
 ## State
 
-The engine-free Armenia package, Chronicle/rules handoff, and explicit regression
-coverage are complete. The schema, golden, and focused country-package tests
-pass; repository-wide verification remains in progress.
+The complete spec-only Armenia package, Chronicle/rules handoff, changelog, and
+regression coverage are committed. All #814-focused and authoritative
+shared/spec CI tests pass. The requested package-wide run completed, and every
+engine-only failure from its engine-free environment passed on rerun against
+the exact lock-required `policyengine-us==1.819.0` found in the local uv cache.
 
 ## Done
 
@@ -42,13 +44,26 @@ pass; repository-wide verification remains in progress.
 - Added Armenia to the deterministic country golden, shared-core compile proof,
   contract-only registry closure, spec-only discovery checks, and runtime
   refusal tests.
-- Ran the focused country/spec test files successfully and passed Ruff plus
-  `git diff --check`.
+- Passed the three focused country/spec files: **99 passed**.
+- Passed the authoritative `shared-spec` CI group: **1,332 passed, 42 skipped**.
+- Ran the requested full `packages/microcosm-build` scope: **6,102 passed, 191
+  skipped, 14 failed**. Every failure is a missing-`policyengine-us` error in
+  `test_us_multispine_pool_tool.py` or
+  `test_us_release_head_to_head_scorer.py`; both files are classified
+  engine-only.
+- Reran both engine-only files against the exact cached lock version, with no
+  network access: **202 passed**. This includes and closes all 14 failures from
+  the engine-free package-wide run; no test remains red.
+- Passed full-repository Ruff, `tools/ci_test_groups.py --verify`, and
+  `git diff --check`; the repository-root `PROGRESS.md` remains untouched.
 
 ## Next
 
-1. Run the full `packages/microcosm-build` suite and the repository's spec-only
-   CI shard commands; fix any regressions.
-2. Verify the CI group layout and final diff/commit hygiene.
-3. Record exact test counts and maintainer questions here and in the requested
-   final output report.
+1. Chronicle must harvest and publish the 14 referenced fact families, source
+   artifact pins/licences, and the 2022 marz/community tables.
+2. Maintainers must approve the destination-unit amount bridge and Armenia gate
+   thresholds before runtime activation.
+3. `populace#263` and `populace#265` must land the shared geography and source
+   coverage runtime contracts; #814 must decide future `rulespec-am` ownership.
+4. Network-capable CI remains the authoritative full engine/wheel certification
+   lane; this offline task performed no artifact build or release.
