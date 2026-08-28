@@ -532,6 +532,77 @@ def test_signal_gate_rejects_either_dead_support_channel(dead_channel: str) -> N
     assert any(dead_channel in failure for failure in gate.failures)
 
 
+def _stacked_workers_compensation_frame() -> Frame:
+    direct = with_us_workers_compensation(_frame(), seed=0, time_period=2024)
+    expanded = clone_us_frame_for_puf_support(direct)
+    tables = {entity: expanded.table(entity).copy() for entity in expanded.entities}
+    person = tables["person"]
+    physical_asec = person["person_source_id"].le(50)
+    person["person_spine_source_id"] = person["person_source_id"]
+    person["person_support_channel"] = np.where(physical_asec, "asec", "acs")
+    person.loc[~physical_asec, "WC_VAL"] = np.nan
+    return Frame(
+        tables,
+        expanded.schema,
+        {
+            entity: expanded.weights_for(entity)
+            for entity in expanded.weighted_entities
+        },
+        expanded.strata,
+        mass_log=expanded.mass_log,
+        metadata=expanded.metadata,
+    )
+
+
+def test_signal_gate_reconciles_physical_asec_rows_in_stacked_pool() -> None:
+    frame = _stacked_workers_compensation_frame()
+
+    gate = us_workers_compensation_signal_gate(frame)
+
+    assert gate.passed, gate.failures
+    assert gate.details["source_invalid"] == 0
+    assert gate.details["source_mismatch_count"] == 0
+
+    person = frame.table("person")
+    asec_clone = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(1)
+    person.loc[asec_clone.idxmax(), _OUTPUT] = 1.0
+    transferred_clone = us_workers_compensation_signal_gate(frame)
+    assert transferred_clone.passed, transferred_clone.failures
+    assert transferred_clone.details["source_mismatch_count"] == 0
+
+    asec_native = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(0)
+    person.loc[asec_native.idxmax(), _OUTPUT] = 1.0
+    mismatch = us_workers_compensation_signal_gate(frame)
+    assert not mismatch.passed
+    assert mismatch.details["source_mismatch_count"] == 1
+
+    person.loc[asec_native.idxmax(), _OUTPUT] = person.loc[
+        asec_native.idxmax(), "WC_VAL"
+    ]
+    person.loc[asec_clone.idxmax(), "WC_VAL"] = np.nan
+    invalid_source = us_workers_compensation_signal_gate(frame)
+    assert not invalid_source.passed
+    assert invalid_source.details["source_invalid"] == 1
+
+
+def test_signal_gate_preserves_legacy_asec_puf_source_scope() -> None:
+    direct = with_us_workers_compensation(_frame(), seed=0, time_period=2024)
+    legacy = clone_us_frame_for_puf_support(direct)
+    person = legacy.table("person")
+    puf = person["person_support_channel"].eq("puf_tax_detail")
+    person.loc[puf, "WC_VAL"] = np.nan
+
+    gate = us_workers_compensation_signal_gate(legacy)
+
+    assert gate.passed, gate.failures
+    assert gate.details["source_invalid"] == 0
+    assert gate.details["source_mismatch_count"] == 0
+
+
 @requires_us
 def test_policyengine_us_1_819_0_contract_and_positive_annual_behavior() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation

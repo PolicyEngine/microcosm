@@ -38,7 +38,9 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_clone_index_column,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -742,53 +744,77 @@ def _source_receiver_rows(
         rows["_support_role"] = support_role_series(
             tax_unit, entity="tax_unit"
         ).to_numpy()
-        role_counts = rows.groupby(
-            ["_source_id", "_support_role"],
-            sort=False,
-        ).size()
-        duplicated_roles = role_counts[role_counts > 1]
-        if not duplicated_roles.empty:
-            bad = duplicated_roles.index.tolist()
-            raise ValueError(
-                "US voluntary-filing support source units carry duplicated "
-                f"same-role rows; invalid source role(s) {bad[:5]}."
-            )
         rows["_source_key"] = rows["_source_id"]
-        asec_counts = (
-            rows["_support_role"]
-            .eq(_BASE_ASEC_SUPPORT_CHANNEL)
-            .groupby(rows["_source_key"])
-            .sum()
-        )
-        if asec_counts.gt(1).any():
-            bad = asec_counts.index[asec_counts.gt(1)].tolist()
-            raise ValueError(
-                "US voluntary-filing support source units carry duplicated "
-                f"ASEC rows; invalid source unit(s) {bad[:5]}."
-            )
-        # Prefer each unit's ASEC row, but a frozen-support selection may
-        # legitimately keep only a unit's PUF clone (the L0-survivor case the
-        # SSI reporter lineage also handles — Build M's certified 57,240
-        # selection does exactly this). Clones carry the unit's source
-        # predictors, so the surviving row predicts identically; pick it
-        # deterministically by channel then tax-unit id.
         ordered_rows = rows.copy()
-        ordered_rows["_asec_rank"] = (
-            ~ordered_rows["_support_role"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
-        ).astype(int)
-        source_rows = (
-            ordered_rows.sort_values(
-                [
-                    "_source_id",
-                    "_asec_rank",
-                    "_support_role",
-                    "_tax_unit_id",
-                ],
-                kind="stable",
+        if has_assembled_support_metadata(tax_unit, entity="tax_unit"):
+            clone_column = support_clone_index_column("tax_unit")
+            ordered_rows["_clone_index"] = pd.to_numeric(
+                tax_unit[clone_column], errors="raise"
+            ).to_numpy(dtype=np.int64)
+            clone_counts = ordered_rows.groupby(
+                ["_source_id", "_clone_index"],
+                sort=False,
+            ).size()
+            duplicated_clones = clone_counts[clone_counts > 1]
+            if not duplicated_clones.empty:
+                bad = duplicated_clones.index.tolist()
+                raise ValueError(
+                    "US voluntary-filing assembled source units carry "
+                    "duplicated clone-index rows; invalid source clone(s) "
+                    f"{bad[:5]}."
+                )
+            source_rows = (
+                ordered_rows.sort_values(
+                    ["_source_id", "_clone_index", "_tax_unit_id"],
+                    kind="stable",
+                )
+                .drop_duplicates("_source_key", keep="first")
+                .drop(columns="_clone_index")
             )
-            .drop_duplicates("_source_key", keep="first")
-            .drop(columns="_asec_rank")
-        )
+        else:
+            role_counts = rows.groupby(
+                ["_source_id", "_support_role"],
+                sort=False,
+            ).size()
+            duplicated_roles = role_counts[role_counts > 1]
+            if not duplicated_roles.empty:
+                bad = duplicated_roles.index.tolist()
+                raise ValueError(
+                    "US voluntary-filing support source units carry duplicated "
+                    f"same-role rows; invalid source role(s) {bad[:5]}."
+                )
+            asec_counts = (
+                rows["_support_role"]
+                .eq(_BASE_ASEC_SUPPORT_CHANNEL)
+                .groupby(rows["_source_key"])
+                .sum()
+            )
+            if asec_counts.gt(1).any():
+                bad = asec_counts.index[asec_counts.gt(1)].tolist()
+                raise ValueError(
+                    "US voluntary-filing support source units carry duplicated "
+                    f"ASEC rows; invalid source unit(s) {bad[:5]}."
+                )
+            # Prefer each unit's ASEC row, but a frozen-support selection may
+            # legitimately keep only a unit's PUF clone. Clones carry the
+            # unit's source predictors, so the surviving row predicts
+            # identically; pick it deterministically by role then tax-unit id.
+            ordered_rows["_asec_rank"] = (
+                ~ordered_rows["_support_role"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
+            ).astype(int)
+            source_rows = (
+                ordered_rows.sort_values(
+                    [
+                        "_source_id",
+                        "_asec_rank",
+                        "_support_role",
+                        "_tax_unit_id",
+                    ],
+                    kind="stable",
+                )
+                .drop_duplicates("_source_key", keep="first")
+                .drop(columns="_asec_rank")
+            )
     else:
         if rows["_source_id"].duplicated().any():
             duplicates = rows.loc[
@@ -1015,10 +1041,13 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
                         "value": values,
                     }
                 )
-                clone_table["source_occurrence"] = clone_table.groupby(
-                    ["source_id", "role"], sort=False
-                ).cumcount()
-                clone_groups = ["source_id", "source_occurrence"]
+                if has_assembled_support_metadata(tax_unit, entity="tax_unit"):
+                    clone_groups = ["source_id"]
+                else:
+                    clone_table["source_occurrence"] = clone_table.groupby(
+                        ["source_id", "role"], sort=False
+                    ).cumcount()
+                    clone_groups = ["source_id", "source_occurrence"]
                 sizes = clone_table.groupby(clone_groups, sort=False).size()
                 clone_source_units = int((sizes > 1).sum())
                 unique = clone_table.groupby(clone_groups, sort=False)["value"].nunique(

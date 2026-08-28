@@ -46,6 +46,7 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
     support_role_series,
 )
@@ -108,6 +109,7 @@ _OUTPUT = US_WIC_CLAIM_OUTPUT_COLUMNS[0]
 # protocol attests this historical salt separately from the output column.
 _DRAW_SALT = "would_claim_wic"
 _PERSON_WEIGHT_COLUMN = "person_weight"
+_PERSON_SOURCE_ID_COLUMN = "person_source_id"
 _PERSON_SUPPORT_SOURCE_ID_COLUMN = "person_support_source_id"
 _SOURCE_IDENTITY_COLUMNS = (
     "source_year",
@@ -344,6 +346,25 @@ def _wic_categories(person: pd.DataFrame) -> np.ndarray:
 
 
 def _stable_person_keys(person: pd.DataFrame) -> pd.Series:
+    # Multispine assembly makes this ID unique across physical source
+    # channels while retaining it across every support clone. Prefer it before
+    # the historical source-local triple, whose namespaces can overlap once
+    # ASEC and ACS vintages align.
+    assembled = has_assembled_support_metadata(person, entity="person")
+    if assembled and _PERSON_SOURCE_ID_COLUMN not in person.columns:
+        raise SourceRuntimeError(
+            "US WIC claim multispine identity requires person_source_id."
+        )
+    if assembled:
+        source_id = person[_PERSON_SOURCE_ID_COLUMN]
+        if source_id.isna().any():
+            rows = np.flatnonzero(source_id.isna().to_numpy())[:5].tolist()
+            raise SourceRuntimeError(
+                "US WIC claim assembly source identity contains missing values at "
+                f"row(s): {rows}."
+            )
+        return "source:" + source_id.astype(str)
+
     present = [column in person.columns for column in _SOURCE_IDENTITY_COLUMNS]
     if any(present) and not all(present):
         missing = [

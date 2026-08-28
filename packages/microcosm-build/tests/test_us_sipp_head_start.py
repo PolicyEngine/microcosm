@@ -429,6 +429,42 @@ def test_imputer_rejects_identical_duplicate_same_role_source_rows(
         impute_us_sipp_head_start(duplicate, _donor(), seed=0)
 
 
+def test_assembled_clone_two_uses_lowest_clone_and_fans_to_every_clone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _frame(
+        [10, 10, 10, 20, 20],
+        ages=[4, 4, 4, 5, 5],
+        female=[True, False, False, False, True],
+        channels=["acs"] * 5,
+    )
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = [100, 100, 100, 200, 200]
+    person["person_support_clone_index"] = [0, 1, 2, 1, 2]
+    assembled = _replace_person(frame, person)
+
+    predicted = impute_us_sipp_head_start(assembled, _donor(), seed=7)
+    by_source = pd.DataFrame(
+        {
+            "source": person["person_source_id"],
+            "value": predicted,
+        }
+    ).groupby("source")["value"]
+    assert (by_source.nunique() == 1).all()
+    assert by_source.first().to_dict() == {10: True, 20: False}
+
+    materialized = person.copy()
+    materialized[_OUTPUT] = predicted.to_numpy()
+    summary = us_sipp_head_start_summary(_replace_person(frame, materialized))
+    assert summary["clone_group_count"] == 2
+    assert summary["clone_mismatch_count"] == 0
+
+    materialized.loc[materialized["person_support_clone_index"].eq(2), _OUTPUT] ^= True
+    mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
+    assert mismatch["clone_mismatch_count"] == 2
+
+
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

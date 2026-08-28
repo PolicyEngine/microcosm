@@ -126,14 +126,15 @@ ACS_DEFERRED_GEOGRAPHY_INPUTS = frozenset(
     }
 )
 
-# These inputs are numeric in current dense artifacts, but their domain is a
-# finite set of years. QRF quantile interpolation is valid for continuous
-# amounts and invalid for a year code, so predictions are snapped to observed
-# donor support exactly as the existing PUF support stage does.
+# These inputs are numeric in current dense artifacts, but their domain has
+# finite integer support. QRF quantile interpolation is valid for continuous
+# amounts and invalid for year codes or counts, so predictions are snapped to
+# observed donor support exactly as the existing PUF support stage does.
 _DISCRETE_NUMERIC_TARGETS = frozenset(
     {
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
+        "weeks_unemployed",
     }
 )
 

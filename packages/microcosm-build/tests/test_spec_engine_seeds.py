@@ -292,6 +292,16 @@ def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
     assert count.draw_condition == "only_when_declared_draw_column_is_absent"
     assert joint.draw_condition == "only_when_declared_draw_column_is_absent"
 
+    wic = LEGACY_V1_PROTOCOL.site("wic_claim_assignment")
+    assert wic.seed_material == (
+        "build_model_seed",
+        "literal_salt=would_claim_wic",
+        "source:person_source_id_if_assembled_multispine",
+        "source_year:source_household_id:source_person_id_if_complete",
+        "else_support:person_support_source_id",
+        "else_person:person_id",
+    )
+
     vectors = (
         (0, "snap_take_up", "2024:10:2", 9_193_979_365_434_741_258),
         (0, "immigration:ead_workers", "2024:2", 3_846_788_339_087_460_008),

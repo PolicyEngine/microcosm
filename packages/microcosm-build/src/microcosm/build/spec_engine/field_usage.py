@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_351
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_769
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_120
+EXPECTED_AUTHORED_FIELD_COUNT = 32_352
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_770
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_122
 
 
 class FieldUsageError(AssertionError):
@@ -429,8 +429,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "1b9f7ffb88d31d2bd365c092d04a96038b2d5a2b03f4f2a79f42e95472b213d6",
     ),
     "imputation_transfer_execution": (
-        79,
-        "1575513251c72be60edc75f378221fa878ea76e009512f1352a111586d0a60f8",
+        80,
+        "10bd811f86dae7941035533cfe0d51d81cd632f5995c1adb80234bc7ecbf6565",
     ),
     "imputation_waiver_records": (
         70,
@@ -457,8 +457,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        823,
-        "c05ebb88538195798e9365f325381c14d92b74007f846f1fef50a08268e6d27d",
+        824,
+        "7537385c3fd399a2dbb7dcd8ed7cf1ff2481ed336db621eafcbfd741d5792f40",
     ),
     "resolved_seed_site_bindings": (
         277,

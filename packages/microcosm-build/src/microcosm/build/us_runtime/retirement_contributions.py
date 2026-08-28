@@ -38,7 +38,9 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -165,6 +167,30 @@ def _numeric_source(frame: pd.DataFrame, column: str) -> np.ndarray:
             "silently replaced."
         )
     return values
+
+
+def _asec_source_mask(frame: pd.DataFrame) -> np.ndarray:
+    """Select physical ASEC rows while retaining the legacy all-row source."""
+
+    if not has_assembled_support_metadata(frame, entity="person"):
+        return np.ones(len(frame), dtype=bool)
+    source_channels = support_gate_source_channel_series(frame, entity="person")
+    mask = source_channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    if not mask.any():
+        raise SourceRuntimeError(
+            "US retirement-contribution support has no physical ASEC source rows."
+        )
+    return mask
+
+
+def _source_reconciliation_mask(frame: pd.DataFrame) -> np.ndarray:
+    """Select direct ASEC operator rows whose allocation remains source-exact."""
+
+    source_mask = _asec_source_mask(frame)
+    if not has_assembled_support_metadata(frame, entity="person"):
+        return source_mask
+    roles = support_role_series(frame, entity="person").to_numpy()
+    return source_mask & (roles == _BASE_ASEC_SUPPORT_CHANNEL)
 
 
 def derive_us_retirement_contributions_from_manifest(
@@ -569,11 +595,16 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         )
         for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS
     }
-    source = (
-        _numeric_source(person, "RETCB_VAL")
-        if "RETCB_VAL" in person
-        else np.zeros(len(person), dtype=np.float64)
-    )
+    source = np.full(len(person), np.nan, dtype=np.float64)
+    source_mask = np.zeros(len(person), dtype=bool)
+    reconciliation_mask = np.zeros(len(person), dtype=bool)
+    if "RETCB_VAL" in person:
+        source_mask = _asec_source_mask(person)
+        source[source_mask] = _numeric_source(
+            person.loc[source_mask],
+            "RETCB_VAL",
+        )
+        reconciliation_mask = _source_reconciliation_mask(person)
     combined = np.sum(np.column_stack(tuple(contributions.values())), axis=1)
 
     def _share(values: np.ndarray) -> float:
@@ -590,7 +621,7 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         column: int(np.count_nonzero(values < 0))
         for column, values in contributions.items()
     }
-    source_positive = source > 0
+    source_positive = reconciliation_mask & (source > 0)
     allocation_mismatch = source_positive & ~np.isclose(
         combined,
         source,
@@ -608,9 +639,13 @@ def us_retirement_contributions_summary(frame: Frame) -> dict[str, object]:
         "nonzero_share_band": list(_NONZERO_SHARE_BAND),
         "nonfinite": nonfinite,
         "negative": negative,
+        "source_rows": int(np.count_nonzero(source_mask)),
+        "source_reconciliation_rows": int(np.count_nonzero(reconciliation_mask)),
         "source_positive_rows": int(np.count_nonzero(source_positive)),
         "allocation_mismatch_rows": int(np.count_nonzero(allocation_mismatch)),
-        "source_total": float(np.sum(source * weights)),
+        "source_total": float(
+            np.sum(np.where(reconciliation_mask, source, 0.0) * weights)
+        ),
         "allocated_total": float(np.sum(np.nan_to_num(combined) * weights)),
     }
 
