@@ -712,7 +712,7 @@ requires-dist = [
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2" },
-    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
+    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.92" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },
     { name = "pyarrow", specifier = ">=15" },
     { name = "pyyaml", specifier = ">=6" },
@@ -1391,7 +1391,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-uk"
-version = "2.89.0"
+version = "2.92.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1399,9 +1399,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "tables" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/49/75c80cd9b1145d8cfd5efbdb534aca2c9d5c5722fef3fc8f4887831505ea/policyengine_uk-2.89.0.tar.gz", hash = "sha256:aea49956a350ec35c1e0def7cd28db324b055711ec5ab7f331395dca8d103341", size = 1216776, upload-time = "2026-06-11T13:06:04.826Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/ad/753fc50a4479d9670cb27b9db3c728bc377d4bbd44464858fec4c1b3df61/policyengine_uk-2.92.1.tar.gz", hash = "sha256:204792cebd1c916c5201f3bfbd1e7cc638bf67cb1aa893ee8456b90853e3f69f", size = 1243396, upload-time = "2026-08-28T12:05:48.065Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/5f/fd32a3f7314b02b3b6a8362d6b2869af5b51569301945c00ee1172e01914/policyengine_uk-2.89.0-py3-none-any.whl", hash = "sha256:72acae45a35a59cf7429bba69363601e624bfd643d50cd74b8d20d325497e9fd", size = 1999087, upload-time = "2026-06-11T13:06:02.819Z" },
+    { url = "https://files.pythonhosted.org/packages/36/b9/e52246d4f8ed11fe394de9a0de7ca457c6c01282814b7495612d628d166c/policyengine_uk-2.92.1-py3-none-any.whl", hash = "sha256:056fa8c9e2813094ca3c4761df89047374256a7acf8b88de22ddba0a94deb175", size = 2042832, upload-time = "2026-08-28T12:05:46.243Z" },
 ]
 
 [[package]]
