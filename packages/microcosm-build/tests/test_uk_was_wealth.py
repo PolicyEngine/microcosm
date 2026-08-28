@@ -152,8 +152,11 @@ def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> N
 
     assert donor["stocks_and_shares_isa"].tolist() == [5.0, 6.0]
     assert donor["cash_isa"].tolist() == [7.0, 8.0]
-    assert donor["corporate_wealth_excl_isa"].tolist() == [73.0, 166.0]
-    assert donor["corporate_wealth"].tolist() == [78.0, 172.0]
+    # Private pension wealth (total pensions less current DB) is its own
+    # output; corporate_wealth keeps only the share-like holdings.
+    assert donor["private_pension_wealth"].tolist() == [60.0, 150.0]
+    assert donor["corporate_wealth_excl_isa"].tolist() == [13.0, 16.0]
+    assert donor["corporate_wealth"].tolist() == [18.0, 22.0]
     assert donor["student_loan_balance"].tolist() == [5000.0, 2000.0]
     assert donor["region"].tolist() == ["LONDON", "SCOTLAND"]
     assert donor["is_renting"].tolist() == [True, False]
@@ -394,11 +397,12 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     import microcosm.fit
 
     calls = []
+    seeds = []
 
     class FakeQRF:
         def __init__(self, *, n_estimators, seed):
             assert n_estimators == 7
-            assert seed == 0
+            seeds.append(seed)
 
         def start_chain(self, donor, predictors, targets, *, weights):
             assert weights == "weight"
@@ -437,11 +441,66 @@ def test_was_imputer_uses_checkpointed_chain_segments(
 
     assert result.draws.columns.tolist() == list(UK_WAS_WEALTH_OUTPUT_COLUMNS)
     assert calls[0][1] == ("owned_land", "property_wealth")
-    assert calls[1][1] == ("corporate_wealth_excl_isa", "stocks_and_shares_isa")
+    assert calls[1][1] == (
+        "private_pension_wealth",
+        "corporate_wealth_excl_isa",
+        "stocks_and_shares_isa",
+    )
+    assert "private_pension_wealth" in calls[2][0]
     assert "corporate_wealth" in calls[2][0]
+    assert "private_pension_wealth" not in calls[1][0]
     assert calls[2][1][-1] == "cash_isa"
     fitted_targets = [name for _, targets in calls for name in targets]
     assert [record.fit_name for record in result.fit_weight_records] == [
         f"uk_was_2018_20_wealth:{target}" for target in fitted_targets
     ]
     assert {record.weight_kind for record in result.fit_weight_records} == {"explicit"}
+    # One independent RNG root per segment, derived from the declared seed.
+    assert seeds == list(module.was_wealth_segment_seeds(0))
+    assert len(set(seeds)) == 3
+    assert result.segment_seeds == tuple(seeds)
+
+
+def test_private_pension_wealth_split_preserves_the_old_corporate_wealth_identity() -> (
+    None
+):
+    """The pension component plus the new corporate_wealth reproduces the
+    pre-split corporate_wealth row for row, and the pension component is
+    exactly total pensions less current defined-benefit wealth."""
+    raw = _raw_was()
+    donor = clean_was_household_table(raw)
+
+    old_corporate_wealth = (
+        raw["totalpenr8_aggr"]
+        - raw["dvvaldbt_scaper8_aggr"]
+        + raw["DVFESHARESR8_aggr"]
+        + raw["DVFShUKVR8_aggr"]
+        + raw["DVFCollVR8_aggr"]
+        + raw["DVIISAVR8_aggR"]
+    )
+    assert (
+        donor["corporate_wealth"] + donor["private_pension_wealth"]
+    ).tolist() == old_corporate_wealth.tolist()
+    assert "private_pension_wealth" in UK_WAS_WEALTH_OUTPUT_COLUMNS
+    assert (
+        UK_WAS_WEALTH_OUTPUT_COLUMNS.index("private_pension_wealth")
+        == UK_WAS_WEALTH_OUTPUT_COLUMNS.index("corporate_wealth") + 1
+    )
+
+
+def test_segment_seeds_are_distinct_and_deterministic() -> None:
+    """Each chain segment starts its own fit/draw streams (start_chain respawns
+    from the model seed on every call), so the roots must differ and derive
+    deterministically from the declared stage seed."""
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    seeds = module.was_wealth_segment_seeds(0)
+
+    # Golden pin: the production roots for the declared stage seed 0. Moving
+    # them is a spec-visible RNG change, never an accident.
+    assert seeds == (3757552657, 673228719, 3241444873)
+    assert len(seeds) == 3
+    assert len(set(seeds)) == 3
+    assert seeds == module.was_wealth_segment_seeds(0)
+    assert seeds != module.was_wealth_segment_seeds(1)
+    assert all(isinstance(seed, int) for seed in seeds)
