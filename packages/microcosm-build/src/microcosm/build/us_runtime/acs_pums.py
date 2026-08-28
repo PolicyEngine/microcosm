@@ -83,6 +83,9 @@ _PERSON_REQUIRED = (
     "SSIP",
     "RETP",
     "INTP",
+    "CIT",
+    "POBP",
+    "YOEP",
     "PWGTP",
 )
 _PERSON_OPTIONAL: tuple[str, ...] = ()

@@ -361,20 +361,20 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "3a980927227704d0589f246eef9cd825c2ae84f3a4134ac835e0e5ed39a563ac",
+    "authority": "2c01b975ebaeb06bfa666538178e1c4836fe294035c0ff7f2eed6a75e917bba6",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "af1b04f0fe03938e826daf666e7242e4b138ebd5d8149abdda447359169ef3d5",
+    "full_checkpoint": "a7609a6235517555d244f126416ab0e73762e9f3963e42edbef79361193cbe7f",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "7125ad28ae2c69f22094a574bbf6ed2ddf1682a2c2c3b416f8f49304b7016ce7",
+    "graph_nodes": "15406d2ad456a4c09d123471a854194db14cbf8978ccb5235938062464ef18a0",
     "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "4a74a831c92fc6273a82a22d02c73cca5e228852f4b88e496f83febc861fa222",
-    "late_schedule": "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79",
+    "late_resource_semantics": "733569c8abc575bcdd72be35da850a7f12f2d0c81fb4745bd56a2c98db2e7079",
+    "late_schedule": "4965c1485c283dec3685f4ca82fa469d8b88a85f82ccd6b39e2adc84bc0e94d6",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
-    "seed_map": "57b5dbd0fa563348885ec4b8d0fdfaace13c101c2fcd60d5620cf19592912f08",
-    "seed_protocol": "baee9e47b31c369f1b3c137a97545c59bcb9f33fc96203894d289ff90c62270b",
-    "source_manifest": "5e435fa74ff0f72fa5c8b7cda1ea9ac9cfdf7e114f06df07eece57142374b1ac",
+    "seed_map": "7d88058ac155ac50818ccab8010c69352f4eb019181b0ec276cd333240489ef1",
+    "seed_protocol": "c1f08bd279cf1b32e47fd00313b702f497cc7899cdbd4e1395fc59b1bcff3429",
+    "source_manifest": "6bf67f40b1afd2c63a7d7fa2c1f448570f4b7ab186475521966af65013de9e71",
     "take_up": "fa186daea0f8dd641cc470e41d1a2953f887d45282ec990201298f47bedf8d4d",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }
@@ -442,7 +442,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "primary_targets": 65,
     "producer_authored_outputs": 92,
     "producer_compiled_outputs": 227,
-    "producer_inputs": 2_742,
+    "producer_inputs": 2_749,
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
@@ -1018,7 +1018,7 @@ def build_inventory_coverage(
         "producer_inputs_exact",
         clauses={
             "producer input rows differ": inputs_exact,
-            "input row count differs": input_count == 2742,
+            "input row count differs": input_count == 2749,
         },
         homes=("/imputation/producer_graph/nodes/*/inputs",),
         consumers=(
@@ -1026,7 +1026,7 @@ def build_inventory_coverage(
             "compiler_ir.node_slices",
         ),
         observed={"rows": input_count},
-        expected={"rows": 2742, "relation": "source rows preserved exactly"},
+        expected={"rows": 2749, "relation": "source rows preserved exactly"},
     )
     outputs_exact = set(expected_outputs) == set(compiled_by_id) and all(
         _json_equal(
@@ -1708,9 +1708,7 @@ def build_inventory_coverage(
             "sha256": _operational_free_sha256(geography_assignment),
             "authority_roles": sorted(geography_authorities),
             "target_vintage": _mapping(
-                geography_authorities.get(
-                    "congressional_district_vintage_crosswalk"
-                ),
+                geography_authorities.get("congressional_district_vintage_crosswalk"),
                 "checkpoint geography crosswalk authority",
             ).get("target_vintage"),
         },

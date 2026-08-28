@@ -1436,7 +1436,7 @@ REFORM_COVERAGE_PROBES = [
             "only through the REFUGEE/ASYLEE/DEPORTATION_WITHHELD/"
             "PAROLED_ONE_YEAR values of immigration_status_str. The source "
             "stage draws roughly 160k refugees (74% reporting Medicaid on the "
-            "2024 ASEC), 160k asylees, and 405k parolees to cited DHS/OHSS "
+            "2024 ASEC), 155k asylees, and 405k parolees to cited DHS/OHSS "
             "stocks, so restoring their eligibility must re-enroll anchored "
             "takers and move person-level medicaid dollars by far more than "
             "the floor. A ~$0 score means the humanitarian statuses regressed "

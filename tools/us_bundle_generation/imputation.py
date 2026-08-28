@@ -871,6 +871,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    humanitarian_immigration = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["humanitarian_immigration"],
+                "humanitarian-immigration post-transfer contract",
+            )
+        )
+    )
+    humanitarian_immigration.pop("enabled")
     result["predictor_bindings"] = {
         "person_required": "acs_person_required",
         "person_optional": [
@@ -889,6 +898,17 @@ def _normalise_transfer_execution(
                 ]
             },
             "contract": adult_care,
+        },
+        "humanitarian_immigration": {
+            "activation": {
+                "all_targets": list(
+                    _array_like(
+                        result["immigration_status_targets"],
+                        "immigration status targets",
+                    )
+                )
+            },
+            "contract": humanitarian_immigration,
         },
         "schedule_d_capital_gain_distributions": {
             "activation": {
@@ -2151,7 +2171,7 @@ def _assert_invariants(
         len(primary_node["outputs"]),
         late_authored_output_count,
         len(tolerated_receipts),
-    ) != (2742, 92, 227, 35, 0, 212):
+    ) != (2749, 92, 227, 35, 0, 212):
         raise RuntimeError("US producer graph input/output/absence counts changed.")
     if len(set(tolerated_receipts)) != len(tolerated_receipts):
         raise RuntimeError("US producer graph absence receipt IDs are not unique.")

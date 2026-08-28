@@ -22,9 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = (
-    "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
-)
+US_SCHEDULE_SHA256 = "4965c1485c283dec3685f4ca82fa469d8b88a85f82ccd6b39e2adc84bc0e94d6"
 
 
 @pytest.fixture(scope="module")
@@ -180,9 +178,7 @@ def test_normative_node_mutation_changes_its_slice_and_descendant_keys(
 
     def mutation(value: dict[str, Any]) -> None:
         node = next(
-            row
-            for row in value["producer_graph"]["nodes"]
-            if row["id"] == leaf_id
+            row for row in value["producer_graph"]["nodes"] if row["id"] == leaf_id
         )
         node["capabilities"]["retry_safety"] = "nonretryable"
 
@@ -196,9 +192,9 @@ def test_normative_node_mutation_changes_its_slice_and_descendant_keys(
 
 def test_dangling_compiler_dependency_refuses(resolved_us: ResolvedSpec) -> None:
     def mutation(value: dict[str, Any]) -> None:
-        value["producer_graph"]["nodes"][0]["inputs"][0][
-            "producing_stage"
-        ] = "missing_producer"
+        value["producer_graph"]["nodes"][0]["inputs"][0]["producing_stage"] = (
+            "missing_producer"
+        )
 
     mutated = _mutate_domain(resolved_us, ResourceKind.IMPUTATION, mutation)
     with pytest.raises(CompilerIRError, match="dangling producer"):
@@ -211,9 +207,7 @@ def test_contract_only_kernel_cannot_back_a_producer(
     contract_only_kernel = min(F0_CONTRACT_ONLY_KERNEL_IDS)
 
     def mutation(value: dict[str, Any]) -> None:
-        value["producer_graph"]["nodes"][0]["kernel"] = (
-            f"kernel:{contract_only_kernel}"
-        )
+        value["producer_graph"]["nodes"][0]["kernel"] = f"kernel:{contract_only_kernel}"
 
     mutated = _mutate_domain(resolved_us, ResourceKind.IMPUTATION, mutation)
     with pytest.raises(

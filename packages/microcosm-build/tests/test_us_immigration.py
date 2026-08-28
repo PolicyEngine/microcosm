@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.us_runtime.immigration as immigration_module
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.source_runtime import (
     SourceRuntimeConfig,
@@ -29,6 +30,10 @@ from microcosm.build.us_runtime import (
     us_immigration_composition_summary,
     us_immigration_stage_spec,
     with_us_immigration_inputs,
+)
+from microcosm.build.us_runtime.immigration import (
+    us_immigration_controls,
+    us_immigration_humanitarian_draw_mask,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -288,6 +293,10 @@ class TestSSNCardAssignment:
         with pytest.raises(SourceRuntimeError, match="PRCITSHP"):
             _run(_person_table([{"PRCITSHP": 7}]))
 
+    def test_2024_asec_rejects_nonexistent_peinusyr_29(self) -> None:
+        with pytest.raises(SourceRuntimeError, match=r"PEINUSYR.*0\.\.28"):
+            _run(_person_table([_noncitizen(PEINUSYR=29)]))
+
     def test_missing_required_column_raises(self) -> None:
         person = _person_table([_noncitizen()]).drop(columns=["PEINUSYR"])
         with pytest.raises(SourceRuntimeError, match="PEINUSYR"):
@@ -404,6 +413,263 @@ class TestHumanitarianDraws:
             humanitarian=_humanitarian_block(paroled_one_year={"ukraine": 5.0}),
         )
         assert output.loc[0, "immigration_status_str"] == "LEGAL_PERMANENT_RESIDENT"
+
+    def test_u4u_rejects_2020_2021_ukrainian_arrivals(self) -> None:
+        person = _person_table(
+            [
+                _noncitizen(PENATVTY=164, PEINUSYR=27, CAID=1),
+                _noncitizen(PENATVTY=164, PEINUSYR=28, CAID=1),
+            ]
+        )
+        output = _run(
+            person,
+            humanitarian=_humanitarian_block(paroled_one_year={"ukraine": 2.0}),
+        )
+        assert output["immigration_status_str"].tolist() == [
+            "LEGAL_PERMANENT_RESIDENT",
+            "PAROLED_ONE_YEAR",
+        ]
+
+        compatibility = _us_frame(
+            [
+                _noncitizen(
+                    PENATVTY=164,
+                    PEINUSYR=27,
+                    ssn_card_type="OTHER_NON_CITIZEN",
+                    immigration_status_str="PAROLED_ONE_YEAR",
+                ),
+                _noncitizen(
+                    PENATVTY=164,
+                    PEINUSYR=28,
+                    ssn_card_type="OTHER_NON_CITIZEN",
+                    immigration_status_str="PAROLED_ONE_YEAR",
+                ),
+            ]
+        )
+        draw = HumanitarianDraw(
+            category="paroled_one_year",
+            origin="ukraine",
+            status="PAROLED_ONE_YEAR",
+            target=1.0,
+            source="https://example.com/u4u",
+        )
+        assert us_immigration_humanitarian_draw_mask(
+            compatibility,
+            draw,
+            time_period=TIME_PERIOD,
+        ).tolist() == [False, True]
+
+        tables = {
+            entity: compatibility.table(entity).copy()
+            for entity in compatibility.entities
+        }
+        tables["person"] = tables["person"].drop(
+            columns=["PRCITSHP", "PENATVTY", "PEINUSYR"]
+        )
+        tables["person"]["CIT"] = [5, 5]
+        tables["person"]["POBP"] = [164, 164]
+        tables["person"]["YOEP"] = [2021, 2022]
+        acs_compatibility = Frame(
+            tables,
+            compatibility.schema,
+            {
+                entity: compatibility.weights_for(entity)
+                for entity in compatibility.weighted_entities
+            },
+        )
+        assert us_immigration_humanitarian_draw_mask(
+            acs_compatibility,
+            draw,
+            time_period=TIME_PERIOD,
+        ).tolist() == [False, True]
+
+    def test_acs_venezuela_tps_includes_2023_designation_cohort(self) -> None:
+        compatibility = _us_frame(
+            [
+                _noncitizen(
+                    PENATVTY=373,
+                    PEINUSYR=28,
+                    ssn_card_type="NON_CITIZEN_VALID_EAD",
+                    immigration_status_str=status,
+                )
+                for status in ("TPS", "TPS", "TPS", "PAROLED_ONE_YEAR")
+            ]
+        )
+        tables = {
+            entity: compatibility.table(entity).copy()
+            for entity in compatibility.entities
+        }
+        person = tables["person"].drop(columns=["PRCITSHP", "PENATVTY", "PEINUSYR"])
+        person["CIT"] = [5, 5, 5, 5]
+        person["POBP"] = [373, 373, 373, 373]
+        person["YOEP"] = [2021, 2023, 2024, 2023]
+        tables["person"] = person
+        frame = Frame(
+            tables,
+            compatibility.schema,
+            {
+                entity: compatibility.weights_for(entity)
+                for entity in compatibility.weighted_entities
+            },
+        )
+        tps = HumanitarianDraw(
+            category="tps",
+            origin="venezuela",
+            status="TPS",
+            target=1.0,
+            source="https://example.com/venezuela-tps",
+        )
+        parole = HumanitarianDraw(
+            category="paroled_one_year",
+            origin="venezuela",
+            status="PAROLED_ONE_YEAR",
+            target=1.0,
+            source="https://example.com/chnv",
+        )
+
+        assert us_immigration_humanitarian_draw_mask(
+            frame,
+            tps,
+            time_period=TIME_PERIOD,
+        ).tolist() == [True, True, False, False]
+        assert us_immigration_humanitarian_draw_mask(
+            frame,
+            parole,
+            time_period=TIME_PERIOD,
+        ).tolist() == [False, False, False, True]
+
+    @pytest.mark.parametrize(
+        ("citizenship", "arrival_year"),
+        (
+            (4, np.nan),
+            (5, np.nan),
+            (4, 1899),
+            (5, TIME_PERIOD + 1),
+            (5, 2020.5),
+        ),
+    )
+    def test_acs_foreign_born_arrival_evidence_fails_closed(
+        self,
+        citizenship: int,
+        arrival_year: float,
+    ) -> None:
+        compatibility = _us_frame(
+            [
+                _noncitizen(
+                    PENATVTY=373,
+                    PEINUSYR=28,
+                    ssn_card_type="NON_CITIZEN_VALID_EAD",
+                    immigration_status_str="TPS",
+                )
+            ]
+        )
+        tables = {
+            entity: compatibility.table(entity).copy()
+            for entity in compatibility.entities
+        }
+        person = tables["person"].drop(columns=["PRCITSHP", "PENATVTY", "PEINUSYR"])
+        person["CIT"] = [citizenship]
+        person["POBP"] = [373]
+        person["YOEP"] = [arrival_year]
+        tables["person"] = person
+        frame = Frame(
+            tables,
+            compatibility.schema,
+            {
+                entity: compatibility.weights_for(entity)
+                for entity in compatibility.weighted_entities
+            },
+        )
+        draw = HumanitarianDraw(
+            category="tps",
+            origin="venezuela",
+            status="TPS",
+            target=1.0,
+            source="https://example.com/venezuela-tps",
+        )
+
+        with pytest.raises(
+            SourceRuntimeError,
+            match="ACS YOEP must be an integral 1900..time_period year",
+        ):
+            us_immigration_humanitarian_draw_mask(
+                frame,
+                draw,
+                time_period=TIME_PERIOD,
+            )
+
+    @pytest.mark.parametrize(
+        ("birth_country", "origin", "cutoff"),
+        (
+            (373, "venezuela", 2023),
+            (312, "el_salvador", 2001),
+            (314, "honduras", 1998),
+            (315, "nicaragua", 1998),
+            (229, "nepal", 2015),
+            (205, "other_designated", 2024),
+            (239, "other_designated", 2024),
+            (248, "other_designated", 2024),
+            (224, "other_designated", 2024),
+            (407, "other_designated", 2023),
+            (416, "other_designated", 2024),
+            (448, "other_designated", 2024),
+            (451, "other_designated", 2023),
+        ),
+    )
+    def test_acs_tps_continuous_residence_cutoff(
+        self,
+        birth_country: int,
+        origin: str,
+        cutoff: int,
+    ) -> None:
+        compatibility = _us_frame(
+            [
+                _noncitizen(
+                    PENATVTY=birth_country,
+                    PEINUSYR=28,
+                    A_AGE=70,
+                    ssn_card_type="NON_CITIZEN_VALID_EAD",
+                    immigration_status_str="TPS",
+                ),
+                _noncitizen(
+                    PENATVTY=birth_country,
+                    PEINUSYR=28,
+                    A_AGE=70,
+                    ssn_card_type="NON_CITIZEN_VALID_EAD",
+                    immigration_status_str="TPS",
+                ),
+            ]
+        )
+        tables = {
+            entity: compatibility.table(entity).copy()
+            for entity in compatibility.entities
+        }
+        person = tables["person"].drop(columns=["PRCITSHP", "PENATVTY", "PEINUSYR"])
+        person["CIT"] = [5, 5]
+        person["POBP"] = [birth_country, birth_country]
+        person["YOEP"] = [cutoff, cutoff + 1]
+        tables["person"] = person
+        frame = Frame(
+            tables,
+            compatibility.schema,
+            {
+                entity: compatibility.weights_for(entity)
+                for entity in compatibility.weighted_entities
+            },
+        )
+        draw = HumanitarianDraw(
+            category="tps",
+            origin=origin,
+            status="TPS",
+            target=1.0,
+            source="https://example.com/tps-cutoff",
+        )
+
+        assert us_immigration_humanitarian_draw_mask(
+            frame,
+            draw,
+            time_period=max(TIME_PERIOD, cutoff + 1),
+        ).tolist() == [True, False]
 
     def test_refugee_draw_excludes_residual_pool(self) -> None:
         # A 2022-arrived Congolese person with no legal-status indicator is
@@ -633,6 +899,25 @@ class TestDeterminism:
     def _worker_pool(self) -> pd.DataFrame:
         return _person_table([_noncitizen(WSAL_VAL=10_000.0) for _ in range(20)])
 
+    def test_partial_household_lineage_uses_complete_legacy_alternative(self) -> None:
+        person = _person_table([_noncitizen(), _noncitizen()])
+        person["source_year"] = [2024, 2024]
+        person["source_household_id"] = [100, np.nan]
+        person["source_person_id"] = [1, 2]
+
+        partial_full = immigration_module._stable_person_draws(
+            person,
+            seed=17,
+            salt="lineage-regression",
+        )
+        legacy_only = immigration_module._stable_person_draws(
+            person.drop(columns="source_household_id"),
+            seed=17,
+            salt="lineage-regression",
+        )
+
+        np.testing.assert_array_equal(partial_full, legacy_only)
+
     def test_same_seed_is_bit_reproducible(self) -> None:
         first = _run(self._worker_pool(), workers=10.0, seed=7)
         second = _run(self._worker_pool(), workers=10.0, seed=7)
@@ -706,6 +991,20 @@ class TestManifestStage:
         for label, block in flat_blocks.items():
             assert float(block["target"]) >= 0, label
             assert str(block["source"]).startswith("https://"), label
+        assert humanitarian["refugee"] == {
+            "target": 160_000,
+            "source": (
+                "https://ohss.dhs.gov/topics/immigration/refugees/"
+                "annual-flow-report/fy-24-refugees-flow-report"
+            ),
+        }
+        assert humanitarian["asylee"] == {
+            "target": 155_000,
+            "source": (
+                "https://ohss.dhs.gov/topics/immigration/asylees/"
+                "annual-flow-report/fy24-asylees-flow-report"
+            ),
+        }
         # The withheld stock is an explicit cited zero (no published stock);
         # every other category carries a positive stock.
         assert float(humanitarian["deportation_withheld"]["target"]) == 0
@@ -932,12 +1231,20 @@ def _composition_frame(
             for _ in range(count)
         ]
     )
+    evidence_by_status = {
+        "PAROLED_ONE_YEAR": {"PENATVTY": 164, "PEINUSYR": 28},
+        "REFUGEE": {"PENATVTY": 412, "PEINUSYR": 28},
+        "ASYLEE": {"PENATVTY": 207, "PEINUSYR": 26},
+        "DEPORTATION_WITHHELD": {"PENATVTY": 303, "PEINUSYR": 24},
+        "TPS": {"PENATVTY": 373, "PEINUSYR": 24},
+    }
     for ssn, status in values:
         rows.append(
             {
                 "PRCITSHP": 1 if ssn == "CITIZEN" else 5,
                 "ssn_card_type": ssn,
                 "immigration_status_str": status,
+                **evidence_by_status.get(status, {}),
             }
         )
     return _us_frame(rows)
@@ -1014,6 +1321,9 @@ class TestCompositionGate:
         assert any("non-citizen weighted share" in failure for failure in gate.failures)
 
     def test_gate_reads_packaged_controls_by_default(self) -> None:
+        packaged = us_immigration_controls()
+        assert packaged.undocumented.workers == 8_300_000
+        assert packaged.humanitarian_target("refugee") == 160_000
         gate = us_immigration_composition_gate(_us_frame([{"PRCITSHP": 1}]))
         assert not gate.passed
         controls = gate.details["controls"]
@@ -1021,6 +1331,20 @@ class TestCompositionGate:
         assert controls["undocumented_population_anchor"] == 11_000_000
         stocks = controls["humanitarian_status_stocks"]
         assert stocks["paroled_one_year:afghanistan"]["target"] == 73_566
+        assert stocks["refugee"] == {
+            "target": 160_000.0,
+            "source": (
+                "https://ohss.dhs.gov/topics/immigration/refugees/"
+                "annual-flow-report/fy-24-refugees-flow-report"
+            ),
+        }
+        assert stocks["asylee"] == {
+            "target": 155_000.0,
+            "source": (
+                "https://ohss.dhs.gov/topics/immigration/asylees/"
+                "annual-flow-report/fy24-asylees-flow-report"
+            ),
+        }
         assert stocks["tps:venezuela"]["target"] == 605_015
         assert stocks["deportation_withheld"]["target"] == 0
 
@@ -1062,6 +1386,39 @@ class TestCompositionGate:
             controls=_plausible_controls(paroled_one_year=4.0),
         )
         assert gate.passed, gate.failures
+
+    def test_gate_checks_per_origin_draws_not_only_category_total(self) -> None:
+        source = "https://example.com/parole"
+        controls = ImmigrationControls(
+            undocumented=_plausible_controls().undocumented,
+            humanitarian=(
+                HumanitarianDraw(
+                    category="paroled_one_year",
+                    origin="afghanistan",
+                    status="PAROLED_ONE_YEAR",
+                    target=1.0,
+                    source=source,
+                ),
+                HumanitarianDraw(
+                    category="paroled_one_year",
+                    origin="ukraine",
+                    status="PAROLED_ONE_YEAR",
+                    target=1.0,
+                    source=source,
+                ),
+            ),
+        )
+        # Both rows carry Ukraine evidence. The category total is exactly two,
+        # but the per-origin targets are a zero/two redistribution.
+        gate = us_immigration_composition_gate(
+            _composition_frame(humanitarian={"PAROLED_ONE_YEAR": 2}),
+            controls=controls,
+        )
+        assert not gate.passed
+        assert any(
+            "paroled_one_year:afghanistan" in failure for failure in gate.failures
+        )
+        assert any("paroled_one_year:ukraine" in failure for failure in gate.failures)
 
     def test_summary_reports_weighted_composition(self) -> None:
         summary = us_immigration_composition_summary(

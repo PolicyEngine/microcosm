@@ -469,7 +469,7 @@ class MultispinePoolResult:
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 type AgreementGate = Callable[[Frame], GateResult]
-type SourceFrameOperator = Callable[[Frame], Frame | PoolStageOutput]
+type SourceFrameOperator = Callable[..., Frame | PoolStageOutput]
 
 
 @dataclass(frozen=True)
@@ -861,9 +861,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -1333,9 +1332,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 
@@ -1941,10 +1938,13 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
                 force_puf_imputation=True,
             )
         ),
-        "with_us_immigration_inputs": lambda current: with_us_immigration_inputs(
-            current,
-            seed=POOL_RANDOM_SEED,
-            time_period=POOL_TIME_PERIOD,
+        "with_us_immigration_inputs": lambda current, *, person_weight_scale=1.0: (
+            with_us_immigration_inputs(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+                person_weight_scale=person_weight_scale,
+            )
         ),
         "with_us_education_inputs": lambda current: with_us_education_inputs(
             current,
@@ -2150,8 +2150,42 @@ def _run_source_operator_chain(
             and contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
         ):
             declared_outputs = _persisted_source_outputs(declared_outputs)
+        person_design_weight_scaling: dict[str, float] | None = None
         if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE:
             available_mask = _cps_source_evidence_mask(current, phase=phase)
+            if operator_name == "with_us_immigration_inputs":
+                full_person_weights = np.asarray(
+                    current.resolve_weights(current.schema.person_entity).values,
+                    dtype=np.float64,
+                )
+                cps_person_weights = full_person_weights[
+                    available_mask.to_numpy(dtype=bool)
+                ]
+                if (
+                    not np.isfinite(full_person_weights).all()
+                    or (full_person_weights < 0).any()
+                    or not np.isfinite(cps_person_weights).all()
+                    or (cps_person_weights < 0).any()
+                ):
+                    raise ValueError(
+                        "Pooled immigration controls require finite non-negative "
+                        "person design weights."
+                    )
+                full_person_mass = float(full_person_weights.sum())
+                cps_person_mass = float(cps_person_weights.sum())
+                if full_person_mass <= 0 or cps_person_mass <= 0:
+                    raise ValueError(
+                        "Pooled immigration controls require positive full-pool "
+                        "and CPS-projection person design-weight mass; "
+                        f"got full={full_person_mass!r}, cps={cps_person_mass!r}."
+                    )
+                person_weight_scale = full_person_mass / cps_person_mass
+                person_design_weight_scaling = {
+                    "full_pool_person_design_weight_mass": full_person_mass,
+                    "cps_projection_person_design_weight_mass": cps_person_mass,
+                    "person_weight_scale": person_weight_scale,
+                    "cps_person_mass_share": cps_person_mass / full_person_mass,
+                }
             available = _source_available_projection(
                 current,
                 available_mask,
@@ -2170,13 +2204,29 @@ def _run_source_operator_chain(
             )
         before_rows = _frame_row_counts(current)
         available_rows = _frame_row_counts(available)
-        kernel_outcome = operators[operator_name](available)
+        if person_design_weight_scaling is None:
+            kernel_outcome = operators[operator_name](available)
+        else:
+            kernel_outcome = operators[operator_name](
+                available,
+                person_weight_scale=person_design_weight_scaling["person_weight_scale"],
+            )
         kernel_receipt: Mapping[str, object] = {}
         if isinstance(kernel_outcome, PoolStageOutput):
             outcome = kernel_outcome.frame
             kernel_receipt = kernel_outcome.receipt
         else:
             outcome = kernel_outcome
+        if person_design_weight_scaling is not None:
+            if "person_design_weight_scaling" in kernel_receipt:
+                raise ValueError(
+                    "Pooled immigration kernel receipt may not override the "
+                    "orchestrator-owned person-design-weight scaling contract."
+                )
+            kernel_receipt = {
+                **dict(kernel_receipt),
+                "person_design_weight_scaling": person_design_weight_scaling,
+            }
         if not isinstance(outcome, Frame):
             raise TypeError(
                 f"Multispine source operator {operator_name!r} must return Frame, "

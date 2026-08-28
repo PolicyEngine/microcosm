@@ -3,7 +3,7 @@ pipeline_contract:
   artifact_protocol:
     artifact_kind: populace_us_stacked_pool_checkpoint_identity
     schema_version: 1
-    materializer_version: 12
+    materializer_version: 13
     pipeline: us-stacked-pool
   stacked_operator_order:
   - assemble_stacked_spine
@@ -17,6 +17,7 @@ pipeline_contract:
   - materialize_multispine_agreement_outputs
   - stacked_completeness_gate
   - by_origin_battery
+  - us_immigration_composition_gate
   pre_clone_source_operator_order:
   - derive_us_cps_carried_inputs
   - with_us_hours_worked_inputs

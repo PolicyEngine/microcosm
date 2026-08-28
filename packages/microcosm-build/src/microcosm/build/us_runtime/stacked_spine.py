@@ -99,6 +99,11 @@ from microcosm.build.us_runtime.acs_transfer import (
     TargetFamilies,
     transfer_acs_inputs,
 )
+from microcosm.build.us_runtime.immigration import (
+    us_immigration_controls,
+    us_immigration_humanitarian_draw_mask,
+    us_immigration_humanitarian_transfer_selection_masks,
+)
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -4144,6 +4149,54 @@ _ACS_TRANSFER_ROW_COUNT_FIELDS = (
     "unmodeled_rows",
     "residual_null_rows",
 )
+_IMMIGRATION_TRANSFER_FAMILY = "source_operator_immigration"
+_IMMIGRATION_TRANSFER_TARGETS = ("ssn_card_type", "immigration_status_str")
+_IMMIGRATION_RECONCILIATION_KEY = "post_transfer_reconciliation"
+_IMMIGRATION_RECONCILIATION_DRAW_FIELDS = frozenset(
+    {
+        "target",
+        "immutable_population",
+        "residual_target",
+        "eligible_recipient_population",
+        "selected_recipient_population",
+        "achieved_population",
+        "absolute_error",
+        "selection_threshold_tie_population",
+        "residual_selection_error",
+        "within_residual_discrete_weight_bound",
+        "immutable_overshoot",
+        "within_discrete_weight_bound",
+    }
+)
+
+
+def _is_immigration_transfer_target(
+    *,
+    entity: str,
+    family: str,
+    target: str,
+) -> bool:
+    return (
+        entity == "person"
+        and family.split("__batch_", 1)[0] == _IMMIGRATION_TRANSFER_FAMILY
+        and target in _IMMIGRATION_TRANSFER_TARGETS
+    )
+
+
+def _immigration_qrf_evidence_targets(
+    surface: TargetFamilies,
+) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (entity, target)
+        for entity, families in surface.items()
+        for family, targets in families.items()
+        for target in targets
+        if _is_immigration_transfer_target(
+            entity=entity,
+            family=family,
+            target=target,
+        )
+    )
 
 
 def _validate_acs_transfer_row_counts(
@@ -4177,6 +4230,260 @@ def _validate_acs_transfer_row_counts(
     ):
         raise ValueError(f"{boundary}: ACS transfer row-count accounting is invalid.")
     return typed_counts
+
+
+def _validate_immigration_post_transfer_reconciliation(
+    target_receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    frame: Frame | None = None,
+) -> Mapping[str, object]:
+    """Validate the persisted constrained-recipient reconciliation evidence."""
+
+    reconciliation = target_receipt.get(_IMMIGRATION_RECONCILIATION_KEY)
+    if not isinstance(reconciliation, Mapping):
+        raise ValueError(
+            f"{boundary}: immigration post-transfer reconciliation is absent."
+        )
+    expected_keys = {
+        "kind",
+        "seed",
+        "time_period",
+        "mutable_rows",
+        "immutable_rows",
+        "citizenship_repairs",
+        "pair_repairs",
+        "special_status_assignments",
+        "floating_tolerance",
+        "selection_order",
+        "draws",
+    }
+    if set(reconciliation) != expected_keys or reconciliation.get("kind") != (
+        "deterministic_humanitarian_residual_target"
+    ):
+        raise ValueError(
+            f"{boundary}: immigration post-transfer reconciliation schema is invalid."
+        )
+    integer_fields = (
+        "seed",
+        "time_period",
+        "mutable_rows",
+        "immutable_rows",
+        "citizenship_repairs",
+        "pair_repairs",
+        "special_status_assignments",
+    )
+    if any(
+        not isinstance(reconciliation.get(field), int)
+        or isinstance(reconciliation[field], bool)
+        or reconciliation[field] < 0
+        for field in integer_fields
+    ):
+        raise ValueError(
+            f"{boundary}: immigration reconciliation integer evidence is invalid."
+        )
+    counts = _validate_acs_transfer_row_counts(
+        target_receipt,
+        boundary=boundary,
+        required=True,
+    )
+    if (
+        reconciliation["mutable_rows"] != counts["imputed_rows"]
+        or reconciliation["citizenship_repairs"] > reconciliation["mutable_rows"]
+        or reconciliation["pair_repairs"] > reconciliation["mutable_rows"]
+        or reconciliation["special_status_assignments"] > reconciliation["mutable_rows"]
+        or reconciliation["citizenship_repairs"] > reconciliation["pair_repairs"]
+    ):
+        raise ValueError(
+            f"{boundary}: immigration reconciliation row accounting is invalid."
+        )
+    producer_rows = target_receipt.get("producer_rows")
+    if producer_rows is not None and (
+        not isinstance(producer_rows, int)
+        or isinstance(producer_rows, bool)
+        or producer_rows < 0
+        or reconciliation["immutable_rows"] != producer_rows
+    ):
+        raise ValueError(
+            f"{boundary}: immigration reconciliation immutable-row binding is invalid."
+        )
+    controls = us_immigration_controls()
+    canonical_tolerance = max(
+        1e-6,
+        max((draw.target for draw in controls.humanitarian), default=0.0) * 1e-12,
+    )
+    tolerance = reconciliation.get("floating_tolerance")
+    if (
+        not isinstance(tolerance, (int, float))
+        or isinstance(tolerance, bool)
+        or not np.isfinite(float(tolerance))
+        or tolerance <= 0
+        or float(tolerance) != canonical_tolerance
+    ):
+        raise ValueError(
+            f"{boundary}: immigration reconciliation tolerance is non-canonical."
+        )
+    tolerance = float(tolerance)
+    live_draw_populations: dict[str, tuple[float, float, float]] = {}
+    live_mutable_draw_masks: dict[str, np.ndarray] = {}
+    expected_mutable_draw_masks: dict[str, np.ndarray] = {}
+    if frame is not None:
+        person_entity = frame.schema.person_entity
+        person = frame.table(person_entity)
+        channel = person[support_channel_column(person_entity)].astype(str)
+        immutable_rows = channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy(dtype=bool)
+        mutable_rows = channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy(dtype=bool)
+        if (
+            not np.logical_or(immutable_rows, mutable_rows).all()
+            or int(immutable_rows.sum()) != reconciliation["immutable_rows"]
+            or int(mutable_rows.sum()) != reconciliation["mutable_rows"]
+        ):
+            raise ValueError(
+                f"{boundary}: immigration reconciliation row counts differ "
+                "from the live ASEC/ACS frame."
+            )
+        weights = np.asarray(
+            frame.resolve_weights(person_entity).values,
+            dtype=np.float64,
+        )
+        if (
+            weights.shape != (len(person),)
+            or not np.isfinite(weights).all()
+            or (weights < 0).any()
+        ):
+            raise ValueError(
+                f"{boundary}: immigration reconciliation live person weights "
+                "are invalid."
+            )
+        for control in controls.humanitarian:
+            emitted = us_immigration_humanitarian_draw_mask(
+                frame,
+                control,
+                time_period=int(reconciliation["time_period"]),
+            )
+            live_draw_populations[control.label] = (
+                float(weights[emitted & immutable_rows].sum()),
+                float(weights[emitted & mutable_rows].sum()),
+                float(weights[emitted].sum()),
+            )
+            live_mutable_draw_masks[control.label] = emitted & mutable_rows
+        expected_mutable_draw_masks = (
+            us_immigration_humanitarian_transfer_selection_masks(
+                frame,
+                mutable_rows=mutable_rows,
+                seed=int(reconciliation["seed"]),
+                time_period=int(reconciliation["time_period"]),
+                controls=controls,
+            )
+        )
+    selection_order = reconciliation.get("selection_order")
+    draws = reconciliation.get("draws")
+    expected_order = [draw.label for draw in controls.humanitarian]
+    targets_by_label = {
+        draw.label: float(draw.target) for draw in controls.humanitarian
+    }
+    if (
+        not isinstance(selection_order, list)
+        or selection_order != expected_order
+        or not isinstance(draws, Mapping)
+        or set(draws) != set(expected_order)
+    ):
+        raise ValueError(
+            f"{boundary}: immigration reconciliation draw order is non-canonical."
+        )
+    numeric_fields = _IMMIGRATION_RECONCILIATION_DRAW_FIELDS - {
+        "within_residual_discrete_weight_bound",
+        "within_discrete_weight_bound",
+    }
+    for label in expected_order:
+        draw = draws[label]
+        if not isinstance(draw, Mapping) or set(draw) != (
+            _IMMIGRATION_RECONCILIATION_DRAW_FIELDS
+        ):
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} schema "
+                "is invalid."
+            )
+        if any(
+            not isinstance(draw.get(field), (int, float))
+            or isinstance(draw[field], bool)
+            or not np.isfinite(float(draw[field]))
+            or draw[field] < 0
+            for field in numeric_fields
+        ) or any(
+            draw.get(field) is not True
+            for field in (
+                "within_residual_discrete_weight_bound",
+                "within_discrete_weight_bound",
+            )
+        ):
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} values "
+                "are invalid."
+            )
+        target = targets_by_label[label]
+        immutable = float(draw["immutable_population"])
+        residual = float(draw["residual_target"])
+        eligible = float(draw["eligible_recipient_population"])
+        selected = float(draw["selected_recipient_population"])
+        achieved = float(draw["achieved_population"])
+        tie = float(draw["selection_threshold_tie_population"])
+        expected_residual = max(0.0, target - immutable)
+        residual_error = abs(selected - residual)
+        absolute_error = abs(achieved - target)
+        immutable_overshoot = max(0.0, immutable - target)
+        if frame is not None:
+            live_immutable, live_selected, live_achieved = live_draw_populations[label]
+            if (
+                abs(immutable - live_immutable) > tolerance
+                or abs(selected - live_selected) > tolerance
+                or abs(achieved - live_achieved) > tolerance
+            ):
+                raise ValueError(
+                    f"{boundary}: immigration reconciliation draw {label!r} "
+                    "differs from the live ASEC/ACS weighted population."
+                )
+            if not np.array_equal(
+                live_mutable_draw_masks[label],
+                expected_mutable_draw_masks[label],
+            ):
+                raise ValueError(
+                    f"{boundary}: immigration reconciliation draw {label!r} "
+                    "selected mutable-row identities differ from the canonical "
+                    "seeded selection."
+                )
+        if target <= 0 and immutable > tolerance:
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} has "
+                "immutable mass against an explicit-zero target."
+            )
+        if eligible + tolerance < residual:
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} "
+                "conceals a recipient candidate shortfall."
+            )
+        if selected + tolerance < residual:
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} "
+                "underfills its residual target."
+            )
+        if (
+            abs(float(draw["target"]) - target) > tolerance
+            or abs(residual - expected_residual) > tolerance
+            or selected > eligible + tolerance
+            or tie > eligible + tolerance
+            or abs(achieved - (immutable + selected)) > tolerance
+            or abs(float(draw["residual_selection_error"]) - residual_error) > tolerance
+            or residual_error > tie + tolerance
+            or abs(float(draw["absolute_error"]) - absolute_error) > tolerance
+            or abs(float(draw["immutable_overshoot"]) - immutable_overshoot) > tolerance
+            or absolute_error > immutable_overshoot + tie + tolerance
+        ):
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} "
+                "accounting is invalid."
+            )
+    return reconciliation
 
 
 def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
@@ -4240,6 +4547,11 @@ def _acs_pattern_predictor_authority(
         assert isinstance(housing, Mapping)
         if set(family_targets).intersection(housing["targets"]):
             mandatory = tuple(housing["mandatory_features"])
+            required = (*required, *mandatory)
+            optional = tuple(item for item in optional if item not in mandatory)
+        immigration_targets = set(contract["immigration_status_targets"])
+        if immigration_targets.issubset(family_targets):
+            mandatory = tuple(contract["immigration_required_predictors"])
             required = (*required, *mandatory)
             optional = tuple(item for item in optional if item not in mandatory)
         return tuple(required), tuple(optional)
@@ -4780,6 +5092,7 @@ def validate_stacked_post_puf_transfer_receipt(
         validated_calibration_keys.update(
             spec.key for spec in expected_calibrations.values()
         )
+        group_immigration_reconciliations: list[Mapping[str, object]] = []
         for target_key, target_receipt in group_targets.items():
             if not isinstance(target_receipt, Mapping):
                 raise ValueError(
@@ -4793,8 +5106,36 @@ def validate_stacked_post_puf_transfer_receipt(
             )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
+            target = target_key.rsplit("/", 1)[1]
+            is_immigration = _is_immigration_transfer_target(
+                entity=group.entity,
+                family=group.family,
+                target=target,
+            )
+            if is_immigration:
+                group_immigration_reconciliations.append(
+                    _validate_immigration_post_transfer_reconciliation(
+                        target_receipt,
+                        boundary=f"{boundary} target {target_key}",
+                        frame=frame,
+                    )
+                )
+                _validate_acs_imputed_pattern_evidence(
+                    target_receipt,
+                    expected_entity=group.entity,
+                    expected_family=group.family,
+                    expected_target=target,
+                    expected_family_targets=group.targets,
+                    expected_regime_targets=group.targets,
+                    boundary=f"{boundary} target {target_key}",
+                )
+            elif _IMMIGRATION_RECONCILIATION_KEY in target_receipt:
+                raise ValueError(
+                    f"{boundary}: undeclared immigration reconciliation is "
+                    f"attached to {target_key!r}."
+                )
             if spec is None:
-                if "qrf_pattern_evidence" in target_receipt:
+                if "qrf_pattern_evidence" in target_receipt and not is_immigration:
                     raise ValueError(
                         f"{boundary}: undeclared ACS QRF pattern evidence is "
                         f"attached to {target_key!r}."
@@ -4814,7 +5155,7 @@ def validate_stacked_post_puf_transfer_receipt(
                 target_receipt,
                 expected_entity=group.entity,
                 expected_family=group.family,
-                expected_target=target_key.rsplit("/", 1)[1],
+                expected_target=target,
                 expected_family_targets=group.targets,
                 expected_regime_targets=expected_regime_targets,
                 boundary=f"{boundary} target {target_key}",
@@ -4917,6 +5258,17 @@ def validate_stacked_post_puf_transfer_receipt(
                     owner_receipt=owner_receipt,
                     spec=spec,
                     boundary=f"{boundary} target {target_key}",
+                )
+        if group_immigration_reconciliations:
+            if len(group_immigration_reconciliations) != len(
+                _IMMIGRATION_TRANSFER_TARGETS
+            ) or any(
+                _json_ready(item) != _json_ready(group_immigration_reconciliations[0])
+                for item in group_immigration_reconciliations[1:]
+            ):
+                raise ValueError(
+                    f"{boundary}: paired immigration reconciliation evidence "
+                    f"is incomplete or inconsistent for group {name!r}."
                 )
     if validated_calibration_keys != set(late_calibration_specs):
         raise ValueError(
@@ -7978,6 +8330,17 @@ def validate_stacked_late_producer_transition_authority(
     """Validate the anchor after declared downstream operators have run."""
 
     validate_stacked_late_producer_receipt(receipt, boundary=boundary)
+    transfer = receipt.get("post_puf_transfer")
+    assert isinstance(transfer, Mapping)
+    # Downstream fiscal and gate operators intentionally change the complete
+    # late-output digest, but they do not own source channels, resolved
+    # weights, or immigration outputs. Replay that reconstructible terminal
+    # evidence before authenticating the immutable transition carrier.
+    validate_stacked_post_puf_transfer_receipt(
+        transfer,
+        boundary=boundary,
+        frame=frame,
+    )
     _validate_late_transition_authority(
         frame,
         receipt,
@@ -10171,10 +10534,17 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         derive_schedule_d=derive_schedule_d,
         execution_contract=execution_contract,
         regime_evidence_targets=tuple(
-            (spec.entity, spec.target)
-            for spec in _stacked_post_transfer_calibration_specs(
-                surface,
-                stage="late_transfer",
+            dict.fromkeys(
+                (
+                    *(
+                        (spec.entity, spec.target)
+                        for spec in _stacked_post_transfer_calibration_specs(
+                            surface,
+                            stage="late_transfer",
+                        )
+                    ),
+                    *_immigration_qrf_evidence_targets(surface),
+                )
             )
         ),
     )
@@ -10419,7 +10789,8 @@ def _verify_post_puf_transfer_outcome(
             target_families,
             stage="late_transfer",
         )
-    }
+    } | set(_immigration_qrf_evidence_targets(target_families))
+    immigration_reconciliations: dict[str, Mapping[str, object]] = {}
     for entity, families in target_families.items():
         table = frame.table(entity)
         for family, family_targets in families.items():
@@ -10499,7 +10870,39 @@ def _verify_post_puf_transfer_outcome(
                     target_receipt["qrf_pattern_evidence"] = (
                         _acs_imputed_pattern_evidence(record)
                     )
+                if _is_immigration_transfer_target(
+                    entity=entity,
+                    family=family,
+                    target=target,
+                ):
+                    if record is None or not isinstance(record.reconciliation, Mapping):
+                        failures.append(
+                            f"{label}: constrained immigration reconciliation "
+                            "evidence is absent."
+                        )
+                    else:
+                        evidence = _json_ready(record.reconciliation)
+                        assert isinstance(evidence, Mapping)
+                        target_receipt[_IMMIGRATION_RECONCILIATION_KEY] = evidence
+                        immigration_reconciliations[target] = evidence
                 target_receipts[target_receipt_key] = target_receipt
+    if set(immigration_reconciliations) not in (
+        set(),
+        set(_IMMIGRATION_TRANSFER_TARGETS),
+    ):
+        failures.append(
+            "post_puf_transfer/person/source_operator_immigration: paired "
+            "reconciliation evidence is incomplete."
+        )
+    elif immigration_reconciliations and any(
+        _json_ready(evidence)
+        != _json_ready(immigration_reconciliations[_IMMIGRATION_TRANSFER_TARGETS[0]])
+        for evidence in immigration_reconciliations.values()
+    ):
+        failures.append(
+            "post_puf_transfer/person/source_operator_immigration: paired "
+            "reconciliation evidence disagrees."
+        )
     if failures:
         raise ValueError(
             "Stacked post-PUF transfer outcome verification failed:\n  "

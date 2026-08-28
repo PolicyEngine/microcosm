@@ -342,7 +342,11 @@ waiver_records:
     - dependent_child_status
     - pregnancy_status
 transfer_execution:
-  schema_version: 2
+  schema_version: 3
+  immigration_required_predictors:
+  - __acs_transfer_is_us_citizen
+  - __acs_transfer_birth_country_code
+  - __acs_transfer_arrival_year
   group_optional_names:
     __acs_transfer_employment_income: __acs_transfer_group_employment_income_sum
     __acs_transfer_interest_dividend_rental_income: __acs_transfer_group_investment_income_sum
@@ -405,6 +409,14 @@ transfer_execution:
   - ssn_card_type
   - immigration_status_str
   immigration_status_model_target: __acs_transfer_immigration_status_pair
+  immigration_baseline_excluded_statuses:
+  - ASYLEE
+  - CUBAN_HAITIAN_ENTRANT
+  - DACA
+  - DEPORTATION_WITHHELD
+  - PAROLED_ONE_YEAR
+  - REFUGEE
+  - TPS
   discrete_numeric_targets:
   - first_home_mortgage_origination_year
   - second_home_mortgage_origination_year
@@ -427,6 +439,19 @@ transfer_execution:
         tax_unit_role: tax_unit_role_input
         tax_unit_link: person_tax_unit_id
         mutable_rows: newly_imputed_expense_cells_only
+    humanitarian_immigration:
+      activation:
+        all_targets:
+        - ssn_card_type
+        - immigration_status_str
+      contract:
+        targets:
+        - ssn_card_type
+        - immigration_status_str
+        mutable_rows: newly_imputed_paired_cells_only
+        target_basis: manifest_residual_after_immutable_asec_mass
+        selection: stable_person_hash_in_manifest_draw_order
+        candidate_shortfall: error
     schedule_d_capital_gain_distributions:
       activation:
         derive_schedule_d: true
@@ -2753,7 +2778,7 @@ families:
     output_coverage_scope: whole_pool
 producer_graph:
   graph_schema_version: 2
-  schedule_payload_schema_version: 16
+  schedule_payload_schema_version: 17
   external_stages:
   - post_clone_input_surface
   scope_coverage:
@@ -9783,6 +9808,15 @@ producer_graph:
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_id
+          entity: person
+          value_kind: non_null
+      - - column: source_household_id
+          entity: person
+          value_kind: non_null
+        - column: source_person_id
+          entity: person
+          value_kind: non_null
+        - column: source_year
           entity: person
           value_kind: non_null
       - - column: source_person_id
@@ -24911,6 +24945,84 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: YOEP
+          entity: person
+          value_kind: column_present
+      column: '@effective:immigration_acs_arrival'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: acs_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: CIT
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:immigration_acs_citizenship'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: acs_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: POBP
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:immigration_acs_origin'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: acs_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: PEINUSYR
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:immigration_asec_arrival'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: PRCITSHP
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:immigration_asec_citizenship'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: PENATVTY
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:immigration_asec_origin'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: person_id
+          entity: person
+          value_kind: non_null
+      - - column: source_household_id
+          entity: person
+          value_kind: non_null
+        - column: source_person_id
+          entity: person
+          value_kind: non_null
+        - column: source_year
+          entity: person
+          value_kind: non_null
+      - - column: source_person_id
+          entity: person
+          value_kind: non_null
+        - column: source_year
+          entity: person
+          value_kind: non_null
+      column: '@effective:immigration_stable_person_lineage'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: whole_pool
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: is_female
           entity: person
           value_kind: finite_numeric
@@ -25229,7 +25341,7 @@ producer_graph:
     - alternatives:
       - - column: person_id
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: person_id
       entity: person
       producing_stage: primary_puf_qrf
@@ -33333,10 +33445,10 @@ producer_graph:
             - first_home_mortgage_origination_year
             - health_savings_account_ald
   execution_receipt_contract:
-    version: 3
+    version: 4
     row_binding: declared_globally_reconciled_input_and_scope_exact_output_source_and_primary_callback_resource_receipt_and_previous_execution_sha256
     virtual_resource_binding: exact_kind_specific_semantic_payload_and_sha256
-    top_binding: entry_and_output_frame_sha256_execution_chain_source_completion_and_nineteen_transfer_groups
+    top_binding: entry_and_output_frame_sha256_execution_chain_source_completion_nineteen_transfer_groups_and_constrained_immigration_reconciliation
     transition_authority:
       authority_id: us_stacked_late_producer_transition
       metadata_key: us_late_producer_transition_authority

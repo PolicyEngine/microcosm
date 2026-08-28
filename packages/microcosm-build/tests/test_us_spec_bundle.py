@@ -190,7 +190,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "619a974abd80c34201a0ccf813968ebc09ed52e144ff1d39722a4d9be7bd7821"
+        "413174820cfb57f85783831dbbf445f007d06128d31562a1234e998e627bd3aa"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -382,11 +382,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
+        == "4965c1485c283dec3685f4ca82fa469d8b88a85f82ccd6b39e2adc84bc0e94d6"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "5921cda83725b2801f2713242003e99ba54766851808b94a4f483666bce604c5"
+        == "9e72ceed9365ddf8993f68a25037a15cf53375093a60e59d5ce01627a7ceb210"
     )
 
     assert len(take_up["programs"]) == 17
@@ -936,12 +936,8 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     assert geography["assignment"]["anchor"] == "puma"
     assert geography["assignment"]["order"] == "before_gap_fill"
     assert geography["assignment"]["assign_tract"] is False
-    assert geography["assignment"][
-        "congressional_district_vintage_crosswalk"
-    ] == {
-        "source_ref": (
-            "source:us_congressional_district_vintage_crosswalk_117_to_119"
-        ),
+    assert geography["assignment"]["congressional_district_vintage_crosswalk"] == {
+        "source_ref": ("source:us_congressional_district_vintage_crosswalk_117_to_119"),
         "source_vintage": "vintage:cd_117",
         "target_vintage": "vintage:cd_119",
     }
@@ -971,9 +967,12 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     assert engine_version_occurrences == {
         kind: int(kind == "take_up") for kind in TYPED_DOMAIN_KINDS
     }
-    assert take_up["legacy_contract_metadata"]["asserted_engine"][
-        "inventory_built_against"
-    ] == engine_version
+    assert (
+        take_up["legacy_contract_metadata"]["asserted_engine"][
+            "inventory_built_against"
+        ]
+        == engine_version
+    )
     assert _count_scalar(engine_lock, engine_version) == 1
     resolved_vintages = thaw_json(resolved_us_spec.vintage_authorities)
     assert resolved_vintages["records"]["policyengine_us_surface"]["value"] == (

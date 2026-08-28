@@ -70,7 +70,8 @@ narrowly-scoped control where the survey carries no signal at all:
    status).
 
 Selection draws are seeded blake2b hashes keyed by the person's stable source
-identity (``source_year``/``source_person_id`` when present), so
+identity (``source_year``/``source_household_id``/``source_person_id`` when
+present), so
 support-channel clones of one source person always receive the same status
 and reruns are bit-reproducible without global RNG state.
 
@@ -117,8 +118,13 @@ __all__ = [
     "ImmigrationControls",
     "UndocumentedControls",
     "derive_us_immigration_status_from_manifest",
+    "reconcile_us_immigration_humanitarian_transfer",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
+    "us_immigration_controls",
+    "us_immigration_evidence_features",
+    "us_immigration_humanitarian_draw_mask",
+    "us_immigration_humanitarian_transfer_selection_masks",
     "us_immigration_stage_spec",
     "with_us_immigration_inputs",
 ]
@@ -239,7 +245,6 @@ _ARRIVAL_YEAR_MIDPOINTS: Mapping[int, int] = {
     26: 2019,
     27: 2021,
     28: 2023,
-    29: 2024,
 }
 
 #: PENATVTY codes for Cuba and Haiti; the Cuban/Haitian entrant class exists
@@ -272,11 +277,23 @@ _HUMANITARIAN_STATUS_BY_CATEGORY: Mapping[str, str] = {
     "tps": "TPS",
 }
 
-#: PEINUSYR codes for 2020+ arrivals (2024 ASEC data dictionary: 27 =
-#: 2020-2021, 28 = 2022-2024) — the humanitarian-parole and recent-refugee
-#: cohorts. The Census codebook rebins this variable across vintages, so
-#: these windows are survey-vintage facts, not statutory dates.
+#: PEINUSYR codes for 2020+ arrivals. The 2024 ASEC distinguishes 2020-2021
+#: (27) from 2022-2024 (28). Program-specific rules below do not treat those
+#: windows as interchangeable: U4U and CHNV cannot draw from code 27, while
+#: Operation Allies Welcome can.
 _RECENT_ARRIVAL_CODES = (27, 28)
+_PAROLE_ASEC_ARRIVAL_CODES: Mapping[str, tuple[int, ...]] = {
+    "afghanistan": _RECENT_ARRIVAL_CODES,
+    "ukraine": (28,),
+    "nicaragua": (28,),
+    "venezuela": (28,),
+}
+_PAROLE_ACS_MIN_ARRIVAL_YEAR: Mapping[str, int] = {
+    "afghanistan": 2021,
+    "ukraine": 2022,
+    "nicaragua": 2023,
+    "venezuela": 2022,
+}
 #: Asylum grants lag arrival by filing queues plus court backlog; grantees
 #: in 2022-2024 overwhelmingly arrived 2016+ (OHSS asylee flow reports).
 _ASYLEE_ARRIVAL_CODES = (25, 26, 27, 28)
@@ -354,6 +371,27 @@ _TPS_ORIGIN_CODES: Mapping[str, tuple[tuple[int, ...], int]] = {
     # Burma, Syria, Yemen, Lebanon, Cameroon, Ethiopia, Somalia, Sudan
     # (South Sudan shares 451 in the CPS codebook).
     "other_designated": ((205, 239, 248, 224, 407, 416, 448, 451), 28),
+}
+
+#: ACS YOEP preserves an exact year, unlike the ASEC arrival bins. Use that
+#: extra information for continuous-residence compatibility rather than
+#: deliberately coarsening YOEP back to PEINUSYR. The per-country cutoffs are
+#: calendar-year approximations of the designation dates; ASEC retains the
+#: published coarse-bin contract above.
+_TPS_ACS_MAX_ARRIVAL_YEAR_BY_BIRTH: Mapping[int, int] = {
+    373: 2023,  # Venezuela (2021 and 2023 designations)
+    312: 2001,  # El Salvador
+    314: 1998,  # Honduras
+    315: 1998,  # Nicaragua
+    229: 2015,  # Nepal
+    205: 2024,  # Burma
+    239: 2024,  # Syria
+    248: 2024,  # Yemen
+    224: 2024,  # Lebanon
+    407: 2023,  # Cameroon
+    416: 2024,  # Ethiopia
+    448: 2024,  # Somalia
+    451: 2023,  # Sudan / South Sudan (shared survey code)
 }
 
 #: Categories whose flat manifest block carries one national target.
@@ -481,6 +519,20 @@ class ImmigrationControls:
         return float(
             sum(draw.target for draw in self.humanitarian if draw.category == category)
         )
+
+
+@dataclass(frozen=True)
+class _ImmigrationEvidenceProfile:
+    """Canonical immigration evidence shared by ASEC and ACS rows."""
+
+    source_is_acs: np.ndarray
+    is_citizen: np.ndarray
+    birth_country: np.ndarray
+    arrival_code: np.ndarray
+    arrival_year: np.ndarray
+    age: np.ndarray
+    age_at_entry: np.ndarray
+    tps_acs_max_arrival_year: np.ndarray
 
 
 def us_immigration_stage_spec() -> SourceStageSpec:
@@ -716,6 +768,22 @@ def _controls_from_parameters(params: Mapping[str, object]) -> ImmigrationContro
     )
 
 
+def us_immigration_controls() -> ImmigrationControls:
+    """Return the controls bound to the packaged immigration manifest stage."""
+
+    derive = [
+        operation
+        for operation in us_immigration_stage_spec().operations
+        if operation.kind == "derive_immigration_status"
+    ]
+    if len(derive) != 1:
+        raise ValueError(
+            "US immigration stage must declare exactly one "
+            "derive_immigration_status operation."
+        )
+    return _controls_from_parameters(derive[0].parameters)
+
+
 def _integer_column(person: pd.DataFrame, column: str) -> np.ndarray:
     return (
         pd.to_numeric(person[column], errors="coerce")
@@ -732,23 +800,199 @@ def _float_column(person: pd.DataFrame, column: str) -> np.ndarray:
     )
 
 
+def _numeric_evidence_column(person: pd.DataFrame, column: str) -> np.ndarray:
+    if column not in person.columns:
+        return np.full(len(person), np.nan, dtype=np.float64)
+    return pd.to_numeric(person[column], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+
+
+def _source_aware_immigration_profile(
+    person: pd.DataFrame,
+    *,
+    time_period: int,
+) -> _ImmigrationEvidenceProfile:
+    """Normalize ASEC PRCITSHP/PENATVTY/PEINUSYR and ACS CIT/POBP/YOEP.
+
+    A stacked recipient carries the union of both raw survey schemas, with the
+    non-owning source null on each row. Exactly one citizenship source must be
+    present. Relevant POBP country codes share the Census country codebook with
+    PENATVTY, so the normalized origin is lossless; ACS YOEP retains its exact
+    year while ASEC necessarily uses the documented interval midpoint.
+    """
+
+    if isinstance(time_period, bool) or int(time_period) != time_period:
+        raise ValueError(
+            f"US immigration time_period must be an integer, got {time_period!r}."
+        )
+    time_period = int(time_period)
+    asec_citizenship = _numeric_evidence_column(person, "PRCITSHP")
+    acs_citizenship = _numeric_evidence_column(person, "CIT")
+    has_asec = np.isfinite(asec_citizenship)
+    has_acs = np.isfinite(acs_citizenship)
+    ambiguous = has_asec & has_acs
+    missing = ~has_asec & ~has_acs
+    if ambiguous.any() or missing.any():
+        raise SourceRuntimeError(
+            "US immigration evidence requires exactly one row-level citizenship "
+            "source (ASEC PRCITSHP or ACS CIT); "
+            f"ambiguous_rows={int(ambiguous.sum())}, missing_rows={int(missing.sum())}."
+        )
+
+    for label, values, present in (
+        ("PRCITSHP", asec_citizenship, has_asec),
+        ("CIT", acs_citizenship, has_acs),
+    ):
+        invalid = present & (
+            ~np.equal(values, np.rint(values)) | ~np.isin(values, [1, 2, 3, 4, 5])
+        )
+        if invalid.any():
+            bad = sorted(set(values[invalid].tolist()))[:5]
+            raise SourceRuntimeError(
+                f"{label} carries value(s) outside the Census domain 1..5: {bad}."
+            )
+
+    citizenship = np.where(has_acs, acs_citizenship, asec_citizenship).astype(np.int64)
+    is_citizen = np.isin(citizenship, [1, 2, 3, 4])
+
+    asec_birth = _numeric_evidence_column(person, "PENATVTY")
+    acs_birth = _numeric_evidence_column(person, "POBP")
+    birth = np.where(has_acs, acs_birth, asec_birth)
+    invalid_birth = ~np.isfinite(birth) | ~np.equal(birth, np.rint(birth)) | (birth < 1)
+    if invalid_birth.any():
+        raise SourceRuntimeError(
+            "US immigration evidence requires a positive integral PENATVTY/POBP "
+            f"country code on every row; invalid_rows={int(invalid_birth.sum())}."
+        )
+    birth_country = birth.astype(np.int64)
+
+    arrival_code_values = _numeric_evidence_column(person, "PEINUSYR")
+    invalid_asec_arrival = has_asec & (
+        ~np.isfinite(arrival_code_values)
+        | ~np.equal(arrival_code_values, np.rint(arrival_code_values))
+        | (arrival_code_values < 0)
+        | (arrival_code_values > max(_ARRIVAL_YEAR_MIDPOINTS))
+    )
+    if invalid_asec_arrival.any():
+        bad = sorted(set(arrival_code_values[invalid_asec_arrival].tolist()))[:5]
+        raise SourceRuntimeError(
+            "PEINUSYR carries value(s) outside the 2024 ASEC domain "
+            f"0..{max(_ARRIVAL_YEAR_MIDPOINTS)}: {bad}."
+        )
+    arrival_code = np.zeros(len(person), dtype=np.int64)
+    arrival_code[has_asec] = arrival_code_values[has_asec].astype(np.int64)
+    arrival_year = np.full(len(person), time_period, dtype=np.int64)
+    for code, midpoint in _ARRIVAL_YEAR_MIDPOINTS.items():
+        arrival_year[has_asec & (arrival_code == code)] = midpoint
+
+    acs_arrival = _numeric_evidence_column(person, "YOEP")
+    acs_foreign_born = has_acs & np.isin(citizenship, [4, 5])
+    invalid_acs_arrival = acs_foreign_born & (
+        ~np.isfinite(acs_arrival)
+        | ~np.equal(acs_arrival, np.rint(acs_arrival))
+        | (acs_arrival < 1900)
+        | (acs_arrival > time_period)
+    )
+    if invalid_acs_arrival.any():
+        raise SourceRuntimeError(
+            "ACS YOEP must be an integral 1900..time_period year for every "
+            f"foreign-born CIT=4/5 row; invalid_rows={int(invalid_acs_arrival.sum())}."
+        )
+    observed_acs_arrival = has_acs & np.isfinite(acs_arrival)
+    arrival_year[observed_acs_arrival] = acs_arrival[observed_acs_arrival].astype(
+        np.int64
+    )
+
+    age_values = _numeric_evidence_column(person, "A_AGE")
+    if "age" in person.columns:
+        mapped_age = _numeric_evidence_column(person, "age")
+        age_values = np.where(np.isfinite(age_values), age_values, mapped_age)
+    invalid_age = (
+        ~np.isfinite(age_values)
+        | ~np.equal(age_values, np.rint(age_values))
+        | (age_values < 0)
+    )
+    if invalid_age.any():
+        raise SourceRuntimeError(
+            "US immigration evidence requires a finite non-negative integral "
+            f"A_AGE/age on every row; invalid_rows={int(invalid_age.sum())}."
+        )
+    age = age_values.astype(np.int64)
+    age_at_entry = np.maximum(0, age - (time_period - arrival_year))
+    tps_acs_max_arrival_year = np.full(len(person), -1, dtype=np.int64)
+    for birth_code, cutoff in _TPS_ACS_MAX_ARRIVAL_YEAR_BY_BIRTH.items():
+        tps_acs_max_arrival_year[birth_country == birth_code] = cutoff
+    return _ImmigrationEvidenceProfile(
+        source_is_acs=has_acs,
+        is_citizen=is_citizen,
+        birth_country=birth_country,
+        arrival_code=arrival_code,
+        arrival_year=arrival_year,
+        age=age,
+        age_at_entry=age_at_entry,
+        tps_acs_max_arrival_year=tps_acs_max_arrival_year,
+    )
+
+
+def us_immigration_evidence_features(
+    frame: Frame,
+    *,
+    time_period: int = 2024,
+) -> pd.DataFrame:
+    """Return finite, source-harmonized immigration predictors per person."""
+
+    person = frame.table(frame.schema.person_entity)
+    profile = _source_aware_immigration_profile(person, time_period=time_period)
+    return pd.DataFrame(
+        {
+            "is_us_citizen": profile.is_citizen.astype(np.float64),
+            "birth_country_code": profile.birth_country.astype(np.float64),
+            "arrival_year": profile.arrival_year.astype(np.float64),
+        },
+        index=person.index,
+    )
+
+
 def _stable_person_draws(person: pd.DataFrame, *, seed: int, salt: str) -> np.ndarray:
     """Deterministic uniform draws keyed by stable person identity.
 
     Support-channel clones carry their source person's ``source_year`` /
-    ``source_person_id``, so keying on those gives every clone of one source
-    person the same draw; frames without source ids fall back to
-    ``person_id``.
+    ``source_household_id`` / ``source_person_id``, so keying on those gives
+    every clone of one source person the same draw; frames without full source
+    ids fall back to the legacy source pair or ``person_id``.
     """
 
-    if {"source_year", "source_person_id"}.issubset(person.columns):
+    def complete(columns: tuple[str, ...]) -> bool:
+        return set(columns).issubset(person.columns) and bool(
+            person.loc[:, list(columns)].notna().to_numpy(dtype=bool).all()
+        )
+
+    full_lineage = ("source_year", "source_household_id", "source_person_id")
+    legacy_lineage = ("source_year", "source_person_id")
+    if complete(full_lineage):
+        keys = (
+            person["source_year"].astype(str)
+            + ":"
+            + person["source_household_id"].astype(str)
+            + ":"
+            + person["source_person_id"].astype(str)
+        )
+    elif complete(legacy_lineage):
         keys = (
             person["source_year"].astype(str)
             + ":"
             + person["source_person_id"].astype(str)
         )
-    else:
+    elif complete(("person_id",)):
         keys = person["person_id"].astype(str)
+    else:
+        raise SourceRuntimeError(
+            "US immigration deterministic draws require one complete stable "
+            "person-lineage alternative: source_year/source_household_id/"
+            "source_person_id, source_year/source_person_id, or person_id."
+        )
     denominator = float(2**64)
     return np.fromiter(
         (
@@ -829,12 +1073,42 @@ def _daca_statutory_cohort(
     )
 
 
+def _special_status_masks(
+    *,
+    ssn_codes: np.ndarray,
+    birth_country: np.ndarray,
+    arrival_year: np.ndarray,
+    age_at_entry: np.ndarray,
+    age: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return final Cuban/Haitian-entrant and DACA cohort masks.
+
+    The source derivation applies DACA after the Cuban/Haitian entrant rule,
+    so a qualifying EAD holder in both cohorts retains DACA. Keeping that
+    precedence in one helper lets source derivation, recipient reconciliation,
+    and release validation share the same exact contract.
+    """
+
+    documented_noncitizen = np.isin(ssn_codes, [2, 3])
+    daca = (ssn_codes == 2) & _daca_statutory_cohort(
+        arrival_year,
+        age_at_entry,
+        age,
+    )
+    cuban_haitian = (
+        documented_noncitizen
+        & np.isin(birth_country, _CUBAN_HAITIAN_BIRTH_CODES)
+        & (arrival_year >= _CUBAN_HAITIAN_ARRIVAL_CUTOFF)
+        & ~daca
+    )
+    return cuban_haitian, daca
+
+
 def _humanitarian_draw_candidates(
     draw: HumanitarianDraw,
     *,
     ssn_codes: np.ndarray,
-    birth_country: np.ndarray,
-    arrival_code: np.ndarray,
+    profile: _ImmigrationEvidenceProfile,
 ) -> np.ndarray:
     """Candidate mask for one draw, before exclusions shared by all draws.
 
@@ -845,43 +1119,558 @@ def _humanitarian_draw_candidates(
     (code 0), whose members then receive EAD-backed SSN cards.
     """
 
+    noncitizen = ~profile.is_citizen
+    excluded = np.isin(profile.birth_country, _CUBAN_HAITIAN_BIRTH_CODES)
+    excluded |= _daca_statutory_cohort(
+        profile.arrival_year,
+        profile.age_at_entry,
+        profile.age,
+    )
+
     if draw.category == "paroled_one_year":
-        assert draw.origin is not None
-        return (
-            np.isin(ssn_codes, (0, 3))
-            & np.isin(birth_country, _PAROLE_ORIGIN_CODES[draw.origin])
-            & np.isin(arrival_code, _RECENT_ARRIVAL_CODES)
+        origins = (
+            (draw.origin,) if draw.origin is not None else tuple(_PAROLE_ORIGIN_CODES)
         )
+        cohort = np.zeros(len(ssn_codes), dtype=bool)
+        for origin in origins:
+            if origin not in _PAROLE_ORIGIN_CODES:
+                raise SourceRuntimeError(
+                    f"US immigration has no parole origin rule for {origin!r}."
+                )
+            origin_match = np.isin(
+                profile.birth_country,
+                _PAROLE_ORIGIN_CODES[origin],
+            )
+            asec_window = (~profile.source_is_acs) & np.isin(
+                profile.arrival_code,
+                _PAROLE_ASEC_ARRIVAL_CODES[origin],
+            )
+            acs_window = profile.source_is_acs & (
+                profile.arrival_year >= _PAROLE_ACS_MIN_ARRIVAL_YEAR[origin]
+            )
+            cohort |= origin_match & (asec_window | acs_window)
+        return noncitizen & np.isin(ssn_codes, (0, 3)) & cohort & ~excluded
     if draw.category == "refugee":
         return (
-            (ssn_codes == 3)
-            & np.isin(birth_country, _REFUGEE_ORIGIN_CODES)
-            & np.isin(arrival_code, _RECENT_ARRIVAL_CODES)
+            noncitizen
+            & (ssn_codes == 3)
+            & np.isin(profile.birth_country, _REFUGEE_ORIGIN_CODES)
+            & (
+                ((~profile.source_is_acs) & (profile.arrival_code == 28))
+                | (profile.source_is_acs & (profile.arrival_year >= 2022))
+            )
+            & ~excluded
         )
     if draw.category == "asylee":
         return (
-            (ssn_codes == 3)
-            & np.isin(birth_country, _ASYLEE_ORIGIN_CODES)
-            & np.isin(arrival_code, _ASYLEE_ARRIVAL_CODES)
+            noncitizen
+            & (ssn_codes == 3)
+            & np.isin(profile.birth_country, _ASYLEE_ORIGIN_CODES)
+            & (
+                (
+                    (~profile.source_is_acs)
+                    & np.isin(profile.arrival_code, _ASYLEE_ARRIVAL_CODES)
+                )
+                | (profile.source_is_acs & (profile.arrival_year >= 2016))
+            )
+            & ~excluded
         )
     if draw.category == "deportation_withheld":
         return (
-            (ssn_codes == 3)
-            & (arrival_code >= 1)
-            & (arrival_code <= _WITHHELD_MAX_ARRIVAL_CODE)
+            noncitizen
+            & (ssn_codes == 3)
+            & (
+                (
+                    (~profile.source_is_acs)
+                    & (profile.arrival_code >= 1)
+                    & (profile.arrival_code <= _WITHHELD_MAX_ARRIVAL_CODE)
+                )
+                | (profile.source_is_acs & (profile.arrival_year <= 2019))
+            )
+            & ~excluded
         )
     if draw.category == "tps":
-        assert draw.origin is not None
-        codes, max_arrival_code = _TPS_ORIGIN_CODES[draw.origin]
-        return (
-            np.isin(ssn_codes, (0, 3))
-            & np.isin(birth_country, codes)
-            & (arrival_code >= 1)
-            & (arrival_code <= max_arrival_code)
+        origins = (
+            (draw.origin,) if draw.origin is not None else tuple(_TPS_ORIGIN_CODES)
         )
+        cohort = np.zeros(len(ssn_codes), dtype=bool)
+        for origin in origins:
+            if origin not in _TPS_ORIGIN_CODES:
+                raise SourceRuntimeError(
+                    f"US immigration has no TPS origin rule for {origin!r}."
+                )
+            codes, max_arrival_code = _TPS_ORIGIN_CODES[origin]
+            origin_match = np.isin(profile.birth_country, codes)
+            asec_window = (
+                (~profile.source_is_acs)
+                & (profile.arrival_code >= 1)
+                & (profile.arrival_code <= max_arrival_code)
+            )
+            acs_window = (
+                profile.source_is_acs
+                & (profile.tps_acs_max_arrival_year >= 0)
+                & (profile.arrival_year <= profile.tps_acs_max_arrival_year)
+            )
+            cohort |= origin_match & (asec_window | acs_window)
+        return noncitizen & np.isin(ssn_codes, (0, 3)) & cohort & ~excluded
     raise SourceRuntimeError(
         f"US immigration derivation has no candidate rule for draw {draw.label!r}."
     )
+
+
+def us_immigration_humanitarian_draw_mask(
+    frame: Frame,
+    draw: HumanitarianDraw,
+    *,
+    time_period: int = 2024,
+) -> np.ndarray:
+    """Rows emitted as ``draw`` whose source evidence supports that label.
+
+    This is the shared hard-cohort contract for transfer reconciliation,
+    calibration, and the release gate. It intentionally includes the emitted
+    status test: callers receive the achieved population for one manifest
+    draw, not the larger pool of possible candidates.
+    """
+
+    person = frame.table(frame.schema.person_entity)
+    missing = sorted(set(US_IMMIGRATION_OUTPUT_COLUMNS) - set(person.columns))
+    if missing:
+        raise ValueError(
+            f"US humanitarian draw compatibility requires output column(s) {missing}."
+        )
+    profile = _source_aware_immigration_profile(person, time_period=time_period)
+    return _humanitarian_emitted_mask(person, draw=draw, profile=profile)
+
+
+def us_immigration_humanitarian_transfer_selection_masks(
+    frame: Frame,
+    *,
+    mutable_rows: np.ndarray,
+    seed: int,
+    time_period: int = 2024,
+    controls: ImmigrationControls | None = None,
+) -> dict[str, np.ndarray]:
+    """Replay the exact deterministic mutable-row selection for every draw.
+
+    The post-transfer frame retains everything needed to reconstruct the
+    reconciliation decision: source evidence, final SSN codes, stable person
+    lineage, resolved person weights, manifest controls, and draw order.  For
+    parole and TPS, final EAD codes are mapped back to the residual-pool code
+    exactly as they are during reconciliation.  Earlier expected selections,
+    rather than observed status labels, exclude rows from later draws, so a
+    downstream equal-mass status swap cannot redefine the replayed candidate
+    surface.
+    """
+
+    person = frame.table(frame.schema.person_entity)
+    missing = sorted(set(US_IMMIGRATION_OUTPUT_COLUMNS) - set(person.columns))
+    if missing:
+        raise ValueError(
+            "Humanitarian transfer selection replay requires person column(s) "
+            f"{missing}."
+        )
+    mutable = np.asarray(mutable_rows, dtype=bool)
+    if mutable.shape != (len(person),):
+        raise ValueError(
+            "Humanitarian transfer selection replay mutable_rows must align "
+            "one-to-one with the person table."
+        )
+    weights = np.asarray(
+        frame.resolve_weights(frame.schema.person_entity).values,
+        dtype=np.float64,
+    )
+    if (
+        weights.shape != (len(person),)
+        or not np.isfinite(weights).all()
+        or (weights < 0).any()
+    ):
+        raise ValueError(
+            "Humanitarian transfer selection replay requires finite "
+            "non-negative person weights."
+        )
+    controls = us_immigration_controls() if controls is None else controls
+    profile = _source_aware_immigration_profile(person, time_period=time_period)
+    ssn_codes = _ssn_name_codes(person)
+    immutable = ~mutable
+    selected_once = np.zeros(len(person), dtype=bool)
+    selections: dict[str, np.ndarray] = {}
+    for draw in controls.humanitarian:
+        immutable_draw = (
+            _humanitarian_emitted_mask(
+                person,
+                draw=draw,
+                profile=profile,
+            )
+            & immutable
+        )
+        residual_target = max(
+            0.0,
+            float(draw.target) - float(weights[immutable_draw].sum()),
+        )
+        candidate_ssn = ssn_codes
+        if draw.category in {"paroled_one_year", "tps"}:
+            candidate_ssn = np.where(candidate_ssn == 2, 0, candidate_ssn)
+        candidates = (
+            _humanitarian_draw_candidates(
+                draw,
+                ssn_codes=candidate_ssn,
+                profile=profile,
+            )
+            & mutable
+            & ~selected_once
+        )
+        stable_draws = _stable_person_draws(
+            person,
+            seed=seed,
+            salt=f"acs_transfer:{draw.salt}",
+        )
+        selected = _select_weight_to_target(
+            candidates,
+            weights,
+            stable_draws,
+            residual_target,
+        )
+        selections[draw.label] = selected
+        selected_once |= selected
+    return selections
+
+
+def _ssn_name_codes(person: pd.DataFrame) -> np.ndarray:
+    ssn_lookup = {
+        "NONE": 0,
+        "CITIZEN": 1,
+        "NON_CITIZEN_VALID_EAD": 2,
+        "OTHER_NON_CITIZEN": 3,
+    }
+    return (
+        person["ssn_card_type"]
+        .astype(str)
+        .map(ssn_lookup)
+        .fillna(-1)
+        .to_numpy(dtype=np.int64)
+    )
+
+
+def _humanitarian_emitted_mask(
+    person: pd.DataFrame,
+    *,
+    draw: HumanitarianDraw,
+    profile: _ImmigrationEvidenceProfile,
+) -> np.ndarray:
+    ssn_codes = _ssn_name_codes(person)
+    candidates = _humanitarian_draw_candidates(
+        draw,
+        ssn_codes=ssn_codes,
+        profile=profile,
+    )
+    # Parole and TPS selections from the residual pool are upgraded from NONE
+    # to EAD after candidacy is evaluated. Their emitted rows may therefore
+    # carry code 2 even though only code 0/3 was eligible before selection.
+    if draw.category in {"paroled_one_year", "tps"}:
+        candidates |= _humanitarian_draw_candidates(
+            draw,
+            ssn_codes=np.where(ssn_codes == 2, 0, ssn_codes),
+            profile=profile,
+        ) & (ssn_codes == 2)
+    status = person["immigration_status_str"].astype(str).to_numpy()
+    return np.asarray(candidates & (status == draw.status), dtype=bool)
+
+
+def reconcile_us_immigration_humanitarian_transfer(
+    person: pd.DataFrame,
+    *,
+    weights: np.ndarray,
+    mutable_rows: np.ndarray,
+    seed: int,
+    time_period: int = 2024,
+    controls: ImmigrationControls | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Reconcile a transferred immigration pair to manifest draw targets.
+
+    Immutable rows are the ASEC source contribution. Only rows whose paired
+    target cells were imputed may be repaired or selected. Each manifest draw
+    receives the residual of its national target after its compatible,
+    immutable contribution, in manifest order; candidate exhaustion is a hard
+    error rather than permission to ship a wrong-origin label.
+    """
+
+    result = person.copy()
+    missing = sorted(set(US_IMMIGRATION_OUTPUT_COLUMNS) - set(result.columns))
+    if missing:
+        raise ValueError(
+            f"Humanitarian transfer reconciliation requires person column(s) {missing}."
+        )
+    weights = np.asarray(weights, dtype=np.float64)
+    mutable = np.asarray(mutable_rows, dtype=bool)
+    if weights.shape != (len(result),) or mutable.shape != (len(result),):
+        raise ValueError(
+            "Humanitarian transfer weights and mutable_rows must align one-to-one "
+            "with the person table."
+        )
+    if not np.isfinite(weights).all() or (weights < 0).any():
+        raise ValueError(
+            "Humanitarian transfer reconciliation requires finite non-negative "
+            "person weights."
+        )
+    controls = us_immigration_controls() if controls is None else controls
+    profile = _source_aware_immigration_profile(result, time_period=time_period)
+    original_ssn = result["ssn_card_type"].astype(str).to_numpy(copy=True)
+    original_status = result["immigration_status_str"].astype(str).to_numpy(copy=True)
+    ssn = original_ssn.copy()
+    status = original_status.copy()
+    valid_ssn = np.isin(ssn, SSN_CARD_TYPE_VALUES)
+    valid_status = np.isin(status, IMMIGRATION_STATUS_VALUES)
+    if (~valid_ssn).any() or (~valid_status).any():
+        raise ValueError(
+            "Humanitarian transfer reconciliation received values outside the "
+            "PolicyEngine SSN/immigration enum domains."
+        )
+
+    humanitarian_statuses = set(_HUMANITARIAN_STATUS_BY_CATEGORY.values())
+    evidence_derived_statuses = {"CUBAN_HAITIAN_ENTRANT", "DACA"}
+    constrained_statuses = humanitarian_statuses | evidence_derived_statuses
+    baseline_constrained = mutable & np.isin(status, list(constrained_statuses))
+    if baseline_constrained.any():
+        raise ValueError(
+            "ACS joint-QRF baseline emitted evidence-constrained labels before "
+            "reconciliation."
+        )
+
+    # Source citizenship is observed on both surveys. Normalize only mutable
+    # pairs; immutable ASEC disagreements remain an error below.
+    citizen_mutable = mutable & profile.is_citizen
+    ssn[citizen_mutable] = "CITIZEN"
+    status[citizen_mutable] = "CITIZEN"
+    noncitizen_mutable = mutable & ~profile.is_citizen
+    ssn[noncitizen_mutable & (ssn == "CITIZEN")] = "OTHER_NON_CITIZEN"
+    status[noncitizen_mutable & (status == "CITIZEN")] = "LEGAL_PERMANENT_RESIDENT"
+    status[noncitizen_mutable & (ssn == "NONE")] = "UNDOCUMENTED"
+    status[noncitizen_mutable & (ssn != "NONE") & (status == "UNDOCUMENTED")] = (
+        "LEGAL_PERMANENT_RESIDENT"
+    )
+    citizenship_repairs = int(
+        (
+            mutable
+            & ((ssn != original_ssn) | (status != original_status))
+            & (
+                profile.is_citizen
+                | (original_ssn == "CITIZEN")
+                | (original_status == "CITIZEN")
+            )
+        ).sum()
+    )
+    pair_repairs = int(
+        (mutable & ((ssn != original_ssn) | (status != original_status))).sum()
+    )
+    result["ssn_card_type"] = ssn
+    result["immigration_status_str"] = status
+
+    # CHE and DACA have hard source-evidence rules just like the manifest
+    # draws, but no stock target. Rebuild them deterministically after the
+    # unconstrained codec and citizenship/pair repair rather than accepting a
+    # donor label on an incompatible ACS cohort.
+    special_ssn_codes = _ssn_name_codes(result)
+    cuban_haitian, daca = _special_status_masks(
+        ssn_codes=special_ssn_codes,
+        birth_country=profile.birth_country,
+        arrival_year=profile.arrival_year,
+        age_at_entry=profile.age_at_entry,
+        age=profile.age,
+    )
+    special_before = status.copy()
+    status[mutable & cuban_haitian] = "CUBAN_HAITIAN_ENTRANT"
+    status[mutable & daca] = "DACA"
+    special_status_assignments = int((mutable & (status != special_before)).sum())
+    result["immigration_status_str"] = status
+
+    immutable = ~mutable
+    immutable_pair_invalid = immutable & (
+        ((ssn == "CITIZEN") != (status == "CITIZEN"))
+        | ((ssn == "NONE") != (status == "UNDOCUMENTED"))
+        | ((ssn == "CITIZEN") != profile.is_citizen)
+    )
+    if immutable_pair_invalid.any():
+        raise ValueError(
+            "Immutable ASEC immigration rows violate citizenship/paired-status "
+            f"invariants; invalid_rows={int(immutable_pair_invalid.sum())}."
+        )
+    immutable_special_invalid = immutable & (
+        ((status == "CUBAN_HAITIAN_ENTRANT") != cuban_haitian)
+        | ((status == "DACA") != daca)
+    )
+    if immutable_special_invalid.any():
+        raise ValueError(
+            "Immutable ASEC immigration rows violate Cuban/Haitian entrant or "
+            f"DACA cohort invariants; invalid_rows={int(immutable_special_invalid.sum())}."
+        )
+
+    selected_once = np.zeros(len(result), dtype=bool)
+    compatible_humanitarian = np.zeros(len(result), dtype=bool)
+    draw_receipts: dict[str, object] = {}
+    largest_target = max((draw.target for draw in controls.humanitarian), default=0.0)
+    tolerance = max(1e-6, largest_target * 1e-12)
+    for draw in controls.humanitarian:
+        immutable_draw = (
+            _humanitarian_emitted_mask(
+                result,
+                draw=draw,
+                profile=profile,
+            )
+            & immutable
+        )
+        compatible_humanitarian |= immutable_draw
+        immutable_population = float(weights[immutable_draw].sum())
+        if draw.target <= 0 and immutable_population > tolerance:
+            raise ValueError(
+                f"Immutable ASEC rows emit {immutable_population:,.6f} weighted "
+                f"persons for explicit-zero humanitarian draw {draw.label!r}."
+            )
+        residual_target = max(0.0, float(draw.target) - immutable_population)
+
+        candidate_ssn = _ssn_name_codes(result)
+        if draw.category in {"paroled_one_year", "tps"}:
+            candidate_ssn = np.where(candidate_ssn == 2, 0, candidate_ssn)
+        candidates = (
+            _humanitarian_draw_candidates(
+                draw,
+                ssn_codes=candidate_ssn,
+                profile=profile,
+            )
+            & mutable
+            & ~selected_once
+        )
+        available_population = float(weights[candidates].sum())
+        if available_population + tolerance < residual_target:
+            raise ValueError(
+                "Humanitarian transfer candidate shortfall for "
+                f"{draw.label!r}: residual_target={residual_target:,.6f}, "
+                f"eligible_recipient_population={available_population:,.6f}, "
+                f"immutable_population={immutable_population:,.6f}."
+            )
+        stable_draws = _stable_person_draws(
+            result,
+            seed=seed,
+            salt=f"acs_transfer:{draw.salt}",
+        )
+        selected = _select_weight_to_target(
+            candidates,
+            weights,
+            stable_draws,
+            residual_target,
+        )
+        selected_population = float(weights[selected].sum())
+        if selected_population + tolerance < residual_target:
+            raise RuntimeError(
+                f"Humanitarian transfer selection underfilled {draw.label!r}."
+            )
+        status[selected] = draw.status
+        if draw.category in {"paroled_one_year", "tps"}:
+            ssn[selected & (ssn == "NONE")] = "NON_CITIZEN_VALID_EAD"
+        selected_once |= selected
+        result["ssn_card_type"] = ssn
+        result["immigration_status_str"] = status
+        achieved_mask = _humanitarian_emitted_mask(
+            result,
+            draw=draw,
+            profile=profile,
+        )
+        compatible_humanitarian |= achieved_mask
+        achieved_population = float(weights[achieved_mask].sum())
+        threshold_tie_population = 0.0
+        if selected.any():
+            threshold = float(np.max(stable_draws[selected]))
+            threshold_tie_population = float(
+                weights[candidates & (stable_draws == threshold)].sum()
+            )
+        residual_selection_error = abs(selected_population - residual_target)
+        if residual_selection_error > threshold_tie_population + tolerance:
+            raise RuntimeError(
+                f"Humanitarian transfer residual selection for {draw.label!r} "
+                "missed its target by more than the threshold tie mass."
+            )
+        absolute_error = abs(achieved_population - float(draw.target))
+        immutable_overshoot = max(0.0, immutable_population - float(draw.target))
+        discrete_bound = immutable_overshoot + threshold_tie_population + tolerance
+        draw_receipts[draw.label] = {
+            "target": float(draw.target),
+            "immutable_population": immutable_population,
+            "residual_target": residual_target,
+            "eligible_recipient_population": available_population,
+            "selected_recipient_population": selected_population,
+            "achieved_population": achieved_population,
+            "absolute_error": absolute_error,
+            "selection_threshold_tie_population": threshold_tie_population,
+            "residual_selection_error": residual_selection_error,
+            "within_residual_discrete_weight_bound": True,
+            "immutable_overshoot": immutable_overshoot,
+            "within_discrete_weight_bound": absolute_error <= discrete_bound,
+        }
+        if absolute_error > discrete_bound:
+            raise RuntimeError(
+                f"Humanitarian transfer reconciliation for {draw.label!r} "
+                "missed its target by more than the discrete selection bound."
+            )
+
+    result["ssn_card_type"] = ssn
+    result["immigration_status_str"] = status
+    all_humanitarian = np.isin(status, list(humanitarian_statuses))
+    incompatible_humanitarian = all_humanitarian & ~compatible_humanitarian
+    if incompatible_humanitarian.any():
+        raise ValueError(
+            "Humanitarian transfer output contains status/origin/arrival/SSN "
+            f"incompatible rows: {int(incompatible_humanitarian.sum())}."
+        )
+    final_ssn_codes = _ssn_name_codes(result)
+    final_cuban_haitian, final_daca = _special_status_masks(
+        ssn_codes=final_ssn_codes,
+        birth_country=profile.birth_country,
+        arrival_year=profile.arrival_year,
+        age_at_entry=profile.age_at_entry,
+        age=profile.age,
+    )
+    special_status_invalid = (
+        (status == "CUBAN_HAITIAN_ENTRANT") != final_cuban_haitian
+    ) | ((status == "DACA") != final_daca)
+    if special_status_invalid.any():
+        raise RuntimeError(
+            "Humanitarian transfer reconciliation left Cuban/Haitian entrant "
+            "or DACA cohort invariants invalid on "
+            f"{int(special_status_invalid.sum())} row(s)."
+        )
+    final_pair_invalid = (
+        ((ssn == "CITIZEN") != (status == "CITIZEN"))
+        | ((ssn == "NONE") != (status == "UNDOCUMENTED"))
+        | ((ssn == "CITIZEN") != profile.is_citizen)
+    )
+    if final_pair_invalid.any():
+        raise RuntimeError(
+            "Humanitarian transfer reconciliation left citizenship/paired-status "
+            f"invariants invalid on {int(final_pair_invalid.sum())} row(s)."
+        )
+    if not np.array_equal(
+        result.loc[immutable, "ssn_card_type"].astype(str).to_numpy(),
+        original_ssn[immutable],
+    ) or not np.array_equal(
+        result.loc[immutable, "immigration_status_str"].astype(str).to_numpy(),
+        original_status[immutable],
+    ):
+        raise RuntimeError(
+            "Humanitarian transfer reconciliation changed immutable ASEC rows."
+        )
+    receipt: dict[str, object] = {
+        "kind": "deterministic_humanitarian_residual_target",
+        "seed": int(seed),
+        "time_period": int(time_period),
+        "mutable_rows": int(mutable.sum()),
+        "immutable_rows": int(immutable.sum()),
+        "citizenship_repairs": citizenship_repairs,
+        "pair_repairs": pair_repairs,
+        "special_status_assignments": special_status_assignments,
+        "floating_tolerance": tolerance,
+        "selection_order": [draw.label for draw in controls.humanitarian],
+        "draws": draw_receipts,
+    }
+    return result, receipt
 
 
 def _assign_humanitarian_statuses(
@@ -905,28 +1694,15 @@ def _assign_humanitarian_statuses(
     """
 
     marks = np.full(len(person), "", dtype="U24")
-    arrival_code, arrival_year, age_at_entry = _arrival_profile(
-        person, time_period=time_period
-    )
-    age = _integer_column(person, "A_AGE")
-    birth_country = _integer_column(person, "PENATVTY")
-    # Cuba/Haiti-born keep the statutorily-favorable entrant class; the DACA
-    # cohort keeps its statutory tag (dual TPS/DACA holders stay DACA).
-    excluded = np.isin(birth_country, _CUBAN_HAITIAN_BIRTH_CODES)
-    excluded |= _daca_statutory_cohort(arrival_year, age_at_entry, age)
+    profile = _source_aware_immigration_profile(person, time_period=time_period)
     for draw in controls.humanitarian:
         if draw.target <= 0:
             continue
-        candidates = (
-            _humanitarian_draw_candidates(
-                draw,
-                ssn_codes=ssn_codes,
-                birth_country=birth_country,
-                arrival_code=arrival_code,
-            )
-            & ~excluded
-            & (marks == "")
-        )
+        candidates = _humanitarian_draw_candidates(
+            draw,
+            ssn_codes=ssn_codes,
+            profile=profile,
+        ) & (marks == "")
         draws = _stable_person_draws(person, seed=seed, salt=draw.salt)
         selected = _select_weight_to_target(candidates, weights, draws, draw.target)
         marks[selected] = draw.status
@@ -1072,15 +1848,14 @@ def _derive_immigration_status(
     status[ssn_codes == 1] = "CITIZEN"
     status[ssn_codes == 0] = "UNDOCUMENTED"
 
-    documented_noncitizen = np.isin(ssn_codes, [2, 3])
-    cuban_haitian = (
-        documented_noncitizen
-        & np.isin(birth_country, _CUBAN_HAITIAN_BIRTH_CODES)
-        & (arrival_year >= _CUBAN_HAITIAN_ARRIVAL_CUTOFF)
+    cuban_haitian, daca = _special_status_masks(
+        ssn_codes=ssn_codes,
+        birth_country=birth_country,
+        arrival_year=arrival_year,
+        age_at_entry=age_at_entry,
+        age=age,
     )
     status[cuban_haitian] = "CUBAN_HAITIAN_ENTRANT"
-
-    daca = (ssn_codes == 2) & _daca_statutory_cohort(arrival_year, age_at_entry, age)
     status[daca] = "DACA"
 
     # Humanitarian draws exclude Cuba/Haiti-born and the DACA cohort, so
@@ -1096,6 +1871,7 @@ def with_us_immigration_inputs(
     *,
     seed: int,
     time_period: int,
+    person_weight_scale: float = 1.0,
 ) -> Frame:
     """Run the ``immigration_status`` manifest stage over a US frame.
 
@@ -1107,6 +1883,11 @@ def with_us_immigration_inputs(
             CPS ASEC source columns.
         seed: Build-wide imputation seed.
         time_period: The dataset's time period (arrival-year arithmetic).
+        person_weight_scale: Stage-only multiplier for person design weights.
+            Pooled source projections use the inverse of their share of the
+            full pool's person mass so absolute national controls contribute
+            only that source's mass share. Standalone frames keep the default
+            multiplier of one.
 
     Returns:
         A new frame whose person table carries ``ssn_card_type`` and
@@ -1121,6 +1902,15 @@ def with_us_immigration_inputs(
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US immigration inputs require the US schema.")
+    if (
+        isinstance(person_weight_scale, bool)
+        or not np.isfinite(person_weight_scale)
+        or person_weight_scale <= 0
+    ):
+        raise ValueError(
+            "US immigration person_weight_scale must be a finite positive "
+            f"number, got {person_weight_scale!r}."
+        )
     person = frame.table("person")
     present = [
         column for column in US_IMMIGRATION_OUTPUT_COLUMNS if column in person.columns
@@ -1135,7 +1925,9 @@ def with_us_immigration_inputs(
         )
 
     stage_person = person.copy(deep=True)
-    stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
+    stage_person[_PERSON_WEIGHT_COLUMN] = np.asarray(
+        frame.resolve_weights("person").values, dtype=np.float64
+    ) * float(person_weight_scale)
     output = run_source_stage(
         us_immigration_stage_spec(),
         tables={"person": stage_person},
@@ -1211,18 +2003,7 @@ def us_immigration_composition_gate(
     """
 
     if controls is None:
-        stage = us_immigration_stage_spec()
-        derive = [
-            operation
-            for operation in stage.operations
-            if operation.kind == "derive_immigration_status"
-        ]
-        if len(derive) != 1:
-            raise ValueError(
-                "US immigration stage must declare exactly one "
-                "derive_immigration_status operation."
-            )
-        controls = _controls_from_parameters(derive[0].parameters)
+        controls = us_immigration_controls()
 
     person = frame.table("person")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
@@ -1264,6 +2045,11 @@ def us_immigration_composition_gate(
 
     ssn = person["ssn_card_type"].astype(str)
     status = person["immigration_status_str"].astype(str)
+    try:
+        evidence = _source_aware_immigration_profile(person, time_period=2024)
+    except (SourceRuntimeError, ValueError) as exc:
+        evidence = None
+        failures.append(f"source-aware immigration evidence is invalid: {exc}")
     for column, values, domain in (
         ("ssn_card_type", ssn, SSN_CARD_TYPE_VALUES),
         ("immigration_status_str", status, IMMIGRATION_STATUS_VALUES),
@@ -1295,6 +2081,33 @@ def us_immigration_composition_gate(
             f"{undocumented_disagreements} person(s) have ssn_card_type NONE "
             "and immigration_status_str UNDOCUMENTED disagreeing."
         )
+    if evidence is not None:
+        evidence_citizen_disagreements = int((ssn_citizen != evidence.is_citizen).sum())
+        if evidence_citizen_disagreements:
+            failures.append(
+                f"{evidence_citizen_disagreements} person(s) have emitted "
+                "citizenship disagreeing with their source PRCITSHP/CIT evidence."
+            )
+        expected_cuban_haitian, expected_daca = _special_status_masks(
+            ssn_codes=_ssn_name_codes(person),
+            birth_country=evidence.birth_country,
+            arrival_year=evidence.arrival_year,
+            age_at_entry=evidence.age_at_entry,
+            age=evidence.age,
+        )
+        special_status_invalid = (
+            (status.to_numpy() == "CUBAN_HAITIAN_ENTRANT") != expected_cuban_haitian
+        ) | ((status.to_numpy() == "DACA") != expected_daca)
+        details["evidence_derived_status_compatibility"] = {
+            "cuban_haitian_entrant_rows": int(expected_cuban_haitian.sum()),
+            "daca_rows": int(expected_daca.sum()),
+            "invalid_rows": int(special_status_invalid.sum()),
+        }
+        if special_status_invalid.any():
+            failures.append(
+                f"{int(special_status_invalid.sum())} person(s) violate the "
+                "source-aware Cuban/Haitian entrant or DACA cohort contract."
+            )
 
     non_citizen_share = (
         float(weights[~ssn_citizen].sum()) / total if total else float("nan")
@@ -1320,6 +2133,54 @@ def us_immigration_composition_gate(
 
     status_values = status.to_numpy()
     hum_low, hum_high = _HUMANITARIAN_TARGET_RELATIVE_BAND
+    humanitarian_statuses = set(_HUMANITARIAN_STATUS_BY_CATEGORY.values())
+    humanitarian_rows = np.isin(status_values, list(humanitarian_statuses))
+    draw_achieved: dict[str, dict[str, object]] = {}
+    compatible_humanitarian = np.zeros(len(person), dtype=bool)
+    if evidence is not None:
+        for draw in controls.humanitarian:
+            emitted_mask = _humanitarian_emitted_mask(
+                person,
+                draw=draw,
+                profile=evidence,
+            )
+            compatible_humanitarian |= emitted_mask
+            emitted = float(weights[emitted_mask].sum())
+            relative = (emitted / draw.target) if draw.target > 0 else None
+            draw_achieved[draw.label] = {
+                "category": draw.category,
+                "origin": draw.origin,
+                "status": draw.status,
+                "target": draw.target,
+                "population": emitted,
+                "relative": relative,
+                "source": draw.source,
+            }
+            if draw.target <= 0:
+                if emitted > 0:
+                    failures.append(
+                        f"{draw.label}: {emitted:,.0f} compatible weighted "
+                        "persons emitted against an explicit zero target."
+                    )
+                continue
+            if relative is None or not (hum_low <= relative <= hum_high):
+                failures.append(
+                    f"{draw.label}: compatible emitted population {emitted:,.0f} "
+                    f"is {relative:.2f}x the cited stock target {draw.target:,.0f} "
+                    f"(band [{hum_low}, {hum_high}])."
+                )
+        incompatible = humanitarian_rows & ~compatible_humanitarian
+        if incompatible.any():
+            incompatible_population = float(weights[incompatible].sum())
+            examples = sorted(set(status_values[incompatible].tolist()))
+            failures.append(
+                f"{int(incompatible.sum())} humanitarian row(s) "
+                f"({incompatible_population:,.0f} weighted persons) violate "
+                "their source-aware status/origin/arrival/SSN cohort contract; "
+                f"statuses={examples}."
+            )
+    details["humanitarian_draw_achieved"] = draw_achieved
+
     achieved_by_category: dict[str, dict[str, object]] = {}
     for category in HUMANITARIAN_STATUS_CATEGORIES:
         status_name = _HUMANITARIAN_STATUS_BY_CATEGORY[category]

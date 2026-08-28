@@ -76,6 +76,8 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
+# 10 binds the humanitarian-immigration composition gate into the stacked
+# operator order and authenticated terminal-gate surface.
 # 9 binds the post-assembly household-geography assignment receipt and its
 # authenticated release-vintage authorities.
 # 8 binds the nullable-boolean-capable physical H5 materializer in both the
@@ -86,7 +88,7 @@ US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
 # authority and restores its immutable Frame-metadata anchor on H5 load.
 # Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
 # the published receipt is the one authorized by the generating transition.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 9
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 10
 US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION = 3
 """Version 3 atomically binds release CD provenance attrs; v2 added BooleanDtype."""
 _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
@@ -106,6 +108,14 @@ US_STACKED_POOL_OPERATOR_ORDER = (
     "materialize_multispine_agreement_outputs",
     "stacked_completeness_gate",
     "by_origin_battery",
+    "us_immigration_composition_gate",
+)
+_STACKED_TERMINAL_GATE_NAMES = frozenset(
+    {
+        "us_stacked_completeness",
+        "us_by_origin_battery",
+        "immigration_composition",
+    }
 )
 _LEGACY_POOL_OPERATOR_ORDER = (
     "assemble",
@@ -461,10 +471,10 @@ def us_multispine_pool_release_receipt(
         )
         gate_passed = gate.get("passed")
         gate_failures = gate.get("failures")
-        if type(gate_passed) is not bool or not isinstance(
-            gate_failures, list
-        ) or not all(
-            isinstance(failure, str) for failure in gate_failures
+        if (
+            type(gate_passed) is not bool
+            or not isinstance(gate_failures, list)
+            or not all(isinstance(failure, str) for failure in gate_failures)
         ):
             raise ValueError(
                 f"Authenticated US multispine pool gate {gate_name!r} has an "
@@ -803,7 +813,7 @@ def _validate_stacked_late_dag_manifest_binding(
     *,
     manifest_path: Path,
 ) -> None:
-    """Make schema-9 consumers authenticate geography and late-DAG proofs."""
+    """Make current-schema consumers authenticate geography and late-DAG proofs."""
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
@@ -1228,7 +1238,7 @@ def _validate_stacked_geography_h5_binding(
     manifest_path: Path,
     pool_path: Path,
 ) -> None:
-    """Bind schema-9 manifest geography claims to the authenticated H5."""
+    """Bind current-schema manifest geography claims to the authenticated H5."""
 
     if manifest.get("pipeline") != _STACKED_PIPELINE:
         return
@@ -2059,6 +2069,24 @@ def _require_matching_terminal_gate_aliases(
             f"US stacked pool diagnostics {diagnostics_path} terminal_gates do "
             "not match agreement_gate."
         )
+    manifest_gates = _mapping(
+        manifest_terminal_gates.get("gates"),
+        label=f"US stacked pool manifest {manifest_path}.terminal_gates.gates",
+    )
+    diagnostics_gates = _mapping(
+        diagnostics_terminal_gates.get("gates"),
+        label=(f"US stacked pool diagnostics {diagnostics_path}.terminal_gates.gates"),
+    )
+    for label, gates in (
+        (f"US stacked pool manifest {manifest_path}", manifest_gates),
+        (f"US stacked pool diagnostics {diagnostics_path}", diagnostics_gates),
+    ):
+        if set(gates) != _STACKED_TERMINAL_GATE_NAMES:
+            raise ValueError(
+                f"{label} does not carry the canonical terminal gate set; "
+                f"expected={sorted(_STACKED_TERMINAL_GATE_NAMES)}, "
+                f"observed={sorted(gates)}."
+            )
 
 
 def _publication_run_id(value: object, *, label: str) -> str:
