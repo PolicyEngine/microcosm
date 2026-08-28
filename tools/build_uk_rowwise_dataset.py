@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime import (
     validate_geography_coverage,
     write_geography_crosswalk,
 )
+from microcosm.build.uk_runtime.rowwise_dataset import UK_SPINE_LINEAGE_COLUMNS
 from microcosm.frame import engine_tables
 
 CROSSWALK_FILENAME = "uk_official_geography_crosswalk.csv.gz"
@@ -163,13 +164,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--source-lineage-modulus",
         type=int,
         help=(
-            "Derive pool_source_household_id as household_id mod this value "
-            "before cloning, recovering pool-grain lineage as a distinct "
-            "layer (the certified UK pool encodes its 10x clone tiers with a "
-            "10**8 id offset; the staging H5's immediate-layer "
-            "source_household_id is left untouched). Refused when the pool "
-            "column already exists or the modulus would be an identity "
-            "mapping."
+            "Pool inputs only: derive pool_source_household_id before cloning "
+            "from household_id = tier * 10**8 + base, leaving the immediate "
+            "source_household_id untouched. Spine inputs instead use sernum + "
+            "1{spi} * 10**d + 1{cgt_clone} * 10**(d+1) + 1{band_donor} * "
+            "10**(d+2) and carry authoritative explicit lineage columns, so "
+            "the modulus is refused for them. Also refused when the pool "
+            "column exists or the mapping would be an identity."
         ),
     )
     parser.add_argument(
@@ -1278,13 +1279,45 @@ def _pool_lineage_block(household: pd.DataFrame) -> dict[str, Any] | None:
     return block
 
 
+def _explicit_lineage_block(household: pd.DataFrame) -> dict[str, Any] | None:
+    spine_columns = [
+        column for column in UK_SPINE_LINEAGE_COLUMNS if column in household.columns
+    ]
+    if not spine_columns:
+        return None
+
+    columns_present = [
+        column
+        for column in ("source_household_id", *UK_SPINE_LINEAGE_COLUMNS)
+        if column in household.columns
+    ]
+    block: dict[str, Any] = {
+        "basis": "explicit_lineage_columns",
+        "columns_present": columns_present,
+        "flag_counts": {
+            column: int(household[column].fillna(False).astype(bool).sum())
+            for column in UK_SPINE_LINEAGE_COLUMNS
+            if column.startswith("household_is_") and column in household.columns
+        },
+    }
+    if "source_household_id" in household.columns:
+        block["distinct_source_households"] = int(
+            household["source_household_id"].nunique()
+        )
+        if "household_support_channel" in household.columns:
+            block["distinct_by_support_channel"] = {
+                str(channel): int(group["source_household_id"].nunique())
+                for channel, group in household.groupby("household_support_channel")
+            }
+    return block
+
+
 def _source_lineage_report(
     household: pd.DataFrame,
     *,
     modulus: int | None,
 ) -> dict[str, Any]:
-    """Report both lineage layers honestly: the derived pool layer (when a
-    modulus was applied) and any immediate layer the input already carries."""
+    """Report pool, immediate, and explicit spine lineage when supported."""
 
     pool = _pool_lineage_block(household)
     immediate = None
@@ -1298,6 +1331,7 @@ def _source_lineage_report(
         "pool_modulus": modulus,
         "pool": pool,
         "immediate": immediate,
+        "explicit": _explicit_lineage_block(household),
     }
 
 
@@ -1368,6 +1402,7 @@ def _rowwise_summary(
             if base_summary.get("distinct_source_households") is not None
             else None
         ),
+        "explicit": _explicit_lineage_block(clone0),
     }
     return {
         "weights": {

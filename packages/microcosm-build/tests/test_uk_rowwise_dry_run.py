@@ -244,6 +244,7 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
 
     assert plan["source_lineage"]["pool_modulus"] is None
     assert plan["source_lineage"]["pool"] is None
+    assert plan["source_lineage"]["explicit"] is None
 
 
 def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
@@ -316,6 +317,7 @@ def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
     assert lineage["pool"]["pool_copies_per_source"]["max"] == 2
     # The staging input's immediate layer is reported untouched alongside.
     assert lineage["immediate"]["distinct_source_households"] == 4
+    assert lineage["explicit"] is None
 
 
 def test_driver_dry_run_supports_fixed_format_stores(monkeypatch, tmp_path) -> None:
@@ -466,6 +468,7 @@ def test_driver_full_build_records_weight_chain_and_lineage(
     assert lineage["pool"]["pool_copies_per_source"]["min"] == 2
     assert lineage["pool"]["pool_copies_per_source"]["max"] == 2
     assert lineage["immediate"] is None
+    assert lineage["explicit"] is None
     assert manifest["base_dataset"]["distinct_source_households"] is None
 
     output_h5 = output_dir / "pool_rowwise.h5"

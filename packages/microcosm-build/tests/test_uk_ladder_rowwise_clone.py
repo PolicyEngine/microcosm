@@ -97,6 +97,17 @@ def _household_frame() -> pd.DataFrame:
     )
 
 
+def _spine_household_frame() -> pd.DataFrame:
+    return _household_frame().assign(
+        source_household_id=[10, 20, 10, 30],
+        household_support_channel=["frs", "spi", "frs", "spi"],
+        household_support_clone_index=[0, 1, 0, 0],
+        household_is_spi_synthetic=[False, True, False, True],
+        household_is_capital_gains_clone=[False, False, True, False],
+        household_is_cgt_band_donor=[False, False, False, True],
+    )
+
+
 def _person_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -348,14 +359,14 @@ def _load_builder_module():
     return module
 
 
-def _write_seam_h5(path) -> None:
+def _write_seam_h5(path, *, household: pd.DataFrame | None = None) -> None:
     from microcosm.build.uk_runtime import write_uk_national_frame
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
     dataset = uk_national_frame(
         person=_person_frame(),
         benunit=_benunit_frame(),
-        household=_household_frame(),
+        household=_household_frame() if household is None else household,
         time_period="2023",
         weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
@@ -410,6 +421,7 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     assert summary["assigned_constituencies"] >= 4
     assert summary["weights"]["household_weight_kind"] == "importance"
     assert summary["weights"]["mass_conservation"]["passed"] is True
+    assert summary["source_lineage"]["explicit"] is None
     assert (output_dir / "staging_rowwise.h5").exists()
 
 
@@ -462,6 +474,64 @@ def test_driver_ladder_dry_run_matches_real_assignment(
         plan["realized_support"]["constituency"]["n_areas"]
         >= manifest["rowwise_dataset"]["assigned_constituencies"]
     )
+    assert plan["source_lineage"]["explicit"] is None
+    assert manifest["rowwise_dataset"]["source_lineage"]["explicit"] is None
+
+
+def test_driver_ladder_spine_lineage_plan_manifest_parity(
+    monkeypatch, toy_ladder, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import json
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "spine.h5"
+    _write_seam_h5(input_h5, household=_spine_household_frame())
+    plan_dir = tmp_path / "plan"
+    build_dir = tmp_path / "build"
+    base_argv = [
+        "build_uk_rowwise_dataset.py",
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--n-clones",
+        "2",
+        "--seed",
+        "7",
+    ]
+
+    monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(plan_dir), "--dry-run"])
+    assert builder.main() == 0
+    plan = json.loads((plan_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
+
+    monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(build_dir)])
+    assert builder.main() == 0
+    manifest = json.loads((build_dir / builder.MANIFEST_FILENAME).read_text())
+
+    explicit = plan["source_lineage"]["explicit"]
+    assert explicit == manifest["rowwise_dataset"]["source_lineage"]["explicit"]
+    assert explicit == {
+        "basis": "explicit_lineage_columns",
+        "columns_present": [
+            "source_household_id",
+            "household_support_channel",
+            "household_support_clone_index",
+            "household_is_spi_synthetic",
+            "household_is_capital_gains_clone",
+            "household_is_cgt_band_donor",
+        ],
+        "distinct_source_households": 3,
+        "distinct_by_support_channel": {"frs": 1, "spi": 2},
+        "flag_counts": {
+            "household_is_spi_synthetic": 2,
+            "household_is_capital_gains_clone": 1,
+            "household_is_cgt_band_donor": 1,
+        },
+    }
 
 
 def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path):

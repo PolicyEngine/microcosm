@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
 )
+from microcosm.build.uk_runtime.rowwise_dataset import UK_SPINE_LINEAGE_COLUMNS
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 
@@ -413,6 +414,18 @@ def test_source_lineage_modulus_rejects_bad_inputs() -> None:
     fractional["household_id"] = [-0.5, 200.0]
     with pytest.raises(ValueError, match="non-negative|integral"):
         apply_uk_source_lineage_modulus(fractional, modulus=100)
+
+
+@pytest.mark.parametrize("column", UK_SPINE_LINEAGE_COLUMNS)
+def test_source_lineage_modulus_refuses_spine_lineage(column: str) -> None:
+    household = household_frame()
+    household[column] = 1
+
+    with pytest.raises(
+        ValueError,
+        match="explicit spine lineage columns are the source of truth",
+    ):
+        apply_uk_source_lineage_modulus(household, modulus=100)
 
 
 def test_clone_entity_frame_refuses_int64_overflow() -> None:
