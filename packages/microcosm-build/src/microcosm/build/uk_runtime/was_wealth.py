@@ -59,6 +59,7 @@ UK_WAS_WEALTH_OUTPUT_COLUMNS = (
     "owned_land",
     "property_wealth",
     "corporate_wealth",
+    "private_pension_wealth",
     "gross_financial_wealth",
     "net_financial_wealth",
     "main_residence_value",
@@ -283,10 +284,20 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
         values = cleaned[column]
         cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
     cleaned["is_renting"] = cleaned["private_rent_code"] == 1
+    # Private pension wealth other than current-employment defined-benefit
+    # entitlements (WAS total private pension wealth less DVValDBT_SCAPE;
+    # defined-benefit-type components are valued at the SCAPE discount rate,
+    # money-purchase components are reported fund values): DC pots, AVCs,
+    # current personal pensions, retained DB/DC rights, pensions in payment
+    # and pensions expected from a former spouse or partner.
+    # The incumbent folds this into corporate_wealth, where the means-tested
+    # capital tests count it; pension rights are disregarded capital (UC Regs
+    # 2013 Sch 10 para 10 and the parallel HB/JSA/ESA/IS/SPC paragraphs), so
+    # the stage emits it as its own column and keeps corporate_wealth to the
+    # share-like holdings (uk-data#452).
+    cleaned["private_pension_wealth"] = cleaned["pensions"] - cleaned["db_pensions"]
     cleaned["corporate_wealth_excl_isa"] = (
-        cleaned["pensions"]
-        - cleaned["db_pensions"]
-        + cleaned["emp_shares_options"]
+        cleaned["emp_shares_options"]
         + cleaned["uk_shares"]
         + cleaned["unit_investment_trusts"]
     )
@@ -376,6 +387,27 @@ class UKWASWealthImputationResult:
 
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
+    #: The per-segment RNG roots derived from the declared stage seed.
+    segment_seeds: tuple[int, ...] = ()
+
+
+def was_wealth_segment_seeds(seed: int, segments: int = 3) -> tuple[int, ...]:
+    """Derive one independent RNG root per chain segment from the stage seed.
+
+    :meth:`RegimeGatedQRF.start_chain` spawns its fit and draw streams from
+    the model seed on every call, so one model reused across segments would
+    restart the same streams each time and couple the k-th target of every
+    segment (the same quantile and sign-gate uniforms per recipient). On the
+    licensed donor that coupling collapsed P(shares > 0 | property_wealth = 0)
+    to 0.011 against 0.055 observed; the production child seeds recover 0.039
+    (hold-out receipt re-run with exactly this derivation). The declared stage
+    seed stays the root and the children are deterministic.
+    """
+
+    return tuple(
+        int(child.generate_state(1, dtype=np.uint32)[0])
+        for child in np.random.SeedSequence(int(seed)).spawn(int(segments))
+    )
 
 
 def impute_was_wealth(
@@ -392,11 +424,16 @@ def impute_was_wealth(
     donor_encoded, recipient_encoded, encoded_predictors = encode_qrf_predictor_pair(
         donor, recipient_predictor_frame
     )
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
+    segment_seeds = was_wealth_segment_seeds(seed)
+    segment_models = iter(
+        RegimeGatedQRF(n_estimators=n_estimators, seed=segment_seed)
+        for segment_seed in segment_seeds
+    )
     raw = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
 
     def run_segment(base_predictors: Sequence[str], targets: Sequence[str]) -> None:
+        model = next(segment_models)
         state = model.start_chain(
             donor_encoded,
             list(base_predictors),
@@ -428,18 +465,37 @@ def impute_was_wealth(
     base = encoded_predictors
     run_segment(base, ("owned_land", "property_wealth"))
     donor_encoded["corporate_wealth"] = donor_encoded["corporate_wealth"].astype(float)
+    donor_encoded["private_pension_wealth"] = donor_encoded[
+        "private_pension_wealth"
+    ].astype(float)
     recipient_encoded["owned_land"] = raw["owned_land"]
     recipient_encoded["property_wealth"] = raw["property_wealth"]
+    # Private pension wealth is drawn first in the position the old folded
+    # corporate_wealth (84.7% pension by donor mass) occupied; the share-like
+    # components condition on it, and the fold into corporate_wealth follows.
     run_segment(
         (*base, "owned_land", "property_wealth"),
-        ("corporate_wealth_excl_isa", "stocks_and_shares_isa"),
+        (
+            "private_pension_wealth",
+            "corporate_wealth_excl_isa",
+            "stocks_and_shares_isa",
+        ),
     )
     raw["corporate_wealth"] = (
         raw["corporate_wealth_excl_isa"] + raw["stocks_and_shares_isa"]
     )
+    recipient_encoded["private_pension_wealth"] = raw["private_pension_wealth"]
     recipient_encoded["corporate_wealth"] = raw["corporate_wealth"]
+    # Downstream targets condition on both components, carrying the
+    # information the old folded corporate_wealth supplied as one column.
     run_segment(
-        (*base, "owned_land", "property_wealth", "corporate_wealth"),
+        (
+            *base,
+            "owned_land",
+            "property_wealth",
+            "private_pension_wealth",
+            "corporate_wealth",
+        ),
         (
             "gross_financial_wealth",
             "net_financial_wealth",
@@ -455,6 +511,7 @@ def impute_was_wealth(
     return UKWASWealthImputationResult(
         draws=raw.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS],
         fit_weight_records=tuple(fit_records),
+        segment_seeds=segment_seeds,
     )
 
 
