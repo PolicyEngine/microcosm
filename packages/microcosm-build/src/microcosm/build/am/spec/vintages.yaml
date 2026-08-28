@@ -1,0 +1,32 @@
+records:
+- id: am_support_pool_2024
+  kind: survey_period_ref
+  authority_ref:
+    kind: source_record
+    source: source:am_populace_us_support_contract
+    authority: am_support_pool_2024
+  compatible_with:
+  - vintage:am_target_2024
+- id: am_target_2024
+  kind: target_period_ref
+  authority_ref:
+    kind: dataset_run
+    pointer: /dataset_run/target_period
+  compatible_with:
+  - vintage:am_support_pool_2024
+- id: am_community_2022
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:am_community_spine_contract
+    authority: am_community_2022
+  compatible_with:
+  - vintage:am_marz_2022
+- id: am_marz_2022
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:am_marz_assignment_contract
+    authority: am_marz_2022
+  compatible_with:
+  - vintage:am_community_2022

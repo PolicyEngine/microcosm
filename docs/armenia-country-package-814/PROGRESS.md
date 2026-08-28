@@ -2,8 +2,10 @@
 
 ## State
 
-Required reconnaissance is complete. Issue #814 is ready for the first package
-draft; no Armenia spec resource has landed yet.
+The first engine-free Armenia package draft now schema-loads. It declares the
+populace-US donor stage, target-derived 2022-census marz assignment, community
+clone spine, Ledger-only target references, greenfield gates, and public 2024
+release contract. Documentation and regression coverage are in progress.
 
 ## Done
 
@@ -27,11 +29,19 @@ draft; no Armenia spec resource has landed yet.
 - Confirmed that survey-measured poverty and tax-benefit quantities remain
   permanent holdouts; the ILCS poverty snapshot and external CEQ/World Bank
   results cannot become calibration targets.
+- Drafted the complete closed `am/` resource inventory: six typed schema
+  resources plus five generation-zero JSON projections, mirroring Belgium.
+- Split donor loading from Armenia marz assignment so the typed spine honestly
+  declares country-level observed geography and target-derived marz codes.
+- Added contract-only compiler identities for the unimplemented Armenia donor,
+  marz, and community stages; no runtime fallback or rules engine is present.
+- Confirmed the draft resolves through `load_country_spec("am")` with both
+  source stages and the community geography contract.
 
 ## Next
 
-1. Draft the engine-free Armenia pool-reweight specifications and harvest notes.
-2. Add compiler contract IDs, explicit package tests, and the golden fixture.
-3. Run the spec-only and shard test suites and fix regressions.
+1. Finish the Chronicle harvest handoff, design notes, and rulespec-am TODO.
+2. Add explicit package tests and the deterministic golden fixture.
+3. Run focused, package-wide, lint, and CI-layout checks and fix regressions.
 4. Record final test evidence and maintainer questions here and in the requested
    final output report.

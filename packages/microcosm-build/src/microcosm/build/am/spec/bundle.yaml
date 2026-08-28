@@ -1,0 +1,12 @@
+country: am
+identity_generation: 1
+seed_protocol: legacy-v1
+dataset_run:
+  target_period: 2024
+status: >-
+  Engine-free Armenia pool-reweight walking skeleton. Execution requires an
+  authenticated populace-US support artifact, a harvested ledger-am target
+  profile, the 2022 community assignment distribution, and shared runtime
+  bindings. TODO(#814): a later rulespec-am may enter only through the existing
+  Frame RulesEngine protocol and Axiom adapter; no v1 compile, gate, or release
+  step may require an engine.

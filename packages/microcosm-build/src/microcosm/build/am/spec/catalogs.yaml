@@ -1,0 +1,51 @@
+columns:
+- key: household.household_id
+  contract:
+    entity: household
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:am_target_2024
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: person.person_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:am_target_2024
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: person.age
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:am_target_2024
+    nullable: false
+    domain: observed_demography
+    public_stability: internal
+- key: person.sex
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:am_target_2024
+    nullable: false
+    domain: observed_demography
+    public_stability: internal
+- key: person.marz_code
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:am_marz_2022
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal

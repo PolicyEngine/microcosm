@@ -1,0 +1,298 @@
+{
+  "country": "am",
+  "description": "Engine-free Armenia v1 target references. Observed quantities live only in the future ledger-am fact package. Calibration rows map exclusively to direct donor columns or deterministic prepared indicators; national-accounts rows are validation-only. Survey-measured poverty and tax-benefit quantities are permanent holdouts and are intentionally absent.",
+  "allowed_value_operations": ["identity", "count_x_mean"],
+  "target_references": [
+    {
+      "name": "armstat_population_by_age_sex_marz",
+      "ledger_selector": {
+        "source_name": "armstat_statbank_population",
+        "series": "population_by_age_sex_marz",
+        "geography_level": "marz",
+        "geography_vintage": "2022_census"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2024,
+      "family": "demography",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.population.age_sex_marz"
+      },
+      "notes": "Primary age x sex x marz margin from the Statbank PxWeb endpoint. The release profile projects the 2022-census-vintage series to 2024 in Ledger; the package carries no level."
+    },
+    {
+      "name": "armstat_ilcs_households_by_size_marz",
+      "ledger_selector": {
+        "source_name": "armstat_ilcs_2024_derived",
+        "series": "households_by_size_marz",
+        "geography_level": "marz"
+      },
+      "entity": "household",
+      "measure": "households",
+      "period": 2024,
+      "family": "household_structure",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.ilcs.households_by_size_marz"
+      },
+      "notes": "Raw household structure derived from the public ILCS household file with official weights. Exact variable codes and current sample size are harvest items."
+    },
+    {
+      "name": "armstat_ilcs_households_by_consumption_band_marz",
+      "ledger_selector": {
+        "source_name": "armstat_ilcs_2024_derived",
+        "series": "households_by_consumption_band_marz",
+        "geography_level": "marz"
+      },
+      "entity": "household",
+      "measure": "households",
+      "filter": "household_consumption_band_indicator",
+      "period": 2024,
+      "family": "consumption",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.ilcs.households_by_consumption_band_marz"
+      },
+      "notes": "Consumption is ArmStat's official welfare measure. Fit household counts across reviewed consumption bands, not the survey's poverty classifications or a survey-derived tax-benefit quantity."
+    },
+    {
+      "name": "armstat_ilcs_households_by_income_band_marz",
+      "ledger_selector": {
+        "source_name": "armstat_ilcs_2024_derived",
+        "series": "households_by_income_band_marz",
+        "geography_level": "marz"
+      },
+      "entity": "household",
+      "measure": "households",
+      "filter": "household_income_band_indicator",
+      "period": 2024,
+      "family": "household_income",
+      "metadata": {
+        "criticality": "diagnostic",
+        "publisher": "ArmStat",
+        "target_role": "calibration_diagnostic",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.ilcs.households_by_income_band_marz"
+      },
+      "notes": "ILCS income is underreported and seasonal, so this raw-income distribution starts diagnostic and may not displace the consumption welfare margin."
+    },
+    {
+      "name": "armstat_lfs_employed_by_age_sex_marz",
+      "ledger_selector": {
+        "source_name": "armstat_lfs_2024_derived",
+        "series": "employed_by_age_sex_marz",
+        "geography_level": "marz"
+      },
+      "entity": "person",
+      "measure": "is_employed",
+      "period": 2024,
+      "family": "labour",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.lfs.employed_by_age_sex_marz"
+      },
+      "notes": "Raw employment-status counts derived from the public 2024 LFS member microdata. The exact questionnaire codes and weighting fields are harvest items."
+    },
+    {
+      "name": "armstat_lfs_employees_by_industry_sex_marz",
+      "ledger_selector": {
+        "source_name": "armstat_lfs_2024_derived",
+        "series": "employees_by_industry_sex_marz",
+        "geography_level": "marz"
+      },
+      "entity": "person",
+      "measure": "is_employee",
+      "period": 2024,
+      "family": "labour",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.lfs.employees_by_industry_sex_marz"
+      },
+      "notes": "Employee counts by direct labour-status and industry columns; no Armenian tax or benefit engine output is involved."
+    },
+    {
+      "name": "armstat_src_payroll_employees_by_industry_sex_marz",
+      "ledger_selector": {
+        "source_name": "armstat_src_payroll_register",
+        "series": "payroll_employees_by_industry_sex_marz",
+        "geography_level": "marz"
+      },
+      "entity": "person",
+      "measure": "is_payroll_employee",
+      "period": 2024,
+      "family": "earnings",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat / State Revenue Committee",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.src.payroll_employees_by_industry_sex_marz"
+      },
+      "notes": "Administrative payroll-employee counts from the SRC-register series published by ArmStat. Harvest the exact one of the nine published datasets and its dimensions."
+    },
+    {
+      "name": "armstat_src_payroll_wages_by_industry_sex_marz",
+      "ledger_selector": {
+        "source_name": "armstat_src_payroll_register",
+        "series": "payroll_wages_by_industry_sex_marz",
+        "geography_level": "marz"
+      },
+      "entity": "person",
+      "measure": "employment_income",
+      "period": 2024,
+      "family": "earnings",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat / State Revenue Committee",
+        "target_role": "calibration",
+        "measure_kind": "direct_column",
+        "ledger_am_key": "armstat.src.payroll_wages_by_industry_sex_marz"
+      },
+      "notes": "Administrative wage amount against the donor's direct employment-income column. Ledger must reconcile monthly versus annual basis before activation."
+    },
+    {
+      "name": "armstat_average_monthly_nominal_wage",
+      "ledger_selector": {
+        "source_name": "armstat_wage_time_series",
+        "series": "average_monthly_nominal_wage",
+        "geography_level": "country"
+      },
+      "value_operation": "count_x_mean",
+      "entity": "person",
+      "measure": "employment_income",
+      "period": 2024,
+      "family": "earnings",
+      "metadata": {
+        "criticality": "diagnostic",
+        "publisher": "ArmStat",
+        "target_role": "validation_only",
+        "measure_kind": "direct_column",
+        "ledger_am_key": "armstat.wages.average_monthly_nominal_wage"
+      },
+      "notes": "The supplied 2024 mean is a cross-check. Do not activate it alongside the component payroll table as a duplicate total; Chronicle must pair it with a compatible employee count and period basis."
+    },
+    {
+      "name": "armstat_pensioner_caseload",
+      "ledger_selector": {
+        "source_name": "armstat_pensions",
+        "series": "pensioner_count",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_pension",
+      "period": 2024,
+      "family": "pensions",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.pensions.pensioner_count"
+      },
+      "notes": "Harvest a current 2024 caseload. The supplied January 2022 count is stale evidence only and must not silently populate this reference."
+    },
+    {
+      "name": "armstat_pension_payment_total",
+      "ledger_selector": {
+        "source_name": "armstat_pensions",
+        "series": "pensioner_count_and_average_pension",
+        "geography_level": "country"
+      },
+      "value_operation": "count_x_mean",
+      "entity": "person",
+      "measure": "pension_income",
+      "period": 2024,
+      "family": "pensions",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "direct_column",
+        "ledger_am_key": "armstat.pensions.payment_total"
+      },
+      "notes": "Chronicle must combine same-vintage caseload and mean facts. The supplied January 2022 count and December 2023 mean may not be multiplied across periods."
+    },
+    {
+      "name": "armstat_family_social_benefit_families",
+      "ledger_selector": {
+        "source_name": "armstat_social_protection",
+        "series": "families_receiving_family_and_social_benefits",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "receives_family_benefit",
+      "period": 2024,
+      "family": "family_benefit",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ArmStat",
+        "target_role": "calibration",
+        "measure_kind": "prepared_column",
+        "ledger_am_key": "armstat.social_protection.family_social_benefit_families"
+      },
+      "notes": "Current caseload for the ArmStat series 'Number of families receiving family and social benefits'. Benefit-rule amounts and eligibility are not used in engine-free v1."
+    },
+    {
+      "name": "armstat_sna_household_consumption",
+      "ledger_selector": {
+        "source_name": "armstat_sna_household_sector",
+        "series": "household_final_consumption_expenditure",
+        "geography_level": "country",
+        "framework": "sna_2008"
+      },
+      "entity": "household",
+      "measure": "household_consumption",
+      "period": 2024,
+      "family": "national_accounts",
+      "metadata": {
+        "criticality": "diagnostic",
+        "publisher": "ArmStat",
+        "target_role": "macro_validation_only",
+        "measure_kind": "direct_column",
+        "ledger_am_key": "armstat.sna.household_final_consumption_expenditure"
+      },
+      "notes": "Macro-realism denominator only, never a hard calibration row. The survey-to-SNA concept bridge is analyst work and the known survey coverage gap must remain visible."
+    },
+    {
+      "name": "armstat_sna_household_disposable_income",
+      "ledger_selector": {
+        "source_name": "armstat_sna_household_sector",
+        "series": "household_disposable_income",
+        "geography_level": "country",
+        "framework": "sna_2008"
+      },
+      "entity": "household",
+      "measure": "household_income",
+      "period": 2024,
+      "family": "national_accounts",
+      "metadata": {
+        "criticality": "diagnostic",
+        "publisher": "ArmStat",
+        "target_role": "macro_validation_only",
+        "measure_kind": "direct_column",
+        "ledger_am_key": "armstat.sna.household_disposable_income"
+      },
+      "notes": "Macro-realism denominator only. The donor's direct household-income aggregate is a documented bridge, not an assertion that survey and SNA concepts are identical."
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}
