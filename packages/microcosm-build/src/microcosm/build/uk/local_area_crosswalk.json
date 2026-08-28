@@ -13,7 +13,9 @@
       "ladder_layer": "constituency",
       "ladder_code_column": "constituency_code",
       "ladder_vintage": "2024_pcon",
-      "expected_vintage": "pcon_2024",
+      "expected_vintage": [
+        "pcon_2024"
+      ],
       "area_count": 650,
       "area_ids": [
         "E14001063",
@@ -674,10 +676,20 @@
       "ladder_code_column": "local_authority_code",
       "ladder_vintage": "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd",
       "expected_vintage": {
-        "E": "lad_2023",
-        "W": "lad_2023",
-        "S": "ca_2019",
-        "N": "lgd_2014"
+        "E": [
+          "lad_2023"
+        ],
+        "W": [
+          "lad_2023"
+        ],
+        "S": [
+          "ca_2019",
+          "lad_2023"
+        ],
+        "N": [
+          "lgd_2014",
+          "lad_2023"
+        ]
       },
       "area_count": 361,
       "area_ids": [

@@ -21,13 +21,20 @@ EXPECTED_COUNTS = {
     "constituency": 650,
     "local_authority": 361,
 }
+# Accept-sets, not single labels: publishers stamp the vintage of the LOOKUP
+# they published against, and ONS products list every UK local authority on
+# the 2023 LAD frame -- including Scottish council areas and Northern Irish
+# districts, whose boundaries (and GSS codes) are unchanged since ca_2019 /
+# lgd_2014. The devolved publishers stamp their own frames. Both labels name
+# the same boundary set, so the compile accepts either; a vintage OUTSIDE the
+# set is a genuinely different boundary frame and still refuses.
 EXPECTED_FACT_VINTAGE = {
-    "constituency": "pcon_2024",
+    "constituency": ["pcon_2024"],
     "local_authority": {
-        "E": "lad_2023",
-        "W": "lad_2023",
-        "S": "ca_2019",
-        "N": "lgd_2014",
+        "E": ["lad_2023"],
+        "W": ["lad_2023"],
+        "S": ["ca_2019", "lad_2023"],
+        "N": ["lgd_2014", "lad_2023"],
     },
 }
 

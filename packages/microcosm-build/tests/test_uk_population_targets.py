@@ -95,9 +95,7 @@ LOCAL_UC_RENAMES = {
     "dwp.universal_credit.households.0_children": (
         "dwp.uc.households_by_area_children_0"
     ),
-    "dwp.universal_credit.households.1_child": (
-        "dwp.uc.households_by_area_children_1"
-    ),
+    "dwp.universal_credit.households.1_child": ("dwp.uc.households_by_area_children_1"),
     "dwp.universal_credit.households.2_children": (
         "dwp.uc.households_by_area_children_2"
     ),
@@ -149,8 +147,7 @@ def test_uk_population_targets_is_registered_in_the_country_package() -> None:
     )
 
     paths = [
-        row["path"] if isinstance(row, dict) else row
-        for row in package["resources"]
+        row["path"] if isinstance(row, dict) else row for row in package["resources"]
     ]
     assert "uk_population_targets.json" in paths
     assert "uk_national_targets.json" not in paths
@@ -227,6 +224,22 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     } == {new: old for old, new in LOCAL_UC_RENAMES.items()}
 
 
+def test_uk_population_targets_all_declare_geography_levels() -> None:
+    """Ruling on PR #795 review finding 3: absent geography reads as national
+    by doctrine, so the committed contract must never omit the field -- a
+    non-national target that dropped it would silently leak into the national
+    surface. The runtime warns on hand-built contracts; this test makes the
+    committed one incapable of triggering that warning."""
+
+    contract = _load()
+    undeclared = [
+        target["target_id"]
+        for target in contract["targets"]
+        if not target.get("geography_levels")
+    ]
+    assert undeclared == []
+
+
 def test_uk_population_targets_accounting_blocks_partition_all_targets() -> None:
     resource = _load()
     target_ids = {target["target_id"] for target in resource["targets"]}
@@ -248,9 +261,10 @@ def test_uk_population_targets_split_terminal_sex_age_bands() -> None:
         "ons.population.female_90_plus",
         "ons.population.male_90_plus",
     } <= set(parity["unmapped_declarations"])
-    assert "single-age-90 share" in parity["accounting_notes"][
-        "ons_terminal_sex_band_split"
-    ]
+    assert (
+        "single-age-90 share"
+        in parity["accounting_notes"]["ons_terminal_sex_band_split"]
+    )
 
     female_85_89 = _target_by_id(resource, "ons.population.female_85_89")
     female_90_plus = _target_by_id(resource, "ons.population.female_90_plus")
@@ -385,14 +399,14 @@ def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:
 
         reduction = binding.get("value_reduction")
         if reduction is not None:
-            assert set(reduction) == {"variable", "entity", "reduce"}, (
-                target["target_id"]
-            )
+            assert set(reduction) == {"variable", "entity", "reduce"}, target[
+                "target_id"
+            ]
             assert reduction["reduce"] in PREDICATE_REDUCERS, target["target_id"]
             assert reduction["entity"] in PREDICATE_ENTITIES, target["target_id"]
-            assert reduction["variable"] == binding.get("value_variable"), (
-                target["target_id"]
-            )
+            assert reduction["variable"] == binding.get("value_variable"), target[
+                "target_id"
+            ]
 
         if "reduce" in binding:
             assert binding["reduce"] in BINDING_REDUCERS, target["target_id"]
@@ -433,16 +447,17 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
     assert targets["ons.age.70_80"]["ledger_selector"]["record_set_spec_id"] == (
         "uk.local_geography.population.age_70_80.v1"
     )
-    assert targets["dwp.uc.households_by_area_children_3plus"][
-        "ledger_selector"
-    ] == {
+    assert targets["dwp.uc.households_by_area_children_3plus"]["ledger_selector"] == {
         "source_name": "dwp",
         "source_measure_id": "universal_credit_households_by_children",
         "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1",
     }
-    assert targets["dwp.uc.households_by_area_children_3plus"]["bindings"][
-        "policyengine"
-    ]["metric_name"] == "uc_hh_3plus_children"
+    assert (
+        targets["dwp.uc.households_by_area_children_3plus"]["bindings"]["policyengine"][
+            "metric_name"
+        ]
+        == "uc_hh_3plus_children"
+    )
     assert targets["ons.tenure.private_rent"]["ledger_selector"] == {
         "source_measure_id": "households",
         "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1",
@@ -450,9 +465,7 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
     assert targets["hmrc.employment_income.amount"]["ledger_selector"][
         "source_measure_id"
     ] == ["employment_income_count", "employment_income_mean"]
-    assert "count_x_mean" in targets["hmrc.employment_income.amount"][
-        "selector_note"
-    ]
+    assert "count_x_mean" in targets["hmrc.employment_income.amount"]["selector_note"]
     assert (
         targets["ons.equiv_net_income_bhc"]["ledger_selector"]["source_measure_id"]
         == "equivalised_net_income_before_housing_costs"

@@ -22,7 +22,11 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 from microcosm.calibrate import TargetRegistry
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
-_ENTITY_ID = {"person": "person_id", "benunit": "benunit_id", "household": "household_id"}
+_ENTITY_ID = {
+    "person": "person_id",
+    "benunit": "benunit_id",
+    "household": "household_id",
+}
 
 
 def compute_uk_measure_input(
@@ -63,8 +67,7 @@ def compute_uk_measure_input(
                 route = f"bool_any_collapse_person_to_{entity}"
             else:
                 raise KeyError(
-                    f"no categorical mapping from {native} to {entity} "
-                    f"for {variable!r}"
+                    f"no categorical mapping from {native} to {entity} for {variable!r}"
                 )
         else:
             mapped = simulation.calculate(variable, year, map_to=entity)
@@ -204,14 +207,18 @@ def load_uk_calibration_measure_exclusions(
     loaded: list[dict[str, str]] = []
     for entry in exclusions:
         if not isinstance(entry, dict):
-            raise ValueError("UK calibration measure exclusion entries must be objects.")
+            raise ValueError(
+                "UK calibration measure exclusion entries must be objects."
+            )
         unknown_fields = sorted(set(entry) - set(_UK_MEASURE_EXCLUSION_FIELDS))
         if unknown_fields:
             raise ValueError(
                 "unknown UK calibration measure exclusion field(s) "
                 f"{unknown_fields} on {entry.get('name')!r}."
             )
-        record = {field: str(entry.get(field, "")) for field in _UK_MEASURE_EXCLUSION_FIELDS}
+        record = {
+            field: str(entry.get(field, "")) for field in _UK_MEASURE_EXCLUSION_FIELDS
+        }
         name = record["name"]
         if name in seen:
             raise ValueError(f"duplicate UK calibration measure exclusion {name!r}.")
@@ -319,6 +326,11 @@ def _uk_contract_targets() -> dict[str, Any]:
         .read_text(encoding="utf-8")
     )
     contract = json.loads(payload)
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _warn_on_undeclared_geography,
+    )
+
+    _warn_on_undeclared_geography(contract["targets"])
     national_geography_levels = {"country", "region"}
     return {
         target["target_id"]: target

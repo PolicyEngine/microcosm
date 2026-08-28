@@ -180,6 +180,7 @@ def compile_uk_local_target_registry(
             ),
             restamped,
         )
+        _assert_local_fact_vintages(candidate_facts, restamped, rosters)
         try:
             registry = compile_ledger_target_references(
                 candidate_facts,
@@ -200,6 +201,48 @@ def compile_uk_local_target_registry(
         TargetRegistry(compiled, country="uk"),
         tuple(unsupported),
     )
+
+
+def _assert_local_fact_vintages(
+    facts: tuple[Mapping[str, Any], ...],
+    reference: LedgerTargetReference,
+    rosters: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Refuse a matched fact whose boundary vintage is not the declared one.
+
+    The crosswalk declares the boundary vintage per level (per code prefix at
+    local-authority level, where the nations publish on different frames).
+    Before this check the declaration was interpolated into error text only;
+    now a fact on the wrong boundary set fails the compile, by name, instead
+    of binding a value across vintages (PR #795 review, closing note).
+    """
+
+    selector = reference.ledger_selector
+    level = str(selector.get("geography_level") or "")
+    expected = rosters.get(level, {}).get("expected_vintage", "")
+    if not expected:
+        return
+    for fact in facts:
+        geography = fact.get("geography")
+        if not isinstance(geography, Mapping):
+            continue
+        vintage = str(geography.get("vintage") or "")
+        code = str(geography.get("id") or "")
+        if isinstance(expected, Mapping):
+            wanted = expected.get(code[:1])
+            if wanted is None:
+                continue
+        else:
+            wanted = expected
+        accepted = (
+            {str(wanted)} if isinstance(wanted, str) else {str(v) for v in wanted}
+        )
+        if vintage and vintage not in accepted:
+            raise ValueError(
+                f"UK local target reference {reference.name!r} matched a fact "
+                f"at {code!r} with boundary vintage {vintage!r}; the crosswalk "
+                f"accepts {sorted(accepted)} for level {level!r}."
+            )
 
 
 def _candidate_facts_for_reference(
@@ -500,12 +543,34 @@ def _uk_contract_targets() -> dict[str, Mapping[str, Any]]:
         .read_text()
     )
     contract = json.loads(payload)
+    _warn_on_undeclared_geography(contract["targets"])
     return {
         target["target_id"]: target
         for target in contract["targets"]
         if set(target.get("geography_levels") or ())
         <= UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS
     }
+
+
+def _warn_on_undeclared_geography(targets) -> None:
+    # Ruling on PR #795 review finding 3: an absent geography_levels reads as
+    # national by doctrine (the empty set is a subset of the national levels),
+    # and the contract test requires every committed target to declare the
+    # field -- so this warning only ever fires on a hand-built contract, where
+    # a silent default into the national surface is worth a loud note.
+    undeclared = [
+        str(target.get("target_id", "<unknown>"))
+        for target in targets
+        if not target.get("geography_levels")
+    ]
+    if undeclared:
+        import warnings
+
+        warnings.warn(
+            "UK population contract target(s) declare no geography_levels and "
+            f"default to the national surface: {undeclared[:5]}",
+            stacklevel=3,
+        )
 
 
 def _uk_parameter_gated_threshold(

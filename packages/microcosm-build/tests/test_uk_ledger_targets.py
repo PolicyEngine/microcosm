@@ -33,9 +33,7 @@ class StubUKAdapter:
         child_flags = np.array([True, True, True, False, False, True, True])
         self.tables = {
             "person": {
-                "capital_gains": np.array(
-                    [0.0, 0.0, 0.0, 5_000.0, 0.0, 0.0, 20_000.0]
-                ),
+                "capital_gains": np.array([0.0, 0.0, 0.0, 5_000.0, 0.0, 0.0, 20_000.0]),
                 "person_household_id": person_household,
                 "uc_is_child_limit_affected": child_flags,
                 "is_child": np.array(
@@ -50,6 +48,7 @@ class StubUKAdapter:
                 "uc_is_child_limit_affected": np.array([1.0, 0.0, 1.0]),
             },
         }
+
     def column(self, entity, variable):
         return self.tables[entity][variable]
 
@@ -229,6 +228,46 @@ def test_compile_uk_local_target_registry_refuses_crosswalk_mismatch(monkeypatch
     with pytest.raises(ValueError, match="A9.*pcon_2024"):
         compile_uk_local_target_registry(
             [_local_fact(10.0, area_id="A9", fact_key="ledger.aggregate_fact.v2:a")],
+            target_period=2025,
+            crosswalk=_local_crosswalk(["A1"]),
+        )
+
+
+def test_compile_uk_local_target_registry_refuses_wrong_boundary_vintage(
+    monkeypatch,
+):
+    """PR #795 review closing note: the crosswalk's declared vintage is
+    operative, not decorative -- a matched fact on a different boundary frame
+    fails the compile by name. Equivalent frames (ONS lists devolved areas on
+    its lad_2023 lookup over unchanged boundaries) are accept-set members and
+    do not refuse."""
+
+    reference = LedgerTargetReference(
+        name="ons.age.0_10@A1",
+        ledger_selector={
+            "source_name": "ons",
+            "source_measure_id": "population",
+            "record_set_spec_id": "uk.local_geography.population.age_0_10.v1",
+            "geography_level": "constituency",
+            "geography_id": "A1",
+        },
+        value_operation="sum",
+        entity="person",
+        measure="age/0_10",
+        period=2025,
+        family="ons_population",
+        metadata={"contract_target_id": "ons.age.0_10"},
+    )
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.ledger_targets.load_country_spec",
+        lambda country: SimpleNamespace(local_target_references=(reference,)),
+    )
+    fact = _local_fact(10.0, area_id="A1", fact_key="ledger.aggregate_fact.v2:a")
+    fact["geography"]["vintage"] = "pcon_2010"
+
+    with pytest.raises(ValueError, match="pcon_2010.*accepts.*pcon_2024"):
+        compile_uk_local_target_registry(
+            [fact],
             target_period=2025,
             crosswalk=_local_crosswalk(["A1"]),
         )

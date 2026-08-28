@@ -123,18 +123,27 @@ _UC_METRICS = frozenset(
     }
 )
 
-_UC_DRIFT_RATIONALE = (
-    # Cite the issue in the repo's short form: the live tree may not name the
-    # retired data package (test_us_plan's incumbent-reference guard), and the
-    # exceptions are reserved for artifacts that must carry it as provenance.
-    "Incumbent-defect class, not calibration drift: uk-data#468 — "
-    "the incumbent's local UC targets are positionally misaligned (name-only "
-    "spreadsheet rows joined by position to code files in a different order; "
-    "the constituency vector is PCON24-native yet boundary-mapped 2010->2024 on "
-    "top). Verified by name-join: the incumbent reproduces the same Stat-Xplore "
-    "publication our facts carry at its uniform national rescale (~0.898, max "
-    "per-area deviation 0.46%), so the per-area disagreement is the incumbent's "
-    "permutation, not a value dispute. Our side is the published per-area count."
+# Cite the issue in the repo's short form throughout: the live tree may not
+# name the retired data package (test_us_plan's incumbent-reference guard).
+_UC_TOTALS_DRIFT_RATIONALE = (
+    "Fix-and-signed (Maria's ruling, PR #795): the fixture corrects "
+    "uk-data#468 at extraction - the incumbent attaches local UC counts by "
+    "row position against unrelated orderings, so its live y-frame is a "
+    "permutation; the fixture joins the same publisher counts to their areas "
+    "by name instead. The residual per-area gap is the incumbent's uniform "
+    "national payment-distribution rescale (fixture/ours 0.8925-0.9003 "
+    "across all 982 total rows) plus sub-0.5% extract-vintage noise - the "
+    "same scaling class the SPI and age families carry."
+)
+
+_UC_CHILDREN_DRIFT_RATIONALE = (
+    "Fix-and-signed (Maria's ruling, PR #795), imputation-vs-published "
+    "class: on top of the uk-data#468 alignment correction and the national "
+    "rescale, the incumbent's child splits are a COUNTRY-share imputation "
+    "(GB proportions applied to each area's total), while ours are the "
+    "published Stat-Xplore per-area child-count buckets. The per-area "
+    "scatter (p5-p95 fixture/ours 0.77-1.19) is the real geographic "
+    "variation in family size that the imputation flattens."
 )
 
 _UC_NI_FIXTURE_ONLY_RATIONALE = (
@@ -189,7 +198,12 @@ _LEDGER_ONLY_RATIONALE = (
 )
 
 _LOCAL_DRIFT_RATIONALES = {
-    **{metric: _UC_DRIFT_RATIONALE for metric in _UC_METRICS},
+    "uc_households": _UC_TOTALS_DRIFT_RATIONALE,
+    **{
+        metric: _UC_CHILDREN_DRIFT_RATIONALE
+        for metric in _UC_METRICS
+        if metric != "uc_households"
+    },
     **{f"age/{lower}_{lower + 10}": _AGE_DRIFT_RATIONALE for lower in range(0, 80, 10)},
     **{
         f"hmrc/{variable}/{measure}": _HMRC_DRIFT_RATIONALE

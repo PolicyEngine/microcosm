@@ -661,15 +661,15 @@ def _evaluate_target_surface(
 ) -> GateResult:
     if parameters.get("expected") == "local_default_surface":
         return _evaluate_local_default_target_surface(context, parameters)
-    if parameters:
-        raise ValueError(
-            "target_surface parameters are only supported for "
-            "expected='local_default_surface'."
-        )
+    # National path: declared parameters forward to the gate unchanged, so an
+    # entry that later declares reviewed exclusions keeps working and an
+    # unknown parameter still fails closed inside the gate call (PR #795
+    # review finding 4 restored the forward the local branch had dropped).
     parity = context.artifacts["parity_evidence"]
     return uk_target_surface_gate(
         parity.candidate_targets,
         parity.reference_targets,
+        **dict(parameters),
     )
 
 
