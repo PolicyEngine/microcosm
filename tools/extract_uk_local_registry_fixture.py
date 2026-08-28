@@ -74,7 +74,7 @@ def _corrected_uc_by_code(parsed, name_column, roster):
     Every roster area must resolve or the extraction fails."""
 
     by_name = {}
-    for name, count in zip(parsed[name_column], parsed["household_count"]):
+    for name, count in zip(parsed[name_column], parsed["household_count"], strict=True):
         key = _normalized_area_name(name)
         if key in by_name:
             raise ValueError(f"uc: duplicate publisher area name {name!r}.")
@@ -198,7 +198,7 @@ def constituency_surface():
     corrected = _corrected_uc_by_code(
         uc_pc_households,
         "constituency_name",
-        list(zip(roster_2024["code"], roster_2024["name"])),
+        list(zip(roster_2024["code"], roster_2024["name"], strict=True)),
     )
     totals = np.array([corrected[code] for code in codes])
     for frame in (raw_mapped, cal_mapped):
@@ -249,7 +249,7 @@ def local_authority_surface():
     corrected_la = _corrected_uc_by_code(
         uc_la_households,
         "la_name",
-        list(zip(la_codes["code"], la_codes["name"])),
+        list(zip(la_codes["code"], la_codes["name"], strict=True)),
     )
     la_totals = np.array([corrected_la[code] for code in roster])
     raw["uc_households"] = la_totals
