@@ -167,6 +167,8 @@ def _diagnostics() -> dict:
 
 @pytest.fixture
 def assembler_inputs(green_certification_inputs, tmp_path: Path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    pytest.importorskip("h5py")
     candidate = green_certification_inputs["candidate_path"]
     spine = tmp_path / "spine.h5"
     write_uk_national_frame(
