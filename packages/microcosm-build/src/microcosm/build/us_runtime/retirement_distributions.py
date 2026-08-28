@@ -43,7 +43,9 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -267,6 +269,30 @@ def _derived_outputs(
         for code, output in output_by_code.items():
             outputs[output] += np.where(codes[suffix] == code, amounts[suffix], 0.0)
     return outputs
+
+
+def _asec_source_mask(frame: pd.DataFrame) -> np.ndarray:
+    """Select physical ASEC rows while retaining the legacy all-row source."""
+
+    if not has_assembled_support_metadata(frame, entity="person"):
+        return np.ones(len(frame), dtype=bool)
+    source_channels = support_gate_source_channel_series(frame, entity="person")
+    mask = source_channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    if not mask.any():
+        raise SourceRuntimeError(
+            "US retirement-distribution support has no physical ASEC source rows."
+        )
+    return mask
+
+
+def _source_reconciliation_mask(frame: pd.DataFrame) -> np.ndarray:
+    """Select direct operator rows whose outputs remain measured-source exact."""
+
+    compare = _asec_source_mask(frame).copy()
+    if has_support_role_metadata(frame, entity="person"):
+        roles = support_role_series(frame, entity="person").to_numpy()
+        compare &= roles == _BASE_ASEC_SUPPORT_CHANNEL
+    return compare
 
 
 def derive_us_retirement_distributions_from_manifest(
@@ -674,17 +700,26 @@ def us_retirement_distributions_summary(frame: Frame) -> dict[str, object]:
     }
 
     source_mismatches: dict[str, int] = {}
+    source_rows = 0
+    source_reconciliation_rows = 0
     if all(
         column in person
         for column in US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS
     ):
-        expected = _derived_outputs(person, _EXPECTED_OUTPUT_BY_ACCOUNT_CODE)
-        compare = np.ones(len(person), dtype=bool)
-        if has_support_role_metadata(person, entity="person"):
-            compare = (
-                support_role_series(person, entity="person").to_numpy()
-                == _BASE_ASEC_SUPPORT_CHANNEL
-            )
+        source_mask = _asec_source_mask(person)
+        source_expected = _derived_outputs(
+            person.loc[source_mask],
+            _EXPECTED_OUTPUT_BY_ACCOUNT_CODE,
+        )
+        expected = {
+            column: np.full(len(person), np.nan, dtype=np.float64)
+            for column in US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS
+        }
+        for column, source_values in source_expected.items():
+            expected[column][source_mask] = source_values
+        compare = _source_reconciliation_mask(person)
+        source_rows = int(np.count_nonzero(source_mask))
+        source_reconciliation_rows = int(np.count_nonzero(compare))
         source_mismatches = {
             column: int(
                 np.count_nonzero(
@@ -722,6 +757,8 @@ def us_retirement_distributions_summary(frame: Frame) -> dict[str, object]:
         "negative": {
             column: int(np.count_nonzero(array < 0)) for column, array in values.items()
         },
+        "source_rows": source_rows,
+        "source_reconciliation_rows": source_reconciliation_rows,
         "source_mismatches": source_mismatches,
     }
 

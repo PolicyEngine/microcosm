@@ -726,6 +726,7 @@ LEGACY_V1_SITES = (
         "wic_claim_assignment",
         salt="would_claim_wic",
         key_grammar=(
+            "source:person_source_id_if_assembled_multispine",
             "source_year:source_household_id:source_person_id_if_complete",
             "else_support:person_support_source_id",
             "else_person:person_id",

@@ -243,6 +243,46 @@ def _gate_frame() -> Frame:
     )
 
 
+def _stacked_gate_frame() -> Frame:
+    frame = _gate_frame()
+    person = frame.table("person").copy()
+    asec_rows = 1_000
+    asec_native_rows = 500
+    acs_native_rows = 1_000
+    person["person_support_channel"] = ["asec"] * asec_rows + ["acs"] * 2_000
+    person["person_support_clone_index"] = np.concatenate(
+        [
+            np.zeros(asec_native_rows, dtype=np.int64),
+            np.ones(asec_rows - asec_native_rows, dtype=np.int64),
+            np.zeros(acs_native_rows, dtype=np.int64),
+            np.ones(2_000 - acs_native_rows, dtype=np.int64),
+        ]
+    )
+    person["person_spine_source_id"] = np.concatenate(
+        [
+            np.arange(asec_native_rows, dtype=np.int64),
+            np.arange(asec_native_rows, dtype=np.int64),
+            np.arange(10_000, 10_000 + acs_native_rows, dtype=np.int64),
+            np.arange(10_000, 10_000 + acs_native_rows, dtype=np.int64),
+        ]
+    )
+    weeks = np.zeros(len(person), dtype=np.float64)
+    weeks[:18] = 17.0
+    weeks[asec_native_rows : asec_native_rows + 12] = 17.0
+    weeks[asec_rows + acs_native_rows : asec_rows + acs_native_rows + 12] = 16.0
+    person[_OUTPUT] = weeks
+    source = np.full(len(person), np.nan, dtype=np.float64)
+    source[:asec_rows] = 0.0
+    source[:18] = 17.0
+    person["LKWEEKS"] = source
+    unemployment_compensation = np.zeros(len(person), dtype=np.float64)
+    unemployment_compensation[
+        asec_native_rows : asec_native_rows + 12
+    ] = 100.0
+    person["unemployment_compensation"] = unemployment_compensation
+    return module._replace_person_table(frame, person)
+
+
 def test_public_stage_contract_is_exactly_manifest_pinned() -> None:
     spec = us_weeks_unemployed_stage_spec()
 
@@ -663,6 +703,74 @@ def test_signal_gate_requires_exact_asec_and_nondefault_integer_both_channels() 
     gate = us_weeks_unemployed_signal_gate(bad)
     assert not gate.passed
     assert any("puf_tax_detail" in failure for failure in gate.failures)
+
+
+def test_signal_gate_derives_legacy_asec_puf_roster_and_constraint_scope() -> None:
+    frame = _gate_frame()
+    summary = module.us_weeks_unemployed_summary(frame)
+
+    assert summary["channel_roster"] == ["asec", "puf_tax_detail"]
+    assert summary["source_rows"] == 1_000
+    assert summary["source_reconciliation_rows"] == 1_000
+    assert summary["uc_constraint_rows"] == 2_000
+    assert summary["uc_constraint_mismatch_count"] == 0
+
+    person = frame.table("person").copy()
+    first_puf_carrier = person.index[
+        person["person_support_channel"].eq("puf_tax_detail")
+        & person[_OUTPUT].gt(0.0)
+    ][0]
+    person.loc[first_puf_carrier, "unemployment_compensation"] = 0.0
+    gate = us_weeks_unemployed_signal_gate(module._replace_person_table(frame, person))
+
+    assert not gate.passed
+    assert any("unemployment-compensation constraint" in item for item in gate.failures)
+
+
+def test_signal_gate_derives_stacked_asec_acs_roster_and_reviewed_scopes() -> None:
+    frame = _stacked_gate_frame()
+    gate = us_weeks_unemployed_signal_gate(frame)
+    summary = gate.details
+
+    assert gate.passed
+    assert summary["channel_roster"] == ["asec", "acs"]
+    assert set(summary["channels"]) == {"asec", "acs"}
+    assert summary["source_rows"] == 1_000
+    assert summary["source_reconciliation_rows"] == 500
+    assert summary["source_invalid"] == 0
+    assert summary["source_mismatch_count"] == 0
+    assert summary["uc_constraint_rows"] == 1_500
+    assert summary["uc_constraint_mismatch_count"] == 0
+
+
+def test_signal_gate_stacked_source_and_uc_checks_ignore_unowned_rows() -> None:
+    frame = _stacked_gate_frame()
+    person = frame.table("person").copy()
+    acs_clone = person["person_support_channel"].eq("acs")
+    person.loc[acs_clone, "LKWEEKS"] = 99.0
+    ignored = module._replace_person_table(frame, person)
+    assert us_weeks_unemployed_signal_gate(ignored).passed
+
+    asec_clone_one = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(1)
+    person.loc[person.index[asec_clone_one][0], "LKWEEKS"] = 99.0
+    invalid_source = us_weeks_unemployed_signal_gate(
+        module._replace_person_table(frame, person)
+    )
+    assert not invalid_source.passed
+    assert invalid_source.details["source_invalid"] == 1
+
+    person = frame.table("person").copy()
+    acs_native = person["person_support_channel"].eq("acs") & person[
+        "person_support_clone_index"
+    ].eq(0)
+    person.loc[person.index[acs_native][0], _OUTPUT] = 1.0
+    uc_mismatch = us_weeks_unemployed_signal_gate(
+        module._replace_person_table(frame, person)
+    )
+    assert not uc_mismatch.passed
+    assert uc_mismatch.details["uc_constraint_mismatch_count"] == 1
 
 
 def test_signal_gate_rejects_collapsed_puf_share_and_weighted_weeks() -> None:

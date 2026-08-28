@@ -374,6 +374,96 @@ def test_signal_gate_rejects_discarded_asec_strike_benefits() -> None:
     assert any("does not conserve OI_VAL" in failure for failure in result.failures)
 
 
+def _stacked_alimony_person() -> pd.DataFrame:
+    source_count = 500
+    source_numbers = np.repeat(np.arange(source_count), 2)
+    clone_indices = np.tile([0, 1], source_count)
+    source_channels = np.where(source_numbers < 250, "asec", "acs")
+    asec_source = source_channels == "asec"
+
+    codes = np.full(len(source_numbers), np.nan)
+    amounts = np.full(len(source_numbers), np.nan)
+    codes[asec_source] = 0.0
+    amounts[asec_source] = 0.0
+    reported_alimony = source_numbers == 10
+    reported_strike = source_numbers == 20
+    codes[reported_alimony] = 20.0
+    amounts[reported_alimony] = 2_000.0
+    codes[reported_strike] = 12.0
+    amounts[reported_strike] = 700.0
+
+    alimony_income = np.where(reported_alimony, amounts, 0.0)
+    alimony_expense = np.where(source_numbers == 300, 3_000.0, 0.0)
+    strike_benefits = np.where(reported_strike, amounts, 0.0)
+    return pd.DataFrame(
+        {
+            "person_spine_source_id": source_numbers,
+            "person_support_channel": source_channels,
+            "person_support_clone_index": clone_indices,
+            "OI_OFF": codes,
+            "OI_VAL": amounts,
+            "alimony_income": alimony_income,
+            "alimony_expense": alimony_expense,
+            "strike_benefits": strike_benefits,
+            "miscellaneous_income": np.zeros(len(source_numbers)),
+        }
+    )
+
+
+def test_signal_gate_reconciles_physical_asec_rows_in_stacked_pool() -> None:
+    person = _stacked_alimony_person()
+
+    result = us_alimony_signal_gate(_PersonFrame(person))  # type: ignore[arg-type]
+
+    assert result.passed, result.failures
+
+    asec_clone = (
+        person["person_support_channel"].eq("asec")
+        & person["person_support_clone_index"].eq(1)
+    )
+    person.loc[asec_clone.idxmax(), "miscellaneous_income"] = 1.0
+    transferred_clone = us_alimony_signal_gate(  # type: ignore[arg-type]
+        _PersonFrame(person)
+    )
+    assert transferred_clone.passed, transferred_clone.failures
+
+    asec_native = (
+        person["person_support_channel"].eq("asec")
+        & person["person_support_clone_index"].eq(0)
+    )
+    person.loc[asec_native.idxmax(), "miscellaneous_income"] = 1.0
+    mismatch = us_alimony_signal_gate(_PersonFrame(person))  # type: ignore[arg-type]
+    assert not mismatch.passed
+    assert any("does not conserve OI_VAL" in failure for failure in mismatch.failures)
+
+    person.loc[asec_native.idxmax(), "miscellaneous_income"] = 0.0
+    person.loc[asec_clone.idxmax(), "OI_VAL"] = np.nan
+    invalid_source = us_alimony_signal_gate(  # type: ignore[arg-type]
+        _PersonFrame(person)
+    )
+    assert not invalid_source.passed
+    assert invalid_source.details["asec_source_invalid"] == 1
+
+
+def test_signal_gate_preserves_legacy_asec_puf_source_scope() -> None:
+    person = _stacked_alimony_person().drop(columns=["person_spine_source_id"])
+    person["person_support_channel"] = np.where(
+        person["person_support_clone_index"].eq(0),
+        "asec",
+        "puf_tax_detail",
+    )
+    asec = person["person_support_channel"].eq("asec")
+    person.loc[asec, ["OI_OFF", "OI_VAL"]] = person.loc[
+        asec, ["OI_OFF", "OI_VAL"]
+    ].fillna(0.0)
+    puf = person["person_support_channel"].eq("puf_tax_detail")
+    person.loc[puf, ["OI_OFF", "OI_VAL"]] = np.nan
+
+    result = us_alimony_signal_gate(_PersonFrame(person))  # type: ignore[arg-type]
+
+    assert result.passed, result.failures
+
+
 @pytest.mark.parametrize(
     "person",
     [

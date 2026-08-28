@@ -47,6 +47,35 @@ requires_us = pytest.mark.skipif(
 )
 
 
+def test_reported_ssi_anchor_coalesces_native_asec_and_harmonized_acs() -> None:
+    person = pd.DataFrame(
+        {
+            "SSI_VAL": [1_200.0, np.nan, np.nan],
+            "ssi_reported": [np.nan, 900.0, np.nan],
+        }
+    )
+
+    values = module._reported_ssi_anchor(
+        person,
+        age=np.asarray([40.0, 50.0, 10.0]),
+    )
+
+    np.testing.assert_array_equal(values, [1_200.0, 900.0, 0.0])
+    assert pd.isna(person.loc[2, "ssi_reported"])
+
+
+def test_reported_ssi_anchor_refuses_an_adult_universe_blank() -> None:
+    person = pd.DataFrame(
+        {
+            "SSI_VAL": [np.nan],
+            "ssi_reported": [np.nan],
+        }
+    )
+
+    with pytest.raises(ValueError, match="blank only below"):
+        module._reported_ssi_anchor(person, age=np.asarray([40.0]))
+
+
 def _source_row(
     ssuid: str,
     pnum: int,
@@ -581,6 +610,48 @@ def test_signal_gate_requires_each_channel_but_allows_clone_divergence(
     assert any(
         "puf_tax_detail" in failure and "plausibility band" in failure
         for failure in implausible_gate.failures
+    )
+
+
+def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
+    stacked = _replace_person(
+        _frame(3),
+        **{
+            "person_source_id": np.asarray([10, 10, 10]),
+            "person_spine_source_id": np.asarray([1, 1, 1]),
+            "person_support_channel": np.asarray(["acs", "acs", "acs"]),
+            "person_support_clone_index": np.asarray([0, 1, 2]),
+            _OUTPUT: np.asarray([False, False, True]),
+        },
+    )
+
+    summary = us_ssi_disability_criteria_summary(stacked)
+
+    assert summary["clone_divergence_source_people"] == 1
+
+
+def test_summary_checks_harmonized_ssi_on_native_role() -> None:
+    expanded = clone_us_frame_for_puf_support(_frame())
+    person = expanded.table("person")
+    person["ssi_reported"] = np.nan
+    native = person["person_support_channel"].astype(str).eq("asec")
+    source_two = person["person_source_id"].eq(2)
+    person.loc[native & source_two, "SSI_VAL"] = np.nan
+    person.loc[native & source_two, "ssi_reported"] = 900.0
+    preserved_existing_anchor = (
+        native & person["person_source_id"].eq(1)
+    ).to_numpy()
+    invalid = _replace_person(
+        expanded,
+        **{_OUTPUT: preserved_existing_anchor},
+    )
+
+    summary = us_ssi_disability_criteria_summary(invalid)
+    gate = us_ssi_disability_criteria_signal_gate(invalid)
+
+    assert summary["reporter_anchor_mismatches"] == 1
+    assert any(
+        "native-role SSI reporter anchor" in failure for failure in gate.failures
     )
 
 

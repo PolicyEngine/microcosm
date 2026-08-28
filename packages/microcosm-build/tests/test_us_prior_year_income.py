@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.prior_year_income as module
+from microcosm.build.gates import GateReport
 from microcosm.build.source_runtime import SourceRuntimeError
 from microcosm.build.us_runtime.l0_refit_export import (
     US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
@@ -395,6 +397,30 @@ def _signal_frame() -> Frame:
     )
 
 
+def _signal_frame_with_availability_rows(rows: int) -> Frame:
+    frame = _signal_frame()
+    person = frame.table("person").copy()
+    person["previous_year_income_available"] = np.arange(len(person)) < rows
+    return module._replace_person_table(frame, person)
+
+
+def _with_stack_manifest(
+    frame: Frame,
+    manifest: object,
+) -> Frame:
+    return Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        frame.schema,
+        {
+            entity: frame.weights_for(entity)
+            for entity in frame.weighted_entities
+        },
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={"us_stacked_spine_manifest": manifest},
+    )
+
+
 def test_signal_gate_accepts_signed_source_signal_and_rejects_defaults() -> None:
     passing = us_prior_year_income_signal_gate(_signal_frame())
     assert passing.passed, passing.failures
@@ -408,6 +434,146 @@ def test_signal_gate_accepts_signed_source_signal_and_rejects_defaults() -> None
     )
     assert not failing.passed
     assert "availability" in " ".join(failing.failures)
+
+
+def test_sampled_rung_scales_only_prior_year_availability_floor() -> None:
+    frame = _with_stack_manifest(
+        _signal_frame_with_availability_rows(6),
+        {"version": 4, "sample_fraction": 0.25},
+    )
+
+    gate = us_prior_year_income_signal_gate(frame)
+
+    assert gate.passed, gate.failures
+    assert gate.details["previous_year_income_available_share"] == pytest.approx(
+        0.04101010101010102
+    )
+    assert gate.details["previous_year_income_available_share_band"] == [0.05, 0.50]
+    assert gate.details[
+        "previous_year_income_available_sampled_match_survival_factor"
+    ] == pytest.approx(0.25)
+    assert gate.details["previous_year_income_available_applied_floor"] == pytest.approx(
+        0.0125
+    )
+    assert gate.details["previous_year_income_available_applied_share_band"] == [
+        0.0125,
+        0.50,
+    ]
+    assert gate.details["self_employment_income_last_year_nonzero_share_band"] == [
+        0.01,
+        0.25,
+    ]
+
+
+def test_sampled_rung_preserves_applied_floor_and_authored_upper_bound() -> None:
+    below_floor = us_prior_year_income_signal_gate(
+        _with_stack_manifest(
+            _signal_frame_with_availability_rows(1),
+            {"version": 4, "sample_fraction": 0.25},
+        )
+    )
+    above_upper = us_prior_year_income_signal_gate(
+        _with_stack_manifest(
+            _signal_frame_with_availability_rows(60),
+            {"version": 4, "sample_fraction": 0.25},
+        )
+    )
+
+    assert any("outside [0.012500, 0.500000]" in row for row in below_floor.failures)
+    assert any("outside [0.012500, 0.500000]" in row for row in above_upper.failures)
+
+
+def test_full_rung_gate_manifest_is_byte_identical_to_legacy_gate() -> None:
+    frame = _signal_frame_with_availability_rows(6)
+    legacy = us_prior_year_income_signal_gate(frame)
+    full_rung = us_prior_year_income_signal_gate(
+        _with_stack_manifest(
+            frame,
+            {"version": 4, "sample_fraction": 1.0},
+        )
+    )
+
+    def manifest_bytes(gate) -> bytes:
+        return json.dumps(
+            GateReport((gate,)).to_manifest(),
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+
+    assert full_rung == legacy
+    assert manifest_bytes(full_rung) == manifest_bytes(legacy)
+    assert not any("applied" in key or "survival_factor" in key for key in full_rung.details)
+
+
+def test_legacy_acs_only_sampling_does_not_scale_asec_match_floor() -> None:
+    frame = _signal_frame_with_availability_rows(6)
+    legacy = us_prior_year_income_signal_gate(frame)
+    pilot = us_prior_year_income_signal_gate(
+        _with_stack_manifest(
+            frame,
+            {"version": 1, "acs_sample_fraction": 0.25},
+        )
+    )
+
+    assert not legacy.passed
+    assert pilot == legacy
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {"version": 4},
+        {"version": 4, "sample_fraction": True},
+        {"version": 4, "sample_fraction": 0.0},
+        {"version": 3, "sample_fraction": 0.25},
+        "malformed",
+    ],
+)
+def test_signal_gate_rejects_malformed_stacked_sampling_metadata(
+    manifest: object,
+) -> None:
+    with pytest.raises(ValueError, match="prior-year-income availability"):
+        us_prior_year_income_signal_gate(
+            _with_stack_manifest(_signal_frame(), manifest)
+        )
+
+
+def test_clone_availability_checks_all_assembled_clones_and_legacy_pairs() -> None:
+    assembled = _frame(
+        pd.DataFrame(
+            {
+                "person_source_id": [10, 10, 10, 20, 20, 20],
+                "person_spine_source_id": [1, 1, 1, 2, 2, 2],
+                "person_support_channel": ["acs"] * 6,
+                "person_support_clone_index": [0, 1, 2, 0, 1, 2],
+                "self_employment_income_last_year": [10, 10, 10, -5, -5, -5],
+                "previous_year_income_available": [True, True, False] + [False] * 3,
+            }
+        )
+    )
+    assembled_summary = module.us_prior_year_income_summary(assembled)
+    assert assembled_summary["clone_availability_mismatches"] == 1
+    assembled_gate = us_prior_year_income_signal_gate(assembled)
+    assert any("1 source person" in failure for failure in assembled_gate.failures)
+
+    legacy = _frame(
+        pd.DataFrame(
+            {
+                "person_source_id": [10, 10, 20, 20],
+                "person_support_channel": [
+                    BASE_ASEC_SUPPORT_CHANNEL,
+                    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                ]
+                * 2,
+                "self_employment_income_last_year": [10, 10, -5, -5],
+                "previous_year_income_available": [True, True, False, False],
+            }
+        )
+    )
+    legacy_summary = module.us_prior_year_income_summary(legacy)
+    assert legacy_summary["clone_availability_mismatches"] == 0
 
 
 def test_source_reconciliation_detects_plausible_but_wrong_asec_carry() -> None:

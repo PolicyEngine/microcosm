@@ -28,7 +28,9 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -570,16 +572,29 @@ def us_workers_compensation_summary(frame: Frame) -> dict[str, object]:
             dtype=np.float64
         )
         source_mask = np.ones(len(person), dtype=bool)
+        source_reconciliation_mask = source_mask.copy()
         if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                support_role_series(person, entity="person").to_numpy()
+                support_gate_source_channel_series(
+                    person, entity="person"
+                ).to_numpy()
                 == _BASE_ASEC_SUPPORT_CHANNEL
             )
+            source_reconciliation_mask = source_mask.copy()
+            if has_assembled_support_metadata(person, entity="person"):
+                source_reconciliation_mask &= (
+                    support_role_series(person, entity="person").to_numpy()
+                    == _BASE_ASEC_SUPPORT_CHANNEL
+                )
         source_valid = np.isfinite(source) & (source >= 0.0)
+        summary["source_rows"] = int(np.count_nonzero(source_mask))
+        summary["source_reconciliation_rows"] = int(
+            np.count_nonzero(source_reconciliation_mask)
+        )
         summary["source_invalid"] = int(np.count_nonzero(source_mask & ~source_valid))
         summary["source_mismatch_count"] = int(
             np.count_nonzero(
-                source_mask
+                source_reconciliation_mask
                 & source_valid
                 & finite
                 & ~np.isclose(values, source, rtol=0.0, atol=0.0)

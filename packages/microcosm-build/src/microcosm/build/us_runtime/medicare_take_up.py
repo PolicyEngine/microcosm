@@ -27,7 +27,10 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_gate_source_channel_series,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -126,6 +129,20 @@ def _source_codes(person: pd.DataFrame, source: str) -> np.ndarray:
             f"codes {sorted(_VALID_SOURCE_CODES)}; invalid row(s): {rows}."
         )
     return numeric.astype(np.int8)
+
+
+def _asec_source_mask(person: pd.DataFrame) -> np.ndarray:
+    """Select physical ASEC rows without changing legacy source semantics."""
+
+    if not has_assembled_support_metadata(person, entity="person"):
+        return np.ones(len(person), dtype=bool)
+    source_channels = support_gate_source_channel_series(person, entity="person")
+    mask = source_channels.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    if not mask.any():
+        raise SourceRuntimeError(
+            "US Medicare take-up support has no physical ASEC source rows."
+        )
+    return mask
 
 
 def derive_us_medicare_take_up_from_manifest(
@@ -228,10 +245,14 @@ def us_medicare_take_up_summary(frame: Frame) -> dict[str, object]:
         "missing_count": int(person[_OUTPUT].isna().sum()),
     }
     if _SOURCE in person:
-        source_values = _source_codes(person, _SOURCE) == _ENROLLED_CODE
-        summary["source_mismatch_count"] = int(
-            np.count_nonzero(values != source_values)
+        source_mask = _asec_source_mask(person)
+        source_values = (
+            _source_codes(person.loc[source_mask], _SOURCE) == _ENROLLED_CODE
         )
+        summary["source_mismatch_count"] = int(
+            np.count_nonzero(values[source_mask] != source_values)
+        )
+        summary["source_rows"] = int(np.count_nonzero(source_mask))
     if has_support_role_metadata(person, entity="person"):
         channel_shares: dict[str, float] = {}
         channels = support_role_series(person, entity="person").to_numpy()

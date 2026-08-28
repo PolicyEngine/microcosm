@@ -408,6 +408,29 @@ transfer_execution:
   discrete_numeric_targets:
   - first_home_mortgage_origination_year
   - second_home_mortgage_origination_year
+  - weeks_unemployed
+  structural_target_policies:
+    is_pregnant:
+      enabled: false
+      target: is_pregnant
+      eligibility:
+        is_female: true
+        minimum_age_inclusive: 15
+        maximum_age_inclusive: 44
+      source_person_key_precedence:
+      - person_source_id
+      - person_id
+      assembled_representative:
+        clone_index_column: person_support_clone_index
+        clone_index: 0
+      qrf_scope: one_eligible_representative_per_source_person
+      ineligible_missing_value: false
+      fanout: one_source_person_result_to_every_missing_clone
+      preexisting_domain_violations: refuse
+      preexisting_clone_disagreement: refuse
+      final_domain_violations: refuse
+      final_clone_disagreement: refuse
+      sha256: 3290b2dde9a077d1c42834b22e8b7c383afbd00748012fbea52ccf803a356f3a
   predictor_bindings:
     person_required: acs_person_required
     person_optional:
@@ -10451,6 +10474,16 @@ producer_graph:
       required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: person_source_id
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:pregnancy_structural_source_person_id'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: asec_source
+      tolerated_absence_receipts:
+      - optional_input:source:with_us_pregnancy_inputs:pregnancy_structural_source_person_id
+    - alternatives:
       - - column: A_AGE
           entity: person
           value_kind: finite_numeric
@@ -10617,6 +10650,15 @@ producer_graph:
           entity: person
           value_kind: non_null
       column: person_marital_unit_id
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: person_source_id
+          entity: person
+          value_kind: non_null
+      column: person_source_id
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone

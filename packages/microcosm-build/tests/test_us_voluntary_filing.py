@@ -652,6 +652,55 @@ def test_duplicate_same_role_source_rows_fail_closed() -> None:
         impute_us_voluntary_filing(expanded, _donor(), seed=17)
 
 
+def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> None:
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [100, 101, 102, 200, 201],
+            "tax_unit_source_id": [10, 10, 10, 20, 20],
+            "tax_unit_spine_source_id": [1, 1, 1, 2, 2],
+            "tax_unit_support_channel": ["acs"] * 5,
+            "tax_unit_support_clone_index": [0, 1, 2, 1, 2],
+        }
+    )
+    receiver = pd.DataFrame(
+        {
+            predictor: np.arange(5, dtype=np.float64) + offset
+            for offset, predictor in enumerate(
+                SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
+            )
+        },
+        index=tax_unit["tax_unit_id"],
+    )
+
+    class TaxUnitFrame:
+        def table(self, entity: str) -> pd.DataFrame:
+            assert entity == "tax_unit"
+            return tax_unit
+
+    prediction_rows, fan_keys = module._source_receiver_rows(
+        TaxUnitFrame(), receiver
+    )
+    assert prediction_rows.index.tolist() == ["10", "20"]
+    assert fan_keys.tolist() == ["10", "10", "10", "20", "20"]
+    # Source 10 prefers clone 0; source 20 has no native survivor and picks
+    # the lowest surviving clone index, clone 1.
+    assert prediction_rows.iloc[:, 0].tolist() == [0.0, 3.0]
+
+    summary_frame = _replace_tax_unit(
+        _frame(3),
+        **{
+            _OUTPUT: np.asarray([False, False, True]),
+            "tax_unit_source_id": np.asarray([7, 7, 7]),
+            "tax_unit_spine_source_id": np.asarray([70, 70, 70]),
+            "tax_unit_support_channel": np.asarray(["acs", "acs", "acs"]),
+            "tax_unit_support_clone_index": np.asarray([0, 1, 2]),
+        },
+    )
+    summary = us_voluntary_filing_summary(summary_frame)
+    assert summary["clone_source_units"] == 1
+    assert summary["clone_mismatch_source_units"] == 1
+
+
 def test_real_qrf_recomputation_is_deterministic() -> None:
     frame = _frame(14)
     donor = _donor(120)

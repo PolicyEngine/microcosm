@@ -1,0 +1,1 @@
+Scale only the prior-year-income availability gate's authored lower floor by the authenticated stacked sampling rung, recording the applied match-survival factor and floor on sampled assemblies while preserving the authored 0.05 constant, upper bound, every other band, and byte-identical full-rung output.
