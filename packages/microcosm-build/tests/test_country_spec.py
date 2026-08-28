@@ -1,12 +1,11 @@
-"""The declarative country spec: loading, refusals, and the Belgian package.
+"""The declarative country spec: loading, refusals, and country packages.
 
 Belgium is the first full consumer of the country-spec schema
 (microcosm#261): its package declares sources, geography spine, target
 references, gates, and release contract as pure data. The golden-file test
-pins the loaded spec — stage order, gate selection, release contract, and
-the sha256 of every resource — so any byte change to a BE spec is a
-reviewed diff against ``tests/golden/be_country_spec.json``, never an
-accident.
+pins each greenfield package's loaded spec — stage order, gate selection,
+release contract, and the sha256 of every resource — so any byte change is a
+reviewed golden diff, never an accident.
 """
 
 from __future__ import annotations
@@ -27,7 +26,47 @@ from microcosm.build import (
 from microcosm.build.trace import canonical_json_bytes
 from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
 
-GOLDEN = Path(__file__).parent / "golden" / "be_country_spec.json"
+COUNTRY_PACKAGE_ROOT = Path(__file__).parents[1] / "src/microcosm/build"
+GOLDEN_ROOT = Path(__file__).parent / "golden"
+GOLDEN_COUNTRIES = ("am", "be")
+FORBIDDEN_TARGET_VALUE_KEYS = {"value", "values", "observed", "observed_value"}
+
+
+def _loaded_spec_summary(country: str) -> dict[str, object]:
+    spec = load_country_spec(country)
+    return {
+        "country": spec.country,
+        "fingerprint": spec.fingerprint,
+        "resources": list(spec.resources),
+        "resource_hashes": dict(spec.resource_hashes),
+        "stage_names": [stage.stage for stage in spec.sources.stages],
+        "geography_spine_stage": spec.geography_spine.geography_spine.stage,
+        "target_reference_names": [
+            reference.name for reference in spec.target_references
+        ],
+        "gate_ids": [gate.id for gate in spec.gates.gates],
+        "release": {
+            "builder": spec.release_contract.builder,
+            "artifact_repo": spec.release_contract.artifact_repo,
+            "staging_repo": spec.release_contract.staging_repo,
+            "dataset_filename_template": (
+                spec.release_contract.dataset_filename_template
+            ),
+            "required_release_files": list(
+                spec.release_contract.required_release_files
+            ),
+        },
+    }
+
+
+def _nested_mapping_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        return set(value) | {
+            key for child in value.values() for key in _nested_mapping_keys(child)
+        }
+    if isinstance(value, list):
+        return {key for child in value for key in _nested_mapping_keys(child)}
+    return set()
 
 
 def _write_package(root: Path, files: dict[str, dict]) -> Path:
@@ -63,6 +102,145 @@ def _minimal_package(**overrides) -> dict[str, dict]:
     }
     files.update(overrides)
     return files
+
+
+class TestArmenianPackage:
+    @pytest.fixture(scope="class")
+    def spec(self):
+        return load_country_spec("am")
+
+    def test_loads_with_every_declared_resource(self, spec) -> None:
+        assert spec.country == "am"
+        assert set(spec.resources) == {
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
+            "source_stages.json",
+            "geography_spine.json",
+            "target_references.json",
+            "gates.json",
+            "release_contract.json",
+        }
+        assert set(spec.resource_hashes) == set(spec.resources) | {
+            "country_package.json"
+        }
+
+    def test_source_stages_keep_us_donors_distinct_from_armenia(self, spec) -> None:
+        stages = spec.sources.stage_map()
+        assert tuple(stages) == (
+            "load_populace_us_support_pool",
+            "assign_am_marz",
+        )
+
+        support = stages["load_populace_us_support_pool"]
+        assert support.grain == "person"
+        assert {artifact["kind"] for artifact in support.artifacts} == {
+            "public_microdata"
+        }
+        assert {"donor_country_code", "support_stratum"} <= set(support.outputs)
+        assert "marz_code" not in support.outputs
+        assert "US donor support records" in support.survey
+
+        marz = stages["assign_am_marz"]
+        assert marz.outputs == ("marz_code",)
+        assert {artifact["kind"] for artifact in marz.artifacts} == {
+            "public_aggregated_counts"
+        }
+        assert [operation.kind for operation in marz.operations] == [
+            "sample_categorical_from_count_table"
+        ]
+
+    def test_geography_spine_is_census_vintage_aware(self, spec) -> None:
+        spine = spec.geography_spine.geography_spine
+        assert spine.stage == "clone_assign_communities"
+        assert spine.method == "clone_assign_uniform"
+        assert spine.geography_level == "community"
+        assert spine.code_system == "am_census_community"
+        assert spine.vintage == "2022"
+        assert spine.vintage_policy == "error"
+        assert spine.collision_avoidance is True
+        assert spine.constrain_to_column == "marz_code"
+
+    def test_targets_are_engine_free_ledger_references_without_values(
+        self, spec
+    ) -> None:
+        references = {reference.name: reference for reference in spec.target_references}
+        assert {
+            "armstat_population_by_age_sex_marz",
+            "armstat_ilcs_households_by_consumption_band_marz",
+            "armstat_lfs_employed_by_age_sex_marz",
+            "armstat_src_payroll_wages_by_industry_sex_marz",
+            "armstat_pensioner_caseload",
+            "armstat_family_social_benefit_families",
+            "armstat_sna_household_consumption",
+        } <= set(references)
+        assert all(
+            reference.metadata.get("ledger_am_key") for reference in references.values()
+        )
+        assert {
+            reference.metadata["measure_kind"] for reference in references.values()
+        } <= {"direct_column", "prepared_column"}
+        assert not any(
+            token in name for name in references for token in ("poverty", "tax")
+        )
+
+        target_payload = json.loads(
+            (COUNTRY_PACKAGE_ROOT / "am/target_references.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
+            _nested_mapping_keys(target_payload["target_references"])
+        )
+        assert spec.support_spine is None
+        assert not {
+            "battery",
+            "calibration",
+            "imputation",
+            "take_up",
+        } & {row.kind for row in spec.resource_rows}
+
+    def test_gates_use_greenfield_and_weight_health_posture(self, spec) -> None:
+        selected = {gate.gate for gate in spec.gates.gates}
+        assert {
+            "aggregate_admin",
+            "macro_realism",
+            "per_family_fit",
+            "support",
+            "target_profile_coverage",
+            "weight_ess",
+            "weight_ratio",
+            "weights_audit",
+        } <= selected
+        assert {"export_surface", "parity", "target_surface"}.isdisjoint(selected)
+        active_blockers = {
+            gate.id
+            for gate in spec.gates.gates
+            if gate.criticality == "release_blocking" and gate.not_applicable is None
+        }
+        assert {
+            "calibration_weights_audit",
+            "donor_support_bounds",
+            "target_profile_coverage",
+        } <= active_blockers
+
+    def test_release_contract_is_public_and_ordinal_free(self, spec) -> None:
+        contract = spec.release_contract
+        assert contract.builder == "populace-am"
+        assert contract.artifact_repo == "policyengine/populace-am"
+        assert contract.artifact_repo_private is False
+        assert contract.licence_restricted is False
+        assert contract.dataset_filename_template == "populace_am_{year}.h5"
+        assert contract.private_artifacts == ()
+        assert set(contract.required_release_files) <= set(contract.public_artifacts)
+        assert "source_coverage.json" in contract.required_release_files
+        assert "validation_bands.json" in contract.required_release_files
+
+    def test_fingerprint_is_stable_across_loads(self, spec) -> None:
+        assert load_country_spec("am").fingerprint == spec.fingerprint
 
 
 class TestBelgianPackage:
@@ -162,40 +340,21 @@ class TestBelgianPackage:
         assert load_country_spec("be").fingerprint == spec.fingerprint
 
 
-class TestGoldenBelgianSpec:
-    def test_loaded_spec_matches_the_golden_file_byte_for_byte(self) -> None:
-        spec = load_country_spec("be")
-        summary = {
-            "country": spec.country,
-            "fingerprint": spec.fingerprint,
-            "resources": list(spec.resources),
-            "resource_hashes": dict(spec.resource_hashes),
-            "stage_names": [stage.stage for stage in spec.sources.stages],
-            "geography_spine_stage": spec.geography_spine.geography_spine.stage,
-            "target_reference_names": [
-                reference.name for reference in spec.target_references
-            ],
-            "gate_ids": [gate.id for gate in spec.gates.gates],
-            "release": {
-                "builder": spec.release_contract.builder,
-                "artifact_repo": spec.release_contract.artifact_repo,
-                "staging_repo": spec.release_contract.staging_repo,
-                "dataset_filename_template": (
-                    spec.release_contract.dataset_filename_template
-                ),
-                "required_release_files": list(
-                    spec.release_contract.required_release_files
-                ),
-            },
-        }
+class TestGoldenCountrySpecs:
+    @pytest.mark.parametrize("country", GOLDEN_COUNTRIES)
+    def test_loaded_spec_matches_the_golden_file_byte_for_byte(
+        self, country: str
+    ) -> None:
+        golden = GOLDEN_ROOT / f"{country}_country_spec.json"
+        summary = _loaded_spec_summary(country)
         rendered = canonical_json_bytes(summary)
-        assert GOLDEN.exists(), (
+        assert golden.exists(), (
             "Golden file missing. Generate it after reviewing the spec:\n"
-            f'  python -c "..." > {GOLDEN}'
+            f'  python -c "..." > {golden}'
         )
-        assert rendered == GOLDEN.read_bytes(), (
-            "The Belgian country spec changed. If intentional, regenerate "
-            "tests/golden/be_country_spec.json from the loaded spec and "
+        assert rendered == golden.read_bytes(), (
+            f"The {country!r} country spec changed. If intentional, regenerate "
+            f"tests/golden/{country}_country_spec.json from the loaded spec and "
             "review the diff; resource hashes pin every spec byte."
         )
 

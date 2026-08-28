@@ -2,10 +2,9 @@
 
 ## State
 
-The first engine-free Armenia package draft now schema-loads. It declares the
-populace-US donor stage, target-derived 2022-census marz assignment, community
-clone spine, Ledger-only target references, greenfield gates, and public 2024
-release contract. Documentation and regression coverage are in progress.
+The engine-free Armenia package, Chronicle/rules handoff, and explicit regression
+coverage are complete. The schema, golden, and focused country-package tests
+pass; repository-wide verification remains in progress.
 
 ## Done
 
@@ -37,11 +36,19 @@ release contract. Documentation and regression coverage are in progress.
   marz, and community stages; no runtime fallback or rules engine is present.
 - Confirmed the draft resolves through `load_country_spec("am")` with both
   source stages and the community geography contract.
+- Added a one-row-per-reference Chronicle harvest contract, the architecture
+  and solver notes, the verified-facts-only future rules boundary, and the
+  changelog fragment.
+- Added Armenia to the deterministic country golden, shared-core compile proof,
+  contract-only registry closure, spec-only discovery checks, and runtime
+  refusal tests.
+- Ran the focused country/spec test files successfully and passed Ruff plus
+  `git diff --check`.
 
 ## Next
 
-1. Finish the Chronicle harvest handoff, design notes, and rulespec-am TODO.
-2. Add explicit package tests and the deterministic golden fixture.
-3. Run focused, package-wide, lint, and CI-layout checks and fix regressions.
-4. Record final test evidence and maintainer questions here and in the requested
+1. Run the full `packages/microcosm-build` suite and the repository's spec-only
+   CI shard commands; fix any regressions.
+2. Verify the CI group layout and final diff/commit hygiene.
+3. Record exact test counts and maintainer questions here and in the requested
    final output report.
