@@ -1866,14 +1866,14 @@
     {
       "stage": "immigration_status",
       "survey": "CPS ASEC + published unauthorized-population estimates",
-      "source": "https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/",
+      "source": "https://www.pewresearch.org/race-and-ethnicity/2025/08/21/u-s-unauthorized-immigrant-population-reached-a-record-14-million-in-2023/",
       "grain": "person",
       "artifacts": [
         {
           "kind": "public_microdata",
           "format": "census_asec",
           "vintage": "build_year",
-          "locator": "Census CPS ASEC person file citizenship (PRCITSHP), entry year (PEINUSYR), nativity (PENATVTY), and program-participation fields"
+          "locator": "Census CPS ASEC person file citizenship (PRCITSHP), entry year (PEINUSYR), nativity (PENATVTY), labor-force status (A_LFSR), and program-participation fields"
         },
         {
           "kind": "administrative_table",
@@ -1893,16 +1893,16 @@
           "seed_from_build_config": true,
           "time_period_from_build_config": true,
           "undocumented_workers": {
-            "target": 8300000,
-            "source": "https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/"
+            "target": 9700000,
+            "source": "https://www.pewresearch.org/race-and-ethnicity/2025/08/21/u-s-unauthorized-immigrant-population-reached-a-record-14-million-in-2023/"
           },
           "undocumented_students": {
             "target": 408000,
             "source": "https://www.higheredimmigrationportal.org/research/undocumented-students-in-higher-education-updated-march-2021/"
           },
           "undocumented_population_anchor": {
-            "value": 11000000,
-            "source": "https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/"
+            "value": 14000000,
+            "source": "https://www.pewresearch.org/race-and-ethnicity/2025/08/21/u-s-unauthorized-immigrant-population-reached-a-record-14-million-in-2023/"
           },
           "humanitarian_status_stocks": {
             "paroled_one_year": {
@@ -1968,7 +1968,7 @@
         "ssn_card_type",
         "immigration_status_str"
       ],
-      "notes": "Citizenship is measured (PRCITSHP), not imputed. Non-citizens with any ASEC-UA legal-status indicator (Van Hook et al., SSRN 4662801) become OTHER_NON_CITIZEN. Humanitarian/temporary-protection statuses (microcosm #767) are drawn between the indicators and the EAD spill, sequentially and mutually exclusively in decreasing order of target precision \u2014 PAROLED_ONE_YEAR per program origin (OAW Afghans 73,566 as of 2022-03-31; U4U Ukrainians over 158,000 as of 2023-09-30; CHNV Nicaraguans 93,070 and Venezuelans 117,330 paroled through 2024-12), REFUGEE (FY2023+FY2024 admissions, 60,050+100,060 OHSS \u2014 refugees must apply for LPR adjustment after one year, so the not-yet-adjusted stock is about the trailing two years), ASYLEE (FY2022-FY2024 grants 35,080+51,410+68,060=154,550 OHSS, rounded to 155,000; 88% of 2015-22 affirmative adult grantees had adjusted by end-2024, so about three trailing years), then TPS per country (CRS RS20844 Table 1 as of 2025-03-31, with required-arrival cutoffs binding at PEINUSYR granularity: El Salvador <=2001, Honduras/Nicaragua <=1999, Nepal <=2015). Candidates are restricted by program origin countries (Census Appendix I PENATVTY codes) and arrival windows; Cuba/Haiti-born are excluded everywhere (the CUBAN_HAITIAN_ENTRANT class is the better statutory label and keeps H.R.1 eligibility \u2014 Haiti TPS 330,735 rides that label), the DACA statutory cohort is excluded (dual TPS/DACA holders stay DACA), and Ukraine/Afghanistan TPS registrants (101,150/8,105) are carried by the parole draw since they are overwhelmingly the same U4U/OAW parolees. Parole targets are gross admissions: cohort members who later won asylum keep the parole label, which is channel-equivalent under H.R.1 (both classes lose Medicaid/SNAP/PTC on identical dates). DEPORTATION_WITHHELD carries an explicit zero target: EOIR grants about 2.2k withholdings a year (CRS IN12501: under 1% of 666,177 FY2024 decisions) and publishes no stock, so the accumulated population is below the CPS's resolution for a defensible draw. CONDITIONAL_ENTRANT is deliberately not emitted (the INA 203(a)(7) class closed in 1980). REFUGEE/ASYLEE draw from the indicator-documented pool only; parole/TPS may draw residual-pool people, who then receive NON_CITIZEN_VALID_EAD SSN cards (both programs confer employment authorization), consistent with Pew's own accounting of TPS/parolees inside its unauthorized totals. The EAD worker/student spill then binds the remaining residual pool to Pew's 8.3M workers and the Higher Ed Immigration Portal's ~408k students \u2014 still the only forced margins. The total undocumented population is emergent and gated against Pew's 11.0M 2022 anchor with a coarse band; per-category humanitarian masses are gated against their cited targets with a coarse band (the ASEC undercovers 2022-24 arrivals \u2014 the Ukraine parole pool saturates below its admin count); reconciling levels is the calibration lane's job. DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival) keep their statutory tests; other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true status."
+      "notes": "Citizenship is measured (PRCITSHP), not imputed. Non-citizens with any ASEC-UA legal-status indicator (Van Hook et al., SSRN 4662801) become OTHER_NON_CITIZEN. Humanitarian/temporary-protection statuses (microcosm #767) are drawn between the indicators and the EAD spill, sequentially and mutually exclusively in decreasing order of target precision \u2014 PAROLED_ONE_YEAR per program origin (OAW Afghans 73,566 as of 2022-03-31; U4U Ukrainians over 158,000 as of 2023-09-30; CHNV Nicaraguans 93,070 and Venezuelans 117,330 paroled through 2024-12), REFUGEE (FY2023+FY2024 admissions, 60,050+100,060 OHSS \u2014 refugees must apply for LPR adjustment after one year, so the not-yet-adjusted stock is about the trailing two years), ASYLEE (FY2022-FY2024 grants 35,080+51,410+68,060=154,550 OHSS, rounded to 155,000; 88% of 2015-22 affirmative adult grantees had adjusted by end-2024, so about three trailing years), then TPS per country (CRS RS20844 Table 1 as of 2025-03-31, with required-arrival cutoffs binding at PEINUSYR granularity: El Salvador <=2001, Honduras/Nicaragua <=1999, Nepal <=2015). Candidates are restricted by program origin countries (Census Appendix I PENATVTY codes) and arrival windows; Cuba/Haiti-born are excluded everywhere (the CUBAN_HAITIAN_ENTRANT class is the better statutory label and keeps H.R.1 eligibility \u2014 Haiti TPS 330,735 rides that label), the DACA statutory cohort is excluded (dual TPS/DACA holders stay DACA), and Ukraine/Afghanistan TPS registrants (101,150/8,105) are carried by the parole draw since they are overwhelmingly the same U4U/OAW parolees. Parole targets are gross admissions: cohort members who later won asylum keep the parole label, which is channel-equivalent under H.R.1 (both classes lose Medicaid/SNAP/PTC on identical dates). DEPORTATION_WITHHELD carries an explicit zero target: EOIR grants about 2.2k withholdings a year (CRS IN12501: under 1% of 666,177 FY2024 decisions) and publishes no stock, so the accumulated population is below the CPS's resolution for a defensible draw. CONDITIONAL_ENTRANT is deliberately not emitted (the INA 203(a)(7) class closed in 1980). REFUGEE/ASYLEE draw from the indicator-documented pool only; parole/TPS may draw residual-pool people, who then receive NON_CITIZEN_VALID_EAD SSN cards (both programs confer employment authorization). Pew's 2025 report supersedes its earlier series and estimates a coherent 2023 pair of 14.0M unauthorized immigrants and 9.7M in the labor force. Its modeled universe is broader than the engine's UNDOCUMENTED enum: it retains DACA recipients, parolees, TPS holders, similar temporary protections, and the residual-EAD subset of the engine's broad CUBAN_HAITIAN_ENTRANT class, while excluding refugees, people already granted asylum, and assumed-documented Cuban/Haitian entrants. The worker EAD spill binds that modeled universe to 9.7M using actual ASEC labor-force status (A_LFSR codes 1-4 at ages 16+) restored from the same pinned official ASEC archives by exact PERIDNUM join, never prior-year WSAL_VAL/SEMP_VAL earnings. The student spill binds the corresponding broad residual universe to the Higher Ed Immigration Portal's ~408k students. The total modeled Pew-defined unauthorized population is emergent and gated against the 14.0M 2023 anchor with a coarse band; per-category humanitarian masses are gated against their cited targets with a coarse band (the ASEC undercovers 2022-24 arrivals \u2014 the Ukraine parole pool saturates below its admin count); reconciling levels is the calibration lane's job. DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival) keep their statutory tests; other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true status."
     },
     {
       "stage": "hours_worked",

@@ -9542,6 +9542,15 @@ producer_graph:
       required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: A_LFSR
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:raw_person:A_LFSR'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: A_MARITL
           entity: person
           value_kind: finite_numeric
@@ -9695,15 +9704,6 @@ producer_graph:
       required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: SEMP_VAL
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:raw_person:SEMP_VAL'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: SPM_CAPHOUSESUB
           entity: person
           value_kind: finite_numeric
@@ -9726,15 +9726,6 @@ producer_graph:
           entity: person
           value_kind: finite_numeric
       column: '@effective:raw_person:SS_YN'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: WSAL_VAL
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:raw_person:WSAL_VAL'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source

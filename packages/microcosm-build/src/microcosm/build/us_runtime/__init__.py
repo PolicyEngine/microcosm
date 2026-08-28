@@ -210,8 +210,12 @@ from microcosm.build.us_runtime.domestic_production import (
 from microcosm.build.us_runtime.education_assistance_source import (
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
     ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS,
+    ASEC_LABOR_FORCE_STATUS_COLUMN,
+    ASEC_LABOR_FORCE_STATUS_VALID_CODES,
     fetch_asec_education_assistance_source,
     fill_asec_education_assistance_source,
+    fill_asec_labor_force_status_source,
     load_asec_education_assistance_sources,
 )
 from microcosm.build.us_runtime.education_inputs import (
@@ -1474,8 +1478,12 @@ __all__ = [
     "US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS",
     "ASEC_EDUCATION_ASSISTANCE_ARCHIVES",
     "ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS",
+    "ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS",
+    "ASEC_LABOR_FORCE_STATUS_COLUMN",
+    "ASEC_LABOR_FORCE_STATUS_VALID_CODES",
     "fetch_asec_education_assistance_source",
     "fill_asec_education_assistance_source",
+    "fill_asec_labor_force_status_source",
     "load_asec_education_assistance_sources",
     "ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS",
     "ASEC_PUBLIC_ASSISTANCE_TYPE_INCOME_YEARS",
@@ -2180,14 +2188,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
     US_IMMIGRATION_STAGE_NAME: DonorSpec(
         survey="CPS ASEC + published unauthorized-population estimates",
         source=(
-            "https://www.pewresearch.org/short-reads/2024/07/22/"
-            "what-we-know-about-unauthorized-immigrants-living-in-the-us/"
+            "https://www.pewresearch.org/race-and-ethnicity/2025/08/21/"
+            "u-s-unauthorized-immigrant-population-reached-a-record-"
+            "14-million-in-2023/"
         ),
         notes=(
             "SSN card type and immigration status from ASEC citizenship, "
-            "entry-year, nativity, and program-participation fields via the "
-            "ASEC-UA residual method (SSRN 4662801), targeted to published "
-            "undocumented population/worker/student control totals."
+            "entry-year, nativity, labor-force, and program-participation "
+            "fields via the ASEC-UA residual method (SSRN 4662801), with "
+            "Pew's broad 2023 unauthorized population and labor-force "
+            "definitions applied consistently."
         ),
     ),
     US_HOURS_WORKED_STAGE_NAME: DonorSpec(

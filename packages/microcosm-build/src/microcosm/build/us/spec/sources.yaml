@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: 413174820cfb57f85783831dbbf445f007d06128d31562a1234e998e627bd3aa
+  sha256: 788b815f748abb2061c41efb0cec4cc4952435dbcb4448ecf21ccac85a5ccec2
 stage_manifest:
   version: 1
   country: us
@@ -1884,14 +1884,14 @@ stages:
     formula-owned employment_income_last_year; the signed self-employment leaf and availability flag persist.
 - stage: immigration_status
   survey: CPS ASEC + published unauthorized-population estimates
-  source: https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+  source: https://www.pewresearch.org/race-and-ethnicity/2025/08/21/u-s-unauthorized-immigrant-population-reached-a-record-14-million-in-2023/
   grain: person
   artifacts:
   - kind: public_microdata
     format: census_asec
     vintage: build_year
     locator: Census CPS ASEC person file citizenship (PRCITSHP), entry year (PEINUSYR), nativity (PENATVTY),
-      and program-participation fields
+      labor-force status (A_LFSR), and program-participation fields
   - kind: administrative_table
     format: published_estimate
     vintage: latest_available
@@ -1907,14 +1907,14 @@ stages:
     seed_from_build_config: true
     time_period_from_build_config: true
     undocumented_workers:
-      target: 8300000
-      source: https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+      target: 9700000
+      source: https://www.pewresearch.org/race-and-ethnicity/2025/08/21/u-s-unauthorized-immigrant-population-reached-a-record-14-million-in-2023/
     undocumented_students:
       target: 408000
       source: https://www.higheredimmigrationportal.org/research/undocumented-students-in-higher-education-updated-march-2021/
     undocumented_population_anchor:
-      value: 11000000
-      source: https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
+      value: 14000000
+      source: https://www.pewresearch.org/race-and-ethnicity/2025/08/21/u-s-unauthorized-immigrant-population-reached-a-record-14-million-in-2023/
     humanitarian_status_stocks:
       paroled_one_year:
         afghanistan:
@@ -1982,16 +1982,21 @@ stages:
     FY2024 decisions) and publishes no stock, so the accumulated population is below the CPS''s resolution
     for a defensible draw. CONDITIONAL_ENTRANT is deliberately not emitted (the INA 203(a)(7) class closed
     in 1980). REFUGEE/ASYLEE draw from the indicator-documented pool only; parole/TPS may draw residual-pool
-    people, who then receive NON_CITIZEN_VALID_EAD SSN cards (both programs confer employment authorization),
-    consistent with Pew''s own accounting of TPS/parolees inside its unauthorized totals. The EAD worker/student
-    spill then binds the remaining residual pool to Pew''s 8.3M workers and the Higher Ed Immigration
-    Portal''s ~408k students — still the only forced margins. The total undocumented population is emergent
-    and gated against Pew''s 11.0M 2022 anchor with a coarse band; per-category humanitarian masses are
-    gated against their cited targets with a coarse band (the ASEC undercovers 2022-24 arrivals — the
-    Ukraine parole pool saturates below its admin count); reconciling levels is the calibration lane''s
-    job. DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival)
-    keep their statutory tests; other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal
-    true status.'
+    people, who then receive NON_CITIZEN_VALID_EAD SSN cards (both programs confer employment authorization).
+    Pew''s 2025 report supersedes its earlier series and estimates a coherent 2023 pair of 14.0M unauthorized
+    immigrants and 9.7M in the labor force. Its modeled universe is broader than the engine''s UNDOCUMENTED
+    enum: it retains DACA recipients, parolees, TPS holders, similar temporary protections, and the residual-EAD
+    subset of the engine''s broad CUBAN_HAITIAN_ENTRANT class, while excluding refugees, people already
+    granted asylum, and assumed-documented Cuban/Haitian entrants. The worker EAD spill binds that modeled
+    universe to 9.7M using actual ASEC labor-force status (A_LFSR codes 1-4 at ages 16+) restored from
+    the same pinned official ASEC archives by exact PERIDNUM join, never prior-year WSAL_VAL/SEMP_VAL
+    earnings. The student spill binds the corresponding broad residual universe to the Higher Ed Immigration
+    Portal''s ~408k students. The total modeled Pew-defined unauthorized population is emergent and gated
+    against the 14.0M 2023 anchor with a coarse band; per-category humanitarian masses are gated against
+    their cited targets with a coarse band (the ASEC undercovers 2022-24 arrivals — the Ukraine parole
+    pool saturates below its admin count); reconciling levels is the calibration lane''s job. DACA (arrival
+    cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival) keep their statutory
+    tests; other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true status.'
 - stage: hours_worked
   survey: Census CPS ASEC
   source: https://www.census.gov/programs-surveys/cps.html

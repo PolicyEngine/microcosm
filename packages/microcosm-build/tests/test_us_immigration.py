@@ -139,6 +139,7 @@ def _person_table(rows: list[dict]) -> pd.DataFrame:
         "A_MARITL": 7,
         "A_SPOUSE": 0,
         "A_HSCOL": 0,
+        "A_LFSR": 7,
         "WSAL_VAL": 0.0,
         "SEMP_VAL": 0.0,
         "MCARE": 2,
@@ -243,13 +244,15 @@ class TestSSNCardAssignment:
         assert output.loc[0, "ssn_card_type"] == "NONE"
         assert output.loc[0, "immigration_status_str"] == "UNDOCUMENTED"
 
-    def test_worker_spill_leaves_undocumented_workers_at_control(self) -> None:
+    def test_worker_spill_leaves_pew_unauthorized_labor_force_at_control(
+        self,
+    ) -> None:
         person = _person_table(
-            [_noncitizen(WSAL_VAL=10_000.0) for _ in range(10)]
+            [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0) for _ in range(10)]
             + [_noncitizen(), _noncitizen()]
         )
         output = _run(person, workers=4.0)
-        workers = output["WSAL_VAL"] > 0
+        workers = output["A_LFSR"].isin([1, 2, 3, 4])
         undocumented_workers = ((output["ssn_card_type"] == "NONE") & workers).sum()
         ead_workers = (
             (output["ssn_card_type"] == "NON_CITIZEN_VALID_EAD") & workers
@@ -259,8 +262,89 @@ class TestSSNCardAssignment:
         # Non-workers are untouched by the worker spill.
         assert (output.loc[~workers, "ssn_card_type"] == "NONE").all()
 
+    def test_worker_spill_uses_labor_force_status_not_prior_year_earnings(
+        self,
+    ) -> None:
+        person = _person_table(
+            [
+                # Looking for work now, despite having no prior-year earnings.
+                _noncitizen(A_LFSR=3),
+                # Earned wages last year, but is now outside the labor force.
+                _noncitizen(A_LFSR=7, WSAL_VAL=10_000.0),
+            ]
+        )
+        output = _run(person, workers=0.001)
+        assert output.loc[0, "ssn_card_type"] == "NON_CITIZEN_VALID_EAD"
+        assert output.loc[1, "ssn_card_type"] == "NONE"
+
+    def test_worker_control_retains_residual_cuban_haitian_ead_rows(self) -> None:
+        person = _person_table(
+            [
+                _noncitizen(A_LFSR=1, PENATVTY=327, PEINUSYR=24),
+                _noncitizen(A_LFSR=1, PENATVTY=332, PEINUSYR=24),
+                *[_noncitizen(A_LFSR=1) for _ in range(8)],
+            ]
+        )
+        output = _run(person, workers=4.0)
+        labor_force = output["A_LFSR"].isin([1, 2, 3, 4])
+        pew_unauthorized = output["immigration_status_str"].isin(
+            [
+                "UNDOCUMENTED",
+                "DACA",
+                "PAROLED_ONE_YEAR",
+                "DEPORTATION_WITHHELD",
+                "TPS",
+            ]
+        ) | (
+            output["immigration_status_str"].eq("CUBAN_HAITIAN_ENTRANT")
+            & output["ssn_card_type"].eq("NON_CITIZEN_VALID_EAD")
+        )
+        assert int((labor_force & pew_unauthorized).sum()) == 4
+
+    def test_worker_control_uses_pew_age_16_labor_force_universe(self) -> None:
+        person = _person_table(
+            [
+                _noncitizen(A_AGE=15, A_LFSR=1),
+                _noncitizen(A_AGE=16, A_LFSR=3),
+            ]
+        )
+        output = _run(person, workers=0.001)
+        assert output.loc[0, "ssn_card_type"] == "NONE"
+        assert output.loc[1, "ssn_card_type"] == "NON_CITIZEN_VALID_EAD"
+
+    def test_invalid_labor_force_status_is_refused(self) -> None:
+        with pytest.raises(SourceRuntimeError, match="A_LFSR"):
+            _run(_person_table([_noncitizen(A_LFSR=6)]))
+
+    def test_worker_control_counts_tps_before_spilling_residual_workers(
+        self,
+    ) -> None:
+        person = _person_table(
+            [
+                _noncitizen(
+                    PENATVTY=373,
+                    PEINUSYR=24,
+                    A_LFSR=1,
+                ),
+                _noncitizen(A_LFSR=1),
+            ]
+        )
+        output = _run(
+            person,
+            workers=1.0,
+            humanitarian=_humanitarian_block(tps={"venezuela": 1.0}),
+        )
+        assert output.loc[0, "immigration_status_str"] == "TPS"
+        # Pew includes TPS holders in its unauthorized estimate. The TPS row
+        # therefore exhausts the one-person labor-force control, so the other
+        # residual worker must spill to EAD rather than remain undocumented.
+        assert output.loc[1, "ssn_card_type"] == "NON_CITIZEN_VALID_EAD"
+        assert output.loc[1, "immigration_status_str"] == ("LEGAL_PERMANENT_RESIDENT")
+
     def test_below_control_counts_spill_nothing(self) -> None:
-        person = _person_table([_noncitizen(WSAL_VAL=10_000.0), _noncitizen(A_HSCOL=2)])
+        person = _person_table(
+            [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0), _noncitizen(A_HSCOL=2)]
+        )
         output = _run(person, workers=50.0, students=50.0)
         assert (output["ssn_card_type"] == "NONE").all()
 
@@ -273,16 +357,16 @@ class TestSSNCardAssignment:
     def test_weights_drive_the_spill_amounts(self) -> None:
         person = _person_table(
             [
-                _noncitizen(WSAL_VAL=10_000.0, person_weight=6.0),
-                _noncitizen(WSAL_VAL=10_000.0, person_weight=6.0),
+                _noncitizen(A_LFSR=1, WSAL_VAL=10_000.0, person_weight=6.0),
+                _noncitizen(A_LFSR=1, WSAL_VAL=10_000.0, person_weight=6.0),
             ]
         )
         output = _run(person, workers=6.0)
         assert set(output["ssn_card_type"]) == {"NON_CITIZEN_VALID_EAD", "NONE"}
 
     def test_indicator_holders_never_flip_to_undocumented(self) -> None:
-        # The total undocumented population is emergent: a short count is
-        # never topped up from people with legal-status indicators.
+        # The total Pew-defined unauthorized population is emergent: a short
+        # count is never topped up from people with legal-status indicators.
         person = _person_table(
             [_noncitizen(), _noncitizen(CAID=1, person_household_id=1)]
         )
@@ -312,14 +396,18 @@ class TestImmigrationStatusTags:
     def test_daca_statutory_cohort_among_ead_holders(self) -> None:
         # Arrived 2005 (code 19) aged 10 → age at entry < 16, now 29, EAD via
         # worker spill with a zero control.
-        person = _person_table([_noncitizen(PEINUSYR=19, A_AGE=29, WSAL_VAL=20_000.0)])
+        person = _person_table(
+            [_noncitizen(PEINUSYR=19, A_AGE=29, A_LFSR=1, WSAL_VAL=20_000.0)]
+        )
         output = _run(person, workers=0.001)
         assert output.loc[0, "ssn_card_type"] == "NON_CITIZEN_VALID_EAD"
         assert output.loc[0, "immigration_status_str"] == "DACA"
 
     def test_ead_outside_daca_cohort_is_lpr(self) -> None:
         # Arrived 2015 as an adult: fails the DACA arrival test.
-        person = _person_table([_noncitizen(PEINUSYR=24, A_AGE=40, WSAL_VAL=20_000.0)])
+        person = _person_table(
+            [_noncitizen(PEINUSYR=24, A_AGE=40, A_LFSR=1, WSAL_VAL=20_000.0)]
+        )
         output = _run(person, workers=0.001)
         assert output.loc[0, "ssn_card_type"] == "NON_CITIZEN_VALID_EAD"
         assert output.loc[0, "immigration_status_str"] == "LEGAL_PERMANENT_RESIDENT"
@@ -346,7 +434,7 @@ class TestImmigrationStatusTags:
             [
                 _noncitizen(),
                 _noncitizen(CAID=1),
-                _noncitizen(WSAL_VAL=10_000.0),
+                _noncitizen(A_LFSR=1, WSAL_VAL=10_000.0),
                 {"PRCITSHP": 1},
             ]
         )
@@ -362,10 +450,15 @@ class TestImmigrationStatusTags:
                 for overrides in (
                     {},
                     {"CAID": 1},
-                    {"WSAL_VAL": 10_000.0},
+                    {"A_LFSR": 1, "WSAL_VAL": 10_000.0},
                     {"A_HSCOL": 2},
                     {"PENATVTY": 327},
-                    {"PEINUSYR": 19, "A_AGE": 25, "WSAL_VAL": 5_000.0},
+                    {
+                        "PEINUSYR": 19,
+                        "A_AGE": 25,
+                        "A_LFSR": 1,
+                        "WSAL_VAL": 5_000.0,
+                    },
                 )
             ]
             + [{"PRCITSHP": 1}]
@@ -725,7 +818,15 @@ class TestHumanitarianDraws:
         # Arrived 2000-2001 aged ~7: the DACA statutory cohort. The worker
         # spill gives the EAD card and the DACA tag survives TPS targeting.
         person = _person_table(
-            [_noncitizen(PENATVTY=312, PEINUSYR=17, A_AGE=30, WSAL_VAL=20_000.0)]
+            [
+                _noncitizen(
+                    PENATVTY=312,
+                    PEINUSYR=17,
+                    A_AGE=30,
+                    A_LFSR=1,
+                    WSAL_VAL=20_000.0,
+                )
+            ]
         )
         output = _run(
             person,
@@ -790,18 +891,33 @@ class TestHumanitarianDraws:
         # TPS extraction removes a residual worker before the spill, so the
         # remaining undocumented workers still land on the control exactly.
         person = _person_table(
-            [_noncitizen(PENATVTY=373, PEINUSYR=28, WSAL_VAL=10_000.0)]
-            + [_noncitizen(WSAL_VAL=10_000.0) for _ in range(10)]
+            [
+                _noncitizen(
+                    PENATVTY=373,
+                    PEINUSYR=28,
+                    A_LFSR=1,
+                    WSAL_VAL=10_000.0,
+                )
+            ]
+            + [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0) for _ in range(10)]
         )
         output = _run(
             person,
             workers=4.0,
             humanitarian=_humanitarian_block(tps={"venezuela": 1.0}),
         )
-        workers = output["WSAL_VAL"] > 0
-        undocumented_workers = ((output["ssn_card_type"] == "NONE") & workers).sum()
+        workers = output["A_LFSR"].isin([1, 2, 3, 4])
+        pew_workers = workers & output["immigration_status_str"].isin(
+            [
+                "UNDOCUMENTED",
+                "DACA",
+                "PAROLED_ONE_YEAR",
+                "DEPORTATION_WITHHELD",
+                "TPS",
+            ]
+        )
         assert output.loc[0, "immigration_status_str"] == "TPS"
-        assert undocumented_workers == 4
+        assert pew_workers.sum() == 4
 
     def test_missing_humanitarian_block_is_refused(self) -> None:
         spec_mapping = {
@@ -897,7 +1013,9 @@ class TestHumanitarianDraws:
 
 class TestDeterminism:
     def _worker_pool(self) -> pd.DataFrame:
-        return _person_table([_noncitizen(WSAL_VAL=10_000.0) for _ in range(20)])
+        return _person_table(
+            [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0) for _ in range(20)]
+        )
 
     def test_partial_household_lineage_uses_complete_legacy_alternative(self) -> None:
         person = _person_table([_noncitizen(), _noncitizen()])
@@ -931,6 +1049,7 @@ class TestDeterminism:
     def test_source_identity_keys_make_clones_consistent(self) -> None:
         rows = [
             _noncitizen(
+                A_LFSR=1,
                 WSAL_VAL=10_000.0,
                 person_id=index + 1,
                 source_year=2024,
@@ -1133,7 +1252,7 @@ class TestFrameIntegration:
         rows = (
             [{"PRCITSHP": 1} for _ in range(93)]
             + [_noncitizen(CAID=1) for _ in range(2)]
-            + [_noncitizen(WSAL_VAL=10_000.0) for _ in range(12)]
+            + [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0) for _ in range(12)]
             + [_noncitizen() for _ in range(5)]
         )
         frame = _us_frame(rows, household_weights=[1e6] * len(rows))
@@ -1143,7 +1262,7 @@ class TestFrameIntegration:
             assert column in person.columns
         assert set(person["ssn_card_type"]) <= set(SSN_CARD_TYPE_VALUES)
         assert (person.loc[person["PRCITSHP"] == 1, "ssn_card_type"] == "CITIZEN").all()
-        # 12M weighted undocumented workers against the 8.3M Pew control:
+        # 12M weighted unauthorized workers against the 9.7M Pew control:
         # some spill to EAD, the rest stay undocumented.
         assert (person["ssn_card_type"] == "NON_CITIZEN_VALID_EAD").any()
         assert (person["ssn_card_type"] == "NONE").any()
@@ -1226,7 +1345,10 @@ def _composition_frame(
         + [("NON_CITIZEN_VALID_EAD", "LEGAL_PERMANENT_RESIDENT")] * ead
         + [("NONE", "UNDOCUMENTED")] * none
         + [
-            ("OTHER_NON_CITIZEN", status)
+            (
+                ("NON_CITIZEN_VALID_EAD" if status == "DACA" else "OTHER_NON_CITIZEN"),
+                status,
+            )
             for status, count in (humanitarian or {}).items()
             for _ in range(count)
         ]
@@ -1237,6 +1359,7 @@ def _composition_frame(
         "ASYLEE": {"PENATVTY": 207, "PEINUSYR": 26},
         "DEPORTATION_WITHHELD": {"PENATVTY": 303, "PEINUSYR": 24},
         "TPS": {"PENATVTY": 373, "PEINUSYR": 24},
+        "DACA": {"PENATVTY": 303, "PEINUSYR": 19, "A_AGE": 29},
     }
     for ssn, status in values:
         rows.append(
@@ -1322,13 +1445,13 @@ class TestCompositionGate:
 
     def test_gate_reads_packaged_controls_by_default(self) -> None:
         packaged = us_immigration_controls()
-        assert packaged.undocumented.workers == 8_300_000
+        assert packaged.undocumented.workers == 9_700_000
         assert packaged.humanitarian_target("refugee") == 160_000
         gate = us_immigration_composition_gate(_us_frame([{"PRCITSHP": 1}]))
         assert not gate.passed
         controls = gate.details["controls"]
-        assert controls["undocumented_workers"] == 8_300_000
-        assert controls["undocumented_population_anchor"] == 11_000_000
+        assert controls["undocumented_workers"] == 9_700_000
+        assert controls["undocumented_population_anchor"] == 14_000_000
         stocks = controls["humanitarian_status_stocks"]
         assert stocks["paroled_one_year:afghanistan"]["target"] == 73_566
         assert stocks["refugee"] == {
@@ -1358,6 +1481,60 @@ class TestCompositionGate:
         assert achieved["refugee"]["population"] == 4.0
         assert achieved["refugee"]["relative"] == 1.0
         assert achieved["tps"]["target"] == 6.0
+
+    def test_gate_counts_temporary_protections_in_pew_population(self) -> None:
+        gate = us_immigration_composition_gate(
+            _composition_frame(
+                none=10,
+                humanitarian={"DACA": 5, "PAROLED_ONE_YEAR": 10, "TPS": 10},
+            ),
+            controls=_plausible_controls(paroled_one_year=10.0, tps=10.0),
+        )
+        assert gate.passed, gate.failures
+        assert gate.details["pew_unauthorized_population"] == 35.0
+
+    def test_gate_counts_only_residual_ead_cuban_haitian_entrants(self) -> None:
+        frame = _composition_frame()
+        person = frame.table("person")
+        ead_row = person.index[person["ssn_card_type"].eq("NON_CITIZEN_VALID_EAD")][0]
+        documented_row = person.index[person["ssn_card_type"].eq("OTHER_NON_CITIZEN")][
+            0
+        ]
+        for row in (ead_row, documented_row):
+            person.loc[row, "immigration_status_str"] = "CUBAN_HAITIAN_ENTRANT"
+            person.loc[row, "PENATVTY"] = 327
+            person.loc[row, "PEINUSYR"] = 24
+
+        gate = us_immigration_composition_gate(
+            frame,
+            controls=_plausible_controls(),
+        )
+        assert gate.passed, gate.failures
+        assert gate.details["pew_unauthorized_population"] == 31.0
+        assert gate.details["pew_unauthorized_paired_status"] == {
+            "immigration_status_str": "CUBAN_HAITIAN_ENTRANT",
+            "ssn_card_type": "NON_CITIZEN_VALID_EAD",
+        }
+
+    def test_gate_excludes_refugees_and_asylees_from_pew_population(self) -> None:
+        controls = ImmigrationControls(
+            undocumented=UndocumentedControls(
+                workers=20.0,
+                students=5.0,
+                population_anchor=10.0,
+                sources=_plausible_controls().undocumented.sources,
+            ),
+            humanitarian=_humanitarian_draws(refugee=10.0, asylee=10.0),
+        )
+        gate = us_immigration_composition_gate(
+            _composition_frame(
+                none=10,
+                humanitarian={"REFUGEE": 10, "ASYLEE": 10},
+            ),
+            controls=controls,
+        )
+        assert gate.passed, gate.failures
+        assert gate.details["pew_unauthorized_population"] == 10.0
 
     def test_gate_fails_when_humanitarian_category_collapses(self) -> None:
         gate = us_immigration_composition_gate(

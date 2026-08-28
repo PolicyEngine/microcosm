@@ -12,7 +12,8 @@ The stage writes two PolicyEngine-US person input columns:
   ``OTHER_NON_CITIZEN`` / ``NONE`` (likely undocumented, i.e. ITIN-filer
   territory for tax purposes).
 - ``immigration_status_str``: ``CITIZEN`` / ``LEGAL_PERMANENT_RESIDENT`` /
-  ``CUBAN_HAITIAN_ENTRANT`` / ``DACA`` / ``UNDOCUMENTED``.
+  ``CUBAN_HAITIAN_ENTRANT`` / ``DACA`` / ``UNDOCUMENTED`` plus the supported
+  humanitarian and temporary-protection statuses listed below.
 
 Method — survey measurement first, published residual method second, and one
 narrowly-scoped control where the survey carries no signal at all:
@@ -28,19 +29,20 @@ narrowly-scoped control where the survey carries no signal at all:
    Residual Methods Robust?", SSRN 4662801).
 3. **Work/study authorization split.** The CPS carries no work-authorization
    variable, so among residual non-citizens the split between EAD holders and
-   the unauthorized is unidentified from the survey alone. Workers and
-   students spill to ``NON_CITIZEN_VALID_EAD`` — in deterministic seeded
-   order — until the *remaining* undocumented worker/student counts match
-   their published control totals (Pew Research Center; Higher Ed
-   Immigration Portal). This is the only forced margin.
-4. **The total undocumented population is emergent, not forced.**
+   the unauthorized is unidentified from the survey alone. Workers (measured
+   with ASEC ``A_LFSR`` at age 16+, not prior-year earnings) and students
+   spill to ``NON_CITIZEN_VALID_EAD`` in deterministic seeded order until the
+   broad reported universes match their controls. Pew retains DACA, parole,
+   TPS, and similar temporary protections in its unauthorized estimates, so
+   those statuses continue to count after receiving EADs. Residual
+   Cuban/Haitian rows that receive an EAD also stay in that universe because
+   the engine's broader ``CUBAN_HAITIAN_ENTRANT`` label carries the modeled
+   CHNV-parole/Haiti-TPS subset.
+4. **The total Pew-defined unauthorized population is emergent, not forced.**
    Representation is calibration's job, not the label stage's: the release
-   gate checks the emergent total against a cited published anchor with a
-   coarse plausibility band, and a follow-up calibration target (Ledger
-   facts lane) can reconcile the level in the weights. On the 2024 ASEC the
-   emergent total is ≈13M — inside the range of published 2023–24 estimates
-   — with 26.6M non-citizens, 18.0M residual after the indicators, and 4.8M
-   spilled to EAD.
+   gate checks the emergent broad-universe total against Pew's cited 2023
+   anchor with a coarse plausibility band. The engine's narrower
+   ``UNDOCUMENTED`` enum remains exactly paired with ``ssn_card_type=NONE``.
 5. **Humanitarian/temporary-protection statuses are drawn to published
    stocks, never blanketed (microcosm #767).** Blanket ``REFUGEE``/``TPS``
    labels for recent arrivals were originally refused because LPR treatment
@@ -177,8 +179,7 @@ US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "A_MARITL",
     "A_SPOUSE",
     "A_HSCOL",
-    "WSAL_VAL",
-    "SEMP_VAL",
+    "A_LFSR",
     "MCARE",
     "CAID",
     "IHSFLG",
@@ -276,6 +277,33 @@ _HUMANITARIAN_STATUS_BY_CATEGORY: Mapping[str, str] = {
     "deportation_withheld": "DEPORTATION_WITHHELD",
     "tps": "TPS",
 }
+
+# Pew's residual estimates use a deliberately broader universe than the
+# engine's ``UNDOCUMENTED`` enum.  In particular, Pew retains DACA recipients
+# and people with temporary protection (including parole and TPS) in its
+# unauthorized-immigrant totals. Refugees and people already granted asylum
+# are lawfully admitted statuses and therefore stay outside this universe.
+# ``CUBAN_HAITIAN_ENTRANT`` is conditional: only EAD rows that came from the
+# residual pool count, not assumed-documented entrants sharing that broad
+# engine label.
+_PEW_UNAUTHORIZED_STATUS_VALUES: tuple[str, ...] = (
+    "UNDOCUMENTED",
+    "DACA",
+    "PAROLED_ONE_YEAR",
+    "DEPORTATION_WITHHELD",
+    "TPS",
+)
+_PEW_INCLUDED_HUMANITARIAN_STATUS_VALUES: tuple[str, ...] = (
+    "PAROLED_ONE_YEAR",
+    "DEPORTATION_WITHHELD",
+    "TPS",
+)
+
+# CPS ASEC A_LFSR: 1 working, 2 with a job/not at work, 3 unemployed/looking,
+# 4 unemployed/on layoff.  Code 0 covers children and Armed Forces; 7 is not
+# in the labor force.  Pew's labor-force total is for people age 16 or older.
+_CPS_LABOR_FORCE_STATUS_CODES = (1, 2, 3, 4)
+_CPS_LABOR_FORCE_STATUS_DOMAIN = (0, 1, 2, 3, 4, 7)
 
 #: PEINUSYR codes for 2020+ arrivals. The 2024 ASEC distinguishes 2020-2021
 #: (27) from 2022-2024 (28). Program-specific rules below do not treat those
@@ -407,10 +435,11 @@ _PER_ORIGIN_HUMANITARIAN_CATEGORIES: Mapping[str, tuple[str, ...]] = {
 #: in this band (Census counts ~22–27M non-citizens of ~336M residents; a
 #: share outside it means the imputation collapsed or exploded).
 _NON_CITIZEN_SHARE_BAND = (0.03, 0.12)
-#: Emergent weighted ``NONE`` (undocumented) population relative to the cited
-#: published anchor. Coarse by design — a release-blocking backstop against
-#: collapse or explosion, not a calibration objective; the level belongs to
-#: the calibration lane.
+#: Emergent Pew-defined unauthorized population relative to the cited
+#: published anchor. This includes DACA and specified temporary protections,
+#: not only the engine's ``NONE``/``UNDOCUMENTED`` pair. Coarse by design — a
+#: release-blocking backstop against collapse or explosion, not a calibration
+#: objective; the level belongs to the calibration lane.
 _UNDOCUMENTED_ANCHOR_RELATIVE_BAND = (0.5, 1.6)
 #: Emitted humanitarian mass per category relative to its cited target.
 #: The draw forces the target when candidates suffice, so the band only
@@ -425,11 +454,12 @@ class UndocumentedControls:
     """Published totals the stage forces or gates against.
 
     Attributes:
-        workers: Undocumented-worker control the EAD spill enforces.
-        students: Undocumented-student control the EAD spill enforces.
-        population_anchor: Published total undocumented population the
-            composition gate checks the *emergent* total against (never
-            forced in the labels).
+        workers: Pew unauthorized-immigrant labor-force control the EAD spill
+            enforces, including DACA and temporary protections Pew retains.
+        students: Broad undocumented-student control the EAD spill enforces.
+        population_anchor: Published Pew unauthorized population the
+            composition gate checks the *emergent broad-universe* total
+            against (never forced in the labels).
         sources: Citation URL per key, straight from the manifest.
     """
 
@@ -1104,6 +1134,100 @@ def _special_status_masks(
     return cuban_haitian, daca
 
 
+def _pew_unauthorized_projection_mask(
+    *,
+    ssn_codes: np.ndarray,
+    humanitarian_marks: np.ndarray,
+    retained_ead_cohort: np.ndarray,
+) -> np.ndarray:
+    """Project final membership in Pew's broad unauthorized universe.
+
+    This helper runs while EAD assignment is still in progress. Residual
+    ``NONE`` rows count directly; DACA and residual Cuban/Haitian cohort rows
+    continue to count if an EAD spill gives them a protected engine label;
+    and the temporary-protection statuses Pew explicitly retains count
+    regardless of their non-``NONE`` SSN code.
+    """
+
+    return (
+        (ssn_codes == 0)
+        | ((ssn_codes == 2) & retained_ead_cohort)
+        | np.isin(
+            humanitarian_marks,
+            _PEW_INCLUDED_HUMANITARIAN_STATUS_VALUES,
+        )
+    )
+
+
+def _spill_pew_unauthorized_excess(
+    person: pd.DataFrame,
+    ssn_codes: np.ndarray,
+    humanitarian_marks: np.ndarray,
+    weights: np.ndarray,
+    *,
+    noncitizens: np.ndarray,
+    scope: np.ndarray,
+    preserve_scope: np.ndarray,
+    retained_ead_cohort: np.ndarray,
+    target: float,
+    seed: int,
+    salt: str,
+) -> None:
+    """Spill a broad Pew-universe margin to EAD in deterministic order.
+
+    The first draw preserves the prior EAD/DACA allocation behavior by
+    selecting from the whole residual scope. A selected DACA or residual
+    Cuban/Haitian cohort row still belongs to Pew's universe, so a second pass
+    spills additional rows outside those retained cohorts when needed. Within
+    each pass, rows outside the other controlled margin are selected first;
+    this keeps the student and worker controls from disturbing one another
+    unless their overlap makes that unavoidable.
+    """
+
+    draws = _stable_person_draws(person, seed=seed, salt=salt)
+
+    def current_excess() -> float:
+        included = _pew_unauthorized_projection_mask(
+            ssn_codes=ssn_codes,
+            humanitarian_marks=humanitarian_marks,
+            retained_ead_cohort=retained_ead_cohort,
+        )
+        return float(weights[scope & included].sum()) - target
+
+    # Preserve the existing seeded EAD allocation surface. DACA selections
+    # do not reduce the Pew count and are compensated by the corrective pass.
+    initial_candidates = (ssn_codes == 0) & noncitizens & scope
+    initial_excess = current_excess()
+    if initial_excess > 0:
+        for priority in (~preserve_scope, preserve_scope):
+            selected = _select_weight_to_target(
+                initial_candidates & priority,
+                weights,
+                draws,
+                current_excess(),
+            )
+            ssn_codes[selected] = 2
+            if current_excess() <= 0:
+                return
+
+    # DACA and residual Cuban/Haitian cohort members retain protected engine
+    # labels after EAD assignment and therefore remain inside Pew's estimate.
+    # Only rows outside those cohorts can close any remaining gap.
+    for priority in (~preserve_scope, preserve_scope):
+        corrective_candidates = (
+            (ssn_codes == 0) & noncitizens & scope & ~retained_ead_cohort & priority
+        )
+        selected = _select_weight_to_target(
+            corrective_candidates,
+            weights,
+            draws,
+            current_excess(),
+        )
+        ssn_codes[selected] = 2
+        if current_excess() <= 0:
+            return
+
+
 def _humanitarian_draw_candidates(
     draw: HumanitarianDraw,
     *,
@@ -1685,8 +1809,8 @@ def _assign_humanitarian_statuses(
     """Mark humanitarian statuses and upgrade residual draws' SSN codes.
 
     Runs after the legal-status indicators and before the EAD worker/student
-    spill, so the Pew worker/student controls still bind the remaining
-    residual pool exactly. Draws are sequential over
+    spill. Pew-included temporary protections remain inside the broad control
+    universe even after receiving EADs. Draws are sequential over
     ``controls.humanitarian``; a person marked by an earlier draw is out of
     every later candidate pool. Residual-pool selections (parole/TPS only)
     move to ``NON_CITIZEN_VALID_EAD`` — both programs confer employment
@@ -1777,9 +1901,9 @@ def _assign_ssn_card_codes(
     )
     ssn_codes[(ssn_codes == 0) & assumed_documented] = 3
 
-    # Humanitarian draws run between the indicators and the EAD spill: the
-    # spill controls then bind the *remaining* residual pool, so the final
-    # undocumented worker/student counts still land on the Pew anchors.
+    # Humanitarian draws run between the indicators and the EAD spill. Pew
+    # retains temporary protection in its unauthorized estimate, so those
+    # rows contribute to the broad controls even though they receive EADs.
     humanitarian_marks = _assign_humanitarian_statuses(
         person,
         ssn_codes,
@@ -1789,43 +1913,65 @@ def _assign_ssn_card_codes(
         time_period=time_period,
     )
 
-    is_worker = (_float_column(person, "WSAL_VAL") > 0) | (
-        _float_column(person, "SEMP_VAL") > 0
+    labor_force_status = _integer_column(person, "A_LFSR")
+    invalid_labor_force_status = ~np.isin(
+        labor_force_status,
+        _CPS_LABOR_FORCE_STATUS_DOMAIN,
+    )
+    if invalid_labor_force_status.any():
+        bad = sorted(set(labor_force_status[invalid_labor_force_status].tolist()))[:5]
+        raise SourceRuntimeError(
+            "A_LFSR carries value(s) outside the CPS ASEC domain "
+            f"{list(_CPS_LABOR_FORCE_STATUS_DOMAIN)}: {bad}."
+        )
+    is_worker = (age >= 16) & np.isin(
+        labor_force_status,
+        _CPS_LABOR_FORCE_STATUS_CODES,
     )
     is_student = _integer_column(person, "A_HSCOL") == 2
 
-    # The CPS has no work-authorization variable, so the EAD-vs-unauthorized
-    # split inside the residual pool is unidentified from the survey. Spill
-    # excess undocumented workers/students to EAD so the *remaining* counts
-    # match their published controls; counts already at or below a control
-    # spill nothing. The total undocumented population is emergent — the
-    # composition gate checks it against a cited anchor, and reconciling the
-    # level is the calibration lane's job, not this label stage's.
-    worker_candidates = (ssn_codes == 0) & noncitizens & is_worker
-    worker_excess = (
-        float(weights[worker_candidates].sum()) - controls.undocumented.workers
+    _, arrival_year, age_at_entry = _arrival_profile(person, time_period=time_period)
+    daca_cohort = _daca_statutory_cohort(arrival_year, age_at_entry, age)
+    cuban_haitian_cohort = (
+        np.isin(_integer_column(person, "PENATVTY"), _CUBAN_HAITIAN_BIRTH_CODES)
+        & (arrival_year >= _CUBAN_HAITIAN_ARRIVAL_CUTOFF)
+        & ~daca_cohort
     )
-    worker_draws = _stable_person_draws(
-        person, seed=seed, salt="immigration:ead_workers"
-    )
-    ssn_codes[
-        _select_weight_to_target(
-            worker_candidates, weights, worker_draws, worker_excess
-        )
-    ] = 2
+    retained_ead_cohort = daca_cohort | cuban_haitian_cohort
 
-    student_candidates = (ssn_codes == 0) & noncitizens & is_student
-    student_excess = (
-        float(weights[student_candidates].sum()) - controls.undocumented.students
+    # The CPS has no work-authorization variable, so the EAD split inside the
+    # residual pool is unidentified. The two controls bind the same broad
+    # unauthorized universe their publishers report: residual undocumented
+    # people plus DACA and Pew-included temporary protections. Student spill
+    # runs first; the worker spill runs last and is therefore authoritative
+    # for Pew's published labor-force total. Each pass prefers rows outside
+    # the other margin so their overlap is disturbed only when unavoidable.
+    _spill_pew_unauthorized_excess(
+        person,
+        ssn_codes,
+        humanitarian_marks,
+        weights,
+        noncitizens=noncitizens,
+        scope=is_student,
+        preserve_scope=is_worker,
+        retained_ead_cohort=retained_ead_cohort,
+        target=controls.undocumented.students,
+        seed=seed,
+        salt="immigration:ead_students",
     )
-    student_draws = _stable_person_draws(
-        person, seed=seed, salt="immigration:ead_students"
+    _spill_pew_unauthorized_excess(
+        person,
+        ssn_codes,
+        humanitarian_marks,
+        weights,
+        noncitizens=noncitizens,
+        scope=is_worker,
+        preserve_scope=is_student,
+        retained_ead_cohort=retained_ead_cohort,
+        target=controls.undocumented.workers,
+        seed=seed,
+        salt="immigration:ead_workers",
     )
-    ssn_codes[
-        _select_weight_to_target(
-            student_candidates, weights, student_draws, student_excess
-        )
-    ] = 2
     return ssn_codes, humanitarian_marks
 
 
@@ -1994,8 +2140,8 @@ def us_immigration_composition_gate(
     mode: everyone a citizen with a valid SSN), when a value falls outside
     the engine enum domain, when the two columns disagree about citizenship
     or undocumented status, when the weighted non-citizen share leaves its
-    plausibility band, when the emergent undocumented population strays
-    outside a coarse band around its cited published anchor, or when a
+    plausibility band, when the emergent Pew-defined unauthorized population
+    strays outside a coarse band around its cited published anchor, or when a
     humanitarian category's emitted mass leaves the coarse band around its
     cited stock target (microcosm #767 — the H.R.1 §71109/§71301/§71302 and
     SNAP §10108 eligibility channels all bind through these categories; an
@@ -2119,19 +2265,34 @@ def us_immigration_composition_gate(
             f"[{low}, {high}]."
         )
 
-    undocumented = float(weights[ssn_none].sum())
-    relative = undocumented / controls.undocumented.population_anchor
+    status_values = status.to_numpy()
+    ssn_values = ssn.to_numpy()
+    pew_unauthorized_rows = np.isin(
+        status_values,
+        _PEW_UNAUTHORIZED_STATUS_VALUES,
+    ) | (
+        (status_values == "CUBAN_HAITIAN_ENTRANT")
+        & (ssn_values == "NON_CITIZEN_VALID_EAD")
+    )
+    pew_unauthorized = float(weights[pew_unauthorized_rows].sum())
+    details["pew_unauthorized_population"] = pew_unauthorized
+    details["pew_unauthorized_statuses"] = list(_PEW_UNAUTHORIZED_STATUS_VALUES)
+    details["pew_unauthorized_paired_status"] = {
+        "immigration_status_str": "CUBAN_HAITIAN_ENTRANT",
+        "ssn_card_type": "NON_CITIZEN_VALID_EAD",
+    }
+    relative = pew_unauthorized / controls.undocumented.population_anchor
     rel_low, rel_high = _UNDOCUMENTED_ANCHOR_RELATIVE_BAND
     if not (rel_low <= relative <= rel_high):
         failures.append(
-            f"emergent undocumented population {undocumented:,.0f} is "
+            f"emergent Pew-defined unauthorized population "
+            f"{pew_unauthorized:,.0f} is "
             f"{relative:.2f}x the published anchor "
             f"{controls.undocumented.population_anchor:,.0f} "
             f"(band [{rel_low}, {rel_high}], "
             f"{controls.undocumented.sources[_ANCHOR_KEY]})."
         )
 
-    status_values = status.to_numpy()
     hum_low, hum_high = _HUMANITARIAN_TARGET_RELATIVE_BAND
     humanitarian_statuses = set(_HUMANITARIAN_STATUS_BY_CATEGORY.values())
     humanitarian_rows = np.isin(status_values, list(humanitarian_statuses))

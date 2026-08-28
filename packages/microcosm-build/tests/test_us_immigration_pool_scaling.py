@@ -88,7 +88,7 @@ def _stage_spec() -> SourceStageSpec:
 
 def _immigration_frame() -> Frame:
     rows: list[dict[str, object]] = []
-    rows.extend({"PRCITSHP": 5, "WSAL_VAL": 10_000.0} for _ in range(4))
+    rows.extend({"PRCITSHP": 5, "A_LFSR": 1, "WSAL_VAL": 10_000.0} for _ in range(4))
     rows.extend({"PRCITSHP": 5, "A_HSCOL": 2} for _ in range(3))
     rows.extend(
         {
@@ -107,6 +107,7 @@ def _immigration_frame() -> Frame:
         "A_MARITL": 7,
         "A_SPOUSE": 0,
         "A_HSCOL": 0,
+        "A_LFSR": 7,
         "WSAL_VAL": 0.0,
         "SEMP_VAL": 0.0,
         "MCARE": 2,
@@ -197,8 +198,8 @@ def test_stage_weight_scale_allocates_every_absolute_control_to_source_share(
         == 2.0
     )
 
-    standalone_workers = standalone_person["WSAL_VAL"].gt(0)
-    pooled_workers = pooled_person["WSAL_VAL"].gt(0)
+    standalone_workers = standalone_person["A_LFSR"].isin([1, 2, 3, 4])
+    pooled_workers = pooled_person["A_LFSR"].isin([1, 2, 3, 4])
     assert (
         _weighted_count(
             standalone,

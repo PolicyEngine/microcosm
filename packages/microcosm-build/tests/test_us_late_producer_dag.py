@@ -1033,6 +1033,7 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     }
     asec_person_raw_columns = {
         "A_HSCOL",
+        "A_LFSR",
         "A_MJOCC",
         "CAID",
         "CHAMPVA",
@@ -1128,10 +1129,10 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     assert observed == Counter(
         {(*key, required_scope[key]): count for key, count in expected_counts.items()}
     )
-    assert sum(observed.values()) == 107
+    assert sum(observed.values()) == 108
     assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 46
     assert (
-        sum(count for key, count in observed.items() if key[2] == "asec_source") == 61
+        sum(count for key, count in observed.items() if key[2] == "asec_source") == 62
     )
     assert receipts[("household", "TYPEHUGQ")] == set()
 
@@ -1341,8 +1342,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
             "A_MARITL",
             "A_SPOUSE",
             "A_HSCOL",
-            "WSAL_VAL",
-            "SEMP_VAL",
+            "A_LFSR",
             "MCARE",
             "CAID",
             "IHSFLG",

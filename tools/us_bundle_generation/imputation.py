@@ -2172,7 +2172,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2751, 92, 227, 35, 0, 213)
+    expected_graph_counts = (2750, 92, 227, 35, 0, 213)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "

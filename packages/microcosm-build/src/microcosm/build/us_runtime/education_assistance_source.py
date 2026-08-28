@@ -1,4 +1,4 @@
-"""Measured CPS ASEC educational assistance for the education-inputs stage.
+"""Pinned CPS ASEC person sidecar for measured ED_VAL and A_LFSR fields.
 
 The retired eCPS build carried person-level educational assistance directly
 from ASEC ``ED_VAL`` (archived ``datasets/cps/cps.py`` line 1493:
@@ -6,8 +6,11 @@ from ASEC ``ED_VAL`` (archived ``datasets/cps/cps.py`` line 1493:
 recode, filter, or universe restriction), and the archived
 ``datasets/cps/census_cps.py`` listed ``ED_VAL`` among the raw ASEC columns it
 kept.  The frozen ``census_cps_*.h5`` inputs microcosm builds from never
-carried that column, so this module restores it from the official, immutable
-Census ASEC public-use archives — the same repair class as
+carried that column. Those frozen inputs also omitted current civilian labor-
+force status ``A_LFSR``, which the immigration stage needs to reproduce Pew's
+age-16+ working-or-looking-for-work definition without a prior-year earnings
+proxy. This module restores both fields from the official, immutable Census
+ASEC public-use archives — the same repair class as
 :mod:`.weeks_unemployed`'s ``LKWEEKS`` sidecar, extended to every pooled
 income year.
 
@@ -36,11 +39,14 @@ __all__ = [
     "ASEC_EDUCATION_ASSISTANCE_ARCHIVES",
     "ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS",
     "ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS",
+    "ASEC_LABOR_FORCE_STATUS_COLUMN",
+    "ASEC_LABOR_FORCE_STATUS_VALID_CODES",
     "EDUCATION_ASSISTANCE_ARCHIVED_DERIVATION_URL",
     "EDUCATION_ASSISTANCE_ARCHIVED_SOURCE_URL",
     "AsecEducationArchive",
     "fetch_asec_education_assistance_source",
     "fill_asec_education_assistance_source",
+    "fill_asec_labor_force_status_source",
     "load_asec_education_assistance_sources",
 ]
 
@@ -59,12 +65,15 @@ EDUCATION_ASSISTANCE_ARCHIVED_SOURCE_URL = (
 )
 
 _SOURCE = "ED_VAL"
+ASEC_LABOR_FORCE_STATUS_COLUMN = "A_LFSR"
+ASEC_LABOR_FORCE_STATUS_VALID_CODES = frozenset({0, 1, 2, 3, 4, 7})
 ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS: tuple[str, ...] = (
     "PH_SEQ",
     "P_SEQ",
     "A_LINENO",
     "PERIDNUM",
     _SOURCE,
+    ASEC_LABOR_FORCE_STATUS_COLUMN,
 )
 _AUDIT_WEIGHT_COLUMN = "A_FNLWGT"
 
@@ -458,6 +467,19 @@ def load_asec_education_assistance_sources(
                 f"ASEC {pins.survey_year} ED_VAL must be finite and nonnegative "
                 f"at row(s): {rows}."
             )
+        labor_force_status = pd.to_numeric(
+            raw[ASEC_LABOR_FORCE_STATUS_COLUMN], errors="coerce"
+        ).to_numpy(dtype=np.float64)
+        valid_labor_force_status = np.isfinite(labor_force_status) & np.isin(
+            labor_force_status,
+            sorted(ASEC_LABOR_FORCE_STATUS_VALID_CODES),
+        )
+        if not valid_labor_force_status.all():
+            rows = np.flatnonzero(~valid_labor_force_status)[:5].tolist()
+            raise ValueError(
+                f"ASEC {pins.survey_year} A_LFSR must be a complete integer in "
+                f"{sorted(ASEC_LABOR_FORCE_STATUS_VALID_CODES)} at row(s): {rows}."
+            )
         weights = pd.to_numeric(raw[_AUDIT_WEIGHT_COLUMN], errors="coerce").to_numpy(
             dtype=np.float64
         )
@@ -509,6 +531,7 @@ def load_asec_education_assistance_sources(
                 )
         audits[income_year] = audit
         part = raw.loc[:, list(ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS)].copy()
+        part[ASEC_LABOR_FORCE_STATUS_COLUMN] = labor_force_status.astype("int64")
         part.insert(0, "source_year", np.int64(income_year))
         parts.append(part)
     result = pd.concat(parts, ignore_index=True)
@@ -617,6 +640,120 @@ def fill_asec_education_assistance_source(
             )
         result.loc[result.index[year_mask], _SOURCE] = values
     result.attrs["education_assistance_source_audit"] = source.attrs.get(
+        "source_audit", {}
+    )
+    return result
+
+
+def fill_asec_labor_force_status_source(
+    person: pd.DataFrame,
+    source: pd.DataFrame,
+) -> pd.DataFrame:
+    """Fill measured ``A_LFSR`` via the pinned exact Census identity join."""
+
+    required_person = ("source_year", "PERIDNUM")
+    missing_person = [column for column in required_person if column not in person]
+    if missing_person:
+        raise ValueError(
+            "ASEC labor-force-status repair requires person column(s): "
+            f"{missing_person}."
+        )
+    required_source = ("source_year", *ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS)
+    missing_source = [column for column in required_source if column not in source]
+    if missing_source:
+        raise ValueError(
+            f"ASEC labor-force-status sidecar missing column(s): {missing_source}."
+        )
+    result = person.copy(deep=True)
+    person_years = pd.to_numeric(result["source_year"], errors="coerce")
+    if person_years.isna().any() or (person_years != np.floor(person_years)).any():
+        raise ValueError("ASEC labor-force-status person source_year is invalid.")
+    needed_years = sorted(int(year) for year in person_years.unique())
+    covered = set(
+        pd.to_numeric(source["source_year"], errors="coerce").astype(int).unique()
+    )
+    uncovered = [year for year in needed_years if year not in covered]
+    if uncovered:
+        raise ValueError(
+            "ASEC labor-force-status sidecar does not cover pooled income "
+            f"year(s): {uncovered}."
+        )
+
+    donor = source.copy(deep=True)
+    donor["PERIDNUM"] = _fixed_width_peridnum(
+        donor["PERIDNUM"], label="ASEC labor-force-status sidecar"
+    )
+    if ASEC_LABOR_FORCE_STATUS_COLUMN in result.columns:
+        existing = pd.to_numeric(
+            result[ASEC_LABOR_FORCE_STATUS_COLUMN], errors="coerce"
+        )
+        if existing.notna().any():
+            raise ValueError(
+                "ASEC labor-force-status fill found a preexisting A_LFSR "
+                "column with values; refusing to overwrite measured data."
+            )
+    filled = np.zeros(len(result), dtype=np.int64)
+
+    for year in needed_years:
+        year_mask = person_years.eq(year).to_numpy()
+        year_donor = donor.loc[
+            pd.to_numeric(donor["source_year"], errors="coerce").eq(year)
+        ].set_index("PERIDNUM")
+        keys = _fixed_width_peridnum(
+            result.loc[year_mask, "PERIDNUM"],
+            label="ASEC labor-force-status frame",
+        )
+        missing_keys = keys[~keys.isin(year_donor.index)].drop_duplicates()
+        if not missing_keys.empty:
+            raise ValueError(
+                "ASEC labor-force-status sidecar does not cover frame "
+                f"PERIDNUM key(s) for income year {year}: "
+                f"{missing_keys.tolist()[:5]}."
+            )
+        aligned = year_donor.reindex(keys.to_numpy())
+        aligned.index = result.index[year_mask]
+        identity_pairs = [
+            (
+                "PH_SEQ",
+                "source_household_id" if "source_household_id" in result else "PH_SEQ",
+            ),
+            ("P_SEQ", "P_SEQ"),
+            ("A_LINENO", "A_LINENO"),
+        ]
+        for donor_column, frame_column in identity_pairs:
+            if frame_column not in result:
+                continue
+            observed = pd.to_numeric(
+                result.loc[year_mask, frame_column], errors="coerce"
+            ).to_numpy(dtype=np.float64)
+            expected = pd.to_numeric(aligned[donor_column], errors="coerce").to_numpy(
+                dtype=np.float64
+            )
+            mismatch = (
+                ~np.isfinite(observed) | ~np.isfinite(expected) | (observed != expected)
+            )
+            if mismatch.any():
+                rows = result.index[year_mask].to_numpy()[mismatch][:5].tolist()
+                raise ValueError(
+                    "ASEC labor-force-status redundant identity mismatch for "
+                    f"{frame_column} against sidecar {donor_column} in income "
+                    f"year {year} at row(s): {rows}."
+                )
+        values = pd.to_numeric(
+            aligned[ASEC_LABOR_FORCE_STATUS_COLUMN], errors="coerce"
+        ).to_numpy(dtype=np.float64)
+        valid = np.isfinite(values) & np.isin(
+            values,
+            sorted(ASEC_LABOR_FORCE_STATUS_VALID_CODES),
+        )
+        if not valid.all():
+            raise ValueError(
+                f"ASEC labor-force-status sidecar A_LFSR is invalid for "
+                f"income year {year}."
+            )
+        filled[year_mask] = values.astype(np.int64)
+    result[ASEC_LABOR_FORCE_STATUS_COLUMN] = filled
+    result.attrs["labor_force_status_source_audit"] = source.attrs.get(
         "source_audit", {}
     )
     return result
