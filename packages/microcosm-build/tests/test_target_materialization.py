@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.target_materialization import (
+    BandEdgeCoverageError,
     MeasureResolutionError,
     assert_calibration_input_finite,
     materialize_target_bindings,
@@ -701,20 +702,24 @@ def test_published_range_label_edges_survive_sibling_exclusion():
 
 
 def test_band_bounds_refuse_a_spec_absent_from_the_band_edge_register():
+    # A register that cannot bound a spec is a wrong-register problem for the
+    # whole run: it must propagate as a refusal, never degrade into a skipped
+    # target that quietly drops out of the solve (#803 review finding 2).
     registry = TargetRegistry([_banded_registry().specs[0]], country="uk")
     adapter = StubAdapter()
 
-    result = materialize_target_bindings(
-        adapter,
-        registry,
-        _BANDED_CONTRACT,
-        period=2025,
-        band_edge_registry=TargetRegistry([], country="uk"),
-    )
+    with pytest.raises(
+        BandEdgeCoverageError,
+        match="absent from its contract target's band-edge set",
+    ):
+        materialize_target_bindings(
+            adapter,
+            registry,
+            _BANDED_CONTRACT,
+            period=2025,
+            band_edge_registry=TargetRegistry([], country="uk"),
+        )
 
-    assert len(result.skipped) == 1
-    assert result.skipped[0].name == "band_0"
-    assert "absent from its contract target's band-edge set" in result.skipped[0].reason
     assert "income_band_0" not in adapter.tables["person"]
 
 

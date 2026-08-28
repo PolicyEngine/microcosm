@@ -48,7 +48,7 @@ class UKNationalCalibrationStage:
         period: int,
         doctrine: UKNationalSolveDoctrine = UK_NATIONAL_SOLVE_DOCTRINE,
         measure_resolver: object | None = None,
-        band_edge_registry: TargetRegistry | None = None,
+        band_edge_registry: TargetRegistry,
     ) -> None:
         self.compilation = (
             registry
@@ -56,9 +56,11 @@ class UKNationalCalibrationStage:
             else UKLedgerTargetCompilation(registry=registry, unsupported=())
         )
         self.registry = self.compilation.registry
-        self.band_edge_registry = (
-            band_edge_registry if band_edge_registry is not None else self.registry
-        )
+        # Required, never defaulted: the stage cannot tell a pruned registry
+        # from a full one, so a fallback to self.registry would quietly
+        # restate #792 for any caller holding an exclusion-pruned roster.
+        # A caller whose registry is unpruned passes it explicitly.
+        self.band_edge_registry = band_edge_registry
         # The materialization period is the declared calibration year the
         # registry was compiled at — never the input frame's base-year
         # time_period, which lags it (survey 2024, calibration 2025).

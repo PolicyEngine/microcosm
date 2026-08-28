@@ -197,7 +197,7 @@ def run_uk_calibration(
     input_sha256: str,
     ledger_artifact: Any,
     register_registry: TargetRegistry,
-    band_edge_registry: TargetRegistry | None = None,
+    band_edge_registry: TargetRegistry,
     calibration_year: int,
     exclusion_receipt: Mapping[str, Mapping[str, str]],
     doctrine: Any,
@@ -212,15 +212,15 @@ def run_uk_calibration(
 
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    # Pure-argument validation precedes every environment probe: a pruned
-    # register without its compiled band-edge source must refuse identically
+    # Pure-argument validation precedes every environment probe: an
+    # incoherent register/receipt/band-edge triple must refuse identically
     # whether or not a git checkout or Logbook chain is reachable.
     _validate_band_edge_registry(
         register_registry=register_registry,
         band_edge_registry=band_edge_registry,
         exclusion_receipt=exclusion_receipt,
     )
-    edge_registry = band_edge_registry or register_registry
+    edge_registry = band_edge_registry
     code_pin = git_code_pin(_REPOSITORY)
     # Predecessor configuration is validated before anything is written: a
     # disagreeing chain must refuse with no artifact on disk, not after a
@@ -302,16 +302,20 @@ def _new_calibration_attempt_id(*, timestamp: datetime) -> str:
 def _validate_band_edge_registry(
     *,
     register_registry: TargetRegistry,
-    band_edge_registry: TargetRegistry | None,
+    band_edge_registry: TargetRegistry,
     exclusion_receipt: Mapping[str, Mapping[str, str]],
 ) -> None:
-    if exclusion_receipt and band_edge_registry is None:
-        raise ValueError(
-            "a pruned register cannot derive published band edges from itself; "
-            "pass the compiled pre-exclusion register."
-        )
-    if band_edge_registry is None:
-        return
+    """Require the band-edge register to reconstitute the compiled roster.
+
+    The reconciliation always runs — an empty receipt is a claim that nothing
+    was pruned, so the two rosters must then be name-identical; it is never
+    permission to skip the check. Receipt keys are spec names by the
+    applier's construction: ``apply_uk_calibration_measure_exclusions``
+    builds the receipt from the matched ``spec.name`` set and raises on any
+    exclusion matching zero registry specs, so ``pruned + receipt keys ==
+    compiled`` is an exact identity, not a heuristic.
+    """
+
     register_names = _registry_spec_names(register_registry)
     edge_names = _registry_spec_names(band_edge_registry)
     excluded_names = {str(name) for name in exclusion_receipt}

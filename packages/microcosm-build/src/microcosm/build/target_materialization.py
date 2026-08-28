@@ -75,6 +75,17 @@ class MeasureResolution:
     receipt: Mapping[str, Any]
 
 
+class BandEdgeCoverageError(RuntimeError):
+    """A supplied band-edge register does not cover a materialized spec.
+
+    Deliberately not a :class:`ValueError`: the per-spec materialization loop
+    converts ValueErrors into :class:`MaterializationSkip` entries, and a
+    register that cannot bound a spec is a wrong-register problem for the
+    whole run, not a per-spec data defect — it must refuse, never let the
+    target quietly drop out of the solve (#792 review finding 2).
+    """
+
+
 class MeasureResolutionError(RuntimeError):
     """Raised when simulated measure resolution cannot bind the registry."""
 
@@ -419,7 +430,7 @@ def _band_bounds(
             "carries no readable band edge"
         )
     if lower not in band_edges:
-        raise ValueError(
+        raise BandEdgeCoverageError(
             f"banded measure {getattr(spec, 'measure', '?')!r} carries band lower edge "
             f"{lower!r} that is absent from its contract target's band-edge set "
             f"{list(band_edges)!r}; the band-edge register does not cover this spec's "
