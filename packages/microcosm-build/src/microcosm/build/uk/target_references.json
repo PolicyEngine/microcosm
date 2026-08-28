@@ -4058,7 +4058,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_with_1_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4081,7 +4081,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_with_2_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4104,7 +4104,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_with_3_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4127,7 +4127,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_with_4_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4150,7 +4150,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_with_5+_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4173,7 +4173,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_single_no_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4196,7 +4196,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_single_with_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4219,7 +4219,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_couple_no_children",
       "family": "dwp_universal_credit",
       "period": 2025,
@@ -4242,7 +4242,7 @@
         "geography_level": "country",
         "geography_id": "K03000001"
       },
-      "entity": "household",
+      "entity": "benunit",
       "measure": "dwp/uc/claimants_couple_with_children",
       "family": "dwp_universal_credit",
       "period": 2025,
