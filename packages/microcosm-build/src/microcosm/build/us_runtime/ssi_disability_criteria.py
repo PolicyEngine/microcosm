@@ -19,9 +19,12 @@ The source transform also retains two distinctions that are easy to lose:
 The extended-CPS pipeline predicted its ASEC and PUF-support people separately,
 because the latter carried separately imputed income and asset predictors.  We
 do the same.  Direct under-65 ASEC ``SSI_VAL`` reporters are then preserved as
-positive anchors; that anchor is not copied onto the PUF channel.  An arbitrary
-pre-existing criterion column is never trusted: every run recomputes the full
-source-backed surface and uses an equality check only for idempotent return.
+positive anchors; that anchor is not copied onto the PUF channel.  A stacked
+ACS row instead contributes its harmonized native ``ssi_reported`` value to the
+same ``> 0`` predicate.  The row-wise coalesce is source-blind and preserves
+the real below-age-15 ACS amount-universe blank.  An arbitrary pre-existing
+criterion column is never trusted: every run recomputes the full source-backed
+surface and uses an equality check only for idempotent return.
 
 The full 2023 SIPP public-use file is the same immutable 3.73 GB artifact
 already pinned by the vehicle and voluntary-filing stages.  It contains 39,513
@@ -752,6 +755,64 @@ def _strict_person_aggregate(
     )
 
 
+def _reported_ssi_anchor(person: pd.DataFrame, *, age: np.ndarray) -> np.ndarray:
+    """Coalesce CPS and harmonized ACS reporter amounts for the ``> 0`` test.
+
+    ``SSI_VAL`` is the measured CPS ASEC amount. ``ssi_reported`` is the
+    adjusted native ACS SSIP amount produced by ``map_acs_native_inputs``.
+    Stacked rows carry exactly one of the two. ACS SSIP is out of universe
+    below age 15, so that genuine blank is interpreted only at predicate time
+    and is never rewritten into a fake measured zero.
+    """
+
+    available = [column for column in ("SSI_VAL", "ssi_reported") if column in person]
+    if not available:
+        raise ValueError(
+            "US SSI disability receiver requires measured SSI_VAL or harmonized "
+            "ssi_reported for the under-65 reporter anchor."
+        )
+
+    numeric: dict[str, pd.Series] = {}
+    for column in available:
+        raw = person[column]
+        values = pd.to_numeric(raw, errors="coerce")
+        invalid = raw.notna() & values.isna()
+        finite = np.isfinite(values.fillna(0.0).to_numpy(dtype=np.float64))
+        if invalid.any() or not finite.all():
+            raise ValueError(
+                "US SSI disability receiver reported SSI source "
+                f"{column!r} contains nonnumeric or nonfinite values."
+            )
+        numeric[column] = values
+
+    combined = pd.Series(np.nan, index=person.index, dtype=np.float64)
+    if "SSI_VAL" in numeric:
+        combined = numeric["SSI_VAL"].copy()
+    if "ssi_reported" in numeric:
+        if "SSI_VAL" in numeric:
+            both = numeric["SSI_VAL"].notna() & numeric["ssi_reported"].notna()
+            positivity_conflict = both & numeric["SSI_VAL"].gt(0).ne(
+                numeric["ssi_reported"].gt(0)
+            )
+            if positivity_conflict.any():
+                raise ValueError(
+                    "US SSI disability receiver SSI_VAL and ssi_reported "
+                    "disagree on reporter status."
+                )
+        combined = combined.combine_first(numeric["ssi_reported"])
+
+    age_values = np.asarray(age, dtype=np.float64)
+    if len(age_values) != len(combined) or not np.isfinite(age_values).all():
+        raise ValueError("US SSI disability receiver age must be finite.")
+    invalid_blank = combined.isna().to_numpy() & (age_values >= 15.0)
+    if invalid_blank.any():
+        raise ValueError(
+            "US SSI disability receiver reported SSI amount may be blank only "
+            "below the ACS age-15 universe."
+        )
+    return combined.fillna(0.0).to_numpy(dtype=np.float64)
+
+
 def _person_ssi_disability_predictors(frame: Frame) -> pd.DataFrame:
     """Build the exact nineteen predictors on every recipient support row."""
 
@@ -1020,20 +1081,9 @@ def impute_us_ssi_disability_criteria(
 
     # The archived direct-CPS pass preserves measured SSI reporters.  Its PUF
     # clone override does not, even though raw ASEC columns were duplicated.
-    if "SSI_VAL" not in person:
-        raise ValueError(
-            "US SSI disability receiver requires measured ASEC SSI_VAL for the "
-            "under-65 reporter anchor."
-        )
-    reported_ssi = (
-        _strict_person_numeric(
-            person,
-            ("SSI_VAL",),
-            label="reported SSI",
-        )
-        > 0.0
-    )
-    under_65 = receiver["age"].to_numpy(dtype=np.float64) < 65.0
+    receiver_age = receiver["age"].to_numpy(dtype=np.float64)
+    reported_ssi = _reported_ssi_anchor(person, age=receiver_age) > 0.0
+    under_65 = receiver_age < 65.0
     if has_support_role_metadata(person, entity="person"):
         channels = support_role_series(person, entity="person")
         asec = channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
@@ -1150,16 +1200,16 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
             )
             clone_divergence_source_people = int((unique > 1).sum())
 
-    reporter_mismatches = 0
-    if "SSI_VAL" in person:
-        reported = pd.to_numeric(person["SSI_VAL"], errors="coerce").fillna(0.0) > 0.0
-        age_column = "age" if "age" in person else "A_AGE"
-        age = pd.to_numeric(person[age_column], errors="coerce")
-        asec = pd.Series(True, index=person.index)
-        if channel_values is not None:
-            asec = channel_values.eq(_BASE_ASEC_SUPPORT_CHANNEL)
-        anchor = (reported & age.lt(65.0) & asec).to_numpy()
-        reporter_mismatches = int(np.count_nonzero(anchor & ~positive))
+    age_column = "age" if "age" in person else "A_AGE"
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    reported = _reported_ssi_anchor(person, age=age) > 0.0
+    native_role = np.ones(len(person), dtype=bool)
+    if channel_values is not None:
+        native_role = channel_values.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    anchor = reported & (age < 65.0) & native_role
+    reporter_mismatches = int(np.count_nonzero(anchor & ~positive))
 
     return {
         "weighted_true_share": float(weights[positive].sum()) / total_weight,
@@ -1213,8 +1263,8 @@ def us_ssi_disability_criteria_signal_gate(frame: Frame) -> GateResult:
         failures.append(f"{_OUTPUT}: weighted false total is not positive.")
     if summary["reporter_anchor_mismatches"]:
         failures.append(
-            f"{_OUTPUT}: {summary['reporter_anchor_mismatches']} under-65 ASEC "
-            "SSI reporter anchor(s) were lost."
+            f"{_OUTPUT}: {summary['reporter_anchor_mismatches']} under-65 "
+            "native-role SSI reporter anchor(s) were lost."
         )
     if summary["support_provenance_missing"]:
         failures.append(

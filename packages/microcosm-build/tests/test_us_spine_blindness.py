@@ -94,6 +94,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         # Declares and receipts exact ACS source universes; never mutates rows.
         "acs_income_universe.py",
+        # Owner-approved release boundary: exact raw ACS join and receipt.
+        "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
@@ -216,6 +218,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_inputs.py",
         "acs_multispine.py",
         "acs_pums.py",
+        "acs_release_predictors.py",  # Pinned release join; provenance owner.
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
@@ -3110,9 +3113,7 @@ def _function_callers(source: str, callee: str) -> tuple[tuple[str, int], ...]:
         if not isinstance(node, ast.ImportFrom):
             continue
         aliases.update(
-            alias.asname or alias.name
-            for alias in node.names
-            if alias.name == callee
+            alias.asname or alias.name for alias in node.names if alias.name == callee
         )
 
     class CallerVisitor(ast.NodeVisitor):
@@ -3355,9 +3356,10 @@ def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
         f"or wrapper use is forbidden. Found callers: {call_details}"
     )
 
-    for (module_name, helper), expected_callers in (
-        _GATE_SOURCE_SCOPE_HELPER_CALLERS.items()
-    ):
+    for (
+        module_name,
+        helper,
+    ), expected_callers in _GATE_SOURCE_SCOPE_HELPER_CALLERS.items():
         callers = _function_callers((_US_RUNTIME / module_name).read_text(), helper)
         actual_callers = frozenset(caller for caller, _line in callers)
         assert actual_callers == expected_callers, (

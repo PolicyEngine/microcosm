@@ -1,132 +1,182 @@
-# Pregnancy / prior-year defect lane (issues #798 and #799)
+# ACS predictor release join
+
+> **Historical note (2026-08-28).** This journal describes the
+> `acs-predictor-release-join` lane as of 2026-08-27. The branch has since
+> been merged into the `stacked-release-fix-train` integration branch
+> together with the #794 gate-alignment and #798/#799 pregnancy/prior-year
+> fixes, with spec envelope digests and coverage evidence regenerated over
+> the union tree. Treat the "State"/"Next" sections below as history;
+> check git/GitHub for current truth.
 
 ## State
 
-Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
-`stacked-release-gate-alignment` at `606cbd69`. The root-cause findings and
-implementations are complete for the nonfemale-pregnancy producer defect and
-the owner-approved rung-aware prior-year availability release floor.
-Both fixes, source-attested spec/coverage repins, full repository verification,
-and the final `out.md` handoff are complete. The authored 0.05 floor, upper
-bound, all other bands, thresholds, seeds, and batteries remain unchanged. This
-lane did not build, publish, or push pool or release artifacts.
+Complete on 2026-08-27. The owner-approved release-time join from stacked-pool
+ACS source lineage to the SHA-pinned 2024 one-year ACS person/household zips is
+implemented, receipted, real-pool exercised, and fully verified. It populates
+the six archived donor models' CPS-named predictors through reviewed
+native-ACS crosswalks with strict hash, lineage, collision, totality, universe,
+and clone-fan-out contracts. Model selection logic and every gate threshold
+remain unchanged. The completed evidence and handoff are in `out.md`. No
+network access, pool build, release build, publication, push, retraining,
+threshold change, or launcher-contract edit occurred.
 
 ## Done
 
-- Read `CLAUDE.md` and the GitNexus debugging workflow.
-- Confirmed the assigned branch starts clean at `606cbd69`.
-- Recorded the required source fix, structural refusal guard and receipt,
-  checkpoint-identity review, focused regressions, real-pool decompositions,
-  changelog, repository Ruff, and independent full-shard pytest boundary.
-- Recorded Task 2 as diagnosis-only unless the evidence proves an unambiguous
-  transfer defect.
-- Rebuilt a transient local GitNexus graph offline and queried pregnancy/WIC
-  execution paths. Registration alone failed because the sandbox forbids the
-  CLI's global `~/.gitnexus` registry; the usable worktree-local index was
-  removed before final verification.
-- Inspected all 1,970,973 person rows in the supplied 25% pool. There are 108
-  `is_pregnant=true` nonfemale rows, all on physical ACS records: 45 clone 0,
-  61 clone 1, and 2 clone 2. ASEC has zero; sex/channel/clone assembly is
-  internally consistent.
-- Localized the pregnancy defect to the ACS QRF path. The ASEC producer hard-
-  conditions its stable draw on female ages 15--44, while ACS transfer treats
-  sex and age only as soft predictors, models physical clone rows separately,
-  and has no pregnancy-domain postcondition. The pool has 11,287 ACS source
-  people whose clones disagree on pregnancy and zero ASEC disagreements.
-- Proved the prior-year shortfall is not ACS dilution or an ACS transfer hole.
-  Physical ASEC and ACS are both about 4.3% available because assembly samples
-  each raw ASEC year independently before the adjacent-year `PERIDNUM` join.
-  Of 18,518 sampled current rows that match the intact full predecessor files,
-  only 4,724 retain a predecessor after sampled-to-sampled joining: weighted
-  match survival is 25.4117%, the expected 25% rung effect. Full pooled ASEC
-  availability is 16.9147%, and selected current rows joined to intact prior
-  files are 16.9541%.
-- Received the owner ruling that assembly-before-join sampling is the accepted
-  mechanism verdict. The prior-year release gate may scale only its availability
-  floor by the assembly's sampled-to-sampled match-survival factor, recorded in
-  or derived from the pool manifest. Rung 1.0 must remain byte-identical to the
-  existing gate; the authored 0.05 constant and upper bound do not change.
-- Implemented the owner-approved prior-year gate policy in `f5284a07`. An
-  authenticated production stacked manifest now restores its version-4 sample
-  receipt to the loaded frame; the availability gate scales only the authored
-  lower floor by that rung, conditionally receipts the factor/applied floor,
-  and leaves full-rung output byte-identical. Legacy/no-rung frames retain the
-  original gate. The prior-year and H5 focused suites pass (23 and 60 tests),
-  focused Ruff and `git diff --check` pass, and the real candidate-25 manifest
-  validates at factor 0.25.
-- Implemented pregnancy's hard female-age-15--44 policy before any requested
-  pregnancy QRF. The transfer validates donor and recipient structure up
-  front, draws only one eligible clone-0 representative per assembled source
-  person, fans that value to missing clones, assigns structural false to
-  ineligible missing rows, and refuses preexisting/final domain or clone
-  disagreement with explicit counts.
-- Added a sealed structural receipt with disjoint QRF, clone-fanout,
-  preexisting-value-fanout, and ineligible-false accounting. Production receipt
-  validation authenticates the policy digest, zero-violation postconditions,
-  source-person topology, and exact equality to the transferred row count.
-- Bound the policy into the transfer execution contract used by late-stage
-  checkpoint/target-bank identity, isolated pregnancy from unrelated bounded
-  QRF families, declared its structural source-person input, and regenerated
-  the authored US imputation spec/schema projection.
-- Closed two adversarial restart cases: partial ineligible clone surfaces no
-  longer double-count receipt categories, and a complete pregnancy surface is
-  still preflighted and carries a zero-imputation structural proof even when a
-  different requested family remains active.
-- Added source, transfer, gate, receipt, identity, all-ineligible, clone-fanout,
-  mixed-active, and stacked-execution regressions. The complete pregnancy and
-  ACS-transfer files, the complete stacked-spine file before the final
-  preflight refactor, and focused post-refactor tests pass; focused Ruff and
-  `git diff --check` pass.
-- Extended the real-pool pregnancy decomposition: the 108 pregnant nonfemale
-  rows are joined by 58 pregnant female rows outside ages 15--44, for 166 hard-
-  domain violations, all on ACS and all isolated to one clone. ASEC has zero.
-- Committed the coherent pregnancy implementation, generated authority,
-  coverage proof, changelog, tests, and journal as `01a80f49`.
-- An adversarial pre-certification audit found that two canonical late-DAG test
-  fixtures predated the required pregnancy structural receipt. Stopped the
-  preliminary build-shard run, attached valid zero-imputation proofs to both
-  fixtures, and added a forged-policy regression.
-- Tightened structural types while that integration repair was open: near-0/1
-  pregnancy values no longer pass as booleans, and nested stack/arm
-  fraction/seed/count fields no longer accept JSON boolean equality aliases.
-  Added source, transfer, and four manifest-alias regressions. The complete
-  combined pregnancy/ACS/H5 run reached its final live-spec fixture with every
-  preceding test green; the repinned fixture and forged-policy controls pass.
-- Recomputed the source-attested identity after hardening: final resolved US
-  spec SHA is `11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`;
-  hardening required no additional authored YAML edit beyond the already-
-  generated pregnancy authority. Regenerated coverage remains complete at
-  42,154/42,154 fields and 41/41 inventory checks.
-- Committed the fixture, exact-boolean, nested-manifest-type, tamper-test, and
-  final US identity repair as `e59ab046`. Final-state calibrate, data, fit, and
-  frame shard runs then passed.
-- The restarted build shard reached 11% and exposed only the expected shared
-  source-attestation cascade in BE, UK, and the rich-minimal golden spec hashes.
-  Re-pinned those three observed semantic identities; the complete country-
-  bundle/loader/spec-only/country-spec focused matrix passes.
-- Committed the shared semantic-hash repin as `d2b75e1e`. The next clean build
-  run passed that boundary and reached 39%, where the legacy optional-ACS
-  provenance golden needed the new additive `structural_receipt: null` field
-  on an unrelated transfer record. Updated only that JSON-ready shape; the
-  complete optional-ACS multispine test file and focused Ruff pass.
-- Committed the additive optional-ACS provenance fixture repin as `7caf69ac`.
-- Restarted the complete build shard from zero on final implementation state:
-  `6601 passed, 45 skipped` in 55m20s, exit 0. Together with the already-green
-  final-state calibrate, data, fit, and frame shard processes, repository Ruff,
-  generated authority/coverage checks, and CI test inventory, this completes
-  the charter's verification boundary.
-- Replaced the stale prior-lane output with the complete pregprior report in
-  `out.md`: both real-pool decompositions, source and gate mechanisms, receipt
-  and identity chains, regressions, verification, judgment calls, and the
-  host-owned next action are recorded there.
+- Read `CLAUDE.md` and the prior weeksgate report's six owner-ruling items with
+  their release-call and model-consumer evidence.
+- Confirmed the requested branch `acs-predictor-release-join` is clean at
+  `606cbd69`, based on `stacked-release-gate-alignment`.
+- Read the GitNexus exploration and impact-analysis workflows. This workspace
+  exposes neither GitNexus repository resources nor query tools, so the same
+  call/dependency analysis will be performed directly from source and tests.
+- Recorded the required source zips and SHA-256 pins, strict exact/total join
+  contract, explicit crosswalk and receipt requirements, and verification
+  boundary.
+- Proved that `person_source_id` is not a reversible ACS key: ACS people are
+  sorted by `(SERIALNO, SPORDER)`, receive a zero-based raw spine ID, and then
+  receive a collision-dependent assembly offset. The pool retains the raw
+  spine ID, `source_row_id`, `source_person_id`, household `SERIALNO`, and clone
+  metadata, so the release join will use the retained semantic
+  `(SERIALNO, integral SPORDER)` key and treat `person_source_id` only as the
+  one-to-many clone fan-out identity.
+- Audited the supplied candidate pool read-only: 856,626 distinct ACS source
+  people expand to 1,736,840 rows (856,626 clone 0, 856,626 clone 1, and
+  23,588 clone 2), with no duplicate `(person_source_id, clone_index)` pair.
+  Every ACS row agrees with its raw spine/source lineage, and all selected
+  people match the pinned raw person archive exactly.
+- Verified both local archives against the charter pins. The person archive
+  has 3,422,888 unique `(SERIALNO, SPORDER)` rows and no household orphans;
+  the household archive has 1,631,969 unique serials, including 1,531,614
+  occupied records. Both contain every requested native predictor.
+- Established the disability universes from the pinned archive and the
+  archived repository mapping: DEAR/DEYE are complete at every age;
+  DREM/DPHY/DDRS are asked from age 5; DOUT from age 15; native code 1 is the
+  consumer's difficulty bin and code 2 (plus an age-valid universe blank) is
+  its non-difficulty bin.
+- Established the consumed race/Hispanic bins: both SCF models distinguish
+  White, Black, Asian, Hispanic, and Other; ORG distinguishes Hispanic,
+  non-Hispanic White, non-Hispanic Black, and Other. `RAC1P`/`HISP` can map
+  exactly to those bins without inventing detailed CPS combinations.
+- Recovered the complete 2024 Census detailed-occupation-to-`POCCU2` consumed
+  grouping from the native ASEC relationship and confirmed that ACS `OCCP`
+  uses the same detailed codes. `PEIOOCC` is therefore a direct carry, while
+  `POCCU2` will use an explicit reviewed 53-bin table; blank out-of-universe
+  occupation maps to code 0, military to 52, and code 9920 to 53.
+- Confirmed ACS `TEN` maps to the SPM vehicle model's three consumed tenure
+  bins (mortgaged owner, outright owner, non-owner); no-cash-rent and verified
+  group-quarters blanks belong to the non-owner bin. Confirmed the SSI model's
+  `SSI_VAL` use is only the `> 0` reporter anchor and that native ACS `SSIP` is
+  already carried as harmonized `ssi_reported`, observed exactly from age 15.
+- Added the dedicated `acs_release_predictors` release boundary. It verifies
+  the two canonical archive pins before opening either zip, streams only
+  selected households, validates exact archive members and headers, rejects
+  raw/person/clone collisions, binds retained pool lineage to
+  `(SERIALNO, SPORDER)`, requires total one-to-one source-person matching, and
+  fans mapped values to clones only through `person_source_id`.
+- Added explicit disability, race/Hispanic, 530-code occupation, and tenure
+  tables. A canonical crosswalk payload is pinned at SHA-256
+  `1d4906242e9c73e31b3283659e5cad8242b8cbc42914ab6fa59547a10c8770e9`
+  and rides the JSON-ready join receipt with per-model/per-predictor
+  ASEC-native, ACS-joined, and still-null counts.
+- Preserved CPS disability universe semantics (`-1` below the question age)
+  and the ACS occupation universe. Blank `PEIOOCC` uses the CPS NIU sentinel
+  `-1`; blank `POCCU2` remains 0 through age 15 and maps to the consumed
+  no-occupation code 53 only from age 16. This explicitly preserves the
+  one-year ACS/CPS source-universe gap instead of assigning every ACS
+  15-year-old a never-worked status without source evidence. The explicit
+  occupation table covers every one of the 530 codes in the pinned ACS person
+  archive and every consumed POCCU2 bin.
+- Changed the SSI-disability reporter read, without source routing, to
+  row-wise coalesce measured ASEC `SSI_VAL` with harmonized native ACS
+  `ssi_reported`. Adult blanks and conflicting dual reporters fail; genuine
+  below-age-15 ACS blanks remain null in the frame and become false only for
+  the consumer's `> 0` predicate.
+- Hardened the join after independent crosswalk review: raw ACS `SSIP` and
+  `ADJINC` now travel through the pinned join and must agree exactly with every
+  native clone-0 `ssi_reported` value under the established adjusted-dollar
+  formula. Raw `ESR`/`OCCP` must obey their exact age-16 universes, and all
+  ASEC predictor receipt cells must be numeric and finite with complete,
+  nonnegative `SSI_VAL`.
+- Updated the SSI signal diagnostic to use the same row-wise reporter coalesce
+  as the model consumer, while retaining the archived native-role anchor
+  scope. A lost positive ACS-native reporter can therefore no longer evade the
+  release gate merely because `SSI_VAL` is null on physical ACS rows.
+- Added focused tests for crosswalk identity/all consumed bins, exact join and
+  clone invariance, ASEC byte preservation, receipt contents, missing joins,
+  raw and source-identity collisions, hash refusal, no-ACS identity, and SSI
+  coalescing/universe refusal. Coverage now also fixes the age-15 occupation
+  gap, malformed ESR refusal, malformed ASEC SSI refusal, raw SSI attestation,
+  and gate-side ACS reporter preservation. The complete join, SSI, and
+  source-blindness test files pass together, and focused Ruff is green.
+
+- The release CLI now accepts the person/household zip and lowercase 64-hex
+  SHA-256 options as an all-or-none set. It invokes the authenticated join
+  after the last unrelated native-input gate and before SCF wealth, therefore
+  before all six archived donor-model stages, then carries the complete join
+  receipt into both `build_manifest.json` and `release_manifest.json`.
+- Added parser refusal tests, a source-order contract over all six model calls,
+  an end-to-end mocked main corridor that verifies the exact four join
+  arguments and runtime ordering, an AST contract that binds the saved receipt
+  to the sole manifest call, and JSON round-trip assertions for both manifests.
+  Focused Ruff, five parser/order/manifest cases, and all six parametrized main
+  corridor cases pass.
+- Exercised the hardened join read-only on the complete supplied candidate.
+  The 3,239,263,147-byte H5 matches its frozen manifest SHA-256
+  `871b7e6467675a1e9475b54fd1baf64c53c0f75a3258b8357303a8df0d53642d`.
+  The current official loader refuses that older candidate before H5 loading
+  because its archived primary-QRF worker binding predates this branch's
+  execution identity; this is an existing candidate/code-version mismatch.
+  Loading those independently manifest-hash-verified bytes with their frozen
+  assembly receipt allowed the join boundary itself to be tested without
+  writing an artifact.
+- The real join passed every source, raw-key, universe, SSI-attestation,
+  totality, collision, and clone-fan-out check: 856,626 unique ACS source
+  people matched 856,626 raw people in 382,903 households and populated
+  1,736,840 support rows (856,626 each at clone indices 0 and 1, plus 23,588
+  at clone index 2). Every CPS-named predictor consumed by the six models has
+  234,133 valid ASEC-native and 1,736,840 ACS-joined cells with zero nulls.
+  The logical SSI reporter anchor has 234,133 ASEC cells, 1,475,235 observed
+  ACS cells, and exactly 261,605 preserved child-universe null support rows.
+- The first real-data attempt exposed fixed-format HDF's expected object dtype
+  for mixed-source columns. Tightened the ASEC validator to inspect each cell,
+  accepting object-wrapped real numbers while still refusing strings,
+  nonfinite values, nulls, and negative SSI. A focused H5-shape regression and
+  all 15 join tests pass before the successful full-pool rerun.
+- Added `changelog.d/acs-release-predictor-join.fixed.md`, describing the
+  pinned release join, reviewed mappings, fail-closed lineage, dual-manifest
+  receipts, and unchanged model/gate behavior.
+- Repository Ruff passes, and the CI inventory verifier reports 310 tracked
+  tests with `verification=ok`. Four complete pytest shards pass in separate
+  processes: frame 295 passed/36 skipped, fit 93 passed, calibrate 203 passed,
+  and data 318 passed/2 skipped.
+- The first complete build-shard process reached 100% with 6,575 passed and 45
+  skipped, plus five failures and six fixture errors. All eleven were the same
+  expected source-attestation drift: `ssi_disability_criteria.py` belongs to
+  both the direct and QRF seed-kernel inventories, so this task's runtime edit
+  moved the seed protocol, compiled US seed map, every country spec identity,
+  the minimal loader golden, and the generated coverage evidence. No ACS join,
+  release CLI, manifest, archived-model behavior, or gate test failed.
+- Applied the repository's established five-file source-identity repin only:
+  seed protocol `59a098f9...31d8b`, US seed map `ce3850d8...e42ab`, US spec
+  `16b7d5e6...dca38`, UK spec `2f921e4c...33a62`, BE spec
+  `c87a0012...34ba`, and minimal-loader golden `b4946105...f2af`; regenerated
+  `docs/evidence/spec-engine/us-f0-coverage.json`. All 25 affected cases and
+  focused Ruff pass. The US bundle generator `--check` passes at the new spec
+  identity, and coverage `--check` passes at 42,122/42,122 fields and 41/41
+  inventory checks.
+- Re-ran the complete build shard after the reviewed repin: 6,586 passed and
+  45 skipped, with exit code 0. Re-ran final repository Ruff, the 310-file CI
+  inventory verifier, both retained spec `--check` commands, and
+  `git diff --check`; all pass. Wrote the required final report to `out.md`.
 
 ## Next
 
-- Host session: rebuild the affected pregnancy transfer from the invalidated
-  checkpoint/target bank, then run terminal pool/release gates. This headless
-  lane performed none of those artifact operations.
+- No work remains in this lane. The dispatcher owns rebasing and the launcher
+  contract update. A future authorized build must produce a pool whose current
+  source-attested worker identity passes the official release loader; the
+  supplied older candidate is useful join evidence but cannot be promoted.
 
-# Historical: Weeksgate stacked release gates and integer-week provenance
+# Weeksgate: stacked release gates and integer-week provenance
 
 ## State
 
@@ -139,8 +189,7 @@ release-call roster is classified; six archived-model input assumptions require
 owner rulings and are deliberately reported instead of guessed. Repository-wide
 Ruff, the CI inventory verifier, and all five full pytest shards pass in their
 required independent processes. The completed provenance, audit, verification,
-judgment calls, and host-owned checkpoint-rerun consequence were recorded in
-`out.md` at commit `606cbd69`.
+judgment calls, and host-owned checkpoint-rerun consequence are in `out.md`.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -307,15 +356,14 @@ build is in scope.
   coverage proof, the CI test inventory, and `git diff --check` are green.
 - Wrote the final provenance tables, mechanism verdict, per-file rationale,
   exhaustive release-gate audit, owner-ruling list, verification evidence, and
-  judgment calls to `out.md`, preserved at commit `606cbd69`.
+  judgment calls to `out.md`.
 
 ## Next
 
 - Host session: rerun `late_transfer -> simulated -> terminal-gates` from the
   candidate checkpoints because the discrete weeks codec changes pool content.
-- Review the six archived-model owner rulings recorded in `out.md` at commit
-  `606cbd69`; do not reinterpret their missing ACS predictors through a
-  gate-only threshold/scope change.
+- Review the six archived-model owner rulings in `out.md`; do not reinterpret
+  their missing ACS predictors through a gate-only threshold/scope change.
 
 # Historical: gate-failed base-pool release lane
 

@@ -1,369 +1,327 @@
-# Pregnancy and prior-year defects: final report
+# ACSPRED: release-side ACS predictor join final report
+
+> **Historical note (2026-08-28).** Lane report, accurate as of 2026-08-27.
+> The branch was subsequently merged into `stacked-release-fix-train`
+> alongside the #794 and #798/#799 fixes; attested digests were regenerated
+> over the merged tree. Currency claims below are historical.
 
 Date: 2026-08-27
 
-Branch: `pregnancy-prioryear-defects`
+Branch: `acs-predictor-release-join`
 
 Lane base: `606cbd69` (`stacked-release-gate-alignment`)
 
 ## Outcome
 
-Both assigned defects are resolved in code and covered by fail-closed
-contracts: pregnancy has a source/transfer fix, while prior-year availability
-has the owner-approved release-gate fix.
+The release builder now populates every CPS-named predictor consumed by the six
+archived donor models on every physical ACS support row. It does so through an
+exact release-time join to the two canonical, SHA-pinned 2024 one-year ACS PUMS
+archives and a versioned, digest-pinned crosswalk. It does not fill unknowns
+with silent defaults, weaken a gate, retrain a model, or change model selection
+logic.
 
-- Pregnancy is now structurally limited to female people ages 15 through 44
-  before the ACS QRF draw. One source-person result is fanned across every
-  missing assembled clone, missing ineligible values become deterministic
-  false, and preexisting or final domain/clone violations are refused with
-  explicit counts. Production transfer validation authenticates the structural
-  receipt; the structural policy and execution contract are bound into
-  checkpoint and target-bank identity.
-- The prior-year availability shortfall is a sampling-order effect, not ACS
-  dilution and not a transfer hole. Under the owner ruling, only the gate's
-  applied lower availability floor is scaled by the authenticated production
-  sampling rung. At rung 1.0 the gate and report follow the original path
-  byte-for-byte. The authored `0.05` constant, the `0.50` upper bound, all
-  other bands, thresholds, seeds, and batteries are unchanged.
+The join passed read-only on the complete supplied candidate: 856,626 unique
+ACS source people matched exactly 856,626 raw person records in 382,903 raw
+households and fanned out to 1,736,840 ACS support rows. All model predictors
+have zero remaining nulls. The SSI reporter path separately preserves 261,605
+genuine below-age-15 ACS support-row nulls and treats them as false only at the
+consumer's `> 0` predicate.
 
-Full repository verification is green: all five package shards passed in
-independent pytest processes, repository Ruff passed, generated bundle and
-coverage bytes are current, the CI test inventory passed, and the worktree has
-no leftover graph artifact or untracked file.
+The implementation adds four all-or-none release CLI inputs, writes the full
+receipt to both manifests, keeps legacy non-ACS releases as an explicit
+disabled identity path, and leaves the launcher contract to the dispatcher as
+required.
 
-This lane used the supplied 25% pool only as read-only diagnostic evidence. It
-did not use the network, build or publish a pool/release, push, or publish any
-artifact. The supplied pool still contains the old pregnancy outputs and is not
-evidence that the source fix has run.
+No network access, pool build, release build, wheel build, publication, push,
+or launcher edit was performed.
 
-## Task 1: pregnancy structural eligibility
+## Join-key verification
 
-### Real-pool decomposition
+### Why `person_source_id` is not the raw key
 
-The supplied pool is:
+The ACS loader rejects duplicate `(SERIALNO, SPORDER)` pairs, stably sorts by
+that pair, and only then assigns a zero-based raw `source_row_id`
+(`acs_pums.py:204-238`). Source construction stores `SPORDER` separately as
+`source_person_id` and links people to the household identified by `SERIALNO`
+(`acs_pums.py:264-279`). Assembly then collision-offsets structural IDs and
+creates assembly-unique support source IDs (`spine_assembly.py:366-430`;
+`support_provenance.py:346-371`). Therefore neither the final structural ID nor
+`person_source_id` is a reversible Census record key.
 
-`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/pool/pool.h5`
+The release join instead recovers the retained semantic identity:
 
-It contains 1,970,973 person rows. The complete hard-domain decomposition is:
+| Role | Retained evidence | Enforced relation |
+|---|---|---|
+| Household key | linked household `SERIALNO` | nonblank, one source household identity per serial |
+| Person key | integral `SPORDER` and `source_person_id` | exactly equal and at least 1 |
+| Raw ordinal | `source_row_id`, `person_spine_source_id` | exactly equal, but never used as the Census join key |
+| Source identity | `person_source_id` | one raw identity across all clones; fan-out only |
+| Clone identity | `person_support_clone_index` | unique `(person_source_id, clone_index)` and exactly one clone 0 |
+| Vintage | `source_year` | exactly 2024 on physical ACS rows |
 
-| Physical channel | Clone | Person rows | Pregnant nonfemale | Pregnant female outside 15--44 | Total violations |
-|---|---:|---:|---:|---:|---:|
-| ASEC | 0 | 108,073 | 0 | 0 | 0 |
-| ASEC | 1 | 108,073 | 0 | 0 | 0 |
-| ASEC | 2 | 17,987 | 0 | 0 | 0 |
-| **ASEC all** |  | **234,133** | **0** | **0** | **0** |
-| ACS | 0 | 856,626 | 45 | 30 | 75 |
-| ACS | 1 | 856,626 | 61 | 28 | 89 |
-| ACS | 2 | 23,588 | 2 | 0 | 2 |
-| **ACS all** |  | **1,736,840** | **108** | **58** | **166** |
-| **Pool** |  | **1,970,973** | **108** | **58** | **166** |
+The implementation derives these relations at
+`acs_release_predictors.py:1078-1289`, including person-to-household channel
+agreement, clone agreement, raw ordinal agreement, and unique canonical
+`(SERIALNO, SPORDER)`. It then performs a pandas `one_to_one` left merge on
+that semantic key, rejects any unmatched pool source person, and refuses a row
+count change (`acs_release_predictors.py:893-923`). Only after that proof does
+it map values back through `person_source_id` to every clone
+(`acs_release_predictors.py:939-968`).
 
-The initially reported row positions 129405, 167076, 171133, 192443, and
-195546 are members of the 108-row nonfemale subset. All 166 hard-domain
-violations occur on ACS physical records and are isolated to one clone within
-their source-person group. There are 11,287 ACS source people whose assembled
-clones disagree on pregnancy; ASEC has zero clone disagreements. Sex values,
-ages, physical channel, and clone attachment are internally consistent, which
-rules out assembly or sex-code corruption.
+## Artifact and refusal contract
 
-### Root cause
+The reviewed archive identities are declared at
+`acs_release_predictors.py:70-88`:
 
-The defect was the ACS pregnancy QRF path. The ASEC source producer already
-conditions its stable pregnancy draw on female ages 15 through 44
-(`packages/microcosm-build/src/microcosm/build/us_runtime/pregnancy.py:292` and
-`:330`). ACS transfer instead used sex and age only as soft QRF predictors,
-modeled physical clone rows separately, and had neither a hard eligibility
-precondition nor a domain/clone postcondition. That combination explains both
-the 166 impossible positives and the 11,287 source-person disagreements.
+| Archive | SHA-256 | Size observed |
+|---|---|---:|
+| 2024 ACS person `csv_pus.zip` | `afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894` | 602,847,146 bytes |
+| 2024 ACS household `csv_hus.zip` | `8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0` | 251,500,587 bytes |
 
-### Source fix and construction invariant
+Before either zip is opened, the boundary requires lowercase 64-hex syntax,
+requires the caller's expected hash to equal the reviewed canonical pin, and
+hashes the actual file (`acs_release_predictors.py:991-1021`). It then requires
+exact `psam_pusa/b.csv` or `psam_husa/b.csv` membership, verifies required
+headers, and streams only selected serials (`acs_release_predictors.py:1024-1075`).
 
-The policy is explicit and identity-bearing at
-`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:141`:
+The boundary also refuses:
 
-1. Female status must be an exact `0/1` Boolean-domain value and age must be
-   complete, finite, and within the inclusive range 15--44. Donor and recipient
-   surfaces are checked before any requested pregnancy QRF runs
-   (`acs_transfer.py:973`).
-2. Assembled recipients are grouped by `person_source_id`, must have valid
-   clone indices and exactly one clone 0, and must agree on eligibility and any
-   preexisting pregnancy value (`acs_transfer.py:1025` and `:1100`).
-3. Only one eligible, unresolved clone-0 representative per source person is
-   sent to the QRF. Existing valid source-person values are preserved; missing
-   ineligible rows are resolved as structural false without entering the QRF
-   (`acs_transfer.py:1181`).
-4. The one decoded source-person result is fanned to every missing clone
-   (`acs_transfer.py:1223`). Completeness, hard-domain validity, and all-clone
-   equality are then enforced as fail-closed postconditions
-   (`acs_transfer.py:1248`).
-5. Pregnancy preflight still runs when its surface is already complete or when
-   some other requested family remains active. A complete surface therefore
-   carries a zero-imputation structural proof instead of bypassing validation
-   (`acs_transfer.py:1417`). Pregnancy is also isolated from unrelated bounded
-   QRF families (`acs_transfer.py:3157`).
+- partial CLI/archive inputs or archive inputs on a frame with no ACS rows;
+- a stale crosswalk digest;
+- malformed or incomplete assembly provenance;
+- duplicate raw person or household keys;
+- source-identity, semantic-key, or clone-index collisions;
+- orphaned or cross-channel person/household links;
+- pool household `TEN` disagreement with the pinned household archive;
+- an incomplete one-to-one person join;
+- an unsupported raw code or age/universe violation;
+- a conflicting pre-existing ACS predictor value;
+- missing, nonnumeric, or nonfinite native ASEC predictors, or negative
+  `SSI_VAL`; and
+- any remaining null in a model-consumed predictor.
 
-The ASEC source-stage producer and the release pregnancy signal gate apply
-the same hard domain and exact-Boolean contract. Their details report the
-actual domain and clone counts, and they refuse violations rather than
-silently zeroing them
-(`packages/microcosm-build/src/microcosm/build/us_runtime/pregnancy.py:167`,
-`:224`, `:265`, and `:438`).
+The relevant executable checks are at
+`acs_release_predictors.py:830-968,1078-1356,1548-1586`.
 
-### Receipt and execution identity
+## Reviewed crosswalks
 
-The sealed structural receipt distinguishes four disjoint fill categories:
-QRF representative rows, QRF clone fanout, preexisting-value fanout, and
-ineligible-false assignments. It also records source-person topology and the
-preexisting/final domain and clone-violation counts
-(`acs_transfer.py:1189` and `:1285`). A successful new transfer must receipt
-zero violations; a rejected surface names the nonzero count in its failure.
+The canonical crosswalk payload is source-controlled at
+`acs_release_predictors.py:726-790` and pinned as:
 
-Production validation authenticates the policy digest, exact integer count
-types, zero-violation postconditions, source-person/clone arithmetic, one QRF
-row per QRF source person, and exact equality between the four fill categories
-and the transferred-row count
-(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4203`
-and `:4873`). Receipt emission is at `stacked_spine.py:10591`.
+`1d4906242e9c73e31b3283659e5cad8242b8cbc42914ab6fa59547a10c8770e9`
 
-The structural policy is inside the target-specific transfer execution
-contract and its SHA (`acs_transfer.py:276`). Each late-transfer model binding
-includes that contract (`stacked_spine.py:6691`), the outer checkpoint identity
-authenticates those resource semantics (`stacked_spine.py:6809` and
-`tools/build_us_multispine_pool.py:1410`), and late target-bank identities
-extend the checkpoint identity (`tools/build_us_multispine_pool.py:3300` and
-`:3726`). A policy change therefore invalidates both checkpoint reuse and
-target-bank reuse.
+| Source | Target | Exact reviewed mapping | Consumed model bin |
+|---|---|---|---|
+| `DDRS` | `PEDISDRS` | age 5+: `1 -> 1`, `2 -> 2`; younger blank `-> -1` | SSI tests only `== 1` |
+| `DEAR` | `PEDISEAR` | all ages: `1 -> 1`, `2 -> 2` | SSI tests only `== 1` |
+| `DEYE` | `PEDISEYE` | all ages: `1 -> 1`, `2 -> 2` | SSI tests only `== 1` |
+| `DOUT` | `PEDISOUT` | age 15+: `1 -> 1`, `2 -> 2`; younger blank `-> -1` | SSI tests only `== 1` |
+| `DPHY` | `PEDISPHY` | age 5+: `1 -> 1`, `2 -> 2`; younger blank `-> -1` | SSI tests only `== 1` |
+| `DREM` | `PEDISREM` | age 5+: `1 -> 1`, `2 -> 2`; younger blank `-> -1` | SSI tests only `== 1` |
+| `RAC1P` | `PRDTRACE` | `1 -> 1` White; `2 -> 2` Black; `6 -> 4` Asian; `3/4/5/7/8/9 -> 3` residual Other | SCF White/Black/Asian/Other; ORG White/Black/Other |
+| `HISP` | `PRDTHSP` | `1 -> 0` non-Hispanic; `2..24 -> 1` positive Hispanic representative | both consumers test zero versus positive |
+| observed `OCCP` | `PEIOOCC` | identity over all 530 pinned detailed codes | SIPP tips exact detailed-code membership |
+| blank `OCCP` | `PEIOOCC` | `-1`, the CPS NIU sentinel | unlisted/non-tipped |
+| observed `OCCP` | `POCCU2` | explicit 530-key table covering consumed bins 1 through 53 | ORG exact categories and EAP set |
+| blank `OCCP` | `POCCU2` | age below 16 `-> 0`; age 16+ permitted only with `ESR=6`, then `-> 53` | preserve NIU; adult no occupation/never worked |
+| household `TEN` | `SPM_TENMORTSTATUS` | `1 -> 1`, `2 -> 2`, `3/4 -> 3`; verified group-quarters blank `-> 3` | SIPP vehicle homeowner iff `{1,2}` |
 
-The generated US imputation authority declares the generic policy template at
-`packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:412` with
-`enabled: false`; the resolver enables and rehashes it exactly for transfer
-groups containing `is_pregnant`
-(`packages/microcosm-build/src/microcosm/build/spec_engine/imputation_semantics.py:195`).
-The late producer also declares `person_source_id` as its structural grouping
-input (`packages/microcosm-build/src/microcosm/build/us_runtime/us_late_producer_registry.py:670`).
-The final resolved US spec SHA is
-`11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`.
+The disability, race, occupation, and tenure executable mappings are at
+`acs_release_predictors.py:108-687,689-694,1364-1454`. The occupation map's
+notable reviewed edges include `3250 -> 26` while `3255/3256/3258 -> 25`, ACS
+military `9800/9810/9825/9830 -> 52`, and `9920 -> 53`. The table maps the
+shared detailed code vocabulary to the modal 2024 ASEC category; it is not
+represented as a fictional rowwise CPS identity.
 
-### Pregnancy regressions
+### Age-15 occupation judgment
 
-- Source refusal, gate counts/clone disagreement, and near-Boolean refusal:
-  `packages/microcosm-build/tests/test_us_pregnancy.py:251`, `:302`, and `:344`.
-- One draw per source person, clone fanout, structural false, and disjoint
-  receipt accounting: `packages/microcosm-build/tests/test_us_acs_transfer.py:1448`.
-- Donor/recipient pre-QRF and mixed-active refusal: `test_us_acs_transfer.py:1592`.
-- Zero-imputation receipt and policy-dependent execution identity:
-  `test_us_acs_transfer.py:1694` and `:1722`.
-- Integrated stacked transfer, receipt propagation, all-clone equality,
-  complete-surface proof, and invalid source refusal:
-  `packages/microcosm-build/tests/test_us_stacked_spine.py:6311`.
-- Bound execution-contract emission and stale-contract refusal:
-  `test_us_stacked_spine.py:4651` and `:4693`.
-- Forged policy-digest rejection:
-  `packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3026`.
+ACS `OCCP` begins at age 16, while CPS `POCCU2` is already in universe at age
+15. In source-year-2024 ASEC, 2,174 people are age 15: 1,931 have `POCCU2=53`
+but 243 have categories 1 through 52. Mapping every ACS age-15 blank to 53
+would therefore invent never-worked evidence. The crosswalk preserves 0 for
+that one-year source/target universe gap and uses 53 only for defensible adult
+blanks. Raw `ESR` is required blank below 16 and in `1..6` from 16; an adult
+`OCCP` blank is allowed only at `ESR=6`.
 
-## Task 2: prior-year availability
+## SSI reporter semantics
 
-### Real-pool decomposition and verdict
+`SSI_VAL` is the measured ASEC amount. The pool's native ACS mapping already
+stores adjusted `SSIP` as `ssi_reported`. The release join now reads raw `SSIP`
+and `ADJINC`, enforces the exact age-15 universe, and proves clone-zero
+`ssi_reported == SSIP * ADJINC / 1_000_000` source person by source person
+(`acs_release_predictors.py:1458-1545`).
 
-| Physical channel | Clone | Person rows | Available rows | Weighted availability |
-|---|---:|---:|---:|---:|
-| ASEC | 0 | 108,073 | 4,724 | 0.04308325 |
-| ASEC | 1 | 108,073 | 4,724 | 0.04308351 |
-| ASEC | 2 | 17,987 | 752 | 0.04277737 |
-| **ASEC all** |  | **234,133** | **10,200** | **0.04308325** |
-| ACS | 0 | 856,626 | 38,228 | 0.04258969 |
-| ACS | 1 | 856,626 | 38,228 | 0.04258837 |
-| ACS | 2 | 23,588 | 928 | 0.04374427 |
-| **ACS all** |  | **1,736,840** | **77,384** | **0.04258969** |
-| **Pool** |  | **1,970,973** | **87,584** | **0.04283879** |
+The SSI receiver coalesces `SSI_VAL` and `ssi_reported` rowwise, without
+origin-routing the model, rejects conflicting dual reporter statuses, permits
+a blank only below age 15, and fills that blank only transiently for the
+existing `> 0` predicate (`ssi_disability_criteria.py:758-813,1082-1093`). The
+gate summary uses the same coalesced anchor and native-role scope, so a lost
+positive ACS-native reporter cannot evade the diagnostic. Source nulls remain
+null in the frame.
 
-This is neither ACS dilution nor an ACS transfer hole. ASEC and ACS are both
-about 4.3% available. ACS is intended to receive
-`previous_year_income_available`: the generated authority declares the early
-ASEC-to-ACS QRF over all recipient rows at
-`packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:1077`.
-The nearly identical ASEC and ACS incidence is evidence that transfer is
-operating.
+## Release integration and receipts
 
-The cause is the assembly's sampling order. ASEC households are sampled before,
-and without coupling to, their adjacent-year `PERIDNUM` partners
-(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:633`
-and `prior_year_income.py:346`). Of 18,518 sampled current-year records that
-match the intact full predecessor files, only 4,724 retain a predecessor after
-the sampled-to-sampled join. Weighted match survival is 25.4117%, the expected
-25% rung effect. As controls, full pooled ASEC availability is 16.9147%, while
-selected current rows joined to intact prior files are 16.9541%.
+The release builder declares the four inputs at
+`build_us_fiscal_refresh_release.py:1293-1318` and validates all-or-none plus
+lowercase SHA syntax at `:1587-1610`:
 
-The owner accepted this sampling-order verdict. It falls under the charter's
-"something else" category: the transfer is sound, and the low incidence is
-the expected consequence of independently sampling both join sides.
+- `--acs-person-zip`
+- `--acs-person-sha256`
+- `--acs-household-zip`
+- `--acs-household-sha256`
 
-### Rung-aware release floor
+It invokes the join at `build_us_fiscal_refresh_release.py:9828-9846`, before
+SCF wealth and consequently before all six archived-model stages. The receipt
+is embedded at top level in `build_manifest.json` (`:7534-7642`) and under
+`release_manifest.json.build` (`:7841-7871`); the sole writer call receives the
+saved runtime receipt at `:11860-11879`.
 
-The authored bands remain exactly:
+The complete real-data receipt included this core evidence:
 
-- `_PREVIOUS_YEAR_AVAILABLE_SHARE_BAND = (0.05, 0.50)`
-- `_SELF_EMPLOYMENT_NONZERO_SHARE_BAND = (0.01, 0.25)`
+```json
+{
+  "enabled": true,
+  "crosswalk": {
+    "version": 1,
+    "sha256": "1d4906242e9c73e31b3283659e5cad8242b8cbc42914ab6fa59547a10c8770e9"
+  },
+  "join": {
+    "semantic_key": ["household.SERIALNO", "person.SPORDER"],
+    "clone_fanout_key": "person_source_id",
+    "acs_source_people": 856626,
+    "acs_support_rows": 1736840,
+    "acs_support_rows_by_clone_index": {"0": 856626, "1": 856626, "2": 23588},
+    "selected_raw_person_rows": 856626,
+    "selected_raw_household_rows": 382903,
+    "unmatched_pool_source_people": 0,
+    "source_identity_collisions": 0,
+    "semantic_key_sha256": "c7723adc889fc655b46103426d21f6c74937434eff51e8f3e6025bdf60972b74"
+  }
+}
+```
 
-They are at
-`packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py:183`.
-For a production sampling rung `r`, only the applied lower availability floor
-becomes `0.05 * r`; the upper stays `0.50`.
+Per-model counts were:
 
-| Rung | Applied availability floor | Upper bound |
-|---:|---:|---:|
-| 0.01 | 0.0005 | 0.50 |
-| 0.04 | 0.0020 | 0.50 |
-| 0.10 | 0.0050 | 0.50 |
-| 0.25 | 0.0125 | 0.50 |
-| 1.00 | 0.0500 | 0.50 |
+| Model | Predictors | ASEC-native each | ACS-joined each | Still null |
+|---|---|---:|---:|---:|
+| SSI disability | six `PEDIS*` | 234,133 | 1,736,840 | 0 |
+| SCF wealth | `PRDTRACE`, `PRDTHSP` | 234,133 | 1,736,840 | 0 |
+| SCF auto loans | `PRDTRACE`, `PRDTHSP` | 234,133 | 1,736,840 | 0 |
+| SIPP vehicles | `SPM_TENMORTSTATUS` | 234,133 | 1,736,840 | 0 |
+| SIPP tips | `PEIOOCC` | 234,133 | 1,736,840 | 0 |
+| ORG wages/FLSA | `PRDTRACE`, `PRDTHSP`, `POCCU2` | 234,133 | 1,736,840 | 0 |
+| SSI logical reporter anchor | ASEC `SSI_VAL`; ACS `ssi_reported` | 234,133 | 1,475,235 | 261,605 child-universe nulls |
 
-The supplied candidate is gate-failed and contains stale pregnancy output; it
-is not simulation-ready. Its sibling manifest nevertheless records and
-digest-binds a valid sampling receipt at rung `0.25` (version 4, seed 578), so
-the prior-year gate's applied floor is `0.0125`. The configured rung, not the
-empirical 25.4117% diagnostic estimate, is the execution input.
+The receipt producer is at `acs_release_predictors.py:1589-1677`.
 
-On sampled production assemblies, the gate adds these report fields so the
-reader can see exactly why the floor moved:
+## Archived-model behavior retained
 
-- `previous_year_income_available_sampled_match_survival_factor`
-- `previous_year_income_available_applied_floor`
-- `previous_year_income_available_applied_share_band`
+The five non-SSI consumer modules are byte-unchanged from the lane base. The
+SSI model's predictor list, QRF feature/selection logic, role routing, and
+thresholds are unchanged; only its source-faithful reporter read and matching
+gate diagnostic changed.
 
-The conditional logic is at `prior_year_income.py:889`. At rung 1.0 the branch
-is not entered: no new fields are emitted, the original band key is evaluated,
-and the result is byte-identical to the pre-change gate. No-manifest frames and
-legacy version-1 frames also retain factor 1.0. Malformed version-4 metadata or
-unsupported manifest versions fail closed (`prior_year_income.py:189`). No
-other prior-year check or band changed.
+| Consumer | Executable consumed bins | Evidence |
+|---|---|---|
+| SSI disability | six difficulty inputs consumed only as `== 1`; reporter is under 65 and `> 0` | `ssi_disability_criteria.py:143-150,902-908,1082-1093` |
+| SCF wealth | White 1, Black 2, Asian 4, Hispanic positive, residual Other | `scf_wealth.py:611-621,654-724` |
+| SCF auto loans | reuses the SCF wealth race helper | `scf_auto_loans.py:38-42,365-380` |
+| SIPP vehicles | homeowner iff tenure code is 1 or 2 | `sipp_vehicles.py:577-621,740-763` |
+| SIPP tips | exact detailed Census occupation membership; unlisted NIU is zero | `sipp_tips.py:129-184,249-263,363-375` |
+| ORG wages/FLSA | POCCU2 53 never worked, 52 military, 8 computer, 41 farmer/fisher, explicit EAP set; Hispanic/White/Black/Other | `org_wages.py:133-183,408-415,535-559,610-625` |
 
-### Manifest provenance and regressions
+No gate band or numeric threshold was edited. Whether ORG and tips pass or fail
+on a future release is therefore determined by the real joined values, as
+required.
 
-Production assembly writes the version-4 common fraction/seed and both arm
-receipts into frame metadata (`stacked_spine.py:679`). Pool publication carries
-the summarized sampling receipt, full stack manifest, and canonical SHA-256
-binding (`tools/build_us_multispine_pool.py:4193` and `:4224`). The H5 loader
-checks the schema-9 envelope, approved rung token, strict finite-float fraction,
-non-Boolean seeds/counts, exact ASEC+ACS arms, arm/top agreement, positive
-realized counts, and canonical manifest digest before restoring a deep copy to
-frame metadata. The surrounding loader also authenticates the H5 SHA, size, and
-run identity and rechecks the digest after reading
-(`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:238`, `:270`,
-`:819`, `:1750`, and `:1813`). On the production release path the gate therefore
-consumes loader-authenticated, not caller-invented, rung metadata
-(`tools/build_us_fiscal_refresh_release.py:1696` and `:9514`).
+## Real-pool audit and operational caveat
 
-Regression coverage includes:
+The supplied candidate pool contains 1,970,973 people and 865,460 households.
+Its 3,239,263,147-byte H5 exactly matches the frozen manifest SHA-256
+`871b7e6467675a1e9475b54fd1baf64c53c0f75a3258b8357303a8df0d53642d`.
 
-- scaled-only lower-floor behavior and unchanged bands:
-  `packages/microcosm-build/tests/test_us_prior_year_income.py:439`;
-- lower and upper enforcement: `test_us_prior_year_income.py:468`;
-- exact rung-1 gate/report bytes: `test_us_prior_year_income.py:486`;
-- legacy behavior and malformed metadata: `test_us_prior_year_income.py:510`;
-- receipt restoration and top/arm disagreement:
-  `packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py:1456`;
-- nested Boolean/type-alias refusal: `test_us_multispine_pool_h5_io.py:1537`.
+The current official release loader refuses that older candidate before H5
+loading because the manifest's archived primary-QRF worker binding predates
+this branch's source-attested execution identity: `late primary-QRF worker
+binding changed`. To isolate and test this lane without building an artifact,
+the audit independently verified the H5 bytes, read its entity tables through
+the repository HDF reader, restored the frozen `assembly_receipt`, and ran the
+strict join. Every join and crosswalk assertion passed.
 
-Pre-sampling adjacent-year joins at assembly remain a possible architectural
-end state only. This lane did not move the joins or change source assembly.
-
-## Diff summary
-
-Before replacing this report, the lane diff comprised 34 files with 2,352
-insertions and 126 deletions. The substantive changes are:
-
-- pregnancy source, ACS transfer, stacked receipt/authentication, late-producer
-  structural inputs, execution identity, and their source/transfer/gate/tool
-  regressions;
-- authenticated H5 sampling-receipt restoration and the rung-aware prior-year
-  gate/report regressions;
-- generated US imputation authority, schema/semantic projection, compiler
-  field-usage and inventory proofs, and the source-attested BE/UK/minimal hash
-  repins caused by the shared semantic change;
-- coverage evidence and the additive optional-ACS provenance golden; and
-- changelog fragments
-  `changelog.d/798-pregnancy-structural-transfer.fixed.md` and
-  `changelog.d/799-prior-year-rung-floor.fixed.md`.
+This is not an unresolved crosswalk issue, but it is an operational handoff:
+the old candidate cannot be promoted through the current authenticated release
+loader. A fresh/currently authenticated candidate is required outside this
+headless no-build lane.
 
 ## Verification
 
-All commands used the prebuilt environment with no sync or network access.
+All commands ran offline against the prebuilt environment. Each package shard
+ran in its own pytest process. Packaging was not touched, so wheels were not
+built.
 
-### Complete independent pytest shards
+- `uv run --no-sync ruff check .`: PASS, `All checks passed!`
+- `uv run --no-sync python tools/ci_test_groups.py --verify`: PASS,
+  `tracked_test_files=310`, `verification=ok`
+- `tools/generate_us_bundle_from_constants.py --check`: PASS, US spec
+  `16b7d5e622e8a68e008165bb44a5836695d94a2b0dd8d4c51b3c9e8ca89dca38`
+- `tools/spec_engine_coverage.py --check`: PASS, 42,122/42,122 fields and
+  41/41 inventory checks
+- frame shard: PASS, 295 passed, 36 skipped
+- fit shard: PASS, 93 passed
+- calibrate shard: PASS, 203 passed
+- data shard: PASS, 318 passed, 2 skipped
+- build shard after reviewed source-attestation repin: PASS, 6,586 passed,
+  45 skipped
+- join-focused file: PASS, 15 passed
+- combined join, SSI, and source-blindness files: PASS
+- parser/order/manifest focused cases and all six parametrized mocked-main
+  corridor cases: PASS
+- repository `git diff --check`: PASS
 
-| Shard target | Result |
-|---|---:|
-| `pytest packages/microcosm-build/tests` | 6,601 passed, 45 skipped |
-| `pytest packages/microcosm-calibrate/tests` | 203 passed |
-| `pytest packages/microcosm-data/tests` | 318 passed, 2 skipped |
-| `pytest packages/microcosm-fit/tests` | 93 passed |
-| `pytest packages/microcosm-frame/tests` | 295 passed, 36 skipped |
-| **Aggregate** | **7,510 passed, 83 skipped** |
+The first complete build-shard run reached 100% with 6,575 passed and 45
+skipped plus five failures and six setup errors, all caused by stale expected
+source-attestation hashes after changing `ssi_disability_criteria.py`. That
+module participates in both seed-kernel source inventories. The narrow
+established repin updated the two seed digests, BE/UK/US spec identities, the
+minimal-loader golden, and generated coverage evidence. All 25 affected tests
+then passed, both retained `--check` commands passed, and the complete build
+shard rerun above was green.
 
-The clean final build-shard process took 55m20s and exited 0. Its 2,351
-warnings are preexisting overflow, pandas chained-assignment/fragmentation,
-PolicyEngine division, and donor-snap warnings; there were no test errors.
+Existing warnings were numerical overflow/divide, pandas chained-assignment,
+and fragmented-fixture performance warnings; none was a test failure.
 
-Focused evidence also passed: all 23 prior-year tests and all 64 current H5
-loader tests (the initial 60-test run plus four later nested-type adversarial
-cases), the complete pregnancy and ACS-transfer files, integrated stacked
-execution, forged-policy controls, the complete optional-ACS multispine file,
-and the country-bundle/loader/spec matrix.
+## Judgment calls and unresolved items
 
-### Static, generated, and workspace gates
+- The join uses retained semantic lineage, not a guessed arithmetic inversion
+  of assembly IDs.
+- Race and Hispanic mappings stop at the bins the consumers actually read;
+  they do not invent CPS detail absent from ACS.
+- Disability codes preserve `1/2` plus the CPS NIU sentinel rather than
+  collapsing the source to booleans.
+- Age-15 ACS occupation remains NIU because assigning 53 would fabricate
+  never-worked evidence for a group whose CPS distribution is not degenerate.
+- `PEIOOCC` blank uses CPS NIU `-1`, not a fictional detailed occupation 0.
+- SSI child nulls remain source nulls; only the predicate interprets them as
+  non-reporters.
+- Pool household `TEN` is preferred for lineage and must agree exactly with the
+  pinned household zip; group-quarters non-owner status is applied only after
+  raw universe checks.
+- ASEC values are validated but never rewritten, preserving their native model
+  inputs byte-for-byte.
+- No crosswalk semantic remains unresolved. The only open operational item is
+  obtaining a current authenticated pool and adding the four launcher
+  arguments; both are explicitly outside this lane and owned by the
+  dispatcher/build process.
 
-- `uv run --no-sync ruff check .`: `All checks passed!`
-- `uv run --no-sync python tools/ci_test_groups.py --verify`:
-  `tracked_test_files=309`, `verification=ok`
-- `uv run --no-sync python tools/generate_us_bundle_from_constants.py --check`:
-  `US bundle spec_sha256=11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`
-- `uv run --no-sync python tools/spec_engine_coverage.py --check`:
-  `42154/42154` configuration fields and `41/41` inventory checks
-- `git diff --check 606cbd69..HEAD`: passed
-- Untracked files and local `.gitnexus` directories: zero
+## Commits before final journal handoff
 
-## Judgment calls and boundaries
+- `2aa14e84` Start ACS predictor release join journal
+- `c1a41ccf` Record ACS predictor join contracts
+- `ecea55a2` Add strict ACS release predictor join
+- `a7108697` Harden ACS predictor crosswalk contracts
+- `6b8185e4` Wire ACS predictor join into release builder
+- `d87be068` Accept numeric H5 predictor cells
+- `69ec0fae` Document ACS release predictor join
+- `de5e5d03` Repin source-attested spec identities
 
-- Missing values on ineligible recipients are constructed as false and
-  receipted; preexisting invalid true values are refused with counts. This
-  preserves valid existing data without silently repairing corrupted input.
-- One eligible clone-0 representative owns the random draw. Every missing clone
-  of the source person receives the same result, while valid existing values
-  are preserved, eliminating clone-specific random pregnancy states by
-  construction.
-- Boolean structure is exact `0/1`; near-Boolean floats do not pass through
-  numerical tolerance. Nested manifest fractions, seeds, and counts likewise
-  reject JSON Boolean equality aliases.
-- A complete pregnancy surface cannot bypass structural preflight during a
-  restart and carries a zero-imputation proof.
-- The prior-year gate uses the authenticated configured rung as the
-  sampled-to-sampled survival factor. It does not substitute a noisy empirical
-  estimate, change the authored 0.05 constant, relax the upper bound, or touch
-  another band.
-- Legacy/no-rung and full-rung behavior remains unchanged. At rung 1.0 the
-  gate report is byte-identical to the old output.
-- Joining adjacent raw ASEC years before sampling is documented only as a
-  future architectural end state, per the ruling; it is not implemented here.
-
-## Commit inventory before this report carrier
-
-1. `b7be9c35` — Start pregnancy and prior-year defect journal
-2. `364f4525` — Record pregnancy and prior-year root causes
-3. `6d3351fd` — Record prior-year release-gate ruling
-4. `f5284a07` — Scale prior-year availability gate by sampling rung
-5. `4aa6269a` — Record prior-year gate implementation
-6. `01a80f49` — Enforce structural pregnancy transfer eligibility
-7. `e59ab046` — Harden pregnancy and rung receipts
-8. `d2b75e1e` — Repin shared spec attestations
-9. `7caf69ac` — Repin ACS transfer provenance fixture
-10. `011563db` — Record completed provenance repin
-11. `c1a4bfb9` — Record full shard verification
-
-## Host-owned next action
-
-Rebuild the affected pregnancy transfer from the invalidated checkpoint and
-target bank, then run the terminal pool/release gates on the rebuilt artifact.
-The prior-year gate will read the existing authenticated sampling receipt and
-report the applied factor/floor. Those build, certification, publication, and
-push actions are deliberately outside this headless lane.
+The final local commit adds this report and marks `PROGRESS.md` complete.
