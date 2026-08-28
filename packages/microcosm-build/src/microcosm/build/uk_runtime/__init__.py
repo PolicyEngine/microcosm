@@ -264,10 +264,12 @@ from microcosm.build.uk_runtime.local_geography import (
     align_area_targets,
 )
 from microcosm.build.uk_runtime.local_rowwise import (
+    UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
     UKRowwiseDoctrineSolve,
     UKRowwiseLocalMatrix,
     build_uk_rowwise_local_matrix,
     past_cap_census,
+    require_adjudicated_uk_local_binding,
     rowwise_area_support_summary,
     rowwise_calibration_mass_reason,
     solve_uk_rowwise_weights_under_doctrine,
@@ -496,6 +498,7 @@ __all__ = [
     "UK_GATE_REGISTRY",
     "UK_FRAME_METADATA_KEY",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
+    "UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE",
     "UK_LOCAL_SOLVE_DOCTRINE",
     "UK_LOCAL_TARGET_LOSS_CAP",
     "UK_CGT_GAINS_AMOUNT_COLUMN",
@@ -506,6 +509,7 @@ __all__ = [
     "load_uk_stage_checkpoint",
     "load_uk_stage_predecessor",
     "materialize_uk_cgt_calibration_frame",
+    "require_adjudicated_uk_local_binding",
     "rowwise_calibration_mass_reason",
     "uk_cgt_annual_exempt_amount",
     "UK_CGT_REQUIRED_COLUMNS",

@@ -20,21 +20,30 @@ and the evidence substrate (support summaries, past-cap census).
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from scipy import sparse as sp
 
+from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_SOLVE_DOCTRINE,
 )
+from microcosm.build.uk_runtime.local_targets import AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.weighted_integrity import (
+    coerce_reviewed_exclusions,
+    exclusion_evaluation_date,
+    load_uk_reviewed_exclusion_register,
 )
 from microcosm.calibrate.solve import (
     CONSERVE_MASS,
@@ -47,14 +56,18 @@ from microcosm.calibrate.target import Target, TargetSet
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
+    "UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE",
     "UKRowwiseDoctrineSolve",
     "UKRowwiseLocalMatrix",
     "build_uk_rowwise_local_matrix",
     "past_cap_census",
+    "require_adjudicated_uk_local_binding",
     "rowwise_calibration_mass_reason",
     "rowwise_area_support_summary",
     "solve_uk_rowwise_weights_under_doctrine",
 ]
+
+UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE = "local_binding_adjudications.json"
 
 
 @dataclass(frozen=True)
@@ -106,6 +119,7 @@ class UKRowwiseDoctrineSolve:
     final_loss: float
     n_nonzero: int
     past_cap_census: Mapping[str, Any]
+    binding_adjudications: Mapping[str, Any]
 
 
 def past_cap_census(
@@ -403,6 +417,234 @@ def _require_uniform_target_surface(problem: UKRowwiseLocalMatrix) -> None:
         )
 
 
+def require_adjudicated_uk_local_binding(
+    bound_families: Sequence[str],
+    target_frame: pd.DataFrame,
+    *,
+    census: Mapping[str, Any] | None = None,
+    register: Mapping[str, Any] | None = None,
+    now: Any = None,
+) -> dict[str, Any]:
+    """Require in-force review records before binding fenced UK local families."""
+
+    census_payload = (
+        local_target_census.load_uk_local_target_census()
+        if census is None
+        else census
+    )
+    family_rows = _uk_local_census_family_rows(census_payload)
+    declared, parsed = _normalise_uk_local_bound_families(
+        bound_families,
+        family_rows=family_rows,
+    )
+    derived = _derive_uk_local_bound_families_from_target_frame(
+        target_frame,
+        family_rows=family_rows,
+    )
+    if sorted(declared) != derived:
+        missing = sorted(set(derived) - set(declared))
+        extra = sorted(set(declared) - set(derived))
+        raise ValueError(
+            "UK local binding declarations: declared bound families "
+            f"{sorted(declared)} disagree with the families derived from "
+            f"the target surface {derived}; missing {missing}, extra "
+            f"{extra}; the declaration must name exactly what the matrix "
+            "binds."
+        )
+
+    records = (
+        load_uk_reviewed_exclusion_register(
+            None,
+            resource=UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
+        )
+        if register is None
+        else coerce_reviewed_exclusions(
+            register,
+            label=UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
+        )
+    )
+    evaluated_on = exclusion_evaluation_date(now)
+    stood_on: dict[str, dict[str, dict[str, str]]] = {}
+    expiring_soon: dict[str, str] = {}
+    for declared_family in declared:
+        census_family, _area_type = parsed[declared_family]
+        stood_on[declared_family] = {}
+        for fence_id in family_rows[census_family].get("adjudications", ()):
+            fence = str(fence_id)
+            record = records.get(fence)
+            if record is None:
+                raise ValueError(
+                    f"{UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE}: "
+                    f"bound family {declared_family!r} requires an in-force "
+                    f"adjudication of fence {fence!r} and the committed "
+                    "register records none. Record a reviewed adjudication "
+                    "(reason stating the ruling and evidence, approver, "
+                    "window) before binding — the fence is a reviewed "
+                    "requirement, never a runtime flag."
+                )
+            if record.expired(evaluated_on) or record.premature(evaluated_on):
+                raise ValueError(
+                    f"{UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE}: "
+                    f"bound family {declared_family!r} requires adjudication "
+                    f"of fence {fence!r}, but the entry is outside its "
+                    f"reviewed window ({record.approved_on}.."
+                    f"{record.expires_on}, evaluated "
+                    f"{evaluated_on.isoformat()}): correct the underlying "
+                    "gap or renew the adjudication with a new approval and "
+                    "expiry."
+                )
+            if (date.fromisoformat(record.expires_on) - evaluated_on).days <= 7:
+                expiring_soon[fence] = record.expires_on
+            stood_on[declared_family][fence] = record.policy_payload()
+
+    for fence, expires_on in sorted(expiring_soon.items()):
+        warnings.warn(
+            f"{UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE}: adjudication "
+            f"of fence {fence!r} expires {expires_on} — within one week of "
+            f"the evaluation date {evaluated_on.isoformat()}; renew the "
+            "adjudication or the fence closes the rowwise solve on expiry.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    fence_families: dict[str, set[str]] = {}
+    for family, row in family_rows.items():
+        for fence_id in row.get("adjudications", ()):
+            fence_families.setdefault(str(fence_id), set()).add(family)
+    bound_census_families = {parsed[name][0] for name in declared}
+    dormant = sorted(
+        fence
+        for fence in records
+        if not (fence_families.get(fence, set()) & bound_census_families)
+    )
+    return {
+        "register_resource": UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
+        "evaluated_on": evaluated_on.isoformat(),
+        "bound_families": list(declared),
+        "stood_on": stood_on,
+        "dormant": dormant,
+    }
+
+
+def _uk_local_census_family_rows(
+    census: Mapping[str, Any],
+) -> dict[str, Mapping[str, Any]]:
+    rows = census.get("families")
+    if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+        raise ValueError("UK local target census must carry a families list.")
+    families: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("UK local target census family rows must be objects.")
+        family = str(row.get("family", ""))
+        if not family:
+            raise ValueError("UK local target census family row has no family id.")
+        if family in families:
+            raise ValueError(
+                f"UK local target census declares duplicate family {family!r}."
+            )
+        families[family] = row
+    return families
+
+
+def _normalise_uk_local_bound_families(
+    bound_families: Sequence[str],
+    *,
+    family_rows: Mapping[str, Mapping[str, Any]],
+) -> tuple[tuple[str, ...], dict[str, tuple[str, str]]]:
+    if isinstance(bound_families, str):
+        raise ValueError(
+            "UK local binding declarations: bound_families must be a "
+            "sequence of family/area_type strings, not one string."
+        )
+    declared = tuple(str(name) for name in bound_families)
+    if not declared:
+        raise ValueError(
+            "UK local binding declarations: bound_families must name at "
+            "least one family/area_type pair."
+        )
+    blanks = [name for name in declared if not name.strip()]
+    if blanks:
+        raise ValueError(
+            "UK local binding declarations: bound_families must not contain "
+            "blank family names."
+        )
+    padded = [name for name in declared if name != name.strip()]
+    if padded:
+        raise ValueError(
+            "UK local binding declarations: bound_families must not carry "
+            f"surrounding whitespace: {padded}."
+        )
+    duplicates = sorted({name for name in declared if declared.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            "UK local binding declarations: duplicate bound family(ies) "
+            f"{duplicates}."
+        )
+
+    parsed: dict[str, tuple[str, str]] = {}
+    for name in declared:
+        if "/" not in name:
+            raise ValueError(
+                "UK local binding declarations: bound family "
+                f"{name!r} must have form '<census_family>/<area_type>'."
+            )
+        family, area_type = name.rsplit("/", 1)
+        if not family or not area_type:
+            raise ValueError(
+                "UK local binding declarations: bound family "
+                f"{name!r} must have form '<census_family>/<area_type>'."
+            )
+        if area_type not in AREA_TYPES:
+            raise ValueError(
+                "UK local binding declarations: bound family "
+                f"{name!r} names unsupported area_type {area_type!r}; "
+                f"expected one of {list(AREA_TYPES)}."
+            )
+        if family not in family_rows:
+            raise ValueError(
+                "UK local binding declarations: bound family "
+                f"{name!r} names unknown census family {family!r}; "
+                f"expected one of {sorted(family_rows)}."
+            )
+        parsed[name] = (family, area_type)
+    return declared, parsed
+
+
+def _derive_uk_local_bound_families_from_target_frame(
+    target_frame: pd.DataFrame,
+    *,
+    family_rows: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    required = {"area_type", "metric"}
+    if not required <= set(target_frame.columns):
+        missing = sorted(required - set(target_frame.columns))
+        raise ValueError(
+            "UK local binding declarations: target_frame column(s) "
+            f"{missing} are required to derive bound families."
+        )
+    derived: set[str] = set()
+    cells = target_frame[["area_type", "metric"]].drop_duplicates()
+    for row in cells.itertuples(index=False):
+        area_type = str(row.area_type)
+        if area_type not in AREA_TYPES:
+            raise ValueError(
+                "UK local binding declarations: target surface names "
+                f"unsupported area_type {area_type!r}; expected one of "
+                f"{list(AREA_TYPES)}."
+            )
+        metric = str(row.metric)
+        family = local_target_census.family_for_metric(metric)
+        if family not in family_rows:
+            raise ValueError(
+                "UK local binding declarations: target surface metric "
+                f"{metric!r} classified into unknown census family "
+                f"{family!r}."
+            )
+        derived.add(f"{family}/{area_type}")
+    return sorted(derived)
+
+
 def rowwise_calibration_mass_reason(bound_families: Sequence[str]) -> str:
     """The mass-record reason a rowwise doctrine calibration declares.
 
@@ -497,6 +739,10 @@ def solve_uk_rowwise_weights_under_doctrine(
 
     doctrine = UK_LOCAL_SOLVE_DOCTRINE
     _require_uniform_target_surface(problem)
+    binding_adjudications = require_adjudicated_uk_local_binding(
+        bound_families,
+        problem.target_frame,
+    )
     mass_reason = rowwise_calibration_mass_reason(bound_families)
 
     household = frame.table("household")
@@ -682,6 +928,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         final_loss=float(result.final_loss),
         n_nonzero=int(result.n_nonzero),
         past_cap_census=census,
+        binding_adjudications=binding_adjudications,
     )
 
 
