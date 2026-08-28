@@ -9,7 +9,9 @@ area-indexed tables and consumed by :mod:`microcosm.build.uk_runtime.local_geogr
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
+from importlib import resources as importlib_resources
 from typing import Any
 
 import numpy as np
@@ -44,6 +46,24 @@ COUNTRY_TO_REGION = {
     "Wales": "WALES",
     "Northern Ireland": "NORTHERN_IRELAND",
 }
+UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
+
+
+def load_uk_population_contract() -> dict[str, Any]:
+    """Load the packaged UK population Ledger target contract."""
+
+    payload = (
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(UK_POPULATION_TARGETS_RESOURCE)
+        .read_text()
+    )
+    return json.loads(payload)
+
+
+def load_uk_local_geography_contract() -> dict[str, Any]:
+    """Load the full UK population contract used by local-geography filters."""
+
+    return load_uk_population_contract()
 
 
 def metric_names(

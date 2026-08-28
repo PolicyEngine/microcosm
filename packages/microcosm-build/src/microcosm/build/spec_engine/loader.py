@@ -41,7 +41,7 @@ from .schemas import (
     assert_schema_id_allowed,
     load_schema_registry,
 )
-from .yaml12 import load_yaml12
+from .yaml12 import load_json_strict, load_yaml12
 
 SUPPORTED_SCHEMA_VERSION = 1
 BUNDLE_LOCK_FILENAME = "bundle.lock.json"
@@ -317,7 +317,13 @@ def load_bundle(
             )
         raw = _read_bytes(resource, label=path_text)
         text = _decode_utf8(raw, label=path_text)
-        parsed = load_yaml12(text, source=path_text)
+        if descriptor.kind is ResourceKind.LEGACY_JSON:
+            # Declared-JSON compatibility data can be megabytes of generated
+            # rows; the strict JSON decoder keeps the load_yaml12 value model
+            # without the pure-Python YAML scanner's cost.
+            parsed = load_json_strict(text, source=path_text)
+        else:
+            parsed = load_yaml12(text, source=path_text)
         if descriptor.kind is ResourceKind.SCHEMA:
             # Schema resources are grammar inputs and validated when the
             # registry is built; a country bundle does not normally repeat

@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 
 from microcosm.build.spec_engine.errors import SpecParseError
-from microcosm.build.spec_engine.yaml12 import load_yaml12, load_yaml12_file
+from microcosm.build.spec_engine.yaml12 import (
+    load_json_strict,
+    load_yaml12,
+    load_yaml12_file,
+)
 
 
 def test_yaml12_core_scalars_are_json_compatible() -> None:
@@ -149,3 +153,35 @@ def test_file_loader_reports_the_resource_path(tmp_path: Path) -> None:
 
     assert caught.value.source == str(path)
     assert (caught.value.line, caught.value.column) == (3, 3)
+
+
+def test_json_strict_matches_the_yaml12_value_model() -> None:
+    document = json.dumps(
+        {"count": 12, "share": 0.5, "flags": [True, False, None], "name": "a"}
+    )
+    assert load_json_strict(document) == load_yaml12(document)
+
+
+def test_json_strict_refuses_duplicate_keys() -> None:
+    with pytest.raises(SpecParseError, match=r"duplicate mapping key 'key'"):
+        load_json_strict('{"key": 1, "key": 2}', source="dup.json")
+
+
+def test_json_strict_refuses_non_finite_constants() -> None:
+    for document in ('{"value": NaN}', '{"value": Infinity}', '{"value": -Infinity}'):
+        with pytest.raises(SpecParseError, match=r"non-finite numbers"):
+            load_json_strict(document, source="bad.json")
+
+
+def test_json_strict_refuses_yaml_only_syntax_with_position() -> None:
+    with pytest.raises(SpecParseError) as caught:
+        load_json_strict("rows:\n  - 1\n", source="bad.json")
+
+    assert caught.value.source == "bad.json"
+    assert "invalid JSON" in str(caught.value)
+    assert caught.value.line == 1
+
+
+def test_json_strict_requires_text_input() -> None:
+    with pytest.raises(TypeError, match="JSON input must be text"):
+        load_json_strict(b'{"key": 1}')  # type: ignore[arg-type]

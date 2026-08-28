@@ -135,13 +135,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "955d56d8a6ce608615b863a51c5040bdf3b5db16afb92cf1035979c6f55719b8"
+    "12c8a7fd526932decf19954881f43a123451f0454ac2603ff5ab08b0d246e37a"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "7a8b261a2a9dd87e3a57579c55469d769deaa0002f6ee006370629ab0af8b4e0"
+    "2a7cb1441d9c9bab3afde33ad1a2957484c7bde46f93c65386b98dd7a665b812"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e4c4a8fc302f79379e2e2ae75962428781c6cb3c0c31c825fd698240bfe6c89e"
+    "65a2c85db2abd8edd935fda79e5c5ef8e15f89ba59ec4e2763d485c5170fd550"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -212,6 +212,16 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_age_tail_targets": ("stage_health", "transferred", None),
+    "uk_ledger_compile_parity_local_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+        None,
+    ),
+    "uk_target_surface_local_default_2025": (
+        "target_surface",
+        "preflight",
+        None,
+    ),
     "uk_release_input_coverage": (
         "release_input_coverage",
         "terminal",
@@ -1144,6 +1154,24 @@ def _gate_battery_payload(
                 "actual_count": 636,
                 "signed_difference_count": 0,
             }
+        elif entry_id == "uk_ledger_compile_parity_local_incumbent_2025":
+            details = {
+                "fixture": "incumbent_local_2025",
+                "expected_count": 23_545,
+                "actual_count": 17_077,
+                "signed_difference_count": 23_837,
+            }
+        elif entry_id == "uk_target_surface_local_default_2025":
+            details = {
+                "candidate_name": "UK local compiled Ledger surface",
+                "reference_name": "UK local default metric surface",
+                "candidate_targets": 17_077,
+                "reference_targets": 19_642,
+                "extra_candidate_targets": [],
+                "missing_reference_targets": [],
+                "reviewed_exclusions": {},
+                "unused_reviewed_exclusions": [],
+            }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
         elif gate == "stage_health":
@@ -1180,6 +1208,29 @@ def _gate_battery_payload(
                 "registry_count": 636,
                 "registry_version": "fixture",
                 "signed_differences": [],
+            }
+        ),
+        "uk_ledger_compile_parity_local_incumbent_2025": _canonical_sha256(
+            {
+                "fixture_resource": "local_registry_parity_fixture_2025.json",
+                "registry_artifact": "uk_ledger_compiled_local_registries",
+                "registry_count": 17_077,
+                "registry_version": "fixture",
+                "signed_differences": [],
+                "target_period": 2025,
+            }
+        ),
+        "uk_target_surface_local_default_2025": _canonical_sha256(
+            {
+                "candidate_targets": 17_077,
+                "crosswalk_resource": "local_area_crosswalk.json",
+                "expected": "local_default_surface",
+                "membership_resource": "local_target_reference_membership.json",
+                "reference_targets": 19_642,
+                "registry_artifact": "uk_ledger_compiled_local_registries",
+                "registry_count": 17_077,
+                "reviewed_exclusions": 1_554,
+                "target_period": 2025,
             }
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
@@ -4908,9 +4959,9 @@ def _green_uk_certification(key: bytes) -> dict:
             "release_id": "uk-757-first-certified-cut",
             "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
             "entry_ids": sorted(scope),
-            "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[
-                part_name
-            ]["gates_manifest_sha256"],
+            "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
+                "gates_manifest_sha256"
+            ],
             "policy_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
                 "policy_sha256"
             ],

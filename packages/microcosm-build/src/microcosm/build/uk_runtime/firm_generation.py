@@ -21,6 +21,7 @@ import logging
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -67,6 +68,17 @@ UK_FIRM_TARGET_IDS: dict[str, str] = {
     "hmrc_population_sic": "hmrc.vat.registered_trader_count.sic_sectors",
     "hmrc_liability_sic": "hmrc.vat.net_liability.sic_sectors",
 }
+
+
+def load_uk_firms_contract() -> dict[str, Any]:
+    """Load the packaged UK firm Ledger target contract."""
+
+    payload = (
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("uk_firms_targets.json")
+        .read_text()
+    )
+    return json.loads(payload)
 
 
 @dataclass(frozen=True)
@@ -215,9 +227,7 @@ AXIOM_UK_VAT_TAXABLE_PERSON_INPUT = "uk:statutes/ukpga/1994/23/24#input.taxable_
 AXIOM_UK_VAT_SUPPLIES_INPUT = (
     "uk:statutes/ukpga/1994/23/24#input.standard_rated_taxable_supplies_value"
 )
-AXIOM_UK_VAT_PURCHASES_INPUT = (
-    "uk:statutes/ukpga/1994/23/24#input.standard_rated_deductible_business_purchase_value"
-)
+AXIOM_UK_VAT_PURCHASES_INPUT = "uk:statutes/ukpga/1994/23/24#input.standard_rated_deductible_business_purchase_value"
 AXIOM_UK_VAT_ALLOWABLE_PROPORTION_INPUT = (
     "uk:statutes/ukpga/1994/23/26#input.allowable_input_tax_proportion"
 )
@@ -297,7 +307,9 @@ class AxiomVATRuleEvaluator:
                         interval,
                         {
                             "kind": "decimal",
-                            "value": _decimal_string(self.allowable_input_tax_proportion),
+                            "value": _decimal_string(
+                                self.allowable_input_tax_proportion
+                            ),
                         },
                     ),
                 ]
@@ -600,7 +612,7 @@ def _coerce_uk_firm_target_profile(
     target_profile: UKFirmLedgerTargetProfile | Mapping[str, Any] | None,
 ) -> UKFirmLedgerTargetProfile:
     if target_profile is None:
-        return DEFAULT_UK_FIRM_TARGET_PROFILE
+        return uk_firm_target_profile_from_mapping(load_uk_firms_contract())
     if isinstance(target_profile, UKFirmLedgerTargetProfile):
         return target_profile
     return uk_firm_target_profile_from_mapping(target_profile)
@@ -649,8 +661,7 @@ def uk_firm_source_data_from_ledger_facts(
         band_map=LEDGER_HMRC_BANDS,
     )
     hmrc_liability_values_m = {
-        band: value / 1_000_000.0
-        for band, value in hmrc_liability_values_gbp.items()
+        band: value / 1_000_000.0 for band, value in hmrc_liability_values_gbp.items()
     }
     hmrc_population_band = pd.DataFrame(
         [{"Financial_Year": data_vintage, **hmrc_population_values}]
@@ -830,7 +841,9 @@ def generate_base_firms(
                 continue
             count = int(row[band])
             sic_codes.extend([sic_int] * count)
-            turnovers.append(_draw_band_turnover(count, lower, upper, device).cpu().numpy())
+            turnovers.append(
+                _draw_band_turnover(count, lower, upper, device).cpu().numpy()
+            )
 
     turnover_values = (
         np.concatenate(turnovers).astype(np.float32)
@@ -1018,9 +1031,7 @@ def build_firm_target_matrix(
         target_names.append(f"hmrc_vat_liability/{band}")
 
     turnover_targets = [
-        hmrc_bands[band]
-        for band in HMRC_BAND_COLUMNS
-        if band != "Negative_or_Zero"
+        hmrc_bands[band] for band in HMRC_BAND_COLUMNS if band != "Negative_or_Zero"
     ]
     sector_targets = [
         _vintage_column_value(row, config.data_vintage, "HMRC population sectors")
@@ -1248,7 +1259,9 @@ def validate_uk_firm_population(
         for _, row in liability_sector_rows.iterrows()
     ]
 
-    weighted_liability_band = registered.groupby("hmrc_band")["weighted_liability_m"].sum()
+    weighted_liability_band = registered.groupby("hmrc_band")[
+        "weighted_liability_m"
+    ].sum()
     liability_band_accs = [
         _accuracy(
             float(weighted_liability_band.get(band, 0.0)),
@@ -1406,9 +1419,13 @@ def _add_zero_turnover_firms(
     n_add = len(add_sics)
     zero_employment = assign_employment(n_add, ons_employment, device)
     return (
-        torch.cat([sic_codes, torch.tensor(add_sics, dtype=torch.int64, device=device)]),
+        torch.cat(
+            [sic_codes, torch.tensor(add_sics, dtype=torch.int64, device=device)]
+        ),
         torch.cat([turnover, torch.zeros(n_add, dtype=torch.float32, device=device)]),
-        torch.cat([input_values, torch.zeros(n_add, dtype=torch.float32, device=device)]),
+        torch.cat(
+            [input_values, torch.zeros(n_add, dtype=torch.float32, device=device)]
+        ),
         torch.cat([employment, zero_employment]),
         torch.cat([weights, torch.ones(n_add, dtype=torch.float32, device=device)]),
         torch.cat(
@@ -1626,7 +1643,9 @@ def _ledger_sic_series(
         _validate_ledger_firm_fact(fact, record_set_id, measure_id)
         sic = _ledger_sic_code(fact)
         if sic in seen:
-            raise ValueError(f"Duplicate Ledger UK firm fact for {record_set_id}/{sic}.")
+            raise ValueError(
+                f"Duplicate Ledger UK firm fact for {record_set_id}/{sic}."
+            )
         seen.add(sic)
         rows.append(
             {
@@ -1662,7 +1681,9 @@ def _ledger_values_by_band(
             )
         values_by_band[target_band] = _numeric_ledger_value(fact)
 
-    missing = [band_map[band] for band in band_map if band_map[band] not in values_by_band]
+    missing = [
+        band_map[band] for band in band_map if band_map[band] not in values_by_band
+    ]
     if missing:
         raise ValueError(
             f"Ledger UK firm facts are missing {record_set_id} band(s): {missing}."
@@ -1682,9 +1703,8 @@ def _ledger_record_matches(
 
 
 def _ledger_sic_code(fact: Mapping[str, Any] | object) -> str:
-    sic = (
-        _ledger_dimension_value(fact, "uk.firm.sic_code")
-        or _fact_at(fact, "layout", "groupby_value_id")
+    sic = _ledger_dimension_value(fact, "uk.firm.sic_code") or _fact_at(
+        fact, "layout", "groupby_value_id"
     )
     if sic is None:
         raise ValueError("Ledger UK firm fact is missing uk.firm.sic_code.")
@@ -1728,7 +1748,9 @@ def _numeric_ledger_value(fact: Mapping[str, Any] | object) -> float:
     try:
         numeric = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Ledger UK firm fact has non-numeric value {value!r}.") from exc
+        raise ValueError(
+            f"Ledger UK firm fact has non-numeric value {value!r}."
+        ) from exc
     if not np.isfinite(numeric):
         raise ValueError(f"Ledger UK firm fact has non-finite value {value!r}.")
     return numeric
