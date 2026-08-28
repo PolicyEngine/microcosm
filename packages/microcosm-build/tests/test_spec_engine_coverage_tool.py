@@ -52,22 +52,22 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert_coverage_complete(coverage_report)
     assert coverage_report["status"] == "pass"
     fields = coverage_report["field_usage"]
-    assert fields["configuration_field_count"] == 42_120
-    assert fields["authored_normative_field_count"] == 32_351
-    assert fields["resolved_binding_field_count"] == 9_769
-    assert fields["consumed_field_count"] == 42_120
+    assert fields["configuration_field_count"] == 42_419
+    assert fields["authored_normative_field_count"] == 32_403
+    assert fields["resolved_binding_field_count"] == 10_016
+    assert fields["consumed_field_count"] == 42_419
     assert fields["unused_field_count"] == 0
     assert fields["multiple_primary_use_field_count"] == 0
     assert fields["claim_count"] == 49
     assert fields["mode_counts"] == {
-        "legacy_behavior": 13_970,
-        "compiler_semantic": 27_699,
+        "legacy_behavior": 13_983,
+        "compiler_semantic": 27_985,
         "front_end_validation": 348,
         "identity_only": 103,
     }
     assert fields["generation0_effect_counts"] == {
-        "legacy_behavior": 38_443,
-        "no_generation0_effect": 3_677,
+        "legacy_behavior": 38_456,
+        "no_generation0_effect": 3_963,
     }
 
     inventory = coverage_report["inventory_coverage"]
@@ -78,7 +78,7 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert inventory["counts"]["producer_inputs"] == 2_742
     assert inventory["counts"]["ownership_rows"] == 18
     assert inventory["counts"]["tail_control_fields"] == 934
-    assert inventory["counts"]["seed_owner_bindings"] == 112
+    assert inventory["counts"]["seed_owner_bindings"] == 125
 
 
 @pytest.mark.parametrize(
