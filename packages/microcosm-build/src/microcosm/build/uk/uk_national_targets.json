@@ -2801,8 +2801,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -2810,7 +2810,7 @@
             "value": 0
           },
           {
-            "concept": "uk.household.children",
+            "concept": "uk.benefit_unit.children",
             "operator": "==",
             "value": 1
           }
@@ -2819,30 +2819,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_with_1_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
+              "variable": "num_children",
               "operator": "==",
               "value": 1
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator: any benunit on UC and the household child count matches (compute/benefits.py:33-51)."
+          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_1_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -2861,8 +2857,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -2870,7 +2866,7 @@
             "value": 0
           },
           {
-            "concept": "uk.household.children",
+            "concept": "uk.benefit_unit.children",
             "operator": "==",
             "value": 2
           }
@@ -2879,30 +2875,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_with_2_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
+              "variable": "num_children",
               "operator": "==",
               "value": 2
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator: any benunit on UC and the household child count matches (compute/benefits.py:33-51)."
+          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_2_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -2921,8 +2913,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -2930,7 +2922,7 @@
             "value": 0
           },
           {
-            "concept": "uk.household.children",
+            "concept": "uk.benefit_unit.children",
             "operator": "==",
             "value": 3
           }
@@ -2939,30 +2931,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_with_3_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
+              "variable": "num_children",
               "operator": "==",
               "value": 3
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator: any benunit on UC and the household child count matches (compute/benefits.py:33-51)."
+          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_3_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -2981,8 +2969,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -2990,7 +2978,7 @@
             "value": 0
           },
           {
-            "concept": "uk.household.children",
+            "concept": "uk.benefit_unit.children",
             "operator": "==",
             "value": 4
           }
@@ -2999,30 +2987,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_with_4_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
+              "variable": "num_children",
               "operator": "==",
               "value": 4
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator: any benunit on UC and the household child count matches (compute/benefits.py:33-51)."
+          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_4_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -3041,8 +3025,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -3050,7 +3034,7 @@
             "value": 0
           },
           {
-            "concept": "uk.household.children",
+            "concept": "uk.benefit_unit.children",
             "operator": ">=",
             "value": 5
           }
@@ -3059,30 +3043,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_with_5+_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
+              "variable": "num_children",
               "operator": ">=",
               "value": 5
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator: any benunit on UC and the household child count matches (compute/benefits.py:33-51)."
+          "notes": "Prepared benefit-unit count: UC receipt and the claim's child count (model num_children, age<18 per benunit). DWP household means the UC unit of assessment, not an ONS household; DWP counts children on the claim including 16-19 qualifying young persons in non-advanced education, whom the age<18 concept omits - declared residue. Re-bound from household grain per microcosm#809 (the dwelling-wide is_child sum counted other benunits' children)."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_with_5+_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -3101,8 +3081,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -3114,37 +3094,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_single_no_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
               "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": "==",
               "value": "SINGLE"
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": "==",
-              "value": 0
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator over benunit family type (compute/benefits.py:54-81). uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Prepared benefit-unit count: UC receipt and family_type == SINGLE (single, no children at benunit grain). DWP household means the UC unit of assessment. Re-bound from household grain per microcosm#809 - the any-benunit family type plus dwelling-wide child sum deleted single claimants sharing a dwelling with another benunit's children. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_single_no_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -3163,8 +3132,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -3176,40 +3145,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_single_with_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
               "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "SINGLE",
-                "LONE_PARENT"
-              ]
-            },
-            {
-              "variable": "is_child",
-              "entity": "person",
-              "reduce": "sum",
-              "operator": ">",
-              "value": 0
+              "operator": "==",
+              "value": "LONE_PARENT"
             }
           ],
-          "value_variable": "household_count",
-          "notes": "DWP's single bucket does not distinguish PE-UK's SINGLE and LONE_PARENT (compute/benefits.py:54-81). uk-data's +~0.021% undercount inflation on these counts is a populace-side value declaration - the facts are the raw Stat-Xplore counts."
+          "notes": "Prepared benefit-unit count: UC receipt and family_type == LONE_PARENT. DWP's 'Single, with children' bucket is LONE_PARENT at benunit grain - the previous SINGLE-or-LONE_PARENT compound plus dwelling-wide child sum collapses to the single enum value. Re-bound per microcosm#809. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_single_with_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -3228,8 +3183,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -3241,30 +3196,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_couple_no_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
               "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": "==",
               "value": "COUPLE_NO_CHILDREN"
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator over benunit family type (compute/benefits.py:54-81). uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Prepared benefit-unit count: UC receipt and family_type == COUPLE_NO_CHILDREN. DWP household means the UC unit of assessment. Re-bound from household grain per microcosm#809. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_couple_no_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -3283,8 +3234,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.benefits.universal_credit.amount",
@@ -3296,30 +3247,26 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/claimants_couple_with_children",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
               "variable": "family_type",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": "==",
               "value": "COUPLE_WITH_CHILDREN"
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Household indicator over benunit family type (compute/benefits.py:54-81). uk-data's +~0.021% undercount inflation is a populace-side value declaration."
+          "notes": "Prepared benefit-unit count: UC receipt and family_type == COUPLE_WITH_CHILDREN. DWP household means the UC unit of assessment. Re-bound from household grain per microcosm#809. uk-data's +~0.021% undercount inflation is a populace-side value declaration."
         },
         "axiom": {
           "metric_name": "dwp/uc/claimants_couple_with_children",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
@@ -4135,14 +4082,14 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "value_variable": "uc_is_child_limit_affected",
+          "value_variable": "is_child",
           "value_reduction": {
-            "variable": "uc_is_child_limit_affected",
+            "variable": "is_child",
             "entity": "person",
             "reduce": "sum"
           },
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
+          "notes": "All children living in affected households, counted with the model is_child sum per household under the baseline affected flag and the disability condition (sheet 04B counts every child: the 3- and 4-children sibling rows divide to exactly 3.00 and 4.00 children per household; these cells run ~3.6-3.7). Re-bound from uc_is_child_limit_affected per microcosm#808 - the affected-children flag averages ~1.27 per household, a structural ~2.8x shortfall against the published all-children concept. Row counts: adult_pip_children."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/adult_pip_children",
@@ -4224,14 +4171,14 @@
           ],
           "kind": "baseline_flag_crosstab",
           "affected_flag_variable": "uc_is_child_limit_affected",
-          "value_variable": "uc_is_child_limit_affected",
+          "value_variable": "is_child",
           "value_reduction": {
-            "variable": "uc_is_child_limit_affected",
+            "variable": "is_child",
             "entity": "person",
             "reduce": "sum"
           },
           "map_to": "household",
-          "notes": "Affected children are persons flagged by uc_is_child_limit_affected (household round-trip) who are children in UC-receiving households; an affected household contains at least one such child (compute/benefits.py:130-148). Row counts: affected_children."
+          "notes": "All children living in affected households, counted with the model is_child sum per household under the baseline affected flag and the disability condition (sheet 04B counts every child: the 3- and 4-children sibling rows divide to exactly 3.00 and 4.00 children per household; these cells run ~3.6-3.7). Re-bound from uc_is_child_limit_affected per microcosm#808 - the affected-children flag averages ~1.27 per household, a structural ~2.8x shortfall against the published all-children concept. Row counts: disabled_child_element_children."
         },
         "axiom": {
           "metric_name": "dwp/uc/two_child_limit/disabled_child_element_children",

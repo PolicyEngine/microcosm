@@ -15,12 +15,13 @@ FIXTURE_FEED_ROWS = (
 
 
 class StubUKAdapter:
-    """Seven people across three households, flagged child by flagged child.
+    """Seven people across three households, with distinct child concepts.
 
-    The flag and the count are deliberately distinct here: household 0 holds
-    three flagged children and household 2 holds two, so a household-grain
-    read of the boolean (1/0/1) can never be mistaken for the child counts
-    (3/0/2) the contract's count rows declare.
+    The affected flag and the child counts are deliberately distinct here:
+    household 0 holds three affected children but four children in all, and
+    household 2 holds two of each. A household-grain read of the boolean
+    (1/0/1) can therefore be distinguished from both the affected-child counts
+    (3/0/2) and the all-child counts (4/0/2).
     """
 
     def __init__(self):
@@ -33,6 +34,10 @@ class StubUKAdapter:
                 ),
                 "person_household_id": person_household,
                 "uc_is_child_limit_affected": child_flags,
+                "is_child": np.array(
+                    [True, True, True, True, False, True, True]
+                ),
+                "pip": np.array([0.0, 0.0, 0.0, 100.0, 100.0, 0.0, 0.0]),
             },
             "household": {
                 "household_id": np.array([0, 1, 2]),
@@ -60,6 +65,13 @@ class StubUKAdapter:
             ],
             dtype=float,
         )
+
+    def household_condition(self, condition):
+        assert condition["variable"] == "pip"
+        assert condition["entity"] == "person"
+        assert condition["reduce"] == "sum"
+        assert condition["operator"] == ">"
+        return self.entity_reduction(condition) > float(condition["value"])
 
     def parameter(self, name, period):
         assert name == "gov.hmrc.cgt.annual_exempt_amount"
@@ -113,6 +125,18 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
                     "contract_target_id": "dwp.uc.two_child_limit.children_affected"
                 },
             ),
+            TargetSpec(
+                name="dwp.uc.two_child_limit.children_claimant_pip",
+                entity="household",
+                measure="dwp/uc/two_child_limit/adult_pip_children",
+                value=1.0,
+                source="test",
+                metadata={
+                    "contract_target_id": (
+                        "dwp.uc.two_child_limit.children_claimant_pip"
+                    )
+                },
+            ),
         ],
         country="uk",
     )
@@ -136,6 +160,12 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
     assert adapter.tables["household"][
         "dwp/uc/two_child_limit/children_affected"
     ].tolist() == [3.0, 0.0, 2.0]
+    # Sheet 04B's claimant-PIP row counts every child in affected households
+    # satisfying the PIP condition, not only the children carrying the
+    # affected flag. Household 0 therefore contributes four, not three.
+    assert adapter.tables["household"][
+        "dwp/uc/two_child_limit/adult_pip_children"
+    ].tolist() == [4.0, 0.0, 0.0]
 
 
 def _composition_frame():
@@ -168,6 +198,88 @@ def _composition_frame():
         {"household": Weights(np.array([10.0, 20.0]), WeightKind.DESIGN)},
         metadata={"time_period": "2025"},
     )
+
+
+def _uc_composition_frame():
+    """Two multibenunit households that distinguish UC claim composition."""
+
+    import pandas as pd
+
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(6),
+                    "person_benunit_id": [0, 0, 1, 2, 2, 3],
+                    "person_household_id": [0, 0, 0, 1, 1, 1],
+                    "is_child": [0.0, 1.0, 0.0, 0.0, 1.0, 0.0],
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(4),
+                    "family_type": [
+                        "LONE_PARENT",
+                        "SINGLE",
+                        "LONE_PARENT",
+                        "SINGLE",
+                    ],
+                    "universal_credit": [100.0, 0.0, 0.0, 100.0],
+                    "num_children": [1, 0, 1, 0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": np.arange(2)}),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.array([10.0, 20.0]), WeightKind.DESIGN)},
+        metadata={"time_period": "2025"},
+    )
+
+
+def test_uc_composition_materializes_at_benunit_grain():
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households_children_1",
+                entity="benunit",
+                measure="dwp/uc/claimants_with_1_children",
+                value=1.0,
+                source="test",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_children_1"
+                },
+            ),
+            TargetSpec(
+                name="dwp.uc.households_single_no_children",
+                entity="benunit",
+                measure="dwp/uc/claimants_single_no_children",
+                value=1.0,
+                source="test",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_single_no_children"
+                },
+            ),
+        ],
+        country="uk",
+    )
+    adapter = UKFrameTargetAdapter(_uc_composition_frame())
+
+    result = materialize_uk_ledger_targets(adapter, registry, period=2025)
+
+    assert result.skipped == ()
+    assert adapter.tables["benunit"][
+        "dwp/uc/claimants_with_1_children"
+    ].tolist() == [1.0, 0.0, 0.0, 0.0]
+    # The non-UC single sharing household 0 with the claimant fails its own
+    # filters. The childless UC single in household 1 counts even though the
+    # other benunit in that dwelling contains a child.
+    assert adapter.tables["benunit"][
+        "dwp/uc/claimants_single_no_children"
+    ].tolist() == [0.0, 0.0, 0.0, 1.0]
 
 
 def test_household_condition_reduces_person_level_conditions():
