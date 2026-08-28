@@ -4,6 +4,8 @@
   "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below.",
   "phases": [
     "preflight",
+    "assembled",
+    "transferred",
     "terminal"
   ],
   "gates": [
@@ -48,6 +50,314 @@
         "target_period": 2025
       },
       "notes": "Ledger-compiled UK targets at the 2025 calibration period compared with the frozen incumbent registry surface. The signed list enumerates TCL additions, exclusions, unsupported rows, and vintage drift for review."
+    },
+    {
+      "id": "uk_stage_was_wealth_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "was_wealth",
+        "check": "support_clip",
+        "columns": [
+          "cash_isa",
+          "corporate_wealth",
+          "gross_financial_wealth",
+          "main_residence_value",
+          "net_financial_wealth",
+          "non_residential_property_value",
+          "num_vehicles",
+          "other_residential_property_value",
+          "owned_land",
+          "property_wealth",
+          "savings",
+          "stocks_and_shares_isa",
+          "student_loan_balance"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "cash_isa": 0,
+          "corporate_wealth": 0,
+          "gross_financial_wealth": 0,
+          "main_residence_value": 0,
+          "net_financial_wealth": 0,
+          "non_residential_property_value": 0,
+          "num_vehicles": 0,
+          "other_residential_property_value": 0,
+          "owned_land": 0,
+          "property_wealth": 0,
+          "savings": 0,
+          "stocks_and_shares_isa": 0,
+          "student_loan_balance": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "cash_isa": 0,
+          "corporate_wealth": 0,
+          "gross_financial_wealth": 0,
+          "main_residence_value": 0,
+          "net_financial_wealth": 0,
+          "non_residential_property_value": 0,
+          "num_vehicles": 0,
+          "other_residential_property_value": 0,
+          "owned_land": 0,
+          "property_wealth": 0,
+          "savings": 0,
+          "stocks_and_shares_isa": 0,
+          "student_loan_balance": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "support_clip",
+        "columns": [
+          "alcohol_and_tobacco_consumption",
+          "bus_fare_spending",
+          "clothing_and_footwear_consumption",
+          "communication_consumption",
+          "diesel_spending",
+          "education_consumption",
+          "food_and_non_alcoholic_beverages_consumption",
+          "health_consumption",
+          "household_furnishings_consumption",
+          "housing_water_and_electricity_consumption",
+          "miscellaneous_consumption",
+          "petrol_spending",
+          "recreation_consumption",
+          "restaurants_and_hotels_consumption",
+          "transport_consumption",
+          "domestic_energy_consumption",
+          "electricity_consumption",
+          "gas_consumption"
+        ],
+        "exempt_columns": [
+          "domestic_energy_consumption",
+          "electricity_consumption",
+          "gas_consumption"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "alcohol_and_tobacco_consumption": 0,
+          "bus_fare_spending": 0,
+          "clothing_and_footwear_consumption": 0,
+          "communication_consumption": 0,
+          "diesel_spending": 0,
+          "education_consumption": 0,
+          "food_and_non_alcoholic_beverages_consumption": 0,
+          "health_consumption": 0,
+          "household_furnishings_consumption": 0,
+          "housing_water_and_electricity_consumption": 0,
+          "miscellaneous_consumption": 0,
+          "petrol_spending": 0,
+          "recreation_consumption": 0,
+          "restaurants_and_hotels_consumption": 0,
+          "transport_consumption": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "alcohol_and_tobacco_consumption": 0,
+          "bus_fare_spending": 0,
+          "clothing_and_footwear_consumption": 0,
+          "communication_consumption": 0,
+          "diesel_spending": 0,
+          "education_consumption": 0,
+          "food_and_non_alcoholic_beverages_consumption": 0,
+          "health_consumption": 0,
+          "household_furnishings_consumption": 0,
+          "housing_water_and_electricity_consumption": 0,
+          "miscellaneous_consumption": 0,
+          "petrol_spending": 0,
+          "recreation_consumption": 0,
+          "restaurants_and_hotels_consumption": 0,
+          "transport_consumption": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+    },
+    {
+      "id": "uk_stage_etb_vat_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "etb_vat",
+        "check": "support_clip",
+        "columns": [
+          "full_rate_vat_expenditure_rate"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "full_rate_vat_expenditure_rate": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "full_rate_vat_expenditure_rate": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the ETB VAT receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+    },
+    {
+      "id": "uk_stage_etb_services_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "etb_services",
+        "check": "support_clip",
+        "columns": [
+          "bus_subsidy_spending",
+          "dfe_education_spending",
+          "rail_subsidy_spending"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "bus_subsidy_spending": 0,
+          "dfe_education_spending": 0,
+          "rail_subsidy_spending": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "bus_subsidy_spending": 0,
+          "dfe_education_spending": 0,
+          "rail_subsidy_spending": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+    },
+    {
+      "id": "uk_stage_frs_hmrc_spine_leaves_signal",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "frs_hmrc_spine_leaves",
+        "check": "source_signal",
+        "minimum_signal_rows": 1,
+        "structural_zero_columns": [
+          "hmrc_spi_incapacity_benefit_income"
+        ]
+      },
+      "notes": "Stage-time source-signal gate over the retained FRS/HMRC leaves receipt. hmrc_spi_incapacity_benefit_income is the E7 reviewed-absent adjudication (microcosm#683, 2026-08-18): the FRS 2024-25 source carries no incapacity-benefit signal, the stage's own fence raises at build time if a future vintage does, and the reviewed list here makes the battery agree with that adjudication instead of re-litigating it every build."
+    },
+    {
+      "id": "uk_stage_spi_support_channel_mass",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "spi_support_channel",
+        "check": "spi_support_channel",
+        "spi_prior_mass_share": 0.5,
+        "absolute_tolerance": 0.0,
+        "household_weight_kind": "importance",
+        "minimum_spi_households": 1
+      },
+      "notes": "Stage-time mass gate over the SPI support-channel receipt."
+    },
+    {
+      "id": "uk_stage_hmrc_spi_income_spine_identity",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "hmrc_spi_income_spine",
+        "check": "spi_income_spine",
+        "spi_prior_mass_share": 0.5,
+        "absolute_tolerance": 0.0,
+        "minimum_identity_rows": 1,
+        "minimum_target_count": 1
+      },
+      "notes": "Stage-time SPI redraw identity gate over the HMRC SPI income spine receipt."
+    },
+    {
+      "id": "uk_stage_cgt_incidence_clone_mass",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_incidence_clone",
+        "check": "cgt_incidence_mass",
+        "maximum_relative_mass_imbalance": 0.0
+      },
+      "notes": "Stage-time conservation gate over the CGT incidence clone receipt."
+    },
+    {
+      "id": "uk_stage_cgt_band_donors_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_band_donors",
+        "check": "cgt_band_donor_support",
+        "support_bounds_resource": "cgt_band_donor_support_bounds.json"
+      },
+      "notes": "Stage-time donor-support gate for cgt_band_donors. The cgt_band_donor_support_bounds.json semantic_fit_note says these intervals describe donor-stage initial support and that terminal support-gate applicability requires reviewer confirmation, so this entry deliberately gates the donor stage rather than uk_support."
+    },
+    {
+      "id": "uk_stage_hmrc_cgt_gains_spine_summary",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "hmrc_cgt_gains_spine",
+        "check": "cgt_imputation_summary",
+        "minimum_band_rows": 1
+      },
+      "notes": "Stage-time CGT redraw summary gate wired through the existing UKCGTImputationSummary receipt rather than fabricating a terminal support verdict."
+    },
+    {
+      "id": "uk_stage_salary_sacrifice_realization",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "salary_sacrifice",
+        "check": "realization_target",
+        "target": 5400000.0,
+        "maximum_abs_realization_deviation": 1.0,
+        "allow_cap_bound": true
+      },
+      "notes": "Stage-time realization gate over salary_sacrifice's own headcount receipt."
+    },
+    {
+      "id": "uk_stage_student_loans_realization",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "student_loans",
+        "check": "student_loan_plans",
+        "stocks": {
+          "PLAN_2": 8940000.0,
+          "PLAN_5": 10000.0
+        },
+        "maximum_abs_realization_deviation": 1.0
+      },
+      "notes": "Stage-time realization gate over the per-plan student-loan top-up receipts."
+    },
+    {
+      "id": "uk_stage_age_tail_targets",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "age_tail",
+        "check": "age_tail_targets",
+        "maximum_relative_deviation": 1.0
+      },
+      "notes": "Stage-time achieved-versus-target gate over the age-tail disaggregation receipt."
     },
     {
       "id": "uk_release_input_coverage",
@@ -270,14 +580,14 @@
     {
       "id": "uk_brma_enum_domain",
       "gate": "enum_domain",
-      "phase": "terminal",
+      "phase": "assembled",
       "criticality": "release_blocking",
       "parameters": {
         "columns": [
           "brma"
         ]
       },
-      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
+      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain. Evaluated at the assembled boundary, right after frs_brma writes the column: enum membership is a property of the values themselves, so checking it there is identical to checking it at the end and refuses fourteen stages earlier. Take-up signal stays terminal by contrast, because its weighted shares are not the same statistic before and after calibration."
     },
     {
       "id": "uk_student_loan_plan_enum_domain",
@@ -350,10 +660,10 @@
       "parameters": {
         "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
         "top_k": 100,
-        "max_top_share": 0.9970712395200448,
-        "min_nonzero_records": 274
+        "max_top_share": 0.9994670564654868,
+        "min_nonzero_records": 104
       },
-      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Thresholds sit at the measured edges from the microcosm#630 measurement pass: top_k 100 as the grid anchor, max_top_share at the exact measured maximum, and min_nonzero_records at the thinnest measured column, with no headroom. A future thinner column goes thin visibly in the signed details, never a silent pass. Reviewed exclusions live in the named register resource of this package."
+      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Armed from the #686 L3 baselines per #757 B4, each threshold recording the run that measured it: the 47-column qrf_tail grids of uk_weighted_integrity_baselines_686.json (sha256 8b3f6c4e9c522445bf3e05d3451ee8557f4e14d25524ceac3af8bfe05401a146, licensed acceptance dir 686-spine-swap), measured on spine-a.h5 (sha256 a65f2132736d1dcecb91709a513a0d54a5887635ea03760629cc888d188ee306, 113,649 person rows, design weights) for the #609/#578 threshold adjudication. top_k 100 is the measurement grid anchor [10, 100, 500, 1000]; max_top_share is the exact measured maximum over the checked surface (hmrc_spi_other_social_security_income, 104 carriers), no headroom; min_nonzero_records is the thinnest measured column above the grid anchor (the same column) - the policy domain requires min_nonzero_records > top_k, so the three saturated sub-anchor columns (hmrc_spi_taxable_termination_pay 12, charitable_investment_gifts 22, sda_reported 24 carriers, each top-100 share 1.0) sit below it and go thin visibly in the signed details on every run, never a silent pass. The baselines are design-weight measurements and the terminal gate runs on the calibrated release frame; a calibrated-weight breach names its column and is a finding, not noise. The 12 household_qrf_tail grids (was_wealth surface) are measured in the same baselines file and not yet armed - a household-surface gate entry is a declared follow-up. Reviewed exclusions live in the named register resource of this package."
     }
   ]
 }

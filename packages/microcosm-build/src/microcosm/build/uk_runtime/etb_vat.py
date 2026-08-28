@@ -19,6 +19,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.support_clip import (
+    UKSupportClipReceipt,
+    UKSupportClipResult,
+    support_clip_to_donor_with_receipt,
+)
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -37,6 +42,21 @@ UK_ETB_VAT_OUTPUT_COLUMNS = ("full_rate_vat_expenditure_rate",)
 # the support gate is the guard — the net_financial_wealth precedent.
 UK_ETB_VAT_NONNEGATIVE_OUTPUT_COLUMNS: tuple[str, ...] = ()
 UK_ETB_VAT_FIT_NAME = "uk_etb_2023_vat:full_rate_vat_expenditure_rate"
+UK_ETB_VAT_STAGE_NAME = "etb_vat"
+
+
+@dataclass
+class UKETBVATResult:
+    """Transformed frame and donor-support clip receipt."""
+
+    frame: Frame
+    support_clip: UKSupportClipReceipt
+
+    def evidence(self) -> dict[str, object]:
+        return {
+            "stage": UK_ETB_VAT_STAGE_NAME,
+            "support_clip": self.support_clip.evidence(),
+        }
 
 
 @dataclass
@@ -50,6 +70,7 @@ class UKETBVATStageTransform:
         init=False,
         repr=False,
     )
+    last_result: UKETBVATResult | None = field(default=None, init=False)
 
     @property
     def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
@@ -70,7 +91,8 @@ class UKETBVATStageTransform:
         donor = clean_etb_vat_table(raw, **config)
         predictors = recipient_predictors(frame, self.engine)
         imputed, record = impute_etb_vat(donor, predictors, seed=_qrf_seed(self.stage))
-        imputed = support_clip_to_donor(imputed, donor)
+        clip_result = support_clip_to_donor(imputed, donor)
+        imputed = clip_result.clipped
         household = frame.table("household").copy()
         household["full_rate_vat_expenditure_rate"] = imputed[
             "full_rate_vat_expenditure_rate"
@@ -86,11 +108,20 @@ class UKETBVATStageTransform:
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = (record,)
+        self.last_result = UKETBVATResult(
+            frame=result,
+            support_clip=clip_result.receipt,
+        )
         return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return UK_ETB_VAT_OUTPUT_COLUMNS
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_result is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_result.evidence()}
 
 
 def clean_etb_vat_table(
@@ -231,15 +262,15 @@ def impute_etb_vat(
     return fitted.predict(recipient), FitWeightRecord(UK_ETB_VAT_FIT_NAME, "explicit")
 
 
-def support_clip_to_donor(draws: pd.DataFrame, donor: pd.DataFrame) -> pd.DataFrame:
-    values = donor["full_rate_vat_expenditure_rate"]
-    finite = values[np.isfinite(values)]
-    result = draws.copy()
-    if not finite.empty:
-        result["full_rate_vat_expenditure_rate"] = result[
-            "full_rate_vat_expenditure_rate"
-        ].clip(float(finite.min()), float(finite.max()))
-    return result
+def support_clip_to_donor(
+    draws: pd.DataFrame, donor: pd.DataFrame
+) -> UKSupportClipResult:
+    return support_clip_to_donor_with_receipt(
+        draws,
+        donor,
+        columns=UK_ETB_VAT_OUTPUT_COLUMNS,
+        stage=UK_ETB_VAT_STAGE_NAME,
+    )
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:

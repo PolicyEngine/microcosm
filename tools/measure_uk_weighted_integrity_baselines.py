@@ -47,7 +47,7 @@ import numpy as np
 from microcosm.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
-from microcosm.build.uk_runtime.national_build import load_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 from microcosm.build.uk_runtime.weighted_integrity import (
     uk_input_mass_totals,

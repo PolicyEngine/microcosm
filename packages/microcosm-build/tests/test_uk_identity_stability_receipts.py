@@ -13,10 +13,22 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+from microcosm.build.uk_runtime.age_tail import (
+    UK_AGE_TOP_CODE,
+    disaggregate_uk_age_top_code,
+)
+from microcosm.build.uk_runtime.etb_services import (
+    UK_NHS_OUTPUT_COLUMNS,
+    UKETBServicesStageTransform,
+    allocate_nhs_by_age_gender,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
 
@@ -125,3 +137,195 @@ class TestE7Receipt:
         household.loc[household.index[-1], "household_support_channel"] = "frs"
         receipt = tool.e7_identity_receipt(frame, permutation_seed=7)
         assert receipt["matches_stored_columns"] is False
+
+
+class TestE6Receipt:
+    def test_nhs_receipt_uses_stage_time_top_coded_age(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class _FakeModel:
+            def __init__(self, *, n_estimators, seed):
+                del n_estimators, seed
+
+            def start_chain(self, donor, predictors, targets, *, weights):
+                del donor, predictors, weights
+                return {"targets": list(targets)}
+
+            def fit_draw_next(self, donor, recipient_base, raw, *, state, weights):
+                del recipient_base, raw, weights
+                target = state["targets"][0]
+                state = {"targets": state["targets"][1:]}
+                return SimpleNamespace(
+                    raw_draw=pd.Series(
+                        [float(donor[target].iloc[0])], index=donor.index[:1]
+                    ),
+                    weight_kind="explicit",
+                    state=state,
+                )
+
+        import microcosm.fit as fit_module
+
+        monkeypatch.setattr(fit_module, "RegimeGatedQRF", _FakeModel)
+
+        class _FakeEngine:
+            country = "uk"
+
+            _entities = {
+                "is_adult": "person",
+                "is_child": "person",
+                "is_SP_age": "person",
+                "dla": "person",
+                "pip": "person",
+                "hbai_household_net_income": "household",
+                "current_education": "person",
+            }
+
+            def variable_metadata(self, name):
+                return SimpleNamespace(entity=self._entities[name])
+
+            def materialize(self, frame, variables, period):
+                del period
+                person_rows = len(frame.table("person"))
+                household_rows = len(frame.table("household"))
+                values = {
+                    "is_adult": np.ones(person_rows),
+                    "is_child": np.zeros(person_rows),
+                    "is_SP_age": np.ones(person_rows),
+                    "dla": np.zeros(person_rows),
+                    "pip": np.zeros(person_rows),
+                    "hbai_household_net_income": np.full(household_rows, 100.0),
+                    "current_education": np.full(
+                        person_rows, "NOT_IN_EDUCATION", dtype=object
+                    ),
+                }
+                return {variable: values[variable] for variable in variables}
+
+        frame = uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": [1],
+                    "person_benunit_id": [10],
+                    "person_household_id": [100],
+                    "person_source_id": ["source-1"],
+                    "age": [float(UK_AGE_TOP_CODE)],
+                    "gender": ["FEMALE"],
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": [10], "benunit_household_id": [100]}),
+            household=pd.DataFrame(
+                {"household_id": [100], "household_weight": [1.0]}
+            ),
+            time_period="2024",
+            weight_kind=WeightKind.DESIGN,
+        )
+        stage = SourceStageSpec(
+            stage="etb_services",
+            survey="etb",
+            source="fixture",
+            grain="household",
+            artifacts=(),
+            operations=(
+                SourceOperationSpec(kind="derive", parameters={}),
+                SourceOperationSpec(
+                    kind="fit_weighted_qrf_chain", parameters={"seed": 0}
+                ),
+            ),
+            outputs=(),
+        )
+        donor = pd.DataFrame(
+            {
+                "year": [2024],
+                "adults": [1],
+                "childs": [0],
+                "disinc": [100.0],
+                "educ": [1.0],
+                "rail": [1.0],
+                "bussub": [1.0],
+                "hhold_adj_weight": [1.0],
+                "noretd": [1],
+                "primed": [0],
+                "secoed": [0],
+                "furted": [0],
+                "disliv": [0.0],
+                "pips": [0.0],
+            }
+        )
+        frame = UKETBServicesStageTransform(
+            stage=stage, engine=_FakeEngine(), donor=donor
+        )(frame)
+        disaggregate_uk_age_top_code(
+            frame,
+            band_populations={
+                ("MALE", "80_84"): 1.0,
+                ("MALE", "85_89"): 1.0,
+                ("MALE", "90_plus"): 1.0,
+                ("FEMALE", "80_84"): 1.0,
+                ("FEMALE", "85_89"): 1e9,
+                ("FEMALE", "90_plus"): 1.0,
+            },
+        )
+
+        person = frame.table("person")
+        household = frame.table("household")
+        final_age_nhs = allocate_nhs_by_age_gender(
+            person,
+            household_weights=frame.weights_for("household").values,
+            household=household,
+            nhs_table=None,
+        )
+        stored = person.set_index("person_id")[list(UK_NHS_OUTPUT_COLUMNS)]
+        final_age_nhs.index = stored.index
+        assert any(
+            not np.allclose(
+                stored[column].to_numpy(dtype=float),
+                final_age_nhs[column].to_numpy(dtype=float),
+            )
+            for column in UK_NHS_OUTPUT_COLUMNS
+        )
+
+        receipt = _load_tool().e6_identity_receipt(frame, permutation_seed=7)
+        assert receipt["nhs_age_basis"] == "stage_time_top_coded"
+        assert receipt["nhs_age_top_code"] == UK_AGE_TOP_CODE
+        assert receipt["matches_stored_columns"] is True
+        assert receipt["stored_column_mismatches"] == {}
+
+
+def test_e8_carrier_recompute_is_invariant_to_the_age_tail_rewrite():
+    """The donor stage picked carriers before age_tail ran; the recompute must too.
+
+    Two adults tied at the top code at stage time: the stage's carrier is the
+    stable-order winner of that tie. After age_tail lifts one of them to 90,
+    an unclamped recompute flips the tie to the lifted person — the mechanism
+    behind the 255-donor mismatch on the first 25-stage ladder run — while the
+    stage-time clamp reproduces the stage's own choice exactly.
+    """
+
+    from microcosm.build.uk_runtime.age_tail import UK_AGE_TOP_CODE as TOP
+    from microcosm.build.uk_runtime.cgt_structure import _oldest_adult_indices
+
+    stage_time = pd.DataFrame(
+        {
+            "person_id": [0, 1],
+            "person_household_id": [7, 7],
+            "age": [float(TOP), float(TOP)],
+        }
+    )
+    after_age_tail = stage_time.assign(age=[float(TOP), 90.0])
+
+    stage_choice = _oldest_adult_indices(stage_time, household_ids={7})
+
+    unclamped = _oldest_adult_indices(after_age_tail, household_ids={7})
+    assert unclamped.tolist() != stage_choice.tolist()
+
+    clamped = after_age_tail.assign(
+        age=np.minimum(
+            pd.to_numeric(after_age_tail["age"], errors="coerce").to_numpy(
+                dtype=float
+            ),
+            float(TOP),
+        )
+    )
+    assert (
+        _oldest_adult_indices(clamped, household_ids={7}).tolist()
+        == stage_choice.tolist()
+    )

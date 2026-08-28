@@ -105,11 +105,11 @@ class PolicyEngineUKEngine:
         path: str | Path,
         period: int | str,
     ) -> None:
-        """UK dataset export remains on the national-build writer in E1."""
+        """UK dataset export remains on the national-frame writer in E1."""
 
         raise NotImplementedError(
             "PolicyEngine-UK dataset export is not implemented in the frame "
-            "adapter yet; use microcosm.build.uk_runtime.national_build."
+            "adapter yet; use microcosm.build.uk_runtime.national_frame."
             "write_uk_national_frame."
         )
 

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
@@ -28,9 +29,8 @@ from microcosm.build.uk_runtime.hmrc_replay import (
     HMRCReplayReport,
     build_conservative_hmrc_replay_report,
 )
-from microcosm.build.uk_runtime.hmrc_restoration import (
-    _assert_post_draw_identity,
-    _distributional_mass_shares,
+from microcosm.build.uk_runtime.hmrc_source_contract import (
+    HMRC_DISTRIBUTIONAL_INPUTS,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -63,6 +63,8 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
+    SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+    SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
@@ -595,6 +597,94 @@ def _support_result_from_frame(
         mass_log=frame.mass_log,
         spi_prior_mass_share=DEFAULT_SPI_PRIOR_MASS_SHARE,
     )
+
+
+def _assert_post_draw_identity(frame: Frame) -> int:
+    """Require deterministic TEI + TII = TI on every rebuilt SPI draw."""
+
+    person = frame.table("person")
+    channel = support_channel_column("person")
+    required = (
+        channel,
+        SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+        SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+        "hmrc_spi_assessable_income",
+    )
+    missing = sorted(set(required) - set(person.columns))
+    if missing:
+        raise RuntimeError(
+            f"HMRC replay omitted post-draw identity column(s): {missing}."
+        )
+    spi = person[channel].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy(dtype=bool)
+    if not spi.any():
+        raise RuntimeError("HMRC replay contains no rebuilt SPI person draws.")
+    numeric = person.loc[
+        spi,
+        [
+            SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+            SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+            "hmrc_spi_assessable_income",
+        ],
+    ].apply(pd.to_numeric, errors="coerce")
+    values = numeric.to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise RuntimeError("HMRC post-draw identity contains non-finite values.")
+    if not np.array_equal(
+        numeric["hmrc_spi_assessable_income"].to_numpy(dtype=float),
+        numeric[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN].to_numpy(dtype=float)
+        + numeric[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN].to_numpy(dtype=float),
+    ):
+        raise RuntimeError("HMRC TI must equal deterministic TEI + TII exactly.")
+    return int(spi.sum())
+
+
+def _distributional_mass_shares(frame: Frame) -> dict[str, float]:
+    """Audit charitable signal on strictly positive rebuilt-SPI mass."""
+
+    person = frame.table("person")
+    person_channel = support_channel_column("person")
+    if person_channel not in person:
+        raise RuntimeError(
+            "Cannot audit HMRC distributional inputs without person support "
+            "channel provenance."
+        )
+    spi_people = (
+        person[person_channel].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy(dtype=bool)
+    )
+    if not spi_people.any():
+        raise RuntimeError("Rebuilt HMRC family contains no SPI support people.")
+    household = frame.table("household")
+    household_weights = pd.Series(
+        frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(),
+    )
+    mapped = pd.to_numeric(
+        person["person_household_id"].map(household_weights),
+        errors="coerce",
+    ).to_numpy(dtype=float, na_value=np.nan)
+    if not np.isfinite(mapped).all() or (mapped < 0.0).any():
+        raise RuntimeError(
+            "Cannot audit HMRC distributional inputs without finite, "
+            "non-negative person mass."
+        )
+    positive = mapped > 0.0
+    total = float(mapped[positive].sum())
+    if total <= 0.0:
+        raise RuntimeError("HMRC distributional audit has no positive person mass.")
+    shares: dict[str, float] = {}
+    for column in HMRC_DISTRIBUTIONAL_INPUTS:
+        if column not in person:
+            raise RuntimeError(f"HMRC stage omitted distributional input {column!r}.")
+        values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+            dtype=float,
+            na_value=np.nan,
+        )
+        if not np.isfinite(values).all():
+            raise RuntimeError(f"HMRC distributional input {column!r} is non-finite.")
+        shares[column] = (
+            float(mapped[positive & spi_people & (values != 0.0)].sum()) / total
+        )
+    return shares
 
 
 def _build_spine_replay_report(

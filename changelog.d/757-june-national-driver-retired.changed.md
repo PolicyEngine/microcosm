@@ -1,0 +1,1 @@
+Retired the June UK national build driver and its HMRC restoration path. The retired driver signed the declared calibration diagnostics digest into release evidence before writing the diagnostics file; the calibration seam now measures the produced file and signs that measured digest instead.

@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime.national_build import write_uk_national_frame
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    uk_national_frame,
+    write_uk_national_frame,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
 from tools.score_uk_national_candidate import (
@@ -86,6 +88,8 @@ def test_score_uk_national_candidate_scores_synthetic_twins(tmp_path) -> None:
         calibration_year=2025,
     )
 
+    assert score["artifacts"]["candidate"]["label"] == candidate.stem
+    assert score["artifacts"]["incumbent"]["label"] == "enhanced_frs_2024_25"
     assert score["artifacts"]["candidate"]["sha256"] == _sha256_file(candidate)
     assert score["artifacts"]["incumbent"]["sha256"] == _sha256_file(incumbent)
     assert score["target_drift"] == [
@@ -156,6 +160,10 @@ def test_score_uk_national_candidate_cli_writes_score_block(tmp_path) -> None:
                 str(output_json),
                 "--calibration-year",
                 "2025",
+                "--candidate-label",
+                "explicit_candidate",
+                "--incumbent-label",
+                "explicit_incumbent",
                 "--no-measure-resolution",
             ]
         )
@@ -164,6 +172,8 @@ def test_score_uk_national_candidate_cli_writes_score_block(tmp_path) -> None:
 
     payload = json.loads(output_json.read_text(encoding="utf-8"))
     score = payload["score_vs_enhanced_frs"]
+    assert score["artifacts"]["candidate"]["label"] == "explicit_candidate"
+    assert score["artifacts"]["incumbent"]["label"] == "explicit_incumbent"
     assert score["holdout_basis"] == "none_declared"
     # An undeclared holdout reports absence, never the fitted loss wearing a
     # holdout name: June's fixture holds a genuinely different holdout value,

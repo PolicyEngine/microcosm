@@ -1,3 +1,5 @@
+> Historicized 2026-08-26: This is the adjudication packet and run-receipt history for the #686 UK spine-swap decision. It is superseded as live state by the signed register and the battery; the content below is retained as historical evidence, not current operational status.
+
 # microcosm#686 whole-spine parity and swap acceptance — measurement receipts
 
 Receipts for the E10 increment (WS-E #145, epic #665). Every value below is a

@@ -130,17 +130,26 @@ def _write_exclusions(path: Path, payload: dict) -> Path:
     return path
 
 
-def test_exclusion_loader_refusals(tmp_path: Path):
-    base = {
-        "schema_version": 1,
-        "exclusions": [
-            {"name": "a", "reason": "reviewed reason", "tracking": "microcosm#623"}
-        ],
+def _entry(**overrides) -> dict:
+    entry = {
+        "name": "a",
+        "reason": "reviewed reason",
+        "tracking": "microcosm#623",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#757",
+        "approved_on": "2026-08-25",
+        "expires_on": "2026-11-25",
     }
+    entry.update(overrides)
+    return entry
+
+
+def test_exclusion_loader_refusals(tmp_path: Path):
+    base = {"schema_version": 2, "exclusions": [_entry()]}
 
     with pytest.raises(ValueError, match="schema_version"):
         load_uk_calibration_measure_exclusions(
-            _write_exclusions(tmp_path / "bad-version.json", {**base, "schema_version": 2})
+            _write_exclusions(tmp_path / "bad-version.json", {**base, "schema_version": 1})
         )
     with pytest.raises(ValueError, match="unknown top-level"):
         load_uk_calibration_measure_exclusions(
@@ -150,20 +159,42 @@ def test_exclusion_loader_refusals(tmp_path: Path):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "empty.json",
-                {**base, "exclusions": [{"name": "a", "reason": "", "tracking": "x"}]},
+                {**base, "exclusions": [_entry(reason="")]},
+            )
+        )
+    with pytest.raises(ValueError, match="empty approved_by"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "unapproved.json",
+                {**base, "exclusions": [_entry(approved_by="")]},
+            )
+        )
+    with pytest.raises(ValueError, match="canonical ISO"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "sloppy-date.json",
+                {**base, "exclusions": [_entry(approved_on="2026-8-25")]},
+            )
+        )
+    with pytest.raises(ValueError, match="after approved_on"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "inverted.json",
+                {**base, "exclusions": [_entry(expires_on="2026-08-25")]},
+            )
+        )
+    with pytest.raises(ValueError, match="unknown UK calibration measure exclusion field"):
+        load_uk_calibration_measure_exclusions(
+            _write_exclusions(
+                tmp_path / "extra-field.json",
+                {**base, "exclusions": [_entry(sneaky="value")]},
             )
         )
     with pytest.raises(ValueError, match="duplicate"):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "duplicate.json",
-                {
-                    **base,
-                    "exclusions": [
-                        {"name": "a", "reason": "one", "tracking": "x"},
-                        {"name": "a", "reason": "two", "tracking": "x"},
-                    ],
-                },
+                {**base, "exclusions": [_entry(), _entry(reason="two")]},
             )
         )
 
@@ -177,31 +208,98 @@ def test_exclusion_applier_returns_pruned_registry_and_receipt():
         country="uk",
     )
 
+    from datetime import date
+
+    window = _entry(name="drop", reason="reviewed")
     pruned, receipt = apply_uk_calibration_measure_exclusions(
-        registry,
-        ({"name": "drop", "reason": "reviewed", "tracking": "microcosm#623"},),
+        registry, (window,), now=date(2026, 9, 1)
     )
 
     assert [spec.name for spec in pruned.specs] == ["keep"]
     assert receipt == {
-        "drop": {"reason": "reviewed", "tracking": "microcosm#623"}
+        "drop": {
+            "reason": "reviewed",
+            "tracking": "microcosm#623",
+            "approved_by": "juaristi22",
+            "adjudication": "microcosm#757",
+            "approved_on": "2026-08-25",
+            "expires_on": "2026-11-25",
+            "evaluated_on": "2026-09-01",
+        }
     }
     with pytest.raises(ValueError, match="matched zero"):
         apply_uk_calibration_measure_exclusions(
-            registry,
-            ({"name": "stale", "reason": "reviewed", "tracking": "microcosm#623"},),
+            registry, (_entry(name="stale"),), now=date(2026, 9, 1)
         )
+    # Outside the reviewed window the run refuses with correct-or-renew —
+    # the narrowing neither lapses silently nor lives forever.
+    with pytest.raises(ValueError, match="correct the underlying gap"):
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 11, 26)
+        )
+    with pytest.raises(ValueError, match="correct the underlying gap"):
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 8, 24)
+        )
+
+
+#: The adjudicated register census: one entry per class of the #757
+#: ``uk_target_fit`` dispositions (issue comment 5427936411) plus the
+#: standing salary-sacrifice adjudication. The counts are the record of
+#: what was signed; a drifting count is a register change that must be
+#: re-adjudicated, never absorbed.
+_PACKAGED_EXCLUSION_CENSUS = {
+    "hmrc.salary_sacrifice.": 5,
+    "_1_000_000_to_inf": 11,
+    "slc.": 3,
+    "dwp/uc_payment_dist/": 16,
+    "obr.universal_credit_": 2,
+    "ons.household_composition.": 3,
+    "obr.fuel_duties": 1,
+}
 
 
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
-    assert {entry["name"] for entry in exclusions} == {
-        "hmrc.salary_sacrifice.it_relief_basic_rate",
-        "hmrc.salary_sacrifice.it_relief_higher_rate",
-        "hmrc.salary_sacrifice.it_relief_additional_rate",
-        "hmrc.salary_sacrifice.nics_relief_employee",
-        "hmrc.salary_sacrifice.nics_relief_employer",
-    }
+    names = [entry["name"] for entry in exclusions]
+    assert len(names) == len(set(names)) == 47
+
+    for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
+        matched = [name for name in names if marker in name]
+        assert len(matched) == expected, (marker, matched)
+    # The six sparse HMRC band cells are whatever remains: hmrc/ band
+    # cells that are not the eleven 1m+ channel cells.
+    sparse = [
+        name
+        for name in names
+        if name.startswith("hmrc/") and "_1_000_000_to_inf" not in name
+    ]
+    assert len(sparse) == 6, sparse
+
+    # The 2026-08-26 tranche carries the uk_target_fit disposition
+    # adjudication and a uniform three-month window; the ONS composition
+    # cells track the relationship-to-head successor issue.
+    tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
+    assert len(tranche) == 42
+    for entry in tranche:
+        assert "5427936411" in entry["adjudication"], entry["name"]
+        assert entry["expires_on"] == "2026-11-26", entry["name"]
+    for entry in exclusions:
+        if entry["name"].startswith("ons.household_composition."):
+            assert entry["tracking"] == "microcosm#791", entry["name"]
+
+    # The lever targets are deliberately NOT excluded: the six UC
+    # caseload / two-child-limit cells ride the would_claim_uc lever run,
+    # and the two expected-to-resolve cells ride the exclusion re-run.
+    excluded = set(names)
+    for riding in (
+        "dwp.uc.households",
+        "dwp.uc.households_single_no_children",
+        "dwp.uc.two_child_limit.children_disabled_child_element",
+        "ons.household_composition.couple_no_children_households",
+        "hmrc/state_pension_income_band_40_000_to_50_000",
+    ):
+        assert riding not in excluded, riding
 
 
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):
@@ -300,11 +398,6 @@ def test_exclusion_loader_requires_tracking(tmp_path: Path):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "untracked.json",
-                {
-                    "schema_version": 1,
-                    "exclusions": [
-                        {"name": "a", "reason": "reviewed reason", "tracking": ""}
-                    ],
-                },
+                {"schema_version": 2, "exclusions": [_entry(tracking="")]},
             )
         )

@@ -202,15 +202,17 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-# Spec-armed weighted-integrity thresholds (uk/gates.json parameters,
-# microcosm#630): passing reports must carry exactly the committed values,
+# Spec-armed weighted-integrity thresholds (uk/gates.json parameters;
+# input-mass pair from microcosm#630, QRF tail pair re-armed from the #686
+# L3 baselines by microcosm#757 B4): passing reports must carry exactly the
+# committed values,
 # so a re-signed report cannot loosen a fence the spec armed. Held in
 # lockstep with the committed spec by the build-shard sync tests.
 _UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
 _UK_QRF_TAIL_TOP_K = 100
-_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9970712395200448
-_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 274
+_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9994670564654868
+_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 104
 # Independent publication pin for the active reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
 # uk/gates.json reference_registry["efrs-post-calibration"].identity.
@@ -363,7 +365,7 @@ _UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 # gate_signing_key_env("uk") in the build shard; the legacy POPULACE variable
 # stays with the schema-3 path above.
 _UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
-_UK_GATE_BATTERY_PHASES = ("preflight", "terminal")
+_UK_GATE_BATTERY_PHASES = ("preflight", "assembled", "transferred", "terminal")
 _UK_GATE_BATTERY_STATUSES = frozenset(
     {"passed", "failed", "not_applicable", "evidence_absent", "unreached"}
 )
@@ -373,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "61c1e22c6d3f3e9087b7b83548f36c4ad0e4bc05d2f7119185d15eaaf5c45d16"
+    "955d56d8a6ce608615b863a51c5040bdf3b5db16afb92cf1035979c6f55719b8"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "fef7bb948a255b789408041c83ab67695bb7d3b00ce03b54ca0ac5b67e210b86"
+    "7a8b261a2a9dd87e3a57579c55469d769deaa0002f6ee006370629ab0af8b4e0"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f505823b64ed7b44e637f34cbe434e250546335bd527827e94f03deb864ff73b"
+    "e4c4a8fc302f79379e2e2ae75962428781c6cb3c0c31c825fd698240bfe6c89e"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -421,6 +423,31 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "ledger_compile_parity",
         "preflight",
     ),
+    "uk_stage_was_wealth_support": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
+    "uk_stage_etb_vat_support": ("stage_health", "transferred"),
+    "uk_stage_etb_services_support": ("stage_health", "transferred"),
+    "uk_stage_frs_hmrc_spine_leaves_signal": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_spi_support_channel_mass": ("stage_health", "transferred"),
+    "uk_stage_hmrc_spi_income_spine_identity": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
+    "uk_stage_cgt_band_donors_support": ("stage_health", "transferred"),
+    "uk_stage_hmrc_cgt_gains_spine_summary": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_salary_sacrifice_realization": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_student_loans_realization": ("stage_health", "transferred"),
+    "uk_stage_age_tail_targets": ("stage_health", "transferred"),
     "uk_release_input_coverage": ("release_input_coverage", "terminal"),
     "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
     "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
@@ -432,7 +459,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
-    "uk_brma_enum_domain": ("enum_domain", "terminal"),
+    "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -454,6 +481,19 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_ledger_compile_parity_incumbent_2025",
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
+        "uk_stage_was_wealth_support",
+        "uk_stage_lcfs_consumption_support",
+        "uk_stage_etb_vat_support",
+        "uk_stage_etb_services_support",
+        "uk_stage_frs_hmrc_spine_leaves_signal",
+        "uk_stage_spi_support_channel_mass",
+        "uk_stage_hmrc_spi_income_spine_identity",
+        "uk_stage_cgt_incidence_clone_mass",
+        "uk_stage_cgt_band_donors_support",
+        "uk_stage_hmrc_cgt_gains_spine_summary",
+        "uk_stage_salary_sacrifice_realization",
+        "uk_stage_student_loans_realization",
+        "uk_stage_age_tail_targets",
     }
 )
 # The input-mass binding's evidence payload wraps the reviewed reference
@@ -461,7 +501,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "16093e8605ac4bf9cf63fd66967c7b50fa80e29761443e8c6d37551e2d3b1fee"
+    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -472,12 +512,139 @@ _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
 )
 
 
+# --- UK release certification (microcosm#757 item B5) ----------------------
+# The multi-part certification the release-cut producer composes: the spine
+# build's battery report, the calibration seam's battery report, and the
+# release-cut battery report union to the full declared gate-entry set with
+# no gap and no overlap beyond the declared shared id. The data shard cannot
+# import the build shard, so the part scopes, phases, and scoped-manifest
+# digests are hand-mirrored here and held in lockstep by the build-shard
+# sync tests (test_gate_battery_contract_pins). The phase and digest checks
+# that _check_uk_gate_battery_report applies to one unfiltered report apply
+# here per-certification (the 5413502559 audit's nine refusal points).
+_UK_RELEASE_CERTIFICATION_FILE = "release_certification.json"
+_UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
+# The certified national line's constant release id (ruling 2026-08-27):
+# ordering and run identity live in the Logbook and versioning, so the id
+# stays fixed across cuts. Mirrored from
+# microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
+# data shard cannot import the build shard); lockstep-tested.
+_UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+_UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
+_UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
+_UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
+_UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
+    "spine": ("assembled", "transferred"),
+    "calibration_seam": ("terminal",),
+    "release_cut": ("preflight", "terminal"),
+}
+_UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
+    "spine": frozenset(
+        {
+            "uk_brma_enum_domain",
+            "uk_stage_age_tail_targets",
+            "uk_stage_cgt_band_donors_support",
+            "uk_stage_cgt_incidence_clone_mass",
+            "uk_stage_etb_services_support",
+            "uk_stage_etb_vat_support",
+            "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_support",
+            "uk_stage_salary_sacrifice_realization",
+            "uk_stage_spi_support_channel_mass",
+            "uk_stage_student_loans_realization",
+            "uk_stage_was_wealth_support",
+        }
+    ),
+    "calibration_seam": frozenset(
+        {
+            "uk_aggregate_admin",
+            "uk_calibration_reference_coverage",
+            "uk_target_fit",
+            "uk_weight_ess",
+            "uk_weight_ratio",
+            "uk_zero_weight_strata",
+        }
+    ),
+    "release_cut": frozenset(
+        {
+            "uk_aggregate_admin",
+            "uk_degenerate_release_surface",
+            "uk_export_surface",
+            "uk_input_mass_parity",
+            "uk_ledger_compile_parity_incumbent_2025",
+            "uk_ledger_compile_parity_production_2023",
+            "uk_nonnegative_columns",
+            "uk_qrf_tail_concentration",
+            "uk_release_family_build_stages",
+            "uk_release_input_coverage",
+            "uk_release_input_coverage_manifest_current",
+            "uk_student_loan_plan_enum_domain",
+            "uk_support",
+            "uk_take_up_signal",
+            "uk_target_surface",
+            "uk_weights_audit",
+        }
+    ),
+}
+_UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
+    "spine": {
+        "gates_manifest_sha256": (
+            "1605cf3fe1be4983cfb4ed806a34d69375cdc3e4e0c8883cc49481ac5870399a"
+        ),
+        "policy_sha256": (
+            "3d14ad24eff7f5afd343164560db24095d27fafb36c619ddf725c32e00b35a69"
+        ),
+    },
+    "calibration_seam": {
+        "gates_manifest_sha256": (
+            "7bc1fab5aa0c035b664684f93195c7f18cb6f48a5ff0e29fbd557bda979ba83b"
+        ),
+        "policy_sha256": (
+            "59a5e70053626439a848fd77c58064bf64c62914829667e62ef66a7408dd40f3"
+        ),
+    },
+    "release_cut": {
+        "gates_manifest_sha256": (
+            "2c698843042584af8976196f92b2baf097beca93b846fca74671a1cc3cc879aa"
+        ),
+        "policy_sha256": (
+            "e73dcbcaa07e34d23c8cf40b251f19fd00d9d2b85202647ca0ea13cb1021769a"
+        ),
+    },
+}
+_UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "kind",
+        "country",
+        "release_id",
+        "candidate",
+        "parts",
+        "spec",
+        "doctrine",
+        "diagnostics_sha256",
+        "score_receipt",
+        "exclusions_evaluated_on",
+        "shippable",
+        "attestation",
+    }
+)
+
+
 def required_release_files(release_id: str) -> tuple[str, ...]:
     """Files required for a release id's country-specific contract."""
     if release_id.startswith("populace-us-"):
         return (*REQUIRED_RELEASE_FILES, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
     if _is_uk_exact_k_release_id(release_id):
         return (*REQUIRED_RELEASE_FILES, _UK_TERMINAL_GATE_REPORT_FILE)
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        # The certified national line ships its composed verdict: the
+        # shippability claim lives only in the certification, so a national
+        # release without one is refused at the required-files layer, not
+        # just when part artifacts happen to be present.
+        return (*REQUIRED_RELEASE_FILES, _UK_RELEASE_CERTIFICATION_FILE)
     return REQUIRED_RELEASE_FILES
 
 
@@ -2608,6 +2775,209 @@ def _check_uk_gate_battery_report(
             )
 
 
+def _check_uk_release_certification(
+    certification: Mapping,
+    *,
+    release_id: str,
+    calibration_diagnostics_sha256: str | None,
+    failures: list[str],
+) -> None:
+    """Validate the multi-part release certification (microcosm#757 B5).
+
+    The certification is the only artifact that may carry a UK shippability
+    verdict: its parts must union to the full declared gate-entry set with
+    no gap and no overlap beyond the declared shared id, each part pinned to
+    the committed spec's scoped digests, with every release-blocking entry
+    passed and the whole document signed by the release key. Shippability is
+    recomputed from the parts, never read off the flag.
+    """
+
+    file = _UK_RELEASE_CERTIFICATION_FILE
+    actual_fields = set(certification)
+    if actual_fields != _UK_CERTIFICATION_REQUIRED_FIELDS:
+        missing = sorted(_UK_CERTIFICATION_REQUIRED_FIELDS - actual_fields)
+        unexpected = sorted(actual_fields - _UK_CERTIFICATION_REQUIRED_FIELDS)
+        failures.append(
+            f"{file} must carry exactly the certification fields; "
+            f"missing {missing}, unexpected {unexpected}."
+        )
+        return
+    schema = certification.get("schema_version")
+    if type(schema) is not int or schema != _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION:
+        failures.append(
+            f"{file} schema_version must be the integer "
+            f"{_UK_RELEASE_CERTIFICATION_SCHEMA_VERSION}, got {schema!r}."
+        )
+        return
+    if certification.get("kind") != _UK_RELEASE_CERTIFICATION_KIND:
+        failures.append(
+            f"{file} kind must be {_UK_RELEASE_CERTIFICATION_KIND!r}, got "
+            f"{certification.get('kind')!r}."
+        )
+    if certification.get("country") != "uk":
+        failures.append(f"{file} country must be 'uk'.")
+    if certification.get("release_id") != release_id:
+        failures.append(
+            f"{file} release_id {certification.get('release_id')!r} does not "
+            f"match the release under validation ({release_id!r})."
+        )
+
+    parts = certification.get("parts")
+    if not isinstance(parts, Mapping) or set(parts) != set(
+        _UK_CERTIFICATION_PART_SCOPES
+    ):
+        failures.append(
+            f"{file} parts must be exactly "
+            f"{sorted(_UK_CERTIFICATION_PART_SCOPES)}, got "
+            f"{sorted(parts) if isinstance(parts, Mapping) else parts!r}."
+        )
+        return
+    all_passed = True
+    for part_name, expected_scope in _UK_CERTIFICATION_PART_SCOPES.items():
+        part = parts[part_name]
+        if not isinstance(part, Mapping):
+            failures.append(f"{file} parts.{part_name} must be an object.")
+            all_passed = False
+            continue
+        if sorted(part.get("entry_ids", ())) != sorted(expected_scope):
+            failures.append(
+                f"{file} parts.{part_name}.entry_ids must equal the declared "
+                f"{part_name} scope."
+            )
+            all_passed = False
+        expected_phases = list(_UK_CERTIFICATION_PART_PHASES[part_name])
+        if list(part.get("phases", ())) != expected_phases:
+            failures.append(
+                f"{file} parts.{part_name}.phases must be {expected_phases}, "
+                f"got {part.get('phases')!r}."
+            )
+        for field, expected_digest in _UK_CERTIFICATION_PART_DIGESTS[
+            part_name
+        ].items():
+            if part.get(field) != expected_digest:
+                failures.append(
+                    f"{file} parts.{part_name}.{field} does not match the "
+                    "committed spec's scoped manifest digest."
+                )
+        statuses = part.get("statuses")
+        expected_statuses = {"passed": len(expected_scope)}
+        if statuses != expected_statuses:
+            failures.append(
+                f"{file} parts.{part_name}.statuses must be "
+                f"{expected_statuses}, got {statuses!r}: shippability is "
+                "recomputed from the parts, and only a fully-passed part "
+                "certifies."
+            )
+            all_passed = False
+        part_sha = part.get("sha256")
+        if not isinstance(part_sha, str) or not _SHA256_RE.fullmatch(part_sha):
+            failures.append(
+                f"{file} parts.{part_name}.sha256 must be a sha256 hex digest."
+            )
+
+    # The union and overlap are properties of the mirrored scopes; assert
+    # them against the full entry-id mirror so the three constants cannot
+    # drift apart silently.
+    union: dict[str, int] = {}
+    for scope in _UK_CERTIFICATION_PART_SCOPES.values():
+        for gate_id in scope:
+            union[gate_id] = union.get(gate_id, 0) + 1
+    if set(union) != _UK_GATE_BATTERY_ENTRY_IDS:
+        failures.append(
+            f"{file} mirrored part scopes do not union to the declared "
+            "gate-entry set."
+        )
+    overlap = sorted(
+        gate_id
+        for gate_id, count in union.items()
+        if count > 1 and gate_id not in _UK_CERTIFICATION_SHARED_GATE_IDS
+    )
+    if overlap:
+        failures.append(
+            f"{file} mirrored part scopes overlap beyond the declared shared "
+            f"ids: {overlap}."
+        )
+
+    spec = certification.get("spec")
+    if not isinstance(spec, Mapping):
+        failures.append(f"{file} spec must be an object.")
+    else:
+        for field, expected in (
+            ("gates_manifest_sha256", _UK_GATE_BATTERY_GATES_MANIFEST_SHA256),
+            ("policy_sha256", _UK_GATE_BATTERY_POLICY_SHA256),
+            ("spec_fingerprint", _UK_GATE_BATTERY_SPEC_FINGERPRINT),
+        ):
+            if spec.get(field) != expected:
+                failures.append(
+                    f"{file} spec.{field} does not match the committed "
+                    "full-manifest pin."
+                )
+        if spec.get("declared_entry_count") != len(_UK_GATE_BATTERY_ENTRY_IDS):
+            failures.append(
+                f"{file} spec.declared_entry_count must be "
+                f"{len(_UK_GATE_BATTERY_ENTRY_IDS)}."
+            )
+        if list(spec.get("declared_phases", ())) != list(_UK_GATE_BATTERY_PHASES):
+            failures.append(
+                f"{file} spec.declared_phases must be "
+                f"{list(_UK_GATE_BATTERY_PHASES)}."
+            )
+        if list(spec.get("shared_gate_ids", ())) != sorted(
+            _UK_CERTIFICATION_SHARED_GATE_IDS
+        ):
+            failures.append(
+                f"{file} spec.shared_gate_ids must be "
+                f"{sorted(_UK_CERTIFICATION_SHARED_GATE_IDS)}."
+            )
+
+    if (
+        calibration_diagnostics_sha256 is not None
+        and certification.get("diagnostics_sha256") != calibration_diagnostics_sha256
+    ):
+        failures.append(
+            f"{file} diagnostics_sha256 does not match the release's "
+            "calibration_diagnostics.json bytes."
+        )
+
+    if certification.get("shippable") is not True or not all_passed:
+        failures.append(
+            f"{file} does not certify a shippable candidate: shippable must "
+            "be true and every part fully passed."
+        )
+
+    attestation = certification.get("attestation")
+    if not isinstance(attestation, Mapping):
+        failures.append(f"{file} attestation must be an object.")
+        return
+    verification_key = _uk_gate_battery_verification_key(failures)
+    if verification_key is None:
+        return
+    expected_key_sha256 = hashlib.sha256(verification_key).hexdigest()
+    if attestation.get("signing_key_sha256") != expected_key_sha256:
+        failures.append(
+            f"{file} attestation.signing_key_sha256 does not identify the "
+            "trusted release key."
+        )
+    unsigned = dict(certification)
+    unsigned["attestation"] = {
+        **{str(key): value for key, value in attestation.items()},
+        "signature": None,
+    }
+    expected_signature = hmac.new(
+        verification_key,
+        _canonical_json_bytes(unsigned),
+        hashlib.sha256,
+    ).hexdigest()
+    signature = attestation.get("signature")
+    if not isinstance(signature, str) or not hmac.compare_digest(
+        signature, expected_signature
+    ):
+        failures.append(
+            f"{file} attestation.signature does not authenticate the "
+            "complete certification with the trusted release key."
+        )
+
+
 def _check_calibration_diagnostics(
     diagnostics: Mapping,
     failures: list[str],
@@ -3998,6 +4368,44 @@ def validate_release_dir(release_dir: Path | str) -> None:
                     f"or {_UK_GATE_BATTERY_SCHEMA_VERSION} (gate battery), "
                     f"got {report_schema!r}."
                 )
+
+    certification_path = release_dir / _UK_RELEASE_CERTIFICATION_FILE
+    # A release that ships any national-line part must ship the composed
+    # verdict: the shippability claim lives only in the certification, so a
+    # directory carrying a release-cut report, or a calibration-seam-scoped
+    # terminal report, without release_certification.json is refused rather
+    # than validating clean by omission. (The id-keyed required-files rule
+    # lands with the national publication integration, once the canonical
+    # national release-id form exists.)
+    national_line_parts = []
+    if (release_dir / _UK_RELEASE_CUT_GATE_REPORT_FILE).is_file():
+        national_line_parts.append(_UK_RELEASE_CUT_GATE_REPORT_FILE)
+    seam_terminal_path = release_dir / _UK_TERMINAL_GATE_REPORT_FILE
+    if seam_terminal_path.is_file():
+        try:
+            probe = json.loads(seam_terminal_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            probe = None
+        if isinstance(probe, Mapping) and probe.get("posture") == "calibration_seam":
+            national_line_parts.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} (posture calibration_seam)"
+            )
+    if national_line_parts and not certification_path.is_file():
+        failures.append(
+            f"{_UK_RELEASE_CERTIFICATION_FILE} is missing while national-line "
+            f"gate artifacts are present ({', '.join(national_line_parts)}); "
+            "a candidate's shippability verdict comes only from the "
+            "certification, so its omission cannot validate clean."
+        )
+    if certification_path.is_file():
+        certification = _load_json(certification_path, failures)
+        if certification is not None:
+            _check_uk_release_certification(
+                certification,
+                release_id=release_id,
+                calibration_diagnostics_sha256=calibration_diagnostics_sha256,
+                failures=failures,
+            )
 
     _check_cross_manifest_consistency(
         build_manifest,

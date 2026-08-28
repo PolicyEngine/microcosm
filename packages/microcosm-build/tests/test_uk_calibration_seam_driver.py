@@ -70,34 +70,42 @@ def _args(tmp_path: Path) -> list[str]:
     ]
 
 
-def test_driver_refuses_release_candidate_with_each_override(tmp_path: Path):
+def test_driver_refuses_release_candidate_outright(tmp_path: Path):
+    # The seam's scoped battery covers 6 of the declared entries and must
+    # never sign a shippability claim (the #757 release-cut audit); the
+    # release verdict belongs to the release-cut certification producer.
     driver = _load_driver_module()
-    override_flags = [
-        ["--epochs", "128"],
-        ["--target-weight-rule", "family_equal"],
-        ["--learning-rate", "0.01"],
-        ["--target-loss-cap", "5"],
-    ]
-    for flag in override_flags:
+    with pytest.raises(SystemExit):
+        driver._parse_args(_args(tmp_path) + ["--release-candidate"])
+    # The refusal is unconditional — an otherwise doctrine-clean invocation
+    # is refused too, not just ones with override flags.
+    with pytest.raises(SystemExit):
+        driver._parse_args(
+            _args(tmp_path) + ["--release-candidate", "--epochs", "128"]
+        )
+
+
+def test_driver_refuses_canonical_release_ids(tmp_path: Path):
+    # Canonical release ids name shippable candidates; the seam runs under
+    # staging or dev ids only, and redirects canonical ids to the
+    # release-cut producer.
+    driver = _load_driver_module()
+    base = _args(tmp_path)
+    release_index = base.index("--release-id")
+    for canonical in (
+        "populace-uk-2024-frs-k100",
+        "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+    ):
+        args = [*base]
+        args[release_index + 1] = canonical
         with pytest.raises(SystemExit):
-            driver._parse_args(_args(tmp_path) + ["--release-candidate", *flag])
+            driver._parse_args(args)
 
 
-def test_driver_refuses_release_candidate_with_operator_exclusions(tmp_path: Path):
-    # The scoped battery carries no target-surface gate, so an operator
-    # register could narrow what a release candidate was measured against
-    # without anything noticing.
+def test_driver_accepts_operator_exclusions_on_staging_posture(tmp_path: Path):
     driver = _load_driver_module()
     exclusions = tmp_path / "operator.json"
     exclusions.write_text("{}", encoding="utf-8")
-
-    with pytest.raises(SystemExit):
-        driver._parse_args(
-            _args(tmp_path)
-            + ["--release-candidate", "--measure-exclusions", str(exclusions)]
-        )
-
-    # Without the release-candidate posture the same register is accepted.
     parsed = driver._parse_args(
         _args(tmp_path) + ["--measure-exclusions", str(exclusions)]
     )
@@ -184,3 +192,14 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
     assert call["measure_resolver"].kwargs["simulation_source"] == call["paths"].input_h5
     assert call["source_pins"]["ledger_facts"] == {"sha256": "b" * 64, "size_bytes": 2}
     assert "uk_target_fit" in capsys.readouterr().out
+
+
+def test_driver_refuses_the_national_release_id(tmp_path: Path):
+    # The constant national id names a shippable release (ruling 2026-08-27);
+    # the seam runs under staging or dev ids only.
+    driver = _load_driver_module()
+    base = _args(tmp_path)
+    args = [*base]
+    args[base.index("--release-id") + 1] = "microcosm-uk-2024-25-national"
+    with pytest.raises(SystemExit):
+        driver._parse_args(args)

@@ -572,7 +572,13 @@
     "mapped_build_period": "2024"
    },
    "stage": "hmrc_cgt_gains",
-   "status": "required_at_build"
+   "status": "required_at_build",
+   "superseded_by": {
+    "reason": "The FRS spine build executes hmrc_cgt_gains_spine, which applies the same HMRC Table 3 amounts redraw directly in source_stages.json before calibration.",
+    "source_manifest": "source_stages.json",
+    "source_manifest_sha256": "b04f5c9af88d5c6e11e687daa1c7eb382058e3ed4f637e1075887f4f7cc043e3",
+    "stage": "hmrc_cgt_gains_spine"
+   }
   },
   "hmrc_cgt_gains_spine": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
@@ -683,7 +689,13 @@
    },
    "spi_prior_national_household_mass_share": 0.5,
    "stage": "hmrc_spi_income",
-   "status": "required_at_build"
+   "status": "required_at_build",
+   "superseded_by": {
+    "reason": "The FRS spine build executes hmrc_spi_income_spine, which supersedes the June retained-leaves/hmrc_spi_income pair inside source_stages.json.",
+    "source_manifest": "source_stages.json",
+    "source_manifest_sha256": "b04f5c9af88d5c6e11e687daa1c7eb382058e3ed4f637e1075887f4f7cc043e3",
+    "stage": "hmrc_spi_income_spine"
+   }
   },
   "lcfs_consumption": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",

@@ -105,30 +105,22 @@ def materialize_uk_ledger_targets(
     )
 
 
-class UKPolicyEngineAdapter:
-    """Small adapter around policyengine-uk simulation-like objects."""
-
-    def __init__(self, simulation: Any):
-        self.simulation = simulation
-        self.tables: dict[str, dict[str, np.ndarray]] = {}
-
-    def column(self, entity: str, variable: str) -> np.ndarray:
-        table = self.tables.get(entity, {})
-        if variable in table:
-            return np.asarray(table[variable], dtype=float)
-        values = self.simulation.calculate(variable)
-        return np.asarray(values, dtype=float)
-
-    def set_column(self, entity: str, variable: str, values: object) -> None:
-        self.tables.setdefault(entity, {})[variable] = np.asarray(values, dtype=float)
-
-    def parameter(self, parameter: str, period: int | str) -> float:
-        if parameter in {
-            "cgt_calibration.uk_cgt_annual_exempt_amount",
-            "gov.hmrc.cgt.annual_exempt_amount",
-        }:
-            return uk_cgt_annual_exempt_amount(period)
-        raise KeyError(parameter)
+#: Published-fact reductions rewritten to the internal reduction that carries
+#: the same meaning on our frame. Facts keep the semantics of the source that
+#: published them; translating those onto the model's own concepts is our job,
+#: and a fact we cannot phrase internally gets translated and recorded, never
+#: dropped.
+#:
+#: ``any_child_under`` (DWP Stat-Xplore, Scottish UC households with a child
+#: under 1) names a dependent-child concept the model does not carry. There is
+#: no ``is_child`` column because the model has no need of one: dependency is
+#: derived from age where it is wanted. So "any child under N" is exactly "any
+#: person aged under N" here, and the condition already supplies the age bound.
+#: The rewrite is declared rather than aliased at the call site so it stays
+#: greppable, testable, and visible in review.
+UK_TRANSLATED_HOUSEHOLD_REDUCTIONS: Mapping[str, str] = {
+    "any_child_under": "any",
+}
 
 
 class UKFrameTargetAdapter:
@@ -239,7 +231,8 @@ class UKFrameTargetAdapter:
         source = self.tables[entity]
         household_ids = self._household_ids_for(entity)
 
-        reduce = str(condition["reduce"])
+        published = str(condition["reduce"])
+        reduce = UK_TRANSLATED_HOUSEHOLD_REDUCTIONS.get(published, published)
         variable = str(condition["variable"])
         if reduce == "any":
             matched = _compare_series(source[variable], condition)
@@ -252,7 +245,12 @@ class UKFrameTargetAdapter:
             aggregate = source[variable].groupby(household_ids).count()
             expected = condition
         else:
-            raise ValueError(f"Unsupported UK household reduction {reduce!r}.")
+            raise ValueError(
+                f"Unsupported UK household reduction {published!r}."
+                if published == reduce
+                else f"Unsupported UK household reduction {published!r} "
+                f"(translated to {reduce!r})."
+            )
 
         households = self.tables["household"]
         ids = households["household_id"]

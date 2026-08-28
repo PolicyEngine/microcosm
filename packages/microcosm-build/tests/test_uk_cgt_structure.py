@@ -184,6 +184,12 @@ def test_band_donors_are_band_exact_positive_and_permutation_stable() -> None:
     assert (first.frame.weights_for("household").values[-DONOR_TOTAL:] > 0).all()
     assert [row["donor_count"] for row in first.band_rows] == [DONORS_PER_BAND] * 9
     assert [row["lower_limit"] for row in first.band_rows][0] == MIN_DONOR_BAND_LOWER
+    assert [row["realized_min_gain"] for row in first.band_rows] == [
+        row["mean_gain"] for row in first.band_rows
+    ]
+    assert [row["realized_max_gain"] for row in first.band_rows] == [
+        row["mean_gain"] for row in first.band_rows
+    ]
     assert [row["weighted_taxpayers"] for row in first.band_rows] == pytest.approx(
         [79_000, 74_000, 53_000, 37_000, 14_000, 8_000, 5_000, 3_000, 2_000]
     )

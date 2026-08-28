@@ -29,7 +29,7 @@ from microcosm.build.uk_runtime import (
     write_uk_national_frame,
     write_uk_rowwise_dataset,
 )
-from microcosm.build.uk_runtime.national_build import (
+from microcosm.build.uk_runtime.national_frame import (
     UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
 )
 from microcosm.frame import Frame, MassChangeRecord, WeightKind

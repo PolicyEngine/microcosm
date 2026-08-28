@@ -78,8 +78,10 @@ def _entry(
     surface: str,
     columns: list[str],
     expectation: str = "column_differs",
+    direction: str = "candidate_above",
+    max_abs_delta: float = 1.0,
 ) -> dict:
-    return {
+    entry = {
         "id": identifier,
         "class": "mechanism_change",
         "scope": {"surface": surface, "columns": columns, "entities": ["household"]},
@@ -89,6 +91,25 @@ def _entry(
         "adjudicator": "juaristi22",
         "adjudicated_on": "2026-08-22",
     }
+    if surface == "nonzero_shares" and expectation == "column_differs":
+        reference = _reference_payload()["nonzero_shares"]
+        entry["quantitative"] = {
+            "shares": {
+                column: {
+                    "incumbent_share": reference.get(column, 0.0),
+                    "direction": direction,
+                    "max_abs_delta": max_abs_delta,
+                }
+                for column in columns
+            }
+        }
+    elif surface == "entity_counts" and expectation == "count_differs":
+        entry["quantitative"] = {"expected_deltas": {column: 1 for column in columns}}
+    elif surface == "weighted_totals":
+        entry["quantitative"] = {"weighted_totals": {"expected_columns": columns}}
+    else:
+        entry["quantitative"] = {"structural": {"expected_columns": columns}}
+    return entry
 
 
 def _first_household_column() -> str:
@@ -97,6 +118,18 @@ def _first_household_column() -> str:
         if entity == "household":
             return column
     raise AssertionError("reference carries no household column")
+
+
+def _weighted_identity(sha256: str) -> dict[str, str]:
+    return {"filename": "artifact.h5", "sha256": sha256}
+
+
+def _reference_weighted_identity() -> dict[str, str]:
+    return _weighted_identity(_reference_payload()["source"]["sha256"])
+
+
+def _candidate_weighted_identity() -> dict[str, str]:
+    return _weighted_identity("a" * 64)
 
 
 class TestVerdicts:
@@ -343,9 +376,13 @@ class TestFences:
         # register rot again.
         tool = _load_tool()
         candidate = _write(tmp_path / "c.json", _candidate_from_reference())
-        left = _write(tmp_path / "ref.json", {"identity": {}, "totals": {"col": 100.0}})
+        left = _write(
+            tmp_path / "ref.json",
+            {"identity": _reference_weighted_identity(), "totals": {"col": 100.0}},
+        )
         right = _write(
-            tmp_path / "cand.json", {"identity": {}, "totals": {"col": 100.0}}
+            tmp_path / "cand.json",
+            {"identity": _candidate_weighted_identity(), "totals": {"col": 100.0}},
         )
         register = _register(
             tmp_path,
@@ -477,9 +514,13 @@ class TestWeightedTotals:
     def test_unsigned_weighted_divergence_is_a_defect(self, tmp_path: Path) -> None:
         tool = _load_tool()
         candidate = _write(tmp_path / "c.json", _candidate_from_reference())
-        left = _write(tmp_path / "ref.json", {"identity": {}, "totals": {"col": 100.0}})
+        left = _write(
+            tmp_path / "ref.json",
+            {"identity": _reference_weighted_identity(), "totals": {"col": 100.0}},
+        )
         right = _write(
-            tmp_path / "cand.json", {"identity": {}, "totals": {"col": 125.0}}
+            tmp_path / "cand.json",
+            {"identity": _candidate_weighted_identity(), "totals": {"col": 125.0}},
         )
 
         assert (
@@ -496,6 +537,145 @@ class TestWeightedTotals:
                 ]
             )
             == 1
+        )
+
+    def test_strict_weighted_totals_reference_only_key_is_a_defect(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(
+            tmp_path / "ref.json",
+            {
+                "identity": _reference_weighted_identity(),
+                "totals": {"kept": 100.0, "omitted": 1.0},
+            },
+        )
+        right = _write(
+            tmp_path / "cand.json",
+            {"identity": _candidate_weighted_identity(), "totals": {"kept": 100.0}},
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(_register(tmp_path)),
+                "--reference-weighted-totals",
+                str(left),
+                "--candidate-weighted-totals",
+                str(right),
+                "--strict",
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        assert report["weighted_totals"]["only_in_reference"] == ["omitted"]
+        assert "omitted" in report["unsigned_differences"]
+
+    def test_strict_weighted_totals_candidate_only_key_is_a_defect(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(
+            tmp_path / "ref.json",
+            {"identity": _reference_weighted_identity(), "totals": {"kept": 100.0}},
+        )
+        right = _write(
+            tmp_path / "cand.json",
+            {
+                "identity": _candidate_weighted_identity(),
+                "totals": {"extra": 1.0, "kept": 100.0},
+            },
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(_register(tmp_path)),
+                "--reference-weighted-totals",
+                str(left),
+                "--candidate-weighted-totals",
+                str(right),
+                "--strict",
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        assert report["weighted_totals"]["only_in_candidate"] == ["extra"]
+        assert "extra" in report["unsigned_differences"]
+
+    def test_strict_weighted_totals_missing_candidate_identity_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(
+            tmp_path / "ref.json",
+            {"identity": _reference_weighted_identity(), "totals": {"kept": 100.0}},
+        )
+        right = _write(tmp_path / "cand.json", {"totals": {"kept": 100.0}})
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                    "--reference-weighted-totals",
+                    str(left),
+                    "--candidate-weighted-totals",
+                    str(right),
+                    "--strict",
+                ]
+            )
+            == 2
+        )
+
+    def test_strict_weighted_totals_cross_artifact_identity_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        left = _write(
+            tmp_path / "ref.json",
+            {"identity": _reference_weighted_identity(), "totals": {"kept": 100.0}},
+        )
+        right = _write(
+            tmp_path / "cand.json",
+            {"identity": _weighted_identity("b" * 64), "totals": {"kept": 100.0}},
+        )
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                    "--reference-weighted-totals",
+                    str(left),
+                    "--candidate-weighted-totals",
+                    str(right),
+                    "--strict",
+                ]
+            )
+            == 2
         )
 
 
@@ -625,6 +805,76 @@ class TestAcceptanceBand:
                 )
                 == 2
             )
+
+    def test_strict_refuses_a_non_contract_band(self, tmp_path: Path) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+
+        assert (
+            tool.main(
+                [
+                    "--candidate-json",
+                    str(candidate),
+                    "--register",
+                    str(_register(tmp_path)),
+                    "--strict",
+                    "--share-band",
+                    "0.9",
+                ]
+            )
+            == 2
+        )
+
+    def test_diagnostic_non_contract_band_is_not_parity(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(_register(tmp_path)),
+                "--share-band",
+                "0.9",
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 0
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "diagnostic"
+        assert report["share_band"] == {"contract": 0.02, "effective": 0.9}
+
+    def test_strict_contract_band_behaviour_is_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        candidate = _write(tmp_path / "c.json", _candidate_from_reference())
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(_register(tmp_path)),
+                "--strict",
+                "--share-band",
+                "0.02",
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 0
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "parity"
+        assert report["strict_failure"] is False
 
 
 class TestReviewFindings:
@@ -771,6 +1021,152 @@ class TestReviewFindings:
             == 1
         )
 
+    def test_signed_count_omitted_from_candidate_is_a_defect(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        payload = _candidate_from_reference()
+        del payload["entity_stats"]["person"]
+        candidate = _write(tmp_path / "c.json", payload)
+        register = _register(
+            tmp_path,
+            _entry(
+                "counts-signed",
+                surface="entity_counts",
+                columns=["person"],
+                expectation="count_differs",
+            ),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(register),
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        assert report["entity_counts"]["person"]["signed_id"] is None
+        assert "person" in report["unsigned_differences"]
+
+    def test_signed_count_with_wrong_delta_is_a_defect(self, tmp_path: Path) -> None:
+        tool = _load_tool()
+        payload = _candidate_from_reference()
+        payload["entity_stats"]["person"]["records"] = 1
+        candidate = _write(tmp_path / "c.json", payload)
+        register = _register(
+            tmp_path,
+            _entry(
+                "counts-signed",
+                surface="entity_counts",
+                columns=["person"],
+                expectation="count_differs",
+            ),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(register),
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        assert report["entity_counts"]["person"]["signed_id"] is None
+        assert "person" in report["unsigned_differences"]
+
+    def test_signed_share_with_reversed_direction_is_a_defect(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        column = "water_and_sewerage_charges"
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] = (
+            _reference_payload()["nonzero_shares"][column] - 0.1
+        )
+        candidate = _write(tmp_path / "c.json", payload)
+        register = _register(
+            tmp_path,
+            _entry(
+                "water-signed",
+                surface="nonzero_shares",
+                columns=[column],
+                direction="candidate_above",
+                max_abs_delta=0.100897,
+            ),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(register),
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        assert report["nonzero_shares"]["differing"][column]["signed_id"] is None
+        assert column in report["unsigned_differences"]
+
+    def test_signed_share_beyond_magnitude_is_a_defect(
+        self, tmp_path: Path
+    ) -> None:
+        tool = _load_tool()
+        column = "water_and_sewerage_charges"
+        payload = _candidate_from_reference()
+        payload["nonzero_shares"][column] = (
+            _reference_payload()["nonzero_shares"][column] + 0.2
+        )
+        candidate = _write(tmp_path / "c.json", payload)
+        register = _register(
+            tmp_path,
+            _entry(
+                "water-signed",
+                surface="nonzero_shares",
+                columns=[column],
+                direction="candidate_above",
+                max_abs_delta=0.100897,
+            ),
+        )
+        receipt = tmp_path / "receipt.json"
+
+        code = tool.main(
+            [
+                "--candidate-json",
+                str(candidate),
+                "--register",
+                str(register),
+                "--receipt-json",
+                str(receipt),
+            ]
+        )
+
+        assert code == 1
+        report = json.loads(receipt.read_text(encoding="utf-8"))
+        assert report["verdict"] == "defect"
+        assert report["nonzero_shares"]["differing"][column]["signed_id"] is None
+        assert column in report["unsigned_differences"]
+
 
 class TestWeightedTotalsRegisterAccounting:
     """A totals-scoped entry counts as matched, not as register rot.
@@ -785,9 +1181,13 @@ class TestWeightedTotalsRegisterAccounting:
     ) -> None:
         tool = _load_tool()
         candidate = _write(tmp_path / "c.json", _candidate_from_reference())
-        left = _write(tmp_path / "ref.json", {"identity": {}, "totals": {"col": 100.0}})
+        left = _write(
+            tmp_path / "ref.json",
+            {"identity": _reference_weighted_identity(), "totals": {"col": 100.0}},
+        )
         right = _write(
-            tmp_path / "cand.json", {"identity": {}, "totals": {"col": 125.0}}
+            tmp_path / "cand.json",
+            {"identity": _candidate_weighted_identity(), "totals": {"col": 125.0}},
         )
         register = _register(
             tmp_path,

@@ -258,10 +258,26 @@ def test_support_clip_and_integer_vehicle_output(
         {column: [999999.0, -999999.0] for column in UK_WAS_WEALTH_OUTPUT_COLUMNS}
     )
 
-    clipped = support_clip_to_donor(draws, donor)
+    clip_result = support_clip_to_donor(draws, donor)
+    clipped = clip_result.clipped
 
     assert clipped["owned_land"].tolist() == [100.0, 10.0]
     assert clipped["net_financial_wealth"].tolist() == [50.0, -5.0]
+    receipt = clip_result.receipt.evidence()["columns"]
+    assert receipt["owned_land"] == {
+        "donor_min": 10.0,
+        "donor_max": 100.0,
+        "clipped_low_rows": 1,
+        "clipped_high_rows": 1,
+        "rows_considered": 2,
+    }
+    assert receipt["net_financial_wealth"] == {
+        "donor_min": -5.0,
+        "donor_max": 50.0,
+        "clipped_low_rows": 1,
+        "clipped_high_rows": 1,
+        "rows_considered": 2,
+    }
 
     import microcosm.build.uk_runtime.was_wealth as module
 
@@ -289,6 +305,16 @@ def test_support_clip_and_integer_vehicle_output(
         module.FitWeightRecord("uk_was_2018_20_wealth:test", "explicit"),
     )
     assert transformed.table("household")["num_vehicles"].tolist() == [1, 3]
+    assert transform.last_result is not None
+    assert transform.checkpoint_metadata()["evidence"]["support_clip"]["columns"][
+        "num_vehicles"
+    ] == {
+        "donor_min": 1.2,
+        "donor_max": 2.8,
+        "clipped_low_rows": 0,
+        "clipped_high_rows": 0,
+        "rows_considered": 2,
+    }
     assert "student_loan_balance" not in transformed.table("household").columns
     assert transformed.table("person")["student_loan_balance"].sum() == pytest.approx(
         7000.0

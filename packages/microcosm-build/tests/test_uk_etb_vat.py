@@ -6,6 +6,8 @@ import pytest
 
 from microcosm.build.uk_runtime.etb_vat import (
     UK_ETB_VAT_FIT_NAME,
+    UKETBVATResult,
+    UKETBVATStageTransform,
     clean_etb_vat_table,
     donor_realized_ranges,
     impute_etb_vat,
@@ -60,7 +62,8 @@ def test_etb_vat_support_clip_and_ranges() -> None:
     donor = clean_etb_vat_table(_raw_etb())
     draws = pd.DataFrame({"full_rate_vat_expenditure_rate": [-99.0, 99.0]})
 
-    clipped = support_clip_to_donor(draws, donor)
+    clip_result = support_clip_to_donor(draws, donor)
+    clipped = clip_result.clipped
 
     assert clipped["full_rate_vat_expenditure_rate"].tolist() == [
         donor["full_rate_vat_expenditure_rate"].min(),
@@ -71,6 +74,24 @@ def test_etb_vat_support_clip_and_ranges() -> None:
             float(donor["full_rate_vat_expenditure_rate"].min()),
             float(donor["full_rate_vat_expenditure_rate"].max()),
         )
+    }
+    assert clip_result.receipt.evidence()["columns"][
+        "full_rate_vat_expenditure_rate"
+    ] == {
+        "donor_min": float(donor["full_rate_vat_expenditure_rate"].min()),
+        "donor_max": float(donor["full_rate_vat_expenditure_rate"].max()),
+        "clipped_low_rows": 1,
+        "clipped_high_rows": 1,
+        "rows_considered": 2,
+    }
+    transform = UKETBVATStageTransform(stage=object(), engine=object())
+    transform.last_result = UKETBVATResult(
+        frame=object(),
+        support_clip=clip_result.receipt,
+    )
+    assert transform.checkpoint_metadata()["evidence"] == {
+        "stage": "etb_vat",
+        "support_clip": clip_result.receipt.evidence(),
     }
 
 

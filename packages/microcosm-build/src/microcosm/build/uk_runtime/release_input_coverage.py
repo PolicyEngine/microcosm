@@ -193,6 +193,21 @@ class UKReleaseInputCoverageManifest:
             if family.get("status") == _REQUIRED_AT_BUILD_STATUS
         )
 
+    @property
+    def required_build_stage_options(self) -> Mapping[str, tuple[str, ...]]:
+        """Per-family executable stage alternatives declared by the manifest."""
+
+        options: dict[str, tuple[str, ...]] = {}
+        for name, family in self.family_coverage.items():
+            if family.get("status") != _REQUIRED_AT_BUILD_STATUS:
+                continue
+            stages = [str(family["stage"])]
+            superseded_by = family.get("superseded_by")
+            if isinstance(superseded_by, Mapping):
+                stages.append(str(superseded_by["stage"]))
+            options[str(name)] = tuple(dict.fromkeys(stages))
+        return options
+
 
 def _resource_text(resource: str) -> str:
     candidate = Path(resource)
@@ -289,6 +304,48 @@ def _parse_family_coverage(
                 f"{resource}: family {name!r} needs a lowercase SHA-256 "
                 "for source_manifest_sha256."
             )
+        superseded_by = raw_family.get("superseded_by")
+        parsed_superseded_by: dict[str, Any] | None = None
+        if superseded_by is not None:
+            if not isinstance(superseded_by, Mapping):
+                raise ValueError(
+                    f"{resource}: family {name!r} superseded_by must be an object."
+                )
+            superseding_stage = str(superseded_by.get("stage", "")).strip()
+            superseding_manifest = str(
+                superseded_by.get("source_manifest", "")
+            ).strip()
+            superseding_sha = str(
+                superseded_by.get("source_manifest_sha256", "")
+            ).strip()
+            supersession_reason = str(superseded_by.get("reason", "")).strip()
+            if not superseding_stage:
+                raise ValueError(
+                    f"{resource}: family {name!r} superseded_by needs a stage."
+                )
+            if not superseding_manifest:
+                raise ValueError(
+                    f"{resource}: family {name!r} superseded_by needs a "
+                    "source_manifest."
+                )
+            if len(superseding_sha) != 64 or any(
+                character not in "0123456789abcdef" for character in superseding_sha
+            ):
+                raise ValueError(
+                    f"{resource}: family {name!r} superseded_by needs a "
+                    "lowercase SHA-256 for source_manifest_sha256."
+                )
+            if not supersession_reason:
+                raise ValueError(
+                    f"{resource}: family {name!r} superseded_by needs a reason."
+                )
+            parsed_superseded_by = {
+                **dict(superseded_by),
+                "stage": superseding_stage,
+                "source_manifest": superseding_manifest,
+                "source_manifest_sha256": superseding_sha,
+                "reason": supersession_reason,
+            }
         try:
             base_candidate_tier = validate_uk_release_tier(
                 raw_family.get("base_candidate_tier")
@@ -381,6 +438,11 @@ def _parse_family_coverage(
             "stage": stage,
             "source_manifest": source_manifest,
             "source_manifest_sha256": source_manifest_sha256,
+            **(
+                {"superseded_by": parsed_superseded_by}
+                if parsed_superseded_by is not None
+                else {}
+            ),
             "base_candidate_tier": base_candidate_tier,
             "output_weight_kind": output_weight_kind,
             "required_mass_change_reason": required_mass_change_reason,
@@ -1374,10 +1436,15 @@ def assert_uk_release_input_coverage_build_stages(
 
     manifest = manifest or load_uk_release_input_coverage_manifest()
     actual = {str(name) for name in stage_names}
-    missing = sorted(manifest.required_build_stages - actual)
+    missing = sorted(
+        family
+        for family, options in manifest.required_build_stage_options.items()
+        if actual.isdisjoint(options)
+    )
     if missing:
         raise ValueError(
-            "UK national build omits required release family stage(s) "
+            "UK national build omits required release family stage(s) for "
+            "family/families "
             f"{missing}; family_coverage status='required_at_build' is an "
             "executable contract, not documentation."
         )

@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.age_tail import UK_AGE_TOP_CODE
 from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_DECLARED_SEEDS,
     _benunit_regions,
@@ -31,8 +32,10 @@ from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
 )
-from microcosm.build.uk_runtime.national_build import load_uk_national_frame
-from microcosm.build.uk_runtime.national_frame import uk_time_period
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
+    uk_time_period,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     load_regional_land_values_resource,
     uprate_household_property_by_region,
@@ -338,6 +341,10 @@ def e6_identity_receipt(
     Covered: the domestic-energy fold (elec + gas), the rail_usage ratio,
     petrol/diesel zeroing idempotence for non-fuel households, and the NHS
     age-gender person allocation recomputed from the committed resource.
+    The production contract is stage-time-age-derived: ``etb_services`` runs
+    on the top-coded FRS age surface, then ``age_tail`` disaggregates the
+    top-code later as calibration support. Stored NHS columns are therefore
+    checked against ``min(final_age, UK_AGE_TOP_CODE)`` rather than final age.
     The QRF chain draws and the NEED raking outcome are covered by
     twin-build determinism and the aggregate_admin NEED-margin receipt
     respectively (raking inputs are consumed by the stage and are not
@@ -376,8 +383,15 @@ def e6_identity_receipt(
                     no_fuel, 0.0, household[column].to_numpy(dtype=float)
                 )
         if {"age", "gender"} <= set(person_t.columns):
+            nhs_person = person_t.copy()
+            nhs_person["age"] = np.minimum(
+                pd.to_numeric(nhs_person["age"], errors="coerce")
+                .fillna(0)
+                .to_numpy(dtype=float),
+                UK_AGE_TOP_CODE,
+            )
             nhs = allocate_nhs_by_age_gender(
-                person_t,
+                nhs_person,
                 household_weights=household["household_weight"].to_numpy(dtype=float),
                 household=household,
                 nhs_table=None,
@@ -458,6 +472,8 @@ def e6_identity_receipt(
     return {
         "check": "uk_e6_identity_stability",
         "permutation_seed": permutation_seed,
+        "nhs_age_basis": "stage_time_top_coded",
+        "nhs_age_top_code": UK_AGE_TOP_CODE,
         "identical_under_permutation": not mismatches,
         "permutation_mismatches": mismatches,
         "matches_stored_columns": not stored_mismatches,
@@ -710,12 +726,21 @@ def e8_identity_receipt(
             problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
 
     # (2) Band-donor selection recomputed from the committed resources.
+    # Same contract as the E6 NHS check: the donor stage ran on the top-coded
+    # FRS age surface, four stages before age_tail disaggregated it, so its
+    # oldest-adult carriers are stage-time-age-derived. Recompute on
+    # min(age, top_code) — exact, because age_tail refuses inputs above the
+    # top code and rewrites only persons at exactly it, upward.
     distribution = load_advani_summers_distribution()
     bands = _retained_size_bands(load_hmrc_cgt_size_bands())
     non_donor_ids = set(non_donor["household_id"].tolist())
     nd_person = person.loc[
         person["person_household_id"].isin(non_donor_ids)
     ].reset_index(drop=True)
+    nd_person["age"] = np.minimum(
+        pd.to_numeric(nd_person["age"], errors="coerce").to_numpy(dtype=float),
+        float(UK_AGE_TOP_CODE),
+    )
     nd_benunit = benunit.loc[
         benunit["benunit_id"].isin(set(nd_person["person_benunit_id"].tolist()))
     ].reset_index(drop=True)
@@ -785,7 +810,15 @@ def e8_identity_receipt(
             problems["donor_stored_weights"] = True
         donor_person = person.loc[
             person["person_household_id"].isin(set(stored_donors["household_id"]))
-        ]
+        ].copy()
+        # Stage-time age basis again: the stage picked each donor household's
+        # carrier before age_tail ran.
+        donor_person["age"] = np.minimum(
+            pd.to_numeric(donor_person["age"], errors="coerce").to_numpy(
+                dtype=float
+            ),
+            float(UK_AGE_TOP_CODE),
+        )
         carrier_rows = _oldest_adult_indices(
             donor_person, household_ids=set(stored_donors["household_id"])
         )
@@ -831,6 +864,7 @@ def e8_identity_receipt(
     structural_ok = not problems
     return {
         "check": "uk_e8_identity_stability",
+        "donor_age_basis": "stage_time_top_coded",
         "permutation_seed": permutation_seed,
         "identical_under_permutation": bool(
             "donor_selection_permutation" not in problems
