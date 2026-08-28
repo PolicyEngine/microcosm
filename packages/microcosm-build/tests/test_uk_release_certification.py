@@ -300,6 +300,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         coverage_engine=object(),
         build_stage_names=("frs_spine",),
         ledger_registries={2023: object(), 2025: object()},
+        local_ledger_registries={2025: object()},
         parity_evidence=object(),
         fit_weight_records=None,
         input_mass_reference={},
