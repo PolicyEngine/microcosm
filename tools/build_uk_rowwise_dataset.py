@@ -55,6 +55,7 @@ from microcosm.build.uk_runtime import (
     geography_coverage_summary,
     id_multiplier_for_values,
     ladder_clone_index_column,
+    load_uk_local_area_crosswalk,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
     uk_geography_ladder_gate,
@@ -88,6 +89,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Compact Microcosm UK single-year H5 to clone.",
     )
     parser.add_argument(
+        "--input-sha256",
+        type=sha256_argument,
+        help="Optional SHA-256 pin for --input-h5; mismatches fail before H5 parsing.",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         required=True,
@@ -110,6 +116,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "with its release-blocking gate, instead of the crosswalk sampler. "
             "Mutually exclusive with --crosswalk and the coverage-code checks."
         ),
+    )
+    parser.add_argument(
+        "--ladder-sha256",
+        type=sha256_argument,
+        help="Optional SHA-256 pin for --ladder; mismatches fail before NPZ parsing.",
     )
     parser.add_argument(
         "--expected-constituency-vintage",
@@ -352,10 +363,14 @@ def _main_impl(
     *,
     attempt: dict[str, object] | None,
 ) -> int:
-    args.out.mkdir(parents=True, exist_ok=True)
-
     input_h5 = args.input_h5.resolve()
     input_artifact = _artifact_info(input_h5)
+    _verify_artifact_pin(
+        input_artifact,
+        pinned_sha256=args.input_sha256,
+        option="--input-h5",
+    )
+    args.out.mkdir(parents=True, exist_ok=True)
     base_summary = _h5_summary(input_h5)
     source_year = _source_year(args.source_year, base_summary=base_summary)
     output_h5 = _dataset_output_path(
@@ -365,6 +380,8 @@ def _main_impl(
         source_year=source_year,
     )
     _validate_output_paths(input_h5=input_h5, output_h5=output_h5, args=args)
+    if args.crosswalk is not None and args.ladder_sha256 is not None:
+        raise ValueError("--ladder-sha256 and --crosswalk are mutually exclusive.")
     if args.ladder is not None:
         if args.crosswalk is not None:
             raise ValueError("--ladder and --crosswalk are mutually exclusive.")
@@ -865,6 +882,12 @@ def _run_ladder_route(
 
     ladder_path = args.ladder.resolve()
     ladder_artifact = _artifact_info(ladder_path)
+    _verify_artifact_pin(
+        ladder_artifact,
+        pinned_sha256=args.ladder_sha256,
+        option="--ladder",
+    )
+    _annotate_ladder_crosswalk_pin(ladder_artifact)
     ladder = load_uk_oa_ladder(ladder_path)
 
     if args.dry_run:
@@ -1476,6 +1499,36 @@ def _artifact_info(path: Path) -> dict[str, Any]:
         "sha256": _sha256(path),
         "bytes": path.stat().st_size,
     }
+
+
+def _verify_artifact_pin(
+    artifact: dict[str, Any],
+    *,
+    pinned_sha256: str | None,
+    option: str,
+) -> None:
+    measured_sha256 = str(artifact["sha256"])
+    if pinned_sha256 is not None and measured_sha256 != pinned_sha256:
+        raise SystemExit(
+            f"error: {option} sha mismatch: "
+            f"measured {measured_sha256}, pinned {pinned_sha256}"
+        )
+    artifact["pin_verified"] = pinned_sha256 is not None
+
+
+def _annotate_ladder_crosswalk_pin(ladder_artifact: dict[str, Any]) -> None:
+    try:
+        crosswalk = load_uk_local_area_crosswalk()
+        expected_sha256 = str(crosswalk["ladder_artifact_sha256"])
+    except Exception as error:
+        ladder_artifact["matches_local_area_crosswalk_pin"] = None
+        ladder_artifact["local_area_crosswalk_pin_error"] = (
+            f"{type(error).__name__}: {error}"
+        )
+        return
+    ladder_artifact["matches_local_area_crosswalk_pin"] = (
+        str(ladder_artifact["sha256"]) == expected_sha256
+    )
 
 
 def _sha256(path: Path) -> str:

@@ -132,6 +132,42 @@ def _crosswalk_frame() -> pd.DataFrame:
     )
 
 
+@pytest.mark.parametrize("route_option", ["--crosswalk", "--ladder"])
+def test_input_pin_mismatch_refuses_before_side_effects(
+    monkeypatch,
+    tmp_path,
+    route_option,
+) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "input.h5"
+    route_artifact = tmp_path / "route-artifact"
+    output_dir = tmp_path / "out"
+    _write_toy_h5(input_h5)
+    route_artifact.write_bytes(b"must not be read")
+
+    def unexpected_h5_read(_path):
+        raise AssertionError("input pin mismatch must refuse before H5 parsing")
+
+    monkeypatch.setattr(builder, "_h5_summary", unexpected_h5_read)
+
+    with pytest.raises(SystemExit, match=r"--input-h5 sha mismatch: measured"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--input-sha256",
+                "0" * 64,
+                "--out",
+                str(output_dir),
+                route_option,
+                str(route_artifact),
+            ]
+        )
+
+    assert not output_dir.exists()
+
+
 def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     monkeypatch, tmp_path, capsys
 ):
@@ -143,6 +179,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     la_codes = tmp_path / "local_authorities.csv"
     output_dir = tmp_path / "out"
     _write_toy_h5(input_h5)
+    input_sha256 = builder._sha256(input_h5)
     _crosswalk_frame().to_csv(crosswalk_path, index=False)
     pd.DataFrame({"code": ["E14000001", "W07000041", "S14000001", "N05000001"]}).to_csv(
         constituency_codes, index=False
@@ -157,6 +194,8 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
             "build_uk_rowwise_dataset.py",
             "--input-h5",
             str(input_h5),
+            "--input-sha256",
+            input_sha256,
             "--out",
             str(output_dir),
             "--crosswalk",
@@ -187,6 +226,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     assert manifest["parameters"]["n_clones"] == 2
     assert manifest["parameters"]["source_year"] == 2023
     assert manifest["parameters"]["require_all_countries"] is False
+    assert manifest["inputs"]["dataset"]["pin_verified"] is True
     assert manifest["base_dataset"]["household_weight_sum"] == pytest.approx(30.0)
     assert manifest["rowwise_dataset"]["household_weight_sum"] == pytest.approx(30.0)
     assert manifest["rowwise_dataset"]["household_weight_delta"] == pytest.approx(0.0)

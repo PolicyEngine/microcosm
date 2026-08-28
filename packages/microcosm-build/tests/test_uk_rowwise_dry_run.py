@@ -214,6 +214,7 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
     assert plan["build_kind"] == "uk_rowwise_local_geography_dry_run"
     assert plan["parameters"]["n_clones"] == 2
     assert plan["input"]["dataset"]["sha256"]
+    assert plan["input"]["dataset"]["pin_verified"] is False
     assert plan["input"]["household_weight_kind"] == WeightKind.DESIGN.value
     assert plan["input"]["mass_log_records"] == 0
     assert plan["plan"]["rows"] == {

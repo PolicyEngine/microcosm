@@ -428,6 +428,9 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["parameters"]["assignment_route"] == "ladder"
     assert manifest["inputs"]["ladder"]["sha256"]
+    assert manifest["inputs"]["dataset"]["pin_verified"] is False
+    assert manifest["inputs"]["ladder"]["pin_verified"] is False
+    assert manifest["inputs"]["ladder"]["matches_local_area_crosswalk_pin"] is False
     summary = manifest["rowwise_dataset"]
     assert summary["gate"]["passed"] is True
     assert summary["missing_geography_rows"] == 0
@@ -452,13 +455,19 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     _write_seam_h5(input_h5)
     plan_dir = tmp_path / "plan"
     build_dir = tmp_path / "build"
+    input_sha256 = builder._sha256(input_h5)
+    ladder_sha256 = builder._sha256(ladder_path)
 
     base_argv = [
         "build_uk_rowwise_dataset.py",
         "--input-h5",
         str(input_h5),
+        "--input-sha256",
+        input_sha256,
         "--ladder",
         str(ladder_path),
+        "--ladder-sha256",
+        ladder_sha256,
         "--n-clones",
         "2",
         "--seed",
@@ -472,6 +481,12 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(build_dir)])
     assert builder.main() == 0
     manifest = json.loads((build_dir / builder.MANIFEST_FILENAME).read_text())
+    assert plan["input"]["dataset"]["pin_verified"] is True
+    assert plan["input"]["ladder"]["pin_verified"] is True
+    assert plan["input"]["ladder"]["matches_local_area_crosswalk_pin"] is False
+    assert manifest["inputs"]["dataset"]["pin_verified"] is True
+    assert manifest["inputs"]["ladder"]["pin_verified"] is True
+    assert manifest["inputs"]["ladder"]["matches_local_area_crosswalk_pin"] is False
 
     # The dry-run's realized support is exact: identical draws to the build.
     realized = {
@@ -571,6 +586,71 @@ def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path
         ],
     )
     with pytest.raises(ValueError, match="mutually exclusive"):
+        builder.main()
+
+
+def test_driver_ladder_sha256_refuses_crosswalk(monkeypatch, tmp_path) -> None:
+    pytest.importorskip("tables")
+    import sys
+
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--crosswalk",
+            str(tmp_path / "crosswalk.csv"),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="ladder-sha256.*crosswalk"):
+        builder.main()
+
+
+def test_driver_ladder_pin_mismatch_refuses_before_parse(
+    monkeypatch, toy_ladder, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+
+    def unexpected_parse(_path):
+        raise AssertionError("ladder pin mismatch must refuse before NPZ parsing")
+
+    monkeypatch.setattr(builder, "load_uk_oa_ladder", unexpected_parse)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match=r"--ladder sha mismatch: measured"):
         builder.main()
 
 
