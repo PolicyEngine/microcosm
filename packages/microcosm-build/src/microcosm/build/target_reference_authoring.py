@@ -266,7 +266,16 @@ def author_area_target_references(
             geography_level = str(geography_level)
             area_ids = areas_by_level.get(geography_level)
             if area_ids is None:
-                continue
+                # A declared level the roster lacks must refuse, not drop out:
+                # skipping here yields no candidates, no references, and a
+                # membership status of not_applicable -- a whole level could
+                # leave the surface with the report agreeing nothing is wrong
+                # (PR #795 round-3 review finding 2).
+                raise ValueError(
+                    f"target {target_id!r} declares geography level "
+                    f"{geography_level!r}, which the area roster does not "
+                    "carry."
+                )
             candidates: list[dict[str, Any]] = []
             for area_id in area_ids:
                 key = (target_id, geography_level, area_id)

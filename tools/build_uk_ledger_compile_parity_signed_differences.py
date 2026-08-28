@@ -193,8 +193,10 @@ _PRIVATE_RENT_FIXTURE_ONLY_RATIONALE = (
 _LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks: our side compiles a published per-area fact "
     "the incumbent's surface NaN-masks or never carries (for example Northern "
-    "Ireland SPI and tenure rows, and the crosswalk area absent from its "
-    "360-row LA file)."
+    "Ireland SPI and tenure rows). Confirmed by roster diff (PR #795 round-3 "
+    "review): the incumbent's 360-row LA file carries N09000001-N09000010 "
+    "only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st "
+    "crosswalk area is a genuine incumbent roster gap, not a dropped row."
 )
 
 _LOCAL_DRIFT_RATIONALES = {

@@ -258,10 +258,14 @@ def constituency_surface():
         )
         for j in order[: total - sum(floors)]:
             floors[j] += 1
-        if sum(floors) != total:
+        # Assert closure against the value the fixture actually stores as
+        # uc_households -- not a locally-rounded copy, which cannot fail on
+        # its own construction (round-3 review finding 1). A publisher total
+        # that is not integral refuses here instead of drifting silently.
+        if sum(floors) != corrected[code]:
             raise ValueError(
                 f"uc splits: allocation for {code} sums to {sum(floors)}, "
-                f"total is {total}."
+                f"but the stored uc_households total is {corrected[code]!r}."
             )
         for j, col in enumerate(split_cols):
             splits[col].append(floors[j])
