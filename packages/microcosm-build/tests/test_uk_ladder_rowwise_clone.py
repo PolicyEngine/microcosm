@@ -565,6 +565,99 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     assert manifest["rowwise_dataset"]["source_lineage"]["explicit"] is None
 
 
+def test_driver_ladder_candidate_k_matches_independent_single_k_plan(
+    monkeypatch, toy_ladder, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import json
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    candidate_dir = tmp_path / "candidates"
+    independent_dir = tmp_path / "independent"
+    base_argv = [
+        "build_uk_rowwise_dataset.py",
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--seed",
+        "7",
+    ]
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            *base_argv,
+            "--out",
+            str(candidate_dir),
+            "--n-clones",
+            "2",
+            "--candidate-clone-counts",
+            "3,1,3",
+            "--dry-run",
+        ],
+    )
+    assert builder.main() == 0
+    candidate_plan = json.loads(
+        (candidate_dir / builder.DRY_RUN_PLAN_FILENAME).read_text()
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            *base_argv,
+            "--out",
+            str(independent_dir),
+            "--n-clones",
+            "3",
+            "--dry-run",
+        ],
+    )
+    assert builder.main() == 0
+    independent_plan = json.loads(
+        (independent_dir / builder.DRY_RUN_PLAN_FILENAME).read_text()
+    )
+
+    assert candidate_plan["plan"]["n_clones"] == 2
+    candidates = candidate_plan["candidates"]
+    assert candidates["clone_counts"] == [1, 3]
+    assert [candidate["n_clones"] for candidate in candidates["plans"]] == [1, 3]
+    input_bytes = input_h5.stat().st_size
+    base_rows = {"person": 5, "benunit": 4, "household": 4}
+    for candidate in candidates["plans"]:
+        n_clones = candidate["n_clones"]
+        assert candidate["rows"] == {
+            name: rows * n_clones for name, rows in base_rows.items()
+        }
+        assert candidate["output_bytes_estimate"] == input_bytes * n_clones
+        assert set(candidate) == {
+            "n_clones",
+            "rows",
+            "output_bytes_estimate",
+            "realized_support",
+            "expected_support",
+            "area_support",
+        }
+
+    candidate_k3 = candidates["plans"][1]
+    assert candidate_k3["realized_support"] == {
+        area_type: independent_plan["realized_support"][area_type]
+        for area_type in ("constituency", "la")
+    }
+    assert candidate_k3["expected_support"] == {
+        area_type: independent_plan["expected_support"][area_type]
+        for area_type in ("constituency", "la")
+    }
+    assert candidate_k3["area_support"] == independent_plan["area_support"]
+
+
 def test_driver_ladder_spine_lineage_plan_manifest_parity(
     monkeypatch, toy_ladder, tmp_path
 ):

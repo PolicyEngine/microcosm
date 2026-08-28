@@ -530,6 +530,25 @@ def test_build_uk_rowwise_dataset_failure_records_pipeline_error(
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 
 
+def test_candidate_clone_counts_refused_on_real_build(tmp_path) -> None:
+    builder = _load_builder_module()
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="candidate-K planning is a dry-run surface"):
+        builder.main(
+            [
+                "--input-h5",
+                str(tmp_path / "not-read.h5"),
+                "--out",
+                str(output_dir),
+                "--candidate-clone-counts",
+                "1,2,4",
+            ]
+        )
+
+    assert not output_dir.exists()
+
+
 @pytest.mark.parametrize(
     "dataset_filename",
     [
