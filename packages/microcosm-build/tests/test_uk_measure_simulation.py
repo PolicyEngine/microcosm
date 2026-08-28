@@ -243,6 +243,32 @@ def test_exclusion_applier_returns_pruned_registry_and_receipt():
         )
 
 
+def test_exclusion_applier_warns_within_week_of_expiry():
+    registry = TargetRegistry(
+        [
+            TargetSpec(name="drop", entity="person", measure="drop", value=1.0, source="test"),
+        ],
+        country="uk",
+    )
+
+    from datetime import date
+
+    window = _entry(name="drop", reason="reviewed")
+    # expires_on is 2026-11-25: five days out warns, mid-window is silent.
+    with pytest.warns(UserWarning, match="within one week"):
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 11, 20)
+        )
+
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 9, 1)
+        )
+
+
 #: The adjudicated register census: one entry per class of the #757
 #: ``uk_target_fit`` dispositions (issue comment 5427936411) plus the
 #: standing salary-sacrifice adjudication. The counts are the record of

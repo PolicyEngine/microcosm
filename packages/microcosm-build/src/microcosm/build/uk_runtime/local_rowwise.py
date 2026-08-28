@@ -20,8 +20,10 @@ and the evidence substrate (support summaries, past-cap census).
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import numpy as np
@@ -463,6 +465,7 @@ def require_adjudicated_uk_local_binding(
     )
     evaluated_on = exclusion_evaluation_date(now)
     stood_on: dict[str, dict[str, dict[str, str]]] = {}
+    expiring_soon: dict[str, str] = {}
     for declared_family in declared:
         census_family, _area_type = parsed[declared_family]
         stood_on[declared_family] = {}
@@ -490,7 +493,19 @@ def require_adjudicated_uk_local_binding(
                     "gap or renew the adjudication with a new approval and "
                     "expiry."
                 )
+            if (date.fromisoformat(record.expires_on) - evaluated_on).days <= 7:
+                expiring_soon[fence] = record.expires_on
             stood_on[declared_family][fence] = record.policy_payload()
+
+    for fence, expires_on in sorted(expiring_soon.items()):
+        warnings.warn(
+            f"{UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE}: adjudication "
+            f"of fence {fence!r} expires {expires_on} — within one week of "
+            f"the evaluation date {evaluated_on.isoformat()}; renew the "
+            "adjudication or the fence closes the rowwise solve on expiry.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     fence_families: dict[str, set[str]] = {}
     for family, row in family_rows.items():

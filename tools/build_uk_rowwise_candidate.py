@@ -371,14 +371,14 @@ def _run_candidate(
             assignment,
             target_ladder=ladder,
         )
-        binding_adjudications = require_adjudicated_uk_local_binding(
-            BOUND_TARGET_FAMILIES,
-            problem.target_frame,
-        )
         if state is not None:
             append_phase(state, "targets_bound")
 
         if args.dry_run:
+            binding_adjudications = require_adjudicated_uk_local_binding(
+                BOUND_TARGET_FAMILIES,
+                problem.target_frame,
+            )
             _assert_artifacts_unchanged(
                 input_h5=input_h5,
                 input_artifact=input_artifact,

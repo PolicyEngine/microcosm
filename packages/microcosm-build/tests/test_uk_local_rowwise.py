@@ -293,6 +293,39 @@ def test_rowwise_binding_refuses_expired_and_premature_adjudications() -> None:
         )
 
 
+def test_rowwise_binding_warns_within_week_of_expiry() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    register = {
+        "census_disclosure_control_noise": _reviewed_register_entry(
+            approved_on="2026-01-01",
+            expires_on="2026-03-05",
+        )
+    }
+    with pytest.warns(UserWarning, match="within one week"):
+        receipt = require_adjudicated_uk_local_binding(
+            ["census_households/constituency", "tenure/constituency"],
+            problem.target_frame,
+            register=register,
+            now=date(2026, 3, 1),
+        )
+    assert (
+        "census_disclosure_control_noise"
+        in receipt["stood_on"]["census_households/constituency"]
+    )
+
+    # Far from expiry the same in-force entry passes silently.
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        require_adjudicated_uk_local_binding(
+            ["census_households/constituency", "tenure/constituency"],
+            problem.target_frame,
+            register=register,
+            now=date(2026, 1, 15),
+        )
+
+
 def test_committed_local_binding_register_references_committed_census() -> None:
     census = load_uk_local_target_census()
     fence_ids = {row["fence_id"] for row in census["binding_fences"]}

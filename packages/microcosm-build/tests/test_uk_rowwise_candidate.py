@@ -521,15 +521,6 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
         lambda *_args, **_kwargs: {},
     )
 
-    def unexpected_solve(*_args, **_kwargs):
-        raise AssertionError("solve should not run without adjudication")
-
-    monkeypatch.setattr(
-        builder,
-        "solve_uk_rowwise_weights_under_doctrine",
-        unexpected_solve,
-    )
-
     with pytest.raises(ValueError, match="census_disclosure_control_noise"):
         builder.main(
             [
@@ -552,8 +543,8 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
     assert len(rows) == 1
     row = rows[0]
     assert row.disposition == "failed"
-    assert "cloned" in row.phases_reached
-    assert "targets_bound" not in row.phases_reached
+    assert "targets_bound" in row.phases_reached
+    assert "solved" not in row.phases_reached
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 

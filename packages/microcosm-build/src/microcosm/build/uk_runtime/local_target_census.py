@@ -711,10 +711,10 @@ def _family_for_metric(name: str) -> str:
     )
 
 
-family_for_metric = _family_for_metric
-family_for_metric.__doc__ = (
-    "Public alias for the fail-closed UK local metric-to-family classifier."
-)
+def family_for_metric(name: str) -> str:
+    """Public fail-closed UK local metric-to-family classifier."""
+
+    return _family_for_metric(name)
 
 
 def _require_unique_ids(
