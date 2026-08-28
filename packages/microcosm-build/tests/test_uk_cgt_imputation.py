@@ -597,10 +597,8 @@ class TestRealPublishedSurface:
 
 
 class TestPolicyParameters:
+    @pytest.mark.requires_uk
     def test_reads_the_2023_values_from_the_parameter_tree(self) -> None:
-        pytest.importorskip(
-            "policyengine_uk", reason="requires the microcosm-build 'uk' extra"
-        )
         from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
 
         parameters = uk_cgt_policy_parameters(2023)

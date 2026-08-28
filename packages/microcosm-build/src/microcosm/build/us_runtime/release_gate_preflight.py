@@ -64,6 +64,12 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import input_mass_parity_gate
+from microcosm.build.us_runtime.h5_io import (
+    identify_us_multispine_pool_manifest,
+    load_authenticated_us_multispine_pool_for_release,
+    require_authenticated_us_multispine_pool_h5,
+    us_multispine_pool_release_receipt,
+)
 from microcosm.build.us_runtime.input_mass import us_input_mass_totals
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
@@ -159,6 +165,7 @@ class PreflightReport:
 
     checks: tuple[CheckResult, ...]
     inputs: Mapping[str, Any] = field(default_factory=dict)
+    base_pool: Mapping[str, Any] | None = None
 
     @property
     def status(self) -> PreflightStatus:
@@ -179,16 +186,46 @@ class PreflightReport:
         return 0
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "status": self.status,
             "exit_code": self.exit_code,
             "inputs": dict(self.inputs),
             "checks": [check.to_dict() for check in self.checks],
         }
+        if self.base_pool is not None:
+            payload["base_pool"] = dict(self.base_pool)
+        return payload
 
     def human_table(self) -> str:
         """A compact, terminal-friendly rendering of every check."""
         lines: list[str] = []
+        if self.base_pool is not None:
+            agreement = self.base_pool.get("agreement_gate_reference")
+            if isinstance(agreement, Mapping) and agreement.get(
+                "battery_status"
+            ) == "red":
+                failure_count = agreement.get("failure_count")
+                lines.extend(
+                    [
+                        "!" * 72,
+                        "BASE POOL BATTERY: RED — "
+                        f"{failure_count} FAILURES",
+                        "Authenticated opt-in: --allow-gate-failed-base-pool",
+                        "Gates JSON SHA-256: "
+                        f"{agreement.get('gates_json_sha256')}",
+                        "Human publication decision required; this evidence "
+                        "does not determine the preflight exit code.",
+                    ]
+                )
+                failures = agreement.get("failures")
+                if isinstance(failures, list):
+                    for failure in failures:
+                        if isinstance(failure, Mapping):
+                            lines.append(
+                                f"  [{failure.get('gate')}] "
+                                f"{failure.get('message')}"
+                            )
+                lines.append("!" * 72)
         badge = {
             "PASS": "PASS   ",
             "FAIL": "FAIL   ",
@@ -808,6 +845,7 @@ def run_preflight(
     probes: Iterable[ReformCoverageProbe] | None = None,
     engine_input_variables: Sequence[str] | None = None,
     export_mass_reviewed_exclusions: Mapping[str, str] | None = None,
+    allow_gate_failed_base_pool: bool = False,
 ) -> PreflightReport:
     """Load the real artifacts and run every preflight check (no solve).
 
@@ -818,7 +856,10 @@ def run_preflight(
     from microcosm.build.us_runtime.l0_refit_export import load_us_frame
 
     base_h5 = Path(base_h5)
-    base_frame = load_us_frame(base_h5)
+    base_frame, base_pool, base_pool_manifest = _load_preflight_base(
+        base_h5,
+        allow_gate_failed_base_pool=allow_gate_failed_base_pool,
+    )
     selection_source = load_selection_source_from_manifest(selection_source_manifest)
 
     checks: list[CheckResult] = []
@@ -908,6 +949,10 @@ def run_preflight(
 
     inputs = {
         "base_h5": str(base_h5),
+        "base_pool_manifest": (
+            str(base_pool_manifest) if base_pool_manifest is not None else None
+        ),
+        "allow_gate_failed_base_pool": bool(allow_gate_failed_base_pool),
         "selection_source_manifest": str(selection_source_manifest),
         "export_input_mass_reference_h5": (
             str(export_input_mass_reference_h5)
@@ -919,7 +964,48 @@ def run_preflight(
         "relative_tolerance": float(relative_tolerance),
         "minimum_reference_total": float(minimum_reference_total),
     }
-    return PreflightReport(checks=tuple(checks), inputs=inputs)
+    return PreflightReport(
+        checks=tuple(checks),
+        inputs=inputs,
+        base_pool=base_pool,
+    )
+
+
+def _load_preflight_base(
+    base_h5: Path,
+    *,
+    allow_gate_failed_base_pool: bool,
+) -> tuple[Frame, dict[str, object] | None, Path | None]:
+    """Load a generic base or authenticate a positively identified pool."""
+
+    from microcosm.build.us_runtime.l0_refit_export import load_us_frame
+
+    manifest_path = identify_us_multispine_pool_manifest(base_h5)
+    if manifest_path is None:
+        if allow_gate_failed_base_pool:
+            raise ValueError(
+                "--allow-gate-failed-base-pool was set, but --base-h5 does not "
+                "identify as a US multispine pool."
+            )
+        return load_us_frame(base_h5), None, None
+
+    frame, manifest, authenticated_pool_h5 = (
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=allow_gate_failed_base_pool,
+        )
+    )
+    require_authenticated_us_multispine_pool_h5(
+        base_h5,
+        authenticated_pool_h5,
+        consumer="US release-gate preflight --base-h5",
+    )
+    receipt = us_multispine_pool_release_receipt(
+        manifest,
+        authenticated_pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed_base_pool,
+    )
+    return frame, receipt, manifest_path
 
 
 def _household_person_mask(base_frame: Frame, household_mask: np.ndarray) -> np.ndarray:

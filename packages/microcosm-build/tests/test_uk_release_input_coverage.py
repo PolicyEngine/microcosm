@@ -529,8 +529,8 @@ class TestUKReleaseInputCoverageGate:
             == 1
         )
 
+    @pytest.mark.requires_uk
     def test_integer_encoded_enum_default_is_not_signal(self) -> None:
-        pytest.importorskip("policyengine_uk")
         contract = _manifest((UKReleaseInputColumn("gender", "required"),))
         frame = _weighted_person_frame(
             {"gender": np.asarray([0, 0], dtype=np.int16)},
@@ -727,6 +727,45 @@ class TestUKManifest:
         )
         assert result is None
 
+    def test_spine_posture_satisfies_superseded_required_families(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        spine_stages = tuple(
+            stage
+            for stage in manifest.required_build_stages
+            if stage not in {"hmrc_spi_income", "hmrc_cgt_gains"}
+        )
+        result = assert_uk_release_input_coverage_build_stages(
+            (*spine_stages, "hmrc_spi_income_spine"),
+            manifest=manifest,
+        )
+        assert result is None
+        assert (
+            manifest.family_coverage["hmrc_spi_income"]["superseded_by"]["stage"]
+            == "hmrc_spi_income_spine"
+        )
+        assert (
+            manifest.family_coverage["hmrc_cgt_gains"]["superseded_by"]["stage"]
+            == "hmrc_cgt_gains_spine"
+        )
+
+    def test_supersession_does_not_hide_a_genuinely_missing_family(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        spine_stages = tuple(
+            stage
+            for stage in manifest.required_build_stages
+            if stage
+            not in {
+                "hmrc_spi_income",
+                "hmrc_cgt_gains",
+                "student_loans",
+            }
+        )
+        with pytest.raises(ValueError, match="student_loans"):
+            assert_uk_release_input_coverage_build_stages(
+                (*spine_stages, "hmrc_spi_income_spine"),
+                manifest=manifest,
+            )
+
     def test_deferred_family_stage_is_not_required(self) -> None:
         family = _hmrc_family_coverage()
         family["hmrc_spi_income"].update(
@@ -880,8 +919,8 @@ class TestUKManifest:
         assert len(overrides) == 13
         assert overrides <= set(manifest.required_columns)
 
+    @pytest.mark.requires_uk
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
-        pytest.importorskip("policyengine_uk")
         engine = PolicyEngineUKCoverageEngine()
         assert set(UK_LOADER_INPUT_ALIASES) <= set(engine.variables())
         defaults = engine.default_values(UK_LOADER_INPUT_ALIASES)
@@ -890,8 +929,8 @@ class TestUKManifest:
             name: "person" for name in UK_LOADER_INPUT_ALIASES
         }
 
+    @pytest.mark.requires_uk
     def test_live_uk_adapter_recognises_formula_owned_overrides(self) -> None:
-        pytest.importorskip("policyengine_uk")
         engine = PolicyEngineUKCoverageEngine()
         names = ("state_pension_reported", "student_loan_repayments")
         assert set(names) <= set(engine.variables())

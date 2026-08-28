@@ -7,15 +7,21 @@ import hashlib
 import json
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
-from microcosm.build.country_spec import country_stage_plan, load_country_spec
+from microcosm.build.country_spec import (
+    GatesManifest,
+    country_stage_plan,
+    load_country_spec,
+)
 from microcosm.build.frame_sampling import (
     normalize_sampled_household_mass,
     sample_frame_households,
 )
+from microcosm.build.gate_battery import BlockingMode, EvidenceContext, GateBatteryRun
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -33,6 +39,11 @@ from microcosm.build.logbook_adoption import (
     write_error_receipt,
 )
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+from microcosm.build.uk_runtime.calibration_run import (
+    UK_SPINE_GATE_SCOPE,
+    uk_scoped_gate_manifest,
+)
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
@@ -66,8 +77,10 @@ from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
 )
-from microcosm.build.uk_runtime.national_build import write_uk_national_frame
-from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    write_uk_national_frame,
+)
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
@@ -90,6 +103,11 @@ _PIPELINE = "uk-frs-spine"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
+#: The last stage of the assembled checkpoint: everything through the base
+#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: standing in for a key is correct only while two independently-maintained
+#: orderings happen to agree (the uk-data#468 class).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 _STAGE_NAMES = (
     "frs_spine",
     "frs_employment",
@@ -185,6 +203,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Scale-ladder rung (#624): 0.01 smoke, 0.10 dev, or 1.0 full. "
             "Below 1.0 the raw FRS spine is sampled immediately after ingest, "
             "renormalized to full household mass, and treated as a receipt."
+        ),
+    )
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Evaluate the spine battery at release-candidate strictness: "
+            "evidence_absent gaps block instead of being tolerated. Explicit "
+            "by design - a full-scale developer build is not a release "
+            "candidate unless the caller says so."
         ),
     )
     parser.add_argument(
@@ -446,6 +474,85 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
     return declared
 
 
+def _result_evidence(result: object) -> object:
+    if isinstance(result, dict):
+        return result
+    evidence = getattr(result, "evidence", None)
+    if callable(evidence):
+        return evidence()
+    return None
+
+
+def _collect_stage_evidence(
+    *,
+    stage_names: Sequence[str],
+    implementations: Mapping[str, object],
+) -> dict[str, object]:
+    evidence_by_stage: dict[str, object] = {}
+    for stage_name in stage_names:
+        implementation = implementations.get(stage_name)
+        if implementation is None:
+            continue
+        metadata = None
+        metadata_hook = getattr(implementation, "checkpoint_metadata", None)
+        if callable(metadata_hook):
+            metadata = dict(metadata_hook())
+            evidence = metadata.get("evidence", metadata)
+        else:
+            evidence = _result_evidence(
+                getattr(implementation, "last_result", None)
+            )
+        if evidence is not None:
+            evidence_by_stage[stage_name] = evidence
+    return evidence_by_stage
+
+
+def _collect_fit_weight_records(
+    *,
+    stage_names: Sequence[str],
+    implementations: Mapping[str, object],
+) -> dict[str, list[dict[str, str]]]:
+    """Persist each fitting stage's resolved weight kinds into the sidecar.
+
+    The terminal weights audit (``uk_weights_audit``) consumes
+    :class:`FitWeightRecord` evidence that only exists on live stage
+    objects; the release-cut certification producer runs in a later
+    process, so the sidecar carries the records across the run boundary.
+    Duck-typed like ``stage_evidence``: every stage whose transform exposes
+    ``fit_weight_records`` contributes, in stage order. A fitting stage
+    whose records are missing, unreadable, or empty records an empty list —
+    the audit binding fails an empty record set, so the gap stays visible
+    rather than vanishing from the sidecar.
+    """
+
+    records_by_stage: dict[str, list[dict[str, str]]] = {}
+    for stage_name in stage_names:
+        implementation = implementations.get(stage_name)
+        if implementation is None:
+            continue
+        # Detect the hook without evaluating it: a raising property must
+        # count as a fitting stage with unreadable records, not vanish.
+        exposes_records = (
+            getattr(type(implementation), "fit_weight_records", None) is not None
+            or "fit_weight_records" in getattr(implementation, "__dict__", {})
+        )
+        if not exposes_records:
+            continue
+        try:
+            records = tuple(implementation.fit_weight_records or ())
+        except Exception:  # noqa: BLE001 - unreadable records fail the audit
+            records_by_stage[stage_name] = []
+            continue
+        records_by_stage[stage_name] = [
+            {
+                "fit_name": str(record.fit_name),
+                "weight_kind": str(record.weight_kind),
+            }
+            for record in records
+        ]
+    return records_by_stage
+
+
 def _build_sidecar(
     *,
     frame,
@@ -458,6 +565,7 @@ def _build_sidecar(
     stochastic_contract_sha256: str,
     frs_vintage: str,
     sampling: dict[str, object] | None,
+    spine_gate_report: dict[str, object] | None = None,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
@@ -491,6 +599,7 @@ def _build_sidecar(
         "declared_seeds": _declared_seeds(stages),
         "source_vintages": {"frs": frs_vintage},
         "sampling": sampling,
+        "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
     }
@@ -578,6 +687,9 @@ def _run_plan_with_spine_sampling(
     *,
     sample_fraction: float,
     sample_seed: int,
+    spine_battery: GateBatteryRun | None = None,
+    stage_evidence_provider=None,
+    gate_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[object, tuple[object, ...], dict[str, object] | None]:
     if not plan.stages or plan.stages[0].name != "frs_spine":
         frame, records = plan.run(uk_frs_spine_seed_frame())
@@ -595,8 +707,96 @@ def _run_plan_with_spine_sampling(
     )
     if len(plan.stages) == 1:
         return spine_frame, spine_records, sampling
-    frame, tail_records = StagePlan(plan.stages[1:]).run(spine_frame)
-    return frame, (*spine_records, *tail_records), sampling
+    names = tuple(stage.name for stage in plan.stages)
+    if UK_SPINE_ASSEMBLED_FINAL_STAGE in names:
+        assembled_end = names.index(UK_SPINE_ASSEMBLED_FINAL_STAGE) + 1
+    elif spine_battery is not None:
+        raise RuntimeError(
+            "spine battery is armed but the declared assembled-boundary stage "
+            f"{UK_SPINE_ASSEMBLED_FINAL_STAGE!r} is not in the plan; a stage "
+            "plan change must move the boundary declaration with it."
+        )
+    else:
+        assembled_end = len(plan.stages)
+    frame, assembled_records = StagePlan(plan.stages[1:assembled_end]).run(spine_frame)
+    # Each boundary offers only the stages that have actually run: asking a
+    # later stage for checkpoint evidence would (correctly) raise, and the
+    # first licensed battery run did exactly that at the assembled boundary.
+    executed = tuple(stage.name for stage in plan.stages[:assembled_end])
+    if spine_battery is not None:
+        _run_spine_gate_phase(
+            spine_battery,
+            "assembled",
+            frame=frame,
+            stage_evidence=(
+                stage_evidence_provider(executed)
+                if stage_evidence_provider is not None
+                else {}
+            ),
+            gate_artifacts=gate_artifacts,
+        )
+    if assembled_end == len(plan.stages):
+        return frame, (*spine_records, *assembled_records), sampling
+    frame, tail_records = StagePlan(plan.stages[assembled_end:]).run(frame)
+    executed = tuple(stage.name for stage in plan.stages)
+    if spine_battery is not None:
+        _run_spine_gate_phase(
+            spine_battery,
+            "transferred",
+            frame=frame,
+            stage_evidence=(
+                stage_evidence_provider(executed)
+                if stage_evidence_provider is not None
+                else {}
+            ),
+            gate_artifacts=gate_artifacts,
+        )
+    return frame, (*spine_records, *assembled_records, *tail_records), sampling
+
+
+def _run_spine_gate_phase(
+    battery: GateBatteryRun,
+    phase: str,
+    *,
+    frame,
+    stage_evidence: Mapping[str, object],
+    gate_artifacts: Mapping[str, object] | None = None,
+) -> None:
+    artifacts: dict[str, object] = {"stage_evidence": dict(stage_evidence)}
+    # The enum-domain gate resolves its domain from the live rules engine,
+    # exactly as the national terminal battery supplied it.
+    artifacts.update(dict(gate_artifacts or {}))
+    battery.run_phase(
+        phase,
+        EvidenceContext(frame=frame, artifacts=artifacts),
+    )
+    battery.enforce(phase, mode=BlockingMode.BLOCKS_ARTIFACT)
+
+
+def _spine_gate_report_path(spine_h5: Path) -> Path:
+    return spine_h5.with_suffix(".spine_gates.json")
+
+
+def _spine_gate_manifest_from_spec(spec) -> GatesManifest | None:
+    """The spine build's scoped battery manifest, from the shared helper.
+
+    A spec without a gates block leaves the battery unarmed (``None``),
+    exactly as before; when armed, the filtering runs through the one
+    scope-filtering implementation every scoped producer shares. The
+    driver passes the spec it already loaded, which is also the hermetic
+    tests' stub point. Digests are identical to the previous local copy
+    because entries, phases, and the policy suffix are unchanged.
+    """
+
+    source = getattr(spec, "gates", None)
+    if source is None:
+        return None
+    return uk_scoped_gate_manifest(
+        UK_SPINE_GATE_SCOPE,
+        phases=("assembled", "transferred"),
+        policy_suffix="spine_build_scope",
+        source=source,
+    )
 
 
 def _rung_abort_receipt(
@@ -656,6 +856,7 @@ def main(argv: list[str] | None = None) -> int:
             args.spine_h5,
             args.spine_h5.with_suffix(".build.json"),
             args.spine_h5.with_suffix(".hmrc_replay.json"),
+            _spine_gate_report_path(args.spine_h5),
             args.spine_h5.with_suffix(".rung_abort.json"),
         ]
         if args.emit_nonzero_shares is not None:
@@ -851,11 +1052,32 @@ def main(argv: list[str] | None = None) -> int:
             implementations,
             stage_names=stage_names,
         )
+        spine_gate_path = _spine_gate_report_path(args.spine_h5)
+        spine_gate_manifest = _spine_gate_manifest_from_spec(spec)
+        spine_battery = (
+            GateBatteryRun(
+                spine_gate_manifest,
+                release_id=state.build_id,
+                report_path=spine_gate_path,
+                release_candidate=args.release_candidate,
+                registry=UK_GATE_REGISTRY,
+            )
+            if spine_gate_manifest is not None
+            else None
+        )
         frame, records, sampling = _run_plan_with_spine_sampling(
             plan,
             sample_fraction=args.sample_fraction,
             sample_seed=args.sample_seed,
+            spine_battery=spine_battery,
+            stage_evidence_provider=lambda executed: _collect_stage_evidence(
+                stage_names=executed,
+                implementations=implementations,
+            ),
+            gate_artifacts={"rules_engine": engine},
         )
+        if spine_battery is not None:
+            append_phase(state, "spine_gates_evaluated")
         append_phase(state, "spine_built")
         output = write_uk_national_frame(frame, args.spine_h5)
         append_phase(state, "spine_written")
@@ -889,31 +1111,27 @@ def main(argv: list[str] | None = None) -> int:
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
             frs_vintage=frs_release.vintage,
             sampling=sampling,
+            spine_gate_report=(
+                {
+                    "path": str(spine_gate_path),
+                    "sha256": hashlib.sha256(spine_gate_path.read_bytes()).hexdigest(),
+                }
+                if spine_gate_path.is_file()
+                else None
+            ),
         )
-        # E8 executed-effect receipts (#730/#684 two-arm rule, arm 2): the
-        # clone/donor/salsac/student-loan transforms record their receipts on
-        # last_result; persist them beside the declared seeds so the sidecar
-        # carries evidence that every declared parameter shaped the output.
-        e8_stage_evidence: dict[str, object] = {}
-        for e8_stage_name in (
-            "cgt_incidence_clone",
-            "cgt_band_donors",
-            "salary_sacrifice",
-            "student_loans",
-            "age_tail",
-        ):
-            e8_implementation = implementations.get(e8_stage_name)
-            e8_last_result = getattr(e8_implementation, "last_result", None)
-            if e8_last_result is not None:
-                # age_tail's receipt is already the evidence mapping; the E8
-                # transforms carry a result object that produces one.
-                e8_stage_evidence[e8_stage_name] = (
-                    e8_last_result
-                    if isinstance(e8_last_result, dict)
-                    else e8_last_result.evidence()
-                )
-        if e8_stage_evidence:
-            sidecar["stage_evidence"] = e8_stage_evidence
+        stage_evidence = _collect_stage_evidence(
+            stage_names=_STAGE_NAMES,
+            implementations=implementations,
+        )
+        if stage_evidence:
+            sidecar["stage_evidence"] = stage_evidence
+        fit_weight_records = _collect_fit_weight_records(
+            stage_names=_STAGE_NAMES,
+            implementations=implementations,
+        )
+        if fit_weight_records:
+            sidecar["fit_weight_records"] = fit_weight_records
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
@@ -945,6 +1163,16 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             }
         }
+        if spine_gate_path.is_file():
+            gate_payload = json.loads(spine_gate_path.read_text(encoding="utf-8"))
+            for gate_id, payload in gate_payload.get("gates", {}).items():
+                state.gate_verdicts[str(gate_id)] = {
+                    "verdict": str(payload.get("status")),
+                    "receipt": (
+                        f"{local_artifact_reference(spine_gate_path, repository_hint=_REPOSITORY)}"
+                        f"#/gates/{gate_id}"
+                    ),
+                }
         spool_path = _record_attempt(
             state=state,
             started_at=started_at,

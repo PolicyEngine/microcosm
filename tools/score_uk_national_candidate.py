@@ -45,7 +45,7 @@ def score_uk_national_candidate(
     target_registry: TargetRegistry,
     calibration_year: int,
     measure_resolver_factory: Callable[[Path, Any], Any] | None = None,
-    candidate_label: str = "populace_uk_2023",
+    candidate_label: str | None = None,
     incumbent_label: str = "enhanced_frs_2024_25",
 ) -> dict[str, Any]:
     """Return the #578 rule-1 score block on a shared target registry.
@@ -58,6 +58,9 @@ def score_uk_national_candidate(
 
     if target_registry.country != "uk" or not target_registry.specs:
         raise ValueError("UK candidate scoring requires a non-empty UK registry.")
+    candidate_path = Path(candidate_h5)
+    if candidate_label is None:
+        candidate_label = candidate_path.stem
     candidate_pin = _verify_artifact("candidate", candidate_h5, candidate_sha256)
     incumbent_pin = _verify_artifact("incumbent", incumbent_h5, incumbent_sha256)
     candidate_frame, candidate_resolution = _scored_frame(
@@ -294,6 +297,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-json", required=True, type=Path)
     parser.add_argument("--calibration-year", type=int)
     parser.add_argument(
+        "--candidate-label",
+        help="Override the candidate label; by default it is the candidate H5 stem.",
+    )
+    parser.add_argument(
+        "--incumbent-label",
+        default="enhanced_frs_2024_25",
+        help="Override the incumbent/reference label.",
+    )
+    parser.add_argument(
         "--no-measure-resolution",
         action="store_true",
         help=(
@@ -324,6 +336,8 @@ def main(argv: list[str] | None = None) -> int:
         target_registry=registry,
         calibration_year=int(calibration_year),
         measure_resolver_factory=factory,
+        candidate_label=args.candidate_label,
+        incumbent_label=args.incumbent_label,
     )
     _write_json(args.output_json, {"score_vs_enhanced_frs": score})
     return 0

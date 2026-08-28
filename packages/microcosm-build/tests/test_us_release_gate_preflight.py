@@ -16,9 +16,16 @@ Each failure-path test asserts the specific verdict, so deleting a check's logic
 
 from __future__ import annotations
 
+import importlib.util
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import pytest
 
+import microcosm.build.us_runtime.release_gate_preflight as preflight_module
+from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
 from microcosm.build.us_runtime.release_gate_preflight import (
     PreflightReport,
     check_export_mass_parity_risk,
@@ -34,6 +41,68 @@ from microcosm.build.us_runtime.warm_start_selection import (
 )
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+
+def _load_preflight_cli():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "preflight_us_release_gates.py"
+    spec = importlib.util.spec_from_file_location("preflight_us_release_gates", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_gate_failed_release_manifest(
+    path: Path,
+) -> tuple[list[dict[str, str]], str]:
+    failure_messages = [
+        "asec incidence differs",
+        "puf_tax_detail incidence differs",
+    ]
+    failures = [
+        {"gate": "us_by_origin_battery", "message": message}
+        for message in failure_messages
+    ]
+    gates_sha256 = "2" * 64
+    verdict = {
+        "passed": False,
+        "gates": {
+            "us_by_origin_battery": {
+                "passed": False,
+                "failures": failure_messages,
+                "details": {"fixture": True},
+            }
+        },
+    }
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "build": {
+                    "base_pool": {
+                        "artifact_kind": "populace_us_multispine_input_pool",
+                        "status": "gate_failed",
+                        "simulation_ready": False,
+                        "manifest_sha256": "a" * 64,
+                        "publication_run_id": "fixture-publication",
+                        "pool_h5_sha256": "1" * 64,
+                        "pool_h5_size_bytes": 123,
+                        "allow_gate_failed_base_pool": True,
+                        "agreement_gate_reference": {
+                            "passed": False,
+                            "battery_status": "red",
+                            "gates_json_sha256": gates_sha256,
+                            "failure_count": len(failures),
+                            "failures": failures,
+                            "verdict": verdict,
+                        },
+                    }
+                },
+            }
+        )
+    )
+    return failures, gates_sha256
 
 
 def _frame(households: list[dict[str, object]]) -> Frame:
@@ -639,8 +708,6 @@ def test__report__exit_code_and_status_precedence() -> None:
 
 
 def test__report__to_dict_is_json_ready() -> None:
-    import json
-
     from microcosm.build.us_runtime.release_gate_preflight import CheckResult
 
     report = PreflightReport(
@@ -658,6 +725,329 @@ def test__report__to_dict_is_json_ready() -> None:
     payload = report.to_dict()
     assert json.loads(json.dumps(payload))["exit_code"] == 1
     assert payload["checks"][0]["rows"] == [{"k": 1}]
+
+
+def test__report__carried_red_pool_is_prominent_but_non_blocking(tmp_path) -> None:
+    release_manifest = tmp_path / "release_manifest.json"
+    failures, gates_sha256 = _write_gate_failed_release_manifest(release_manifest)
+    base_pool = json.loads(release_manifest.read_text())["build"]["base_pool"]
+    report = PreflightReport(checks=(), base_pool=base_pool)
+
+    rendered = report.human_table()
+    assert report.status == "PASS"
+    assert report.exit_code == 0
+    assert "BASE POOL BATTERY: RED — 2 FAILURES" in rendered
+    assert "Human publication decision required" in rendered
+    assert f"Gates JSON SHA-256: {gates_sha256}" in rendered
+    assert all(
+        f"[{failure['gate']}] {failure['message']}" in rendered
+        for failure in failures
+    )
+    assert report.to_dict()["base_pool"] == base_pool
+
+
+@pytest.mark.parametrize(
+    (
+        "allow_gate_failed",
+        "status",
+        "simulation_ready",
+        "passed",
+        "rejected",
+    ),
+    (
+        (False, "simulation_ready", True, True, False),
+        (True, "gate_failed", False, False, False),
+        (True, "simulation_ready", True, True, True),
+    ),
+)
+def test__preflight_base__passes_explicit_terminal_gate_policy_to_release_loader(
+    monkeypatch,
+    tmp_path,
+    allow_gate_failed,
+    status,
+    simulation_ready,
+    passed,
+    rejected,
+) -> None:
+    base_h5 = tmp_path / "pool.h5"
+    base_h5.write_bytes(b"authenticated pool")
+    manifest_path = base_h5.with_suffix(".manifest.json")
+    failures = [] if passed else ["fixture battery failure"]
+    manifest = {
+        "status": status,
+        "simulation_ready": simulation_ready,
+        "agreement_gate": {
+            "passed": passed,
+            "gates": {
+                "us_by_origin_battery": {
+                    "passed": passed,
+                    "failures": failures,
+                }
+            },
+        },
+        "agreement_diagnostics": {"sha256": "2" * 64},
+    }
+    identity = AuthenticatedPoolH5(
+        path=base_h5.resolve(),
+        sha256="1" * 64,
+        size_bytes=base_h5.stat().st_size,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+    )
+    frame = _frame(_POOL)
+    monkeypatch.setattr(
+        preflight_module,
+        "identify_us_multispine_pool_manifest",
+        lambda path: manifest_path,
+    )
+
+    def selected(path, *, allow_terminal_gate_failure):
+        assert path == manifest_path
+        assert allow_terminal_gate_failure is allow_gate_failed
+        return frame, manifest, identity
+
+    monkeypatch.setattr(
+        preflight_module,
+        "load_authenticated_us_multispine_pool_for_release",
+        selected,
+    )
+
+    if rejected:
+        with pytest.raises(ValueError, match="override is valid only"):
+            preflight_module._load_preflight_base(
+                base_h5,
+                allow_gate_failed_base_pool=allow_gate_failed,
+            )
+        return
+
+    loaded, receipt, loaded_manifest_path = preflight_module._load_preflight_base(
+        base_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
+    )
+
+    assert loaded is frame
+    assert loaded_manifest_path == manifest_path
+    assert receipt["status"] == status
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(failures)
+
+
+def test__preflight_base__refuses_actual_red_sidecar_without_opt_in(
+    monkeypatch, tmp_path
+) -> None:
+    import microcosm.build.us_runtime.l0_refit_export as l0_refit_export
+
+    base_h5 = tmp_path / "pool.h5"
+    base_h5.write_bytes(b"pool identity comes from its sibling manifest")
+    manifest_path = base_h5.with_suffix(".manifest.json")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": "populace_us_multispine_pool_manifest",
+                "status": "gate_failed",
+                "simulation_ready": False,
+            }
+        )
+    )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: pytest.fail("red pool reached the generic H5 loader"),
+    )
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        preflight_module._load_preflight_base(
+            base_h5,
+            allow_gate_failed_base_pool=False,
+        )
+
+
+def test__preflight_base__refuses_bare_stamped_pool_before_generic_load(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    import microcosm.build.us_runtime.l0_refit_export as l0_refit_export
+
+    base_h5 = tmp_path / "pool.h5"
+    with pd.HDFStore(base_h5, mode="w") as store:
+        store.put(
+            "_populace_staging_metadata",
+            pd.Series(
+                [
+                    json.dumps(
+                        {
+                            "artifact_kind": "populace_us_multispine_input_pool",
+                            "household_weight_kind": "importance",
+                            "publication_run_id": "fixture-publication",
+                        }
+                    )
+                ]
+            ),
+            format="table",
+        )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: pytest.fail("bare pool reached the generic H5 loader"),
+    )
+
+    with pytest.raises(ValueError, match="pool.manifest.json is not readable"):
+        preflight_module._load_preflight_base(
+            base_h5,
+            allow_gate_failed_base_pool=False,
+        )
+
+
+def test__cli__release_manifest_does_not_replace_required_static_inputs(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    _write_gate_failed_release_manifest(release_manifest)
+    monkeypatch.setattr(
+        cli,
+        "run_preflight",
+        lambda **kwargs: pytest.fail("argument validation reached static checks"),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(["--release-manifest", str(release_manifest)])
+
+    assert error.value.code == 2
+    stderr = capsys.readouterr().err
+    assert "--base-h5" in stderr
+    assert "--selection-source-manifest" in stderr
+
+
+@pytest.mark.parametrize(
+    ("static_status", "expected_exit"),
+    (("PASS", 0), ("AT_RISK", 2), ("FAIL", 1)),
+)
+def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
+    monkeypatch,
+    tmp_path,
+    capsys,
+    static_status,
+    expected_exit,
+) -> None:
+    from microcosm.build.us_runtime.release_gate_preflight import CheckResult
+
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    failures, gates_sha256 = _write_gate_failed_release_manifest(release_manifest)
+    base_pool = json.loads(release_manifest.read_text())["build"]["base_pool"]
+    json_out = tmp_path / "preflight.json"
+    report = PreflightReport(
+        checks=(
+            CheckResult(
+                name="existing_check",
+                status=static_status,
+                summary="existing check controls the exit",
+                failures=("fixture failure",) if static_status == "FAIL" else (),
+                at_risks=("fixture risk",) if static_status == "AT_RISK" else (),
+            ),
+        ),
+        base_pool=base_pool,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_preflight(**kwargs):
+        captured.update(kwargs)
+        return report
+
+    monkeypatch.setattr(cli, "run_preflight", fake_run_preflight)
+
+    exit_code = cli.main(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--selection-source-manifest",
+            str(tmp_path / "selection.json"),
+            "--allow-gate-failed-base-pool",
+            "--release-manifest",
+            str(release_manifest),
+            "--json-out",
+            str(json_out),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    payload = json.loads(json_out.read_text())
+    assert exit_code == report.exit_code == expected_exit
+    assert output.startswith("=" * 72)
+    assert "CARRIED BASE-POOL AGREEMENT BATTERY: RED — 2 FAILURES" in output
+    assert "Build opt-in used: --allow-gate-failed-base-pool" in output
+    assert f"Pool gates JSON SHA-256: {gates_sha256}" in output
+    assert "Publication decision: HUMAN REVIEW REQUIRED" in output
+    assert "does not alter the preflight exit code" in output
+    assert all(
+        f"FAILURE [{failure['gate']}]: {failure['message']}" in output
+        for failure in failures
+    )
+    assert output.rstrip().endswith(
+        "CARRIED RED BATTERY: HUMAN REVIEW REQUIRED; automated preflight exit "
+        f"remains {expected_exit}."
+    )
+    assert payload["exit_code"] == expected_exit
+    assert payload["carried_base_pool_agreement_battery"][
+        "affects_exit_code"
+    ] is False
+    assert payload["carried_base_pool_agreement_battery"]["failures"] == failures
+    assert payload["carried_base_pool_agreement_battery"][
+        "agreement_gate_reference"
+    ]["verdict"]["passed"] is False
+    assert captured["allow_gate_failed_base_pool"] is True
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    (
+        "generic_base",
+        "manifest_sha256",
+        "pool_h5_sha256",
+        "pool_h5_size_bytes",
+        "publication_run_id",
+        "gates_json_sha256",
+        "verdict",
+    ),
+)
+def test__cli__release_manifest_must_match_authenticated_base_pool(
+    monkeypatch,
+    tmp_path,
+    mismatch,
+) -> None:
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    _write_gate_failed_release_manifest(release_manifest)
+    authenticated = json.loads(
+        json.dumps(json.loads(release_manifest.read_text())["build"]["base_pool"])
+    )
+    if mismatch == "generic_base":
+        authenticated = None
+    elif mismatch == "pool_h5_size_bytes":
+        authenticated[mismatch] += 1
+    elif mismatch == "gates_json_sha256":
+        authenticated["agreement_gate_reference"][mismatch] = "3" * 64
+    elif mismatch == "verdict":
+        authenticated["agreement_gate_reference"]["verdict"]["gates"][
+            "us_by_origin_battery"
+        ]["details"] = {"fixture": "different"}
+    else:
+        authenticated[mismatch] = "different-authenticated-value"
+    report = PreflightReport(checks=(), base_pool=authenticated)
+    monkeypatch.setattr(cli, "run_preflight", lambda **kwargs: report)
+
+    with pytest.raises(ValueError, match="does not exactly match"):
+        cli.main(
+            [
+                "--base-h5",
+                str(tmp_path / "base.h5"),
+                "--selection-source-manifest",
+                str(tmp_path / "selection.json"),
+                "--allow-gate-failed-base-pool",
+                "--release-manifest",
+                str(release_manifest),
+            ]
+        )
 
 
 def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(

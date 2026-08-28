@@ -8,6 +8,8 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     LCFS_ACCOMM_MAP,
     LCFS_TENURE_MAP,
     UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+    UKLCFSConsumptionResult,
+    UKLCFSConsumptionStageTransform,
     assign_recipient_has_fuel,
     clean_lcfs_consumption_table,
     derive_energy_from_lcfs,
@@ -141,7 +143,7 @@ def test_support_clip_exempts_raked_energy_columns() -> None:
         {column: [0.0, 10.0] for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS}
     )
 
-    clipped = support_clip_to_donor(
+    clip_result = support_clip_to_donor(
         draws,
         donor,
         exempt={
@@ -150,12 +152,42 @@ def test_support_clip_exempts_raked_energy_columns() -> None:
             "domestic_energy_consumption",
         },
     )
+    clipped = clip_result.clipped
 
     assert clipped["food_and_non_alcoholic_beverages_consumption"].tolist() == [
         1.0,
         5.0,
     ]
     assert clipped["electricity_consumption"].tolist() == [0.0, 10.0]
+    receipt = clip_result.receipt.evidence()["columns"]
+    assert receipt["food_and_non_alcoholic_beverages_consumption"] == {
+        "donor_min": 1.0,
+        "donor_max": 5.0,
+        "clipped_low_rows": 1,
+        "clipped_high_rows": 1,
+        "rows_considered": 2,
+    }
+    assert receipt["electricity_consumption"] == {
+        "exempt": True,
+        "rows_considered": 2,
+    }
+    assert receipt["gas_consumption"] == {
+        "exempt": True,
+        "rows_considered": 2,
+    }
+    assert receipt["domestic_energy_consumption"] == {
+        "exempt": True,
+        "rows_considered": 2,
+    }
+    transform = UKLCFSConsumptionStageTransform(stage=object(), engine=object())
+    transform.last_result = UKLCFSConsumptionResult(
+        frame=object(),
+        support_clip=clip_result.receipt,
+    )
+    assert transform.checkpoint_metadata()["evidence"] == {
+        "stage": "lcfs_consumption",
+        "support_clip": clip_result.receipt.evidence(),
+    }
 
 
 def test_has_fuel_bridge_accepts_lcfs_native_predictor_names() -> None:

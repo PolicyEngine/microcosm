@@ -6,6 +6,8 @@ import pytest
 
 from microcosm.build.uk_runtime.etb_services import (
     UK_ETB_SERVICES_FIT_NAME,
+    UKETBServicesResult,
+    UKETBServicesStageTransform,
     build_nhs_cell_table,
     clean_etb_services_table,
     donor_realized_ranges,
@@ -152,10 +154,27 @@ def test_services_support_clip_ranges_and_rail_ratio() -> None:
         }
     )
 
-    clipped = support_clip_to_donor(draws, donor)
+    clip_result = support_clip_to_donor(draws, donor)
+    clipped = clip_result.clipped
 
     assert clipped["dfe_education_spending"].tolist() == [520.0, 1040.0]
     assert donor_realized_ranges(donor)["rail_subsidy_spending"] == (104.0, 208.0)
+    assert clip_result.receipt.evidence()["columns"]["rail_subsidy_spending"] == {
+        "donor_min": 104.0,
+        "donor_max": 208.0,
+        "clipped_low_rows": 1,
+        "clipped_high_rows": 1,
+        "rows_considered": 2,
+    }
+    transform = UKETBServicesStageTransform(stage=object(), engine=object())
+    transform.last_result = UKETBServicesResult(
+        frame=object(),
+        support_clip=clip_result.receipt,
+    )
+    assert transform.checkpoint_metadata()["evidence"] == {
+        "stage": "etb_services",
+        "support_clip": clip_result.receipt.evidence(),
+    }
     fare_index = load_etb_services_anchors()["rail_fare_index_2023"]["value"]
     assert 111.0 / fare_index == pytest.approx(100.0)
 

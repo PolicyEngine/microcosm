@@ -167,6 +167,28 @@ def _fixture_artifact(module, *, sha256: str, measure_values: tuple[float, float
     )
 
 
+def _tiny_frame_with_marketplace_columns(
+    *,
+    formula_owned: bool,
+    interview_leaf: bool,
+) -> Frame:
+    frame = _tiny_frame(measure_values=(1.0, 2.0))
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    if formula_owned:
+        tables["person"]["has_marketplace_health_coverage"] = np.asarray(
+            [True, False], dtype=bool
+        )
+    if interview_leaf:
+        tables["person"]["has_marketplace_health_coverage_at_interview"] = (
+            np.asarray([True, False], dtype=bool)
+        )
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+    )
+
+
 def _patch_release_seams(module, monkeypatch) -> None:
     """Stub the four heavy release seams; everything downstream runs real."""
 
@@ -205,6 +227,23 @@ def _patch_release_seams(module, monkeypatch) -> None:
     monkeypatch.setattr(release, "_health_input_signal_gate", _stub_gate)
     monkeypatch.setattr(release, "_materialize_target_frame", _stub_materialize)
     monkeypatch.setattr(release, "_read_cd_vintage_support_provenance", _stub_cd_probe)
+
+
+def _score_loaded_as_incumbent(module, monkeypatch, loaded) -> dict[str, object]:
+    _patch_release_seams(module, monkeypatch)
+    monkeypatch.setattr(
+        module,
+        "compile_yardstick",
+        lambda **kwargs: _fixture_yardstick(module),
+    )
+    monkeypatch.setattr(module, "load_artifact", lambda path, **kwargs: loaded)
+    return module.score_head_to_head(
+        incumbent=loaded.h5_path,
+        candidate=None,
+        ledger_facts=Path("/fixture/facts.jsonl"),
+        congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+        maximum_microsim_batch_size=1,
+    )
 
 
 def _complete_battery_comparisons(module) -> dict[str, dict[str, object]]:
@@ -497,6 +536,94 @@ def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
             registry.specs,
             artifact_name="candidate",
         )
+
+
+def test_historical_formula_owned_h5_scores_with_drop_receipt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    module = _load_head_to_head_module()
+    artifact_path = tmp_path / "formula_owned_with_leaf.h5"
+    write_nullable_us_h5(
+        _tiny_frame_with_marketplace_columns(
+            formula_owned=True,
+            interview_leaf=True,
+        ),
+        artifact_path,
+        period=2024,
+        artifact_kind="replacement_scorecard_fixture",
+    )
+
+    loaded = module.load_artifact(artifact_path)
+    person_columns = set(loaded.frame.table("person").columns)
+    assert "has_marketplace_health_coverage" not in person_columns
+    assert "has_marketplace_health_coverage_at_interview" in person_columns
+
+    payload = _score_loaded_as_incumbent(module, monkeypatch, loaded)
+    receipt = payload["artifacts"]["incumbent"]["normalization_receipts"][
+        "historical_formula_owned_columns"
+    ]
+    assert receipt == {
+        "count": 1,
+        "columns_by_entity": {
+            "person": ["has_marketplace_health_coverage"],
+        },
+    }
+    markdown = module.render_markdown(payload)
+    assert "Dropped column count: **1**" in markdown
+    assert "`person`: `has_marketplace_health_coverage`" in markdown
+
+
+def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> None:
+    pytest.importorskip("tables")
+    module = _load_head_to_head_module()
+    artifact_path = tmp_path / "formula_owned_without_leaf.h5"
+    write_nullable_us_h5(
+        _tiny_frame_with_marketplace_columns(
+            formula_owned=True,
+            interview_leaf=False,
+        ),
+        artifact_path,
+        period=2024,
+        artifact_kind="replacement_scorecard_fixture",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        module.load_artifact(artifact_path)
+
+    message = str(exc_info.value)
+    assert "has_marketplace_health_coverage" in message
+    assert "has_marketplace_health_coverage_at_interview" in message
+    assert "required input leaves are absent" in message
+
+
+def test_clean_historical_h5_scores_with_empty_drop_receipt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    module = _load_head_to_head_module()
+    artifact_path = tmp_path / "clean.h5"
+    write_nullable_us_h5(
+        _tiny_frame_with_marketplace_columns(
+            formula_owned=False,
+            interview_leaf=True,
+        ),
+        artifact_path,
+        period=2024,
+        artifact_kind="replacement_scorecard_fixture",
+    )
+
+    loaded = module.load_artifact(artifact_path)
+    payload = _score_loaded_as_incumbent(module, monkeypatch, loaded)
+    receipt = payload["artifacts"]["incumbent"]["normalization_receipts"][
+        "historical_formula_owned_columns"
+    ]
+    assert receipt == {"count": 0, "columns_by_entity": {}}
+    markdown = module.render_markdown(payload)
+    assert "Dropped column count: **0**" in markdown
+    assert "No formula-owned columns were present." in markdown
 
 
 def test_fixture_end_to_end_is_deterministic_and_shares_one_path(

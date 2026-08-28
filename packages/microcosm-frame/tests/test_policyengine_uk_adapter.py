@@ -28,12 +28,12 @@ def test_policyengine_uk_adapter_export_side_is_not_implemented() -> None:
         adapter.write_dataset(object(), "unused.h5", period=2023)  # type: ignore[arg-type]
 
 
+@pytest.mark.requires_uk
 def test_policyengine_uk_adapter_builds_a_real_engine_dataset() -> None:
     # Regression: the real UKSingleYearDataset constructor takes fiscal_year,
     # not time_period — a kwarg mismatch the protocol tests above cannot see
     # because they never import the engine. Dataset construction is cheap
     # (no simulation), so this runs wherever the uk extra is installed.
-    pytest.importorskip("policyengine_uk")
     import numpy as np
     import pandas as pd
 

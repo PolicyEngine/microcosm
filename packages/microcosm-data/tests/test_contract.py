@@ -22,6 +22,7 @@ from microcosm.data import (
     RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
+    contract,
     required_release_files,
     validate_evidence_release_dir,
     validate_release_dir,
@@ -98,25 +99,11 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         "expires_on": "2027-02-20",
     },
     "owned_land": {
-        "reason": (
-            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
-            "nonzero share) whose weighted total is dominated by a handful "
-            "of large farm/estate records: the E5 stability receipt "
-            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
-            "measures a 37.7 percent national and 2.41x London swing "
-            "between adjacent seeds, the same realization-variance class "
-            "the archived incumbent data repo records at uk-data#448 (4.6x "
-            "Wales swing across releases). Register parity at this grain "
-            "is not meaningful "
-            "until the whole-spine comparison; the "
-            "one-month expiry enforces the end-of-workstream revisit "
-            "registered on microcosm#145 (winsorised donor or separate "
-            "land imputation are the candidate remedies)."
-        ),
+        "reason": "Sparse heavy-tailed WAS donor column (0.7 percent weighted nonzero share) whose weighted total is dominated by a handful of large farm/estate records: the spine-e stability receipt (data/ukds/acceptance/757-swap/owned_land_stability_receipt_spine_e.json) measures a 53.8 percent national and 96.7 percent West Midlands swing between adjacent seeds on the 25-stage candidate \u2014 the realization-variance class the archived incumbent data repo records at uk-data#448 (4.6x Wales swing across releases), reproduced from the E5 instrument's method. Register parity at this grain stays not meaningful; the one-month expiry keeps the end-of-workstream revisit registered on microcosm#145 live (winsorised donor or separate land imputation are the candidate remedies).",
         "approved_by": "juaristi22",
         "adjudication": "microcosm#714",
-        "approved_on": "2026-08-20",
-        "expires_on": "2026-09-20",
+        "approved_on": "2026-08-26",
+        "expires_on": "2026-09-26",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -148,19 +135,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "623f340ddde6f705717c3a6306522f8cf46c1c17a067f9e89df190ecc690f0fc"
+    "5459347c9077b2acd5970a62d818e3ddd063d86d6c3dbce4d32dcacec3bdc414"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4f66eea7e593b795da93217e9ac8b3b53ca1f82375ec346b3a2ecbb558b89cb6"
+    "f68e10d8ff6654b7fc707da0508ea063b0f3c96b8a813b7098298727d43b9d6d"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "26fdbcccfaa01e9afa116339cfaa870f76fc6ed3bd5db57fec498781ff3efc64"
+    "2a4a8b18d024f80782b375539c87d57006592d64470553a4da5a378791254faa"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "16093e8605ac4bf9cf63fd66967c7b50fa80e29761443e8c6d37551e2d3b1fee"
+    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -180,6 +167,51 @@ UK_GATE_BATTERY_ENTRIES = {
         "preflight",
         None,
     ),
+    "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support": ("stage_health", "transferred", None),
+    "uk_stage_frs_hmrc_spine_leaves_signal": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_spi_support_channel_mass": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_hmrc_spi_income_spine_identity": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_incidence_clone_mass": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_band_donors_support": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_hmrc_cgt_gains_spine_summary": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_salary_sacrifice_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_age_tail_targets": ("stage_health", "transferred", None),
     "uk_release_input_coverage": (
         "release_input_coverage",
         "terminal",
@@ -203,7 +235,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
-    "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
+    "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_student_loan_plan_enum_domain": (
         "enum_domain",
         "terminal",
@@ -845,8 +877,8 @@ def _terminal_gate_details(name: str) -> dict:
         return {
             "columns_checked": 1,
             "top_k": 100,
-            "max_top_share": 0.9970712395200448,
-            "min_nonzero_records": 274,
+            "max_top_share": 0.9994670564654868,
+            "min_nonzero_records": 104,
             "top_share": {"self_employment_income": 0.5},
             "carrier_counts": {"self_employment_income": 274},
             "thin_columns": {},
@@ -1050,7 +1082,48 @@ def _gate_battery_payload(
 ) -> tuple[dict, dict[str, str]]:
     """A fully-armed, all-passing, signed schema-4 battery report."""
 
-    stage_names = ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
+    stage_names = [
+        "frs_spine",
+        "frs_employment",
+        "frs_council_tax",
+        "frs_disability",
+        "frs_education",
+        "frs_legacy_proxies",
+        "frs_education_grant_split",
+        "frs_take_up",
+        "frs_person_draws",
+        "frs_household_draws",
+        "frs_brma",
+        "was_wealth",
+        "regional_property_uprating",
+        "lcfs_consumption",
+        "etb_vat",
+        "etb_services",
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "hmrc_spi_income_spine",
+        "cgt_incidence_clone",
+        "cgt_band_donors",
+        "hmrc_cgt_gains_spine",
+        "salary_sacrifice",
+        "student_loans",
+        "age_tail",
+    ]
+    stage_health_stages = {
+        "uk_stage_was_wealth_support": "was_wealth",
+        "uk_stage_lcfs_consumption_support": "lcfs_consumption",
+        "uk_stage_etb_vat_support": "etb_vat",
+        "uk_stage_etb_services_support": "etb_services",
+        "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_spi_support_channel_mass": "spi_support_channel",
+        "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
+        "uk_stage_cgt_band_donors_support": "cgt_band_donors",
+        "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
+        "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
+        "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_age_tail_targets": "age_tail",
+    }
     gates: dict[str, dict] = {}
     for entry_id, (gate, phase, detail_name) in UK_GATE_BATTERY_ENTRIES.items():
         if entry_id == "uk_release_input_coverage_manifest_current":
@@ -1073,6 +1146,11 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif gate == "stage_health":
+            details = {
+                "stage": stage_health_stages[entry_id],
+                "check": "fixture",
+            }
         else:
             details = _terminal_gate_details(detail_name)
         gates[entry_id] = {
@@ -1107,6 +1185,8 @@ def _gate_battery_payload(
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
     }
+    for entry_id, stage in stage_health_stages.items():
+        evidence[entry_id] = _canonical_sha256({stage: {"stage": stage}})
     payload = {
         "schema_version": 4,
         "country": "uk",
@@ -1114,8 +1194,8 @@ def _gate_battery_payload(
         "release_candidate": True,
         "spec_fingerprint": UK_GATE_BATTERY_SPEC_FINGERPRINT,
         "gates_manifest_sha256": UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
-        "phases": ["preflight", "terminal"],
-        "phases_evaluated": ["preflight", "terminal"],
+        "phases": ["preflight", "assembled", "transferred", "terminal"],
+        "phases_evaluated": ["preflight", "assembled", "transferred", "terminal"],
         "blocked_at_phase": None,
         "shippable": True,
         "gates": gates,
@@ -4813,4 +4893,192 @@ def test_breach_acknowledgment_matching_is_name_delimited() -> None:
     # A dotted-name suffix is not the name.
     assert not contract_module._token_appears_delimited(
         "b.c@2024", "this names a.b.c@2024"
+    )
+
+
+# --- UK release certification (microcosm#757 B5) ---------------------------
+
+
+def _green_uk_certification(key: bytes) -> dict:
+    parts = {}
+    for part_name, scope in contract._UK_CERTIFICATION_PART_SCOPES.items():
+        parts[part_name] = {
+            "path": f"{part_name}.json",
+            "sha256": "a" * 64,
+            "release_id": "uk-757-first-certified-cut",
+            "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
+            "entry_ids": sorted(scope),
+            "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[
+                part_name
+            ]["gates_manifest_sha256"],
+            "policy_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
+                "policy_sha256"
+            ],
+            "statuses": {"passed": len(scope)},
+        }
+    certification = {
+        "schema_version": 1,
+        "kind": "uk_release_certification",
+        "country": "uk",
+        "release_id": "uk-757-first-certified-cut",
+        "candidate": {
+            "name": "microcosm_uk_2024",
+            "filename": "microcosm_uk_2024.h5",
+            "sha256": "b" * 64,
+            "size_bytes": 1,
+        },
+        "parts": parts,
+        "spec": {
+            "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
+            "policy_sha256": contract._UK_GATE_BATTERY_POLICY_SHA256,
+            "spec_fingerprint": contract._UK_GATE_BATTERY_SPEC_FINGERPRINT,
+            "declared_entry_count": len(contract._UK_GATE_BATTERY_ENTRY_IDS),
+            "declared_phases": list(contract._UK_GATE_BATTERY_PHASES),
+            "shared_gate_ids": sorted(contract._UK_CERTIFICATION_SHARED_GATE_IDS),
+        },
+        "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
+        "diagnostics_sha256": "c" * 64,
+        "score_receipt": {"filename": "score_vs_enhanced_frs.json", "sha256": "d" * 64},
+        "exclusions_evaluated_on": "2026-08-27",
+        "shippable": True,
+    }
+    attestation = {
+        "producer": "microcosm.build.uk_runtime.release_certification",
+        "signature_algorithm": "hmac-sha256",
+        "signing_key_sha256": hashlib.sha256(key).hexdigest(),
+        "signature": None,
+    }
+    certification["attestation"] = attestation
+    attestation["signature"] = hmac.new(
+        key, contract._canonical_json_bytes(certification), hashlib.sha256
+    ).hexdigest()
+    return certification
+
+
+def _certification_failures(certification, monkeypatch, key: bytes) -> list[str]:
+    monkeypatch.setenv(
+        UK_GATE_BATTERY_SIGNING_KEY_ENV, base64.b64encode(key).decode("ascii")
+    )
+    failures: list[str] = []
+    contract._check_uk_release_certification(
+        certification,
+        release_id="uk-757-first-certified-cut",
+        calibration_diagnostics_sha256="c" * 64,
+        failures=failures,
+    )
+    return failures
+
+
+def test_uk_release_certification_green(monkeypatch) -> None:
+    key = bytes(range(32))
+    certification = _green_uk_certification(key)
+    assert _certification_failures(certification, monkeypatch, key) == []
+
+
+def test_uk_release_certification_refusals(monkeypatch) -> None:
+    key = bytes(range(32))
+
+    certification = _green_uk_certification(key)
+    certification["shippable"] = False
+    assert any(
+        "does not certify a shippable candidate" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    certification["parts"]["release_cut"]["statuses"] = {"passed": 15, "failed": 1}
+    failures = _certification_failures(certification, monkeypatch, key)
+    assert any("statuses" in line for line in failures)
+    assert any("does not certify a shippable" in line for line in failures)
+
+    certification = _green_uk_certification(key)
+    certification["parts"]["spine"]["entry_ids"] = sorted(
+        set(certification["parts"]["spine"]["entry_ids"]) - {"uk_brma_enum_domain"}
+    )
+    assert any(
+        "entry_ids" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    certification["parts"]["calibration_seam"]["gates_manifest_sha256"] = "e" * 64
+    assert any(
+        "scoped manifest digest" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    certification["diagnostics_sha256"] = "f" * 64
+    assert any(
+        "diagnostics_sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # A tampered field breaks the signature: the flag flip is caught both as
+    # a verdict refusal and as a signature failure.
+    certification = _green_uk_certification(key)
+    certification["release_id"] = "uk-757-first-certified-cut"
+    certification["doctrine"] = {"payload": {}, "overrides": {}}
+    assert any(
+        "signature does not authenticate" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    certification = _green_uk_certification(key)
+    del certification["score_receipt"]
+    assert any(
+        "exactly the certification fields" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+
+def test_national_line_artifacts_require_the_certification(tmp_path) -> None:
+    # A release that ships any national-line gate part without the composed
+    # certification must refuse: the shippability verdict lives only in the
+    # certification, so its omission cannot validate clean (green-by-absence).
+    release_dir = tmp_path / "uk-757-first-certified-cut"
+    release_dir.mkdir()
+    (release_dir / "release_cut_gates.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(release_dir)
+    assert any(
+        "release_certification.json is missing while national-line" in line
+        for line in caught.value.failures
+    )
+
+    # A calibration-seam-scoped terminal report is a national-line part too.
+    seam_dir = tmp_path / "uk-757-seam-only"
+    seam_dir.mkdir()
+    (seam_dir / "terminal_gates.json").write_text(
+        '{"posture": "calibration_seam"}', encoding="utf-8"
+    )
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(seam_dir)
+    assert any(
+        "release_certification.json is missing while national-line" in line
+        for line in caught.value.failures
+    )
+
+    # With the certification present the omission failure clears (the file's
+    # own validation and the base required-files failures still apply).
+    (release_dir / "release_certification.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(release_dir)
+    assert not any(
+        "is missing while national-line" in line for line in caught.value.failures
+    )
+    assert any(
+        "must carry exactly the certification fields" in line
+        for line in caught.value.failures
+    )
+
+
+def test_national_release_id_requires_the_certification() -> None:
+    from microcosm.data.contract import required_release_files
+
+    required = required_release_files("microcosm-uk-2024-25-national")
+    assert "release_certification.json" in required
+    assert "release_certification.json" not in required_release_files(
+        "dev-757-rebind-proof"
     )

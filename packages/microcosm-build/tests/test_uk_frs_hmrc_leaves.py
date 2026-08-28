@@ -20,10 +20,10 @@ from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
     retain_uk_frs_hmrc_leaves,
 )
-from microcosm.build.uk_runtime.national_build import (
+from microcosm.build.uk_runtime.national_frame import (
     UKNationalStage,
+    uk_national_frame,
 )
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,

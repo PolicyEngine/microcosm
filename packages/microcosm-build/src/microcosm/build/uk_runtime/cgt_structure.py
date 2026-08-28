@@ -350,6 +350,7 @@ def stack_cgt_band_donors(
     )
     evidence_band_index = band_index.copy()
     evidence_donor_weights = donor_weights.copy()
+    evidence_gains = means[band_index].copy()
     donor_household["_donor_weight"] = donor_weights
     donor_household = donor_household.drop(columns=["_band_position"]).sort_values(
         "household_id", kind="stable"
@@ -396,6 +397,7 @@ def stack_cgt_band_donors(
     band_rows: list[Mapping[str, object]] = []
     for index, band in enumerate(bands):
         mask = evidence_band_index == index
+        realized = evidence_gains[mask]
         band_rows.append(
             {
                 "lower_limit": band["lower_limit"],
@@ -403,6 +405,8 @@ def stack_cgt_band_donors(
                 "donor_weight": float(evidence_donor_weights[mask][0]),
                 "weighted_taxpayers": float(evidence_donor_weights[mask].sum()),
                 "mean_gain": band["mean_gain"],
+                "realized_min_gain": float(realized.min()),
+                "realized_max_gain": float(realized.max()),
             }
         )
     return UKCGTBandDonorResult(

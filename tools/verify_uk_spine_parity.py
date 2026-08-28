@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.parity_reference import (  # noqa: E402
     load_efrs_parity_reference,
 )
 from microcosm.build.uk_runtime.signed_differences import (  # noqa: E402
+    UKSignedDifference,
     UKSignedDifferenceRegister,
     load_uk_spine_swap_signed_differences,
 )
@@ -76,6 +77,109 @@ TOTALS_EPSILON = 1e-9
 VERDICT_PARITY = "parity"
 VERDICT_SIGNED_PARITY = "signed_parity"
 VERDICT_DEFECT = "defect"
+VERDICT_DIAGNOSTIC = "diagnostic"
+
+
+def _require_quantitative(entry: UKSignedDifference) -> Mapping[str, Any]:
+    if entry.quantitative is None:
+        raise ValueError(
+            f"signed-difference entry {entry.id!r} has no quantitative block; "
+            "the register cannot verify its signed magnitude."
+        )
+    return entry.quantitative
+
+
+def _signed_count_entry(
+    *,
+    register: UKSignedDifferenceRegister,
+    entity: str,
+    reference_records: Any,
+    candidate_records: Any,
+) -> UKSignedDifference | None:
+    signed = register.matching(
+        surface="entity_counts",
+        column=entity,
+        expectation="count_differs",
+        entity=entity,
+    )
+    if signed is None:
+        return None
+    quantitative = _require_quantitative(signed)
+    expected_deltas = quantitative.get("expected_deltas")
+    if not isinstance(expected_deltas, Mapping):
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} has no expected_deltas block."
+        )
+    expected_delta = expected_deltas.get(entity)
+    if not isinstance(expected_delta, int):
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} has no expected delta for "
+            f"{entity!r}."
+        )
+    if not isinstance(reference_records, int) or not isinstance(
+        candidate_records, int
+    ):
+        return None
+    return (
+        signed
+        if candidate_records - reference_records == expected_delta
+        else None
+    )
+
+
+def _signed_share_entry(
+    *,
+    register: UKSignedDifferenceRegister,
+    column: str,
+    entity: str | None,
+    reference_share: float,
+    delta: float,
+) -> UKSignedDifference | None:
+    signed = register.matching(
+        surface="nonzero_shares",
+        column=column,
+        expectation="column_differs",
+        entity=entity,
+    )
+    if signed is None:
+        return None
+    quantitative = _require_quantitative(signed)
+    shares = quantitative.get("shares")
+    if not isinstance(shares, Mapping):
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} has no shares block."
+        )
+    share = shares.get(column)
+    if not isinstance(share, Mapping):
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} has no share block for "
+            f"{column!r}."
+        )
+    if share.get("incumbent_share") != reference_share:
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} records incumbent_share "
+            f"{share.get('incumbent_share')!r} for {column!r}, but the "
+            f"packaged reference is {reference_share!r}."
+        )
+    direction = share.get("direction")
+    if direction == "candidate_above":
+        direction_matches = delta > 0.0
+    elif direction == "candidate_below":
+        direction_matches = delta < 0.0
+    else:
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} records invalid direction "
+            f"{direction!r} for {column!r}."
+        )
+    max_abs_delta = share.get("max_abs_delta")
+    if not isinstance(max_abs_delta, int | float):
+        raise ValueError(
+            f"signed-difference entry {signed.id!r} records invalid "
+            f"max_abs_delta {max_abs_delta!r} for {column!r}."
+        )
+    if not direction_matches or abs(delta) > float(max_abs_delta):
+        return None
+    return signed
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
@@ -121,6 +225,58 @@ def _candidate_identity(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _weighted_totals_identity(
+    payload: Mapping[str, Any], *, label: str
+) -> dict[str, Any]:
+    identity = payload.get("identity")
+    if not isinstance(identity, Mapping):
+        raise ValueError(
+            f"{label} weighted-totals sidecar carries no identity block; "
+            "strict comparison requires content identity for both artifacts."
+        )
+    sha256 = identity.get("sha256")
+    if (
+        not isinstance(sha256, str)
+        or len(sha256) != 64
+        or any(character not in "0123456789abcdef" for character in sha256)
+    ):
+        raise ValueError(
+            f"{label} weighted-totals sidecar identity carries no lowercase "
+            "sha256 content digest."
+        )
+    return {
+        key: identity.get(key)
+        for key in ("filename", "revision", "sha256", "size_bytes", "vintage", "period")
+        if identity.get(key) is not None
+    }
+
+
+def _assert_weighted_totals_identities_bound(
+    *,
+    reference_sidecar: Mapping[str, Any],
+    candidate_sidecar: Mapping[str, Any],
+    reference_sha256: str,
+    candidate_sha256: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    reference_identity = _weighted_totals_identity(
+        reference_sidecar, label="reference"
+    )
+    candidate_identity = _weighted_totals_identity(
+        candidate_sidecar, label="candidate"
+    )
+    if reference_identity["sha256"] != reference_sha256:
+        raise ValueError(
+            "reference weighted-totals sidecar describes a different artifact: "
+            f"{reference_identity['sha256']} != {reference_sha256}."
+        )
+    if candidate_identity["sha256"] != candidate_sha256:
+        raise ValueError(
+            "candidate weighted-totals sidecar describes a different artifact: "
+            f"{candidate_identity['sha256']} != {candidate_sha256}."
+        )
+    return reference_identity, candidate_identity
+
+
 def _compare_entity_counts(
     reference_stats: Mapping[str, Any],
     candidate_stats: Mapping[str, Any],
@@ -134,11 +290,11 @@ def _compare_entity_counts(
         equal = expected == observed
         entry = {"reference": expected, "candidate": observed, "equal": equal}
         if not equal:
-            signed = register.matching(
-                surface="entity_counts",
-                column=entity,
-                expectation="count_differs",
+            signed = _signed_count_entry(
+                register=register,
                 entity=entity,
+                reference_records=expected,
+                candidate_records=observed,
             )
             entry["signed_id"] = signed.id if signed else None
             if signed is None:
@@ -170,11 +326,12 @@ def _compare_shares(
             "candidate": observed,
             "delta": delta,
         }
-        signed = register.matching(
-            surface="nonzero_shares",
+        signed = _signed_share_entry(
+            register=register,
             column=column,
-            expectation="column_differs",
             entity=entities.get(column),
+            reference_share=expected,
+            delta=delta,
         )
         if abs(delta) <= band:
             # Reported, never dropped: the band decides what must be
@@ -232,9 +389,15 @@ def _compare_weighted_totals(
     candidate_totals: Mapping[str, float],
     register: UKSignedDifferenceRegister,
     entities: Mapping[str, str] | None = None,
+    strict: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     unsigned: list[str] = []
     differing: dict[str, Any] = {}
+    only_in_reference = sorted(set(reference_totals) - set(candidate_totals))
+    only_in_candidate = sorted(set(candidate_totals) - set(reference_totals))
+    if strict:
+        unsigned.extend(only_in_reference)
+        unsigned.extend(only_in_candidate)
     compared = sorted(set(reference_totals) & set(candidate_totals))
     for column in compared:
         expected = float(reference_totals[column])
@@ -267,8 +430,8 @@ def _compare_weighted_totals(
         {
             "compared": len(compared),
             "differing": differing,
-            "only_in_reference": sorted(set(reference_totals) - set(candidate_totals)),
-            "only_in_candidate": sorted(set(candidate_totals) - set(reference_totals)),
+            "only_in_reference": only_in_reference,
+            "only_in_candidate": only_in_candidate,
         },
         unsigned,
     )
@@ -346,6 +509,10 @@ def verify_uk_spine_parity(
     report: dict[str, Any] = {
         "check": "uk_whole_spine_parity",
         "schema_version": 1,
+        "share_band": {
+            "contract": SHARE_PARITY_BAND,
+            "effective": share_band,
+        },
         "reference": {
             "resource": "efrs_parity_reference.json",
             "source": {
@@ -365,6 +532,19 @@ def verify_uk_spine_parity(
     if reference_weighted_totals is not None and candidate_weighted_totals is not None:
         left = _load_json(reference_weighted_totals)
         right = _load_json(candidate_weighted_totals)
+        if strict:
+            (
+                reference_weighted_identity,
+                candidate_weighted_identity,
+            ) = _assert_weighted_totals_identities_bound(
+                reference_sidecar=left,
+                candidate_sidecar=right,
+                reference_sha256=reference.source.sha256,
+                candidate_sha256=candidate_identity["sha256"],
+            )
+        else:
+            reference_weighted_identity = left.get("identity")
+            candidate_weighted_identity = right.get("identity")
         left_totals = left.get("totals")
         right_totals = right.get("totals")
         if not isinstance(left_totals, Mapping) or not isinstance(
@@ -376,9 +556,10 @@ def verify_uk_spine_parity(
             {k: float(v) for k, v in right_totals.items()},
             register,
             reference.input_entities,
+            strict=strict,
         )
-        totals_report["reference_identity"] = left.get("identity")
-        totals_report["candidate_identity"] = right.get("identity")
+        totals_report["reference_identity"] = reference_weighted_identity
+        totals_report["candidate_identity"] = candidate_weighted_identity
         report["weighted_totals"] = totals_report
         unsigned.extend(totals_unsigned)
         matched_ids.update(
@@ -417,6 +598,8 @@ def verify_uk_spine_parity(
 
     if report["unsigned_differences"]:
         report["verdict"] = VERDICT_DEFECT
+    elif share_band != SHARE_PARITY_BAND:
+        report["verdict"] = VERDICT_DIAGNOSTIC
     elif matched_ids:
         report["verdict"] = VERDICT_SIGNED_PARITY
     else:
@@ -499,6 +682,13 @@ def main(argv: list[str] | None = None) -> int:
     if not 0.0 <= args.share_band < 1.0:
         print(
             "error: --share-band must be a share magnitude in [0, 1).",
+            file=sys.stderr,
+        )
+        return 2
+    if args.strict and args.share_band != SHARE_PARITY_BAND:
+        print(
+            "error: strict_share_band_mismatch: --strict requires the "
+            f"contract share band {SHARE_PARITY_BAND}.",
             file=sys.stderr,
         )
         return 2
