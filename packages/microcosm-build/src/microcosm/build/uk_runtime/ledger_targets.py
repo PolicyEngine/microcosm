@@ -88,6 +88,7 @@ def materialize_uk_ledger_targets(
     registry: TargetRegistry,
     *,
     period: int | str,
+    band_edge_registry: TargetRegistry | None = None,
 ) -> TargetMaterializationResult:
     """Materialize compiled UK Ledger target bindings on an adapter."""
 
@@ -102,6 +103,7 @@ def materialize_uk_ledger_targets(
             "baseline_flag_crosstab": _uk_baseline_flag_crosstab,
             "input_substitution_counterfactual": _uk_input_substitution,
         },
+        band_edge_registry=band_edge_registry,
     )
 
 

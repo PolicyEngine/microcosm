@@ -65,6 +65,7 @@ from microcosm.build.uk_runtime import (
     ladder_target_provenance,
     load_uk_national_frame,
     load_uk_oa_ladder,
+    require_adjudicated_uk_local_binding,
     rowwise_area_support_summary,
     solve_uk_rowwise_weights_under_doctrine,
     uk_geography_ladder_gate,
@@ -374,6 +375,10 @@ def _run_candidate(
             append_phase(state, "targets_bound")
 
         if args.dry_run:
+            binding_adjudications = require_adjudicated_uk_local_binding(
+                BOUND_TARGET_FAMILIES,
+                problem.target_frame,
+            )
             _assert_artifacts_unchanged(
                 input_h5=input_h5,
                 input_artifact=input_artifact,
@@ -388,6 +393,7 @@ def _run_candidate(
                 input_artifact=input_artifact,
                 ladder_artifact=ladder_artifact,
                 target_provenance=target_provenance,
+                binding_adjudications=binding_adjudications,
             )
             print(_json_text(plan), end="")
             return 0
@@ -620,6 +626,7 @@ def _dry_run_plan(
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
     target_provenance: Mapping[str, Any],
+    binding_adjudications: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -627,6 +634,7 @@ def _dry_run_plan(
         "dry_run": True,
         "candidate_scope": "adjudicated_partial",
         "bound_target_families": list(BOUND_TARGET_FAMILIES),
+        "binding_adjudications": dict(binding_adjudications),
         "ladder_target_provenance": dict(target_provenance),
         "inputs": {
             "dataset": dict(input_artifact),
@@ -746,6 +754,7 @@ def _manifest(
         "created_at": datetime.now(UTC).isoformat(),
         "git_commit": _git_commit(),
         "bound_target_families": list(BOUND_TARGET_FAMILIES),
+        "binding_adjudications": dict(solve.binding_adjudications),
         "ladder_target_provenance": dict(target_provenance),
         "parameters": _parameters(args, source_year=source_year),
         "inputs": {
