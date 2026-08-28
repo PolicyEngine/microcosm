@@ -1,4 +1,132 @@
-# Weeksgate: stacked release gates and integer-week provenance
+# Pregnancy / prior-year defect lane (issues #798 and #799)
+
+## State
+
+Resumed on 2026-08-27 on branch `pregnancy-prioryear-defects`, based on
+`stacked-release-gate-alignment` at `606cbd69`. The root-cause findings and
+implementations are complete for the nonfemale-pregnancy producer defect and
+the owner-approved rung-aware prior-year availability release floor.
+Both fixes, source-attested spec/coverage repins, full repository verification,
+and the final `out.md` handoff are complete. The authored 0.05 floor, upper
+bound, all other bands, thresholds, seeds, and batteries remain unchanged. This
+lane did not build, publish, or push pool or release artifacts.
+
+## Done
+
+- Read `CLAUDE.md` and the GitNexus debugging workflow.
+- Confirmed the assigned branch starts clean at `606cbd69`.
+- Recorded the required source fix, structural refusal guard and receipt,
+  checkpoint-identity review, focused regressions, real-pool decompositions,
+  changelog, repository Ruff, and independent full-shard pytest boundary.
+- Recorded Task 2 as diagnosis-only unless the evidence proves an unambiguous
+  transfer defect.
+- Rebuilt a transient local GitNexus graph offline and queried pregnancy/WIC
+  execution paths. Registration alone failed because the sandbox forbids the
+  CLI's global `~/.gitnexus` registry; the usable worktree-local index was
+  removed before final verification.
+- Inspected all 1,970,973 person rows in the supplied 25% pool. There are 108
+  `is_pregnant=true` nonfemale rows, all on physical ACS records: 45 clone 0,
+  61 clone 1, and 2 clone 2. ASEC has zero; sex/channel/clone assembly is
+  internally consistent.
+- Localized the pregnancy defect to the ACS QRF path. The ASEC producer hard-
+  conditions its stable draw on female ages 15--44, while ACS transfer treats
+  sex and age only as soft predictors, models physical clone rows separately,
+  and has no pregnancy-domain postcondition. The pool has 11,287 ACS source
+  people whose clones disagree on pregnancy and zero ASEC disagreements.
+- Proved the prior-year shortfall is not ACS dilution or an ACS transfer hole.
+  Physical ASEC and ACS are both about 4.3% available because assembly samples
+  each raw ASEC year independently before the adjacent-year `PERIDNUM` join.
+  Of 18,518 sampled current rows that match the intact full predecessor files,
+  only 4,724 retain a predecessor after sampled-to-sampled joining: weighted
+  match survival is 25.4117%, the expected 25% rung effect. Full pooled ASEC
+  availability is 16.9147%, and selected current rows joined to intact prior
+  files are 16.9541%.
+- Received the owner ruling that assembly-before-join sampling is the accepted
+  mechanism verdict. The prior-year release gate may scale only its availability
+  floor by the assembly's sampled-to-sampled match-survival factor, recorded in
+  or derived from the pool manifest. Rung 1.0 must remain byte-identical to the
+  existing gate; the authored 0.05 constant and upper bound do not change.
+- Implemented the owner-approved prior-year gate policy in `f5284a07`. An
+  authenticated production stacked manifest now restores its version-4 sample
+  receipt to the loaded frame; the availability gate scales only the authored
+  lower floor by that rung, conditionally receipts the factor/applied floor,
+  and leaves full-rung output byte-identical. Legacy/no-rung frames retain the
+  original gate. The prior-year and H5 focused suites pass (23 and 60 tests),
+  focused Ruff and `git diff --check` pass, and the real candidate-25 manifest
+  validates at factor 0.25.
+- Implemented pregnancy's hard female-age-15--44 policy before any requested
+  pregnancy QRF. The transfer validates donor and recipient structure up
+  front, draws only one eligible clone-0 representative per assembled source
+  person, fans that value to missing clones, assigns structural false to
+  ineligible missing rows, and refuses preexisting/final domain or clone
+  disagreement with explicit counts.
+- Added a sealed structural receipt with disjoint QRF, clone-fanout,
+  preexisting-value-fanout, and ineligible-false accounting. Production receipt
+  validation authenticates the policy digest, zero-violation postconditions,
+  source-person topology, and exact equality to the transferred row count.
+- Bound the policy into the transfer execution contract used by late-stage
+  checkpoint/target-bank identity, isolated pregnancy from unrelated bounded
+  QRF families, declared its structural source-person input, and regenerated
+  the authored US imputation spec/schema projection.
+- Closed two adversarial restart cases: partial ineligible clone surfaces no
+  longer double-count receipt categories, and a complete pregnancy surface is
+  still preflighted and carries a zero-imputation structural proof even when a
+  different requested family remains active.
+- Added source, transfer, gate, receipt, identity, all-ineligible, clone-fanout,
+  mixed-active, and stacked-execution regressions. The complete pregnancy and
+  ACS-transfer files, the complete stacked-spine file before the final
+  preflight refactor, and focused post-refactor tests pass; focused Ruff and
+  `git diff --check` pass.
+- Extended the real-pool pregnancy decomposition: the 108 pregnant nonfemale
+  rows are joined by 58 pregnant female rows outside ages 15--44, for 166 hard-
+  domain violations, all on ACS and all isolated to one clone. ASEC has zero.
+- Committed the coherent pregnancy implementation, generated authority,
+  coverage proof, changelog, tests, and journal as `01a80f49`.
+- An adversarial pre-certification audit found that two canonical late-DAG test
+  fixtures predated the required pregnancy structural receipt. Stopped the
+  preliminary build-shard run, attached valid zero-imputation proofs to both
+  fixtures, and added a forged-policy regression.
+- Tightened structural types while that integration repair was open: near-0/1
+  pregnancy values no longer pass as booleans, and nested stack/arm
+  fraction/seed/count fields no longer accept JSON boolean equality aliases.
+  Added source, transfer, and four manifest-alias regressions. The complete
+  combined pregnancy/ACS/H5 run reached its final live-spec fixture with every
+  preceding test green; the repinned fixture and forged-policy controls pass.
+- Recomputed the source-attested identity after hardening: final resolved US
+  spec SHA is `11e310c7619cbac91f6703b9679649cdd15f6fb09274ad29904c65881aa93316`;
+  hardening required no additional authored YAML edit beyond the already-
+  generated pregnancy authority. Regenerated coverage remains complete at
+  42,154/42,154 fields and 41/41 inventory checks.
+- Committed the fixture, exact-boolean, nested-manifest-type, tamper-test, and
+  final US identity repair as `e59ab046`. Final-state calibrate, data, fit, and
+  frame shard runs then passed.
+- The restarted build shard reached 11% and exposed only the expected shared
+  source-attestation cascade in BE, UK, and the rich-minimal golden spec hashes.
+  Re-pinned those three observed semantic identities; the complete country-
+  bundle/loader/spec-only/country-spec focused matrix passes.
+- Committed the shared semantic-hash repin as `d2b75e1e`. The next clean build
+  run passed that boundary and reached 39%, where the legacy optional-ACS
+  provenance golden needed the new additive `structural_receipt: null` field
+  on an unrelated transfer record. Updated only that JSON-ready shape; the
+  complete optional-ACS multispine test file and focused Ruff pass.
+- Committed the additive optional-ACS provenance fixture repin as `7caf69ac`.
+- Restarted the complete build shard from zero on final implementation state:
+  `6601 passed, 45 skipped` in 55m20s, exit 0. Together with the already-green
+  final-state calibrate, data, fit, and frame shard processes, repository Ruff,
+  generated authority/coverage checks, and CI test inventory, this completes
+  the charter's verification boundary.
+- Replaced the stale prior-lane output with the complete pregprior report in
+  `out.md`: both real-pool decompositions, source and gate mechanisms, receipt
+  and identity chains, regressions, verification, judgment calls, and the
+  host-owned next action are recorded there.
+
+## Next
+
+- Host session: rebuild the affected pregnancy transfer from the invalidated
+  checkpoint/target bank, then run terminal pool/release gates. This headless
+  lane performed none of those artifact operations.
+
+# Historical: Weeksgate stacked release gates and integer-week provenance
 
 ## State
 
@@ -11,7 +139,8 @@ release-call roster is classified; six archived-model input assumptions require
 owner rulings and are deliberately reported instead of guessed. Repository-wide
 Ruff, the CI inventory verifier, and all five full pytest shards pass in their
 required independent processes. The completed provenance, audit, verification,
-judgment calls, and host-owned checkpoint-rerun consequence are in `out.md`.
+judgment calls, and host-owned checkpoint-rerun consequence were recorded in
+`out.md` at commit `606cbd69`.
 No network access, artifact build, publication, push, pool build, or release
 build is in scope.
 
@@ -178,14 +307,15 @@ build is in scope.
   coverage proof, the CI test inventory, and `git diff --check` are green.
 - Wrote the final provenance tables, mechanism verdict, per-file rationale,
   exhaustive release-gate audit, owner-ruling list, verification evidence, and
-  judgment calls to `out.md`.
+  judgment calls to `out.md`, preserved at commit `606cbd69`.
 
 ## Next
 
 - Host session: rerun `late_transfer -> simulated -> terminal-gates` from the
   candidate checkpoints because the discrete weeks codec changes pool content.
-- Review the six archived-model owner rulings in `out.md`; do not reinterpret
-  their missing ACS predictors through a gate-only threshold/scope change.
+- Review the six archived-model owner rulings recorded in `out.md` at commit
+  `606cbd69`; do not reinterpret their missing ACS predictors through a
+  gate-only threshold/scope change.
 
 # Historical: gate-failed base-pool release lane
 

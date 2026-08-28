@@ -23,7 +23,7 @@ from microcosm.build.spec_engine.model import (
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
 US_SCHEDULE_SHA256 = (
-    "dcf3c6d2eade3449836c49a1dc4d3b8cd395aab9142db700c3c60598fa9c1c79"
+    "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
 )
 
 
