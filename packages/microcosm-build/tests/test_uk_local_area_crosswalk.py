@@ -6,6 +6,8 @@ import json
 from importlib import resources as importlib_resources
 from pathlib import Path
 
+import pytest
+
 from microcosm.build.country_spec import load_country_spec
 from tools.generate_uk_local_area_crosswalk import build_local_area_crosswalk
 
@@ -29,6 +31,8 @@ def test_uk_local_area_crosswalk_is_registered_in_the_country_package() -> None:
 
 
 def test_uk_local_area_crosswalk_matches_generator_output() -> None:
+    if not LADDER_ARTIFACT.exists():
+        pytest.skip("sha-pinned UK OA ladder artifact is not mounted")
     committed = _load()
     generated = build_local_area_crosswalk(
         ladder_artifact=LADDER_ARTIFACT,
@@ -51,7 +55,7 @@ def test_uk_local_area_crosswalk_pins_rosters_and_vintages() -> None:
     assert constituency["ladder_layer"] == "constituency"
     assert constituency["ladder_code_column"] == "constituency_code"
     assert constituency["ladder_vintage"] == "2024_pcon"
-    assert constituency["expected_vintage"] == "pcon_2024"
+    assert constituency["expected_vintage"] == ["pcon_2024"]
     assert constituency["area_count"] == 650
     assert len(constituency["area_ids"]) == 650
     assert len(set(constituency["area_ids"])) == 650
@@ -69,10 +73,10 @@ def test_uk_local_area_crosswalk_pins_rosters_and_vintages() -> None:
         "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd"
     )
     assert local_authority["expected_vintage"] == {
-        "E": "lad_2023",
-        "W": "lad_2023",
-        "S": "ca_2019",
-        "N": "lgd_2014",
+        "E": ["lad_2023"],
+        "W": ["lad_2023"],
+        "S": ["ca_2019", "lad_2023"],
+        "N": ["lgd_2014", "lad_2023"],
     }
     assert local_authority["area_count"] == 361
     assert len(local_authority["area_ids"]) == 361
