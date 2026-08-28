@@ -60,6 +60,17 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _json_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _pool_frame() -> Frame:
     ids = np.asarray([10, 20, 30], dtype=np.int64)
     person = pd.DataFrame(
@@ -743,11 +754,46 @@ def _fixture_geography_assignment(
     }
 
 
+def _fixture_stacked_sampling(
+    sample_fraction: float,
+) -> tuple[dict[str, object], dict[str, object]]:
+    fraction_token = {
+        0.01: "f001",
+        0.04: "f004",
+        0.10: "f010",
+        0.25: "f025",
+        1.00: "f100",
+    }[sample_fraction]
+    realized = {"asec": 2, "acs": 1}
+    stack_manifest: dict[str, object] = {
+        "version": 4,
+        "sample_fraction": sample_fraction,
+        "sample_seed": 578,
+        "survey_samples": {
+            channel: {
+                "fraction": sample_fraction,
+                "seed": 578,
+                "realized_household_count": count,
+            }
+            for channel, count in realized.items()
+        },
+    }
+    sampling = {
+        "sample_fraction": sample_fraction,
+        "fraction_token": fraction_token,
+        "sample_seed": 578,
+        "realized_households": realized,
+        "stack_manifest_sha256": _json_sha256(stack_manifest),
+    }
+    return sampling, stack_manifest
+
+
 def _write_ready_pool(
     tmp_path: Path,
     *,
     stacked: bool = False,
     include_zero_weight_clone: bool = False,
+    sample_fraction: float = 1.0,
 ) -> Path:
     run_id = "fixture-publication"
     pool_path = tmp_path / "pool.h5"
@@ -888,6 +934,7 @@ def _write_ready_pool(
     if stacked:
         assert dag is not None
         assert geography_assignment is not None
+        sampling, stack_manifest = _fixture_stacked_sampling(sample_fraction)
         transition_authority = (
             stacked_spine_module._late_producer_transition_authority_receipt(dag)
         )
@@ -895,6 +942,8 @@ def _write_ready_pool(
             {
                 "pipeline": "us-stacked-pool",
                 "random_seed": 0,
+                "sampling": sampling,
+                "stack_manifest": stack_manifest,
                 "geography_assignment": geography_assignment,
                 "provenance_pins": {
                     role: {
@@ -1044,6 +1093,35 @@ def _canonical_late_calibration_owner_receipt(
     return owner
 
 
+def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
+    policy = acs_transfer_runtime.acs_transfer_execution_contract_identity(
+        targets=("is_pregnant",),
+        derive_schedule_d=False,
+    )["structural_target_policies"]["is_pregnant"]
+    return {
+        "policy_sha256": policy["sha256"],
+        "source_person_key": "person_source_id",
+        "source_persons_checked": 1,
+        "physical_rows_checked": 1,
+        "clone_rows_checked": 0,
+        "donor_rows_checked": 1,
+        "qrf_draw_source_persons": 0,
+        "qrf_draw_rows": 0,
+        "qrf_fanout_rows": 0,
+        "preexisting_value_fanout_rows": 0,
+        "ineligible_rows_assigned_false": 0,
+        "donor_preexisting_domain_violation_rows": 0,
+        "recipient_preexisting_domain_violation_rows": 0,
+        "preexisting_clone_disagreement_source_persons": 0,
+        "inconsistent_eligibility_source_persons": 0,
+        "maximum_clones_per_source_person": 1,
+        "final_incomplete_rows": 0,
+        "final_domain_violation_rows": 0,
+        "final_clone_disagreement_source_persons": 0,
+        "status": "verified",
+    }
+
+
 def _canonical_stacked_late_dag_receipt(
     frame: Frame,
     *,
@@ -1172,6 +1250,11 @@ def _canonical_stacked_late_dag_receipt(
                 group_targets[key]["post_transfer_reconciliation"] = dict(
                     immigration_reconciliation
                 )
+        pregnancy_key = f"{group.entity}/{group.family}/is_pregnant"
+        if pregnancy_key in group_targets:
+            group_targets[pregnancy_key]["structural_policy"] = (
+                _canonical_pregnancy_structural_receipt()
+            )
         calibrated_keys = sorted(set(group_targets) & set(late_specs))
         for key in calibrated_keys:
             group_targets[key]["post_transfer_calibration"] = (
@@ -1688,6 +1771,132 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
         transition_authority["sha256"]
         == manifest["late_producer_transition_authority_sha256"]
     )
+    assert (
+        stacked_spine_module._json_ready(
+            frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+        )
+        == (manifest["stack_manifest"])
+    )
+
+
+def test_ready_stacked_pool_loader_restores_sampled_rung_manifest(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(
+        tmp_path,
+        stacked=True,
+        sample_fraction=0.25,
+    )
+
+    frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
+
+    stack_manifest = frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+    assert (
+        stacked_spine_module._json_ready(stack_manifest) == manifest["stack_manifest"]
+    )
+    assert stack_manifest["version"] == 4
+    assert stack_manifest["sample_fraction"] == 0.25
+
+
+def test_ready_stacked_pool_loader_rejects_inconsistent_sampling_factor(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(
+        tmp_path,
+        stacked=True,
+        sample_fraction=0.25,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sampling"]["sample_fraction"] = 0.10
+    manifest["sampling"]["fraction_token"] = "f010"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="sample_fraction differs"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_rejects_inconsistent_arm_sampling(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(
+        tmp_path,
+        stacked=True,
+        sample_fraction=0.25,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["stack_manifest"]["survey_samples"]["asec"]["fraction"] = 0.10
+    manifest["sampling"]["stack_manifest_sha256"] = _json_sha256(
+        manifest["stack_manifest"]
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="asec survey-sample fraction differs"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize("sample_fraction", [True, 0, 0.25])
+def test_ready_stacked_pool_loader_rejects_malformed_sampling_receipt(
+    tmp_path: Path,
+    sample_fraction: object,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if sample_fraction == 0.25:
+        del manifest["stack_manifest"]["sample_fraction"]
+        manifest["sampling"]["stack_manifest_sha256"] = _json_sha256(
+            manifest["stack_manifest"]
+        )
+    else:
+        manifest["sampling"]["sample_fraction"] = sample_fraction
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="sample_fraction.*finite float"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    (
+        ("stack_seed_bool", "same non-negative integer"),
+        ("arm_fraction_bool", "survey-sample fraction differs"),
+        ("arm_seed_bool", "survey-sample seed differs"),
+        ("top_realized_bool", "realized-household count is malformed"),
+    ),
+)
+def test_ready_stacked_pool_loader_rejects_boolean_sampling_aliases(
+    tmp_path: Path,
+    mutation: str,
+    error_match: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    stack = manifest["stack_manifest"]
+    samples = stack["survey_samples"]
+    if mutation == "stack_seed_bool":
+        manifest["sampling"]["sample_seed"] = 1
+        stack["sample_seed"] = True
+        for sample in samples.values():
+            sample["seed"] = 1
+    elif mutation == "arm_fraction_bool":
+        samples["asec"]["fraction"] = True
+    elif mutation == "arm_seed_bool":
+        manifest["sampling"]["sample_seed"] = 1
+        stack["sample_seed"] = 1
+        samples["asec"]["seed"] = True
+        samples["acs"]["seed"] = 1
+    else:
+        samples["asec"]["realized_household_count"] = 1
+        manifest["sampling"]["realized_households"]["asec"] = True
+    manifest["sampling"]["stack_manifest_sha256"] = _json_sha256(stack)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error_match):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 def test_ready_stacked_pool_loader_replays_immigration_status_against_h5(

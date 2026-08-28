@@ -686,6 +686,111 @@
     "schema_version": {
      "type": "integer"
     },
+    "structural_target_policies": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "is_pregnant": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "assembled_representative": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "clone_index": {
+           "type": "integer",
+           "minimum": 0
+          },
+          "clone_index_column": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "clone_index",
+          "clone_index_column"
+         ]
+        },
+        "eligibility": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "is_female": {
+           "const": true
+          },
+          "maximum_age_inclusive": {
+           "type": "integer"
+          },
+          "minimum_age_inclusive": {
+           "type": "integer"
+          }
+         },
+         "required": [
+          "is_female",
+          "maximum_age_inclusive",
+          "minimum_age_inclusive"
+         ]
+        },
+        "enabled": {
+         "type": "boolean"
+        },
+        "fanout": {
+         "type": "string"
+        },
+        "final_clone_disagreement": {
+         "const": "refuse"
+        },
+        "final_domain_violations": {
+         "const": "refuse"
+        },
+        "ineligible_missing_value": {
+         "const": false
+        },
+        "preexisting_clone_disagreement": {
+         "const": "refuse"
+        },
+        "preexisting_domain_violations": {
+         "const": "refuse"
+        },
+        "qrf_scope": {
+         "type": "string"
+        },
+        "sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        },
+        "source_person_key_precedence": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "minItems": 1,
+         "uniqueItems": true
+        },
+        "target": {
+         "const": "is_pregnant"
+        }
+       },
+       "required": [
+        "assembled_representative",
+        "eligibility",
+        "enabled",
+        "fanout",
+        "final_clone_disagreement",
+        "final_domain_violations",
+        "ineligible_missing_value",
+        "preexisting_clone_disagreement",
+        "preexisting_domain_violations",
+        "qrf_scope",
+        "sha256",
+        "source_person_key_precedence",
+        "target"
+       ]
+      }
+     },
+     "required": [
+      "is_pregnant"
+     ]
+    },
     "tenure_codes": {
      "type": "object",
      "additionalProperties": false,
@@ -753,6 +858,7 @@
     "profiles",
     "recipient_combined_sources",
     "schema_version",
+    "structural_target_policies",
     "tenure_codes"
    ]
   },

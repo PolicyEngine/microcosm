@@ -243,11 +243,40 @@ def test_exclusion_applier_returns_pruned_registry_and_receipt():
         )
 
 
+def test_exclusion_applier_warns_within_week_of_expiry():
+    registry = TargetRegistry(
+        [
+            TargetSpec(name="drop", entity="person", measure="drop", value=1.0, source="test"),
+        ],
+        country="uk",
+    )
+
+    from datetime import date
+
+    window = _entry(name="drop", reason="reviewed")
+    # expires_on is 2026-11-25: five days out warns, mid-window is silent.
+    with pytest.warns(UserWarning, match="within one week"):
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 11, 20)
+        )
+
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        apply_uk_calibration_measure_exclusions(
+            registry, (window,), now=date(2026, 9, 1)
+        )
+
+
 #: The adjudicated register census: one entry per class of the #757
 #: ``uk_target_fit`` dispositions (issue comment 5427936411) plus the
-#: standing salary-sacrifice adjudication. The counts are the record of
-#: what was signed; a drifting count is a register change that must be
-#: re-adjudicated, never absorbed.
+#: standing salary-sacrifice adjudication, as revised by the #807
+#: excluded-cell support re-measurement (spine-i and spine-j receipts):
+#: the three mid-band "sparse cell" entries whose measured support was in
+#: the hundreds are lifted. The counts are the record of what was signed;
+#: a drifting count is a register change that must be re-adjudicated,
+#: never absorbed.
 _PACKAGED_EXCLUSION_CENSUS = {
     "hmrc.salary_sacrifice.": 5,
     "_1_000_000_to_inf": 11,
@@ -262,25 +291,30 @@ _PACKAGED_EXCLUSION_CENSUS = {
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 47
+    assert len(names) == len(set(names)) == 44
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
         assert len(matched) == expected, (marker, matched)
-    # The six sparse HMRC band cells are whatever remains: hmrc/ band
-    # cells that are not the eleven 1m+ channel cells.
+    # The sparse HMRC band cells are whatever remains: hmrc/ band cells
+    # that are not the eleven 1m+ channel cells. After the #807 revision
+    # only the three genuinely thin 500k-1m cells stay excluded.
     sparse = [
         name
         for name in names
         if name.startswith("hmrc/") and "_1_000_000_to_inf" not in name
     ]
-    assert len(sparse) == 6, sparse
+    assert sorted(sparse) == [
+        "hmrc/dividend_income_income_band_500_000_to_1_000_000",
+        "hmrc/property_income_count_income_band_500_000_to_1_000_000",
+        "hmrc/self_employment_income_count_income_band_500_000_to_1_000_000",
+    ], sparse
 
     # The 2026-08-26 tranche carries the uk_target_fit disposition
     # adjudication and a uniform three-month window; the ONS composition
     # cells track the relationship-to-head successor issue.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    assert len(tranche) == 42
+    assert len(tranche) == 39
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]
@@ -289,8 +323,12 @@ def test_packaged_exclusions_load():
             assert entry["tracking"] == "microcosm#791", entry["name"]
 
     # The lever targets are deliberately NOT excluded: the six UC
-    # caseload / two-child-limit cells ride the would_claim_uc lever run,
-    # and the two expected-to-resolve cells ride the exclusion re-run.
+    # caseload / two-child-limit cells ride the would_claim_uc lever run.
+    # Exclusions cannot move surviving cells because band edges are pinned
+    # to the compiled register (#792); the non-excluded cells are expected
+    # to pass at published band widths on the next seam run. The three
+    # cells the #807 revision lifted (measured support in the hundreds)
+    # are back on the calibrated surface with them.
     excluded = set(names)
     for riding in (
         "dwp.uc.households",
@@ -298,6 +336,9 @@ def test_packaged_exclusions_load():
         "dwp.uc.two_child_limit.children_disabled_child_element",
         "ons.household_composition.couple_no_children_households",
         "hmrc/state_pension_income_band_40_000_to_50_000",
+        "hmrc/state_pension_income_band_50_000_to_70_000",
+        "hmrc/self_employment_income_income_band_50_000_to_70_000",
+        "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
     ):
         assert riding not in excluded, riding
 

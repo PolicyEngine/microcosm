@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_TARGET_LOSS_CAP,
     UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
+    national_calibration,
     uk_doctrine_with_overrides,
     uk_national_target_loss_weights,
 )
@@ -290,6 +291,7 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     frame = _frame()
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=200, learning_rate=0.05),
     )
@@ -322,6 +324,7 @@ def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() 
     frame = _nested_frame()
     stage = UKNationalCalibrationStage(
         _registry(value=60.0),
+        band_edge_registry=_registry(value=60.0),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -342,6 +345,7 @@ def test_stage_measure_resolver_injects_columns_then_restores_pristine_output() 
     original_columns = {entity: set(frame.table(entity).columns) for entity in frame.entities}
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
         measure_resolver=resolver,
@@ -363,6 +367,7 @@ def test_stage_measure_resolver_injects_columns_then_restores_pristine_output() 
 def test_stage_manifest_omits_measure_resolution_without_resolver() -> None:
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -370,6 +375,41 @@ def test_stage_manifest_omits_measure_resolution_without_resolver() -> None:
     stage(_frame())
 
     assert "measure_resolution" not in stage.manifest
+
+
+def test_stage_threads_band_edge_registry_to_materialization(monkeypatch) -> None:
+    captured = []
+    real_materialize = national_calibration.materialize_uk_ledger_targets
+
+    def capture_materialize(*args, **kwargs):
+        captured.append(kwargs)
+        return real_materialize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        national_calibration,
+        "materialize_uk_ledger_targets",
+        capture_materialize,
+    )
+    sentinel = TargetRegistry([], country="uk")
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
+        band_edge_registry=sentinel,
+    )
+
+    stage(_frame())
+
+    assert captured[-1]["band_edge_registry"] is sentinel
+
+    # The parameter is required, never defaulted: a stage cannot tell a
+    # pruned registry from a full one (#803 review finding 1).
+    with pytest.raises(TypeError, match="band_edge_registry"):
+        UKNationalCalibrationStage(
+            _registry(),
+            period=2025,
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+        )
 
 
 def test_activated_unresolvable_compiled_reference_aborts_loudly() -> None:
@@ -384,6 +424,7 @@ def test_activated_unresolvable_compiled_reference_aborts_loudly() -> None:
                 },
             ),
         ),
+        band_edge_registry=TargetRegistry([], country="uk"),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=1),
     )
@@ -463,6 +504,7 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     resolver.contract_targets = _uk_contract_targets()
     stage = UKNationalCalibrationStage(
         registry,
+        band_edge_registry=registry,
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=1, learning_rate=0.01),
         measure_resolver=resolver,
@@ -523,6 +565,7 @@ def test_packaged_materialization_skip_aborts_national_stage() -> None:
     )
     stage = UKNationalCalibrationStage(
         registry,
+        band_edge_registry=registry,
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=1),
     )
@@ -535,6 +578,7 @@ def test_calibration_preserves_entity_ids_and_national_integrity() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -551,6 +595,7 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -560,6 +605,7 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
 
     resumed = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -571,6 +617,7 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
 
     drifted = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -579,6 +626,7 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
 
     empty = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -596,6 +644,7 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
 
     unrun = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -607,6 +656,7 @@ def test_prepared_slash_columns_are_not_returned_to_the_writer(tmp_path) -> None
     pytest.importorskip("tables")
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5),
     )
@@ -788,6 +838,7 @@ def test_doctrine_target_weight_rule_reaches_the_solver(
     )
     stage = UKNationalCalibrationStage(
         _registry(),
+        band_edge_registry=_registry(),
         period=2025,
         doctrine=UKNationalSolveDoctrine(epochs=5, target_weight_rule=rule),
     )

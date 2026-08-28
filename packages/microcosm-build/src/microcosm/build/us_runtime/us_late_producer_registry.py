@@ -675,6 +675,13 @@ _source_input_inventories = {
         "with_us_pregnancy_inputs",
         *_raw_person_requirements(("A_SEX", "A_AGE")),
         _single("person_id", "person", "person_id"),
+        _single(
+            "pregnancy_structural_source_person_id",
+            "person",
+            "person_source_id",
+            optional=True,
+            value_kind="finite_numeric",
+        ),
         _single("resolved_person_weight", "person", "@resolved_weight"),
         _requirement(
             "stable_source_identity",
@@ -1432,6 +1439,12 @@ def _bounded_transfer_groups(
         batches: list[tuple[str, ...]] = []
         current: list[str] = []
         for atom in atoms:
+            if atom == ("is_pregnant",):
+                if current:
+                    batches.append(tuple(current))
+                    current = []
+                batches.append(atom)
+                continue
             if current and len(current) + len(atom) > max_targets_per_fit:
                 batches.append(tuple(current))
                 current = []

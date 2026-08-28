@@ -3574,10 +3574,13 @@ def _post_puf_transfer_fixture() -> Frame:
         index=person.index,
         dtype="boolean",
     )
-    person.loc[source_producer_rows, "is_pregnant"] = np.resize(
-        np.asarray([True, False]),
-        int(source_producer_rows.sum()),
+    source_eligible = (
+        source_producer_rows
+        & person["is_female"].astype(bool)
+        & person["age"].between(15, 44, inclusive="both")
     )
+    person.loc[source_producer_rows, "is_pregnant"] = False
+    person.loc[source_eligible, "is_pregnant"] = True
     tables = {entity: attached.table(entity) for entity in attached.entities}
     tables["person"] = person
     return Frame(
@@ -5693,6 +5696,32 @@ def _run_real_late_executor_fixture(
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
+            if target == "is_pregnant":
+                pregnancy_policy = execution_contract["structural_target_policies"][
+                    "is_pregnant"
+                ]
+                target_receipt["structural_policy"] = {
+                    "policy_sha256": pregnancy_policy["sha256"],
+                    "source_person_key": "person_source_id",
+                    "source_persons_checked": 1,
+                    "physical_rows_checked": 1,
+                    "clone_rows_checked": 0,
+                    "donor_rows_checked": 1,
+                    "qrf_draw_source_persons": 1,
+                    "qrf_draw_rows": 1,
+                    "qrf_fanout_rows": 0,
+                    "preexisting_value_fanout_rows": 0,
+                    "ineligible_rows_assigned_false": 0,
+                    "donor_preexisting_domain_violation_rows": 0,
+                    "recipient_preexisting_domain_violation_rows": 0,
+                    "preexisting_clone_disagreement_source_persons": 0,
+                    "inconsistent_eligibility_source_persons": 0,
+                    "maximum_clones_per_source_person": 1,
+                    "final_incomplete_rows": 0,
+                    "final_domain_violation_rows": 0,
+                    "final_clone_disagreement_source_persons": 0,
+                    "status": "verified",
+                }
             if key in late_specs or is_immigration_group:
                 target_receipt["qrf_pattern_evidence"] = (
                     stacked_spine_module._acs_imputed_pattern_evidence(record)
@@ -6897,6 +6926,102 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
         if item.column == "is_pregnant"
     )
     assert all(not pattern.target_regimes for pattern in record.patterns)
+    structural = receipt["structural_policy"]
+    assert structural == record.structural_receipt
+    assert structural["status"] == "verified"
+    assert structural["source_person_key"] == "person_source_id"
+    assert structural["qrf_draw_rows"] < receipt["imputed_rows"]
+    assert structural["final_domain_violation_rows"] == 0
+    assert structural["final_clone_disagreement_source_persons"] == 0
+    assert (
+        person.groupby("person_source_id", sort=False)["is_pregnant"]
+        .nunique()
+        .eq(1)
+        .all()
+    )
+
+
+def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> (
+    None
+):
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    recipient_rows = person[support_channel_column("person")].astype(str).eq("acs")
+    person.loc[recipient_rows, "is_pregnant"] = False
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    complete = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+
+    result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+        complete,
+        authority=authority,
+        seed=578,
+        n_estimators=10,
+    )
+
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
+    assert receipt["authorized_null_rows"] == 0
+    assert receipt["imputed_rows"] == 0
+    assert receipt["structural_policy"]["status"] == "verified"
+    record = next(
+        item
+        for item in result.transfer_result.imputed_inputs
+        if item.column == "is_pregnant"
+    )
+    assert record.imputed_recipient_rows == 0
+    assert record.structural_receipt == receipt["structural_policy"]
+
+
+def test_post_puf_transfer_refuses_invalid_pregnancy_source_producer() -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    source_rows = person[support_channel_column("person")].astype(str).eq("asec")
+    ineligible = source_rows & ~(
+        person["is_female"].astype(bool)
+        & person["age"].between(15, 44, inclusive="both")
+    )
+    donor_ineligible = ineligible & person[support_clone_index_column("person")].eq(1)
+    person.loc[person.index[donor_ineligible][0], "is_pregnant"] = True
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    invalid = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    surface = {"person": {"model_required_boolean": ("is_pregnant",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        gap_fill_plan=(),
+        post_puf_transfer_surface=surface,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"preexisting donor domain violation",
+    ):
+        stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
+            invalid,
+            authority=authority,
+            seed=578,
+            n_estimators=10,
+        )
 
 
 def test_late_calibration_owner_mutates_only_acs_clone_zero_transfer_cells() -> None:

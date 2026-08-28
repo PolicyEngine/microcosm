@@ -382,11 +382,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "4965c1485c283dec3685f4ca82fa469d8b88a85f82ccd6b39e2adc84bc0e94d6"
+        == "b7e40a89f5100c34b748ce960c209807b98d0f5e2c5834bb4c250aec733a37dc"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "9e72ceed9365ddf8993f68a25037a15cf53375093a60e59d5ce01627a7ceb210"
+        == "6260cc59c337c94587354800a368e40128f70158fff3a190a3c9c44f735f1b0d"
     )
 
     assert len(take_up["programs"]) == 17
@@ -743,7 +743,20 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
                     "sha256"
                 ]
             ),
-        )
+        ),
+        (
+            (
+                "transfer_execution",
+                "structural_target_policies",
+                "is_pregnant",
+                "sha256",
+            ),
+            str(
+                imputation["transfer_execution"]["structural_target_policies"][
+                    "is_pregnant"
+                ]["sha256"]
+            ),
+        ),
     ]
     assert len(asset_pins) == 2
     assert set(asset_pins) == {

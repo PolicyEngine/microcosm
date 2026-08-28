@@ -16,6 +16,7 @@ __all__ = [
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "SPINE_ASSEMBLY_MANIFEST_KEY",
+    "has_assembled_support_metadata",
     "has_support_role_metadata",
     "puf_tax_detail_clone_mask",
     "spine_assembly_manifest",
@@ -25,6 +26,7 @@ __all__ = [
     "support_channel_column",
     "support_clone_index_column",
     "support_role_series",
+    "support_gate_source_channel_series",
     "support_source_id_column",
     "us_reported_coverage_vintage_signal_gate",
     "validate_assembly_provenance",
@@ -326,6 +328,21 @@ def has_support_role_metadata(
     )
 
 
+def has_assembled_support_metadata(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+) -> bool:
+    """Return whether support metadata belongs to a multispine assembly.
+
+    The raw spine-record ID is the assembly discriminator. Historical frames
+    used the support-channel column for the two operator roles instead, so the
+    presence of a channel or clone index alone is not sufficient.
+    """
+
+    return spine_source_id_column(entity) in table
+
+
 def spine_source_id_column(entity: str) -> str:
     """Return the entity-prefixed raw spine-record ID metadata column."""
 
@@ -473,6 +490,37 @@ def support_role_series(
         ),
         index=table.index,
         name=f"{entity}_support_role",
+    )
+
+
+def support_gate_source_channel_series(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+) -> pd.Series:
+    """Return physical source channels for read-only gates and reporters.
+
+    Assembled frames retain their receipt-declared physical channels (for
+    example, ``asec`` and ``acs``). Historical frames have no raw spine ID and
+    use the exact ``asec``/``puf_tax_detail`` operator roles as their channels.
+    This deliberately narrow accessor must not route population treatments.
+    Keeping resolution in the provenance owner lets reporting and release gates
+    inspect source coverage without teaching operators how to read provenance
+    columns directly. A static call-site contract pins its reviewed consumers.
+    """
+
+    roles = support_role_series(table, entity=entity)
+    if not has_assembled_support_metadata(table, entity=entity):
+        return pd.Series(
+            roles.to_numpy(dtype=object, copy=True),
+            index=table.index,
+            name=f"{entity}_source_support_channel",
+        )
+    channels = table[support_channel_column(entity)]
+    return pd.Series(
+        channels.to_numpy(dtype=object, copy=True),
+        index=table.index,
+        name=f"{entity}_source_support_channel",
     )
 
 

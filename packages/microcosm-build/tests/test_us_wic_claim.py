@@ -47,6 +47,7 @@ from microcosm.build.us_runtime.release_input_coverage import (
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
 )
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
+from microcosm.build.us_runtime.wic_claim import _stable_person_keys
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
@@ -332,6 +333,43 @@ class TestDerivation:
             _derive(many, seed=1)[_OUTPUT].to_numpy(),
             _derive(many, seed=2)[_OUTPUT].to_numpy(),
         )
+
+    def test_multispine_identity_precedes_source_local_identity(self) -> None:
+        person = _frame(
+            [
+                {
+                    "person_source_id": 10,
+                    "person_spine_source_id": 1,
+                    "source_year": 2024,
+                    "source_household_id": 50,
+                    "source_person_id": 7,
+                },
+                {
+                    "person_source_id": 20,
+                    "person_spine_source_id": 2,
+                    "source_year": 2024,
+                    "source_household_id": 50,
+                    "source_person_id": 7,
+                },
+                {
+                    "person_source_id": 10,
+                    "person_spine_source_id": 1,
+                    "source_year": 2024,
+                    "source_household_id": 50,
+                    "source_person_id": 7,
+                },
+            ]
+        ).table("person")
+
+        assert _stable_person_keys(person).tolist() == [
+            "source:10",
+            "source:20",
+            "source:10",
+        ]
+
+        person.loc[person.index[0], "person_source_id"] = np.nan
+        with pytest.raises(SourceRuntimeError, match="assembly source identity"):
+            _stable_person_keys(person)
 
     @pytest.mark.parametrize("column", US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS)
     def test_missing_source_columns_fail_closed(self, column: str) -> None:

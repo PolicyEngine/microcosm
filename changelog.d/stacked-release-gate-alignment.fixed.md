@@ -1,0 +1,1 @@
+Preserve integer support for transferred ``weeks_unemployed`` values and align US release-side source, clone, and deterministic-identity checks with stacked ASEC+ACS pools while retaining legacy ASEC+PUF behavior and every existing plausibility threshold.

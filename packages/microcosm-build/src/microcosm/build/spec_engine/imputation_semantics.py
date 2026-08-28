@@ -196,6 +196,25 @@ def _project_transfer_execution_identity(
     profile = _mapping_like(profiles[profile_id], f"transfer profile {profile_id}")
     derive_schedule_d = bool(profile["derive_schedule_d"])
     target_set = set(targets)
+    structural_policies = _mapping_like(
+        result["structural_target_policies"],
+        "transfer structural target policies",
+    )
+    resolved_structural_policies: dict[str, object] = {}
+    for policy_id, policy_value in structural_policies.items():
+        policy = deepcopy(
+            dict(
+                _mapping_like(
+                    policy_value,
+                    f"transfer structural target policy {policy_id}",
+                )
+            )
+        )
+        policy.pop("sha256", None)
+        policy["enabled"] = policy.get("target") in target_set
+        policy["sha256"] = _canonical_sha256(policy)
+        resolved_structural_policies[policy_id] = policy
+    result["structural_target_policies"] = resolved_structural_policies
     post_transfer: dict[str, object] = {}
     features = _mapping_like(
         transfer_execution["post_transfer_features"], "post-transfer features"

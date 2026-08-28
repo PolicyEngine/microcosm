@@ -35,7 +35,9 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_clone_index_column,
     support_role_series,
 )
 from microcosm.build.us_runtime.voluntary_filing import (
@@ -481,7 +483,7 @@ def _support_group_keys(
     person: pd.DataFrame,
     source_id: pd.Series,
 ) -> tuple[pd.Series, pd.Series]:
-    """Return clone-pair keys without consulting source-spine channels."""
+    """Return source-person keys and validated legacy-compatible roles."""
 
     if not has_support_role_metadata(person, entity="person"):
         return (
@@ -571,30 +573,58 @@ def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.nda
             "US SIPP Head Start source clones disagree on age for "
             f"person_source_id(s): {inconsistent[:5]}."
         )
-    role_rows = pd.DataFrame({"source_id": source_id, "role": roles})
-    duplicate_roles = role_rows.duplicated(
-        ["source_id", "role"],
-        keep=False,
-    )
-    if duplicate_roles.any():
-        bad = (
-            role_rows.loc[duplicate_roles, ["source_id", "role"]]
-            .drop_duplicates()
-            .itertuples(index=False, name=None)
-        )
-        raise ValueError(
-            "US SIPP Head Start source units carry duplicated same-role rows; "
-            f"invalid source role(s): {list(bad)[:5]}."
-        )
-
     order = pd.DataFrame(index=person.index)
     order["source_id"] = source_id
     order["source_key"] = source_key
-    order["role_priority"] = roles.map({_ASEC_CHANNEL: 0, _PUF_CHANNEL: 1})
+    if has_assembled_support_metadata(person, entity="person"):
+        clone_column = support_clone_index_column("person")
+        clone_indices = pd.to_numeric(person[clone_column], errors="raise").astype(
+            "int64"
+        )
+        clone_rows = pd.DataFrame(
+            {"source_id": source_id, "clone_index": clone_indices}
+        )
+        duplicate_clones = clone_rows.duplicated(
+            ["source_id", "clone_index"],
+            keep=False,
+        )
+        if duplicate_clones.any():
+            bad = (
+                clone_rows.loc[
+                    duplicate_clones,
+                    ["source_id", "clone_index"],
+                ]
+                .drop_duplicates()
+                .itertuples(index=False, name=None)
+            )
+            raise ValueError(
+                "US SIPP Head Start assembled source units carry duplicated "
+                f"clone-index rows; invalid source clone(s): {list(bad)[:5]}."
+            )
+        order["clone_priority"] = clone_indices
+        priority_column = "clone_priority"
+    else:
+        role_rows = pd.DataFrame({"source_id": source_id, "role": roles})
+        duplicate_roles = role_rows.duplicated(
+            ["source_id", "role"],
+            keep=False,
+        )
+        if duplicate_roles.any():
+            bad = (
+                role_rows.loc[duplicate_roles, ["source_id", "role"]]
+                .drop_duplicates()
+                .itertuples(index=False, name=None)
+            )
+            raise ValueError(
+                "US SIPP Head Start source units carry duplicated same-role "
+                f"rows; invalid source role(s): {list(bad)[:5]}."
+            )
+        order["role_priority"] = roles.map({_ASEC_CHANNEL: 0, _PUF_CHANNEL: 1})
+        priority_column = "role_priority"
     order["person_key"] = person["person_id"].astype(str)
     canonical_index = (
         order.sort_values(
-            ["source_id", "role_priority", "person_key"],
+            ["source_id", priority_column, "person_key"],
             kind="mergesort",
         )
         .drop_duplicates("source_key", keep="first")

@@ -4486,6 +4486,82 @@ def _validate_immigration_post_transfer_reconciliation(
     return reconciliation
 
 
+_PREGNANCY_STRUCTURAL_COUNT_FIELDS = (
+    "source_persons_checked",
+    "physical_rows_checked",
+    "clone_rows_checked",
+    "donor_rows_checked",
+    "qrf_draw_source_persons",
+    "qrf_draw_rows",
+    "qrf_fanout_rows",
+    "preexisting_value_fanout_rows",
+    "ineligible_rows_assigned_false",
+    "donor_preexisting_domain_violation_rows",
+    "recipient_preexisting_domain_violation_rows",
+    "preexisting_clone_disagreement_source_persons",
+    "inconsistent_eligibility_source_persons",
+    "maximum_clones_per_source_person",
+    "final_incomplete_rows",
+    "final_domain_violation_rows",
+    "final_clone_disagreement_source_persons",
+)
+
+
+def _validate_pregnancy_structural_receipt(
+    structural: object,
+    *,
+    row_counts: Mapping[str, int],
+    boundary: str,
+) -> None:
+    """Authenticate pregnancy's hard domain and source-person accounting."""
+
+    expected_policy = acs_transfer_runtime.acs_transfer_execution_contract_identity(
+        targets=("is_pregnant",),
+        derive_schedule_d=False,
+    )["structural_target_policies"]["is_pregnant"]
+    assert isinstance(expected_policy, Mapping)
+    if (
+        not isinstance(structural, Mapping)
+        or structural.get("policy_sha256") != expected_policy.get("sha256")
+        or structural.get("source_person_key") != "person_source_id"
+        or structural.get("status") != "verified"
+    ):
+        raise ValueError(f"{boundary}: pregnancy structural policy is invalid.")
+    counts = {
+        field: structural.get(field) for field in _PREGNANCY_STRUCTURAL_COUNT_FIELDS
+    }
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in counts.values()
+    ):
+        raise ValueError(f"{boundary}: pregnancy structural counts are invalid.")
+    zero_fields = (
+        "donor_preexisting_domain_violation_rows",
+        "recipient_preexisting_domain_violation_rows",
+        "preexisting_clone_disagreement_source_persons",
+        "inconsistent_eligibility_source_persons",
+        "final_incomplete_rows",
+        "final_domain_violation_rows",
+        "final_clone_disagreement_source_persons",
+    )
+    if any(counts[field] != 0 for field in zero_fields):
+        raise ValueError(f"{boundary}: pregnancy structural guard is not green.")
+    if (
+        counts["physical_rows_checked"] - counts["source_persons_checked"]
+        != counts["clone_rows_checked"]
+        or counts["qrf_draw_rows"] != counts["qrf_draw_source_persons"]
+        or counts["maximum_clones_per_source_person"] < 1
+        or (
+            counts["qrf_draw_rows"]
+            + counts["qrf_fanout_rows"]
+            + counts["preexisting_value_fanout_rows"]
+            + counts["ineligible_rows_assigned_false"]
+            != row_counts["imputed_rows"]
+        )
+    ):
+        raise ValueError(f"{boundary}: pregnancy structural accounting is invalid.")
+
+
 def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
     """Return deterministic JSON-ready evidence for one ACS transfer record."""
 
@@ -5099,11 +5175,24 @@ def validate_stacked_post_puf_transfer_receipt(
                     f"{boundary}: stacked post-PUF target {target_key!r} has "
                     "no receipt."
                 )
-            _validate_acs_transfer_row_counts(
+            row_counts = _validate_acs_transfer_row_counts(
                 target_receipt,
                 boundary=f"{boundary} target {target_key}",
                 required=True,
             )
+            target_name = target_key.rsplit("/", 1)[1]
+            structural = target_receipt.get("structural_policy")
+            if target_name == "is_pregnant":
+                _validate_pregnancy_structural_receipt(
+                    structural,
+                    row_counts=row_counts,
+                    boundary=f"{boundary} target {target_key}",
+                )
+            elif structural is not None:
+                raise ValueError(
+                    f"{boundary}: undeclared pregnancy structural evidence is "
+                    f"attached to {target_key!r}."
+                )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
             target = target_key.rsplit("/", 1)[1]
@@ -10885,6 +10974,10 @@ def _verify_post_puf_transfer_outcome(
                         assert isinstance(evidence, Mapping)
                         target_receipt[_IMMIGRATION_RECONCILIATION_KEY] = evidence
                         immigration_reconciliations[target] = evidence
+                if record is not None and record.structural_receipt is not None:
+                    target_receipt["structural_policy"] = dict(
+                        record.structural_receipt
+                    )
                 target_receipts[target_receipt_key] = target_receipt
     if set(immigration_reconciliations) not in (
         set(),

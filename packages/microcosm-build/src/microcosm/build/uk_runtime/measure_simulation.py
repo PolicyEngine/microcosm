@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -268,6 +269,16 @@ def apply_uk_calibration_measure_exclusions(
                 f"evaluated {evaluated_on.isoformat()}): correct the underlying "
                 f"gap ({entry['tracking']}) or renew the adjudication with a new "
                 "approval and expiry."
+            )
+        if (expires - evaluated_on).days <= 7:
+            warnings.warn(
+                f"UK calibration measure exclusion {entry['name']!r} expires "
+                f"{entry['expires_on']} — within one week of the evaluation "
+                f"date {evaluated_on.isoformat()}; correct the underlying gap "
+                f"({entry['tracking']}) or renew the adjudication before the "
+                "run fails on expiry.",
+                UserWarning,
+                stacklevel=2,
             )
     declared = {entry["name"]: entry for entry in exclusions}
     matched = {spec.name for spec in registry.specs if spec.name in declared}

@@ -1580,6 +1580,35 @@ def _immigration_fixture_qrf_evidence(
     return stacked_spine_module._acs_imputed_pattern_evidence(record)
 
 
+def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
+    policy = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("is_pregnant",),
+        derive_schedule_d=False,
+    )["structural_target_policies"]["is_pregnant"]
+    return {
+        "policy_sha256": policy["sha256"],
+        "source_person_key": "person_source_id",
+        "source_persons_checked": 1,
+        "physical_rows_checked": 1,
+        "clone_rows_checked": 0,
+        "donor_rows_checked": 1,
+        "qrf_draw_source_persons": 0,
+        "qrf_draw_rows": 0,
+        "qrf_fanout_rows": 0,
+        "preexisting_value_fanout_rows": 0,
+        "ineligible_rows_assigned_false": 0,
+        "donor_preexisting_domain_violation_rows": 0,
+        "recipient_preexisting_domain_violation_rows": 0,
+        "preexisting_clone_disagreement_source_persons": 0,
+        "inconsistent_eligibility_source_persons": 0,
+        "maximum_clones_per_source_person": 1,
+        "final_incomplete_rows": 0,
+        "final_domain_violation_rows": 0,
+        "final_clone_disagreement_source_persons": 0,
+        "status": "verified",
+    }
+
+
 def _canonical_late_transfer_receipt(
     pool_tool: ModuleType,
     *,
@@ -1645,6 +1674,11 @@ def _canonical_late_transfer_receipt(
             }
             for target in group.targets
         }
+        pregnancy_key = f"{group.entity}/{group.family}/is_pregnant"
+        if pregnancy_key in group_targets:
+            group_targets[pregnancy_key]["structural_policy"] = (
+                _canonical_pregnancy_structural_receipt()
+            )
         calibrated_keys = sorted(set(group_targets) & set(late_specs))
         for key in calibrated_keys:
             group_targets[key]["post_transfer_calibration"] = (
@@ -2894,7 +2928,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "ea202eebdfe30a68323af5cdce6abcc16b94c9f3f18f44ae5369fe7c1d9a5702",
+            "spec_sha256": "97922fe1d5c5737c7d51e8af1c77fcad97d564935e5229fbe10b7ef203a123e0",
         },
     }
 
@@ -3415,6 +3449,30 @@ def test_late_transfer_validator_rejects_stripped_calibration_evidence(
         stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
             forged,
             boundary=f"{mutation} regression",
+        )
+
+
+def test_late_transfer_validator_rejects_forged_pregnancy_policy(
+    pool_tool: ModuleType,
+) -> None:
+    receipt = _canonical_late_transfer_receipt(pool_tool)
+    stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+        receipt,
+        boundary="canonical pregnancy policy control",
+    )
+    forged = copy.deepcopy(receipt)
+    pregnancy = next(
+        target_receipt
+        for group in forged["groups"].values()
+        for target_key, target_receipt in group["targets"].items()
+        if target_key.endswith("/is_pregnant")
+    )
+    pregnancy["structural_policy"]["policy_sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="pregnancy structural policy is invalid"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            forged,
+            boundary="forged pregnancy policy regression",
         )
 
 

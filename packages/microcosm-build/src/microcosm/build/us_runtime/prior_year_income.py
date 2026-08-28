@@ -20,6 +20,7 @@ support frame.  The two persisted input leaves are
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib.resources import files
 from typing import Any
 
@@ -39,6 +40,7 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    has_assembled_support_metadata,
     has_support_role_metadata,
     support_role_series,
     without_support_role_metadata,
@@ -180,6 +182,47 @@ _PUF_IMPUTATION_PARAMETER_KEYS = frozenset(
 )
 _PREVIOUS_YEAR_AVAILABLE_SHARE_BAND = (0.05, 0.50)
 _SELF_EMPLOYMENT_NONZERO_SHARE_BAND = (0.01, 0.25)
+_STACKED_SPINE_MANIFEST_METADATA_KEY = "us_stacked_spine_manifest"
+_PRODUCTION_STACKED_SPINE_MANIFEST_VERSION = 4
+
+
+def _previous_year_availability_match_survival_factor(frame: Frame) -> float:
+    """Return the production-wide ASEC sampled-match survival factor.
+
+    Production stacked assembly samples every raw ASEC year independently
+    before the adjacent-year join, so the configured all-survey rung scales
+    the join's expected availability floor.  The version-1 pilot sampled ACS
+    only and left ASEC whole; unstacked and legacy frames therefore retain the
+    authored floor exactly.
+    """
+
+    manifest = frame.metadata.get(_STACKED_SPINE_MANIFEST_METADATA_KEY)
+    if manifest is None:
+        return 1.0
+    if not isinstance(manifest, Mapping):
+        raise ValueError(
+            "US prior-year-income availability requires the stacked spine "
+            "manifest metadata to be an object."
+        )
+    version = manifest.get("version")
+    if version == 1:
+        return 1.0
+    if version != _PRODUCTION_STACKED_SPINE_MANIFEST_VERSION:
+        raise ValueError(
+            "US prior-year-income availability received an unsupported stacked "
+            f"spine manifest version {version!r}."
+        )
+    factor = manifest.get("sample_fraction")
+    if (
+        type(factor) is not float
+        or not np.isfinite(factor)
+        or not 0.0 < factor <= 1.0
+    ):
+        raise ValueError(
+            "US prior-year-income availability requires a finite production "
+            "stacked sample_fraction in (0, 1]."
+        )
+    return factor
 
 
 def us_prior_year_income_stage_spec() -> SourceStageSpec:
@@ -750,7 +793,9 @@ def us_prior_year_income_summary(frame: Frame) -> dict[str, object]:
             }
         )
         group_columns = ["_source_id"]
-        if has_support_role_metadata(person, entity="person"):
+        if has_support_role_metadata(
+            person, entity="person"
+        ) and not has_assembled_support_metadata(person, entity="person"):
             clone_work["_role"] = support_role_series(
                 person, entity="person"
             ).to_numpy()
@@ -841,12 +886,25 @@ def us_prior_year_income_signal_gate(frame: Frame) -> GateResult:
             details={"nonfinite_rows": rows},
         )
 
+    match_survival_factor = _previous_year_availability_match_survival_factor(frame)
     summary = us_prior_year_income_summary(frame)
+    availability_band_key = "previous_year_income_available_share_band"
+    if match_survival_factor != 1.0:
+        authored_lower, authored_upper = summary[availability_band_key]
+        applied_floor = float(authored_lower) * match_survival_factor
+        availability_band_key = (
+            "previous_year_income_available_applied_share_band"
+        )
+        summary[
+            "previous_year_income_available_sampled_match_survival_factor"
+        ] = match_survival_factor
+        summary["previous_year_income_available_applied_floor"] = applied_floor
+        summary[availability_band_key] = [applied_floor, authored_upper]
     failures: list[str] = []
     checks = (
         (
             "previous_year_income_available_share",
-            "previous_year_income_available_share_band",
+            availability_band_key,
             "previous-year availability weighted share",
         ),
         (

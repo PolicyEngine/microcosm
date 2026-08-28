@@ -28,6 +28,7 @@ from microcosm.build.us_runtime.retirement_distributions import (
     derive_us_retirement_distributions_from_manifest,
     us_retirement_distributions_signal_gate,
     us_retirement_distributions_stage_spec,
+    us_retirement_distributions_summary,
     with_us_retirement_distribution_inputs,
 )
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
@@ -123,6 +124,29 @@ def _derive(frame: pd.DataFrame) -> pd.DataFrame:
         _operation(),
         None,
     )
+
+
+def _stacked_frame() -> Frame:
+    direct = with_us_retirement_distribution_inputs(
+        _frame(),
+        seed=0,
+        time_period=2024,
+    )
+    stacked = clone_us_frame_for_puf_support(direct)
+    person = stacked.table("person")
+    source_record = np.tile(np.arange(8, dtype=np.int64), 2)
+    person["person_spine_source_id"] = source_record
+    person["person_support_channel"] = np.where(
+        source_record < 4,
+        "asec",
+        "acs",
+    )
+    acs = person["person_support_channel"].eq("acs")
+    person.loc[
+        acs,
+        list(US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS),
+    ] = np.nan
+    return stacked
 
 
 def _sha256(path: Path) -> str:
@@ -272,6 +296,25 @@ def test_frame_integration_gate_and_idempotence() -> None:
         with_us_retirement_distribution_inputs(result, seed=0, time_period=2024)
         is result
     )
+
+
+def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> None:
+    stacked = _stacked_frame()
+
+    gate = us_retirement_distributions_signal_gate(stacked)
+
+    assert gate.passed, gate.failures
+    assert gate.details["source_rows"] == 8
+    assert gate.details["source_reconciliation_rows"] == 4
+    assert all(value == 0 for value in gate.details["source_mismatches"].values())
+
+    person = stacked.table("person")
+    asec_puf_role = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(1)
+    person.loc[person.index[asec_puf_role][0], "DST_SC1"] = np.nan
+    with pytest.raises(SourceRuntimeError, match="account codes"):
+        us_retirement_distributions_summary(stacked)
 
 
 def test_puf_half_uses_qrf_and_asec_half_remains_exact(

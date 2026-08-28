@@ -209,6 +209,9 @@ from microcosm.build.us_runtime import (
     write_us_ssi_take_up_diagnostics,
     write_us_take_up_participation_diagnostics,
 )
+from microcosm.build.us_runtime.acs_release_predictors import (
+    join_acs_release_predictors,
+)
 from microcosm.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
@@ -1295,6 +1298,32 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--acs-person-zip",
+        type=Path,
+        help=(
+            "Local canonical 2024 one-year ACS PUMS person CSV zip used to "
+            "populate release-model predictors on physical ACS rows. Requires "
+            "--acs-person-sha256 and both household archive options."
+        ),
+    )
+    parser.add_argument(
+        "--acs-person-sha256",
+        help="Expected SHA-256 of --acs-person-zip.",
+    )
+    parser.add_argument(
+        "--acs-household-zip",
+        type=Path,
+        help=(
+            "Local canonical 2024 one-year ACS PUMS household CSV zip used by "
+            "the release predictor join. Requires the other three ACS archive "
+            "options."
+        ),
+    )
+    parser.add_argument(
+        "--acs-household-sha256",
+        help="Expected SHA-256 of --acs-household-zip.",
+    )
+    parser.add_argument(
         "--scf-summary-extract",
         dest="scf_summary_extract",
         default=None,
@@ -1562,6 +1591,28 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--evidence-failure-owners requires --evidence-release.")
     if args.allow_gate_failed_base_pool and args.base_h5 is None:
         parser.error("--allow-gate-failed-base-pool requires --base-h5.")
+    acs_archive_options = (
+        args.acs_person_zip,
+        args.acs_person_sha256,
+        args.acs_household_zip,
+        args.acs_household_sha256,
+    )
+    if any(value is not None for value in acs_archive_options) and any(
+        value is None for value in acs_archive_options
+    ):
+        parser.error(
+            "--acs-person-zip, --acs-person-sha256, --acs-household-zip, and "
+            "--acs-household-sha256 must be provided together."
+        )
+    for flag, value in (
+        ("--acs-person-sha256", args.acs_person_sha256),
+        ("--acs-household-sha256", args.acs_household_sha256),
+    ):
+        if value is not None and (
+            len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            parser.error(f"{flag} must be exactly 64 lowercase hexadecimal characters.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
             "--evidence-release is incompatible with --exact-k: ladder "
@@ -7613,6 +7664,7 @@ def _build_manifests(
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
     base_pool: Mapping[str, object] | None = None,
+    acs_predictor_join: Mapping[str, object] | None = None,
     evidence_known_failures: Sequence[Mapping[str, str]] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
@@ -7680,6 +7732,11 @@ def _build_manifests(
             else {}
         ),
         **({"base_pool": dict(base_pool)} if base_pool is not None else {}),
+        **(
+            {"acs_predictor_join": dict(acs_predictor_join)}
+            if acs_predictor_join is not None
+            else {}
+        ),
         "dataset": {
             "filename": dataset_filename,
             "sha256": dataset_sha,
@@ -7904,6 +7961,11 @@ def _build_manifests(
                 else {}
             ),
             **({"base_pool": dict(base_pool)} if base_pool is not None else {}),
+            **(
+                {"acs_predictor_join": dict(acs_predictor_join)}
+                if acs_predictor_join is not None
+                else {}
+            ),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
@@ -9862,6 +9924,25 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 f"SNAP discretionary-exemption signal failed: {failure}"
                 for failure in snap_discretionary_exemption_gate.failures
             )
+        )
+    acs_predictor_join_result = join_acs_release_predictors(
+        base_frame,
+        person_zip=args.acs_person_zip,
+        person_sha256=args.acs_person_sha256,
+        household_zip=args.acs_household_zip,
+        household_sha256=args.acs_household_sha256,
+    )
+    base_frame = acs_predictor_join_result.frame
+    acs_predictor_join_receipt = dict(acs_predictor_join_result.receipt)
+    if telemetry is not None:
+        telemetry.stage(
+            "acs_predictor_join",
+            message=(
+                "Authenticated and joined ACS release predictors before all "
+                "six archived donor-model stages."
+            ),
+            enabled=bool(acs_predictor_join_receipt.get("enabled")),
+            join=dict(acs_predictor_join_receipt.get("join", {})),
         )
     if telemetry is not None:
         telemetry.stage(
@@ -11899,6 +11980,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         calibration_filename=calibration_filename,
         exact_k_ladder=exact_k_ladder_provenance,
         base_pool=base_pool_receipt,
+        acs_predictor_join=acs_predictor_join_receipt,
         evidence_known_failures=evidence_known_failures,
     )
     if telemetry is not None:
