@@ -9,6 +9,7 @@ aliases cannot be hidden by Python ``dict`` construction.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Iterator
@@ -330,6 +331,50 @@ def load_yaml12_file(path: str | PathLike[str]) -> JSONValue:
 
     resource = Path(path)
     return load_yaml12(resource.read_text(encoding="utf-8"), source=str(resource))
+
+
+def load_json_strict(text: str, *, source: str = "<string>") -> JSONValue:
+    """Load one strict-JSON document into the same value model as load_yaml12.
+
+    JSON is a subset of the YAML 1.2 core schema, so a resource declared as
+    JSON parses with the C decoder instead of the pure-Python YAML scanner.
+    The JSON grammar already guarantees a single document with string mapping
+    keys and no tags or aliases; the two refusals it does not carry —
+    duplicate mapping keys and the non-finite number constants — are enforced
+    here so this path is never more permissive than :func:`load_yaml12`.
+    """
+
+    if not isinstance(text, str):
+        raise TypeError("JSON input must be text")
+
+    def _refuse_duplicate_keys(
+        pairs: list[tuple[str, JSONValue]],
+    ) -> dict[str, JSONValue]:
+        mapping: dict[str, JSONValue] = {}
+        for key, value in pairs:
+            if key in mapping:
+                raise _error(f"duplicate mapping key {key!r}", source=source)
+            mapping[key] = value
+        return mapping
+
+    def _refuse_constant(constant: str) -> JSONValue:
+        raise _error("non-finite numbers are not allowed", source=source)
+
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_refuse_duplicate_keys,
+            parse_constant=_refuse_constant,
+        )
+    except SpecParseError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise SpecParseError(
+            f"invalid JSON: {exc.msg}",
+            source=source,
+            line=exc.lineno,
+            column=exc.colno,
+        ) from exc
 
 
 __all__ = ["JSONScalar", "JSONValue", "load_yaml12", "load_yaml12_file"]

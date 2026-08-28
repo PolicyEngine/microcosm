@@ -18,6 +18,7 @@ from microcosm.build.spec_engine import (
     load_bundle,
     load_schema_registry,
 )
+from microcosm.build.spec_engine.errors import SpecParseError
 from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL, SeedProtocol
 
 ZERO_SHA = "0" * 64
@@ -276,6 +277,32 @@ def test_manifest_declared_set_reordering_does_not_change_spec_hash(tmp_path) ->
     )
     assert second.spec_sha256 == first.spec_sha256
     assert second.package_fingerprint != first.package_fingerprint
+
+
+def _append_legacy_json(root: Path, name: str, text: str) -> None:
+    (root / name).write_text(text, encoding="utf-8")
+    manifest_path = root / "country_package.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["resources"].append(
+        {"path": name, "kind": "legacy_json", "schema_id": "legacy_json"}
+    )
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def test_legacy_json_resources_load_through_the_strict_json_path(tmp_path) -> None:
+    root = _rich_minimal(tmp_path / "xx")
+    _append_legacy_json(root, "extras.json", '{"rows": [1, 2]}\n')
+    spec = load_bundle(
+        root, kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS)
+    )
+    assert spec.resource(ResourceKind.LEGACY_JSON).domain.to_wire() == {"rows": [1, 2]}
+
+
+def test_legacy_json_resource_in_yaml_syntax_refuses(tmp_path) -> None:
+    root = _rich_minimal(tmp_path / "xx")
+    _append_legacy_json(root, "extras.json", "rows: [1, 2]\n")
+    with pytest.raises(SpecParseError, match=r"extras\.json.*invalid JSON"):
+        load_bundle(root, kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS))
 
 
 def _cross_ref_bundle(root: Path, *, source_ref: str = "survey") -> Path:
