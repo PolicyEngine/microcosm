@@ -681,6 +681,54 @@ def test__given_exact_period_policy__then_only_the_target_period_is_used() -> No
     assert spec.metadata["ledger_period_match_policy"] == "exact"
 
 
+@pytest.mark.parametrize(
+    ("reference_period", "fact_period"),
+    [
+        (2023, "tax_year_2023"),
+        ("tax_year_2023", 2023),
+    ],
+)
+def test__given_equivalent_exact_period_labels__then_target_period_is_used(
+    reference_period, fact_period
+) -> None:
+    fact = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    fact["period"]["value"] = fact_period
+
+    registry = compile_ledger_target_references(
+        [fact],
+        [_exact_agi_reference(period=reference_period)],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert spec.period == reference_period
+
+
+def test__given_equivalent_exact_period_label__then_period_type_still_matches() -> None:
+    fact = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    fact["period"] = {"type": "calendar_year", "value": "tax_year_2023"}
+
+    with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+        compile_ledger_target_references(
+            [fact],
+            [_exact_agi_reference(period=2023)],
+            country="us",
+        )
+
+
+def test__given_exact_identifier__then_declared_period_type_still_matches() -> None:
+    fact = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    fact["period"]["type"] = "calendar_year"
+    reference = _exact_agi_reference(
+        ledger_fact_key=fact["aggregate_fact_key"],
+        period="tax_year_2023",
+    )
+
+    with pytest.raises(ValueError, match="requires exact period"):
+        compile_ledger_target_references([fact], [reference], country="us")
+
+
 def test__given_exact_period_policy__then_stale_observation_is_refused() -> None:
     with pytest.raises(ValueError, match="exact target period 2023"):
         compile_ledger_target_references(
@@ -2091,6 +2139,29 @@ def test__given_schema2_profile_without_hierarchy__then_registry_is_unchanged() 
     )
 
     assert result is registry
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0])
+def test__given_non_integer_target_profile_schema__then_profile_is_refused(
+    schema_version,
+) -> None:
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "be_population",
+                value=11_500_000.0,
+                geography_level="country",
+                geography_id="BE",
+            )
+        ],
+        country="be",
+    )
+
+    with pytest.raises(ValueError, match="schema_version must be an integer"):
+        apply_ledger_target_profile(
+            registry,
+            {"schema_version": schema_version, "hierarchy_reconciliations": []},
+        )
 
 
 def test__given_nonzero_parent_and_zero_children__then_hierarchy_fails() -> None:

@@ -840,6 +840,11 @@ def _validate_target_profile(
     if not isinstance(profile, Mapping):
         raise ValueError("target_references.json: target_profile must be an object.")
     schema_version = profile.get("schema_version", 1)
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise ValueError(
+            "target_references.json: target_profile.schema_version must be an "
+            f"integer 1 or 2, got {schema_version!r}."
+        )
     if schema_version == 1:
         return _freeze_gate_parameter(profile, path="target_profile")
     if schema_version != 2:

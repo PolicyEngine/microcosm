@@ -1498,6 +1498,19 @@ class TestRefusals:
         )
         assert spec.target_references[0].period_match_policy == "exact"
 
+    @pytest.mark.parametrize("schema_version", [True, 1.0])
+    def test_target_profile_refuses_non_integer_schema_version(
+        self, tmp_path, schema_version
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_profile"]["schema_version"] = (
+            schema_version
+        )
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="schema_version must be an integer"):
+            load_country_spec(package_dir)
+
     def test_schema2_target_profile_refuses_invalid_tolerance(self, tmp_path) -> None:
         files = _package_with_schema2_targets()
         files["target_references.json"]["target_profile"]["criticality_tiers"][

@@ -416,6 +416,11 @@ def apply_ledger_target_profile(
     if not profile:
         return registry
     schema_version = profile.get("schema_version", 1)
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise ValueError(
+            "Ledger target profile schema_version must be an integer 1 or 2, "
+            f"got {schema_version!r}."
+        )
     if schema_version not in {1, 2}:
         raise ValueError(
             "Ledger target profile schema_version must be 1 or 2, got "
@@ -918,7 +923,11 @@ def _resolve_reference_fact(
             return _resolve_count_x_mean_reference_facts(reference, eligible_matches)
         if len(eligible_matches) == 1:
             return eligible_matches[0]
-        latest_match = _latest_period_selector_match(reference, eligible_matches)
+        latest_match = (
+            None
+            if reference.period_match_policy == "exact"
+            else _latest_period_selector_match(reference, eligible_matches)
+        )
         if latest_match is not None:
             return latest_match
         if not matches:
@@ -959,7 +968,10 @@ def _resolve_sum_reference_facts(
 ) -> tuple[object, ...]:
     partitions: dict[tuple[tuple[str, ...], tuple[int, int, str]], list[object]] = {}
     for fact in eligible_matches:
-        key = (_selector_sum_partition_key(fact), _period_key(fact))
+        key = (
+            _selector_sum_partition_key(fact),
+            _reference_period_partition_key(fact, reference),
+        )
         partitions.setdefault(key, []).append(fact)
     if not partitions:
         raise ValueError(
@@ -1038,7 +1050,10 @@ def _resolve_count_x_mean_reference_facts(
         role = _count_mean_fact_role(fact)
         if not role:
             continue
-        key = (_selector_count_mean_partition_key(fact), _period_key(fact))
+        key = (
+            _selector_count_mean_partition_key(fact),
+            _reference_period_partition_key(fact, reference),
+        )
         partitions.setdefault(key, {}).setdefault(role, []).append(fact)
 
     valid = {
@@ -1193,7 +1208,7 @@ def _eligible_selector_matches(
         return [
             fact
             for fact in matches
-            if _period_key(fact) == target_period_key
+            if _exact_period_matches(fact, reference)
             and _assertion_allowed(reference, fact)
         ]
     return [
@@ -1223,12 +1238,11 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
 
     if reference.period_match_policy != "exact":
         return
-    expected = _period_key_from_value(reference.period)
-    actual = _period_key(fact)
-    if actual != expected:
+    if not _exact_period_matches(fact, reference):
         raise ValueError(
             f"Ledger target reference {reference.name!r} requires exact period "
             f"{reference.period!r}, but resolved fact period "
+            f"{_at(fact, 'period', 'type')!r}:"
             f"{_at(fact, 'period', 'value')!r}. A period mismatch must resolve "
             "through a Ledger source_projection at the target period, never "
             "through a silently stale observation."
@@ -1367,6 +1381,80 @@ def _is_period_token(value: str) -> bool:
 
 def _period_key(fact: object) -> tuple[int, int, str]:
     return _period_key_from_value(_at(fact, "period", "value"))
+
+
+def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
+    """Match exact periods by semantic value while retaining period-kind pins."""
+
+    expected_value = reference.period
+    actual_value = _at(fact, "period", "value")
+    if not _period_values_semantically_equal(expected_value, actual_value):
+        return False
+
+    actual_type = _str_at(fact, "period", "type")
+    selector_type = str(reference.ledger_selector.get("period_type", ""))
+    expected_type_hint = _period_type_hint(expected_value)
+    if selector_type and expected_type_hint and selector_type != expected_type_hint:
+        return False
+    expected_type = selector_type or expected_type_hint
+    if expected_type and actual_type != expected_type:
+        return False
+    actual_type_hint = _period_type_hint(actual_value)
+    return not actual_type_hint or actual_type_hint == actual_type
+
+
+def _reference_period_partition_key(
+    fact: object,
+    reference: LedgerTargetReference,
+) -> tuple[int, int, str]:
+    period_key = _period_key(fact)
+    if reference.period_match_policy == "exact" and period_key[0]:
+        return (period_key[0], period_key[1], "")
+    return period_key
+
+
+def _period_values_semantically_equal(left: object, right: object) -> bool:
+    """Treat supported typed and scalar spellings of one period as equal."""
+
+    left_key = _period_key_from_value(left)
+    right_key = _period_key_from_value(right)
+    if left_key[0] and right_key[0]:
+        return left_key[:2] == right_key[:2]
+    return left_key == right_key
+
+
+def _period_type_hint(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = value.lower().replace("-", "_")
+    long_prefixes = (
+        ("tax_year_", "tax_year"),
+        ("calendar_year_", "calendar_year"),
+        ("fiscal_year_", "fiscal_year"),
+        ("academic_year_", "academic_year"),
+        ("month", "month"),
+    )
+    long_hint = next(
+        (
+            period_type
+            for prefix, period_type in long_prefixes
+            if normalized.startswith(prefix)
+        ),
+        "",
+    )
+    if long_hint:
+        return long_hint
+    aliases = {
+        "ty": "tax_year",
+        "cy": "calendar_year",
+        "fy": "fiscal_year",
+        "ay": "academic_year",
+    }
+    alias = normalized[:2]
+    suffix = normalized[2:].lstrip("_")
+    if alias in aliases and suffix[:1].isdigit():
+        return aliases[alias]
+    return ""
 
 
 def _period_key_from_value(value: object) -> tuple[int, int, str]:
