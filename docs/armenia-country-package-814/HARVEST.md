@@ -14,40 +14,73 @@ source cells to the declared Ledger key. It must also prove that each activated
 calibration row maps to a direct donor column or a deterministic pre-built
 indicator. No Armenian rules engine may be used to manufacture a v1 measure.
 
-## One-to-one target-reference worklist
+## Solver-eligible target-reference worklist
 
-There is exactly one row below for each current entry in
-`am/target_references.json`.
+The corrected v1 solver surface has eight count/indicator references. The rows
+below are table-level harvest placeholders, not runtime-ready calibration rows.
+After the source tables are harvested, Chronicle/package generation must replace
+each placeholder with explicit cell-level Ledger references for its full cross
+product (for example, one resolved age × sex × marz cell per reference). The
+current resolver compiles one target per reference and performs no implicit
+table fanout. Runtime activation is therefore forbidden while a table-level
+placeholder stands in for multiple source cells.
 
 | Target reference | Future `ledger-am` key | Value and cells to publish | Source/table | URL | Required vintage and harvest status |
 |---|---|---|---|---|---|
 | `armstat_population_by_age_sex_marz` | `armstat.population.age_sex_marz` | Population counts by age × sex × marz, including a reconciled national total | ArmStat Statbank population table, 2022-census-vintage series | <https://statbank.armstat.am> | 2024. **HARVEST:** PxWeb table code, API query, category codes, the projection/recalibration metadata, and all cells for the 10 marzes plus Yerevan. |
 | `armstat_ilcs_households_by_size_marz` | `armstat.ilcs.households_by_size_marz` | Official-weighted household counts by reviewed household-size band × marz | 2024 ILCS household file, joined to members only as needed to establish household size | [household files](https://armstat.am/en/?nid=205); [member files](https://armstat.am/en/?nid=206); [NADA catalogue](https://microdata.armstat.am/index.php/catalog) | 2024, with weights recalibrated to the 2022 census. **HARVEST:** exact files, variables, missing-value rules, official weight, size bands, current sample size, and weighted cells. |
-| `armstat_ilcs_households_by_consumption_band_marz` | `armstat.ilcs.households_by_consumption_band_marz` | Official-weighted household counts by reviewed consumption band × marz; the bands describe raw consumption, not poverty status | 2024 ILCS household and consumption/product files | [household files](https://armstat.am/en/?nid=205); [product files](https://armstat.am/en/?nid=207); [NADA catalogue](https://microdata.armstat.am/index.php/catalog) | 2024, 2022-census-recalibrated weights. **HARVEST:** exact welfare aggregate, reference period, price treatment, band boundaries, indicator recipe, weight, and cells. |
-| `armstat_ilcs_households_by_income_band_marz` | `armstat.ilcs.households_by_income_band_marz` | Official-weighted household counts by reviewed raw-income band × marz, retained as a diagnostic because income is underreported and seasonal | 2024 ILCS household/member files | [household files](https://armstat.am/en/?nid=205); [member files](https://armstat.am/en/?nid=206); [World Bank documentation](https://microdata.worldbank.org/index.php/catalog/3591) | 2024, 2022-census-recalibrated weights. **HARVEST:** income concept, recall period, annualisation, missing/negative-value treatment, band boundaries, indicator recipe, and cells. |
+| `armstat_ilcs_households_by_consumption_band_marz` | `armstat.ilcs.households_by_consumption_band_marz` | Official-weighted household counts by reviewed consumption band × marz; the bands describe raw consumption, not poverty status | 2024 ILCS household and consumption/product files | [household files](https://armstat.am/en/?nid=205); [product files](https://armstat.am/en/?nid=207); [NADA catalogue](https://microdata.armstat.am/index.php/catalog) | 2024, 2022-census-recalibrated weights. **HARVEST:** exact welfare aggregate, reference period, price treatment, band boundaries, indicator recipe, weight, and cells. Activate only with a matching authenticated scale-free donor indicator or an approved AMD-compatible pre-built bridge; never compare raw US dollars with AMD cutoffs. |
 | `armstat_lfs_employed_by_age_sex_marz` | `armstat.lfs.employed_by_age_sex_marz` | Official-weighted employed-person counts by age band × sex × marz | 2024 ArmStat Labour Force Survey member microdata | [ArmStat microdata index](https://armstat.am/en/?nid=15) | 2024. **HARVEST:** exact LFS file URL, employment-status codes, age bands, sex and marz codes, official weight, universe, and cells. |
 | `armstat_lfs_employees_by_industry_sex_marz` | `armstat.lfs.employees_by_industry_sex_marz` | Official-weighted employee counts by industry × sex × marz | 2024 ArmStat Labour Force Survey member microdata | [ArmStat microdata index](https://armstat.am/en/?nid=15) | 2024. **HARVEST:** exact file URL, employee-status and industry codes, classification vintage, sex/marz codes, official weight, universe, and cells. |
 | `armstat_src_payroll_employees_by_industry_sex_marz` | `armstat.src.payroll_employees_by_industry_sex_marz` | Administrative payroll-employee counts by industry × sex × marz | One of the nine ArmStat-published State Revenue Committee register series available since 2018 | <https://statbank.armstat.am> | 2024. **HARVEST:** exact dataset/table and URL, count concept, coverage, industry classification, dimensions, suppression/revision policy, and cells. |
-| `armstat_src_payroll_wages_by_industry_sex_marz` | `armstat.src.payroll_wages_by_industry_sex_marz` | Administrative wage amount by industry × sex × marz, in a documented period basis and currency | Matching ArmStat/State Revenue Committee payroll-register series | <https://statbank.armstat.am> | 2024. **HARVEST:** exact dataset/table and URL, whether the published value is a total or mean, AMD units, monthly/annual basis, coverage, dimensions, and cells. Do not activate until the donor candidate has a reviewed destination-unit bridge. |
-| `armstat_average_monthly_nominal_wage` | `armstat.wages.average_monthly_nominal_wage` | Mean monthly nominal wage; issue evidence gives **AMD 287,172 for 2024**. Chronicle must pair it with a compatible count before applying `count_x_mean` | ArmStat average-monthly-nominal-wage time series | **HARVEST:** exact ArmStat table and URL | 2024. Validation-only. Harvest the exact cell, units, population coverage, revision status, and compatible employee count; never fit it alongside the equivalent payroll components plus total. |
 | `armstat_pensioner_caseload` | `armstat.pensions.pensioner_count` | Current pensioner count. The supplied **about 446,249 pensioners in January 2022** is stale evidence and is not the target value | ArmStat pensioner-count time series | **HARVEST:** exact ArmStat table and URL | 2024. **HARVEST:** same-period count, exact reference date/average-period concept, coverage, and revision status. Do not populate this key with the 2022 evidence. |
-| `armstat_pension_payment_total` | `armstat.pensions.payment_total` | Same-vintage pensioner count × average pension. Issue evidence gives **AMD 49,605 in December 2023** for the mean, but no compatible 2024 pair | ArmStat Table `AM.G017` (average pension, cited via CEIC) plus the matching ArmStat caseload series | **HARVEST:** direct ArmStat table URLs and source files | 2024. **HARVEST:** same-period count and mean, payment frequency, units, coverage, and aggregation recipe. Never multiply the January 2022 count by the December 2023 mean. |
 | `armstat_family_social_benefit_families` | `armstat.social_protection.family_social_benefit_families` | Current count of families receiving family and social benefits | ArmStat time series “Number of families receiving family and social benefits” | **HARVEST:** exact ArmStat table and URL | 2024. **HARVEST:** exact cell, reference-period concept, family unit, program coverage, and revision status. Rule-derived eligibility is not a substitute for the administrative count. |
-| `armstat_sna_household_consumption` | `armstat.sna.household_final_consumption_expenditure` | SNA 2008 household final-consumption-expenditure amount for macro validation | ArmStat institutional-sector accounts, household-sector chapter / GDP by income-generation materials | [ArmStat national accounts](https://armstat.am/en/?nid=202) | 2024. **HARVEST:** exact table/file URL, cell, AMD units and scale, sector/perimeter, revisions, and analyst-approved bridge to the direct candidate aggregate. Validation band only, never a solver objective. |
-| `armstat_sna_household_disposable_income` | `armstat.sna.household_disposable_income` | SNA 2008 household disposable-income amount for macro validation | ArmStat institutional-sector accounts, household-sector chapter | [ArmStat national accounts](https://armstat.am/en/?nid=202) | 2024. **HARVEST:** exact table/file URL, cell, gross/net concept, AMD units and scale, sector/perimeter, revisions, and analyst-approved bridge to the direct candidate aggregate. Validation band only, never a solver objective. |
 
 Before activation, reconcile leaf components to published totals and choose one
 representation as the calibration objective. Component rows and their total must
-not both contribute independent loss. For every amount row, the Ledger fact and
-candidate column must also share currency, unit scale, reference period, and
-population concept. The current US support pool is not, by itself, evidence that
-its dollar-valued columns are suitable AMD candidates.
+not both contribute independent loss. Every resulting cell reference must name
+one Ledger fact with an unambiguous value and dimensions, and its candidate must
+be a direct column or deterministic pre-built indicator with proven support.
+
+## Deferred non-solver input harvest
+
+The following facts remain useful, but they are deliberately absent from the v1
+solver references. Their former table-level names and planned Ledger keys are
+retained here only to make the Chronicle handoff unambiguous.
+
+### Raw-income diagnostic
+
+| Deferred name | Planned `ledger-am` key | Value and source | Harvest and use boundary |
+|---|---|---|---|
+| `armstat_ilcs_households_by_income_band_marz` | `armstat.ilcs.households_by_income_band_marz` | Official-weighted household counts by reviewed raw-income band × marz from the [2024 ILCS household files](https://armstat.am/en/?nid=205), [member files](https://armstat.am/en/?nid=206), and [World Bank documentation](https://microdata.worldbank.org/index.php/catalog/3591) | Harvest the income concept, recall period, annualisation, missing/negative-value treatment, boundaries, weight, indicator recipe, and every cell. Income is underreported and seasonal, so this remains validation/diagnostic evidence unless an explicit later policy promotes cell-level references. |
+
+### AMD amount inputs awaiting a pre-built bridge
+
+| Deferred name | Planned `ledger-am` key | Supplied evidence/source | Harvest and use boundary |
+|---|---|---|---|
+| `armstat_src_payroll_wages_by_industry_sex_marz` | `armstat.src.payroll_wages_by_industry_sex_marz` | Administrative wage amount by industry × sex × marz from the matching ArmStat/State Revenue Committee payroll-register series at <https://statbank.armstat.am> | Harvest the exact dataset/table, whether it publishes totals or means, AMD unit/scale, period basis, coverage, dimensions, hierarchy, and cells. Excluded from solver references until a reviewed AMD-compatible pre-built candidate bridge exists. |
+| `armstat_average_monthly_nominal_wage` | `armstat.wages.average_monthly_nominal_wage` | ArmStat time-series evidence gives **AMD 287,172 in 2024** and **AMD 303,140 in 2025**; exact table URL remains a harvest item | Validation only. Harvest the exact cell, units, coverage, revision status, and compatible employee count. The 2025 value must not leak into 2024, and a count × mean total must not duplicate component payroll rows. |
+| `armstat_pension_payment_total` | `armstat.pensions.payment_total` | ArmStat Table `AM.G017` (cited via CEIC) gives an average pension of **AMD 49,605 in December 2023**; the supplied **about 446,249 pensioners in January 2022** is a different, stale period | Harvest direct ArmStat URLs and a same-period count/mean pair, payment frequency, units, coverage, and aggregation recipe. Never multiply the 2022 count by the 2023 mean. Excluded until a reviewed AMD-compatible pre-built pension-income bridge exists. |
+
+Reweighting changes weights; it does not convert a US donor amount into AMD.
+Every deferred amount fact and candidate must ultimately share currency, unit
+scale, price/reference period, payment frequency, population perimeter, and
+gross/net concept. No amount row may return to the solver surface through an
+implicit exchange-rate multiplication or rules-engine output.
+
+### National-accounts macro validation inputs
+
+| Deferred name | Planned `ledger-am` key | Source | Harvest and use boundary |
+|---|---|---|---|
+| `armstat_sna_household_consumption` | `armstat.sna.household_final_consumption_expenditure` | ArmStat SNA 2008 institutional-sector accounts, household-sector chapter / GDP by income-generation materials: [national accounts landing page](https://armstat.am/en/?nid=202) | Harvest the exact 2024 table/file, cell, AMD units/scale, sector/perimeter, revisions, and analyst-approved concept bridge. Validation-band denominator only, never a solver objective. |
+| `armstat_sna_household_disposable_income` | `armstat.sna.household_disposable_income` | ArmStat SNA 2008 institutional-sector accounts, household-sector chapter: [national accounts landing page](https://armstat.am/en/?nid=202) | Harvest the exact 2024 table/file, cell, gross/net concept, AMD units/scale, sector/perimeter, revisions, and analyst-approved bridge. Validation-band denominator only, never a solver objective. |
 
 ## Support-artifact authentication and column proof
 
-The v1 base is a pre-built, public `policyengine/populace-us` support artifact,
-not raw Armenian microdata and not a newly pooled ASEC build. Before any runtime
-binding or release, harvest and pin:
+The v1 base is a pre-built, public, to-be-authenticated
+`policyengine/populace-us` support artifact. It is not raw Armenian microdata
+and not a newly pooled ASEC build. Before any runtime binding or release,
+harvest and pin:
 
 - the exact Hugging Face repository type, immutable revision, filename, format,
   SHA-256, byte size, build/data identifier, and publication date; no `latest`
@@ -56,15 +89,16 @@ binding or release, harvest and pin:
 - table grains, identity/link columns, weight kind, row counts, dtypes, units,
   missingness, value ranges, and support-stratum definitions;
 - proof for every output declared by the Armenia source contract, including the
-  direct age, sex, household-structure, consumption, income, employment,
-  pension, and family-benefit candidates and every deterministic indicator
-  recipe; and
+  direct demographic/household columns and the consumption-band, employment,
+  employee, payroll-employee, pension-receipt, and family-benefit-receipt
+  indicators and every deterministic recipe; and
 - the permanent per-record provenance fields and release banner identifying
   every record as a US donor support record.
 
-If the certified artifact lacks a declared direct column or deterministic
-pre-built indicator, compilation/execution must refuse the target rather than
-derive it from Armenian tax-benefit rules or silently substitute another field.
+If authentication proves that the artifact lacks a declared direct column or
+deterministic pre-built indicator, compilation/execution must refuse the target
+rather than derive it from Armenian tax-benefit rules or silently substitute
+another field.
 
 ## Geography harvest
 
@@ -78,9 +112,11 @@ The geography fact package must provide the exact table/API query, marz and
 community codes and labels, the 71-to-11 parent mapping, population counts,
 vintage/effective dates, and any suppressed or zero cells. It must document how
 Yerevan is encoded and whether the published community distribution has a
-different reference date from the population calibration table. The current
-clone count is inherited configuration from the Belgium walking skeleton, not
-an Armenian statistic; runtime activation requires a support review.
+different reference date from the population calibration table. The provisional
+`clones_per_record: 1` is a compile-safe minimum, not an Armenian statistic and
+not a substantive fanout policy. Choose any collision-avoiding fanout factor ex
+ante only after harvesting the 71-to-11 roster/distribution and reviewing donor
+support; never tune it from a candidate release merely to pass a gate.
 
 ## ILCS access, sample, and licence verification
 
@@ -92,6 +128,11 @@ sample size, file set, variable dictionaries, join keys, official weights, and
 rotation treatment remain harvest items. The 2024 weights were recalibrated to
 the 2022 census, creating a series break against 2022–23; retain that break in
 fact provenance.
+
+ArmStat publishes LFS member microdata for 2014–2024 at the
+[microdata index](https://armstat.am/en/?nid=15). Harvest the exact 2024 file and
+documentation rather than assuming that classifications and weights are stable
+across the full series.
 
 ArmStat open dissemination is treated as public in the release contract, but
 Chronicle must capture the exact licence text, attribution, modification and
@@ -126,8 +167,11 @@ because they are known:
   including tax revenues and duties of **AMD 2,725 billion**. Harvest the exact
   budget-execution report URL and cells. This is a 2025 cross-check only.
 - ArmStat reports average monthly nominal wages of **AMD 287,172 in 2024** and
-  **AMD 303,140 in 2025**. The 2024 value maps to the validation-only reference
-  above; the 2025 value is a cross-check and must not leak into a 2024 target.
+  **AMD 303,140 in 2025**. These map to the deferred validation input above; the
+  2025 value is a cross-check and must not leak into a 2024 target.
+- Supplied pension context gives a retirement age of **63**. The authoritative
+  legal/administrative source and effective-date conditions remain a harvest
+  item; the fact is contextual and does not construct a v1 recipient indicator.
 - Supplied family-benefit context gives a basic amount of **AMD 18,000 per
   month**, plus **AMD 5,500–8,000 per child**, and spending of approximately
   **0.5% of GDP in 2021**. These rule/context facts do not fill the missing 2024

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "am",
-  "policy": "Armenia's engine-free pool-reweight demonstrator consumes an authenticated public populace-US support artifact. Its records remain US donor support records and are never represented as Armenian microdata. Only direct columns, deterministic direct-column indicators, and the target-derived marz assignment may enter v1; no rules engine is required or permitted.",
+  "policy": "Armenia's engine-free pool-reweight demonstrator requires a public populace-US support artifact whose exact identity must still be authenticated. Its records remain US donor support records and are never represented as Armenian microdata. Only direct columns, deterministic direct-column indicators, and the target-derived marz assignment may enter v1; no rules engine is required or permitted.",
   "stages": [
     {
       "stage": "load_populace_us_support_pool",
@@ -12,7 +12,7 @@
         {
           "kind": "public_microdata",
           "format": "hdf5",
-          "vintage": "2024",
+          "vintage": "HARVEST_REQUIRED",
           "locator": "policyengine/populace-us",
           "source": "https://huggingface.co/datasets/policyengine/populace-us",
           "repository": {
@@ -49,14 +49,10 @@
         "household_size",
         "household_consumption",
         "household_consumption_band_indicator",
-        "household_income",
-        "household_income_band_indicator",
         "is_employed",
         "is_employee",
         "is_payroll_employee",
-        "employment_income",
         "receives_pension",
-        "pension_income",
         "receives_family_benefit"
       ],
       "nonnegative_outputs": [
@@ -66,16 +62,13 @@
         "household_size",
         "household_consumption",
         "household_consumption_band_indicator",
-        "household_income_band_indicator",
         "is_employed",
         "is_employee",
         "is_payroll_employee",
-        "employment_income",
         "receives_pension",
-        "pension_income",
         "receives_family_benefit"
       ],
-      "notes": "This posture is derived from the New Zealand epic #343 plan because NZ has no committed country package. The stage preserves and publishes US support-stratum provenance. The exact artifact column inventory, indicator recipes, target-profile bands, and authenticated artifact coordinates must land before any runtime binding."
+      "notes": "This posture is derived from the New Zealand epic #343 plan because NZ has no committed country package. The stage preserves and publishes US support-stratum provenance. HARVEST_REQUIRED is an explicit refusal marker, not a claimed donor vintage: the exact artifact vintage, column inventory, indicator recipes, target-profile bands, and authenticated artifact coordinates must land before any runtime binding."
     },
     {
       "stage": "assign_am_marz",

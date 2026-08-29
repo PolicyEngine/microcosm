@@ -10,7 +10,7 @@
     "code_column": "community_code",
     "vintage": "2022",
     "vintage_policy": "error",
-    "clones_per_record": 20,
+    "clones_per_record": 1,
     "collision_avoidance": true,
     "constrain_to_column": "marz_code",
     "assignment_source": {
@@ -18,6 +18,6 @@
       "source": "https://statbank.armstat.am",
       "notes": "Harvest the machine-readable population distribution and code roster for communities within each of the 10 marzes plus Yerevan. The post-amalgamation country has 71 consolidated communities; this package deliberately does not invent or hardcode their codes."
     },
-    "notes": "The clone count inherits the Belgium walking-skeleton setting as a configuration precedent, not as an Armenian statistic, and must be reviewed against harvested support before runtime activation. The shared clone-and-assign implementation still lives in UK runtime modules; populace#263 must promote/bind it for Armenia. The target-derived marz constraint is preserved across every household clone."
+    "notes": "One clone per record is the provisional compile-safe minimum, not an Armenian statistic. A larger collision-avoiding fanout cannot be set until the harvested 71-to-11 community roster proves the minimum within-marz support and an ex-ante policy is reviewed. The shared clone-and-assign implementation still lives in UK runtime modules; populace#263 must promote/bind it for Armenia. The target-derived marz constraint is preserved across every household clone."
   }
 }

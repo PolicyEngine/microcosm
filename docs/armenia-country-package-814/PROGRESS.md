@@ -2,11 +2,13 @@
 
 ## State
 
-The complete spec-only Armenia package, Chronicle/rules handoff, changelog, and
-regression coverage are committed. All #814-focused and authoritative
-shared/spec CI tests pass. The requested package-wide run completed, and every
-engine-only failure from its engine-free environment passed on rerun against
-the exact lock-required `policyengine-us==1.819.0` found in the local uv cache.
+The spec-only Armenia package is being reverified after a final independent
+audit tightened its activation boundary. The corrected contract now uses only
+resolver-supported Ledger selectors, keeps amount/validation facts outside the
+solver surface, refuses implicit table fanout, uses a compile-safe one-clone
+geography minimum, and treats the populace-US artifact as to-be-authenticated.
+The earlier focused, shared-spec, and package-wide results below predate this
+correction; focused and authoritative reruns are the next step.
 
 ## Done
 
@@ -56,14 +58,22 @@ the exact lock-required `policyengine-us==1.819.0` found in the local uv cache.
   the engine-free package-wide run; no test remains red.
 - Passed full-repository Ruff, `tools/ci_test_groups.py --verify`, and
   `git diff --check`; the repository-root `PROGRESS.md` remains untouched.
+- Completed a final independent contract audit and corrected four issues before
+  handoff: unsupported selector fields, implicit multi-cell-table collapse,
+  solver activation of validation/AMD amount rows, and an infeasible inherited
+  20-clone collision-avoidance setting.
+- Reduced the live solver authoring surface to eight count/indicator families;
+  moved six income, wage/payment, and national-accounts items into explicit
+  deferred harvest sections; added an active calibration-reference-coverage
+  blocker; and added real-resolver scalar and ambiguity test coverage.
 
 ## Next
 
-1. Chronicle must harvest and publish the 14 referenced fact families, source
-   artifact pins/licences, and the 2022 marz/community tables.
-2. Maintainers must approve the destination-unit amount bridge and Armenia gate
-   thresholds before runtime activation.
-3. `populace#263` and `populace#265` must land the shared geography and source
+1. Regenerate the Armenia golden/spec identity and rerun the focused,
+   authoritative shared-spec, and requested package-wide verification scopes.
+2. Chronicle must harvest and cell-expand the eight solver reference families,
+   plus the deferred validation facts, source pins/licences, and 2022 geography.
+3. Maintainers must approve any AMD/scale bridge and Armenia gate thresholds
+   before runtime activation.
+4. `populace#263` and `populace#265` must land the shared geography and source
    coverage runtime contracts; #814 must decide future `rulespec-am` ownership.
-4. Network-capable CI remains the authoritative full engine/wheel certification
-   lane; this offline task performed no artifact build or release.

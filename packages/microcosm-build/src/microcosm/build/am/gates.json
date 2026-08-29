@@ -1,7 +1,7 @@
 {
   "version": 2,
   "country": "am",
-  "policy": "Armenia is greenfield and has no incumbent dataset, so parity, export_surface, and target_surface are deliberately absent. Public Armenian administrative and raw-survey margins govern the direct-column pool reweight; national accounts will provide broad macro backstops. CEQ and World Bank studies remain documented external validation-band candidates rather than gates until their facts are harvested into Ledger.",
+  "policy": "Armenia is greenfield and has no incumbent dataset, so parity, export_surface, and target_surface are deliberately absent. Public Armenian administrative and raw-survey margins govern the direct-column pool reweight; national accounts will provide broad macro backstops. CEQ and World Bank studies remain documented external validation-band candidates rather than gates until their facts are harvested into Ledger. Gates marked not_applicable are declarations awaiting evidence, not release blockers; active reference, coverage, support, audit, and output gates fail closed.",
   "phases": ["terminal"],
   "gates": [
     {
@@ -27,6 +27,15 @@
       "criticality": "diagnostic",
       "not_applicable": "The 2022 assignment distribution and complete 71-community code roster are harvest items, and the shared operator is not yet bound.",
       "notes": "Community diagnostics remain non-blocking until the spine demonstrates adequate support (populace#263)."
+    },
+    {
+      "id": "calibration_reference_inventory",
+      "gate": "calibration_reference_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every harvested multi-cell series contract must be replaced by generated, cell-pinned Ledger references with direct or pre-built candidate bindings, and every activated reference must enter the calibration matrix. Table-level authoring placeholders or count mismatches block release."
     },
     {
       "id": "target_profile_coverage",

@@ -1,10 +1,10 @@
 records:
-- id: am_support_pool_2024
+- id: am_support_pool_unpinned
   kind: survey_period_ref
   authority_ref:
     kind: source_record
     source: source:am_populace_us_support_contract
-    authority: am_support_pool_2024
+    authority: am_support_pool_unpinned
   compatible_with:
   - vintage:am_target_2024
 - id: am_target_2024
@@ -13,7 +13,7 @@ records:
     kind: dataset_run
     pointer: /dataset_run/target_period
   compatible_with:
-  - vintage:am_support_pool_2024
+  - vintage:am_support_pool_unpinned
 - id: am_community_2022
   kind: geography_vintage_ref
   authority_ref:

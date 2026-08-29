@@ -3,12 +3,12 @@
 ## Product posture
 
 Armenia v1 is an engine-free, NZ-style pool reweight. Its base is an
-authenticated pre-built `populace-us` support artifact and its destination
-margins are public Armenian facts harvested into `ledger-am`. Every donor record
-remains a US support record. Neither the dataset, the documentation, nor a
-downstream result may describe those records as Armenian microdata; per-record
-support-stratum and donor-country provenance must survive calibration and
-release.
+existing, pre-built, to-be-authenticated `populace-us` support artifact, and its
+destination margins are public Armenian facts harvested into `ledger-am`. Every
+donor record remains a US support record. Neither the dataset, the
+documentation, nor a downstream result may describe those records as Armenian
+microdata; per-record support-stratum and donor-country provenance must survive
+calibration and release.
 
 Only direct columns and deterministic pre-built indicator columns may be
 calibration measures. Target-derived geography assignment is structural, not a
@@ -30,9 +30,10 @@ an unpinned artifact.
   CEQ and World Bank studies are proposed validation bands in documentation, not
   gates, because their estimates are not yet in Ledger.
 - v1 does not start from native ILCS unit records. It consumes a pre-built US
-  donor support artifact following the NZ #343 plan. New Zealand has plan
-  documents but no committed package, so the source-stage declaration is derived
-  from that plan rather than copied from an NZ manifest.
+  donor support artifact, after mandatory authentication, following the NZ #343
+  plan. New Zealand has plan documents but no committed package, so the
+  source-stage declaration is derived from that plan rather than copied from an
+  NZ manifest.
 - No `support_spine.json` is declared. The current shared support-spine schema
   describes construction from raw current/prior ASEC pools; using it would
   falsely describe this package's input. Authentication, support coverage, and
@@ -61,31 +62,48 @@ The two Belgium solver lessons apply unchanged:
    not component-plus-total double counts. Chronicle must retain the hierarchy
    needed to make that choice auditable.
 
+The eight solver-eligible references are count/indicator table placeholders:
+population; ILCS household size and consumption bands; LFS employed and employee
+counts; SRC payroll-employee counts; pensioner counts; and family/social-benefit
+family counts. They are not executable multi-cell targets as written. After
+harvest, package generation must replace each table placeholder with explicit
+cell-level Ledger references. The current resolver compiles exactly one target
+per reference and does not implicitly fan out a table across age, sex, marz,
+industry, household-size, or consumption-band cells.
+
 Survey-measured tax-benefit quantities are permanent holdouts. In particular,
 the ILCS poverty rates and anything downstream of its reported or calculated
 tax-benefit quantities never become calibration targets. Raw survey
 demographics, household structure, consumption, income, and labour quantities
-remain eligible; administrative program counts and payments are eligible when
-they map to proven direct/pre-built candidates. Deviations from the official
+can remain eligible in principle, but raw-income bands are deferred from the v1
+solver surface. Administrative program counts are eligible when they map to
+proven direct/pre-built indicators. Amount/payment rows are excluded until they
+map to a reviewed AMD-compatible pre-built bridge. Deviations from the official
 survey poverty snapshot are therefore evaluation evidence, not automatically a
 calibration defect.
 
 Because the supplied Armenia thresholds and complete Ledger facts do not yet
 exist, the aggregate-admin, per-family-fit, macro-realism, effective-sample-size,
 and weight-ratio contracts must not borrow numerical policy from Belgium or the
-UK. They become operational only with explicit Armenia evidence, shared runtime
-bindings, and ex-ante steward-reviewed tolerances. Target-profile coverage,
-support evidence, weight audit, nonzero export, and nonnegative-column checks
-provide the engine-free release-blocking skeleton in the meantime.
+UK. Their `not_applicable` entries are declarations that those gates cannot yet
+be evaluated; they are not themselves blockers. Execution/release is blocked by
+the active `calibration_reference_coverage`, `target_profile_coverage`,
+`support`, `weights_audit`, `exported_nonzero`, and `nonnegative_columns` gates
+(and by absent runtime bindings). After the table placeholders become cell-level
+references, the deferred gates become operational only with explicit Armenia
+evidence, shared evaluators, and ex-ante steward-reviewed tolerances.
 
 ## Geography and release dependencies
 
 The community spine mirrors Belgium's clone-and-assign contract, constrained to
 the target-assigned marz. The shared operator still lives in UK runtime modules;
 `populace#263` must promote and bind that country-neutral implementation before
-Armenia can execute. The configured clone count is a Belgium walking-skeleton
-precedent, not an observed Armenian quantity, and must be reviewed after the
-community distribution and support are harvested.
+Armenia can execute. Belgium's walking-skeleton fanout is not Armenia policy.
+`clones_per_record: 1` is the provisional compile-safe minimum: it declares no
+fanout and is not an observed Armenian quantity. Any collision-avoiding fanout
+factor must be chosen ex ante only after the 71-to-11 community
+roster/distribution and donor support are harvested; it must not be tuned to a
+candidate release.
 
 The public release must carry the country-neutral `source_coverage.json`
 contract tracked by `populace#265`, plus calibration diagnostics, validation
@@ -97,14 +115,18 @@ package publishes an artifact.
 
 The donor pool is American, while Armenian wage, pension, consumption, income,
 and national-accounts facts are in AMD. Reweighting changes record weights; it
-does not convert the scale or concept of a dollar-valued donor column. Before an
-amount target is activated, maintainers must choose and document a
-destination-unit bridge that still satisfies the v1 direct/pre-built-column
-rule, then prove common currency, price/reference period, payment frequency,
-unit scale, population perimeter, and tax/gross-net concept. A raw US-dollar
-column cannot be fitted directly to an AMD fact. Until that contract exists,
-amount rows remain diagnostic or non-executable rather than being silently
-rescaled.
+does not convert the scale or concept of a dollar-valued donor column. Wage
+amount/mean, pension-payment, and SNA amount rows are therefore excluded from
+the v1 solver references and retained only as deferred/validation harvest work.
+Before any amount target is proposed, maintainers must choose and document an
+AMD-compatible pre-built destination-unit bridge that still satisfies the v1
+direct/pre-built-column rule, then prove common currency, price/reference
+period, payment frequency, unit scale, population perimeter, and tax/gross-net
+concept. A raw US-dollar column cannot be fitted directly to an AMD fact or
+silently rescaled. The same rule applies to consumption-band classification:
+it may activate only through a matching authenticated scale-free donor indicator
+or an approved AMD-compatible pre-built bridge, never by applying AMD cutoffs to
+raw US-dollar consumption.
 
 ## Future rules leg
 

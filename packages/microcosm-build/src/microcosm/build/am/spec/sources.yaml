@@ -1,19 +1,19 @@
 sources:
 - id: am_populace_us_support_contract
   role: am_populace_us_support_pool
-  sha256: 85fdcf882cc13070cabaaa19dab1082f883eae0c8b9bab2605f8101cfb0be943
-  byte_size: 4477
+  sha256: b18188b36fdb2f542487ddf271b95b12f77c19943c65dc801c4cc2e6af9e24aa
+  byte_size: 4385
   loader: kernel:load_populace_us_support_pool
   vintages:
-  - vintage:am_support_pool_2024
+  - vintage:am_support_pool_unpinned
   vintage_authorities:
-  - id: am_support_pool_2024
+  - id: am_support_pool_unpinned
     kind: survey_period
-    value: 2024
+    value: HARVEST_REQUIRED
 - id: am_marz_assignment_contract
   role: am_marz_assignment_contract
-  sha256: 85fdcf882cc13070cabaaa19dab1082f883eae0c8b9bab2605f8101cfb0be943
-  byte_size: 4477
+  sha256: b18188b36fdb2f542487ddf271b95b12f77c19943c65dc801c4cc2e6af9e24aa
+  byte_size: 4385
   loader: kernel:assign_am_marz
   vintages:
   - vintage:am_marz_2022
@@ -23,8 +23,8 @@ sources:
     value: 2022_marz
 - id: am_community_spine_contract
   role: am_community_spine_contract
-  sha256: a4ef2bc4d8a848a8756161d379bab1ff3f29045f5e4eb6419818f95bbde86600
-  byte_size: 1625
+  sha256: 12ee8607f1a222b642cbc251d3fe51c209786b24542084a06249aab8c7ab2fa1
+  byte_size: 1686
   loader: kernel:clone_assign_communities
   vintages:
   - vintage:am_community_2022
@@ -36,11 +36,12 @@ stage_manifest:
   version: 1
   country: am
   policy: >-
-    Armenia's engine-free pool-reweight demonstrator consumes an authenticated
-    public populace-US support artifact. Its records remain US donor support
-    records and are never represented as Armenian microdata. Only direct
-    columns, deterministic direct-column indicators, and the target-derived
-    marz assignment may enter v1; no rules engine is required or permitted.
+    Armenia's engine-free pool-reweight demonstrator requires a public
+    populace-US support artifact whose exact identity must still be
+    authenticated. Its records remain US donor support records and are never
+    represented as Armenian microdata. Only direct columns, deterministic
+    direct-column indicators, and the target-derived marz assignment may enter
+    v1; no rules engine is required or permitted.
 stages:
 - stage: load_populace_us_support_pool
   survey: Populace US support pool (US donor support records)
@@ -49,7 +50,7 @@ stages:
   artifacts:
   - kind: public_microdata
     format: hdf5
-    vintage: '2024'
+    vintage: HARVEST_REQUIRED
     locator: policyengine/populace-us
     source: https://huggingface.co/datasets/policyengine/populace-us
     repository:
@@ -88,14 +89,10 @@ stages:
   - household_size
   - household_consumption
   - household_consumption_band_indicator
-  - household_income
-  - household_income_band_indicator
   - is_employed
   - is_employee
   - is_payroll_employee
-  - employment_income
   - receives_pension
-  - pension_income
   - receives_family_benefit
   nonnegative_outputs:
   - household_weight
@@ -104,20 +101,18 @@ stages:
   - household_size
   - household_consumption
   - household_consumption_band_indicator
-  - household_income_band_indicator
   - is_employed
   - is_employee
   - is_payroll_employee
-  - employment_income
   - receives_pension
-  - pension_income
   - receives_family_benefit
   notes: >-
     This posture is derived from the New Zealand epic #343 plan because NZ has
     no committed country package. The stage preserves and publishes US
-    support-stratum provenance. The exact artifact column inventory, indicator
-    recipes, target-profile bands, and authenticated artifact coordinates must
-    land before any runtime binding.
+    support-stratum provenance. HARVEST_REQUIRED is an explicit refusal marker,
+    not a claimed donor vintage: the exact artifact vintage, column inventory,
+    indicator recipes, target-profile bands, and authenticated artifact
+    coordinates must land before any runtime binding.
 - stage: assign_am_marz
   survey: ArmStat 2022 census population margins
   source: https://statbank.armstat.am
