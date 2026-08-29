@@ -3,7 +3,7 @@ pipeline_contract:
   artifact_protocol:
     artifact_kind: populace_us_stacked_pool_checkpoint_identity
     schema_version: 1
-    materializer_version: 12
+    materializer_version: 13
     pipeline: us-stacked-pool
   stacked_operator_order:
   - assemble_stacked_spine
@@ -17,6 +17,7 @@ pipeline_contract:
   - materialize_multispine_agreement_outputs
   - stacked_completeness_gate
   - by_origin_battery
+  - us_immigration_composition_gate
   pre_clone_source_operator_order:
   - derive_us_cps_carried_inputs
   - with_us_hours_worked_inputs
@@ -330,6 +331,58 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: snap_abawd_discretionary_exemption
+- site: immigration_humanitarian_paroled_one_year_afghanistan_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_paroled_one_year_ukraine_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_paroled_one_year_nicaragua_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_paroled_one_year_venezuela_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_refugee_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_asylee_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_deportation_withheld_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_venezuela_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_el_salvador_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_honduras_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_nicaragua_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_nepal_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_humanitarian_tps_other_designated_assignment
+  owners:
+  - kind: source_stage
+    id: immigration_status
 - site: immigration_ead_workers_assignment
   owners:
   - kind: source_stage

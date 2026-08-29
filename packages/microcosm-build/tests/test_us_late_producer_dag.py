@@ -784,9 +784,9 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 16
+    assert receipt["schema_version"] == 17
     assert receipt["execution_receipt_contract"] == {
-        "version": 3,
+        "version": 4,
         "row_binding": (
             "declared_globally_reconciled_input_and_scope_exact_output_source_"
             "and_primary_callback_resource_receipt_and_previous_execution_sha256"
@@ -794,7 +794,8 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
         "virtual_resource_binding": ("exact_kind_specific_semantic_payload_and_sha256"),
         "top_binding": (
             "entry_and_output_frame_sha256_execution_chain_source_"
-            "completion_and_nineteen_transfer_groups"
+            "completion_nineteen_transfer_groups_and_constrained_"
+            "immigration_reconciliation"
         ),
         "transition_authority": {
             "authority_id": "us_stacked_late_producer_transition",
@@ -910,6 +911,72 @@ def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> N
         )
 
 
+def test_immigration_transfer_declares_source_scoped_raw_evidence() -> None:
+    producer = transfer_producer_name("person", "source_operator_immigration")
+    inventory = US_LATE_TRANSFER_INPUT_INVENTORIES[producer]
+    by_label = {
+        requirement.label: requirement for requirement in inventory.requirements
+    }
+    expected = {
+        "immigration_asec_citizenship": ("PRCITSHP", "asec_source"),
+        "immigration_asec_origin": ("PENATVTY", "asec_source"),
+        "immigration_asec_arrival": ("PEINUSYR", "asec_source"),
+        "immigration_acs_citizenship": ("CIT", "acs_source"),
+        "immigration_acs_origin": ("POBP", "acs_source"),
+        "immigration_acs_arrival": ("YOEP", "acs_source"),
+    }
+
+    assert set(expected) <= set(by_label)
+    for label, (column, scope) in expected.items():
+        requirement = by_label[label]
+        assert requirement.required_scope == scope
+        assert requirement.optional is False
+        value_kind = "column_present" if column == "YOEP" else "finite_numeric"
+        assert requirement.alternatives == (
+            (ProducerInputColumn("person", column, value_kind),),
+        )
+
+    expected_lineage = {
+        ("person_id",),
+        ("source_person_id", "source_year"),
+        ("source_household_id", "source_person_id", "source_year"),
+    }
+    transfer_lineage = by_label["immigration_stable_person_lineage"]
+    assert transfer_lineage.required_scope is None
+    assert {
+        tuple(column.column for column in alternative)
+        for alternative in transfer_lineage.alternatives
+    } == expected_lineage
+
+    source_inventory = US_LATE_SOURCE_INPUT_INVENTORIES["with_us_immigration_inputs"]
+    source_lineage = next(
+        requirement
+        for requirement in source_inventory.requirements
+        if requirement.label == "stable_source_identity"
+    )
+    assert {
+        tuple(column.column for column in alternative)
+        for alternative in source_lineage.alternatives
+    } == expected_lineage
+
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer]
+    effective = {
+        item.column: item
+        for item in contract.inputs
+        if item.column.startswith("@effective:immigration_")
+    }
+    assert set(effective) == {
+        *(f"@effective:{label}" for label in expected),
+        "@effective:immigration_stable_person_lineage",
+    }
+    for label, (_column, scope) in expected.items():
+        assert effective[f"@effective:{label}"].required_scope == scope
+    assert (
+        effective["@effective:immigration_stable_person_lineage"].required_scope
+        == "whole_pool"
+    )
+
+
 def test_every_transfer_declares_complete_cross_grain_validation_surface() -> None:
     entities = (
         "person",
@@ -966,6 +1033,7 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     }
     asec_person_raw_columns = {
         "A_HSCOL",
+        "A_LFSR",
         "A_MJOCC",
         "CAID",
         "CHAMPVA",
@@ -1034,6 +1102,12 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
                 "PERIDNUM",
             }
         },
+        ("person", "PRCITSHP"): 2,
+        ("person", "PENATVTY"): 2,
+        ("person", "PEINUSYR"): 2,
+        ("person", "CIT"): 1,
+        ("person", "POBP"): 1,
+        ("person", "YOEP"): 1,
     }
 
     observed: Counter[tuple[str, str, str]] = Counter()
@@ -1055,15 +1129,15 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     assert observed == Counter(
         {(*key, required_scope[key]): count for key, count in expected_counts.items()}
     )
-    assert sum(observed.values()) == 101
-    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 43
+    assert sum(observed.values()) == 108
+    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 46
     assert (
-        sum(count for key, count in observed.items() if key[2] == "asec_source") == 58
+        sum(count for key, count in observed.items() if key[2] == "asec_source") == 62
     )
     assert receipts[("household", "TYPEHUGQ")] == set()
 
     execution_identity = acs_transfer_module.acs_transfer_execution_contract_identity()
-    assert execution_identity["schema_version"] == 2
+    assert execution_identity["schema_version"] == 3
     assert execution_identity["housing"]["head_source_precedence"] == [
         {"source": "is_household_head", "head_codes": [True]},
         {"source": "A_EXPRRP", "head_codes": [1, 2]},
@@ -1268,8 +1342,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
             "A_MARITL",
             "A_SPOUSE",
             "A_HSCOL",
-            "WSAL_VAL",
-            "SEMP_VAL",
+            "A_LFSR",
             "MCARE",
             "CAID",
             "IHSFLG",

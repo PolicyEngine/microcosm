@@ -1594,9 +1594,270 @@
         "source",
         "target"
        ]
+      },
+      "humanitarian_status_stocks": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "asylee": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "source": {
+           "type": "string",
+           "x-spec-surface": "operational"
+          },
+          "target": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "source",
+          "target"
+         ]
+        },
+        "deportation_withheld": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "source": {
+           "type": "string",
+           "x-spec-surface": "operational"
+          },
+          "target": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "source",
+          "target"
+         ]
+        },
+        "paroled_one_year": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "afghanistan": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "nicaragua": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "ukraine": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "venezuela": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          }
+         },
+         "required": [
+          "afghanistan",
+          "nicaragua",
+          "ukraine",
+          "venezuela"
+         ]
+        },
+        "refugee": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "source": {
+           "type": "string",
+           "x-spec-surface": "operational"
+          },
+          "target": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "source",
+          "target"
+         ]
+        },
+        "tps": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "el_salvador": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "honduras": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "nepal": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "nicaragua": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "other_designated": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          },
+          "venezuela": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "source": {
+             "type": "string",
+             "x-spec-surface": "operational"
+            },
+            "target": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "source",
+            "target"
+           ]
+          }
+         },
+         "required": [
+          "el_salvador",
+          "honduras",
+          "nepal",
+          "nicaragua",
+          "other_designated",
+          "venezuela"
+         ]
+        }
+       },
+       "required": [
+        "asylee",
+        "deportation_withheld",
+        "paroled_one_year",
+        "refugee",
+        "tps"
+       ]
       }
      },
      "required": [
+      "humanitarian_status_stocks",
       "kind",
       "seed_from_build_config",
       "time_period_from_build_config",

@@ -45,7 +45,7 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
         ),
         (
             "be",
-            "7062e38f4d623553fb0604380a8dac0edacb6261c155b6e31fc38ef7c0f1c57c",
+            "16118de0f95b7821a7ede20104d1466235d6900c665d5220b2a68a0a52007515",
             {
                 "household.household_id",
                 "person.person_id",
@@ -55,7 +55,7 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
         ),
         (
             "uk",
-            "cce1c98ea40364a398ae361f4d15790c925d8379d8b9b427076d61059c7d6715",
+            "c4e77decba4be76d920af1c61c1244c365132bea0e77324c1a1f8f868475b990",
             {
                 "benunit.benunit_id",
                 "household.household_id",

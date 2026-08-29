@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_384
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_770
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_154
+EXPECTED_AUTHORED_FIELD_COUNT = 32_521
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_017
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_538
 
 
 class FieldUsageError(AssertionError):
@@ -249,13 +249,9 @@ def _claim_rows(
         )
 
     if claim.pointer_class == "stacked_geography_source_identity":
-        return [
-            row for row in rows if is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if is_stacked_geography_source_identity(row[0])]
     if claim.pointer_class == "source_validation":
-        return [
-            row for row in rows if not is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if not is_stacked_geography_source_identity(row[0])]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -425,12 +421,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_488,
-        "6382a3ed07016414c31462b8bedb24590d92b792405a89c927d85fa1bd2a8347",
+        24_554,
+        "18140dbc554c2a17a673fec5ae5839f504d4b9980c5d8f1c1ccb545342977cb4",
     ),
     "imputation_transfer_execution": (
-        97,
-        "cabaaa3d96c534f5ec37f51811c3f549d0ed20791e2892c868888c0da6d7d80e",
+        115,
+        "545f626e7b9c6aed25a5ae8dd3156c96db2cd35e5637ec1ebe443432d1684277",
     ),
     "imputation_waiver_records": (
         70,
@@ -457,12 +453,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        824,
-        "7537385c3fd399a2dbb7dcd8ed7cf1ff2481ed336db621eafcbfd741d5792f40",
+        1_032,
+        "6d4af2d988ee87ed38a044c1007e854176af17be4782e802d86d960f10376f7a",
     ),
     "resolved_seed_site_bindings": (
-        277,
-        "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        316,
+        "199ec98045871070860164b522892327ab840b48c0c6a53972ebc0ff0d7d091f",
     ),
     "resolved_vintage_authorities": (
         63,
@@ -489,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_702,
-        "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        1_715,
+        "78227f34c3f4ef946c06693dec9177dd906069f98016854bfd4d39c4cd4c51fa",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -509,16 +505,16 @@ _PINS: dict[str, tuple[int, str]] = {
         "cf0000464013118955571dac2691d4cc1b900c97c6570349b489678cdf937649",
     ),
     "spine_pipeline_contract": (
-        88,
-        "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        89,
+        "8d281f8f1e2f9914684150b0424ff816d0ec09ed0d9053ea5a64e877a86cc35b",
     ),
     "spine_sampling": (
         17,
         "29c6c1b3243e178783e7ab139993ba3a9b42d62edd4e9e4e1f3b28688daf2c6d",
     ),
     "spine_seed_site_bindings": (
-        277,
-        "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        316,
+        "bb848f38e068858ac23e964a4ffbbf5542253da50515c72fe7753d8c56912486",
     ),
     "spine_support_roles": (
         29,
@@ -1125,7 +1121,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1468,9 +1466,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),

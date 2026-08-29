@@ -1847,6 +1847,7 @@ def _producer_dtype_source_frame() -> Frame:
     person["PRCITSHP"] = [1, 5, 1, 5]
     person["PEINUSYR"] = [0, 24, 0, 24]
     person["PENATVTY"] = [57, 303, 57, 303]
+    person["A_LFSR"] = [1, 0, 1, 0]
     person["A_SPOUSE"] = 0
     person["CAID"] = 2
     person["IHSFLG"] = 2
@@ -1879,6 +1880,9 @@ def _producer_dtype_acs_source_frame() -> Frame:
     person["acs_social_security_income"] = [0.0, 12_000.0]
     person["acs_retirement_income"] = [0.0, 8_000.0]
     person["acs_interest_dividend_rental_income"] = [100.0, 2_000.0]
+    person["CIT"] = [1, 5]
+    person["POBP"] = [6, 373]
+    person["YOEP"] = [np.nan, 2022]
     household = tables["household"]
     household["state_fips"] = [6, 36]
     household["tenure_type"] = ["RENTED", "OWNED_WITH_MORTGAGE"]
@@ -2165,7 +2169,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     )
 
     assert len(targets) == 118
-    assert len(predictors) == 32
+    assert len(predictors) == 35
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
         (
@@ -3535,8 +3539,13 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
             name: str = operator_name,
             column: str = output,
             value: float = float(index + 1),
+            person_weight_scale: float = 1.0,
         ) -> Frame:
             calls.append(name)
+            if name == "with_us_immigration_inputs":
+                assert person_weight_scale > 1.0
+            else:
+                assert person_weight_scale == 1.0
             assert "us_spine_assembly_manifest" not in available.metadata
             assert not available.mass_log
             person = available.table("person")
@@ -3805,9 +3814,10 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
         after_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
         == before_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
     )
-    assert after_person["takes_up_wic_if_eligible"].tolist() == before_person[
-        "takes_up_wic_if_eligible"
-    ].tolist()
+    assert (
+        after_person["takes_up_wic_if_eligible"].tolist()
+        == before_person["takes_up_wic_if_eligible"].tolist()
+    )
     assert (
         after_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
         == before_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()

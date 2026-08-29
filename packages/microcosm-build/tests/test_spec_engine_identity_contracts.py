@@ -63,7 +63,7 @@ def test_pipeline_contract_is_an_exact_generation_zero_projection() -> None:
         == {
             "artifact_kind": "populace_us_stacked_pool_checkpoint_identity",
             "schema_version": 1,
-            "materializer_version": 12,
+            "materializer_version": 13,
             "pipeline": "us-stacked-pool",
         }
     )
@@ -118,13 +118,13 @@ def test_identity_contract_objects_are_closed_world(
         load_schema_registry().validate(mutated, "spine.schema.json")
 
 
-def test_all_53_seed_sites_resolve_to_typed_real_owners(
+def test_all_seed_sites_resolve_to_typed_real_owners(
     identity_documents: tuple[dict[str, object], list[dict[str, object]]],
 ) -> None:
     spine, source_stages = identity_documents
     bindings = _resolve(spine, source_stages)
 
-    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 66
     assert [binding.site for binding in bindings] == [
         site.id for site in LEGACY_V1_PROTOCOL.sites
     ]

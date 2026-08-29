@@ -26,6 +26,7 @@ from pandas.testing import assert_frame_equal
 
 import microcosm.build.us_runtime.acs_income_universe as universe_module
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
+import microcosm.build.us_runtime.immigration as immigration_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
@@ -2750,6 +2751,24 @@ def _canonical_gap_fill_receipt_with_pattern_evidence() -> tuple[
     return receipt, direction_name, key, entity, family, family_targets
 
 
+def test_immigration_pattern_authority_requires_harmonized_evidence() -> None:
+    required, optional = stacked_spine_module._acs_pattern_predictor_authority(
+        entity="person",
+        family_targets=("ssn_card_type", "immigration_status_str"),
+    )
+    immigration = (
+        "__acs_transfer_is_us_citizen",
+        "__acs_transfer_birth_country_code",
+        "__acs_transfer_arrival_year",
+    )
+
+    assert required == (
+        *acs_transfer_module.ACS_PERSON_TRANSFER_PREDICTORS,
+        *immigration,
+    )
+    assert not set(immigration).intersection(optional)
+
+
 def test_gap_fill_validator_accepts_canonical_calibration_evidence() -> None:
     stacked_spine_module.validate_stacked_gap_fill_receipt(
         _canonical_gap_fill_calibration_receipt(),
@@ -3659,6 +3678,59 @@ def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
             invalid_rows=invalid,
             absence_receipts={},
         )
+
+
+def test_immigration_arrival_readiness_accepts_native_acs_yoep_blanks() -> None:
+    producer = next(
+        group.name
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if group.family == "source_operator_immigration"
+    )
+    full_contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[producer]
+    requirement = next(
+        item
+        for item in full_contract.inputs
+        if item.column == "@effective:immigration_acs_arrival"
+    )
+    contract = replace(full_contract, inputs=(requirement,), outputs=())
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    acs_rows = person[support_channel_column("person")].astype(str).eq("acs")
+    assert acs_rows.any()
+    person["CIT"] = np.where(acs_rows, 1.0, np.nan)
+    person["YOEP"] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    native_blank = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        native_blank,
+        contract,
+    )
+
+    assert requirement.required_scope == "acs_source"
+    assert requirement.alternatives == (
+        (ProducerInputColumn("person", "YOEP", "column_present"),),
+    )
+    assert unfilled == {requirement: 0}
+    assert invalid == {requirement: 0}
+    assert (
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: "ran",
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts={},
+        )
+        == "ran"
+    )
 
 
 def _typehugq_cross_origin_readiness_fixture() -> tuple[
@@ -5207,6 +5279,112 @@ def test_universe_raw_authority_binds_present_column_with_structural_nulls() -> 
         )
 
 
+def _humanitarian_late_executor_entry_fixture() -> Frame:
+    """Build one exact weighted ACS carrier for every positive manifest draw."""
+
+    controls = immigration_module.us_immigration_controls()
+    positive_draws = tuple(draw for draw in controls.humanitarian if draw.target > 0)
+    profiles = {
+        "paroled_one_year:afghanistan": (200, 2021),
+        "paroled_one_year:ukraine": (164, 2022),
+        "paroled_one_year:nicaragua": (315, 2023),
+        "paroled_one_year:venezuela": (373, 2022),
+        "refugee": (412, 2022),
+        "asylee": (207, 2016),
+        "tps:venezuela": (373, 2021),
+        "tps:el_salvador": (312, 2001),
+        "tps:honduras": (314, 1998),
+        "tps:nicaragua": (315, 1998),
+        "tps:nepal": (229, 2015),
+        "tps:other_designated": (224, 2024),
+    }
+    assert {draw.label for draw in positive_draws} == set(profiles)
+    positive_target = float(sum(draw.target for draw in positive_draws))
+
+    # Stacked assembly assigns half of the ASEC anchor mass to each source.
+    # Make the ACS incoming total equal that allocation so every live ACS
+    # household retains its manifest target as its final resolved weight.
+    asec = _source_frame(
+        household_ids=[11],
+        weights=[2.0 * positive_target],
+        stratum="asec_2024",
+    )
+    asec_person = asec.table("person")
+    asec_person["is_female"] = False
+    asec_person["is_household_head"] = True
+    asec_person["employment_income_before_lsr"] = 10_000.0
+    asec_person["self_employment_income_before_lsr"] = 0.0
+    asec_person["pre_subsidy_rent"] = 12_000.0
+    asec_person["unemployment_compensation"] = 1.0
+    asec_person["is_disabled"] = False
+    for column, value in (
+        ("taxable_interest_income", 100.0),
+        ("tax_exempt_interest_income", 0.0),
+        ("qualified_dividend_income", 50.0),
+        ("non_qualified_dividend_income", 25.0),
+        ("rental_income", 0.0),
+        ("estate_income", 0.0),
+    ):
+        asec_person[column] = value
+    asec_person["PRCITSHP"] = 1.0
+    asec_person["PENATVTY"] = 57.0
+    asec_person["PEINUSYR"] = 0.0
+    asec_person["source_year"] = 2024
+    asec_person["source_household_id"] = asec_person["person_household_id"]
+    asec_person["source_person_id"] = asec_person["person_id"]
+    asec.table("household")["tenure_type"] = "RENTED"
+
+    acs = _source_frame(
+        household_ids=list(range(101, 101 + len(positive_draws))),
+        weights=[float(draw.target) for draw in positive_draws],
+        stratum="acs_2024_1yr",
+    )
+    acs_person = acs.table("person")
+    acs_person["is_female"] = False
+    acs_person["is_household_head"] = True
+    acs_person["employment_income_before_lsr"] = 10_000.0
+    acs_person["WAGP"] = 10_000.0
+    acs_person["self_employment_income_before_lsr"] = 0.0
+    acs_person["SEMP"] = 0.0
+    acs_person["acs_interest_dividend_rental_income"] = 0.0
+    acs_person["CIT"] = 5.0
+    acs_person["POBP"] = [profiles[draw.label][0] for draw in positive_draws]
+    acs_person["YOEP"] = [profiles[draw.label][1] for draw in positive_draws]
+    acs_person["age"] = [12.0, *([60.0] * (len(positive_draws) - 1))]
+    acs_person["source_year"] = 2024
+    acs_person["source_household_id"] = acs_person["person_household_id"]
+    acs_person["source_person_id"] = acs_person["person_id"]
+    acs.table("household")["TYPEHUGQ"] = 1
+    acs.table("household")["tenure_type"] = "RENTED"
+
+    registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
+    initial = _fill_late_contract_surface(
+        assemble_stacked_spine(
+            asec,
+            acs,
+            acs_sample_fraction=1.0,
+            acs_sample_seed=578,
+        ).frame,
+        contracts=(primary_contract,),
+        include_outputs=False,
+    )
+    initial_person = initial.table("person")
+    structural_row = initial_person.index[
+        initial_person[support_channel_column("person")].eq("acs")
+    ][0]
+    initial_person.loc[
+        structural_row,
+        [
+            "WAGP",
+            "SEMP",
+            "employment_income_before_lsr",
+            "self_employment_income_before_lsr",
+        ],
+    ] = np.nan
+    return initial
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -5215,7 +5393,7 @@ def _run_real_late_executor_fixture(
     asec_earnings_delta: float = 0.0,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
-    initial = _late_universe_entry_fixture()
+    initial = _humanitarian_late_executor_entry_fixture()
     initial_person = initial.table("person")
     if asec_earnings_delta:
         asec_row = initial_person.index[
@@ -5281,6 +5459,33 @@ def _run_real_late_executor_fixture(
             include_outputs=True,
         )
         completed_person = completed.table("person")
+        asec_rows = completed_person[support_channel_column("person")].eq("asec")
+        completed_person.loc[asec_rows, ["CIT", "POBP", "YOEP"]] = np.nan
+        completed_person.loc[
+            ~asec_rows,
+            ["PRCITSHP", "PENATVTY", "PEINUSYR"],
+        ] = np.nan
+        completed_person["A_AGE"] = completed_person["age"]
+        completed_person["ssn_card_type"] = np.where(
+            asec_rows,
+            "CITIZEN",
+            "NONE",
+        )
+        completed_person["immigration_status_str"] = np.where(
+            asec_rows,
+            "CITIZEN",
+            "UNDOCUMENTED",
+        )
+        indicator_documented = ~asec_rows & pd.to_numeric(
+            completed_person["POBP"],
+            errors="raise",
+        ).isin((207, 412))
+        completed_person.loc[indicator_documented, "ssn_card_type"] = (
+            "OTHER_NON_CITIZEN"
+        )
+        completed_person.loc[indicator_documented, "immigration_status_str"] = (
+            "LEGAL_PERMANENT_RESIDENT"
+        )
         completed_person["unemployment_compensation"] = np.ones(
             len(completed_person),
             dtype=np.float64,
@@ -5390,10 +5595,55 @@ def _run_real_late_executor_fixture(
             for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
             if spec.stage == "late_transfer"
         }
+        is_immigration_group = (
+            group.entity == "person" and group.family == "source_operator_immigration"
+        )
+        immigration_reconciliation: Mapping[str, object] | None = None
+        imputed_recipient_rows = 1
+        if is_immigration_group:
+            mutable_rows = (
+                frame.table("person")[support_channel_column("person")]
+                .astype(str)
+                .eq("acs")
+                .to_numpy(dtype=bool)
+            )
+            reconciled_person, immigration_reconciliation = (
+                immigration_module.reconcile_us_immigration_humanitarian_transfer(
+                    frame.table("person"),
+                    weights=np.asarray(
+                        frame.resolve_weights("person").values,
+                        dtype=np.float64,
+                    ),
+                    mutable_rows=mutable_rows,
+                    seed=0,
+                    time_period=2024,
+                )
+            )
+            tables = {entity: frame.table(entity) for entity in frame.entities}
+            tables["person"] = reconciled_person
+            frame = Frame(
+                tables,
+                frame.schema,
+                {
+                    entity: frame.weights_for(entity)
+                    for entity in frame.weighted_entities
+                },
+                frame.strata,
+                mass_log=frame.mass_log,
+                metadata=frame.metadata,
+            )
+            imputed_recipient_rows = int(mutable_rows.sum())
         evidence_targets = tuple(
-            target
-            for target in group.targets
-            if f"{group.entity}/{group.family}/{target}" in late_specs
+            dict.fromkeys(
+                (
+                    *(
+                        target
+                        for target in group.targets
+                        if f"{group.entity}/{group.family}/{target}" in late_specs
+                    ),
+                    *(group.targets if is_immigration_group else ()),
+                )
+            )
         )
         model_targets = acs_transfer_module._model_target_names(evidence_targets)
         pattern = AcsTransferPattern(
@@ -5403,7 +5653,7 @@ def _run_real_late_executor_fixture(
             seed=0,
             weight_kind="design",
             donor_rows=1,
-            recipient_rows=1,
+            recipient_rows=imputed_recipient_rows,
             target_regimes=tuple((target, "positive_only") for target in model_targets),
         )
         plain_pattern = replace(pattern, target_regimes=())
@@ -5418,7 +5668,8 @@ def _run_real_late_executor_fixture(
                 seed=pattern.seed,
                 weight_kind=pattern.weight_kind,
                 patterns=(pattern if target in evidence_targets else plain_pattern,),
-                imputed_recipient_rows=1,
+                imputed_recipient_rows=imputed_recipient_rows,
+                reconciliation=immigration_reconciliation,
             )
             for target in group.targets
         )
@@ -5440,15 +5691,15 @@ def _run_real_late_executor_fixture(
         ):
             key = f"{group.entity}/{group.family}/{target}"
             target_receipt: dict[str, object] = {
-                "authorized_null_rows": 1,
-                "imputed_rows": 1,
+                "authorized_null_rows": imputed_recipient_rows,
+                "imputed_rows": imputed_recipient_rows,
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
             if target == "is_pregnant":
-                pregnancy_policy = execution_contract[
-                    "structural_target_policies"
-                ]["is_pregnant"]
+                pregnancy_policy = execution_contract["structural_target_policies"][
+                    "is_pregnant"
+                ]
                 target_receipt["structural_policy"] = {
                     "policy_sha256": pregnancy_policy["sha256"],
                     "source_person_key": "person_source_id",
@@ -5471,9 +5722,13 @@ def _run_real_late_executor_fixture(
                     "final_clone_disagreement_source_persons": 0,
                     "status": "verified",
                 }
-            if key in late_specs:
+            if key in late_specs or is_immigration_group:
                 target_receipt["qrf_pattern_evidence"] = (
                     stacked_spine_module._acs_imputed_pattern_evidence(record)
+                )
+            if is_immigration_group:
+                target_receipt["post_transfer_reconciliation"] = dict(
+                    record.reconciliation or {}
                 )
             target_receipts[key] = target_receipt
         calibrated_keys = sorted(set(target_receipts) & set(late_specs))
@@ -5684,12 +5939,338 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
             stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
         ]["sha256"]
     )
+    immigration_group = result.receipt["post_puf_transfer"]["groups"][
+        "transfer:person/source_operator_immigration"
+    ]
+    immigration_targets = immigration_group["targets"]
+    pair_receipts = [
+        immigration_targets[f"person/source_operator_immigration/{target}"]
+        for target in ("ssn_card_type", "immigration_status_str")
+    ]
+    assert (
+        pair_receipts[0]["post_transfer_reconciliation"]
+        == pair_receipts[1]["post_transfer_reconciliation"]
+    )
+    assert pair_receipts[0]["post_transfer_reconciliation"]["kind"] == (
+        "deterministic_humanitarian_residual_target"
+    )
+    expected_required, _optional = (
+        stacked_spine_module._acs_pattern_predictor_authority(
+            entity="person",
+            family_targets=("ssn_card_type", "immigration_status_str"),
+        )
+    )
+    assert all(
+        tuple(receipt["qrf_pattern_evidence"]["patterns"][0]["predictors"])
+        == expected_required
+        for receipt in pair_receipts
+    )
     stacked_spine_module.validate_stacked_late_producer_receipt(
         result.receipt,
         boundary="executor regression",
         frame=result.frame,
         expected_transition_authority_sha256=result.transition_authority_sha256,
     )
+
+
+def test_immigration_group_receipt_rejects_reordered_harmonized_predictors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    target = transfer["groups"]["transfer:person/source_operator_immigration"][
+        "targets"
+    ]["person/source_operator_immigration/immigration_status_str"]
+    evidence = target["qrf_pattern_evidence"]
+    predictors = evidence["patterns"][0]["predictors"]
+    predictors[-1], predictors[-2] = predictors[-2], predictors[-1]
+    unsigned = dict(evidence)
+    unsigned.pop("sha256")
+    evidence["sha256"] = stacked_spine_module._canonical_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="predictor order is outside canonical"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary="reordered immigration predictor regression",
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("remove", "immigration post-transfer reconciliation is absent"),
+        ("diverge", "paired immigration reconciliation evidence is incomplete"),
+        ("inflated_tolerance", "reconciliation tolerance is non-canonical"),
+        ("zero_target_immutable", "mass against an explicit-zero target"),
+    ),
+)
+def test_immigration_group_receipt_rejects_missing_or_divergent_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    message: str,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    targets = transfer["groups"]["transfer:person/source_operator_immigration"][
+        "targets"
+    ]
+    status = targets["person/source_operator_immigration/immigration_status_str"]
+    reconciliation = status["post_transfer_reconciliation"]
+    if mutation == "remove":
+        status.pop("post_transfer_reconciliation")
+    elif mutation == "diverge":
+        reconciliation["seed"] += 1
+    elif mutation == "inflated_tolerance":
+        reconciliation["floating_tolerance"] *= 1_000_000
+    else:
+        zero_draw = next(
+            draw for draw in reconciliation["draws"].values() if draw["target"] == 0
+        )
+        zero_draw.update(
+            {
+                "immutable_population": 1.0,
+                "achieved_population": 1.0,
+                "absolute_error": 1.0,
+                "immutable_overshoot": 1.0,
+            }
+        )
+
+    with pytest.raises(ValueError, match=message):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary=f"{mutation} immigration reconciliation regression",
+        )
+
+
+def test_immigration_reconciliation_replays_receipt_and_downstream_live_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    immigration_group = transfer["groups"][
+        "transfer:person/source_operator_immigration"
+    ]
+    immigration_targets = immigration_group["targets"]
+    source_receipt = immigration_targets[
+        "person/source_operator_immigration/ssn_card_type"
+    ]["post_transfer_reconciliation"]
+    fabricated_reconciliation = deepcopy(source_receipt)
+    draw = next(
+        item
+        for item in fabricated_reconciliation["draws"].values()
+        if item["target"] > 0
+    )
+    draw["eligible_recipient_population"] += 1.0
+    draw["selected_recipient_population"] += 1.0
+    draw["achieved_population"] += 1.0
+    draw["residual_selection_error"] = 1.0
+    draw["absolute_error"] = 1.0
+    for target in ("ssn_card_type", "immigration_status_str"):
+        key = f"person/source_operator_immigration/{target}"
+        immigration_targets[key]["post_transfer_reconciliation"] = deepcopy(
+            fabricated_reconciliation
+        )
+        transfer["targets"][key] = deepcopy(immigration_targets[key])
+
+    # The forged values remain internally self-consistent; only live replay can
+    # distinguish them from the actually emitted weighted population.
+    stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+        transfer,
+        boundary="fabricated immigration mass receipt-only control",
+    )
+    with pytest.raises(
+        ValueError,
+        match="differs from the live ASEC/ACS weighted population",
+    ):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary="fabricated immigration mass live replay",
+            frame=result.frame,
+        )
+
+    tables = {entity: result.frame.table(entity) for entity in result.frame.entities}
+    person = tables["person"].copy()
+    first_positive_draw = next(
+        draw
+        for draw in immigration_module.us_immigration_controls().humanitarian
+        if draw.target > 0
+    )
+    emitted = immigration_module.us_immigration_humanitarian_draw_mask(
+        result.frame,
+        first_positive_draw,
+        time_period=2024,
+    )
+    person.loc[person.index[np.flatnonzero(emitted)[0]], "immigration_status_str"] = (
+        "LEGAL_PERMANENT_RESIDENT"
+    )
+    tables["person"] = person
+    drifted = Frame(
+        tables,
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata=result.frame.metadata,
+    )
+    with pytest.raises(
+        ValueError,
+        match="differs from the live ASEC/ACS weighted population",
+    ):
+        stacked_spine_module.validate_stacked_late_producer_transition_authority(
+            drifted,
+            result.receipt,
+            boundary="downstream immigration label live replay",
+            expected_transition_authority_sha256=(result.transition_authority_sha256),
+        )
+
+
+def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asec = _source_frame(
+        household_ids=[11],
+        weights=[2.0],
+        stratum="asec_2024",
+    )
+    acs = _source_frame(
+        household_ids=[101, 102],
+        weights=[1.0, 1.0],
+        extra_household_columns={"TYPEHUGQ": 1},
+        stratum="acs_2024_1yr",
+    )
+    base = assemble_stacked_spine(
+        asec,
+        acs,
+        acs_sample_fraction=1.0,
+        acs_sample_seed=578,
+    ).frame
+    person = base.table("person").copy()
+    channel = person[support_channel_column("person")].astype(str)
+    immutable = channel.eq("asec").to_numpy(dtype=bool)
+    mutable = channel.eq("acs").to_numpy(dtype=bool)
+    person["PRCITSHP"] = np.where(immutable, 1.0, np.nan)
+    person["PENATVTY"] = np.where(immutable, 57.0, np.nan)
+    person["PEINUSYR"] = np.where(immutable, 0.0, np.nan)
+    person["CIT"] = np.where(mutable, 5.0, np.nan)
+    person["POBP"] = np.where(mutable, 164.0, np.nan)
+    person["YOEP"] = np.where(mutable, 2022.0, np.nan)
+    person["source_year"] = 2024
+    person["source_household_id"] = person["person_household_id"]
+    person["source_person_id"] = person["person_id"]
+    person["ssn_card_type"] = np.where(
+        immutable,
+        "CITIZEN",
+        "OTHER_NON_CITIZEN",
+    )
+    person["immigration_status_str"] = np.where(
+        immutable,
+        "CITIZEN",
+        "LEGAL_PERMANENT_RESIDENT",
+    )
+    weights = np.asarray(base.resolve_weights("person").values, dtype=np.float64)
+    mutable_weight = float(weights[mutable][0])
+    assert weights[mutable].tolist() == [mutable_weight, mutable_weight]
+    draw = immigration_module.HumanitarianDraw(
+        category="paroled_one_year",
+        origin="ukraine",
+        status="PAROLED_ONE_YEAR",
+        target=mutable_weight,
+        source="https://example.com/u4u",
+    )
+    controls = immigration_module.ImmigrationControls(
+        undocumented=immigration_module.UndocumentedControls(
+            workers=1.0,
+            students=1.0,
+            population_anchor=1.0,
+            sources={
+                "undocumented_workers": "https://example.com/workers",
+                "undocumented_students": "https://example.com/students",
+                "undocumented_population_anchor": "https://example.com/population",
+            },
+        ),
+        humanitarian=(draw,),
+    )
+    reconciled_person, reconciliation = (
+        immigration_module.reconcile_us_immigration_humanitarian_transfer(
+            person,
+            weights=weights,
+            mutable_rows=mutable,
+            seed=0,
+            time_period=2024,
+            controls=controls,
+        )
+    )
+
+    def with_person(frame: Frame, replacement: pd.DataFrame) -> Frame:
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["person"] = replacement
+        return Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
+
+    reconciled = with_person(base, reconciled_person)
+    target_receipt = {
+        "producer_rows": int(immutable.sum()),
+        "authorized_null_rows": int(mutable.sum()),
+        "imputed_rows": int(mutable.sum()),
+        "unmodeled_rows": 0,
+        "residual_null_rows": 0,
+        "post_transfer_reconciliation": reconciliation,
+    }
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "us_immigration_controls",
+        lambda: controls,
+    )
+    stacked_spine_module._validate_immigration_post_transfer_reconciliation(
+        target_receipt,
+        boundary="canonical equal-weight selection",
+        frame=reconciled,
+    )
+
+    swapped_person = reconciled_person.copy()
+    selected_index = swapped_person.index[
+        mutable
+        & swapped_person["immigration_status_str"].eq("PAROLED_ONE_YEAR").to_numpy()
+    ][0]
+    unselected_index = swapped_person.index[
+        mutable
+        & swapped_person["immigration_status_str"]
+        .eq("LEGAL_PERMANENT_RESIDENT")
+        .to_numpy()
+    ][0]
+    swapped_person.loc[selected_index, "immigration_status_str"] = (
+        "LEGAL_PERMANENT_RESIDENT"
+    )
+    swapped_person.loc[unselected_index, "immigration_status_str"] = "PAROLED_ONE_YEAR"
+    swapped = with_person(reconciled, swapped_person)
+    assert float(
+        swapped.resolve_weights("person")
+        .values[
+            swapped_person["immigration_status_str"]
+            .eq("PAROLED_ONE_YEAR")
+            .to_numpy(dtype=bool)
+        ]
+        .sum()
+    ) == pytest.approx(mutable_weight)
+
+    with pytest.raises(
+        ValueError,
+        match="selected mutable-row identities differ from the canonical seeded selection",
+    ):
+        stacked_spine_module._validate_immigration_post_transfer_reconciliation(
+            target_receipt,
+            boundary="equal-weight selection identity swap",
+            frame=swapped,
+        )
 
 
 def test_late_executor_signature_rejects_qrf_regime_evidence_tampering(
@@ -6360,7 +6941,9 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     )
 
 
-def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> None:
+def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> (
+    None
+):
     frame = _post_puf_transfer_fixture()
     person = frame.table("person").copy()
     recipient_rows = person[support_channel_column("person")].astype(str).eq("acs")
@@ -6389,9 +6972,7 @@ def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt()
         n_estimators=10,
     )
 
-    receipt = result.receipt["targets"][
-        "person/model_required_boolean/is_pregnant"
-    ]
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
     assert receipt["authorized_null_rows"] == 0
     assert receipt["imputed_rows"] == 0
     assert receipt["structural_policy"]["status"] == "verified"
@@ -6412,9 +6993,7 @@ def test_post_puf_transfer_refuses_invalid_pregnancy_source_producer() -> None:
         person["is_female"].astype(bool)
         & person["age"].between(15, 44, inclusive="both")
     )
-    donor_ineligible = ineligible & person[
-        support_clone_index_column("person")
-    ].eq(1)
+    donor_ineligible = ineligible & person[support_clone_index_column("person")].eq(1)
     person.loc[person.index[donor_ineligible][0], "is_pregnant"] = True
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
