@@ -1,10 +1,11 @@
 {
   "country": "am",
-  "fingerprint": "13c23570e9376bab359fcd5c59941e905bd05780814c6f266e0eb57a514706d7",
+  "fingerprint": "64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_marz_admin_aggregates",
     "community_assignment_fit",
+    "calibration_reference_inventory",
     "target_profile_coverage",
     "macro_realism_armstat_sna",
     "donor_support_bounds",
@@ -33,17 +34,17 @@
   },
   "resource_hashes": {
     "country_package.json": "d16ce36bc7ea2fac4aaa43036cfea04b2c0f905a2e1682fe64665954bc1cd4b3",
-    "gates.json": "0128ad287b10dd16d23bef2b2b3b9345a2ede126ce023584be92b09b9f6c039d",
-    "geography_spine.json": "a4ef2bc4d8a848a8756161d379bab1ff3f29045f5e4eb6419818f95bbde86600",
+    "gates.json": "ccfb0558558f2b0678637a3bebf0778a25e7a3b999981a0a20bc89f3e7b3d320",
+    "geography_spine.json": "12ee8607f1a222b642cbc251d3fe51c209786b24542084a06249aab8c7ab2fa1",
     "release_contract.json": "86339163c03eaa4d9abea5712546dc63697ea4223b8870d177f23b89a0098dbb",
-    "source_stages.json": "85fdcf882cc13070cabaaa19dab1082f883eae0c8b9bab2605f8101cfb0be943",
-    "spec/bundle.yaml": "a28569fbdf170f5fd85610f8aeda2fb11271a5968da7efb2c6154940434d230f",
+    "source_stages.json": "b18188b36fdb2f542487ddf271b95b12f77c19943c65dc801c4cc2e6af9e24aa",
+    "spec/bundle.yaml": "694759e55693868e6b57779162a56b7e030fe449537be58c91fd03c101329dbd",
     "spec/catalogs.yaml": "4b989afb6abbbed16b17c5f3af155adb7b5f0d1320317b225cf0b995edf15e41",
     "spec/geography.yaml": "4a4ad56ff3f75a068402d333493d63ba7ab01c287827f4afdbdc4b9ca4b45a1a",
-    "spec/sources.yaml": "92c7a5f9b163c75bff65859b32f678727f75cde0e7b7e71487d466779e6da7f5",
+    "spec/sources.yaml": "693ca676929491bae25f168ebdcdf9dc10a48403856c0b6efe025abd37785ea6",
     "spec/spine.yaml": "cab78700b112b71a54be7a7750f45aa04a06cda5f1c84486bf9ddc00efab34dc",
-    "spec/vintages.yaml": "2aa66b45b10a929a2624bd8b36785b81f949a98b08f7d1c1cbb88466eb9a56ae",
-    "target_references.json": "4ea1b2a187be3986a9f919a3c5db93ccc8a87ce9337fcbbfa903b4a9fdcb8ab7"
+    "spec/vintages.yaml": "a45a51bbfb165a0207948f008384b4273e27329adee7aa829ffba722f22014d7",
+    "target_references.json": "b9f1a36cd53d1a8971599b0b668f8f40d14242303c2dbd512a4584fa89549d6f"
   },
   "resources": [
     "spec/bundle.yaml",
@@ -66,16 +67,10 @@
     "armstat_population_by_age_sex_marz",
     "armstat_ilcs_households_by_size_marz",
     "armstat_ilcs_households_by_consumption_band_marz",
-    "armstat_ilcs_households_by_income_band_marz",
     "armstat_lfs_employed_by_age_sex_marz",
     "armstat_lfs_employees_by_industry_sex_marz",
     "armstat_src_payroll_employees_by_industry_sex_marz",
-    "armstat_src_payroll_wages_by_industry_sex_marz",
-    "armstat_average_monthly_nominal_wage",
     "armstat_pensioner_caseload",
-    "armstat_pension_payment_total",
-    "armstat_family_social_benefit_families",
-    "armstat_sna_household_consumption",
-    "armstat_sna_household_disposable_income"
+    "armstat_family_social_benefit_families"
   ]
 }

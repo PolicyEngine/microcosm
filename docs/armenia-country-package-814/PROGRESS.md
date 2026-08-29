@@ -7,8 +7,9 @@ audit tightened its activation boundary. The corrected contract now uses only
 resolver-supported Ledger selectors, keeps amount/validation facts outside the
 solver surface, refuses implicit table fanout, uses a compile-safe one-clone
 geography minimum, and treats the populace-US artifact as to-be-authenticated.
-The earlier focused, shared-spec, and package-wide results below predate this
-correction; focused and authoritative reruns are the next step.
+The corrected focused package/golden/compiler suite passes; the earlier
+shared-spec and package-wide results below predate this correction and their
+authoritative reruns are next.
 
 ## Done
 
@@ -66,11 +67,13 @@ correction; focused and authoritative reruns are the next step.
   moved six income, wage/payment, and national-accounts items into explicit
   deferred harvest sections; added an active calibration-reference-coverage
   blocker; and added real-resolver scalar and ambiguity test coverage.
+- Regenerated the reviewed Armenia golden/spec identity and passed the corrected
+  focused package/golden/compiler suite: **101 passed**.
 
 ## Next
 
-1. Regenerate the Armenia golden/spec identity and rerun the focused,
-   authoritative shared-spec, and requested package-wide verification scopes.
+1. Rerun the authoritative shared-spec and requested package-wide verification
+   scopes against the corrected package.
 2. Chronicle must harvest and cell-expand the eight solver reference families,
    plus the deferred validation facts, source pins/licences, and 2022 geography.
 3. Maintainers must approve any AMD/scale bridge and Armenia gate thresholds

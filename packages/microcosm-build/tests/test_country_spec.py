@@ -23,6 +23,7 @@ from microcosm.build import (
     country_stage_plan,
     load_country_spec,
 )
+from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.build.trace import canonical_json_bytes
 from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
 
@@ -67,6 +68,72 @@ def _nested_mapping_keys(value: object) -> set[str]:
     if isinstance(value, list):
         return {key for child in value for key in _nested_mapping_keys(child)}
     return set()
+
+
+def _armenia_scalar_ledger_fact(
+    reference,
+    ordinal: int,
+    *,
+    dimensions: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Build one synthetic scalar Ledger fact for an AM selector probe."""
+    selector = reference.ledger_selector
+    source_name = str(selector["source_name"])
+    source_measure_id = str(selector["source_measure_id"])
+    geography_level = str(selector["geography_level"])
+    cell_id = f"cell-{ordinal}"
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:am-scalar-{ordinal}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:am-scalar-{ordinal}",
+        "lineage": {
+            "source_record_id": f"ledger_am.scalar_fixture.{reference.name}.{cell_id}",
+            "source_cell_keys": [f"ledger.source_cell.v1:am-{ordinal}"],
+            "source_row_keys": [],
+        },
+        "value": ordinal + 1,
+        "period": {"type": "year", "value": reference.period},
+        "geography": {
+            "level": geography_level,
+            "id": "AM" if geography_level == "country" else "AM-01",
+            "name": "Armenia selector fixture",
+            "vintage": "2022_census",
+        },
+        "entity": {"name": reference.entity},
+        "observed_measure": {
+            "source_name": source_name,
+            "source_table": "Synthetic Armenia scalar selector fixture",
+            "source_measure_id": source_measure_id,
+            "source_concept": f"ledger-am:{source_measure_id}",
+            "unit": "count",
+        },
+        "concept_alignment": {
+            "source_concept": f"ledger-am:{source_measure_id}",
+            "canonical_concept": f"ledger-am:{source_measure_id}",
+            "relation": "exact",
+            "authority": "ledger-am",
+            "legal_vintage": "2024",
+        },
+        "aggregation": {"method": "sum"},
+        "source": {
+            "source_name": source_name,
+            "source_table": "Synthetic Armenia scalar selector fixture",
+            "source_file": "synthetic_am_selector_fixture.jsonl",
+            "url": "https://statbank.armstat.am/",
+            "vintage": "2024",
+        },
+        "dimensions": dimensions or {},
+        "universe_constraints": {
+            "domain": "all households"
+            if reference.entity == "household"
+            else "population"
+        },
+        "layout": {
+            "record_set_id": f"{source_name}.2024.synthetic_scalar_fixture",
+            "groupby_dimension": "fixture_cell",
+            "groupby_value_id": cell_id,
+            "measure_id": source_measure_id,
+        },
+    }
 
 
 def _write_package(root: Path, files: dict[str, dict]) -> Path:
@@ -157,6 +224,7 @@ class TestArmenianPackage:
         spine = spec.geography_spine.geography_spine
         assert spine.stage == "clone_assign_communities"
         assert spine.method == "clone_assign_uniform"
+        assert spine.clones_per_record == 1
         assert spine.geography_level == "community"
         assert spine.code_system == "am_census_community"
         assert spine.vintage == "2022"
@@ -168,21 +236,56 @@ class TestArmenianPackage:
         self, spec
     ) -> None:
         references = {reference.name: reference for reference in spec.target_references}
-        assert {
+        expected_names = {
             "armstat_population_by_age_sex_marz",
+            "armstat_ilcs_households_by_size_marz",
             "armstat_ilcs_households_by_consumption_band_marz",
             "armstat_lfs_employed_by_age_sex_marz",
-            "armstat_src_payroll_wages_by_industry_sex_marz",
+            "armstat_lfs_employees_by_industry_sex_marz",
+            "armstat_src_payroll_employees_by_industry_sex_marz",
             "armstat_pensioner_caseload",
             "armstat_family_social_benefit_families",
-            "armstat_sna_household_consumption",
-        } <= set(references)
+        }
+        assert set(references) == expected_names
+        table_placeholders = expected_names - {
+            "armstat_pensioner_caseload",
+            "armstat_family_social_benefit_families",
+        }
+        assert {
+            references[name].metadata["activation_status"]
+            for name in table_placeholders
+        } == {"requires_harvested_cell_references"}
+        assert {
+            references[name].metadata["activation_status"]
+            for name in expected_names - table_placeholders
+        } == {"requires_harvested_fact_reference"}
         assert all(
             reference.metadata.get("ledger_am_key") for reference in references.values()
         )
         assert {
+            reference.metadata["target_role"] for reference in references.values()
+        } == {"calibration"}
+        assert {
             reference.metadata["measure_kind"] for reference in references.values()
-        } <= {"direct_column", "prepared_column"}
+        } == {"prepared_column"}
+        assert {reference.value_operation for reference in references.values()} == {
+            "identity"
+        }
+        assert {reference.measure for reference in references.values()} <= {
+            "households",
+            "is_employed",
+            "is_employee",
+            "is_payroll_employee",
+            "people",
+            "receives_family_benefit",
+            "receives_pension",
+        }
+        assert {
+            "employment_income",
+            "household_consumption",
+            "household_income",
+            "pension_income",
+        }.isdisjoint(reference.measure for reference in references.values())
         assert not any(
             token in name for name in references for token in ("poverty", "tax")
         )
@@ -203,10 +306,55 @@ class TestArmenianPackage:
             "take_up",
         } & {row.kind for row in spec.resource_rows}
 
+    def test_target_selector_vocabulary_resolves_scalar_facts(self, spec) -> None:
+        references = tuple(spec.target_references)
+        assert all(not reference.ledger_fact_key for reference in references)
+        assert all(not reference.ledger_source_record_id for reference in references)
+        assert all(
+            set(reference.ledger_selector)
+            == {"source_name", "source_measure_id", "geography_level"}
+            for reference in references
+        )
+
+        # Isolate each scalar probe: this exercises the real closed resolver
+        # vocabulary without implying that a table placeholder performs fanout.
+        for ordinal, reference in enumerate(references, start=1):
+            registry = compile_ledger_target_references(
+                [_armenia_scalar_ledger_fact(reference, ordinal)],
+                [reference],
+                country="am",
+            )
+            assert len(registry.specs) == 1
+            assert registry.specs[0].name == reference.name
+            assert registry.specs[0].value > 0
+
+    def test_table_placeholder_refuses_multiple_matching_cells(self, spec) -> None:
+        reference = next(
+            reference
+            for reference in spec.target_references
+            if reference.name == "armstat_population_by_age_sex_marz"
+        )
+        facts = [
+            _armenia_scalar_ledger_fact(
+                reference,
+                1,
+                dimensions={"age_band": "0_to_4", "sex": "female"},
+            ),
+            _armenia_scalar_ledger_fact(
+                reference,
+                2,
+                dimensions={"age_band": "5_to_9", "sex": "female"},
+            ),
+        ]
+
+        with pytest.raises(ValueError, match="matched multiple Ledger facts"):
+            compile_ledger_target_references(facts, [reference], country="am")
+
     def test_gates_use_greenfield_and_weight_health_posture(self, spec) -> None:
         selected = {gate.gate for gate in spec.gates.gates}
         assert {
             "aggregate_admin",
+            "calibration_reference_coverage",
             "macro_realism",
             "per_family_fit",
             "support",
@@ -226,6 +374,15 @@ class TestArmenianPackage:
             "donor_support_bounds",
             "target_profile_coverage",
         } <= active_blockers
+        reference_coverage = [
+            gate
+            for gate in spec.gates.gates
+            if gate.gate == "calibration_reference_coverage"
+        ]
+        assert len(reference_coverage) == 1
+        assert reference_coverage[0].criticality == "release_blocking"
+        assert reference_coverage[0].not_applicable is None
+        assert reference_coverage[0].evidence_absent_blocks is True
 
     def test_release_contract_is_public_and_ordinal_free(self, spec) -> None:
         contract = spec.release_contract

@@ -25,7 +25,7 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
-AM_SPEC_SHA256 = "7763243bcd38aab7091b74c9e0872b2f7ad9c593d9b21dbabbdfdeb239f0f344"
+AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9"
 
 
 @pytest.mark.parametrize(
