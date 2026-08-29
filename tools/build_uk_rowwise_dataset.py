@@ -1,10 +1,13 @@
 """Build a Microcosm UK row-wise local-geography dataset.
 
-This is the narrow build driver for the UK local replacement path. It starts
-from an existing compact Microcosm UK single-year H5, builds or loads the
-official-source geography crosswalk, clones the entity tables, assigns each
-household a finest available geography row, and writes diagnostics that prove
-coverage and weight preservation.
+This is the narrow build driver for the UK local replacement path. Its
+sanctioned input is the microcosm-built national spine — the assembly seam's
+accepted, sha-pinned single-year H5 with its declared weight kind and mass
+log — never the retired certified compact and never anything upstream of the
+seam. The driver clones the entity tables, assigns each household a finest
+available geography row (the ratified OA ladder, or the crosswalk sampler as
+the coverage-check path), and writes diagnostics that prove coverage, weight
+preservation, and per-area support.
 """
 
 from __future__ import annotations
