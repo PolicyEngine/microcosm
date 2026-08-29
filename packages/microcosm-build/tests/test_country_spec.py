@@ -11,7 +11,8 @@ reviewed golden diff, never an accident.
 from __future__ import annotations
 
 import json
-from dataclasses import FrozenInstanceError
+import shutil
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
@@ -376,18 +377,30 @@ class TestArmenianPackage:
         )
 
         # Isolate each scalar probe: this exercises the real closed resolver
-        # vocabulary without implying that a table placeholder performs fanout.
+        # vocabulary through the shape a harvested replacement would carry,
+        # without activating the packaged authoring placeholder.
         for ordinal, reference in enumerate(references, start=1):
+            active_reference = replace(
+                reference,
+                metadata={
+                    key: value
+                    for key, value in reference.metadata.items()
+                    if key != "activation_status"
+                },
+            )
             registry = compile_ledger_target_references(
-                [_armenia_scalar_ledger_fact(reference, ordinal)],
-                [reference],
+                [_armenia_scalar_ledger_fact(active_reference, ordinal)],
+                [active_reference],
                 country="am",
             )
             assert len(registry.specs) == 1
             assert registry.specs[0].name == reference.name
             assert registry.specs[0].value > 0
 
-    def test_table_placeholder_refuses_multiple_matching_cells(self, spec) -> None:
+    @pytest.mark.parametrize("fact_count", [1, 2])
+    def test_table_placeholder_refuses_compilation_before_cell_fanout(
+        self, spec, fact_count
+    ) -> None:
         reference = next(
             reference
             for reference in spec.target_references
@@ -406,8 +419,10 @@ class TestArmenianPackage:
             ),
         ]
 
-        with pytest.raises(ValueError, match="matched multiple Ledger facts"):
-            compile_ledger_target_references(facts, [reference], country="am")
+        with pytest.raises(ValueError, match="non-executable placeholder"):
+            compile_ledger_target_references(
+                facts[:fact_count], [reference], country="am"
+            )
 
     def test_gates_use_greenfield_and_weight_health_posture(self, spec) -> None:
         selected = {gate.gate for gate in spec.gates.gates}
@@ -523,6 +538,13 @@ class TestBelgianPackage:
         assert commune.metadata["geography_vintage"] == "nis_2025"
         assert commune.ledger_selector["geography_vintage"] == "nis_2025"
         assert commune.metadata["criticality"] == "diagnostic"
+        assert {
+            by_name[name].metadata["activation_status"]
+            for name in {
+                "statbel_population_by_age_sex_region",
+                "statbel_fiscal_income_by_commune",
+            }
+        } == {"requires_harvested_cell_references"}
 
         payload = json.loads(
             (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
@@ -533,7 +555,9 @@ class TestBelgianPackage:
             _nested_mapping_keys(payload["target_references"])
         )
 
-    def test_target_selectors_match_the_chronicle_fact_vocabulary(self, spec) -> None:
+    def test_target_selectors_declare_the_intended_chronicle_vocabulary(
+        self, spec
+    ) -> None:
         references = {reference.name: reference for reference in spec.target_references}
         expected = {
             "statbel_population_by_age_sex_region": (
@@ -542,7 +566,7 @@ class TestBelgianPackage:
                 "calendar_year",
                 2023,
                 "nuts1",
-                "NUTS_2024",
+                "nuts1_2025",
             ),
             "statbel_fiscal_income_by_commune": (
                 "statbel_fiscal_income",
@@ -639,9 +663,114 @@ class TestBelgianPackage:
             if reference.metadata["target_role"] == "calibration"
         } >= set(profile["required_families"])
 
+    def test_target_profile_tiers_and_roles_are_declaration_only(self, spec) -> None:
+        assert all(reference.tolerance is None for reference in spec.target_references)
+        description = json.loads(
+            (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
+                encoding="utf-8"
+            )
+        )["description"]
+        assert "validated declaration metadata only" in description
+        assert "does not yet wire them into runtime calibration" in description
+        assert "current Chronicle Belgian catalog does not satisfy" in description
+        assert "#264" in description
+        assert "Declaration-only intended Belgian gate posture" in spec.gates.policy
+        assert "not implemented here" in spec.gates.policy
+
+    @pytest.mark.parametrize(
+        ("reference_name", "aliases"),
+        [
+            (
+                "statbel_population_by_age_sex_region",
+                ("be_nuts1_2025", "nuts1_2025", "2025_nuts1"),
+            ),
+            (
+                "statbel_fiscal_income_by_commune",
+                ("be_nis_2025", "nis_2025", "2025_nis"),
+            ),
+        ],
+    )
+    def test_subnational_targets_accept_only_declared_typed_vintage_aliases(
+        self, tmp_path, reference_name, aliases
+    ) -> None:
+        for index, alias in enumerate(aliases):
+            package_dir = tmp_path / f"case-{index}" / "be"
+            shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+            target_path = package_dir / "target_references.json"
+            payload = json.loads(target_path.read_text(encoding="utf-8"))
+            reference = next(
+                row
+                for row in payload["target_references"]
+                if row["name"] == reference_name
+            )
+            reference["ledger_selector"]["geography_vintage"] = alias
+            reference["metadata"]["geography_vintage"] = alias
+            target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            loaded = load_country_spec(package_dir)
+            loaded_reference = next(
+                row for row in loaded.target_references if row.name == reference_name
+            )
+            assert loaded_reference.ledger_selector["geography_vintage"] == alias
+
+    @pytest.mark.parametrize(
+        ("reference_name", "invalid_vintage"),
+        [
+            ("statbel_population_by_age_sex_region", "NUTS_2024"),
+            ("statbel_fiscal_income_by_commune", "nis_2024"),
+        ],
+    )
+    def test_subnational_targets_refuse_vintages_outside_typed_registry(
+        self, tmp_path, reference_name, invalid_vintage
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        target_path = package_dir / "target_references.json"
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
+        reference = next(
+            row for row in payload["target_references"] if row["name"] == reference_name
+        )
+        reference["ledger_selector"]["geography_vintage"] = invalid_vintage
+        reference["metadata"]["geography_vintage"] = invalid_vintage
+        target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="not an exact typed authority alias"):
+            load_country_spec(package_dir)
+
+    def test_subnational_target_requires_a_typed_geography_layer(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        target_path = package_dir / "target_references.json"
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
+        reference = payload["target_references"][0]
+        reference["ledger_selector"]["geography_level"] = "province"
+        target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="does not declare it"):
+            load_country_spec(package_dir)
+
+    @pytest.mark.parametrize(
+        "reference_name",
+        [
+            "statbel_population_by_age_sex_region",
+            "statbel_fiscal_income_by_commune",
+        ],
+    )
+    def test_multicell_be_placeholders_cannot_compile_before_fanout(
+        self, spec, reference_name
+    ) -> None:
+        reference = next(
+            row for row in spec.target_references if row.name == reference_name
+        )
+
+        with pytest.raises(ValueError, match="non-executable placeholder"):
+            compile_ledger_target_references([], [reference], country="be")
+
     def test_gates_select_no_incumbent_comparison(self, spec) -> None:
         selected = {gate.gate for gate in spec.gates.gates}
-        assert "parity" not in selected  # no incumbent: oracles replace it
+        assert "parity" not in selected  # no incumbent; #264 remains separate
         assert "export_surface" not in selected
         assert "per_family_fit" in selected
         assert "formula_owned_export" in selected
@@ -1553,6 +1682,72 @@ class TestRefusals:
         package_dir = _write_package(tmp_path, files)
 
         with pytest.raises(ValueError, match="does not match basis period"):
+            load_country_spec(package_dir)
+
+    @pytest.mark.parametrize(
+        ("reference_period", "basis_period"),
+        [
+            ("academic_year_2023_24", "ay2023_24"),
+            ("ay_2023_24", "academic-year-2023-2024"),
+            ("academic_year_1999_00", "ay1999_2000"),
+        ],
+    )
+    def test_schema2_target_profile_uses_shared_academic_period_semantics(
+        self, tmp_path, reference_period, basis_period
+    ) -> None:
+        files = _package_with_schema2_targets()
+        reference = files["target_references.json"]["target_references"][0]
+        reference["period"] = reference_period
+        reference["ledger_selector"]["period_type"] = "academic_year"
+        basis = files["target_references.json"]["target_profile"]["basis_periods"][
+            "population_2023"
+        ]
+        basis["period"] = basis_period
+        basis["fact_period_type"] = "academic_year"
+        package_dir = _write_package(tmp_path, files)
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.target_references[0].period == reference_period
+
+    @pytest.mark.parametrize(
+        ("reference_period", "basis_period"),
+        [
+            ("academic_year_2023_24", "ay2023_25"),
+            ("academic_year_2023_24", "ay2023_04"),
+            ("academic_year_2023_24", "ay2023"),
+            ("academic_year_2023_25", "academic_year_2023_25"),
+        ],
+    )
+    def test_schema2_target_profile_preserves_academic_period_range_end(
+        self, tmp_path, reference_period, basis_period
+    ) -> None:
+        files = _package_with_schema2_targets()
+        reference = files["target_references.json"]["target_references"][0]
+        reference["period"] = reference_period
+        reference["ledger_selector"]["period_type"] = "academic_year"
+        basis = files["target_references.json"]["target_profile"]["basis_periods"][
+            "population_2023"
+        ]
+        basis["period"] = basis_period
+        basis["fact_period_type"] = "academic_year"
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="does not match basis period"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_refuses_typed_period_kind_drift(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_references"][0]["period"] = "ay2023_24"
+        basis = files["target_references.json"]["target_profile"]["basis_periods"][
+            "population_2023"
+        ]
+        basis["period"] = "academic_year_2023_24"
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="implies period type 'academic_year'"):
             load_country_spec(package_dir)
 
     def test_schema2_target_profile_refuses_fact_period_type_drift(

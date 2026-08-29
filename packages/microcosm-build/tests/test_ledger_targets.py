@@ -705,6 +705,109 @@ def test__given_equivalent_exact_period_labels__then_target_period_is_used(
     assert spec.period == reference_period
 
 
+@pytest.mark.parametrize(
+    ("reference_period", "fact_period"),
+    [
+        ("academic_year_2023_24", "ay2023_24"),
+        ("ay_2023_24", "academic-year-2023-2024"),
+        ("academic_year_1999_00", "ay1999_2000"),
+    ],
+)
+def test__given_equivalent_academic_period_labels__then_exact_match_uses_shared_parser(
+    reference_period, fact_period
+) -> None:
+    fact = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    fact["period"] = {"type": "academic_year", "value": fact_period}
+    reference = LedgerTargetReference(
+        name="academic-year total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "period_type": "academic_year",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=reference_period,
+        family="irs_soi",
+        period_match_policy="exact",
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="us")
+
+    (spec,) = registry.specs
+    assert spec.period == reference_period
+
+
+@pytest.mark.parametrize(
+    ("reference_period", "fact_period"),
+    [
+        ("academic_year_2023_24", "ay2023_25"),
+        ("academic_year_2023_24", "ay2023_04"),
+        ("academic_year_2023_24", "ay2023"),
+        ("academic_year_2023_25", "academic_year_2023_25"),
+    ],
+)
+@pytest.mark.parametrize(
+    "resolution_route", ["selector", "ledger_fact_key", "ledger_source_record_id"]
+)
+def test_exact_academic_periods_do_not_discard_the_range_end(
+    reference_period, fact_period, resolution_route
+) -> None:
+    fact = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    fact["period"] = {"type": "academic_year", "value": fact_period}
+    identifiers = (
+        {}
+        if resolution_route == "selector"
+        else {
+            resolution_route: (
+                fact["aggregate_fact_key"]
+                if resolution_route == "ledger_fact_key"
+                else fact["lineage"]["source_record_id"]
+            )
+        }
+    )
+    reference = LedgerTargetReference(
+        name="academic-year total",
+        **identifiers,
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "period_type": "academic_year",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=reference_period,
+        period_match_policy="exact",
+    )
+
+    with pytest.raises(ValueError, match="exact (target )?period"):
+        compile_ledger_target_references([fact], [reference], country="us")
+
+
+@pytest.mark.parametrize(
+    "value_operation",
+    ["calendar_year_average", "latest_plateau"],
+)
+def test__given_exact_period_with_subperiod_operation__then_reference_is_refused(
+    value_operation,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="does not support value_operation",
+    ):
+        LedgerTargetReference(
+            name="unsupported exact aggregate",
+            ledger_selector={"source_name": "official_series"},
+            value_operation=value_operation,
+            entity="person",
+            measure="people",
+            period=2025,
+            period_match_policy="exact",
+        )
+
+
 def test__given_equivalent_exact_period_label__then_period_type_still_matches() -> None:
     fact = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
     fact["period"] = {"type": "calendar_year", "value": "tax_year_2023"}
@@ -854,6 +957,36 @@ def test__given_period_bearing_groupby_value__then_latest_source_period_is_used(
     )
 
     assert registry.specs[0].value == 65_900_000_000
+
+
+@pytest.mark.parametrize(
+    ("layout_field", "older_value", "newer_value"),
+    [
+        ("record_set_id", "irs_soi.ty2022.table_1_1", "irs_soi.ty2023.table_1_2"),
+        ("record_set_id", "irs_soi.ty2022.1", "irs_soi.ty2023.2"),
+        ("groupby_value_id", "1", "2"),
+    ],
+)
+def test_period_normalization_preserves_non_year_numeric_series_identifiers(
+    layout_field, older_value, newer_value
+) -> None:
+    older = _consumer_fact_row_for_period(2022, value=14_000_000_000_000)
+    newer = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    older["layout"][layout_field] = older_value
+    newer["layout"][layout_field] = newer_value
+    reference = LedgerTargetReference(
+        name="ambiguous source tables",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2023,
+    )
+
+    with pytest.raises(ValueError, match="multiple Ledger facts"):
+        compile_ledger_target_references([older, newer], [reference], country="us")
 
 
 def test__given_academic_year_record_sets__then_latest_source_period_is_used() -> None:
@@ -2497,6 +2630,70 @@ def test_ledger_reference_projection_fact_excluded_by_default():
             [reference],
             country="us",
         )
+
+
+@pytest.mark.parametrize(
+    "identifier_field",
+    ["ledger_fact_key", "ledger_source_record_id"],
+)
+def test_ledger_reference_identifier_cannot_bypass_observed_only_policy(
+    identifier_field,
+) -> None:
+    fact = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:projected-identifier",
+        assertion="source_projection",
+    )
+    identifier = (
+        fact["aggregate_fact_key"]
+        if identifier_field == "ledger_fact_key"
+        else fact["lineage"]["source_record_id"]
+    )
+    reference = LedgerTargetReference(
+        name="identifier-bound observed target",
+        **{identifier_field: identifier},
+        entity="household",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+        period=2023,
+        period_match_policy="exact",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="assertion_policy='observed_only'.*source_projection",
+    ):
+        compile_ledger_target_references([fact], [reference], country="us")
+
+
+@pytest.mark.parametrize(
+    "identifier_field", ["ledger_fact_key", "ledger_source_record_id"]
+)
+@pytest.mark.parametrize("fact_period", [2022, 2023, 2024])
+def test_ledger_reference_identifier_enforces_latest_not_after_policy(
+    identifier_field, fact_period
+) -> None:
+    fact = _consumer_fact_row_for_period(fact_period, value=15_000_000_000_000)
+    identifier = (
+        fact["aggregate_fact_key"]
+        if identifier_field == "ledger_fact_key"
+        else fact["lineage"]["source_record_id"]
+    )
+    reference = LedgerTargetReference(
+        name="identifier-bound latest target",
+        **{identifier_field: identifier},
+        entity="household",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+        period=2023,
+        period_match_policy="latest_not_after",
+    )
+
+    if fact_period > 2023:
+        with pytest.raises(ValueError, match="at or before target period"):
+            compile_ledger_target_references([fact], [reference], country="us")
+    else:
+        registry = compile_ledger_target_references([fact], [reference], country="us")
+        assert registry.specs[0].value == 15_000_000_000_000
 
 
 def test_ledger_reference_projection_fact_allowed_by_policy():

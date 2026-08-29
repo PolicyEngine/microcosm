@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "description": "Belgian calibration and validation references, by reference only. Values and source projections resolve from Chronicle consumer facts at build time. The consumer contract names every target's criticality tier, relative tolerance, basis period, and subnational geography vintage; it never copies a target value from Chronicle, a survey publication, or a validation oracle.",
+  "description": "Belgian calibration and validation schema groundwork, by reference only. Values and source projections would resolve from Chronicle consumer facts at build time, but the current Chronicle Belgian catalog does not satisfy this full selector and period surface. Criticality tiers, relative tolerances, and target_role are validated declaration metadata only: this package does not yet wire them into runtime calibration objectives or release gates. Multi-cell series remain non-executable until Chronicle fanout produces cell-pinned references. No external-oracle implementation from #264 is included. The file never copies a target value from Chronicle, a survey publication, or a validation oracle.",
   "allowed_value_operations": [
     "identity"
   ],
@@ -12,7 +12,7 @@
         "source_measure_id": "people",
         "period_type": "calendar_year",
         "geography_level": "nuts1",
-        "geography_vintage": "NUTS_2024"
+        "geography_vintage": "nuts1_2025"
       },
       "entity": "person",
       "measure": "people",
@@ -21,15 +21,16 @@
       "assertion_policy": "allow_source_projection",
       "period_match_policy": "exact",
       "metadata": {
+        "activation_status": "requires_harvested_cell_references",
         "basis_period": "population_reference_2023",
         "criticality": "release_blocking",
         "criticality_tier": "demography_release",
-        "geography_vintage": "NUTS_2024",
+        "geography_vintage": "nuts1_2025",
         "publisher": "Statbel",
         "series": "Structure of the population: age band by sex by region",
         "target_role": "calibration"
       },
-      "notes": "The demographic anchor is an age-band x sex x NUTS1 count surface. An observation for another year may enter only as a Chronicle source_projection whose fact period is the declared 2023 reference year."
+      "notes": "Non-executable series placeholder for an age-band x sex x NUTS1 count surface. Chronicle must fan this into dimension- and geography-pinned scalar references before compilation. The selector uses the typed NUTS1-2025 authority alias; a differently-vintaged source requires an explicit Chronicle projection/crosswalk. An observation for another year may enter only as a Chronicle source_projection whose fact period is the declared 2023 reference year."
     },
     {
       "name": "statbel_fiscal_income_by_commune",
@@ -47,6 +48,7 @@
       "assertion_policy": "allow_source_projection",
       "period_match_policy": "exact",
       "metadata": {
+        "activation_status": "requires_harvested_cell_references",
         "basis_period": "assessment_income_year_2022",
         "criticality": "diagnostic",
         "criticality_tier": "commune_diagnostic",
@@ -56,7 +58,7 @@
         "series": "Fiscal statistics of income: total net taxable income by municipality",
         "target_role": "calibration"
       },
-      "notes": "The open commune series is diagnostic until the synthetic spine demonstrates adequate support. The selector binds Chronicle's nis_2025 spelling to the spine's 2025 NIS code set, and another code set must be projected and crosswalked in Chronicle rather than partially joined."
+      "notes": "Non-executable series placeholder for commune fiscal-income cells; Chronicle must fan it into one commune-pinned scalar reference per selected cell before compilation. The eventual open commune series is diagnostic until the synthetic spine demonstrates adequate support. The selector binds the typed nis_2025 alias to the spine's 2025 NIS code set, and another code set must be projected and crosswalked in Chronicle rather than partially joined."
     },
     {
       "name": "spf_finances_pit_total",

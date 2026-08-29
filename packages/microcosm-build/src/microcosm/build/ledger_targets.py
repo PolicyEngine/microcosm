@@ -28,6 +28,7 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
 MULTI_FACT_VALUE_OPERATIONS = frozenset(
     ("sum", "calendar_year_average", "latest_plateau", "count_x_mean")
 )
+EXACT_PERIOD_VALUE_OPERATIONS = frozenset(("identity", "sum", "count_x_mean"))
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
 
 
@@ -125,6 +126,18 @@ class LedgerTargetReference:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: period_match_policy="
                 "'exact' requires an explicit target period."
+            )
+        if (
+            self.period_match_policy == "exact"
+            and self.value_operation not in EXACT_PERIOD_VALUE_OPERATIONS
+        ):
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: period_match_policy="
+                f"'exact' does not support value_operation {self.value_operation!r}; "
+                "calendar_year_average and latest_plateau consume subperiod "
+                "series whose selection semantics are not an exact scalar-period "
+                "match. Use latest_not_after or add an explicit subperiod "
+                "materialization contract before activating this reference."
             )
         if not self.entity:
             raise ValueError(
@@ -394,9 +407,30 @@ def compile_ledger_target_references(
     fact_index = _ledger_fact_index(facts)
     specs: list[TargetSpec] = []
     for reference in references:
+        _require_executable_reference(reference)
         resolved = _resolve_reference_fact(reference, fact_index)
         specs.append(target_spec_from_ledger_reference(resolved, reference))
     return TargetRegistry(specs, country=country)
+
+
+def _require_executable_reference(reference: LedgerTargetReference) -> None:
+    """Refuse authoring placeholders until a scalar/fanout reference replaces them.
+
+    Country packages may declare a future target surface before Chronicle has
+    harvested and pinned the corresponding facts.  Those rows are useful schema
+    evidence, but they are not executable selectors: in particular, resolving a
+    multi-cell table through ``identity`` would either depend on accidental
+    singleton input or become ambiguous as soon as the next cell arrived.
+    """
+
+    activation_status = reference.metadata.get("activation_status", "")
+    if activation_status and activation_status != "active":
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} is a non-executable "
+            f"placeholder with activation_status={activation_status!r}. Replace "
+            "it with harvested, cell-pinned references (or a reviewed scalar "
+            "fact reference) before compilation."
+        )
 
 
 def apply_ledger_target_profile(
@@ -532,6 +566,7 @@ def target_spec_from_ledger_reference(
 ) -> TargetSpec:
     """Compile one resolved Ledger fact plus Microcosm mapping into a target."""
 
+    _require_executable_reference(reference)
     facts = fact if isinstance(fact, tuple) else (fact,)
     if not facts:
         raise ValueError(f"Ledger target reference {reference.name!r} has no facts.")
@@ -543,7 +578,7 @@ def target_spec_from_ledger_reference(
         )
     numeric_values = []
     for member in facts:
-        _validate_reference_period(member, reference)
+        _validate_resolved_reference_fact(member, reference)
         numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
@@ -1221,13 +1256,35 @@ def _eligible_selector_matches(
 
 def _assertion_allowed(reference: LedgerTargetReference, fact: object) -> bool:
     assertion = _fact_assertion(fact)
+    if assertion == "observation":
+        return True
     if assertion == "source_projection":
         return reference.assertion_policy == "allow_source_projection"
-    return True
+    return False
+
+
+def _validate_resolved_reference_fact(
+    fact: object,
+    reference: LedgerTargetReference,
+) -> None:
+    """Apply consumer policy after either identifier or selector resolution.
+
+    Selector filtering still uses these predicates to choose an eligible row
+    from a series.  This post-resolution check is the authority: exact keys and
+    source-record identifiers must not bypass the assertion or period policy.
+    """
+
+    _validate_reference_period(fact, reference)
+    if not _assertion_allowed(reference, fact):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} assertion_policy="
+            f"{reference.assertion_policy!r} does not allow resolved fact "
+            f"assertion {_fact_assertion(fact)!r}."
+        )
 
 
 def _validate_reference_period(fact: object, reference: LedgerTargetReference) -> None:
-    """Enforce an explicit exact-period consumer contract after resolution.
+    """Enforce the declared period consumer contract after either resolution path.
 
     An exact-period reference may consume either an observation at that period
     or a Ledger ``source_projection`` whose published fact period is that same
@@ -1237,6 +1294,14 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
     """
 
     if reference.period_match_policy != "exact":
+        if not _not_after_target_period(
+            _period_key(fact), _period_key_from_value(reference.period)
+        ):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r} requires a fact "
+                f"at or before target period {reference.period!r}, but resolved "
+                f"fact period {_at(fact, 'period', 'value')!r}."
+            )
         return
     if not _exact_period_matches(fact, reference):
         raise ValueError(
@@ -1368,15 +1433,9 @@ def _is_period_fragment(value: str) -> bool:
 
 
 def _is_period_token(value: str) -> bool:
-    normalized = value.lower().replace("-", "_")
-    if normalized.startswith("month"):
-        normalized = normalized[len("month") :]
-    if normalized[:2] in {"ty", "cy", "fy", "ay"}:
-        normalized = normalized[2:]
-    parts = normalized.split("_", maxsplit=1)
-    if len(parts) == 2 and all(part.isdigit() for part in parts):
-        return len(parts[0]) == 4 and len(parts[1]) in {1, 2, 4}
-    return normalized.isdigit() and len(normalized) == 4
+    period_key = _period_key_from_value(value)
+    # Source-table numbers such as table_1_2 are identity, not year tokens.
+    return bool(period_key[0]) and 1000 <= period_key[1] // 100 <= 9999
 
 
 def _period_key(fact: object) -> tuple[int, int, str]:
@@ -1388,18 +1447,18 @@ def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> boo
 
     expected_value = reference.period
     actual_value = _at(fact, "period", "value")
-    if not _period_values_semantically_equal(expected_value, actual_value):
+    if not period_values_semantically_equal(expected_value, actual_value):
         return False
 
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
-    expected_type_hint = _period_type_hint(expected_value)
+    expected_type_hint = period_type_hint(expected_value)
     if selector_type and expected_type_hint and selector_type != expected_type_hint:
         return False
     expected_type = selector_type or expected_type_hint
     if expected_type and actual_type != expected_type:
         return False
-    actual_type_hint = _period_type_hint(actual_value)
+    actual_type_hint = period_type_hint(actual_value)
     return not actual_type_hint or actual_type_hint == actual_type
 
 
@@ -1413,76 +1472,98 @@ def _reference_period_partition_key(
     return period_key
 
 
-def _period_values_semantically_equal(left: object, right: object) -> bool:
+def period_values_semantically_equal(left: object, right: object) -> bool:
     """Treat supported typed and scalar spellings of one period as equal."""
 
-    left_key = _period_key_from_value(left)
-    right_key = _period_key_from_value(right)
+    left_key, left_hint, left_range_end = _normalize_period_value(left)
+    right_key, right_hint, right_range_end = _normalize_period_value(right)
     if left_key[0] and right_key[0]:
-        return left_key[:2] == right_key[:2]
+        return left_key[:2] == right_key[:2] and left_range_end == right_range_end
+    if left_hint or right_hint:
+        # Recognized but malformed typed values must not match, even when the
+        # same invalid label appears on both sides of the contract.
+        return False
     return left_key == right_key
 
 
-def _period_type_hint(value: object) -> str:
-    if not isinstance(value, str):
-        return ""
-    normalized = value.lower().replace("-", "_")
-    long_prefixes = (
-        ("tax_year_", "tax_year"),
-        ("calendar_year_", "calendar_year"),
-        ("fiscal_year_", "fiscal_year"),
-        ("academic_year_", "academic_year"),
-        ("month", "month"),
-    )
-    long_hint = next(
-        (
-            period_type
-            for prefix, period_type in long_prefixes
-            if normalized.startswith(prefix)
-        ),
-        "",
-    )
-    if long_hint:
-        return long_hint
-    aliases = {
-        "ty": "tax_year",
-        "cy": "calendar_year",
-        "fy": "fiscal_year",
-        "ay": "academic_year",
-    }
-    alias = normalized[:2]
-    suffix = normalized[2:].lstrip("_")
-    if alias in aliases and suffix[:1].isdigit():
-        return aliases[alias]
-    return ""
+def period_type_hint(value: object) -> str:
+    """Return the period-kind prefix recognized by the shared normalizer."""
+
+    return _normalize_period_value(value)[1]
 
 
 def _period_key_from_value(value: object) -> tuple[int, int, str]:
+    return _normalize_period_value(value)[0]
+
+
+def _normalize_period_value(
+    value: object,
+) -> tuple[tuple[int, int, str], str, int | None]:
+    """Normalize one scalar/typed period spelling once for all consumers.
+
+    Annual aliases (``ty``, ``cy``, ``fy``, and ``ay``) and their long forms
+    share one parser.  A two-part value under an annual prefix is an annual
+    range (for example ``academic_year_2023_24``), while an untyped or
+    ``month``-prefixed ``2023_04`` remains a monthly point. Annual ranges must
+    end in the following year. Keep that explicit end year in the semantic
+    identity: an annual range is not interchangeable with a scalar year.
+    """
+
     label = "" if value is None else str(value)
-    normalized = label.lower().replace("-", "_")
-    if normalized[:2] in {"ty", "cy", "fy"}:
-        normalized = normalized[2:]
-    for prefix in ("month", "tax_year_", "calendar_year_", "fiscal_year_"):
+    normalized = label.strip().lower().replace("-", "_")
+    type_hint = ""
+    long_prefixes = (
+        ("tax_year", "tax_year"),
+        ("calendar_year", "calendar_year"),
+        ("fiscal_year", "fiscal_year"),
+        ("academic_year", "academic_year"),
+        ("month", "month"),
+    )
+    for prefix, period_type in long_prefixes:
         if normalized.startswith(prefix):
-            normalized = normalized[len(prefix) :]
+            suffix = normalized[len(prefix) :].lstrip("_")
+            if suffix[:1].isdigit():
+                normalized = suffix
+                type_hint = period_type
             break
+    if not type_hint:
+        aliases = {
+            "ty": "tax_year",
+            "cy": "calendar_year",
+            "fy": "fiscal_year",
+            "ay": "academic_year",
+        }
+        alias = normalized[:2]
+        suffix = normalized[2:].lstrip("_")
+        if alias in aliases and suffix[:1].isdigit():
+            normalized = suffix
+            type_hint = aliases[alias]
+
     parts = normalized.split("_", maxsplit=1)
     if len(parts) == 2:
         year, suffix = parts
-        if year.isdigit() and suffix.isdigit():
-            if len(suffix) == 4:
-                suffix_value = 99
-            elif len(suffix) <= 2 and int(suffix) <= 12:
-                suffix_value = int(suffix)
-            elif len(suffix) <= 2:
-                suffix_value = 99
-            else:
-                suffix_value = int(suffix)
-            return (1, int(year) * 100 + suffix_value, label)
+        if year.isdigit() and suffix.isdigit() and len(suffix) in {1, 2, 4}:
+            annual_range = type_hint in {
+                "tax_year",
+                "calendar_year",
+                "fiscal_year",
+                "academic_year",
+            } or (not type_hint and (len(suffix) == 4 or int(suffix) > 12))
+            if annual_range:
+                range_end = int(year) + 1
+                expected_suffix = range_end if len(suffix) == 4 else range_end % 100
+                if len(suffix) not in {2, 4} or int(suffix) != expected_suffix:
+                    return (0, 0, label), type_hint, None
+                return (1, int(year) * 100 + 99, label), type_hint, range_end
+            if len(suffix) <= 2 and 1 <= int(suffix) <= 12:
+                return (1, int(year) * 100 + int(suffix), label), type_hint, None
+        return (0, 0, label), type_hint, None
+    if type_hint == "month":
+        return (0, 0, label), type_hint, None
     try:
-        return (1, int(normalized) * 100 + 99, label)
+        return (1, int(normalized) * 100 + 99, label), type_hint, None
     except ValueError:
-        return (0, 0, label)
+        return (0, 0, label), type_hint, None
 
 
 def _prefer_period_candidate(
