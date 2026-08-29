@@ -2,14 +2,13 @@
 
 ## State
 
-The spec-only Armenia package is being reverified after a final independent
-audit tightened its activation boundary. The corrected contract now uses only
+The corrected spec-only Armenia package, Chronicle/rules handoff, changelog,
+golden, and regression coverage are complete. The contract uses only
 resolver-supported Ledger selectors, keeps amount/validation facts outside the
 solver surface, refuses implicit table fanout, uses a compile-safe one-clone
 geography minimum, and treats the populace-US artifact as to-be-authenticated.
-The corrected focused package/golden/compiler suite and authoritative
-shared-spec CI group pass. The earlier package-wide result below predates this
-correction; its authoritative rerun is next.
+The focused package suite, authoritative shared-spec group, and fully
+engine-backed requested package-wide scope all pass.
 
 ## Done
 
@@ -50,14 +49,10 @@ correction; its authoritative rerun is next.
 - Passed the corrected three-file package/golden/compiler suite: **101 passed**.
 - Passed the corrected authoritative `shared-spec` CI group: **1,334 passed, 42
   skipped, 1 warning**.
-- Ran the requested full `packages/microcosm-build` scope: **6,102 passed, 191
-  skipped, 14 failed**. Every failure is a missing-`policyengine-us` error in
-  `test_us_multispine_pool_tool.py` or
-  `test_us_release_head_to_head_scorer.py`; both files are classified
-  engine-only.
-- Reran both engine-only files against the exact cached lock version, with no
-  network access: **202 passed**. This includes and closes all 14 failures from
-  the engine-free package-wide run; no test remains red.
+- Passed the corrected requested `packages/microcosm-build` scope in one fully
+  engine-backed offline run using cached lock-required
+  `policyengine-us==1.819.0`: **6,556 passed, 45 skipped, 2,351 warnings** in
+  3,671.74 seconds. No test failed.
 - Passed full-repository Ruff, `tools/ci_test_groups.py --verify`, and
   `git diff --check`; the repository-root `PROGRESS.md` remains untouched.
 - Completed a final independent contract audit and corrected four issues before
@@ -72,11 +67,11 @@ correction; its authoritative rerun is next.
 
 ## Next
 
-1. Rerun the requested package-wide verification scope against the corrected
-   package.
-2. Chronicle must harvest and cell-expand the eight solver reference families,
+1. Chronicle must harvest and cell-expand the eight solver reference families,
    plus the deferred validation facts, source pins/licences, and 2022 geography.
-3. Maintainers must approve any AMD/scale bridge and Armenia gate thresholds
+2. Maintainers must approve any AMD/scale bridge and Armenia gate thresholds
    before runtime activation.
-4. `populace#263` and `populace#265` must land the shared geography and source
+3. `populace#263` and `populace#265` must land the shared geography and source
    coverage runtime contracts; #814 must decide future `rulespec-am` ownership.
+4. No artifact build, release, publication, push, or PR was performed by this
+   offline spec-only task.

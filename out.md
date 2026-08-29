@@ -6,95 +6,113 @@ Branch: `armenia-country-package-814`
 
 ## Outcome
 
-The third greenfield country package is complete as a schema-valid,
-engine-free walking skeleton. `am/` consumes an authenticated pre-built
-`populace-us` artifact as US donor support, assigns 2022-census-vintage Armenian
-marz from public margins, then declares uniform community cloning within marz.
-No record is represented as Armenian microdata, no rules engine is required,
-and missing facts or runtime bindings fail closed.
+The Armenia package is complete as a schema-valid, spec-only, engine-free
+greenfield contract. It is not represented as an executable build: the exact
+`populace-us` artifact, Armenian facts, generated cell bindings, community
+distribution, gate policy, and shared runtime kernels remain explicit
+prerequisites.
 
-The closed package inventory contains the same six typed resources and five
-generation-zero JSON resources as Belgium. It declares:
+The closed `am/` inventory mirrors Belgium's six typed resources and five
+generation-zero JSON projections. It declares:
 
-- a two-stage donor-load and target-derived marz source contract;
-- the 10-marzes-plus-Yerevan / 71-community geography posture without inventing
-  a code list;
-- 14 Ledger-only target references covering demography, household structure,
-  consumption, labour, earnings, pensions, family benefits, and SNA validation;
-- greenfield aggregate, family-fit, coverage, macro-realism, support, audit,
-  nonzero/nonnegative, ESS, and weight-ratio gates, with unknown Armenia
-  thresholds explicitly non-applicable rather than copied or fabricated;
-- a public 2024 `populace_am_{year}.h5` release contract; and
-- contract-only compiler identities for the unimplemented donor, marz, and
-  community stages, with a deliberate runtime-refusal test.
+- a two-stage load of a to-be-authenticated public `populace-us` artifact and
+  target-derived marz assignment; every record remains a US donor support
+  record and is never described as Armenian microdata;
+- a 2022-census-vintage community spine constrained to the assigned marz, with
+  10 marzes plus Yerevan and 71 consolidated communities documented but no
+  invented code roster;
+- eight Ledger-only, count/indicator calibration authoring contracts spanning
+  demography, household structure, consumption, labour, earnings, pensions,
+  and family benefits;
+- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
+  cell-pinned Ledger references and direct/pre-built candidate bindings before
+  runtime activation;
+- wage/payment, raw-income diagnostic, and national-accounts facts outside the
+  solver manifest until their validation role or AMD-compatible pre-built bridge
+  is enforceable;
+- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
+  support, weight-audit, ESS, and ratio gate declarations, plus active
+  release-blocking reference-coverage/support/output checks; and
+- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
+  dissemination stated and exact ArmStat/donor licence text left as a mandatory
+  verification item.
 
-The accompanying Chronicle handoff has exactly one harvest row per target key.
-Architecture notes preserve both Belgium solver lessons, the permanent holdout
-doctrine, the donor-provenance warning, the `populace#263/#265` dependencies,
-and the unresolved US-dollar-to-AMD amount bridge. A separate TODO records the
-issue-supplied Armenian rule facts for a future Axiom-backed `rulespec-am`.
+`HARVEST.md` has exactly one solver worklist row per live target-reference key,
+plus separate deferred validation/amount, geography, source-authentication, and
+external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
+permanent survey tax-benefit holdouts, the amount/currency boundary,
+`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
+
+Package identity after review:
+
+- CountrySpec fingerprint:
+  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
+- Typed spec SHA-256:
+  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
 
 ## Verification
 
-All verification ran offline with the repository-pinned NumPy/Torch versions.
-The engine-free lanes omitted country engines; the separate engine-only closure
-used the exact lock-required PolicyEngine-US package from the local uv cache.
+All commands ran offline. The package-wide command used the exact lock-required
+`policyengine-us==1.819.0` already present in the local uv cache, so the two
+engine-only test files ran inside the same aggregate rather than failing for a
+missing optional dependency.
+
+Exact requested package-wide command:
+
+```sh
+UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+```
+
+Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
+seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
+and PolicyEngine-US runtime warnings; none is Armenia-specific.
+
+Additional checks:
 
 - Focused package/golden/compiler suite:
   `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
-  — **99 passed** in 28.88 seconds.
+  — **101 passed** in 29.82 seconds.
 - Authoritative `shared-spec` CI group:
   `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
-  — **1,332 passed, 42 skipped** in 421.33 seconds.
-- Requested package-wide scope:
-  `uv run pytest packages/microcosm-build`
-  — **6,102 passed, 191 skipped, 14 failed** in 1,562.36 seconds.
-  All 14 failures were missing-`policyengine-us` imports/metadata in
-  `test_us_multispine_pool_tool.py` and
-  `test_us_release_head_to_head_scorer.py`, the repository's two explicitly
-  engine-only files. No Armenia or shared/spec test failed.
-- Engine-only closure using the exact lock-required
-  `policyengine-us==1.819.0` from the local uv cache:
-  `uv run pytest packages/microcosm-build/tests/test_us_multispine_pool_tool.py packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py -p no:cacheprovider`
-  — **202 passed** in 312.62 seconds. This rerun includes every one of the 14
-  package-wide failures, so no test remains red; no network access was used.
-- `python3 tools/ci_test_groups.py --verify` — **verification=ok** (313 tracked
-  test files).
+  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
 - `ruff check .` — **passed**.
+- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
+  files tracked.
 - `git diff --check` — **passed**.
 
-## Deviations from Belgium
+## Deviations from Belgium and why
 
-1. Armenia v1 reweights a pre-built public US donor artifact instead of loading
-   restricted native SILC records. The current `support_spine.json` vocabulary
-   only describes raw ASEC pool construction, so declaring one here would be
-   false; donor authentication and support coverage live in the source/release
-   contracts.
-2. The package is engine-free. A future `rulespec-am` may enter only through the
-   Frame `RulesEngine` protocol and Axiom adapter; Belgium's active rules leg is
-   not copied.
-3. Marz is target-assigned in its own stage before community cloning, while the
-   typed donor channel honestly remains observed only at country level.
+1. Armenia consumes a pre-built public US donor pool instead of native,
+   restricted SILC. No `support_spine.json` is present because the current
+   vocabulary describes raw ASEC pool construction, not an existing artifact.
+2. Armenia is engine-free. No target, gate, or release file requires
+   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
+   through the Axiom adapter.
+3. Marz is target-assigned before community cloning. The clone factor is the
+   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
+   wait for the 71-to-11 roster and within-marz support evidence.
 4. There is no incumbent, so parity/export/target-surface gates are absent.
-   CEQ and World Bank comparisons remain documentation-only band candidates,
-   and unsupplied national-account and weight-health thresholds are explicit
-   activation blockers.
-5. Armenia's release contract is public, subject to exact ArmStat and donor
-   licence verification; the package contains no invented community roster or
-   fabricated observed value.
+   National accounts back a deferred macro-realism band; CEQ and World Bank
+   estimates remain documentation-only band candidates until harvested.
+5. The live solver manifest contains eight count/indicator series contracts,
+   not guessed scalar cells or AMD amount targets. Those series will expand to
+   the reviewed cell-level profile after Chronicle harvest; the eventual
+   10–16-margin selection is not fabricated in this package.
 
 ## Top five maintainer questions
 
 1. Which immutable `populace-us` revision/file, hash, licence, and column
    inventory certify the donor input?
-2. What reviewed pre-built destination-unit bridge makes US donor amount
-   columns comparable with AMD facts without introducing an engine?
-3. Which exact Statbank, ILCS, LFS, SRC, pension, benefit, and SNA tables/cells
-   define the 2024 Ledger profile and its hierarchies?
-4. What ex-ante Armenia fit, macro-realism, ESS, and weight-ratio thresholds and
-   shared evaluator bindings should activate the currently deferred gates?
-5. What is the authoritative 2022 marz/community roster and distribution, and
-   when will the country-neutral clone/coverage contracts land under
+2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
+   the 2024 profile, and what generated cell-reference/binding artifact owns
+   their fanout?
+3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
+   donor consumption bands and any future amount rows conceptually comparable?
+4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
+   weight-ratio thresholds—and which shared evaluators—activate the deferred
+   gate declarations?
+5. What is the authoritative 2022 marz/community roster and assignment table,
+   and when will the shared geography/source-coverage runtimes land under
    `populace#263/#265`?
 
 No network fetch, push, PR, artifact build, release, or publication was
