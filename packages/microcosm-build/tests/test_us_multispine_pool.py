@@ -1847,6 +1847,7 @@ def _producer_dtype_source_frame() -> Frame:
     person["PRCITSHP"] = [1, 5, 1, 5]
     person["PEINUSYR"] = [0, 24, 0, 24]
     person["PENATVTY"] = [57, 303, 57, 303]
+    person["A_LFSR"] = [1, 0, 1, 0]
     person["A_SPOUSE"] = 0
     person["CAID"] = 2
     person["IHSFLG"] = 2
