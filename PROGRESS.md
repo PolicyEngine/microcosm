@@ -1,3 +1,40 @@
+# Belgian calibration contract, gates, and diagnostic
+
+## State
+
+In progress on 2026-08-29. Repository and lane instructions are loaded, the
+requested branch is confirmed at `e0c41b17`, and the auto-salvage ref
+`c3180e39` is intact. Its contract work is present as working-tree changes and
+is being reviewed before it is folded into properly messaged commits. Discovery
+is under way for the country-agnostic gate battery, Armenia diagnostic
+precedent, and local Belgian build lineage.
+
+## Done
+
+- Read `AGENTS.md`, `CLAUDE.md`, and the GitNexus exploration skill.
+- Confirmed `be-contract-gates-diagnostic` is based on `origin/main` at
+  `e0c41b17` and the recovered WIP modifies the BE target contract,
+  `country_spec.py`, and `ledger_targets.py`; no salvage content was discarded.
+- Confirmed that GitNexus repository resources and query tools are unavailable
+  in this session, so call-flow discovery is proceeding directly from source and
+  tests.
+- Split read-only discovery across gate selection, the BE/Armenia contract and
+  diagnostic machinery, and v02/v05h/v05i artifact provenance.
+- Established from local artifacts that v05i is a held gap-attribution note
+  with no model bundle, while v05h is the latest completed lineage and pins the
+  usable 2025 H5/component results. A comparable 2023-basis current result is
+  therefore unavailable; the scorecard handoff will report the existing 2025
+  aggregates and the period mismatch without running a simulation.
+
+## Next
+
+- Finalize the exact consumer profile schema, selector names, diagnostic input
+  shape, and BE gate registry.
+- Implement and commit the contract, gate, and diagnostic changes as coherent
+  tested steps.
+- Produce bounded current-model aggregate evidence (or an evidence-backed
+  impossibility finding), then write `.lane-inputs/OUT.md`.
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
