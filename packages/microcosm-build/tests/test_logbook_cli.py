@@ -112,13 +112,13 @@ def test_cli_defaults_to_the_ratified_root_paths() -> None:
 
 
 def test_committed_archives_are_scoped_by_country() -> None:
-    # One chain per country: the US pool lineage and the UK migration
-    # chain never share an archive (microcosm#665).
+    # One chain per scope: the US pool lineage, and each UK line under its
+    # ratified scope path (microcosm#665; uk/local opened by #761).
     archives = sorted(
         path.relative_to(ROOT / "logbook").as_posix()
         for path in (ROOT / "logbook").rglob("*.jsonl")
     )
-    assert archives == ["us.jsonl"]
+    assert archives == ["uk/local.jsonl", "us.jsonl"]
     assert (ROOT / "logbook" / "README.md").is_file()
 
 
