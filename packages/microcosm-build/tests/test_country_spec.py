@@ -171,6 +171,65 @@ def _minimal_package(**overrides) -> dict[str, dict]:
     return files
 
 
+def _schema2_target_resource() -> dict[str, object]:
+    return {
+        "country": "xx",
+        "allowed_value_operations": ["identity"],
+        "target_references": [
+            {
+                "name": "population_anchor",
+                "ledger_selector": {
+                    "source_name": "official_population",
+                    "source_measure_id": "people",
+                    "period_type": "calendar_year",
+                    "geography_level": "country",
+                },
+                "entity": "person",
+                "measure": "people",
+                "period": 2023,
+                "family": "demography",
+                "assertion_policy": "allow_source_projection",
+                "period_match_policy": "exact",
+                "metadata": {
+                    "basis_period": "population_2023",
+                    "criticality": "release_blocking",
+                    "criticality_tier": "demography_release",
+                    "publisher": "Official statistics office",
+                    "target_role": "calibration",
+                },
+            }
+        ],
+        "target_profile": {
+            "schema_version": 2,
+            "required_families": ["demography"],
+            "criticality_tiers": {
+                "demography_release": {
+                    "criticality": "release_blocking",
+                    "relative_tolerance": 0.02,
+                    "description": "Population cells.",
+                }
+            },
+            "basis_periods": {
+                "population_2023": {
+                    "period": 2023,
+                    "basis": "reference_date",
+                    "fact_period_type": "calendar_year",
+                    "mismatch_policy": "requires_source_projection",
+                    "description": "Population reference year.",
+                }
+            },
+            "hierarchy_reconciliations": [],
+        },
+    }
+
+
+def _package_with_schema2_targets() -> dict[str, dict]:
+    files = _minimal_package()
+    files["country_package.json"]["resources"].append("target_references.json")
+    files["target_references.json"] = _schema2_target_resource()
+    return files
+
+
 class TestArmenianPackage:
     @pytest.fixture(scope="class")
     def spec(self):
@@ -461,7 +520,124 @@ class TestBelgianPackage:
         by_name = {reference.name: reference for reference in spec.target_references}
         commune = by_name["statbel_fiscal_income_by_commune"]
         assert commune.metadata["nis_vintage"] == "2025"
+        assert commune.metadata["geography_vintage"] == "nis_2025"
+        assert commune.ledger_selector["geography_vintage"] == "nis_2025"
         assert commune.metadata["criticality"] == "diagnostic"
+
+        payload = json.loads(
+            (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
+            _nested_mapping_keys(payload["target_references"])
+        )
+
+    def test_target_selectors_match_the_chronicle_fact_vocabulary(self, spec) -> None:
+        references = {reference.name: reference for reference in spec.target_references}
+        expected = {
+            "statbel_population_by_age_sex_region": (
+                "statbel_population_structure",
+                "people",
+                "calendar_year",
+                2023,
+                "nuts1",
+                "NUTS_2024",
+            ),
+            "statbel_fiscal_income_by_commune": (
+                "statbel_fiscal_income",
+                "taxable_income",
+                "tax_year",
+                2022,
+                "commune",
+                "nis_2025",
+            ),
+            "spf_finances_pit_total": (
+                "spf_finances_pit",
+                "tax_before_withholding",
+                "tax_year",
+                2022,
+                "country",
+                None,
+            ),
+            "onss_employee_contribution_total": (
+                "onss_contributions",
+                "worker_article_17_uncapped_component_contribution",
+                "calendar_year",
+                2022,
+                "country",
+                None,
+            ),
+            "onem_unemployment_caseload": (
+                "onem_rva_unemployment",
+                "receives_unemployment_benefit",
+                "calendar_year",
+                2022,
+                "country",
+                None,
+            ),
+            "nbb_household_disposable_income": (
+                "nbb_national_accounts",
+                "household_disposable_income",
+                "calendar_year",
+                2022,
+                "country",
+                None,
+            ),
+        }
+
+        for name, (
+            source_name,
+            source_measure_id,
+            period_type,
+            period,
+            geography_level,
+            geography_vintage,
+        ) in expected.items():
+            reference = references[name]
+            assert reference.ledger_selector["source_name"] == source_name
+            assert reference.ledger_selector["source_measure_id"] == source_measure_id
+            assert reference.ledger_selector["period_type"] == period_type
+            assert reference.period == period
+            assert reference.period_match_policy == "exact"
+            assert reference.assertion_policy == "allow_source_projection"
+            assert reference.ledger_selector["geography_level"] == geography_level
+            assert (
+                reference.ledger_selector.get("geography_vintage") == geography_vintage
+            )
+
+    def test_target_profile_declares_tiers_and_income_basis(self, spec) -> None:
+        profile = spec.target_profile
+        assert profile["schema_version"] == 2
+        assert tuple(profile["required_families"]) == (
+            "demography",
+            "fiscal_income",
+            "income_tax",
+            "social_security",
+            "caseloads",
+        )
+        tiers = profile["criticality_tiers"]
+        assert tiers["core_fiscal_release"]["relative_tolerance"] == 0.05
+        assert tiers["caseload_release"]["relative_tolerance"] == 0.15
+        assert tiers["validation_only"]["relative_tolerance"] is None
+
+        income_basis = profile["basis_periods"]["assessment_income_year_2022"]
+        assert income_basis["period"] == 2022
+        assert income_basis["fact_period_type"] == "tax_year"
+        assert income_basis["survey_year"] == 2023
+        assert income_basis["income_reference_offset_years"] == -1
+        assert income_basis["mismatch_policy"] == "requires_source_projection"
+
+        references = {reference.name: reference for reference in spec.target_references}
+        assert (
+            references["nbb_household_disposable_income"].metadata["target_role"]
+            == "validation"
+        )
+        assert {
+            reference.family
+            for reference in references.values()
+            if reference.metadata["target_role"] == "calibration"
+        } >= set(profile["required_families"])
 
     def test_gates_select_no_incumbent_comparison(self, spec) -> None:
         selected = {gate.gate for gate in spec.gates.gates}
@@ -1305,6 +1481,126 @@ class TestRefusals:
         }
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="values live in Ledger"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_loads_as_value_free_policy(self, tmp_path) -> None:
+        files = _package_with_schema2_targets()
+        package_dir = _write_package(tmp_path, files)
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.target_profile["schema_version"] == 2
+        assert (
+            spec.target_profile["criticality_tiers"]["demography_release"][
+                "relative_tolerance"
+            ]
+            == 0.02
+        )
+        assert spec.target_references[0].period_match_policy == "exact"
+
+    def test_schema2_target_profile_refuses_invalid_tolerance(self, tmp_path) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_profile"]["criticality_tiers"][
+            "demography_release"
+        ]["relative_tolerance"] = 0.0
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="finite number in \\(0, 1\\]"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_refuses_unknown_reference_tier(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_references"][0]["metadata"][
+            "criticality_tier"
+        ] = "undeclared"
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="unknown criticality_tier"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_refuses_income_offset_drift(self, tmp_path) -> None:
+        files = _package_with_schema2_targets()
+        basis = files["target_references.json"]["target_profile"]["basis_periods"][
+            "population_2023"
+        ]
+        basis["survey_year"] = 2023
+        basis["income_reference_offset_years"] = -1
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="does not equal survey_year"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_refuses_reference_period_drift(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_references"][0]["period"] = 2022
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="does not match basis period"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_refuses_fact_period_type_drift(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_references"][0]["ledger_selector"][
+            "period_type"
+        ] = "tax_year"
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="fact_period_type"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_requires_explicit_projection_policy(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_references"][0]["assertion_policy"] = (
+            "observed_only"
+        )
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="allow_source_projection"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_requires_subnational_vintage_binding(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        reference = files["target_references.json"]["target_references"][0]
+        reference["ledger_selector"]["geography_level"] = "nuts1"
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="same non-empty geography_vintage"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_refuses_subnational_vintage_drift(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        reference = files["target_references.json"]["target_references"][0]
+        reference["ledger_selector"].update(
+            {"geography_level": "nuts1", "geography_vintage": "NUTS_2024"}
+        )
+        reference["metadata"]["geography_vintage"] = "NUTS_2021"
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="same non-empty geography_vintage"):
+            load_country_spec(package_dir)
+
+    def test_schema2_target_profile_requires_every_calibration_family(
+        self, tmp_path
+    ) -> None:
+        files = _package_with_schema2_targets()
+        files["target_references.json"]["target_profile"]["required_families"].append(
+            "income_tax"
+        )
+        package_dir = _write_package(tmp_path, files)
+
+        with pytest.raises(ValueError, match="no calibration reference"):
             load_country_spec(package_dir)
 
     def test_sum_target_reference_roundtrips(self, tmp_path) -> None:

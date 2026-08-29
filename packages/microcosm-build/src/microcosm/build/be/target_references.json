@@ -1,108 +1,228 @@
 {
   "country": "be",
-  "description": "Initial Belgian target references, by reference only — observed values live in Ledger. Source names bind to the ledger-be packages (PolicyEngine/ledger#69); the full profile with criticality tiers and basis-period declarations is the target-profile issue (PolicyEngine/ledger#70). Every reference here names its intended series and publisher so the profile work binds facts without any populace-side value copying.",
-  "allowed_value_operations": ["identity"],
+  "description": "Belgian calibration and validation references, by reference only. Values and source projections resolve from Chronicle consumer facts at build time. The consumer contract names every target's criticality tier, relative tolerance, basis period, and subnational geography vintage; it never copies a target value from Chronicle, a survey publication, or a validation oracle.",
+  "allowed_value_operations": [
+    "identity"
+  ],
   "target_references": [
     {
       "name": "statbel_population_by_age_sex_region",
       "ledger_selector": {
         "source_name": "statbel_population_structure",
-        "geography_level": "nuts1"
+        "source_measure_id": "people",
+        "period_type": "calendar_year",
+        "geography_level": "nuts1",
+        "geography_vintage": "NUTS_2024"
       },
       "entity": "person",
       "measure": "people",
+      "period": 2023,
       "family": "demography",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
       "metadata": {
+        "basis_period": "population_reference_2023",
         "criticality": "release_blocking",
+        "criticality_tier": "demography_release",
+        "geography_vintage": "NUTS_2024",
         "publisher": "Statbel",
-        "series": "Structure of the population: age band by sex by region"
+        "series": "Structure of the population: age band by sex by region",
+        "target_role": "calibration"
       },
-      "notes": "The demographic anchor (age band x sex x NUTS1), mirroring the US demographics posture. Reference-date population; basis period declared by the profile."
+      "notes": "The demographic anchor is an age-band x sex x NUTS1 count surface. An observation for another year may enter only as a Chronicle source_projection whose fact period is the declared 2023 reference year."
     },
     {
       "name": "statbel_fiscal_income_by_commune",
       "ledger_selector": {
         "source_name": "statbel_fiscal_income",
-        "geography_level": "commune"
+        "source_measure_id": "taxable_income",
+        "period_type": "tax_year",
+        "geography_level": "commune",
+        "geography_vintage": "nis_2025"
       },
       "entity": "household",
       "measure": "belgium_pit_taxable_income",
+      "period": 2022,
       "family": "fiscal_income",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
       "metadata": {
+        "basis_period": "assessment_income_year_2022",
         "criticality": "diagnostic",
+        "criticality_tier": "commune_diagnostic",
+        "geography_vintage": "nis_2025",
+        "nis_vintage": "2025",
         "publisher": "Statbel",
         "series": "Fiscal statistics of income: total net taxable income by municipality",
-        "nis_vintage": "2025"
+        "target_role": "calibration"
       },
-      "notes": "The flagship open subnational series. Commune rows start diagnostic-only until the spine demonstrably supports them (the US congressional-district posture, populace#204); geography vintage must match the spine's declared NIS vintage or compilation fails."
+      "notes": "The open commune series is diagnostic until the synthetic spine demonstrates adequate support. The selector binds Chronicle's nis_2025 spelling to the spine's 2025 NIS code set, and another code set must be projected and crosswalked in Chronicle rather than partially joined."
     },
     {
       "name": "spf_finances_pit_total",
       "ledger_selector": {
         "source_name": "spf_finances_pit",
+        "source_measure_id": "tax_before_withholding",
+        "period_type": "tax_year",
         "geography_level": "country"
       },
       "entity": "person",
       "measure": "belgium_pit_federal_and_local_tax_before_withholding",
+      "period": 2022,
       "family": "income_tax",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
       "metadata": {
+        "basis_period": "assessment_income_year_2022",
         "criticality": "release_blocking",
+        "criticality_tier": "core_fiscal_release",
         "publisher": "SPF Finances / Statbel",
-        "series": "Personal income tax: assessed total"
+        "series": "Personal income tax: assessed total",
+        "target_role": "calibration"
       },
-      "notes": "National PIT aggregate against the Axiom-computed assessed liability (rulespec-be federal tax after Article 134 plus Articles 465-468 local additions). Assessment-year vs income-year basis is declared by the profile; a stale-level rerun of the populace#212 lesson is what the projection basis (PolicyEngine/ledger#71) exists to prevent."
+      "notes": "National assessed PIT is compared with the Axiom-computed federal and local liability on the 2022 income-year basis. Assessment-year facts must identify the represented income year in Chronicle; a period mismatch is a projection, never a silent relabeling."
     },
     {
       "name": "onss_employee_contribution_total",
       "ledger_selector": {
         "source_name": "onss_contributions",
+        "source_measure_id": "worker_article_17_uncapped_component_contribution",
+        "period_type": "calendar_year",
         "geography_level": "country"
       },
       "entity": "person",
       "measure": "belgium_worker_article_17_uncapped_component_contribution",
+      "period": 2022,
       "family": "social_security",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
       "metadata": {
+        "basis_period": "calendar_year_2022",
         "criticality": "release_blocking",
+        "criticality_tier": "standard_admin_release",
         "publisher": "ONSS/RSZ",
-        "series": "Employee social-security contributions"
+        "series": "Employee social-security contributions",
+        "target_role": "calibration"
       },
-      "notes": "Worker-side article 17 contributions on the encoded slice; employer-side and capped-regime totals join as the encodings and ledger-be packages grow."
+      "notes": "Worker-side contributions on the encoded slice. Employer-side and capped-regime totals can enter as distinct references when both the engine concepts and Ledger selectors exist."
     },
     {
       "name": "onem_unemployment_caseload",
       "ledger_selector": {
         "source_name": "onem_rva_unemployment",
+        "source_measure_id": "receives_unemployment_benefit",
+        "period_type": "calendar_year",
         "geography_level": "country"
       },
       "entity": "person",
       "measure": "receives_unemployment_benefit",
+      "period": 2022,
       "family": "caseloads",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
       "metadata": {
+        "basis_period": "calendar_year_2022",
         "criticality": "release_blocking",
+        "criticality_tier": "caseload_release",
         "publisher": "ONEM/RVA",
-        "series": "Unemployment benefit recipients"
+        "series": "Unemployment benefit recipients",
+        "target_role": "calibration"
       },
-      "notes": "First caseload family; pensions (SFPD) and the post-2019 regional child-benefit caseloads (per region) are declared with the ledger-be packages and enter through the profile."
+      "notes": "The initial caseload family uses the calendar-year recipient count. Pension and regional child-benefit caseload references can join this family when their Chronicle packages and model mappings land."
     },
     {
       "name": "nbb_household_disposable_income",
       "ledger_selector": {
         "source_name": "nbb_national_accounts",
+        "source_measure_id": "household_disposable_income",
+        "period_type": "calendar_year",
         "geography_level": "country"
       },
       "entity": "household",
       "measure": "household_disposable_income",
+      "period": 2022,
       "family": "national_accounts",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
       "metadata": {
+        "basis_period": "calendar_year_2022",
         "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
         "publisher": "NBB",
-        "series": "Household-sector disposable income (national accounts)"
+        "series": "Household-sector disposable income (national accounts)",
+        "target_role": "validation"
       },
-      "notes": "Validation-tier levels anchor, never hard-calibrated: the concept bridge between survey/fiscal income and national accounts makes exact hits meaningless (the populace#212 levels-sanity lesson); the macro-realism gate reads it as a band."
+      "notes": "Validation-tier level anchor only. The macro-realism gate may use it as a broad band, but neither the exact NBB level nor any survey- or EUROMOD-derived quantity enters the calibration objective."
     }
   ],
   "target_profile": {
-    "schema_version": 1,
+    "schema_version": 2,
+    "required_families": [
+      "demography",
+      "fiscal_income",
+      "income_tax",
+      "social_security",
+      "caseloads"
+    ],
+    "criticality_tiers": {
+      "demography_release": {
+        "criticality": "release_blocking",
+        "relative_tolerance": 0.02,
+        "description": "Population-structure cells: plus or minus 2 percent."
+      },
+      "core_fiscal_release": {
+        "criticality": "release_blocking",
+        "relative_tolerance": 0.05,
+        "description": "Core fiscal totals, including assessed PIT: plus or minus 5 percent."
+      },
+      "standard_admin_release": {
+        "criticality": "release_blocking",
+        "relative_tolerance": 0.1,
+        "description": "Administrative contribution totals: plus or minus 10 percent."
+      },
+      "caseload_release": {
+        "criticality": "release_blocking",
+        "relative_tolerance": 0.15,
+        "description": "Administrative caseload totals: plus or minus 15 percent."
+      },
+      "commune_diagnostic": {
+        "criticality": "diagnostic",
+        "relative_tolerance": 0.1,
+        "description": "Commune fiscal-income cells: plus or minus 10 percent, reported but not release-blocking."
+      },
+      "validation_only": {
+        "criticality": "diagnostic",
+        "relative_tolerance": null,
+        "description": "Validation oracle only; no calibration tolerance."
+      }
+    },
+    "basis_periods": {
+      "population_reference_2023": {
+        "period": 2023,
+        "basis": "reference_date",
+        "fact_period_type": "calendar_year",
+        "mismatch_policy": "requires_source_projection",
+        "description": "Population stock in the BE-SILC 2023 survey year."
+      },
+      "assessment_income_year_2022": {
+        "period": 2022,
+        "basis": "income_year",
+        "fact_period_type": "tax_year",
+        "survey_year": 2023,
+        "income_reference_offset_years": -1,
+        "mismatch_policy": "requires_source_projection",
+        "description": "BE-SILC survey year 2023 carries 2022 incomes; assessed fiscal facts bind by represented income year."
+      },
+      "calendar_year_2022": {
+        "period": 2022,
+        "basis": "calendar_year",
+        "fact_period_type": "calendar_year",
+        "survey_year": 2023,
+        "income_reference_offset_years": -1,
+        "mismatch_policy": "requires_source_projection",
+        "description": "Calendar-year administrative or national-accounts fact aligned to the 2022 income reference year."
+      }
+    },
     "hierarchy_reconciliations": []
   }
 }

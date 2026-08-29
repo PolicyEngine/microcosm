@@ -33,6 +33,7 @@ JSON/YAML spec-engine domains; their interpretation belongs to the compiler.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -819,6 +820,338 @@ def _validate_target_references(
     return tuple(references)
 
 
+def _validate_target_profile(
+    raw: Mapping[str, Any],
+    references: tuple[LedgerTargetReference, ...],
+    *,
+    country: str,
+    geography_spine: GeographySpineManifest | None,
+) -> Mapping[str, Any]:
+    """Validate the versioned consumer-side calibration selection contract.
+
+    Schema 1 remains the historical hierarchy-only profile. Schema 2 adds the
+    policy fields needed to make a target surface auditable without carrying
+    target values: named criticality/tolerance tiers, named basis periods, an
+    exact-period posture, and explicit geography vintages on every
+    subnational selector.
+    """
+
+    profile = raw.get("target_profile", {})
+    if not isinstance(profile, Mapping):
+        raise ValueError("target_references.json: target_profile must be an object.")
+    schema_version = profile.get("schema_version", 1)
+    if schema_version == 1:
+        return _freeze_gate_parameter(profile, path="target_profile")
+    if schema_version != 2:
+        raise ValueError(
+            "target_references.json: target_profile.schema_version must be 1 "
+            f"or 2, got {schema_version!r}."
+        )
+
+    allowed_profile_keys = {
+        "schema_version",
+        "required_families",
+        "criticality_tiers",
+        "basis_periods",
+        "hierarchy_reconciliations",
+    }
+    unknown_profile_keys = sorted(set(profile) - allowed_profile_keys)
+    if unknown_profile_keys:
+        raise ValueError(
+            "target_references.json: target_profile has unknown key(s) "
+            f"{unknown_profile_keys}."
+        )
+
+    raw_families = profile.get("required_families")
+    if not isinstance(raw_families, list) or not raw_families:
+        raise ValueError(
+            "target_references.json: target_profile.required_families must be "
+            "a non-empty list."
+        )
+    required_families = tuple(
+        _require_non_empty_string(
+            family,
+            field_name="required_families entry",
+            context="target_references.json",
+        )
+        for family in raw_families
+    )
+    if len(set(required_families)) != len(required_families):
+        raise ValueError(
+            "target_references.json: target_profile.required_families must be unique."
+        )
+
+    tiers = profile.get("criticality_tiers")
+    if not isinstance(tiers, Mapping) or not tiers:
+        raise ValueError(
+            "target_references.json: target_profile.criticality_tiers must be "
+            "a non-empty object."
+        )
+    normalized_tiers: dict[str, tuple[str, float | None]] = {}
+    for raw_tier_id, raw_tier in tiers.items():
+        tier_id = _require_non_empty_string(
+            raw_tier_id,
+            field_name="criticality tier id",
+            context="target_references.json",
+        )
+        if not isinstance(raw_tier, Mapping):
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} must be "
+                "an object."
+            )
+        unknown_tier_keys = sorted(
+            set(raw_tier) - {"criticality", "relative_tolerance", "description"}
+        )
+        if unknown_tier_keys:
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} has "
+                f"unknown key(s) {unknown_tier_keys}."
+            )
+        criticality = _require_non_empty_string(
+            raw_tier.get("criticality"),
+            field_name="criticality",
+            context=f"criticality tier {tier_id!r}",
+        )
+        if criticality not in ALLOWED_GATE_CRITICALITIES:
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} uses "
+                f"unknown criticality {criticality!r}."
+            )
+        raw_tolerance = raw_tier.get("relative_tolerance")
+        if raw_tolerance is None:
+            tolerance = None
+        elif (
+            isinstance(raw_tolerance, bool)
+            or not isinstance(raw_tolerance, (int, float))
+            or not math.isfinite(float(raw_tolerance))
+            or not 0.0 < float(raw_tolerance) <= 1.0
+        ):
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} "
+                "relative_tolerance must be null or a finite number in (0, 1]."
+            )
+        else:
+            tolerance = float(raw_tolerance)
+        normalized_tiers[tier_id] = (criticality, tolerance)
+
+    basis_periods = profile.get("basis_periods")
+    if not isinstance(basis_periods, Mapping) or not basis_periods:
+        raise ValueError(
+            "target_references.json: target_profile.basis_periods must be a "
+            "non-empty object."
+        )
+    normalized_periods: dict[str, tuple[object, str]] = {}
+    for raw_basis_id, raw_basis in basis_periods.items():
+        basis_id = _require_non_empty_string(
+            raw_basis_id,
+            field_name="basis period id",
+            context="target_references.json",
+        )
+        if not isinstance(raw_basis, Mapping):
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must be an object."
+            )
+        unknown_basis_keys = sorted(
+            set(raw_basis)
+            - {
+                "period",
+                "basis",
+                "fact_period_type",
+                "mismatch_policy",
+                "survey_year",
+                "income_reference_offset_years",
+                "description",
+            }
+        )
+        if unknown_basis_keys:
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} has unknown "
+                f"key(s) {unknown_basis_keys}."
+            )
+        period = raw_basis.get("period")
+        if (
+            period is None
+            or isinstance(period, bool)
+            or not isinstance(period, (int, str))
+        ):
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must declare "
+                "period as an integer or non-empty string."
+            )
+        if isinstance(period, str) and not period.strip():
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must declare "
+                "period as an integer or non-empty string."
+            )
+        _require_non_empty_string(
+            raw_basis.get("basis"),
+            field_name="basis",
+            context=f"basis period {basis_id!r}",
+        )
+        fact_period_type = _require_non_empty_string(
+            raw_basis.get("fact_period_type"),
+            field_name="fact_period_type",
+            context=f"basis period {basis_id!r}",
+        )
+        if raw_basis.get("mismatch_policy") != "requires_source_projection":
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must set "
+                "mismatch_policy='requires_source_projection'."
+            )
+        survey_year = raw_basis.get("survey_year")
+        income_offset = raw_basis.get("income_reference_offset_years")
+        if survey_year is not None or income_offset is not None:
+            if (
+                isinstance(survey_year, bool)
+                or not isinstance(survey_year, int)
+                or isinstance(income_offset, bool)
+                or not isinstance(income_offset, int)
+            ):
+                raise ValueError(
+                    f"target_references.json: basis period {basis_id!r} must "
+                    "declare integer survey_year and "
+                    "income_reference_offset_years together."
+                )
+            try:
+                numeric_period = int(period)
+            except ValueError as error:
+                raise ValueError(
+                    f"target_references.json: basis period {basis_id!r} with "
+                    "an income-reference offset must use a numeric period."
+                ) from error
+            if numeric_period != survey_year + income_offset:
+                raise ValueError(
+                    f"target_references.json: basis period {basis_id!r} period "
+                    f"{period!r} does not equal survey_year {survey_year!r} plus "
+                    f"income_reference_offset_years {income_offset!r}."
+                )
+        normalized_periods[basis_id] = (period, fact_period_type)
+
+    names = [reference.name for reference in references]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            f"target_references.json: duplicate reference name(s) {duplicates}."
+        )
+
+    for reference in references:
+        context = f"target reference {reference.name!r}"
+        role = reference.metadata.get("target_role")
+        if role not in {"calibration", "validation"}:
+            raise ValueError(
+                f"target_references.json: {context} metadata.target_role must be "
+                "'calibration' or 'validation'."
+            )
+        tier_id = reference.metadata.get("criticality_tier", "")
+        if tier_id not in normalized_tiers:
+            raise ValueError(
+                f"target_references.json: {context} names unknown "
+                f"criticality_tier {tier_id!r}."
+            )
+        tier_criticality, tier_tolerance = normalized_tiers[tier_id]
+        if reference.metadata.get("criticality") != tier_criticality:
+            raise ValueError(
+                f"target_references.json: {context} criticality does not match "
+                f"tier {tier_id!r}."
+            )
+        if role == "calibration" and tier_tolerance is None:
+            raise ValueError(
+                f"target_references.json: calibration {context} uses tier "
+                f"{tier_id!r} without a relative tolerance."
+            )
+        if role == "validation" and (
+            tier_criticality != "diagnostic" or tier_tolerance is not None
+        ):
+            raise ValueError(
+                f"target_references.json: validation {context} must use a "
+                "diagnostic tier with no calibration tolerance."
+            )
+
+        basis_id = reference.metadata.get("basis_period", "")
+        if basis_id not in normalized_periods:
+            raise ValueError(
+                f"target_references.json: {context} names unknown basis_period "
+                f"{basis_id!r}."
+            )
+        basis_period, fact_period_type = normalized_periods[basis_id]
+        if str(reference.period) != str(basis_period):
+            raise ValueError(
+                f"target_references.json: {context} period {reference.period!r} "
+                f"does not match basis period {basis_id!r}."
+            )
+        selector_period_type = str(reference.ledger_selector.get("period_type", ""))
+        if selector_period_type != fact_period_type:
+            raise ValueError(
+                f"target_references.json: {context} selector period_type "
+                f"{selector_period_type!r} does not match basis period "
+                f"{basis_id!r} fact_period_type {fact_period_type!r}."
+            )
+        if reference.period_match_policy != "exact":
+            raise ValueError(
+                f"target_references.json: {context} must set "
+                "period_match_policy='exact'; stale observations require an "
+                "explicit Chronicle source_projection."
+            )
+        if reference.assertion_policy != "allow_source_projection":
+            raise ValueError(
+                f"target_references.json: {context} must set "
+                "assertion_policy='allow_source_projection' so an explicitly "
+                "projected fact can satisfy the declared basis period."
+            )
+
+        geography_level = str(reference.ledger_selector.get("geography_level", ""))
+        if geography_level and geography_level not in {"country", "national"}:
+            selector_vintage = str(
+                reference.ledger_selector.get("geography_vintage", "")
+            )
+            metadata_vintage = reference.metadata.get("geography_vintage", "")
+            if not selector_vintage or selector_vintage != metadata_vintage:
+                raise ValueError(
+                    f"target_references.json: subnational {context} must bind the "
+                    "same non-empty geography_vintage in its selector and metadata."
+                )
+            if geography_spine is not None and (
+                geography_level == geography_spine.geography_spine.geography_level
+            ):
+                spine = geography_spine.geography_spine
+                short_code_system = spine.code_system.removeprefix(f"{country}_")
+                accepted_spine_vintages = {
+                    spine.vintage,
+                    f"{short_code_system}_{spine.vintage}",
+                }
+                if selector_vintage not in accepted_spine_vintages:
+                    raise ValueError(
+                        f"target_references.json: {context} geography vintage "
+                        f"{selector_vintage!r} differs from the "
+                        f"{geography_level!r} spine vintage "
+                        f"{spine.vintage!r} under code system "
+                        f"{spine.code_system!r}."
+                    )
+                legacy_nis_vintage = reference.metadata.get("nis_vintage")
+                if legacy_nis_vintage is not None and legacy_nis_vintage not in {
+                    spine.vintage,
+                    selector_vintage,
+                }:
+                    raise ValueError(
+                        f"target_references.json: {context} legacy "
+                        f"nis_vintage {legacy_nis_vintage!r} does not identify "
+                        f"the declared spine vintage {spine.vintage!r}."
+                    )
+
+    calibrated_families = {
+        reference.family
+        for reference in references
+        if reference.metadata.get("target_role") == "calibration"
+    }
+    missing_families = sorted(set(required_families) - calibrated_families)
+    if missing_families:
+        raise ValueError(
+            "target_references.json: target_profile.required_families has no "
+            f"calibration reference for {missing_families}."
+        )
+    return _freeze_gate_parameter(profile, path="target_profile")
+
+
 def _validate_local_target_references(
     raw: Mapping[str, Any],
     *,
@@ -1023,6 +1356,8 @@ class ResolvedCountrySpec:
         support_spine: The support-spine manifest, when declared.
         geography_spine: The geography-spine manifest, when declared.
         target_references: Ledger target references, when declared.
+        target_profile: The validated value-free target selection policy carried
+            by ``target_references.json``.
         gates: The gate selection, when declared.
         release_contract: The release contract, when declared.
         take_up_contract: The constants-era take-up compatibility view. For a
@@ -1043,6 +1378,7 @@ class ResolvedCountrySpec:
     support_spine: SupportSpineManifest | None
     geography_spine: GeographySpineManifest | None
     target_references: tuple[LedgerTargetReference, ...]
+    target_profile: Mapping[str, Any]
     local_target_references: tuple[LedgerTargetReference, ...]
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
@@ -1662,6 +1998,16 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         if "target_references.json" in payloads
         else ()
     )
+    target_profile = (
+        _validate_target_profile(
+            payloads["target_references.json"],
+            target_references,
+            country=declared_country,
+            geography_spine=geography_spine,
+        )
+        if "target_references.json" in payloads
+        else MappingProxyType({})
+    )
     local_target_references = (
         _validate_local_target_references(
             payloads["local_target_references.json"],
@@ -1697,6 +2043,7 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         support_spine=support_spine,
         geography_spine=geography_spine,
         target_references=target_references,
+        target_profile=target_profile,
         local_target_references=local_target_references,
         gates=gates,
         release_contract=release_contract,

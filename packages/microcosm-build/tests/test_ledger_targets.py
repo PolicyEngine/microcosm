@@ -144,6 +144,28 @@ def _consumer_fact_row_for_period(source_period: int, *, value: float):
     )
 
 
+def _exact_agi_reference(**overrides) -> LedgerTargetReference:
+    values = {
+        "name": "exact SOI AGI total",
+        "ledger_selector": {
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "period_type": "tax_year",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        "entity": "tax_unit",
+        "measure": "adjusted_gross_income",
+        "period": 2023,
+        "family": "irs_soi",
+        "period_match_policy": "exact",
+    }
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
 def _monthly_consumer_fact_row(source_period: str, *, value: float):
     normalized_period = source_period.replace("-", "_")
     return _consumer_fact_row(
@@ -641,6 +663,87 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
         spec.metadata["ledger_source_record_id"]
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
     )
+
+
+def test__given_exact_period_policy__then_only_the_target_period_is_used() -> None:
+    registry = compile_ledger_target_references(
+        [
+            _consumer_fact_row_for_period(2022, value=14_000_000_000_000),
+            _consumer_fact_row_for_period(2023, value=15_000_000_000_000),
+        ],
+        [_exact_agi_reference()],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert spec.period == 2023
+    assert spec.metadata["ledger_period_match_policy"] == "exact"
+
+
+def test__given_exact_period_policy__then_stale_observation_is_refused() -> None:
+    with pytest.raises(ValueError, match="exact target period 2023"):
+        compile_ledger_target_references(
+            [_consumer_fact_row_for_period(2022, value=14_000_000_000_000)],
+            [_exact_agi_reference()],
+            country="us",
+        )
+
+
+def test__given_exact_period_projection__then_explicit_projection_is_used() -> None:
+    projection = _consumer_fact_row_for_period(2023, value=15_000_000_000_000)
+    projection["assertion"] = "source_projection"
+    registry = compile_ledger_target_references(
+        [projection],
+        [
+            _exact_agi_reference(
+                assertion_policy="allow_source_projection",
+            )
+        ],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+    assert spec.metadata["ledger_assertion_policy"] == "allow_source_projection"
+    assert spec.metadata["ledger_period_match_policy"] == "exact"
+
+
+def test__given_geography_vintage_selector__then_only_that_vintage_matches() -> None:
+    old_vintage = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:old-vintage",
+        legacy_fact_key="ledger.fact.v1:old-vintage",
+        value=14_000_000_000_000,
+        geography={
+            "level": "country",
+            "id": "0100000US",
+            "name": "United States",
+            "vintage": "2010_census",
+        },
+    )
+    current_vintage = _consumer_fact_row(value=15_000_000_000_000)
+    reference = _exact_agi_reference(
+        ledger_selector={
+            **dict(_exact_agi_reference().ledger_selector),
+            "geography_vintage": "2020_census",
+        }
+    )
+
+    registry = compile_ledger_target_references(
+        [old_vintage, current_vintage],
+        [reference],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert spec.metadata["ledger_selector_geography_vintage"] == "2020_census"
+
+
+def test__given_exact_period_policy_without_period__then_reference_is_refused() -> None:
+    with pytest.raises(ValueError, match="requires an explicit target period"):
+        _exact_agi_reference(period=None)
 
 
 def test__given_period_bearing_groupby_value__then_latest_source_period_is_used() -> (
@@ -1967,6 +2070,27 @@ def test__given_disabled_hierarchy_profile__then_children_are_unchanged() -> Non
     # Then
     assert reconciled.specs[0].value == pytest.approx(30.0)
     assert "hierarchy_reconciliation_rule" not in reconciled.specs[0].metadata
+
+
+def test__given_schema2_profile_without_hierarchy__then_registry_is_unchanged() -> None:
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "be_population",
+                value=11_500_000.0,
+                geography_level="country",
+                geography_id="BE",
+            )
+        ],
+        country="be",
+    )
+
+    result = apply_ledger_target_profile(
+        registry,
+        {"schema_version": 2, "hierarchy_reconciliations": []},
+    )
+
+    assert result is registry
 
 
 def test__given_nonzero_parent_and_zero_children__then_hierarchy_fails() -> None:

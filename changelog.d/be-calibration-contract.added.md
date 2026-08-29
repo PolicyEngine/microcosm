@@ -1,0 +1,1 @@
+Add a value-free Belgian calibration target contract with Chronicle selector pins, explicit BE-SILC income-reference periods, criticality-tier tolerances, exact projection handling, and geography-vintage validation.

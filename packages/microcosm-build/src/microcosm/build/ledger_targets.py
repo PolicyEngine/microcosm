@@ -21,6 +21,7 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 
 SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
 ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
+ALLOWED_PERIOD_MATCH_POLICIES = frozenset(("latest_not_after", "exact"))
 ALLOWED_VALUE_OPERATIONS = frozenset(
     ("identity", "sum", "calendar_year_average", "latest_plateau", "count_x_mean")
 )
@@ -81,6 +82,7 @@ class LedgerTargetReference:
     notes: str = ""
     metadata: Mapping[str, str] = field(default_factory=dict)
     assertion_policy: str = "observed_only"
+    period_match_policy: str = "latest_not_after"
     uprating_index: str | None = None
     uprating_from_period: int | str | None = None
     uprating_to_period: int | str | None = None
@@ -112,6 +114,17 @@ class LedgerTargetReference:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported "
                 f"assertion_policy {self.assertion_policy!r}."
+            )
+        if self.period_match_policy not in ALLOWED_PERIOD_MATCH_POLICIES:
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: unsupported "
+                f"period_match_policy {self.period_match_policy!r}; expected "
+                f"one of {sorted(ALLOWED_PERIOD_MATCH_POLICIES)!r}."
+            )
+        if self.period_match_policy == "exact" and self.period is None:
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: period_match_policy="
+                "'exact' requires an explicit target period."
             )
         if not self.entity:
             raise ValueError(
@@ -403,9 +416,10 @@ def apply_ledger_target_profile(
     if not profile:
         return registry
     schema_version = profile.get("schema_version", 1)
-    if schema_version != 1:
+    if schema_version not in {1, 2}:
         raise ValueError(
-            f"Ledger target profile schema_version must be 1, got {schema_version!r}."
+            "Ledger target profile schema_version must be 1 or 2, got "
+            f"{schema_version!r}."
         )
     result = registry
     for raw_rule in profile.get("hierarchy_reconciliations") or ():
@@ -524,6 +538,7 @@ def target_spec_from_ledger_reference(
         )
     numeric_values = []
     for member in facts:
+        _validate_reference_period(member, reference)
         numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
@@ -912,9 +927,14 @@ def _resolve_reference_fact(
                 f"Ledger fact selector: {dict(reference.ledger_selector)!r}."
             )
         if not eligible_matches:
+            period_requirement = (
+                "at exact target period"
+                if reference.period_match_policy == "exact"
+                else "at or before target period"
+            )
             raise ValueError(
                 f"Ledger target reference {reference.name!r} did not match a "
-                "Ledger fact at or before target period "
+                f"Ledger fact {period_requirement} "
                 f"{reference.period!r} for selector: "
                 f"{dict(reference.ledger_selector)!r}."
             )
@@ -1169,6 +1189,13 @@ def _eligible_selector_matches(
     matches: list[object],
 ) -> list[object]:
     target_period_key = _period_key_from_value(reference.period)
+    if reference.period_match_policy == "exact":
+        return [
+            fact
+            for fact in matches
+            if _period_key(fact) == target_period_key
+            and _assertion_allowed(reference, fact)
+        ]
     return [
         fact
         for fact in matches
@@ -1182,6 +1209,30 @@ def _assertion_allowed(reference: LedgerTargetReference, fact: object) -> bool:
     if assertion == "source_projection":
         return reference.assertion_policy == "allow_source_projection"
     return True
+
+
+def _validate_reference_period(fact: object, reference: LedgerTargetReference) -> None:
+    """Enforce an explicit exact-period consumer contract after resolution.
+
+    An exact-period reference may consume either an observation at that period
+    or a Ledger ``source_projection`` whose published fact period is that same
+    target period. It may not silently substitute an older observation. The
+    projection's source period belongs in Ledger lineage; the consumer still
+    binds the projected fact to the period it estimates.
+    """
+
+    if reference.period_match_policy != "exact":
+        return
+    expected = _period_key_from_value(reference.period)
+    actual = _period_key(fact)
+    if actual != expected:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} requires exact period "
+            f"{reference.period!r}, but resolved fact period "
+            f"{_at(fact, 'period', 'value')!r}. A period mismatch must resolve "
+            "through a Ledger source_projection at the target period, never "
+            "through a silently stale observation."
+        )
 
 
 def _fact_assertion(fact: object) -> str:
@@ -1374,6 +1425,7 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata = dict(reference.metadata)
     metadata["ledger_value_operation"] = reference.value_operation
     metadata["ledger_assertion_policy"] = reference.assertion_policy
+    metadata["ledger_period_match_policy"] = reference.period_match_policy
     for key, value in sorted(reference.ledger_selector.items()):
         if isinstance(value, Mapping):
             continue
@@ -1505,6 +1557,8 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
         return (_str_at(fact, "geography", "level"),)
     if key == "geography_id":
         return (_str_at(fact, "geography", "id"),)
+    if key == "geography_vintage":
+        return (_str_at(fact, "geography", "vintage"),)
     if key == "entity_name":
         return (_str_at(fact, "entity", "name"),)
     if key in {"record_set_id", "layout_record_set_id"}:
