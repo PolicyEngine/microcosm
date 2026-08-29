@@ -2,7 +2,7 @@
 
 ## State
 
-Inputs and method are validated; implementation is next. The checked-out PR
+Inputs, method, and runner are validated; the main solve is next. The checked-out PR
 branch remains untouched. Diagnostic artifacts are confined to the git-excluded
 `_diagnostic/` directory. This journal is mirrored as `PROGRESS.md` only on the
 local side ref `refs/heads/diagnostic-armenia-814-journal`; the mirror is
@@ -32,10 +32,13 @@ created with Git plumbing and never with `git add`.
 - Chose sparse pre-aggregated household member-count columns so the public
   matrix compiler and serializable `TargetSpec` path remain in use without a
   dense 629,640 x 616 DataFrame.
+- Implemented `_diagnostic/run_calibration.py` with strict schema, unit, total,
+  donor-hash, linkage, support, and sparse-matrix validation plus all required
+  DIAGNOSTIC-only artifact writers. The runner passes Python compilation and
+  Ruff checks under the already-synced local environment.
 
 ## Next
 
-- Implement the reproducible compiler/runner and input validation.
 - Compile sparse targets, clone households once per marz, then run the single
   main solve through the APG compatibility entry point with no pruning,
   sampling, value-space calibration, L1, or L2.
