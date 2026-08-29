@@ -150,17 +150,21 @@ F0_IMPLEMENTED_KERNEL_IDS = frozenset(
     }
 )
 
-# UK and BE use these reviewed ids to prove that their shared-core bundle
+# UK, BE, and AM use these reviewed ids to prove that their shared-core bundle
 # shapes resolve through the same compiler.  F0 does not yet bind them into the
-# generic executor: the Belgian implementations are absent, and the existing
-# UK functions have no compiler-owned producer binding or per-kernel
-# implementation attestation.  They therefore close references but must never
-# be presented as executable producer kernels.
+# generic executor: the Belgian and Armenian implementations are absent, and
+# the existing UK functions have no compiler-owned producer binding or
+# per-kernel implementation attestation.  They therefore close references but
+# must never be presented as executable producer kernels.
 F0_CONTRACT_ONLY_KERNEL_IDS = frozenset(
     {
+        "am_community_geography_gate",
+        "assign_am_marz",
         "assign_uk_geography_ladder",
         "be_commune_geography_gate",
+        "clone_assign_communities",
         "clone_assign_communes",
+        "load_populace_us_support_pool",
         "load_uk_national_frame",
         "silc_load",
         "uk_geography_ladder_gate",

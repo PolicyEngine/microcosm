@@ -1,0 +1,76 @@
+{
+  "country": "am",
+  "fingerprint": "64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8",
+  "gate_ids": [
+    "calibration_per_family_fit",
+    "national_and_marz_admin_aggregates",
+    "community_assignment_fit",
+    "calibration_reference_inventory",
+    "target_profile_coverage",
+    "macro_realism_armstat_sna",
+    "donor_support_bounds",
+    "calibration_weights_audit",
+    "exported_nonzero",
+    "nonnegative_columns",
+    "weight_effective_sample_size",
+    "weight_max_to_median_ratio"
+  ],
+  "geography_spine_stage": "clone_assign_communities",
+  "release": {
+    "artifact_repo": "policyengine/populace-am",
+    "builder": "populace-am",
+    "dataset_filename_template": "populace_am_{year}.h5",
+    "required_release_files": [
+      "populace_am_{year}.h5",
+      "populace_am_{year}_calibration.npz",
+      "build_manifest.json",
+      "release_manifest.json",
+      "calibration_diagnostics.json",
+      "source_coverage.json",
+      "demographics.json",
+      "validation_bands.json"
+    ],
+    "staging_repo": "policyengine/populace-am-staging"
+  },
+  "resource_hashes": {
+    "country_package.json": "d16ce36bc7ea2fac4aaa43036cfea04b2c0f905a2e1682fe64665954bc1cd4b3",
+    "gates.json": "ccfb0558558f2b0678637a3bebf0778a25e7a3b999981a0a20bc89f3e7b3d320",
+    "geography_spine.json": "12ee8607f1a222b642cbc251d3fe51c209786b24542084a06249aab8c7ab2fa1",
+    "release_contract.json": "86339163c03eaa4d9abea5712546dc63697ea4223b8870d177f23b89a0098dbb",
+    "source_stages.json": "b18188b36fdb2f542487ddf271b95b12f77c19943c65dc801c4cc2e6af9e24aa",
+    "spec/bundle.yaml": "694759e55693868e6b57779162a56b7e030fe449537be58c91fd03c101329dbd",
+    "spec/catalogs.yaml": "4b989afb6abbbed16b17c5f3af155adb7b5f0d1320317b225cf0b995edf15e41",
+    "spec/geography.yaml": "4a4ad56ff3f75a068402d333493d63ba7ab01c287827f4afdbdc4b9ca4b45a1a",
+    "spec/sources.yaml": "693ca676929491bae25f168ebdcdf9dc10a48403856c0b6efe025abd37785ea6",
+    "spec/spine.yaml": "cab78700b112b71a54be7a7750f45aa04a06cda5f1c84486bf9ddc00efab34dc",
+    "spec/vintages.yaml": "a45a51bbfb165a0207948f008384b4273e27329adee7aa829ffba722f22014d7",
+    "target_references.json": "b9f1a36cd53d1a8971599b0b668f8f40d14242303c2dbd512a4584fa89549d6f"
+  },
+  "resources": [
+    "spec/bundle.yaml",
+    "spec/catalogs.yaml",
+    "spec/geography.yaml",
+    "spec/sources.yaml",
+    "spec/spine.yaml",
+    "spec/vintages.yaml",
+    "gates.json",
+    "geography_spine.json",
+    "release_contract.json",
+    "source_stages.json",
+    "target_references.json"
+  ],
+  "stage_names": [
+    "load_populace_us_support_pool",
+    "assign_am_marz"
+  ],
+  "target_reference_names": [
+    "armstat_population_by_age_sex_marz",
+    "armstat_ilcs_households_by_size_marz",
+    "armstat_ilcs_households_by_consumption_band_marz",
+    "armstat_lfs_employed_by_age_sex_marz",
+    "armstat_lfs_employees_by_industry_sex_marz",
+    "armstat_src_payroll_employees_by_industry_sex_marz",
+    "armstat_pensioner_caseload",
+    "armstat_family_social_benefit_families"
+  ]
+}
