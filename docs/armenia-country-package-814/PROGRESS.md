@@ -7,9 +7,9 @@ audit tightened its activation boundary. The corrected contract now uses only
 resolver-supported Ledger selectors, keeps amount/validation facts outside the
 solver surface, refuses implicit table fanout, uses a compile-safe one-clone
 geography minimum, and treats the populace-US artifact as to-be-authenticated.
-The corrected focused package/golden/compiler suite passes; the earlier
-shared-spec and package-wide results below predate this correction and their
-authoritative reruns are next.
+The corrected focused package/golden/compiler suite and authoritative
+shared-spec CI group pass. The earlier package-wide result below predates this
+correction; its authoritative rerun is next.
 
 ## Done
 
@@ -47,8 +47,9 @@ authoritative reruns are next.
 - Added Armenia to the deterministic country golden, shared-core compile proof,
   contract-only registry closure, spec-only discovery checks, and runtime
   refusal tests.
-- Passed the three focused country/spec files: **99 passed**.
-- Passed the authoritative `shared-spec` CI group: **1,332 passed, 42 skipped**.
+- Passed the corrected three-file package/golden/compiler suite: **101 passed**.
+- Passed the corrected authoritative `shared-spec` CI group: **1,334 passed, 42
+  skipped, 1 warning**.
 - Ran the requested full `packages/microcosm-build` scope: **6,102 passed, 191
   skipped, 14 failed**. Every failure is a missing-`policyengine-us` error in
   `test_us_multispine_pool_tool.py` or
@@ -67,13 +68,12 @@ authoritative reruns are next.
   moved six income, wage/payment, and national-accounts items into explicit
   deferred harvest sections; added an active calibration-reference-coverage
   blocker; and added real-resolver scalar and ambiguity test coverage.
-- Regenerated the reviewed Armenia golden/spec identity and passed the corrected
-  focused package/golden/compiler suite: **101 passed**.
+- Regenerated and reviewed the corrected Armenia golden/spec identity.
 
 ## Next
 
-1. Rerun the authoritative shared-spec and requested package-wide verification
-   scopes against the corrected package.
+1. Rerun the requested package-wide verification scope against the corrected
+   package.
 2. Chronicle must harvest and cell-expand the eight solver reference families,
    plus the deferred validation facts, source pins/licences, and 2022 geography.
 3. Maintainers must approve any AMD/scale bridge and Armenia gate thresholds
