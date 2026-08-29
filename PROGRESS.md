@@ -2,8 +2,8 @@
 
 ## State
 
-The first main solve is complete and confirms that 256 epochs are
-under-converged; one permitted same-method epoch sanity rerun is next. The checked-out PR
+The first main solve is complete and confirms that the default loss cap plus
+256 epochs are under-converged; one permitted same-method sanity rerun is next. The checked-out PR
 branch remains untouched. Diagnostic artifacts are confined to the git-excluded
 `_diagnostic/` directory. This journal is mirrored as `PROGRESS.md` only on the
 local side ref `refs/heads/diagnostic-armenia-814-journal`; the mirror is
@@ -42,12 +42,20 @@ created with Git plumbing and never with `git add`.
   616 x 629,640 matrix stayed sparse CSR with 3,232,526 nonzeros. Final loss was
   0.12182061, but the trajectory was still falling and the worst small LFS cell
   remained 1,131.33% high, so this is not treated as a converged final result.
+- Diagnosed the first pass's loss-cap pathology: 74 of 616 cells started at or
+  past cap 10 (and therefore had no direct gradient), including 51 of 56 Vayots
+  Dzor cells; one cell remained past cap at the end. Preserved all 15 first-pass
+  artifacts under `_diagnostic/attempts/main_256_cap10/`.
+- Added a validated `--target-loss-cap` runner option, cap-census and attempt
+  history reporting, dynamic solver provenance, validation of the excluded
+  industry and alternative-census units/dimensions, and explicit reporting of
+  the start's 8,691,465.96 implied person mass. Compilation and Ruff pass.
 
 ## Next
 
-- Preserve the 256-epoch main artifacts, then perform one same-method 1,024-epoch
-  hyperparameter sanity rerun with no pruning, sampling, value-space
-  calibration, L1, or L2.
+- Perform one same-method 1,024-epoch hyperparameter sanity rerun at cap 100
+  (above the maximum initial scaled miss of about 90.47), with no pruning,
+  sampling, value-space calibration, L1, or L2.
 - Emit fit, weight-health, provenance, decision, and weights artifacts.
 - Verify all outputs and confirm `git status --short` contains no diagnostic
   files.
