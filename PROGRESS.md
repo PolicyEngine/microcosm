@@ -2,7 +2,8 @@
 
 ## State
 
-Inputs, method, and runner are validated; the main solve is next. The checked-out PR
+The first main solve is complete and confirms that 256 epochs are
+under-converged; one permitted same-method epoch sanity rerun is next. The checked-out PR
 branch remains untouched. Diagnostic artifacts are confined to the git-excluded
 `_diagnostic/` directory. This journal is mirrored as `PROGRESS.md` only on the
 local side ref `refs/heads/diagnostic-armenia-814-journal`; the mirror is
@@ -36,12 +37,17 @@ created with Git plumbing and never with `git add`.
   donor-hash, linkage, support, and sparse-matrix validation plus all required
   DIAGNOSTIC-only artifact writers. The runner passes Python compilation and
   Ruff checks under the already-synced local environment.
+- Completed the plain `apg`-entry-point main solve at 256 epochs. The installed
+  package normalized that deprecated alias to Adam/log-weights as expected; the
+  616 x 629,640 matrix stayed sparse CSR with 3,232,526 nonzeros. Final loss was
+  0.12182061, but the trajectory was still falling and the worst small LFS cell
+  remained 1,131.33% high, so this is not treated as a converged final result.
 
 ## Next
 
-- Compile sparse targets, clone households once per marz, then run the single
-  main solve through the APG compatibility entry point with no pruning,
-  sampling, value-space calibration, L1, or L2.
+- Preserve the 256-epoch main artifacts, then perform one same-method 1,024-epoch
+  hyperparameter sanity rerun with no pruning, sampling, value-space
+  calibration, L1, or L2.
 - Emit fit, weight-health, provenance, decision, and weights artifacts.
 - Verify all outputs and confirm `git status --short` contains no diagnostic
   files.
