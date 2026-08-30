@@ -583,9 +583,48 @@ def test_former_parole_survives_lpr_adjustment_without_current_parole() -> None:
     )
 
 
+def test_parole_period_support_straddles_one_year_threshold_stably() -> None:
+    person = _acs_people(count=2048, country=315, entry_year=2023)
+    output = _derive(person)
+    repeated = _derive(person)
+    history = output["immigration_was_paroled"]
+    period = output["immigration_parole_period_years"]
+    short = history & (period < 1)
+    at_least_one_year = history & (period >= 1)
+    current = output["immigration_is_currently_paroled"]
+
+    assert short.any()
+    assert at_least_one_year.any()
+    assert set(period[history].unique()) == {0, 2}
+    assert (period[~history] == 0).all()
+    assert not current[short].any()
+    assert (current <= at_least_one_year).all()
+    np.testing.assert_array_equal(
+        period,
+        repeated["immigration_parole_period_years"],
+    )
+
+    same_year = _derive(person, year=2023)
+    same_year_short = same_year["immigration_was_paroled"] & (
+        same_year["immigration_parole_period_years"] < 1
+    )
+    short_without_lpr = (
+        same_year_short & ~same_year["immigration_is_lawful_permanent_resident"]
+    )
+    assert short_without_lpr.any()
+    assert same_year.loc[short_without_lpr, "immigration_is_currently_paroled"].all()
+
+    adjusted_from_one_year_parole = output[
+        "immigration_adjusted_to_lpr_from_parole_for_at_least_one_year"
+    ]
+    assert adjusted_from_one_year_parole.any()
+    assert not adjusted_from_one_year_parole[short].any()
+    assert (adjusted_from_one_year_parole <= at_least_one_year).all()
+
+
 def test_expired_parole_retains_history_and_event_month() -> None:
-    # A retained two-year grant in 2023 is no longer current in 2026; its
-    # event still belongs to a person's immigration history.
+    # A retained grant in 2023 is no longer current in 2026; its event still
+    # belongs to a person's immigration history regardless of grant length.
     output = _derive(_acs_people(country=315, entry_year=2023), year=2026)
     history = output["immigration_was_paroled"]
 

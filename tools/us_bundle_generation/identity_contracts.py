@@ -208,9 +208,9 @@ def build_seed_site_bindings(
     }
 
     protocol_site_ids = tuple(site.id for site in LEGACY_V1_PROTOCOL.sites)
-    if len(protocol_site_ids) != 92 or set(owners) != set(protocol_site_ids):
+    if len(protocol_site_ids) != 93 or set(owners) != set(protocol_site_ids):
         raise RuntimeError(
-            "legacy-v1 seed owner ledger must cover exactly 92 protocol sites; "
+            "legacy-v1 seed owner ledger must cover exactly 93 protocol sites; "
             f"missing={sorted(set(protocol_site_ids) - owners.keys())!r}, "
             f"extra={sorted(owners.keys() - set(protocol_site_ids))!r}"
         )

@@ -6,7 +6,7 @@
   "country": "us",
   "documentation_sha256": "4795851fb37d5da225a5229e7d786c06d667a63487ef315f541b04cdc5a84ef0",
   "field_usage": {
-    "authored_normative_field_count": 32710,
+    "authored_normative_field_count": 32713,
     "claim_count": 49,
     "claims": [
       {
@@ -544,8 +544,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 388,
-        "pointer_sha256": "e864dbceaa2987a0b9df77d8e74f81a774baeaeb3facf28177bd885a2c7ae6e4",
+        "pointer_count": 391,
+        "pointer_sha256": "7497a6307084fa18e161446ea10f8b3829bee48546f8c66b1f351ec4ea59ed32",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/seed_site_bindings",
@@ -736,8 +736,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1489,
-        "pointer_sha256": "aa533c9cf48dfa16ee82a19c962379499a57f9688b78ccad23b26e65f50213ca",
+        "pointer_count": 1506,
+        "pointer_sha256": "4f1e050413cb26f727d984261eb40466d7b62fe70f16a6ad294becfa9bc1ece3",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -750,8 +750,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 388,
-        "pointer_sha256": "a0a37b39974d53850c713dad850289bdbc0684d31d2e90778724cd4dc9010693",
+        "pointer_count": 391,
+        "pointer_sha256": "b80ddc5f61467e8e44469c8c346c2d5d2b92cea49616c81b4d9c3d3b947b01c3",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_site_bindings",
@@ -772,21 +772,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 43256,
-    "consumed_field_count": 43256,
+    "configuration_field_count": 43279,
+    "consumed_field_count": 43279,
     "generation0_effect_counts": {
       "legacy_behavior": 38072,
-      "no_generation0_effect": 5184
+      "no_generation0_effect": 5207
     },
     "mode_counts": {
-      "compiler_semantic": 28801,
+      "compiler_semantic": 28824,
       "front_end_validation": 346,
       "identity_only": 103,
       "legacy_behavior": 14006
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "0cbfd4342e597cdf84f7820f85d7282d917c1d267e826296d5b9a6ddf2a75fb1",
-    "resolved_binding_field_count": 10546,
+    "pointer_inventory_sha256": "c8dde488985dedc91ccac1c61bfc95c9c492df2f4380baeafeaf8a60fac5ea9c",
+    "resolved_binding_field_count": 10566,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -815,9 +815,9 @@
       "producer_virtual_resources": 73,
       "release_rungs": 5,
       "resolved_references": 402,
-      "seed_owner_bindings": 148,
+      "seed_owner_bindings": 149,
       "seed_owner_rows": 53,
-      "seed_sites": 92,
+      "seed_sites": 93,
       "seed_streams": 14,
       "source_operators": 16,
       "source_stages": 37,
@@ -1533,7 +1533,7 @@
         "expected": {
           "groups": 12,
           "partition": "disjoint and exhaustive",
-          "sites": 92
+          "sites": 93
         },
         "failures": [],
         "observed": {
@@ -1577,6 +1577,7 @@
               "immigration_lpr_status_acquisition_month_within_year",
               "immigration_lpr_status_acquisition_year",
               "immigration_other_lawful_status_support",
+              "immigration_parole_period_at_least_one_year_support",
               "immigration_parole_start_month_within_year",
               "immigration_qualifying_afghan_parole_history_support",
               "immigration_qualifying_ukrainian_parole_history_support",
@@ -1655,7 +1656,7 @@
               "sipp_tip_training_cap"
             ]
           },
-          "sites": 92
+          "sites": 93
         },
         "status": "covered"
       },
@@ -1695,13 +1696,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "7814f71aec096132920f8c6a5758b0581d7b4988134e191a88cc00fb79e5f4e3",
-          "protocol_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33"
+          "map_sha256": "b2d12b697c67c9878242ad1bffbafbfcb85c7275df951901e01f50cf2d7ea9e7",
+          "protocol_sha256": "f808926e18820f2ab35667810f65cffbc735621fff1292efdaf3019a7f48226d"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "7814f71aec096132920f8c6a5758b0581d7b4988134e191a88cc00fb79e5f4e3",
-          "protocol_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33"
+          "map_sha256": "b2d12b697c67c9878242ad1bffbafbfcb85c7275df951901e01f50cf2d7ea9e7",
+          "protocol_sha256": "f808926e18820f2ab35667810f65cffbc735621fff1292efdaf3019a7f48226d"
         },
         "status": "covered"
       },
@@ -1716,7 +1717,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33",
+          "implementation_sha256": "f808926e18820f2ab35667810f65cffbc735621fff1292efdaf3019a7f48226d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1737,7 +1738,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33",
+          "implementation_sha256": "f808926e18820f2ab35667810f65cffbc735621fff1292efdaf3019a7f48226d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1771,12 +1772,12 @@
         ],
         "expected": {
           "relation": "all site fields preserved exactly",
-          "sites": 92
+          "sites": 93
         },
         "failures": [],
         "observed": {
-          "sha256": "ae4f3b3005ed554e86c13ac0f62eb4c0683028773d4de4a9795de02cd7a70e1f",
-          "sites": 92
+          "sha256": "b21c96c32338bf8f93c6c3c6f60549b8cb2afc87e6083dbd6af7ae01e8b16405",
+          "sites": 93
         },
         "status": "covered"
       },
@@ -1791,12 +1792,12 @@
           "compiler_ir.seed_stream_map.sites.owners"
         ],
         "expected": {
-          "bindings": 148,
-          "coverage": "all 92 sites"
+          "bindings": 149,
+          "coverage": "all 93 sites"
         },
         "failures": [],
         "observed": {
-          "bindings": 148
+          "bindings": 149
         },
         "status": "covered"
       },
@@ -2638,7 +2639,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "e97e3103df047113e393f38d33328eca48f51c4b20d3be515a69974d7fdd6af2"
+      "spec_sha256": "b957ba9b441d3f6e0ec9accb3b71928a72a714606491458b93542cd40f671943"
     }
   },
   "report_schema_version": 3,
@@ -2648,7 +2649,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "e97e3103df047113e393f38d33328eca48f51c4b20d3be515a69974d7fdd6af2"
+    "spec_sha256": "b957ba9b441d3f6e0ec9accb3b71928a72a714606491458b93542cd40f671943"
   },
   "status": "pass"
 }

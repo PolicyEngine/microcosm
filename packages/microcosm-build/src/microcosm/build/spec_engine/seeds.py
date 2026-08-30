@@ -454,6 +454,7 @@ US_IMMIGRATION_NEUTRAL_DRAW_LABELS = (
     "lpr_status_acquisition_month_within_year",
     "lpr_status_acquisition_year",
     "other_lawful_status_support",
+    "parole_period_at_least_one_year_support",
     "parole_start_month_within_year",
     "qualifying_afghan_parole_history_support",
     "qualifying_ukrainian_parole_history_support",

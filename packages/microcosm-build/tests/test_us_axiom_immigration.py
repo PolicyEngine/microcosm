@@ -19,6 +19,7 @@ from microcosm.build.us_runtime.axiom_immigration import (
 )
 from microcosm.build.us_runtime.immigration import US_IMMIGRATION_FACT_COLUMNS
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame.adapters.axiom import AxiomEngine
 
 _RULESPEC_US = os.environ.get("MICROCOSM_RULESPEC_US")
 _ENGINE_INSTALLED = importlib.util.find_spec("axiom_rules_engine") is not None
@@ -212,6 +213,69 @@ def test_real_axiom_preserves_history_and_evaluates_requested_month() -> None:
     # dataset regeneration or handwritten eligibility logic in the adapter.
     np.testing.assert_array_equal(august, [-1, 1, -1, 1])
     np.testing.assert_array_equal(september, [-1, 1, 1, 1])
+
+
+@_NEEDS_AXIOM
+def test_real_axiom_qualified_alien_respects_parole_period_threshold() -> None:
+    assert _RULESPEC_US is not None
+    rulespec_root = Path(_RULESPEC_US)
+    engine = AxiomEngine(
+        rulespec_root / "us/statutes/8/1641/b.yaml",
+        schema=US_SCHEMA,
+        rulespec_roots=(rulespec_root,),
+        input_bindings=US_IMMIGRATION_AXIOM_BINDING_CONTRACT,
+    )
+    expected_sources = {
+        "immigration_is_alien",
+        "immigration_is_lawful_permanent_resident",
+        "immigration_has_been_granted_asylum",
+        "immigration_was_admitted_as_refugee",
+        "immigration_is_currently_paroled",
+        "immigration_parole_period_years",
+        "immigration_has_deportation_or_removal_withheld",
+        "immigration_was_granted_conditional_entry",
+        "immigration_is_current_cuban_haitian_entrant",
+        "immigration_is_current_cofa_resident",
+        "person_applies_for_federal_public_benefit",
+        "person_receives_federal_public_benefit",
+        "person_attempts_to_receive_federal_public_benefit",
+    }
+    assert set(engine.variables()) == expected_sources
+
+    ids = np.arange(1, 3)
+    values = {source: np.zeros(2, dtype=bool) for source in expected_sources}
+    values.update(
+        {
+            "person_id": ids,
+            **{
+                US_SCHEMA.membership_column(entity): ids
+                for entity in US_SCHEMA.group_entities
+            },
+            "immigration_is_alien": np.ones(2, dtype=bool),
+            "immigration_is_currently_paroled": np.ones(2, dtype=bool),
+            "immigration_parole_period_years": np.array([0, 2], dtype=np.int64),
+            "person_applies_for_federal_public_benefit": np.ones(2, dtype=bool),
+        }
+    )
+    frame = Frame(
+        {
+            "person": pd.DataFrame(values),
+            **{
+                entity: pd.DataFrame({US_SCHEMA.id_column(entity): ids})
+                for entity in US_SCHEMA.group_entities
+            },
+        },
+        US_SCHEMA,
+        {"household": Weights(values=np.ones(2), kind=WeightKind.DESIGN)},
+    )
+
+    qualified = engine.materialize(
+        frame,
+        ["qualified_alien"],
+        period="2026-08",
+    )["qualified_alien"]
+
+    np.testing.assert_array_equal(qualified, [-1, 1])
 
 
 @_NEEDS_AXIOM

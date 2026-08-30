@@ -433,6 +433,10 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: immigration_status
+- site: immigration_parole_period_at_least_one_year_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
 - site: immigration_parole_start_month_within_year
   owners:
   - kind: source_stage

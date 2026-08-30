@@ -103,6 +103,10 @@ must not silently become government population stocks.
   establish nationality or habitual residence; later-entry qualifying-family
   branches, termination/re-parole, and some adjustment-duration constraints
   need additional facts and modeling.
+- The current pool does not separately support non-citizen U.S. nationals.
+  Census citizenship categories do not identify that legal class, so the
+  neutral national fact remains unsupported rather than being inferred from
+  birthplace or folded into citizenship.
 - ACS `YOEP=1938/1939` represents censored or grouped entry years. The current
   profile does not yet expand those older codes into their interval bounds.
   [Census's 2024 dictionary](https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.txt)

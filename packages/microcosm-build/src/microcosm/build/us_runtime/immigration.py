@@ -1100,7 +1100,6 @@ def derive_us_immigration_facts(
         seed=seed,
         salt="immigration:current_parole_support",
     )
-    parole = parole_history & (years_in_us <= 2)
     tps = _maximum_entropy_support(
         result,
         _tps_support_candidates(profile),
@@ -1203,7 +1202,26 @@ def derive_us_immigration_facts(
     # the programme flag nor the generic flag should invent a second event.
     qualifying_parole_history = afghan_parole_history | ukrainian_parole_history
     parole_history |= qualifying_parole_history
-    parole = parole_history & (years_in_us <= 2)
+    # Census does not observe the authorized parole period. Preserve support
+    # on both sides of 8 USC 1641(b)(4)'s one-year threshold with a separate,
+    # stable balanced draw inside the retained-history cohort. Zero denotes a
+    # sub-year period for an active history; the history flag distinguishes it
+    # from the inactive zero sentinel. Two years retains the common longer-
+    # grant support without using weights or a population target.
+    parole_period_at_least_one_year = _maximum_entropy_support(
+        result,
+        parole_history,
+        seed=seed,
+        salt="immigration:parole_period_at_least_one_year_support",
+    )
+    parole_period_years = np.where(parole_period_at_least_one_year, 2, 0).astype(
+        np.int64
+    )
+    # The source records only arrival year, so current-status arithmetic uses
+    # the build year as the assessment year. A sub-year grant (encoded as
+    # zero whole years) can therefore be current only in its entry year; the
+    # two-year branch retains the prior inclusive full-year approximation.
+    parole = parole_history & (years_in_us <= parole_period_years)
     battered_alien = _maximum_entropy_support(
         result,
         alien,
@@ -1579,8 +1597,6 @@ def derive_us_immigration_facts(
             entry_month_index,
         ),
     )
-    parole_period_years = np.where(parole_history, 2, 0).astype(np.int64)
-
     qualified_statuses = (
         (lpr, lpr_year),
         (refugee, refugee_year),
@@ -1711,7 +1727,7 @@ def derive_us_immigration_facts(
             humanitarian_lpr_adjustment & severe_trafficking
         ),
         "immigration_adjusted_to_lpr_from_parole_for_at_least_one_year": (
-            humanitarian_lpr_adjustment & parole_history
+            humanitarian_lpr_adjustment & parole_history & (parole_period_years >= 1)
         ),
         "immigration_has_employment_authorization": employment_authorization,
         "immigration_has_ssn_evidence": ssn_evidence,
