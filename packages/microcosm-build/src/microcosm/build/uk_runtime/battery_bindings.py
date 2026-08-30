@@ -76,6 +76,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     _household_weights,
     _missing_fit_weight_evidence_gate,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_target_fit_gate,
@@ -89,6 +90,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
@@ -858,11 +860,39 @@ def _local_metric_by_target_id() -> dict[str, str]:
     return mapping
 
 
+def _resolve_target_fit_exclusions(
+    context: EvidenceContext,
+) -> tuple[Mapping[str, UKReviewedExclusion], str]:
+    """Target-fit deferral exclusions and their content source."""
+
+    committed = uk_default_target_fit_reviewed_exclusions()
+    override = context.artifacts.get("reviewed_target_fit_exclusions")
+    if override is None:
+        return committed, "committed"
+    resolved = coerce_reviewed_exclusions(override, label="UK target-fit policy")
+    if _exclusion_payload(resolved) == _exclusion_payload(committed):
+        return committed, "committed"
+    return MappingProxyType(resolved), "override"
+
+
 def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    kwargs = dict(parameters)
+    register = kwargs.pop("reviewed_exclusions_resource", None)
+    if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
+        raise ValueError(
+            f"uk/gates.json names exclusion register {register!r} but the "
+            f"runtime loads {UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
+        )
+    exclusions, _source = _resolve_target_fit_exclusions(context)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(parity.target_relative_errors, **dict(parameters))
+    return uk_target_fit_gate(
+        parity.target_relative_errors,
+        reviewed_exclusions=exclusions,
+        now=_exclusion_clock(context),
+        **kwargs,
+    )
 
 
 def _evaluate_input_mass_parity(
@@ -1216,8 +1246,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "target_fit": UKGateBinding(
         name="target_fit",
         evaluator=_evaluate_target_fit,
-        parameter_keys=frozenset({"max_abs_relative_error", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        parameter_keys=frozenset(
+            {"max_abs_relative_error", "reviewed_exclusions_resource"}
+        ),
+        artifact_keys=frozenset({"parity_evidence", "exclusions_evaluated_on"}),
         needs_frame=False,
     ),
     "input_mass_parity": UKGateBinding(
