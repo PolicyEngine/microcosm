@@ -112,13 +112,13 @@ def test_cli_defaults_to_the_ratified_root_paths() -> None:
 
 
 def test_committed_archives_are_scoped_by_country() -> None:
-    # One chain per country: the US pool lineage and the UK migration
-    # chain never share an archive (microcosm#665).
+    # One chain per scope: the US pool lineage, and each UK line under its
+    # ratified scope path (microcosm#665; uk/local opened by #761).
     archives = sorted(
         path.relative_to(ROOT / "logbook").as_posix()
         for path in (ROOT / "logbook").rglob("*.jsonl")
     )
-    assert archives == ["us.jsonl"]
+    assert archives == ["uk/local.jsonl", "us.jsonl"]
     assert (ROOT / "logbook" / "README.md").is_file()
 
 
@@ -246,14 +246,14 @@ def test_cli_local_export_refuses_wrong_scope_rows(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # The adversarial finding on this PR: the chain verifier authenticates
-    # payloads, never filenames, so without this gate a uk-locals spool
+    # payloads, never filenames, so without this gate a uk-local spool
     # exported into the uk/frs archive would chain validly and
     # permanently mis-scope lineage. Local exports get the same scope
     # discipline as the remote branch.
     archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
     archive.parent.mkdir(parents=True)
     source = tmp_path / "source.jsonl"
-    _write_jsonl(source, _chain(pipeline="uk-locals-rowwise"))
+    _write_jsonl(source, _chain(pipeline="uk-local-rowwise"))
     cli = _load_cli()
 
     exit_code = cli.main(
@@ -263,7 +263,7 @@ def test_cli_local_export_refuses_wrong_scope_rows(
     assert exit_code == 1
     err = capsys.readouterr().err
     assert "outside scope uk/frs" in err
-    assert "uk-locals-rowwise" in err
+    assert "uk-local-rowwise" in err
     assert not archive.exists()
 
 
@@ -287,6 +287,26 @@ def test_cli_export_refuses_an_unratified_scope_archive(
     assert exit_code == 1
     assert "not in the ratified scope list" in capsys.readouterr().err
     assert not archive.exists()
+
+
+def test_cli_export_accepts_uk_local_scope_archive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    archive = tmp_path / "logbook" / "uk" / "local.jsonl"
+    archive.parent.mkdir(parents=True)
+    source = tmp_path / "source.jsonl"
+    rows = _chain(pipeline="uk-local-rowwise")
+    _write_jsonl(source, rows)
+    cli = _load_cli()
+
+    exit_code = cli.main(
+        ["export", "--archive", str(archive), "--source", str(source)]
+    )
+
+    assert exit_code == 0
+    assert "exported 3 new Logbook rows" in capsys.readouterr().out
+    assert load_logbook_file(archive) == rows
 
 
 def test_cli_export_chain_orders_a_spool_directory(
@@ -557,7 +577,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rows = _chain(pipeline="uk-locals-rowwise")
+    rows = _chain(pipeline="uk-local-rowwise")
     archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
     cli = _load_cli()
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
@@ -574,7 +594,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
     assert result == 1
     err = capsys.readouterr().err
     assert "outside scope uk/frs" in err
-    assert "uk-locals-rowwise" in err
+    assert "uk-local-rowwise" in err
 
 
 @pytest.mark.parametrize(
@@ -584,7 +604,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
         ("us-pool-inc2", "us"),
         ("us-stacked-pool", "us"),
         ("uk-frs-staging", "uk/frs"),
-        ("uk-locals-rowwise", "uk/locals"),
+        ("uk-local-rowwise", "uk/local"),
         ("us-pool-inc3", "us/pool"),
         ("mystery-pipeline", None),
     ],
