@@ -76,6 +76,11 @@ from microcosm.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from microcosm.build.us_runtime.axiom_immigration import (
+    US_IMMIGRATION_AXIOM_BINDING_CONTRACT,
+    US_IMMIGRATION_AXIOM_MODULE,
+    us_immigration_axiom_engine,
+)
 from microcosm.build.us_runtime.capital_gain_details import (
     CAPITAL_GAIN_DETAILS_ARCHIVED_DERIVATION_URL,
     CAPITAL_GAIN_DETAILS_ARCHIVED_EXPORT_URL,
@@ -375,23 +380,20 @@ from microcosm.build.us_runtime.housing_inputs import (
     with_us_housing_inputs,
 )
 from microcosm.build.us_runtime.immigration import (
-    HUMANITARIAN_STATUS_CATEGORIES,
     IMMIGRATION_STATUS_VALUES,
     SSN_CARD_TYPE_VALUES,
+    US_IMMIGRATION_ALL_OUTPUT_COLUMNS,
+    US_IMMIGRATION_FACT_COLUMNS,
+    US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS,
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     US_IMMIGRATION_OUTPUT_COLUMNS,
     US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS,
     US_IMMIGRATION_STAGE_NAME,
-    HumanitarianDraw,
-    ImmigrationControls,
-    UndocumentedControls,
+    derive_us_immigration_facts,
     derive_us_immigration_status_from_manifest,
-    reconcile_us_immigration_humanitarian_transfer,
     us_immigration_composition_gate,
     us_immigration_composition_summary,
-    us_immigration_controls,
     us_immigration_evidence_features,
-    us_immigration_humanitarian_draw_mask,
     us_immigration_stage_spec,
     with_us_immigration_inputs,
 )
@@ -1161,16 +1163,15 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
     "SOI_VARIABLE_MAP",
-    "HUMANITARIAN_STATUS_CATEGORIES",
     "IMMIGRATION_STATUS_VALUES",
     "SSN_CARD_TYPE_VALUES",
+    "US_IMMIGRATION_ALL_OUTPUT_COLUMNS",
+    "US_IMMIGRATION_FACT_COLUMNS",
+    "US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS",
     "US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS",
     "US_IMMIGRATION_OUTPUT_COLUMNS",
     "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
     "US_IMMIGRATION_STAGE_NAME",
-    "HumanitarianDraw",
-    "ImmigrationControls",
-    "UndocumentedControls",
     "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
     "US_HOURS_WORKED_OUTPUT_COLUMNS",
     "US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS",
@@ -1777,13 +1778,14 @@ __all__ = [
     "us_prior_year_income_stage_spec",
     "us_prior_year_income_summary",
     "with_us_prior_year_income_inputs",
+    "US_IMMIGRATION_AXIOM_BINDING_CONTRACT",
+    "US_IMMIGRATION_AXIOM_MODULE",
+    "us_immigration_axiom_engine",
+    "derive_us_immigration_facts",
     "derive_us_immigration_status_from_manifest",
-    "reconcile_us_immigration_humanitarian_transfer",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
-    "us_immigration_controls",
     "us_immigration_evidence_features",
-    "us_immigration_humanitarian_draw_mask",
     "us_immigration_stage_spec",
     "with_us_immigration_inputs",
     "US_TAKE_UP_SHARE_BAND",
@@ -2186,18 +2188,14 @@ US_DONORS: Mapping[str, DonorSpec] = {
         ),
     ),
     US_IMMIGRATION_STAGE_NAME: DonorSpec(
-        survey="CPS ASEC + published unauthorized-population estimates",
-        source=(
-            "https://www.pewresearch.org/race-and-ethnicity/2025/08/21/"
-            "u-s-unauthorized-immigrant-population-reached-a-record-"
-            "14-million-in-2023/"
-        ),
+        survey="Census CPS ASEC + American Community Survey PUMS",
+        source="https://www.census.gov/programs-surveys/cps.html",
         notes=(
-            "SSN card type and immigration status from ASEC citizenship, "
-            "entry-year, nativity, labor-force, and program-participation "
-            "fields via the ASEC-UA residual method (SSRN 4662801), with "
-            "Pew's broad 2023 unauthorized population and labor-force "
-            "definitions applied consistently."
+            "Neutral, nonexclusive immigration facts from survey citizenship, "
+            "birthplace, arrival cohorts, and lawful-status evidence. Stable "
+            "seeded support draws use no weights or population targets. The "
+            "two PolicyEngine compatibility columns are one-way projections "
+            "of those facts; representation belongs to calibration."
         ),
     ),
     US_HOURS_WORKED_STAGE_NAME: DonorSpec(

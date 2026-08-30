@@ -1660,11 +1660,22 @@ def _derive_input_inventories(graph: Mapping[str, object]) -> dict[str, object]:
                 raise RuntimeError(
                     f"Source producer {name!r} lacks the source: prefix."
                 )
+            source_scopes = {
+                str(output["coverage_scope"])
+                for value in _array_like(node["outputs"], f"{name} outputs")
+                for output in [_mapping_like(value, f"{name} output")]
+                if output["coverage_scope"] in {"asec_source", "whole_pool"}
+            }
+            if len(source_scopes) != 1:
+                raise RuntimeError(
+                    f"Source producer {name!r} does not declare one physical "
+                    f"execution scope: {sorted(source_scopes)}."
+                )
             inventories["sources"].append(
                 _derive_input_inventory(
                     node,
                     operator=name.removeprefix("source:"),
-                    default_scope="asec_source",
+                    default_scope=next(iter(source_scopes)),
                 )
             )
         elif kind == "late_transfer":

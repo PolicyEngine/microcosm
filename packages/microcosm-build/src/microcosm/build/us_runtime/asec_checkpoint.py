@@ -57,7 +57,7 @@ _BINDING_KEYS = frozenset(
 ASEC_RAW_STAGE_ARTIFACT_KIND = "populace_us_asec_raw_stage"
 ASEC_RAW_STAGE_CHECKPOINT_FILENAME = "asec_raw_stage.checkpoint.h5"
 ASEC_RAW_STAGE_OPERATOR_STATUS = "operator_untouched"
-# Version 4 added measured A_LFSR for the Pew civilian-labor-force control;
+# Version 4 added measured current civilian labor-force status A_LFSR;
 # older artifacts lack the current labor-force status and must fail loudly
 # rather than substitute prior-year earnings (microcosm#767).
 ASEC_RAW_STAGE_SCHEMA_VERSION = 4

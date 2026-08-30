@@ -548,6 +548,606 @@ columns:
     domain: model_required_numeric
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
+- key: person.immigration_adjusted_to_lpr_from_amerasian_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_asylum_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_battered_alien_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_cofa_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_conditional_entry_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_cuban_haitian_entrant_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_iraqi_afghan_special_immigrant_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_parole_for_at_least_one_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_qualifying_afghan_parole
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_qualifying_ukrainian_parole
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_refugee_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_severe_trafficking_victim_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_adjusted_to_lpr_from_withholding_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_amerasian_admission_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_amerasian_admission_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_asylum_grant_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_asylum_grant_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_conditional_entry_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_conditional_entry_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_cuban_haitian_entrant_start_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_cuban_haitian_entrant_start_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_entry_year_is_interval_midpoint
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_first_qualified_status_start_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_first_qualified_status_start_month_is_imputed
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_first_qualified_status_start_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_first_qualified_status_start_year_is_imputed
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_first_qualified_status_started_on_or_after_1996_08_22
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_been_granted_asylum
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_deportation_or_removal_withheld
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_employment_authorization
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_iraqi_or_afghan_special_immigrant_history
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_lawful_status_evidence
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_other_lawful_status
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_qualifying_afghan_humanitarian_parole_history
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_qualifying_ukrainian_humanitarian_parole_history
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_ssn
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_has_ssn_evidence
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_alien
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_amerasian_immigrant
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_battered_alien_or_qualifying_relative
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_current_cofa_resident
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_current_cuban_haitian_entrant
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_current_daca
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_current_tps
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_currently_paroled
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_lawful_permanent_resident
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_severe_trafficking_victim_or_qualifying_relative
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_us_citizen
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_us_national
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_is_us_resident
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_lpr_status_start_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_lpr_status_start_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_parole_period_years
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_parole_start_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_parole_start_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_refugee_admission_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_refugee_admission_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_ssn_is_valid_for_employment
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_status_start_month_is_imputed
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_status_start_year_is_imputed
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
 - key: person.immigration_status_str
   contract:
     entity: person
@@ -556,7 +1156,97 @@ columns:
     definition_period: year
     vintage: vintage:target_2024
     nullable: false
-    domain: source_operator_immigration
+    domain: immigration
+    public_stability: internal
+- key: person.immigration_us_entry_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_us_entry_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_us_entry_year_lower_bound
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_us_entry_year_upper_bound
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_was_admitted_as_refugee
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_was_granted_conditional_entry
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_was_paroled
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_withholding_start_month_index
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
+    public_stability: internal
+- key: person.immigration_withholding_start_year
+  contract:
+    entity: person
+    dtype: int64
+    unit: year
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: immigration_fact
     public_stability: internal
 - key: person.investment_income_elected_form_4952
   contract:
@@ -1169,7 +1859,7 @@ columns:
     definition_period: year
     vintage: vintage:target_2024
     nullable: false
-    domain: source_operator_immigration
+    domain: immigration
     public_stability: internal
 - key: person.sstb_self_employment_income_before_lsr
   contract:

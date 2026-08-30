@@ -11,7 +11,6 @@ import pytest
 
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.acs_transfer_bank as acs_transfer_bank_module
-import microcosm.build.us_runtime.immigration as immigration_module
 from microcosm.build.frame_checkpoint import write_frame_checkpoint
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime.acs_transfer import (
@@ -23,7 +22,6 @@ from microcosm.build.us_runtime.acs_transfer import (
     ACS_PERSON_TRANSFER_PREDICTORS,
     AcsTransferResult,
     acs_adult_care_qualifying_rows,
-    acs_transfer_donor_requirements,
     declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
     transfer_acs_inputs,
@@ -32,9 +30,7 @@ from microcosm.build.us_runtime.acs_transfer_bank import (
     AcsTransferTargetBankStore,
 )
 from microcosm.build.us_runtime.immigration import (
-    HumanitarianDraw,
-    ImmigrationControls,
-    UndocumentedControls,
+    US_IMMIGRATION_ALL_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
@@ -273,90 +269,6 @@ def _recipient_frame() -> Frame:
         SCHEMA,
         {"household": Weights(np.asarray([50.0, 60.0, 70.0]), WeightKind.DESIGN)},
         pd.Series("acs_2024_1yr", index=person.index, dtype=object),
-    )
-
-
-def _mixed_immigration_recipient() -> Frame:
-    """One immutable ASEC row followed by ACS rows with paired null targets."""
-
-    base = _recipient_frame()
-    tables = {entity: base.table(entity).copy() for entity in base.entities}
-    person = tables["person"]
-    for column in ("PRCITSHP", "PENATVTY", "PEINUSYR"):
-        person[column] = np.nan
-    immutable_index = person.index[0]
-    person.loc[immutable_index, ["CIT", "POBP", "YOEP"]] = np.nan
-    person.loc[immutable_index, ["PRCITSHP", "PENATVTY", "PEINUSYR"]] = [
-        5,
-        200,
-        27,
-    ]
-    person["ssn_card_type"] = pd.Series(
-        ["OTHER_NON_CITIZEN", *([np.nan] * (len(person) - 1))],
-        index=person.index,
-        dtype=object,
-    )
-    person["immigration_status_str"] = pd.Series(
-        ["PAROLED_ONE_YEAR", *([np.nan] * (len(person) - 1))],
-        index=person.index,
-        dtype=object,
-    )
-    return Frame(
-        tables,
-        base.schema,
-        {entity: base.weights_for(entity) for entity in base.weighted_entities},
-        base.strata,
-        mass_log=base.mass_log,
-    )
-
-
-def _small_immigration_controls(
-    *,
-    ukraine_target: float = 60.0,
-) -> ImmigrationControls:
-    source = "https://example.com/immigration-control"
-    return ImmigrationControls(
-        undocumented=UndocumentedControls(
-            workers=1.0,
-            students=1.0,
-            population_anchor=1.0,
-            sources={
-                "undocumented_workers": source,
-                "undocumented_students": source,
-                "undocumented_population_anchor": source,
-            },
-        ),
-        humanitarian=(
-            HumanitarianDraw(
-                category="paroled_one_year",
-                origin="afghanistan",
-                status="PAROLED_ONE_YEAR",
-                target=50.0,
-                source=source,
-            ),
-            HumanitarianDraw(
-                category="paroled_one_year",
-                origin="ukraine",
-                status="PAROLED_ONE_YEAR",
-                target=ukraine_target,
-                source=source,
-            ),
-            HumanitarianDraw(
-                category="tps",
-                origin="venezuela",
-                status="TPS",
-                target=70.0,
-                source=source,
-            ),
-        ),
-    )
-
-
-def _no_humanitarian_controls() -> ImmigrationControls:
-    controls = _small_immigration_controls()
-    return ImmigrationControls(
-        undocumented=controls.undocumented,
-        humanitarian=(),
     )
 
 
@@ -841,59 +753,6 @@ def test_declared_families_are_independent_of_release_coverage_surface() -> None
     assert "receives_wic" in production_declared["person"]["model_required_boolean"]
 
 
-def test_donor_requirements_include_immigration_source_evidence_triplet() -> None:
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
-            "immigration_status_str": ["CITIZEN"] * 6
-            + ["UNDOCUMENTED", "UNDOCUMENTED"],
-        },
-    )
-    plan = {
-        "person": {
-            "source_operator_immigration": (
-                "ssn_card_type",
-                "immigration_status_str",
-            )
-        }
-    }
-
-    requirements = acs_transfer_donor_requirements(donor, plan)
-
-    assert {"PRCITSHP", "PENATVTY", "PEINUSYR"}.issubset(requirements["person"])
-
-    acs_tables = {entity: donor.table(entity).copy() for entity in donor.entities}
-    acs_person = acs_tables["person"].rename(
-        columns={"PRCITSHP": "CIT", "PENATVTY": "POBP"}
-    )
-    acs_person = acs_person.drop(columns=["PEINUSYR"])
-    acs_person["YOEP"] = [np.nan] * 6 + [2023, 2015]
-    acs_tables["person"] = acs_person
-    acs_donor = Frame(
-        acs_tables,
-        donor.schema,
-        {entity: donor.weights_for(entity) for entity in donor.weighted_entities},
-        donor.strata,
-        mass_log=donor.mass_log,
-    )
-    acs_requirements = acs_transfer_donor_requirements(acs_donor, plan)
-    assert {"CIT", "POBP", "YOEP"}.issubset(acs_requirements["person"])
-
-    tables = {entity: donor.table(entity).copy() for entity in donor.entities}
-    tables["person"] = tables["person"].drop(columns=["PEINUSYR"])
-    incomplete = Frame(
-        tables,
-        donor.schema,
-        {entity: donor.weights_for(entity) for entity in donor.weighted_entities},
-        donor.strata,
-        mass_log=donor.mass_log,
-    )
-    with pytest.raises(ValueError, match="incomplete donor evidence triplet"):
-        acs_transfer_donor_requirements(incomplete, plan)
-
-
 def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     """The M/N/O donor repairs must reach the ACS spine through the plan."""
 
@@ -947,18 +806,9 @@ def test_explicit_transfer_adds_requested_model_inputs(
             "has_esi": [True, False, True, False, True, False, True, False],
             "is_blind": [False, False, False, False, True, False, False, False],
             "other_medical_expenses": [10.0, 0.0, 5.0, 0.0, 8.0, 1.0, 0.0, 2.0],
-            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
-            "immigration_status_str": ["CITIZEN"] * 6
-            + ["UNDOCUMENTED", "UNDOCUMENTED"],
         },
     )
-    required = {
-        "has_esi",
-        "is_blind",
-        "other_medical_expenses",
-        "ssn_card_type",
-        "immigration_status_str",
-    }
+    required = {"has_esi", "is_blind", "other_medical_expenses"}
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
     _MeanQRF.calls = []
 
@@ -968,10 +818,6 @@ def test_explicit_transfer_adds_requested_model_inputs(
         target_families={
             "person": {
                 "model_required_boolean": ("has_esi", "is_blind"),
-                "model_required_categorical": (
-                    "ssn_card_type",
-                    "immigration_status_str",
-                ),
                 "model_required_numeric": ("other_medical_expenses",),
             }
         },
@@ -980,282 +826,23 @@ def test_explicit_transfer_adds_requested_model_inputs(
         max_targets_per_fit=1,
     )
 
-    person = result.frame.person
-    assert required.issubset(person.columns)
+    assert required.issubset(result.frame.person.columns)
     assert {entry.column for entry in result.imputed_inputs}.issuperset(required)
-    required_families = {
+    assert {
         entry.family.split("__batch_", 1)[0]
         for entry in result.imputed_inputs
         if entry.column in required
-    }
-    assert required_families == {
-        "model_required_boolean",
-        "model_required_categorical",
-        "model_required_numeric",
-    }
-    assert set(person["ssn_card_type"]) <= {"CITIZEN", "NONE"}
-    observed_pairs = set(
-        zip(
-            donor.person["ssn_card_type"],
-            donor.person["immigration_status_str"],
-            strict=True,
-        )
-    )
-    imputed_pairs = set(
-        zip(
-            person["ssn_card_type"],
-            person["immigration_status_str"],
-            strict=True,
-        )
-    )
-    assert imputed_pairs <= observed_pairs
-    joint_calls = [
-        call
-        for call in _MeanQRF.calls
-        if "__acs_transfer_immigration_status_pair" in call["targets"]
-    ]
-    assert joint_calls
-    assert all(
-        "ssn_card_type" not in call["targets"]
-        and "immigration_status_str" not in call["targets"]
-        for call in joint_calls
-    )
-    assert {
-        "__acs_transfer_is_us_citizen",
-        "__acs_transfer_birth_country_code",
-        "__acs_transfer_arrival_year",
-    }.issubset(joint_calls[0]["predictors"])
+    } == {"model_required_boolean", "model_required_numeric"}
 
 
-def test_joint_immigration_codec_never_emits_constrained_baseline(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    constrained = [
-        "PAROLED_ONE_YEAR",
-        "REFUGEE",
-        "ASYLEE",
-        "DEPORTATION_WITHHELD",
-        "TPS",
-        "CUBAN_HAITIAN_ENTRANT",
-        "DACA",
-        "REFUGEE",
-    ]
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["OTHER_NON_CITIZEN"] * 8,
-            "immigration_status_str": constrained,
-        },
-    )
-    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
-    monkeypatch.setattr(
-        immigration_module,
-        "us_immigration_controls",
-        _no_humanitarian_controls,
-    )
-
-    result = transfer_acs_inputs(
-        _recipient_frame(),
-        donor,
-        target_families={
-            "person": {
-                "source_operator_immigration": (
-                    "ssn_card_type",
-                    "immigration_status_str",
-                )
-            }
-        },
-        donor_channel=None,
-        n_estimators=1,
-    )
-
-    assert set(result.frame.person["immigration_status_str"]) <= {
-        "CITIZEN",
-        "LEGAL_PERMANENT_RESIDENT",
-    }
-    encoding = acs_transfer_module._target_encodings(
-        donor.person,
-        targets=("ssn_card_type", "immigration_status_str"),
-    )["immigration_status_str"]
-    assert not {pair[1] for pair in encoding.categories}.intersection(constrained)
-
-
-def test_transfer_rederives_entrant_and_daca_only_on_compatible_acs_cohorts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["NON_CITIZEN_VALID_EAD"] * 8,
-            "immigration_status_str": [
-                "CUBAN_HAITIAN_ENTRANT",
-                "DACA",
-            ]
-            * 4,
-        },
-    )
-    recipient = _with_columns(
-        _recipient_frame(),
-        "person",
-        {
-            "age": [50.0, 50.0, 29.0, 50.0, 40.0, 70.0],
-            "CIT": [5, 5, 5, 5, 1, 5],
-            "POBP": [327, 164, 312, 312, 6, 332],
-            "YOEP": [2000, 2020, 2005, 2020, np.nan, 1970],
-        },
-    )
-    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
-    monkeypatch.setattr(
-        immigration_module,
-        "us_immigration_controls",
-        _no_humanitarian_controls,
-    )
-
-    result = transfer_acs_inputs(
-        recipient,
-        donor,
-        target_families={
-            "person": {
-                "source_operator_immigration": (
-                    "ssn_card_type",
-                    "immigration_status_str",
-                )
-            }
-        },
-        donor_channel=None,
-        n_estimators=1,
-    )
-
-    assert result.frame.person["immigration_status_str"].tolist() == [
-        "CUBAN_HAITIAN_ENTRANT",
-        "LEGAL_PERMANENT_RESIDENT",
-        "DACA",
-        "LEGAL_PERMANENT_RESIDENT",
-        "CITIZEN",
-        "LEGAL_PERMANENT_RESIDENT",
-    ]
-    receipt = next(
-        item.reconciliation
-        for item in result.imputed_inputs
-        if item.column == "immigration_status_str"
-    )
-    assert receipt is not None
-    assert receipt["special_status_assignments"] == 2
-
-
-def test_humanitarian_reconciliation_uses_residual_targets_and_records_receipt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["OTHER_NON_CITIZEN"] * 8,
-            "immigration_status_str": ["LEGAL_PERMANENT_RESIDENT"] * 8,
-        },
-    )
-    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
-    monkeypatch.setattr(
-        immigration_module,
-        "us_immigration_controls",
-        _small_immigration_controls,
-    )
-
-    result = transfer_acs_inputs(
-        _mixed_immigration_recipient(),
-        donor,
-        target_families={
-            "person": {
-                "source_operator_immigration": (
-                    "ssn_card_type",
-                    "immigration_status_str",
-                )
-            }
-        },
-        donor_channel=None,
-        seed=19,
-        n_estimators=1,
-    )
-
-    person = result.frame.person
-    assert person["immigration_status_str"].tolist() == [
-        "PAROLED_ONE_YEAR",  # immutable Afghanistan contribution
-        "CITIZEN",  # source CIT repairs the imputed baseline pair
-        "PAROLED_ONE_YEAR",  # compatible Ukrainian residual
-        "CITIZEN",
-        "CITIZEN",
-        "TPS",  # compatible Venezuelan residual
-    ]
-    assert person.loc[person.index[0], "ssn_card_type"] == "OTHER_NON_CITIZEN"
-    reconciled = [
-        item
-        for item in result.imputed_inputs
-        if item.column in {"ssn_card_type", "immigration_status_str"}
-    ]
-    assert len(reconciled) == 2
-    assert reconciled[0].reconciliation == reconciled[1].reconciliation
-    receipt = reconciled[0].reconciliation
-    assert receipt is not None
-    assert receipt["mutable_rows"] == 5
-    assert receipt["immutable_rows"] == 1
-    draws = receipt["draws"]
-    assert draws["paroled_one_year:afghanistan"] == {
-        "target": 50.0,
-        "immutable_population": 50.0,
-        "residual_target": 0.0,
-        "eligible_recipient_population": 0.0,
-        "selected_recipient_population": 0.0,
-        "achieved_population": 50.0,
-        "absolute_error": 0.0,
-        "selection_threshold_tie_population": 0.0,
-        "residual_selection_error": 0.0,
-        "within_residual_discrete_weight_bound": True,
-        "immutable_overshoot": 0.0,
-        "within_discrete_weight_bound": True,
-    }
-    assert draws["paroled_one_year:ukraine"]["residual_target"] == 60.0
-    assert draws["paroled_one_year:ukraine"]["achieved_population"] == 60.0
-    assert draws["tps:venezuela"]["achieved_population"] == 70.0
-    assert all(draw["within_discrete_weight_bound"] for draw in draws.values())
-
-
-def test_humanitarian_reconciliation_fails_on_candidate_shortfall(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["OTHER_NON_CITIZEN"] * 8,
-            "immigration_status_str": ["LEGAL_PERMANENT_RESIDENT"] * 8,
-        },
-    )
-    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
-    monkeypatch.setattr(
-        immigration_module,
-        "us_immigration_controls",
-        lambda: _small_immigration_controls(ukraine_target=61.0),
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="candidate shortfall.*paroled_one_year:ukraine",
-    ):
+@pytest.mark.parametrize("column", US_IMMIGRATION_ALL_OUTPUT_COLUMNS)
+def test_immigration_outputs_cannot_be_qrf_transfer_targets(column: str) -> None:
+    with pytest.raises(ValueError, match="whole-pool source outputs"):
         transfer_acs_inputs(
-            _mixed_immigration_recipient(),
-            donor,
-            target_families={
-                "person": {
-                    "source_operator_immigration": (
-                        "ssn_card_type",
-                        "immigration_status_str",
-                    )
-                }
-            },
-            donor_channel=None,
-            seed=19,
+            _recipient_frame(),
+            _donor_frame(),
+            target_families={"person": {"custom": (column,)}},
+            seed=4,
             n_estimators=1,
         )
 
@@ -1538,79 +1125,6 @@ def test_target_bank_fsyncs_file_then_parent_directory_after_each_rename(
             ("replace", bank.target_path(index, target).name),
             ("fsync", "directory"),
         ]
-
-
-def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    _lock_bank_fixture_threads(monkeypatch)
-    monkeypatch.setattr(
-        immigration_module,
-        "us_immigration_controls",
-        _no_humanitarian_controls,
-    )
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
-            "immigration_status_str": ["CITIZEN"] * 6
-            + ["UNDOCUMENTED", "UNDOCUMENTED"],
-        },
-    )
-    families = {
-        "person": {
-            "source_operator_immigration": (
-                "ssn_card_type",
-                "immigration_status_str",
-            )
-        }
-    }
-
-    def run(
-        target_bank: AcsTransferTargetBankStore | None = None,
-    ) -> AcsTransferResult:
-        return transfer_acs_inputs(
-            _recipient_frame(),
-            donor,
-            target_families=families,
-            seed=37,
-            n_estimators=1,
-            target_bank=target_bank,
-        )
-
-    monolithic = run()
-    bank_root = tmp_path / "joint-bank"
-    cold_bank = _bank_store(bank_root)
-    cold = run(cold_bank)
-    _assert_transfer_results_exact(cold, monolithic)
-
-    warm_bank = _bank_store(bank_root)
-    resumed = run(warm_bank)
-    _assert_transfer_results_exact(resumed, monolithic)
-    for result in (monolithic, cold, resumed):
-        person = result.frame.table("person")
-        assert all(
-            person[target].dtype == CANONICAL_STRING_DTYPE
-            for target in ("ssn_card_type", "immigration_status_str")
-        )
-        assert all(
-            not pattern.target_regimes
-            for record in result.imputed_inputs
-            for pattern in record.patterns
-        )
-
-    targets = warm_bank.receipt()["targets"]
-    assert set(targets) == {"0"}
-    assert targets["0"]["source"] == "checkpoint"
-    assert targets["0"]["descriptor"]["model_target"] == (
-        "__acs_transfer_immigration_status_pair"
-    )
-    assert targets["0"]["descriptor"]["exported_targets"] == [
-        "ssn_card_type",
-        "immigration_status_str",
-    ]
 
 
 def test_target_bank_interrupt_resumes_durable_prefix_byte_identically(

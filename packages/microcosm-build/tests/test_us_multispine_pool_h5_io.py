@@ -133,11 +133,9 @@ def _pool_frame_with_object_strings_on_every_entity() -> Frame:
 def _stacked_pool_frame_with_live_immigration(
     *,
     include_zero_weight_clone: bool = False,
-) -> tuple[Frame, dict[str, object]]:
-    """Build a persisted-shape final stack and its real immigration receipt."""
+) -> Frame:
+    """Build persisted neutral facts with target-free synthetic survey weights."""
 
-    controls = immigration_runtime.us_immigration_controls()
-    positive_draws = tuple(draw for draw in controls.humanitarian if draw.target > 0)
     acs_evidence = {
         "paroled_one_year:afghanistan": (200, 2021, "NONE", "UNDOCUMENTED"),
         "paroled_one_year:ukraine": (164, 2022, "NONE", "UNDOCUMENTED"),
@@ -162,18 +160,11 @@ def _stacked_pool_frame_with_live_immigration(
         "tps:nepal": (229, 2015, "NONE", "UNDOCUMENTED"),
         "tps:other_designated": (248, 2020, "NONE", "UNDOCUMENTED"),
     }
-    expected_labels = {draw.label for draw in positive_draws}
-    if set(acs_evidence) != expected_labels:
-        raise AssertionError(
-            "Stacked H5 immigration evidence must exactly cover the positive "
-            "canonical humanitarian draws."
-        )
-
-    row_count = 1 + len(positive_draws) + int(include_zero_weight_clone)
+    row_count = 1 + len(acs_evidence) + int(include_zero_weight_clone)
     ids = np.arange(1, row_count + 1, dtype=np.int64)
     channels = np.asarray(
         [BASE_ASEC_SUPPORT_CHANNEL]
-        + [stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL] * len(positive_draws)
+        + [stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL] * len(acs_evidence)
         + ([BASE_ASEC_SUPPORT_CHANNEL] if include_zero_weight_clone else []),
         dtype=object,
     )
@@ -197,10 +188,12 @@ def _stacked_pool_frame_with_live_immigration(
             "immigration_status_str": "CITIZEN",
         }
     ]
-    for draw in positive_draws:
-        birth_country, arrival_year, ssn_card_type, immigration_status = acs_evidence[
-            draw.label
-        ]
+    for (
+        birth_country,
+        arrival_year,
+        ssn_card_type,
+        immigration_status,
+    ) in acs_evidence.values():
         person_rows.append(
             {
                 "PRCITSHP": np.nan,
@@ -235,23 +228,14 @@ def _stacked_pool_frame_with_live_immigration(
 
     household_weights = np.asarray(
         [1.0]
-        + [float(draw.target) for draw in positive_draws]
+        + [1.0] * len(acs_evidence)
         + ([0.0] if include_zero_weight_clone else []),
         dtype=np.float64,
     )
-    mutable = channels == stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL
-    reconciled_person, reconciliation = (
-        immigration_runtime.reconcile_us_immigration_humanitarian_transfer(
-            person,
-            weights=household_weights,
-            mutable_rows=mutable,
-            seed=0,
-            time_period=2024,
-            controls=controls,
-        )
-    )
-
-    tables = {"person": reconciled_person}
+    person["source_year"] = 2024
+    person["source_household_id"] = source_ids
+    person["source_person_id"] = source_ids
+    tables = {"person": person}
     for entity in US_SCHEMA.group_entities:
         table = pd.DataFrame({US_SCHEMA.id_column(entity): ids})
         table.insert(
@@ -302,7 +286,9 @@ def _stacked_pool_frame_with_live_immigration(
         },
         metadata=metadata,
     )
-    return frame, reconciliation
+    return immigration_runtime.with_us_immigration_inputs(
+        frame, seed=0, time_period=2024
+    )
 
 
 def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
@@ -823,14 +809,11 @@ def _write_ready_pool(
         raise ValueError("Only the stacked H5 fixture may include a clone row.")
     schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 4
     if stacked:
-        pool_frame, immigration_reconciliation = (
-            _stacked_pool_frame_with_live_immigration(
-                include_zero_weight_clone=include_zero_weight_clone,
-            )
+        pool_frame = _stacked_pool_frame_with_live_immigration(
+            include_zero_weight_clone=include_zero_weight_clone,
         )
         dag = _canonical_stacked_late_dag_receipt(
             pool_frame,
-            immigration_reconciliation=immigration_reconciliation,
         )
         provenance_counts = spine_provenance_counts(
             pool_frame,
@@ -1124,8 +1107,6 @@ def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
 
 def _canonical_stacked_late_dag_receipt(
     frame: Frame,
-    *,
-    immigration_reconciliation: dict[str, object],
 ) -> dict[str, object]:
     """Build a signed fixture receipt over the live canonical contracts."""
 
@@ -1176,80 +1157,17 @@ def _canonical_stacked_late_dag_receipt(
             "sha256"
         ]
     )
-    immigration_reconciliation = stacked_spine_module._json_ready(
-        immigration_reconciliation
-    )
-    immigration_recipient_rows = int(immigration_reconciliation["mutable_rows"])
-    immigration_producer_rows = int(immigration_reconciliation["immutable_rows"])
     group_receipts: dict[str, object] = {}
     for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
-        is_immigration_group = (
-            group.entity == "person" and group.family == "source_operator_immigration"
-        )
         group_targets = {
             f"{group.entity}/{group.family}/{target}": {
-                **(
-                    {
-                        "producer_roles": ["asec_source"],
-                        "producer_rows": immigration_producer_rows,
-                    }
-                    if is_immigration_group
-                    else {}
-                ),
-                "authorized_null_rows": (
-                    immigration_recipient_rows if is_immigration_group else 0
-                ),
-                "imputed_rows": (
-                    immigration_recipient_rows if is_immigration_group else 0
-                ),
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
             for target in group.targets
         }
-        if is_immigration_group:
-            required_predictors, _optional_predictors = (
-                stacked_spine_module._acs_pattern_predictor_authority(
-                    entity=group.entity,
-                    family_targets=group.targets,
-                )
-            )
-            pattern = acs_transfer_runtime.AcsTransferPattern(
-                name=acs_transfer_runtime._pattern_name(0, ()),
-                observed_optional_predictors=(),
-                predictors=required_predictors,
-                seed=0,
-                weight_kind="design",
-                donor_rows=immigration_producer_rows,
-                recipient_rows=immigration_recipient_rows,
-                target_regimes=tuple(
-                    (model_target, "positive_only")
-                    for model_target in acs_transfer_runtime._model_target_names(
-                        group.targets
-                    )
-                ),
-            )
-            for target in group.targets:
-                key = f"{group.entity}/{group.family}/{target}"
-                record = acs_transfer_runtime.AcsImputedInput(
-                    column=target,
-                    entity=group.entity,
-                    family=group.family,
-                    donor_spine="synthetic_stacked_h5_fixture",
-                    donor_channel="asec",
-                    predictors=pattern.predictors,
-                    seed=pattern.seed,
-                    weight_kind=pattern.weight_kind,
-                    patterns=(pattern,),
-                    imputed_recipient_rows=immigration_recipient_rows,
-                    reconciliation=immigration_reconciliation,
-                )
-                group_targets[key]["qrf_pattern_evidence"] = (
-                    stacked_spine_module._acs_imputed_pattern_evidence(record)
-                )
-                group_targets[key]["post_transfer_reconciliation"] = dict(
-                    immigration_reconciliation
-                )
         pregnancy_key = f"{group.entity}/{group.family}/is_pregnant"
         if pregnancy_key in group_targets:
             group_targets[pregnancy_key]["structural_policy"] = (
@@ -1305,8 +1223,8 @@ def _canonical_stacked_late_dag_receipt(
         "targets": aggregate_targets,
         "completion": {
             "status": "complete",
-            "group_count": 19,
-            "target_count": 70,
+            "group_count": 18,
+            "target_count": 68,
             "residual_null_rows": 0,
         },
     }
@@ -1465,6 +1383,27 @@ def _canonical_stacked_late_dag_receipt(
                 output["content_sha256"] = stacked_spine_module._canonical_sha256(
                     producer_receipt
                 )
+        if producer_name == "source:with_us_immigration_inputs" and frame is not None:
+            for declared in declared_inputs:
+                evidence = declared["evidence"]
+                for alternative in evidence["alternatives"]:
+                    for column in alternative:
+                        if column["entity"] != "frame":
+                            column["scope_rows"] = int(
+                                stacked_spine_module._late_required_scope_mask(
+                                    frame,
+                                    entity=column["entity"],
+                                    required_scope=column["required_scope"],
+                                ).sum()
+                            )
+                evidence.pop("sha256")
+                evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
+            output_surface = [
+                stacked_spine_module._late_output_column_evidence(
+                    frame, output=output, producer_receipt=producer_receipt
+                )
+                for output in contract.outputs
+            ]
         row = {
             "execution_index": index,
             "producer": producer_name,
@@ -1702,16 +1641,8 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
 
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
-    positive_draws = tuple(
-        draw
-        for draw in immigration_runtime.us_immigration_controls().humanitarian
-        if draw.target > 0
-    )
-    expected_rows = 1 + len(positive_draws)
-    expected_weights = np.asarray(
-        [1.0, *(float(draw.target) for draw in positive_draws)],
-        dtype=np.float64,
-    )
+    expected_rows = 13
+    expected_weights = np.ones(expected_rows, dtype=np.float64)
     assert all(frame.n(entity) == expected_rows for entity in US_SCHEMA.entities)
     np.testing.assert_array_equal(
         frame.weights_for("household").values,
@@ -1728,28 +1659,19 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
             person[US_SCHEMA.membership_column(entity)],
             frame.table(entity)[US_SCHEMA.id_column(entity)],
         )
-    for draw in positive_draws:
-        emitted = immigration_runtime.us_immigration_humanitarian_draw_mask(
-            frame,
-            draw,
-        )
-        assert int(emitted.sum()) == 1
-        assert float(frame.resolve_weights("person").values[emitted].sum()) == float(
-            draw.target
-        )
+    assert set(immigration_runtime.US_IMMIGRATION_ALL_OUTPUT_COLUMNS).issubset(person)
+    assert immigration_runtime.us_immigration_composition_gate(frame).passed
     for entity in US_SCHEMA.entities:
         assert manifest["provenance_counts"][entity] == {
             "rows": expected_rows,
             "by_source_channel": {
                 BASE_ASEC_SUPPORT_CHANNEL: 1,
-                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: len(positive_draws),
+                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: 12,
             },
             "by_clone_index": {"0": expected_rows},
             "by_source_channel_and_clone_index": {
                 BASE_ASEC_SUPPORT_CHANNEL: {"0": 1},
-                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: {
-                    "0": len(positive_draws)
-                },
+                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: {"0": 12},
             },
         }
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
@@ -1899,10 +1821,19 @@ def test_ready_stacked_pool_loader_rejects_boolean_sampling_aliases(
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
-def test_ready_stacked_pool_loader_replays_immigration_status_against_h5(
+@pytest.mark.parametrize(
+    "column",
+    (
+        "immigration_is_us_citizen",
+        "immigration_us_entry_year_lower_bound",
+        "immigration_status_str",
+    ),
+)
+def test_ready_stacked_pool_loader_replays_neutral_immigration_outputs_against_h5(
     tmp_path: Path,
+    column: str,
 ) -> None:
-    """An ordinary H5 re-hash cannot forge the sealed live immigration proof."""
+    """A byte-level re-hash cannot forge a neutral fact or legacy projection."""
 
     pytest.importorskip("tables")
     manifest_path = _write_ready_pool(tmp_path, stacked=True)
@@ -1910,11 +1841,13 @@ def test_ready_stacked_pool_loader_replays_immigration_status_against_h5(
     pool_path = Path(manifest["pool_h5"]["path"])
     with pd.HDFStore(pool_path, mode="a") as store:
         person = h5_io.read_frame_table(store, "person")
-        parole_rows = person["immigration_status_str"].eq("PAROLED_ONE_YEAR")
-        assert parole_rows.any()
-        person.loc[parole_rows.idxmax(), "immigration_status_str"] = (
-            "LEGAL_PERMANENT_RESIDENT"
-        )
+        index = person.index[0]
+        if column == "immigration_status_str":
+            person.loc[index, column] = "LEGAL_PERMANENT_RESIDENT"
+        elif column == "immigration_is_us_citizen":
+            person.loc[index, column] = not bool(person.loc[index, column])
+        else:
+            person.loc[index, column] += 1
         h5_io.put_frame_table(
             store,
             "person",
@@ -1930,7 +1863,7 @@ def test_ready_stacked_pool_loader_replays_immigration_status_against_h5(
 
     with pytest.raises(
         ValueError,
-        match="differs from the live ASEC/ACS weighted population",
+        match="differs from its sealed neutral source-stage evidence",
     ):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
@@ -2096,10 +2029,7 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         )
     )
 
-    expected_rows = 1 + sum(
-        draw.target > 0
-        for draw in immigration_runtime.us_immigration_controls().humanitarian
-    )
+    expected_rows = 13
     assert frame.n("household") == expected_rows
     assert loaded_manifest["status"] == "gate_failed"
     assert loaded_manifest["simulation_ready"] is False

@@ -201,7 +201,7 @@ def _with_household_design_weights(frame: Frame, values: np.ndarray) -> Frame:
     )
 
 
-def _humanitarian_weighted_source_frames(
+def _neutral_source_frames(
     *,
     asec_count: int,
     acs_count: int,
@@ -210,60 +210,17 @@ def _humanitarian_weighted_source_frames(
     state_fips: str | None = None,
     puma: str | None = None,
 ) -> tuple[Frame, Frame]:
-    """Shape sampled survey weights to the live humanitarian controls.
+    """Return survey fixtures with native design weights, without status targets."""
 
-    The stacked assembly normalizes each sampled arm back to its source mass,
-    then splits the ASEC anchor mass equally across ASEC and ACS.  Setting the
-    ASEC source mass to twice the humanitarian target total and the selected
-    ACS weights to the individual targets therefore makes both assembled arms
-    exact without changing the frozen assembly manifest later in the fixture
-    pipeline.
-    """
-
-    controls = immigration_module.us_immigration_controls()
-    positive_draws = tuple(draw for draw in controls.humanitarian if draw.target > 0)
-    target_weights = np.asarray(
-        [draw.target for draw in positive_draws],
-        dtype=np.float64,
+    return (
+        _many_household_source_frame(count=asec_count, state_fips=state_fips),
+        _many_household_source_frame(
+            count=acs_count,
+            measured_offset=1_000.0,
+            state_fips=state_fips,
+            puma=puma,
+        ),
     )
-    target_mass = float(target_weights.sum())
-    asec = _many_household_source_frame(
-        count=asec_count,
-        state_fips=state_fips,
-    )
-    acs = _many_household_source_frame(
-        count=acs_count,
-        measured_offset=1_000.0,
-        state_fips=state_fips,
-        puma=puma,
-    )
-    sampled_acs, _receipt = stacked_spine_module.sample_acs_households(
-        acs,
-        fraction=sample_fraction,
-        seed=sample_seed,
-    )
-    selected_ids = sampled_acs.table("household")["household_id"].to_numpy(
-        dtype=np.int64
-    )
-    assert len(selected_ids) == len(target_weights)
-
-    asec = _with_household_design_weights(
-        asec,
-        np.full(asec_count, 2.0 * target_mass / asec_count, dtype=np.float64),
-    )
-    acs_household_ids = acs.table("household")["household_id"].to_numpy(dtype=np.int64)
-    acs_weights = np.ones(acs_count, dtype=np.float64)
-    id_to_position = {
-        int(household_id): position
-        for position, household_id in enumerate(acs_household_ids)
-    }
-    for household_id, target_weight in zip(
-        selected_ids,
-        target_weights,
-        strict=True,
-    ):
-        acs_weights[id_to_position[int(household_id)]] = target_weight
-    return asec, _with_household_design_weights(acs, acs_weights)
 
 
 def _replace_person(
@@ -1303,281 +1260,35 @@ def _canonical_late_calibration_owner_receipt(
     return owner
 
 
-_HUMANITARIAN_ACS_EVIDENCE = {
-    "paroled_one_year:afghanistan": (200, 2021),
-    "paroled_one_year:ukraine": (164, 2022),
-    "paroled_one_year:nicaragua": (315, 2023),
-    "paroled_one_year:venezuela": (373, 2022),
-    "refugee": (412, 2022),
-    "asylee": (207, 2016),
-    "deportation_withheld": (501, 2015),
-    "tps:venezuela": (373, 2015),
-    "tps:el_salvador": (312, 2001),
-    "tps:honduras": (314, 1998),
-    "tps:nicaragua": (315, 1998),
-    "tps:nepal": (229, 2015),
-    "tps:other_designated": (205, 2015),
-}
+def _with_neutral_immigration_fixture(frame: Frame) -> Frame:
+    """Assign survey-derived neutral facts without reshaping rows or weights."""
 
-
-def _with_reconciled_immigration_fixture(
-    frame: Frame,
-) -> tuple[Frame, dict[str, object]]:
-    """Build and reconcile one live ACS household per positive manifest draw."""
-
-    controls = immigration_module.us_immigration_controls()
-    positive_draws = tuple(draw for draw in controls.humanitarian if draw.target > 0)
-    expected_labels = {draw.label for draw in controls.humanitarian}
-    assert set(_HUMANITARIAN_ACS_EVIDENCE) == expected_labels
-    row_count = 1 + len(positive_draws)
-    ids = np.arange(1, row_count + 1, dtype=np.int64)
-    expected_channels = {"asec": 1, "acs": len(positive_draws)}
-    preserve_live_lineage = all(
-        len(frame.table(entity)) == row_count
-        and support_channel_column(entity) in frame.table(entity)
-        and frame.table(entity)[support_channel_column(entity)]
-        .astype(str)
-        .value_counts()
-        .to_dict()
-        == expected_channels
-        for entity in frame.entities
-    )
-
-    tables: dict[str, pd.DataFrame] = {}
-    for entity in frame.entities:
-        source = frame.table(entity)
-        assert not source.empty
-        if preserve_live_lineage:
-            table = source.copy(deep=True)
-        else:
-            table = pd.concat([source.iloc[[0]]] * row_count, ignore_index=True)
-            table[f"{entity}_id"] = ids
-            table[support_channel_column(entity)] = np.asarray(
-                ["asec", *(["acs"] * len(positive_draws))],
-                dtype=object,
-            )
-            table[support_clone_index_column(entity)] = np.zeros(
-                row_count,
-                dtype=np.int64,
-            )
-        tables[entity] = table
-
-    person = tables[frame.schema.person_entity]
-    if not preserve_live_lineage:
-        for entity in frame.schema.group_entities:
-            person[f"person_{entity}_id"] = ids
-        person["person_id"] = ids
-    person_channels = person[support_channel_column(frame.schema.person_entity)].astype(
-        str
-    )
-    asec_rows = person_channels.eq("asec").to_numpy(dtype=bool)
-    acs_rows = person_channels.eq("acs").to_numpy(dtype=bool)
-    assert int(asec_rows.sum()) == 1
-    assert int(acs_rows.sum()) == len(positive_draws)
-    # Keep legacy TPS arrivals outside the DACA age-at-entry cohort so each
-    # row remains eligible for the single humanitarian draw it represents.
-    person["A_AGE"] = np.full(row_count, 60.0)
-    if "age" in person:
-        person["age"] = np.full(row_count, 60.0)
-    if "source_year" in person and not preserve_live_lineage:
-        person["source_year"] = np.full(row_count, 2024, dtype=np.int64)
-    if "source_household_id" in person and not preserve_live_lineage:
-        person["source_household_id"] = ids
-    if "source_person_id" in person and not preserve_live_lineage:
-        person["source_person_id"] = ids
-    if "PERIDNUM" in person and not preserve_live_lineage:
-        person["PERIDNUM"] = pd.Series(ids.astype(str), dtype="string")
-
-    acs_evidence = [_HUMANITARIAN_ACS_EVIDENCE[draw.label] for draw in positive_draws]
-    for column in ("PRCITSHP", "PENATVTY", "PEINUSYR", "CIT", "POBP", "YOEP"):
-        person[column] = np.full(row_count, np.nan, dtype=np.float64)
-    person.loc[asec_rows, ["PRCITSHP", "PENATVTY", "PEINUSYR"]] = (
-        1.0,
-        57.0,
-        0.0,
-    )
-    person.loc[acs_rows, "CIT"] = 5.0
-    person.loc[acs_rows, "POBP"] = [item[0] for item in acs_evidence]
-    person.loc[acs_rows, "YOEP"] = [item[1] for item in acs_evidence]
-    person["ssn_card_type"] = pd.Series(
-        np.where(asec_rows, "CITIZEN", "OTHER_NON_CITIZEN"),
-        index=person.index,
-        dtype="string",
-    )
-    person["immigration_status_str"] = pd.Series(
-        np.where(asec_rows, "CITIZEN", "LEGAL_PERMANENT_RESIDENT"),
-        index=person.index,
-        dtype="string",
-    )
-
-    household = tables["household"]
-    existing_household_weights = pd.Series(
-        np.asarray(frame.weights_for("household").values, dtype=np.float64),
-        index=frame.table("household")["household_id"].to_numpy(dtype=np.int64),
-    )
-    asec_household_id = int(person.loc[asec_rows, "person_household_id"].iloc[0])
-    household_id_to_weight = {
-        asec_household_id: (
-            float(existing_household_weights.loc[asec_household_id])
-            if preserve_live_lineage
-            else 1.0
-        ),
-        **{
-            int(household_id): float(draw.target)
-            for household_id, draw in zip(
-                person.loc[acs_rows, "person_household_id"],
-                positive_draws,
-                strict=True,
-            )
-        },
-    }
-    household_weights = household["household_id"].map(household_id_to_weight)
-    assert household_weights.notna().all()
-    assert tuple(frame.weighted_entities) == ("household",)
-    weights = {
-        "household": Weights(
-            household_weights.to_numpy(dtype=np.float64),
-            frame.weights_for("household").kind,
+    person = (
+        frame.table("person")
+        .drop(
+            columns=list(immigration_module.US_IMMIGRATION_ALL_OUTPUT_COLUMNS),
+            errors="ignore",
         )
-    }
-    source_strata = np.asarray(frame.strata, dtype=object)
-    strata = (
-        frame.strata
-        if preserve_live_lineage
-        else pd.Series(np.resize(source_strata, row_count), dtype=object)
+        .copy()
     )
-    metadata = dict(frame.metadata)
-    assembly_key = stacked_spine_module.SPINE_ASSEMBLY_MANIFEST_KEY
-    assembly = metadata.get(assembly_key)
-    if not preserve_live_lineage and isinstance(assembly, Mapping):
-        assembly = copy.deepcopy(dict(assembly))
-        declared_channels = tuple(assembly["channels"])
-        assembly["native_row_counts"] = {
-            entity: {
-                channel: int(table[support_channel_column(entity)].eq(channel).sum())
-                for channel in declared_channels
-            }
-            for entity, table in tables.items()
-        }
-        metadata[assembly_key] = assembly
-    stacked_key = stacked_spine_module.STACKED_SPINE_MANIFEST_KEY
-    stacked = metadata.get(stacked_key)
-    if not preserve_live_lineage and isinstance(stacked, Mapping):
-        stacked = copy.deepcopy(dict(stacked))
-        household_channels = household[support_channel_column("household")].astype(str)
-        live_weights = household_weights.to_numpy(dtype=np.float64)
-        live_masses = {
-            channel: float(
-                live_weights[household_channels.eq(channel).to_numpy()].sum()
-            )
-            for channel in ("asec", "acs")
-        }
-        total_mass = float(live_weights.sum())
-        shares = {
-            channel: live_masses[channel] / total_mass for channel in ("asec", "acs")
-        }
-        sample_receipts = {
-            channel: dict(sample)
-            for channel, sample in stacked["survey_samples"].items()
-        }
-        mass_anchor = str(stacked["mass_anchor_channel"])
-        normalized_masses = {
-            channel: total_mass if channel == mass_anchor else live_masses[channel]
-            for channel in ("asec", "acs")
-        }
-        for channel, sample in sample_receipts.items():
-            sampled_mass = float(sample["sampled_household_mass"])
-            normalized_mass = normalized_masses[channel]
-            sample.update(
-                {
-                    "incoming_household_mass": normalized_mass,
-                    "normalization_factor": normalized_mass / sampled_mass,
-                    "normalized_household_mass": normalized_mass,
-                }
-            )
-        stacked["survey_samples"] = sample_receipts
-        stacked["household_mass_shares"] = shares
-        harmonization = {
-            channel: dict(arm)
-            for channel, arm in stacked["weight_harmonization"].items()
-        }
-        for channel, arm in harmonization.items():
-            incoming_mass = normalized_masses[channel]
-            allocated_mass = live_masses[channel]
-            arm.update(
-                {
-                    "share": shares[channel],
-                    "incoming_mass": incoming_mass,
-                    "allocated_mass": allocated_mass,
-                    "declared_allocation": shares[channel] * total_mass,
-                    "scale_factor": allocated_mass / incoming_mass,
-                }
-            )
-        stacked["weight_harmonization"] = harmonization
-        metadata[stacked_key] = stacked
-    reconciled_frame = Frame(
-        tables,
-        frame.schema,
-        weights,
-        strata,
-        mass_log=frame.mass_log,
-        metadata=metadata,
+    channels = person.get(
+        support_channel_column("person"),
+        pd.Series("asec", index=person.index),
+    ).astype(str)
+    acs = channels.eq("acs").to_numpy(dtype=bool)
+    person["PRCITSHP"] = np.where(acs, np.nan, 1.0)
+    person["PENATVTY"] = np.where(acs, np.nan, 57.0)
+    person["PEINUSYR"] = np.where(acs, np.nan, 0.0)
+    person["CIT"] = np.where(acs, 5.0, np.nan)
+    person["POBP"] = np.where(acs, 164.0, np.nan)
+    person["YOEP"] = np.where(acs, 2022.0, np.nan)
+    person["age"] = 50
+    person["source_year"] = 2024
+    person["source_household_id"] = person["person_household_id"]
+    person["source_person_id"] = person["person_id"]
+    return immigration_module.with_us_immigration_inputs(
+        _replace_person(frame, person), seed=0, time_period=2024
     )
-    reconciled_person, receipt = (
-        immigration_module.reconcile_us_immigration_humanitarian_transfer(
-            reconciled_frame.table(frame.schema.person_entity),
-            weights=np.asarray(
-                reconciled_frame.resolve_weights(frame.schema.person_entity).values,
-                dtype=np.float64,
-            ),
-            mutable_rows=acs_rows,
-            seed=0,
-        )
-    )
-    return _replace_person(reconciled_frame, reconciled_person), receipt
-
-
-def _immigration_fixture_qrf_evidence(
-    *,
-    target: str,
-    family_targets: tuple[str, ...],
-    donor_rows: int,
-    recipient_rows: int,
-) -> dict[str, object]:
-    """Return canonical joint-codec QRF evidence for one paired output leaf."""
-
-    required_predictors, _optional_predictors = (
-        stacked_spine_module._acs_pattern_predictor_authority(
-            entity="person",
-            family_targets=family_targets,
-        )
-    )
-    pattern = acs_transfer_module.AcsTransferPattern(
-        name=acs_transfer_module._pattern_name(0, ()),
-        observed_optional_predictors=(),
-        predictors=required_predictors,
-        seed=0,
-        weight_kind=WeightKind.DESIGN.value,
-        donor_rows=donor_rows,
-        recipient_rows=recipient_rows,
-        target_regimes=tuple(
-            (model_target, "positive_only")
-            for model_target in acs_transfer_module._model_target_names(family_targets)
-        ),
-    )
-    record = acs_transfer_module.AcsImputedInput(
-        column=target,
-        entity="person",
-        family="source_operator_immigration",
-        donor_spine="synthetic_pool_tool_fixture",
-        donor_channel="asec",
-        predictors=required_predictors,
-        seed=0,
-        weight_kind=WeightKind.DESIGN.value,
-        patterns=(pattern,),
-        imputed_recipient_rows=recipient_rows,
-    )
-    return stacked_spine_module._acs_imputed_pattern_evidence(record)
 
 
 def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
@@ -1614,12 +1325,7 @@ def _canonical_late_transfer_receipt(
     *,
     authority: Mapping[str, object] | None = None,
     frame: Frame | None = None,
-    immigration_reconciliation: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    if immigration_reconciliation is None:
-        _fixture_frame, immigration_reconciliation = (
-            _with_reconciled_immigration_fixture(_source_frame())
-        )
     canonical_family = {
         (entity, target): family
         for entity, families in (
@@ -1641,36 +1347,12 @@ def _canonical_late_transfer_receipt(
         ]
     )
     for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS:
-        is_immigration_group = (
-            group.entity == "person" and group.family == "source_operator_immigration"
-        )
-        immigration_mutable_rows = int(immigration_reconciliation["mutable_rows"])
-        immigration_immutable_rows = int(immigration_reconciliation["immutable_rows"])
         group_targets = {
             f"{group.entity}/{group.family}/{target}": {
-                "authorized_null_rows": immigration_mutable_rows
-                if is_immigration_group
-                else 0,
-                "imputed_rows": immigration_mutable_rows if is_immigration_group else 0,
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
-                **(
-                    {
-                        "qrf_pattern_evidence": (
-                            _immigration_fixture_qrf_evidence(
-                                target=target,
-                                family_targets=group.targets,
-                                donor_rows=immigration_immutable_rows,
-                                recipient_rows=immigration_mutable_rows,
-                            )
-                        ),
-                        "post_transfer_reconciliation": copy.deepcopy(
-                            immigration_reconciliation
-                        ),
-                    }
-                    if is_immigration_group
-                    else {}
-                ),
             }
             for target in group.targets
         }
@@ -1720,8 +1402,8 @@ def _canonical_late_transfer_receipt(
         "targets": targets,
         "completion": {
             "status": "complete",
-            "group_count": 19,
-            "target_count": 70,
+            "group_count": 18,
+            "target_count": 68,
             "residual_null_rows": 0,
         },
     }
@@ -1733,7 +1415,6 @@ def _canonical_late_dag_receipt(
     authority: Mapping[str, object] | None = None,
     output_frame_sha256: str = "f" * 64,
     frame: Frame | None = None,
-    immigration_reconciliation: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
     schedule_receipt = pool_tool._json_ready(
@@ -1750,7 +1431,14 @@ def _canonical_late_dag_receipt(
             "phase": "post_clone",
             "operator_order": [operator],
             "suboperators": [{"operator": operator, "order_index": 0}],
-            "cps_source_evidence": cps_source_evidence,
+            "cps_source_evidence": (
+                None
+                if multispine_pool_module.POOL_OPERATOR_CONTRACTS[
+                    operator
+                ].execution_scope
+                == "whole_pool"
+                else cps_source_evidence
+            ),
         }
         for operator in source_order
     }
@@ -1777,7 +1465,6 @@ def _canonical_late_dag_receipt(
         pool_tool,
         authority=authority,
         frame=frame,
-        immigration_reconciliation=immigration_reconciliation,
     )
     input_frame_sha256 = "e" * 64
     previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
@@ -1940,6 +1627,27 @@ def _canonical_late_dag_receipt(
             }
             for output in contract.outputs
         ]
+        if producer_name == "source:with_us_immigration_inputs" and frame is not None:
+            for declared in declared_inputs:
+                evidence = declared["evidence"]
+                for alternative in evidence["alternatives"]:
+                    for column in alternative:
+                        if column["entity"] != "frame":
+                            column["scope_rows"] = int(
+                                stacked_spine_module._late_required_scope_mask(
+                                    frame,
+                                    entity=column["entity"],
+                                    required_scope=column["required_scope"],
+                                ).sum()
+                            )
+                evidence.pop("sha256")
+                evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
+            output_surface = [
+                stacked_spine_module._late_output_column_evidence(
+                    frame, output=output, producer_receipt=producer_receipt
+                )
+                for output in contract.outputs
+            ]
         row: dict[str, object] = {
             "execution_index": index,
             "producer": producer_name,
@@ -2001,7 +1709,7 @@ def _authorized_late_impute_fixture(
 ) -> tuple[Frame, dict[str, object], str]:
     """Bind one structurally signed fixture DAG proof to its live frame."""
 
-    frame, immigration_reconciliation = _with_reconciled_immigration_fixture(frame)
+    frame = _with_neutral_immigration_fixture(frame)
     tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
     for entity, table in tables.items():
         if support_channel_column(entity) not in table:
@@ -2046,7 +1754,6 @@ def _authorized_late_impute_fixture(
         authority=authority,
         output_frame_sha256=stacked_spine_module._late_frame_content_sha256(frame),
         frame=frame,
-        immigration_reconciliation=immigration_reconciliation,
     )
     authorized, transition_authority_sha256 = (
         stacked_spine_module._bind_late_producer_transition_authority(frame, dag)
@@ -2077,7 +1784,7 @@ def _install_stacked_entrypoint_stubs(
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     source_manifest = pool_tool.load_acs_source_manifest()
     puf_donor = pd.DataFrame({"fixture": np.arange(7)})
-    asec_source, acs_source = _humanitarian_weighted_source_frames(
+    asec_source, acs_source = _neutral_source_frames(
         asec_count=100,
         acs_count=1_200,
         sample_fraction=0.01,
@@ -2340,9 +2047,7 @@ def _install_stacked_entrypoint_stubs(
                 "family": group.family,
                 "ordered_targets": list(group.targets),
             }
-        late_base, immigration_reconciliation = _with_reconciled_immigration_fixture(
-            primary_puf_result.frame
-        )
+        late_base = _with_neutral_immigration_fixture(primary_puf_result.frame)
         late_tables = {
             entity: late_base.table(entity).copy(deep=True)
             for entity in late_base.entities
@@ -2392,7 +2097,6 @@ def _install_stacked_entrypoint_stubs(
                 late_frame
             ),
             frame=late_frame,
-            immigration_reconciliation=immigration_reconciliation,
         )
         authorized_frame, transition_authority_sha256 = (
             stacked_spine_module._bind_late_producer_transition_authority(
@@ -2676,8 +2380,8 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         published_transfer = published_dag["post_puf_transfer"]
         assert published_transfer["completion"] == {
             "status": "complete",
-            "group_count": 19,
-            "target_count": 70,
+            "group_count": 18,
+            "target_count": 68,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -2928,7 +2632,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "ae83c7a32a4a2970070f71b95aa7de771a56ab435f71004c11ee2e6b181fe07b",
+            "spec_sha256": "e97e3103df047113e393f38d33328eca48f51c4b20d3be515a69974d7fdd6af2",
         },
     }
 
@@ -4015,7 +3719,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     assert resource_semantics_sha256 == stacked_spine_module._canonical_sha256(
         unsigned_resource_semantics
     )
-    assert resource_semantics["producer_count"] == 38
+    assert resource_semantics["producer_count"] == 37
     resource_rows = {
         row["producer"]: row["resources"] for row in resource_semantics["producers"]
     }
@@ -4538,7 +4242,7 @@ def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    asec_source, acs_source = _humanitarian_weighted_source_frames(
+    asec_source, acs_source = _neutral_source_frames(
         asec_count=10,
         acs_count=120,
         sample_fraction=0.10,
@@ -4929,6 +4633,12 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     checkpoint_store = keywords["checkpoint"].__self__
     assert checkpoint_store.base_identity["materializer_version"] == 3
     assert "late_producer_schedule" not in checkpoint_store.base_identity["pool_code"]
+    assert (
+        "source_operator_immigration"
+        not in checkpoint_store.base_identity["pool_code"]["transfer_target_families"][
+            "person"
+        ]
+    )
 
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
     manifest = pool_tool._read_json_object(outputs.manifest)
@@ -4962,9 +4672,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # The PE-US 1.819.0 compatibility edits legitimately move the pool-code
-        # checkpoint identities embedded in the otherwise legacy publication.
-        "manifest": "63c6e6973079f0b793d5435113aaae66184564b70271f8af120fecdbb5015f63",
+        # Removing the immigration QRF family moves only the embedded
+        # checkpoint identities and identity-keyed paths. Reinstating that
+        # family in the identity exactly reproduces the prior manifest hash;
+        # the legacy pool and agreement bytes above remain unchanged.
+        "manifest": "dd6b002bcf2c8a789c6a3ac4b733a9735ccb67bd105cd3751dfdccf3c84726c6",
     }
 
 

@@ -425,6 +425,52 @@ def _stable_site(
     )
 
 
+# Explicit support and event-clock draws; no population totals enter this ledger.
+US_IMMIGRATION_NEUTRAL_DRAW_LABELS = (
+    "amerasian_admission_history_support",
+    "amerasian_admission_month_within_year",
+    "asylum_grant_history_support",
+    "asylum_grant_month_within_year",
+    "asylum_grant_year_after_entry",
+    "battered_alien_or_qualifying_relative_support",
+    "battered_alien_qualified_status_start_month_within_year",
+    "battered_alien_qualified_status_start_year",
+    "cofa_status_start_month_within_year",
+    "conditional_entry_history_support",
+    "conditional_entry_month_within_year",
+    "cuban_haitian_entrant_start_month_within_year",
+    "current_cofa_resident_support",
+    "current_cuban_haitian_entrant_support",
+    "current_daca_support",
+    "current_lpr_support",
+    "current_parole_support",
+    "current_tps_support",
+    "employment_authorization_grant_support",
+    "entry_month_within_imputed_year",
+    "entry_year_within_reported_interval",
+    "first_qualified_status_1996_cutoff_day",
+    "iraqi_afghan_special_immigrant_history_support",
+    "lpr_adjustment_from_humanitarian_history_support",
+    "lpr_status_acquisition_month_within_year",
+    "lpr_status_acquisition_year",
+    "other_lawful_status_support",
+    "parole_start_month_within_year",
+    "qualifying_afghan_parole_history_support",
+    "qualifying_ukrainian_parole_history_support",
+    "refugee_admission_history_support",
+    "refugee_admission_month_within_year",
+    "severe_trafficking_victim_or_relative_support",
+    "special_immigrant_status_start_month_within_year",
+    "ssn_not_valid_for_employment_support",
+    "ssn_valid_for_employment_support",
+    "trafficking_qualified_status_start_month_within_year",
+    "trafficking_qualified_status_start_year",
+    "withholding_grant_year_after_entry",
+    "withholding_start_month_within_year",
+    "withholding_support",
+)
+
+
 LEGACY_V1_SITES = (
     _site(
         "survey_sample_asec",
@@ -744,40 +790,16 @@ LEGACY_V1_SITES = (
     ),
     *(
         _stable_site(
-            f"immigration_humanitarian_{label.replace(':', '_')}_assignment",
+            f"immigration_{label}",
             salt=f"immigration:{label}",
-            key_grammar=("source_year:source_person_id_if_present", "else_person_id"),
-            candidate_universe=(
-                "all_person_rows_then_category_origin_window_pool_mask"
+            key_grammar=(
+                "complete_source_year:source_household_id:source_person_id",
+                "else_complete_source_year:source_person_id",
+                "else_complete_person_id",
             ),
+            candidate_universe="all_person_rows_before_source_fact_support_mask",
         )
-        for label in (
-            "paroled_one_year:afghanistan",
-            "paroled_one_year:ukraine",
-            "paroled_one_year:nicaragua",
-            "paroled_one_year:venezuela",
-            "refugee",
-            "asylee",
-            "deportation_withheld",
-            "tps:venezuela",
-            "tps:el_salvador",
-            "tps:honduras",
-            "tps:nicaragua",
-            "tps:nepal",
-            "tps:other_designated",
-        )
-    ),
-    _stable_site(
-        "immigration_ead_workers_assignment",
-        salt="immigration:ead_workers",
-        key_grammar=("source_year:source_person_id_if_present", "else_person_id"),
-        candidate_universe="all_person_rows_then_worker_candidate_mask",
-    ),
-    _stable_site(
-        "immigration_ead_students_assignment",
-        salt="immigration:ead_students",
-        key_grammar=("source_year:source_person_id_if_present", "else_person_id"),
-        candidate_universe="all_person_rows_then_student_candidate_mask",
+        for label in US_IMMIGRATION_NEUTRAL_DRAW_LABELS
     ),
     _stable_site(
         "ssi_take_up_assignment",

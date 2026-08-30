@@ -214,9 +214,7 @@ chaining:
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   memory_policy: release_after_draw
-  keep_together:
-  - - ssn_card_type
-    - immigration_status_str
+  keep_together: []
 concepts:
   american_indian_status:
   - is_american_indian_or_alaska_native
@@ -343,10 +341,6 @@ waiver_records:
     - pregnancy_status
 transfer_execution:
   schema_version: 3
-  immigration_required_predictors:
-  - __acs_transfer_is_us_citizen
-  - __acs_transfer_birth_country_code
-  - __acs_transfer_arrival_year
   group_optional_names:
     __acs_transfer_employment_income: __acs_transfer_group_employment_income_sum
     __acs_transfer_interest_dividend_rental_income: __acs_transfer_group_investment_income_sum
@@ -405,18 +399,6 @@ transfer_execution:
     OWNER_WITH_MORTGAGE: 1.0
     RENTED: 3.0
     RENTER: 3.0
-  immigration_status_targets:
-  - ssn_card_type
-  - immigration_status_str
-  immigration_status_model_target: __acs_transfer_immigration_status_pair
-  immigration_baseline_excluded_statuses:
-  - ASYLEE
-  - CUBAN_HAITIAN_ENTRANT
-  - DACA
-  - DEPORTATION_WITHHELD
-  - PAROLED_ONE_YEAR
-  - REFUGEE
-  - TPS
   discrete_numeric_targets:
   - first_home_mortgage_origination_year
   - second_home_mortgage_origination_year
@@ -462,19 +444,6 @@ transfer_execution:
         tax_unit_role: tax_unit_role_input
         tax_unit_link: person_tax_unit_id
         mutable_rows: newly_imputed_expense_cells_only
-    humanitarian_immigration:
-      activation:
-        all_targets:
-        - ssn_card_type
-        - immigration_status_str
-      contract:
-        targets:
-        - ssn_card_type
-        - immigration_status_str
-        mutable_rows: newly_imputed_paired_cells_only
-        target_basis: manifest_residual_after_immutable_asec_mass
-        selection: stable_person_hash_in_manifest_draw_order
-        candidate_shortfall: error
     schedule_d_capital_gain_distributions:
       activation:
         derive_schedule_d: true
@@ -2432,44 +2401,6 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-- id: late/person/source_operator_immigration
-  stage: late_producer_dag
-  entities:
-  - person
-  runtime_name: transfer:person/source_operator_immigration
-  donor:
-    channel: asec
-  donor_contract:
-    spine: asec_puf
-    resource_binding_channel: null
-    selection: all_rows_from_post_puf_asec_origin_projection
-    projection:
-      support_channel: asec
-      support_clone_index: 1
-  recipient_contract:
-    selection: target_specific_complement_of_declared_producer_rows
-  model: regime_gated_qrf
-  predictors:
-  - acs_person_required
-  - acs_person_optional_income
-  - acs_person_optional_structure
-  max_targets_per_fit: 8
-  execution_contract: acs_transfer_default
-  targets:
-  - name: ssn_card_type
-    entity: person
-    value_kind: category
-    dtype: str
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
-  - name: immigration_status_str
-    entity: person
-    value_kind: category
-    dtype: str
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
 - id: late/person/source_operator_medicare_take_up
   stage: late_producer_dag
   entities:
@@ -2801,7 +2732,7 @@ families:
     output_coverage_scope: whole_pool
 producer_graph:
   graph_schema_version: 2
-  schedule_payload_schema_version: 17
+  schedule_payload_schema_version: 18
   external_stages:
   - post_clone_input_surface
   scope_coverage:
@@ -9440,7 +9371,7 @@ producer_graph:
       column: '@effective:source_wrapper:family_id'
       entity: family
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: family_id
@@ -9458,7 +9389,7 @@ producer_graph:
       column: '@effective:source_wrapper:assembly_manifest'
       entity: frame
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: household_id
@@ -9467,7 +9398,7 @@ producer_graph:
       column: '@effective:source_wrapper:household_id'
       entity: household
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: '@resolved_weight'
@@ -9476,7 +9407,7 @@ producer_graph:
       column: '@effective:source_wrapper:resolved_household_weight'
       entity: household
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: '@resolved_weight'
@@ -9503,7 +9434,7 @@ producer_graph:
       column: '@effective:source_wrapper:marital_unit_id'
       entity: marital_unit
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: marital_unit_id
@@ -9515,64 +9446,64 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: person_id
-          entity: person
-          value_kind: non_null
-      column: '@effective:person_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: A_AGE
+      - - column: age
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:A_AGE'
+      column: '@effective:age'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: A_HSCOL
+      - - column: CIT
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:A_HSCOL'
+      column: '@effective:immigration_acs:CIT'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: acs_source
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: A_LFSR
+      - - column: POBP
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:A_LFSR'
+      column: '@effective:immigration_acs:POBP'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: acs_source
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: A_MARITL
+      - - column: SSIP
           entity: person
-          value_kind: finite_numeric
-      column: '@effective:raw_person:A_MARITL'
+          value_kind: column_present
+      column: '@effective:immigration_acs:SSIP'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: acs_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: SSP
+          entity: person
+          value_kind: column_present
+      column: '@effective:immigration_acs:SSP'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: acs_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: YOEP
+          entity: person
+          value_kind: column_present
+      column: '@effective:immigration_acs:YOEP'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: acs_source
       tolerated_absence_receipts: []
     - alternatives:
       - - column: A_MJOCC
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:A_MJOCC'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: A_SPOUSE
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:raw_person:A_SPOUSE'
+      column: '@effective:immigration_asec:A_MJOCC'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9581,7 +9512,7 @@ producer_graph:
       - - column: CAID
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:CAID'
+      column: '@effective:immigration_asec:CAID'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9590,7 +9521,7 @@ producer_graph:
       - - column: CHAMPVA
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:CHAMPVA'
+      column: '@effective:immigration_asec:CHAMPVA'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9599,7 +9530,7 @@ producer_graph:
       - - column: IHSFLG
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:IHSFLG'
+      column: '@effective:immigration_asec:IHSFLG'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9608,7 +9539,7 @@ producer_graph:
       - - column: MCARE
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:MCARE'
+      column: '@effective:immigration_asec:MCARE'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9617,7 +9548,7 @@ producer_graph:
       - - column: MIL
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:MIL'
+      column: '@effective:immigration_asec:MIL'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9626,7 +9557,7 @@ producer_graph:
       - - column: PEAFEVER
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PEAFEVER'
+      column: '@effective:immigration_asec:PEAFEVER'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9635,7 +9566,7 @@ producer_graph:
       - - column: PEINUSYR
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PEINUSYR'
+      column: '@effective:immigration_asec:PEINUSYR'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9644,7 +9575,7 @@ producer_graph:
       - - column: PEIO1COW
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PEIO1COW'
+      column: '@effective:immigration_asec:PEIO1COW'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9653,7 +9584,7 @@ producer_graph:
       - - column: PENATVTY
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PENATVTY'
+      column: '@effective:immigration_asec:PENATVTY'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9662,7 +9593,7 @@ producer_graph:
       - - column: PEN_SC1
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PEN_SC1'
+      column: '@effective:immigration_asec:PEN_SC1'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9671,7 +9602,7 @@ producer_graph:
       - - column: PEN_SC2
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PEN_SC2'
+      column: '@effective:immigration_asec:PEN_SC2'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9680,7 +9611,7 @@ producer_graph:
       - - column: PRCITSHP
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:PRCITSHP'
+      column: '@effective:immigration_asec:PRCITSHP'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9689,7 +9620,7 @@ producer_graph:
       - - column: RESNSS1
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:RESNSS1'
+      column: '@effective:immigration_asec:RESNSS1'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9698,7 +9629,7 @@ producer_graph:
       - - column: RESNSS2
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:RESNSS2'
+      column: '@effective:immigration_asec:RESNSS2'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9707,7 +9638,7 @@ producer_graph:
       - - column: SPM_CAPHOUSESUB
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:SPM_CAPHOUSESUB'
+      column: '@effective:immigration_asec:SPM_CAPHOUSESUB'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9716,7 +9647,7 @@ producer_graph:
       - - column: SSI_YN
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:SSI_YN'
+      column: '@effective:immigration_asec:SSI_YN'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
@@ -9725,19 +9656,29 @@ producer_graph:
       - - column: SS_YN
           entity: person
           value_kind: finite_numeric
-      column: '@effective:raw_person:SS_YN'
+      column: '@effective:immigration_asec:SS_YN'
       entity: person
       producing_stage: post_clone_input_surface
       required_scope: asec_source
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: '@resolved_weight'
+      - - column: A_AGE
           entity: person
-          value_kind: non_null
-      column: '@effective:resolved_person_weight'
+          value_kind: finite_numeric
+      column: '@effective:immigration_raw_age'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
+      tolerated_absence_receipts:
+      - optional_input:source:with_us_immigration_inputs:immigration_raw_age
+    - alternatives:
+      - - column: person_id
+          entity: person
+          value_kind: non_null
+      column: '@effective:person_id'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: '@post_clone_source_execution_config'
@@ -9746,7 +9687,7 @@ producer_graph:
       column: '@effective:source_wrapper:execution_config'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_family_id
@@ -9755,7 +9696,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_family_id'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_household_id
@@ -9764,7 +9705,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_household_id'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_id
@@ -9773,7 +9714,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_id'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_marital_unit_id
@@ -9782,7 +9723,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_marital_unit_id'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_spm_unit_id
@@ -9791,7 +9732,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_spm_unit_id'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_support_clone_index
@@ -9800,7 +9741,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_support_clone_index'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_tax_unit_id
@@ -9809,16 +9750,7 @@ producer_graph:
       column: '@effective:source_wrapper:person_tax_unit_id'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: PERIDNUM
-          entity: person
-          value_kind: non_null
-      column: '@effective:source_wrapper:source_evidence'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_id
@@ -9842,16 +9774,7 @@ producer_graph:
       column: '@effective:stable_source_identity'
       entity: person
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@resolved_weight'
-          entity: person
-          value_kind: non_null
-      column: '@resolved_weight'
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: person_family_id
@@ -9923,7 +9846,7 @@ producer_graph:
       column: '@effective:source_wrapper:spm_unit_id'
       entity: spm_unit
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: spm_unit_id
@@ -9941,7 +9864,7 @@ producer_graph:
       column: '@effective:source_wrapper:tax_unit_id'
       entity: tax_unit
       producing_stage: post_clone_input_surface
-      required_scope: asec_source
+      required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
       - - column: tax_unit_id
@@ -9958,13 +9881,358 @@ producer_graph:
       entity: person
       temporary: true
       validation_only: true
+    - column: immigration_adjusted_to_lpr_from_amerasian_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_asylum_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_battered_alien_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_cofa_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_conditional_entry_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_cuban_haitian_entrant_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_iraqi_afghan_special_immigrant_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_parole_for_at_least_one_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_qualifying_afghan_parole
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_qualifying_ukrainian_parole
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_refugee_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_severe_trafficking_victim_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_adjusted_to_lpr_from_withholding_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_amerasian_admission_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_amerasian_admission_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_asylum_grant_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_asylum_grant_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_conditional_entry_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_conditional_entry_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_cuban_haitian_entrant_start_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_cuban_haitian_entrant_start_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_entry_year_is_interval_midpoint
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_first_qualified_status_start_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_first_qualified_status_start_month_is_imputed
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_first_qualified_status_start_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_first_qualified_status_start_year_is_imputed
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_first_qualified_status_started_on_or_after_1996_08_22
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_been_granted_asylum
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_deportation_or_removal_withheld
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_employment_authorization
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_iraqi_or_afghan_special_immigrant_history
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_lawful_status_evidence
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_other_lawful_status
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_qualifying_afghan_humanitarian_parole_history
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_qualifying_ukrainian_humanitarian_parole_history
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_ssn
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_has_ssn_evidence
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_alien
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_amerasian_immigrant
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_battered_alien_or_qualifying_relative
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_current_cofa_resident
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_current_cuban_haitian_entrant
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_current_daca
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_current_tps
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_currently_paroled
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_lawful_permanent_resident
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_severe_trafficking_victim_or_qualifying_relative
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_us_citizen
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_us_national
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_is_us_resident
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_lpr_status_start_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_lpr_status_start_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_parole_period_years
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_parole_start_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_parole_start_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_refugee_admission_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_refugee_admission_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_ssn_is_valid_for_employment
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_status_start_month_is_imputed
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_status_start_year_is_imputed
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
     - column: immigration_status_str
-      coverage_scope: asec_source
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_us_entry_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_us_entry_year
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_us_entry_year_lower_bound
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_us_entry_year_upper_bound
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_was_admitted_as_refugee
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_was_granted_conditional_entry
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_was_paroled
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_withholding_start_month_index
+      coverage_scope: whole_pool
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: immigration_withholding_start_year
+      coverage_scope: whole_pool
       entity: person
       temporary: false
       validation_only: false
     - column: ssn_card_type
-      coverage_scope: asec_source
+      coverage_scope: whole_pool
       entity: person
       temporary: false
       validation_only: false
@@ -9979,8 +10247,9 @@ producer_graph:
           family: immigration
           phases:
           - post_clone
-          mechanism: source-keyed draws preserve equality across support clones
-          execution_scope: cps_source
+          mechanism: source-aware neutral facts are derived directly for both ASEC and ACS rows after
+            assembly
+          execution_scope: whole_pool
         formula_owned_outputs_removed: {}
         force_puf_imputation: null
         allow_existing_without_source: null
@@ -24639,1052 +24908,6 @@ producer_graph:
             - has_american_opportunity_credit_institution_ein
             - is_enrolled_at_least_half_time_for_american_opportunity_credit
             - is_pursuing_credential_for_american_opportunity_credit
-  - id: transfer:person/source_operator_immigration
-    name: transfer:person/source_operator_immigration
-    kind: late_transfer
-    kernel: kernel:acs_transfer
-    capabilities:
-      determinism: seeded
-      numeric_reproducibility: tolerance_bound
-      effects:
-      - none
-      structural_delta: none
-      retry_safety: idempotent
-    mutations:
-      entity_keys:
-        operation: preserve
-        precondition: entity_keys_valid
-        postcondition: entity_keys_unchanged
-      cardinality:
-        operation: preserve
-        precondition: entity_cardinality_valid
-        postcondition: entity_cardinality_unchanged
-      links:
-        operation: preserve
-        precondition: links_valid
-        postcondition: links_unchanged
-      memberships:
-        operation: preserve
-        precondition: memberships_valid
-        postcondition: memberships_unchanged
-      order:
-        operation: preserve
-        precondition: entity_order_valid
-        postcondition: entity_order_unchanged
-      weights:
-        operation: preserve
-        precondition: weights_valid
-        postcondition: weights_unchanged
-      mass_history:
-        operation: preserve
-        precondition: mass_history_valid
-        postcondition: mass_history_unchanged
-    inputs:
-    - alternatives:
-      - - column: family_id
-          entity: family
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:family_id'
-      entity: family
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: family_support_channel
-          entity: family
-          value_kind: non_null
-      column: '@effective:validated_structure:family_support_channel'
-      entity: family
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: family_support_clone_index
-          entity: family
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:family_support_clone_index'
-      entity: family
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: family_id
-          entity: family
-          value_kind: finite_numeric
-      column: family_id
-      entity: family
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: family_support_channel
-          entity: family
-          value_kind: non_null
-      column: family_support_channel
-      entity: family
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: family_support_clone_index
-          entity: family
-          value_kind: finite_numeric
-      column: family_support_clone_index
-      entity: family
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@us_spine_assembly_manifest'
-          entity: frame
-          value_kind: non_null
-      column: '@effective:validated_structure:assembly_manifest'
-      entity: frame
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@us_puf_clone_attachment_manifest'
-          entity: frame
-          value_kind: non_null
-      column: '@effective:validated_structure:puf_attachment_manifest'
-      entity: frame
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@us_stacked_spine_manifest'
-          entity: frame
-          value_kind: non_null
-      column: '@effective:validated_structure:stacked_manifest'
-      entity: frame
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@us_puf_clone_attachment_manifest'
-          entity: frame
-          value_kind: non_null
-      column: '@us_puf_clone_attachment_manifest'
-      entity: frame
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_id
-          entity: household
-          value_kind: finite_numeric
-        - column: state_fips
-          entity: household
-          value_kind: finite_numeric
-        - column: person_household_id
-          entity: person
-          value_kind: finite_numeric
-      - - column: state_fips
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:state_fips'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: TYPEHUGQ
-          entity: household
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:TYPEHUGQ'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: acs_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_id
-          entity: household
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:household_id'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_source_id
-          entity: household
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:household_source_id'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_spine_source_id
-          entity: household
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:household_spine_source_id'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_support_channel
-          entity: household
-          value_kind: non_null
-      column: '@effective:validated_structure:household_support_channel'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_support_clone_index
-          entity: household
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:household_support_clone_index'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@resolved_weight'
-          entity: household
-          value_kind: non_null
-      column: '@effective:validated_structure:resolved_household_weight'
-      entity: household
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@resolved_weight'
-          entity: household
-          value_kind: non_null
-      column: '@resolved_weight'
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: TYPEHUGQ
-          entity: household
-          value_kind: finite_numeric
-      column: TYPEHUGQ
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: acs_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_id
-          entity: household
-          value_kind: finite_numeric
-      column: household_id
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_source_id
-          entity: household
-          value_kind: finite_numeric
-      column: household_source_id
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_spine_source_id
-          entity: household
-          value_kind: finite_numeric
-      column: household_spine_source_id
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_support_channel
-          entity: household
-          value_kind: non_null
-      column: household_support_channel
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: household_support_clone_index
-          entity: household
-          value_kind: finite_numeric
-      column: household_support_clone_index
-      entity: household
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: marital_unit_id
-          entity: marital_unit
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:marital_unit_id'
-      entity: marital_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: marital_unit_support_channel
-          entity: marital_unit
-          value_kind: non_null
-      column: '@effective:validated_structure:marital_unit_support_channel'
-      entity: marital_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: marital_unit_support_clone_index
-          entity: marital_unit
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:marital_unit_support_clone_index'
-      entity: marital_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: marital_unit_id
-          entity: marital_unit
-          value_kind: finite_numeric
-      column: marital_unit_id
-      entity: marital_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: marital_unit_support_channel
-          entity: marital_unit
-          value_kind: non_null
-      column: marital_unit_support_channel
-      entity: marital_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: marital_unit_support_clone_index
-          entity: marital_unit
-          value_kind: finite_numeric
-      column: marital_unit_support_clone_index
-      entity: marital_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: age
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:age'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: YOEP
-          entity: person
-          value_kind: column_present
-      column: '@effective:immigration_acs_arrival'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: acs_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: CIT
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:immigration_acs_citizenship'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: acs_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: POBP
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:immigration_acs_origin'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: acs_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: PEINUSYR
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:immigration_asec_arrival'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: PRCITSHP
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:immigration_asec_citizenship'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: PENATVTY
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:immigration_asec_origin'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_id
-          entity: person
-          value_kind: non_null
-      - - column: source_household_id
-          entity: person
-          value_kind: non_null
-        - column: source_person_id
-          entity: person
-          value_kind: non_null
-        - column: source_year
-          entity: person
-          value_kind: non_null
-      - - column: source_person_id
-          entity: person
-          value_kind: non_null
-        - column: source_year
-          entity: person
-          value_kind: non_null
-      column: '@effective:immigration_stable_person_lineage'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: is_female
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:is_female'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@late_transfer_model_config'
-          entity: person
-          value_kind: non_null
-      column: '@effective:late_transfer_model_config'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@late_transfer_target_bank'
-          entity: person
-          value_kind: non_null
-      column: '@effective:late_transfer_target_bank'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: employment_income_before_lsr
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:optional_employment_income'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_employment_income
-    - alternatives:
-      - - column: A_EXPRRP
-          entity: person
-          value_kind: finite_numeric
-      - - column: A_LINENO
-          entity: person
-          value_kind: finite_numeric
-      - - column: is_household_head
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:optional_household_head'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_household_head
-    - alternatives:
-      - - column: acs_interest_dividend_rental_income
-          entity: person
-          value_kind: finite_numeric
-      - - column: estate_income
-          entity: person
-          value_kind: finite_numeric
-        - column: non_qualified_dividend_income
-          entity: person
-          value_kind: finite_numeric
-        - column: qualified_dividend_income
-          entity: person
-          value_kind: finite_numeric
-        - column: rental_income
-          entity: person
-          value_kind: finite_numeric
-        - column: tax_exempt_interest_income
-          entity: person
-          value_kind: finite_numeric
-        - column: taxable_interest_income
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:optional_investment_income'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_investment_income
-    - alternatives:
-      - - column: acs_retirement_income
-          entity: person
-          value_kind: finite_numeric
-      - - column: tax_exempt_private_pension_income
-          entity: person
-          value_kind: finite_numeric
-        - column: taxable_ira_distributions
-          entity: person
-          value_kind: finite_numeric
-        - column: taxable_private_pension_income
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:optional_retirement_income'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_retirement_income
-    - alternatives:
-      - - column: self_employment_income_before_lsr
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:optional_self_employment_income'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_self_employment_income
-    - alternatives:
-      - - column: acs_social_security_income
-          entity: person
-          value_kind: finite_numeric
-      - - column: social_security_dependents
-          entity: person
-          value_kind: finite_numeric
-        - column: social_security_disability
-          entity: person
-          value_kind: finite_numeric
-        - column: social_security_retirement
-          entity: person
-          value_kind: finite_numeric
-        - column: social_security_survivors
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:optional_social_security_income'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_social_security_income
-    - alternatives:
-      - - column: tenure_type
-          entity: person
-          value_kind: non_null
-      - - column: spm_unit_tenure_type
-          entity: spm_unit
-          value_kind: non_null
-      column: '@effective:optional_tenure'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts:
-      - optional_input:transfer:person/source_operator_immigration:optional_tenure
-    - alternatives:
-      - - column: '@resolved_weight'
-          entity: person
-          value_kind: non_null
-      column: '@effective:resolved_person_weight'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@resolved_weight'
-          entity: person
-          value_kind: non_null
-      column: '@effective:resolved_target_weight'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_family_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_family_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_household_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_household_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_marital_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_marital_unit_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_source_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_source_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_spine_source_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_spine_source_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_spm_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_spm_unit_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_support_channel
-          entity: person
-          value_kind: non_null
-      column: '@effective:validated_structure:person_support_channel'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_support_clone_index
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_support_clone_index'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_tax_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:person_tax_unit_id'
-      entity: person
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: '@resolved_weight'
-          entity: person
-          value_kind: non_null
-      column: '@resolved_weight'
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: employment_income_before_lsr
-          entity: person
-          value_kind: finite_numeric
-      column: employment_income_before_lsr
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: estate_income
-          entity: person
-          value_kind: finite_numeric
-      column: estate_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: immigration_status_str
-          entity: person
-          value_kind: non_null
-      column: immigration_status_str
-      entity: person
-      producing_stage: source:with_us_immigration_inputs
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: non_qualified_dividend_income
-          entity: person
-          value_kind: finite_numeric
-      column: non_qualified_dividend_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_family_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_family_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_household_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_household_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_id
-          entity: person
-          value_kind: non_null
-      column: person_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_marital_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_marital_unit_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_source_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_source_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_spine_source_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_spine_source_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_spm_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_spm_unit_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_support_channel
-          entity: person
-          value_kind: non_null
-      column: person_support_channel
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_support_clone_index
-          entity: person
-          value_kind: finite_numeric
-      column: person_support_clone_index
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: person_tax_unit_id
-          entity: person
-          value_kind: finite_numeric
-      column: person_tax_unit_id
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: qualified_dividend_income
-          entity: person
-          value_kind: finite_numeric
-      column: qualified_dividend_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: rental_income
-          entity: person
-          value_kind: finite_numeric
-      column: rental_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: self_employment_income_before_lsr
-          entity: person
-          value_kind: finite_numeric
-      column: self_employment_income_before_lsr
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_dependents
-          entity: person
-          value_kind: finite_numeric
-      column: social_security_dependents
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_disability
-          entity: person
-          value_kind: finite_numeric
-      column: social_security_disability
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_retirement
-          entity: person
-          value_kind: finite_numeric
-      column: social_security_retirement
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: social_security_survivors
-          entity: person
-          value_kind: finite_numeric
-      column: social_security_survivors
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: ssn_card_type
-          entity: person
-          value_kind: non_null
-      column: ssn_card_type
-      entity: person
-      producing_stage: source:with_us_immigration_inputs
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_exempt_interest_income
-          entity: person
-          value_kind: finite_numeric
-      column: tax_exempt_interest_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: taxable_interest_income
-          entity: person
-          value_kind: finite_numeric
-      column: taxable_interest_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: taxable_ira_distributions
-          entity: person
-          value_kind: finite_numeric
-      column: taxable_ira_distributions
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: taxable_private_pension_income
-          entity: person
-          value_kind: finite_numeric
-      column: taxable_private_pension_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: spm_unit_id
-          entity: spm_unit
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:spm_unit_id'
-      entity: spm_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: spm_unit_support_channel
-          entity: spm_unit
-          value_kind: non_null
-      column: '@effective:validated_structure:spm_unit_support_channel'
-      entity: spm_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: spm_unit_support_clone_index
-          entity: spm_unit
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:spm_unit_support_clone_index'
-      entity: spm_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: spm_unit_id
-          entity: spm_unit
-          value_kind: finite_numeric
-      column: spm_unit_id
-      entity: spm_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: spm_unit_support_channel
-          entity: spm_unit
-          value_kind: non_null
-      column: spm_unit_support_channel
-      entity: spm_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: spm_unit_support_clone_index
-          entity: spm_unit
-          value_kind: finite_numeric
-      column: spm_unit_support_clone_index
-      entity: spm_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_id
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:tax_unit_id'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_support_channel
-          entity: tax_unit
-          value_kind: non_null
-      column: '@effective:validated_structure:tax_unit_support_channel'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_support_clone_index
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: '@effective:validated_structure:tax_unit_support_clone_index'
-      entity: tax_unit
-      producing_stage: post_clone_input_surface
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_id
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: tax_unit_id
-      entity: tax_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_support_channel
-          entity: tax_unit
-          value_kind: non_null
-      column: tax_unit_support_channel
-      entity: tax_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: tax_unit_support_clone_index
-          entity: tax_unit
-          value_kind: finite_numeric
-      column: tax_unit_support_clone_index
-      entity: tax_unit
-      producing_stage: primary_puf_qrf
-      required_scope: whole_pool
-      tolerated_absence_receipts: []
-    outputs: []
-    virtual_resources:
-    - id: person.@late_transfer_model_config
-      kind: execution_config
-      resolution: static_exact
-      binding:
-        resource_kind: late_transfer_model_config
-        schema_version: 3
-    - id: person.@late_transfer_target_bank
-      kind: target_bank
-      resolution: transferred_stage_identity_derived
-      binding:
-        resource_kind: late_transfer_target_bank
-        schema_version: 1
-        mode: identity_bound_checkpoint
-      dynamic_field:
-        name: identity_sha256
-        derivation:
-          base: transferred_pool_checkpoint_stage_identity
-          producer:
-            name: transfer:person/source_operator_immigration
-            entity: person
-            family: source_operator_immigration
-            ordered_targets:
-            - ssn_card_type
-            - immigration_status_str
   - id: transfer:person/source_operator_medicare_take_up
     name: transfer:person/source_operator_medicare_take_up
     kind: late_transfer
@@ -33478,10 +32701,10 @@ producer_graph:
             - first_home_mortgage_origination_year
             - health_savings_account_ald
   execution_receipt_contract:
-    version: 4
+    version: 5
     row_binding: declared_globally_reconciled_input_and_scope_exact_output_source_and_primary_callback_resource_receipt_and_previous_execution_sha256
     virtual_resource_binding: exact_kind_specific_semantic_payload_and_sha256
-    top_binding: entry_and_output_frame_sha256_execution_chain_source_completion_nineteen_transfer_groups_and_constrained_immigration_reconciliation
+    top_binding: entry_and_output_frame_sha256_execution_chain_source_completion_eighteen_transfer_groups_and_whole_pool_immigration_assignment
     transition_authority:
       authority_id: us_stacked_late_producer_transition
       metadata_key: us_late_producer_transition_authority

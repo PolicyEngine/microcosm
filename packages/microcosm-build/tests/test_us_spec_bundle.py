@@ -190,7 +190,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "788b815f748abb2061c41efb0cec4cc4952435dbcb4448ecf21ccac85a5ccec2"
+        "4ad4f9592743e54c14d6fbbe70969fc63ae9df57b6913f15389d6a8d4d1cc5a5"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -307,12 +307,12 @@ def test_constant_derived_domain_counts_are_complete(
     assert family_counts == {
         "gap_fill_stacked_spine": 13,
         "primary_puf_qrf": 1,
-        "late_producer_dag": 19,
+        "late_producer_dag": 18,
     }
     assert target_counts == {
         "gap_fill_stacked_spine": 48,
         "primary_puf_qrf": 65,
-        "late_producer_dag": 70,
+        "late_producer_dag": 68,
     }
     assert "primary_effective_predictor_tuples" not in imputation["chaining"]
     assert len(derive_primary_effective_predictor_tuples(imputation)) == 65
@@ -331,7 +331,7 @@ def test_constant_derived_domain_counts_are_complete(
     }
     assert modeled_output_scopes == {
         "primary_puf_qrf": {"puf_clone": 64, "whole_pool": 1},
-        "late_producer_dag": {"whole_pool": 70},
+        "late_producer_dag": {"whole_pool": 68},
     }
     assert all(
         "output_coverage_scope" not in target
@@ -341,7 +341,7 @@ def test_constant_derived_domain_counts_are_complete(
     )
 
     producer_graph = imputation["producer_graph"]
-    assert len(producer_graph["nodes"]) == 38
+    assert len(producer_graph["nodes"]) == 37
     assert len(producer_graph["ownership_matrix"]) == 18
     assert (
         not {
@@ -371,22 +371,22 @@ def test_constant_derived_domain_counts_are_complete(
         )
         == 0
     )
-    assert sum(len(node["outputs"]) for node in producer_graph["nodes"]) == 92
+    assert sum(len(node["outputs"]) for node in producer_graph["nodes"]) == 161
     compiled_schedule = project_imputation_legacy_payloads(
         imputation,
         sources_document=sources,
         spine_document=spine,
         bundle_document=bundle,
     )["late_producer_schedule_receipt"]
-    assert len(compiled_schedule["edges"]) == 71
+    assert len(compiled_schedule["edges"]) == 69
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
+        == "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "324b8e495920af091cb7c14f78b461b2a10fb3fedeb4ce706d68ae6b4c2e3b6b"
+        == "c7d877686a8225d035dd4e10f047492d36844da469eac14f7be8dbc570790723"
     )
 
     assert len(take_up["programs"]) == 17
@@ -439,15 +439,15 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 134
-    assert len(battery["joint_metric_registry"]) == 1
+    assert len(battery["metric_registry"]) == 132
+    assert len(battery["joint_metric_registry"]) == 0
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
     assert "completeness" not in battery
     battery_views = derive_battery_registry_views(battery)
     assert battery_views["metric_counts"] == {
         "boolean_incidence": 51,
-        "categorical_tvd": 4,
+        "categorical_tvd": 2,
         "monetary_sign_separated": 79,
     }
     assert set(calibration["targets"]) == {
@@ -472,10 +472,10 @@ def test_constant_derived_domain_counts_are_complete(
     for knob in ("k", "pi_hi", "seed"):
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
-    assert len(catalogs["columns"]) == 176
-    assert len(resolved_us_spec.columns) == 176
+    assert len(catalogs["columns"]) == 245
+    assert len(resolved_us_spec.columns) == 245
     assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
-        "producer_node": 38,
+        "producer_node": 37,
         "virtual_output": 18,
         "virtual_resource_binding": 28,
     }
@@ -696,7 +696,7 @@ def test_typed_imputation_reconstructs_all_constants_authority_components(
         "primary_qrf",
         "transfer_execution_contract_identities",
     }
-    assert payloads["late_producer_resource_semantics"]["producer_count"] == 38
+    assert payloads["late_producer_resource_semantics"]["producer_count"] == 37
     assert len(payloads["overlap_ownership"]["ownership"]) == 18
     assert (
         payloads["overlap_ownership"]["sha256"]
@@ -776,7 +776,7 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
         for resource in node["virtual_resources"]
         if resource["binding"]["resource_kind"] == "late_transfer_target_bank"
     ]
-    assert len(late_target_derivations) == 19
+    assert len(late_target_derivations) == 18
     assert all(
         set(derivation) == {"base", "producer"}
         for derivation in late_target_derivations
@@ -930,7 +930,7 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
         "identity_generation": 1,
         "seed_protocol": LEGACY_V1_PROTOCOL.id,
     }
-    assert len(LEGACY_V1_PROTOCOL.sites) == 66
+    assert len(LEGACY_V1_PROTOCOL.sites) == 92
     assert len(LEGACY_V1_PROTOCOL.streams) == 14
     assert LEGACY_V1_PROTOCOL.site("survey_sample_asec").default == 578
     assert LEGACY_V1_PROTOCOL.site("puf_live_aggregate_disaggregation").default == 0

@@ -508,10 +508,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 12 = target checkpoints include source-aware humanitarian-stock columns;
+    # 13 = target checkpoints use neutral facts, without source-stage targets;
     # schema 2 distinguishes the values+mask codec from schema-1 checkpoints.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 12
+    assert identity["materializer_version"] == 13
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -716,16 +716,17 @@ def test_target_frame_checkpoint_rejects_schema_one(
         builder._read_target_frame_checkpoint(path, identity={}, target_specs=())
 
 
+@pytest.mark.parametrize("stale_materializer_version", [10, 11, 12])
 def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     monkeypatch,
     tmp_path,
     small_frame,
+    stale_materializer_version,
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    Version 12 adds source-aware humanitarian-stock target columns. The version
-    constant participates in the identity comparison; this pins stored-11
-    versus current-12 rejection directly.
+    Version 13 retires target-anchored immigration assignment and source-stage
+    stock targets. Older target frames must not bypass the neutral-fact stage.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -759,10 +760,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 11 = the pre-humanitarian-target world; 10 = the still-older
-    # pre-nullable-boolean-codec world. Both must miss against version 12.
-    stale_identity = {**dict(identity), "materializer_version": 11}
-    older_identity = {**dict(identity), "materializer_version": 10}
+    stale_identity = {
+        **dict(identity),
+        "materializer_version": stale_materializer_version,
+    }
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -778,21 +779,6 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     )
 
     assert loaded is None
-
-    builder._write_target_frame_checkpoint(
-        path,
-        frame=frame,
-        identity=older_identity,
-        compilation={"declared_targets": 1},
-    )
-    assert (
-        builder._read_target_frame_checkpoint(
-            path,
-            identity=identity,
-            target_specs=(target,),
-        )
-        is None
-    )
 
     # Instance 2 of the same class (microcosm#543): a checkpoint written by a
     # run without --ssi-take-up-prior-weight-basis must not serve a run that
@@ -6176,7 +6162,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "target_materialization_cache_context"
     ]
     active_specs = captured["ssi_band_targets_specs"]
-    assert any(
+    assert not any(
         spec.metadata.get("target_role") == "humanitarian_immigration_stock"
         for spec in active_specs
     )
@@ -8981,172 +8967,11 @@ def test_population_age_targets_materialize_person_age_counts(
     assert compilation["dropped_target_names"] == []
 
 
-def test_humanitarian_stock_specs_follow_positive_manifest_draws(
-    monkeypatch,
-) -> None:
+def test_source_generation_does_not_define_fiscal_target_values() -> None:
     builder = _load_builder_module()
-    draws = (
-        SimpleNamespace(
-            label="paroled_one_year:afghanistan",
-            category="paroled_one_year",
-            origin="afghanistan",
-            status="PAROLED_ONE_YEAR",
-            target=75_000.0,
-            source="https://example.test/parole",
-        ),
-        SimpleNamespace(
-            label="refugee",
-            category="refugee",
-            origin=None,
-            status="REFUGEE",
-            target=160_000.0,
-            source="https://example.test/refugee",
-        ),
-        SimpleNamespace(
-            label="deportation_withheld",
-            category="deportation_withheld",
-            origin=None,
-            status="DEPORTATION_WITHHELD",
-            target=0.0,
-            source="https://example.test/withheld",
-        ),
-        SimpleNamespace(
-            label="tps:venezuela",
-            category="tps",
-            origin="venezuela",
-            status="TPS",
-            target=344_335.0,
-            source="https://example.test/tps",
-        ),
-    )
-    monkeypatch.setattr(
-        builder,
-        "us_immigration_controls",
-        lambda: SimpleNamespace(humanitarian=draws),
-    )
-
-    specs = builder._humanitarian_immigration_stock_specs(time_period=2024)
-
-    assert [spec.name for spec in specs] == [
-        "humanitarian_immigration_stock.paroled_one_year.afghanistan",
-        "humanitarian_immigration_stock.refugee",
-        "humanitarian_immigration_stock.tps.venezuela",
-    ]
-    assert [spec.value for spec in specs] == [75_000.0, 160_000.0, 344_335.0]
-    assert [spec.source for spec in specs] == [
-        "https://example.test/parole",
-        "https://example.test/refugee",
-        "https://example.test/tps",
-    ]
-    assert all(spec.period == 2024 for spec in specs)
-    assert all(
-        spec.metadata["materializer"] == "humanitarian_immigration_stock"
-        for spec in specs
-    )
-    assert specs[0].metadata["humanitarian_origin"] == "afghanistan"
-    assert "humanitarian_origin" not in specs[1].metadata
-    # The active-registry content hash therefore binds the manifest controls;
-    # removing even one draw produces a different checkpoint registry id.
-    assert (
-        TargetRegistry(specs, country="us").version
-        != TargetRegistry(specs[:-1], country="us").version
-    )
-
-
-def test_humanitarian_stock_materializer_collapses_source_aware_person_masks(
-    monkeypatch,
-    small_frame,
-) -> None:
-    from microcosm.calibrate import build_constraint_matrix
-
-    builder = _load_builder_module()
-    draws = (
-        SimpleNamespace(
-            label="paroled_one_year:afghanistan",
-            category="paroled_one_year",
-            origin="afghanistan",
-            status="PAROLED_ONE_YEAR",
-            target=1.0,
-            source="fixture",
-        ),
-        SimpleNamespace(
-            label="refugee",
-            category="refugee",
-            origin=None,
-            status="REFUGEE",
-            target=2.0,
-            source="fixture",
-        ),
-    )
-    controls = SimpleNamespace(humanitarian=draws)
-    monkeypatch.setattr(builder, "us_immigration_controls", lambda: controls)
-    observed: list[tuple[str, int]] = []
-
-    def draw_mask(frame, draw, *, time_period):
-        assert frame is small_frame
-        observed.append((draw.label, time_period))
-        return {
-            "paroled_one_year:afghanistan": np.asarray([True, False, False, False]),
-            "refugee": np.asarray([False, True, True, False]),
-        }[draw.label]
-
-    monkeypatch.setattr(builder, "us_immigration_humanitarian_draw_mask", draw_mask)
-    specs = builder._humanitarian_immigration_stock_specs(time_period=2024)
-    household = small_frame.table("household").copy()
-
-    builder._materialize_humanitarian_immigration_stock_targets(
-        frame=small_frame,
-        household=household,
-        target_specs=specs,
-        time_period=2024,
-    )
-
-    np.testing.assert_array_equal(
-        household[
-            "humanitarian_immigration_stock.paroled_one_year.afghanistan"
-        ].to_numpy(),
-        np.asarray([1.0, 0.0]),
-    )
-    np.testing.assert_array_equal(
-        household["humanitarian_immigration_stock.refugee"].to_numpy(),
-        np.asarray([1.0, 1.0]),
-    )
-    assert observed == [
-        ("paroled_one_year:afghanistan", 2024),
-        ("refugee", 2024),
-    ]
-
-    target_frame = Frame(
-        {
-            "person": small_frame.table("person"),
-            "household": household,
-        },
-        small_frame.schema,
-        {"household": small_frame.weights_for("household")},
-        small_frame.strata,
-    )
-    registry, compilation = builder._compile_materialized_target_registry(
-        target_frame,
-        specs,
-    )
-    target_set = registry.to_target_set()
-
-    assert compilation["dropped_target_names"] == []
-    assert tuple(target.row_name for target in target_set) == (
-        "humanitarian_immigration_stock.paroled_one_year.afghanistan@2024",
-        "humanitarian_immigration_stock.refugee@2024",
-    )
-    problem = build_constraint_matrix(target_frame, target_set)
-    assert problem.names == tuple(target.row_name for target in target_set)
-    assert problem.skipped == ()
-    np.testing.assert_array_equal(
-        problem.matrix.toarray(),
-        np.asarray([[1.0, 0.0], [1.0, 1.0]]),
-    )
-    np.testing.assert_array_equal(
-        problem.target_vector,
-        np.asarray([1.0, 2.0]),
-    )
+    assert not hasattr(builder, "us_immigration_controls")
+    assert not hasattr(builder, "_humanitarian_immigration_stock_specs")
+    assert not hasattr(builder, "_materialize_humanitarian_immigration_stock_targets")
 
 
 def test_dense_and_l0_solvers_consume_compiled_registry_target_set() -> None:

@@ -60,7 +60,10 @@ from microcosm.build.us_runtime.housing_inputs import (
     impute_us_housing_assistance_to_puf_support,
     with_us_housing_inputs,
 )
-from microcosm.build.us_runtime.immigration import with_us_immigration_inputs
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS,
+    with_us_immigration_inputs,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     with_us_medicare_take_up_input,
 )
@@ -587,7 +590,11 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
     "with_us_immigration_inputs": SourceOperatorContract(
         "immigration",
         (_POST_CLONE_PHASE,),
-        "source-keyed draws preserve equality across support clones",
+        (
+            "source-aware neutral facts are derived directly for both ASEC and "
+            "ACS rows after assembly"
+        ),
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
     "with_us_education_inputs": SourceOperatorContract(
         "education_inputs",
@@ -720,6 +727,14 @@ def pool_transfer_target_families() -> TargetFamilies:
         for column in columns
     }
     for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        # Whole-pool source operators already materialize every origin.  Their
+        # outputs must never be treated as ACS recipient gaps or routed through
+        # QRF; only CPS-scoped producers need cross-origin transfer.
+        if (
+            POOL_OPERATOR_CONTRACTS[operator_name].execution_scope
+            == _WHOLE_POOL_EXECUTION_SCOPE
+        ):
+            continue
         family = _SOURCE_OPERATOR_FAMILIES[operator_name]
         additions: dict[str, tuple[str, ...]] = {}
         for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items():
@@ -878,10 +893,12 @@ def pool_input_surface(
     """Return the complete registry-derived pool input/imputation surface.
 
     The surface is deliberately limited to transfer targets, explicit deferred
-    inputs, the production primary-QRF target order, and every checked-in
-    take-up contract variable. Variables repeated across registries are merged
-    by variable/entity and carry every provenance receipt. A variable assigned
-    to conflicting entities fails closed.
+    inputs, the production primary-QRF target order, the PolicyEngine bridge
+    emitted by whole-pool source operators, and every checked-in take-up
+    contract variable. Variables repeated across registries are merged by
+    variable/entity and carry every provenance receipt. A variable assigned to
+    conflicting entities fails closed. Neutral Axiom facts remain on the Frame
+    but do not enter this PolicyEngine-specific input registry.
     """
 
     entries: dict[tuple[str, str], PoolInputSurfaceEntry] = {}
@@ -927,6 +944,14 @@ def pool_input_surface(
                     family=family,
                     provenance="pool_transfer_target_families",
                 )
+
+    for variable in US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS:
+        register(
+            variable,
+            entity="person",
+            family="immigration",
+            provenance="whole_pool_source_operator",
+        )
 
     for variable, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items():
         register(
@@ -1415,6 +1440,7 @@ def pool_remaining_stage_input_manifest(
     actual_surface_provenance = {
         "pool_transfer_target_families",
         "PRIMARY_QRF_TARGET_ORDER",
+        "whole_pool_source_operator",
     }
     ssi_provisions: dict[str, int] = {}
     for variable in closure.input_leaves:
@@ -1938,13 +1964,10 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
                 force_puf_imputation=True,
             )
         ),
-        "with_us_immigration_inputs": lambda current, *, person_weight_scale=1.0: (
-            with_us_immigration_inputs(
-                current,
-                seed=POOL_RANDOM_SEED,
-                time_period=POOL_TIME_PERIOD,
-                person_weight_scale=person_weight_scale,
-            )
+        "with_us_immigration_inputs": lambda current: with_us_immigration_inputs(
+            current,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
         ),
         "with_us_education_inputs": lambda current: with_us_education_inputs(
             current,
@@ -2054,7 +2077,19 @@ def finalize_multispine_source_inputs(
         normalized_suboperator = dict(suboperators[0])
         normalized_suboperator["order_index"] = receipt_index
         normalized.append(normalized_suboperator)
-        evidence_receipts.append(receipt.get("cps_source_evidence"))
+        contract = POOL_OPERATOR_CONTRACTS.get(operator_name)
+        evidence = receipt.get("cps_source_evidence")
+        if (
+            contract is not None
+            and contract.execution_scope == _WHOLE_POOL_EXECUTION_SCOPE
+        ):
+            if evidence is not None:
+                raise ValueError(
+                    f"Whole-pool source operator {operator_name!r} may not "
+                    "claim a CPS-only source-evidence projection."
+                )
+        else:
+            evidence_receipts.append(evidence)
 
     expected = set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)
     observed = set(operator_order)
@@ -2150,42 +2185,8 @@ def _run_source_operator_chain(
             and contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
         ):
             declared_outputs = _persisted_source_outputs(declared_outputs)
-        person_design_weight_scaling: dict[str, float] | None = None
         if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE:
             available_mask = _cps_source_evidence_mask(current, phase=phase)
-            if operator_name == "with_us_immigration_inputs":
-                full_person_weights = np.asarray(
-                    current.resolve_weights(current.schema.person_entity).values,
-                    dtype=np.float64,
-                )
-                cps_person_weights = full_person_weights[
-                    available_mask.to_numpy(dtype=bool)
-                ]
-                if (
-                    not np.isfinite(full_person_weights).all()
-                    or (full_person_weights < 0).any()
-                    or not np.isfinite(cps_person_weights).all()
-                    or (cps_person_weights < 0).any()
-                ):
-                    raise ValueError(
-                        "Pooled immigration controls require finite non-negative "
-                        "person design weights."
-                    )
-                full_person_mass = float(full_person_weights.sum())
-                cps_person_mass = float(cps_person_weights.sum())
-                if full_person_mass <= 0 or cps_person_mass <= 0:
-                    raise ValueError(
-                        "Pooled immigration controls require positive full-pool "
-                        "and CPS-projection person design-weight mass; "
-                        f"got full={full_person_mass!r}, cps={cps_person_mass!r}."
-                    )
-                person_weight_scale = full_person_mass / cps_person_mass
-                person_design_weight_scaling = {
-                    "full_pool_person_design_weight_mass": full_person_mass,
-                    "cps_projection_person_design_weight_mass": cps_person_mass,
-                    "person_weight_scale": person_weight_scale,
-                    "cps_person_mass_share": cps_person_mass / full_person_mass,
-                }
             available = _source_available_projection(
                 current,
                 available_mask,
@@ -2204,29 +2205,13 @@ def _run_source_operator_chain(
             )
         before_rows = _frame_row_counts(current)
         available_rows = _frame_row_counts(available)
-        if person_design_weight_scaling is None:
-            kernel_outcome = operators[operator_name](available)
-        else:
-            kernel_outcome = operators[operator_name](
-                available,
-                person_weight_scale=person_design_weight_scaling["person_weight_scale"],
-            )
+        kernel_outcome = operators[operator_name](available)
         kernel_receipt: Mapping[str, object] = {}
         if isinstance(kernel_outcome, PoolStageOutput):
             outcome = kernel_outcome.frame
             kernel_receipt = kernel_outcome.receipt
         else:
             outcome = kernel_outcome
-        if person_design_weight_scaling is not None:
-            if "person_design_weight_scaling" in kernel_receipt:
-                raise ValueError(
-                    "Pooled immigration kernel receipt may not override the "
-                    "orchestrator-owned person-design-weight scaling contract."
-                )
-            kernel_receipt = {
-                **dict(kernel_receipt),
-                "person_design_weight_scaling": person_design_weight_scaling,
-            }
         if not isinstance(outcome, Frame):
             raise TypeError(
                 f"Multispine source operator {operator_name!r} must return Frame, "

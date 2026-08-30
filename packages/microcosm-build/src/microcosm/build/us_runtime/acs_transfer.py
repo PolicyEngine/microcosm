@@ -31,13 +31,11 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
-from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_VINTAGE
 from microcosm.build.us_runtime.capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
 )
 from microcosm.build.us_runtime.immigration import (
-    reconcile_us_immigration_humanitarian_transfer,
-    us_immigration_evidence_features,
+    US_IMMIGRATION_ALL_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -188,38 +186,6 @@ def _pregnancy_structural_policy_identity(*, enabled: bool) -> dict[str, object]
     return payload
 
 
-_IMMIGRATION_STATUS_TARGETS = (
-    "ssn_card_type",
-    "immigration_status_str",
-)
-_IMMIGRATION_STATUS_MODEL_TARGET = "__acs_transfer_immigration_status_pair"
-_IMMIGRATION_CITIZENSHIP_FEATURE = "__acs_transfer_is_us_citizen"
-_IMMIGRATION_ORIGIN_FEATURE = "__acs_transfer_birth_country_code"
-_IMMIGRATION_ARRIVAL_FEATURE = "__acs_transfer_arrival_year"
-_IMMIGRATION_REQUIRED_FEATURES = (
-    _IMMIGRATION_CITIZENSHIP_FEATURE,
-    _IMMIGRATION_ORIGIN_FEATURE,
-    _IMMIGRATION_ARRIVAL_FEATURE,
-)
-_HUMANITARIAN_IMMIGRATION_STATUSES = frozenset(
-    {
-        "PAROLED_ONE_YEAR",
-        "REFUGEE",
-        "ASYLEE",
-        "DEPORTATION_WITHHELD",
-        "TPS",
-    }
-)
-_EVIDENCE_DERIVED_IMMIGRATION_STATUSES = frozenset(
-    {
-        "CUBAN_HAITIAN_ENTRANT",
-        "DACA",
-    }
-)
-_CONSTRAINED_IMMIGRATION_STATUSES = (
-    _HUMANITARIAN_IMMIGRATION_STATUSES | _EVIDENCE_DERIVED_IMMIGRATION_STATUSES
-)
-
 # RNTP/GRNTP are not pre-subsidy rent, so this leaf remains donor-transferable.
 _ADDITIONAL_PERSON_TRANSFER_TARGETS = ("pre_subsidy_rent",)
 _HOUSING_TRANSFER_TARGETS = frozenset(_ADDITIONAL_PERSON_TRANSFER_TARGETS)
@@ -320,7 +286,6 @@ def acs_transfer_execution_contract_identity(
     payload: dict[str, object] = {
         "schema_version": 3,
         "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
-        "immigration_required_predictors": list(_IMMIGRATION_REQUIRED_FEATURES),
         "person_optional_predictors": list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS),
         "group_required_predictors": list(ACS_GROUP_TRANSFER_PREDICTORS),
         "group_optional_names": dict(sorted(_GROUP_OPTIONAL_NAMES.items())),
@@ -343,11 +308,6 @@ def acs_transfer_execution_contract_identity(
             ],
         },
         "tenure_codes": dict(sorted(_TENURE_CODES.items())),
-        "immigration_status_targets": list(_IMMIGRATION_STATUS_TARGETS),
-        "immigration_status_model_target": _IMMIGRATION_STATUS_MODEL_TARGET,
-        "immigration_baseline_excluded_statuses": sorted(
-            _CONSTRAINED_IMMIGRATION_STATUSES
-        ),
         "discrete_numeric_targets": sorted(_DISCRETE_NUMERIC_TARGETS),
         "structural_target_policies": {
             _PREGNANCY_TARGET: _pregnancy_structural_policy_identity(
@@ -374,14 +334,6 @@ def acs_transfer_execution_contract_identity(
                 "tax_unit_role": _ADULT_CARE_ROLE,
                 "tax_unit_link": _ADULT_CARE_UNIT,
                 "mutable_rows": "newly_imputed_expense_cells_only",
-            },
-            "humanitarian_immigration": {
-                "enabled": set(_IMMIGRATION_STATUS_TARGETS).issubset(requested_targets),
-                "targets": list(_IMMIGRATION_STATUS_TARGETS),
-                "mutable_rows": "newly_imputed_paired_cells_only",
-                "target_basis": "manifest_residual_after_immutable_asec_mass",
-                "selection": "stable_person_hash_in_manifest_draw_order",
-                "candidate_shortfall": "error",
             },
         },
     }
@@ -650,9 +602,7 @@ class _TargetEncoding:
     model_values: pd.Series
     kind: str
     support: np.ndarray | None = None
-    categories: tuple[Any, ...] = ()
     model_target: str = ""
-    category_position: int | None = None
 
 
 @dataclass(frozen=True)
@@ -923,37 +873,6 @@ def acs_transfer_donor_requirements(
     for components in _DONOR_COMBINED_COMPONENTS.values():
         if all(component in person.columns for component in components):
             required[donor.schema.person_entity].update(components)
-
-    person_targets = {
-        target
-        for targets in target_families.get(donor.schema.person_entity, {}).values()
-        for target in targets
-    }
-    if set(_IMMIGRATION_STATUS_TARGETS).issubset(person_targets):
-        evidence_triplets = (
-            ("PRCITSHP", "PENATVTY", "PEINUSYR"),
-            ("CIT", "POBP", "YOEP"),
-        )
-        active_triplets: list[tuple[str, str, str]] = []
-        for triplet in evidence_triplets:
-            citizenship = triplet[0]
-            if citizenship not in person or not person[citizenship].notna().any():
-                continue
-            missing = sorted(set(triplet) - set(person.columns))
-            if missing:
-                raise ValueError(
-                    "paired immigration targets have an incomplete donor "
-                    f"evidence triplet {triplet!r}; missing={missing}."
-                )
-            active_triplets.append(triplet)
-        if not active_triplets:
-            raise ValueError(
-                "paired immigration targets require a live ASEC "
-                "PRCITSHP/PENATVTY/PEINUSYR or ACS CIT/POBP/YOEP donor "
-                "evidence triplet."
-            )
-        for triplet in active_triplets:
-            required[donor.schema.person_entity].update(triplet)
 
     housing = bool(_HOUSING_TRANSFER_TARGETS.intersection(target_names))
     head_source = next(
@@ -1718,12 +1637,10 @@ def transfer_acs_inputs(
     _apply_post_transfer_structure(
         output_tables,
         provenance,
-        recipient=recipient,
         imputed_masks=imputed_masks,
         donor_spine=donor_spine,
         resolved_channel=resolved_channel,
         execution_contract=resolved_execution_contract,
-        seed=seed,
     )
 
     tables: dict[str, pd.DataFrame] = dict(output_tables)
@@ -1757,12 +1674,10 @@ def _apply_post_transfer_structure(
     output_tables: dict[str, pd.DataFrame],
     provenance: list[AcsImputedInput],
     *,
-    recipient: Frame,
     imputed_masks: Mapping[tuple[str, str], np.ndarray],
     donor_spine: str,
     resolved_channel: str | None,
     execution_contract: Mapping[str, object],
-    seed: int,
 ) -> None:
     """Apply the deterministic post-fit steps the base's construction implies.
 
@@ -1773,50 +1688,11 @@ def _apply_post_transfer_structure(
       capital-gain parents at the packaged share with route exclusivity.
     - The adult-care expense surface is reconciled to the statute structure
       (qualifying carriers only, at most one per tax unit).
-    - The paired immigration baseline is reconciled to manifest humanitarian
-      residual targets after the immutable ASEC contribution.
     """
 
     person = output_tables.get("person")
     if person is None:
         return
-
-    immigration_masks = [
-        imputed_masks.get(("person", target)) for target in _IMMIGRATION_STATUS_TARGETS
-    ]
-    if all(mask is not None for mask in immigration_masks):
-        assert immigration_masks[0] is not None
-        assert immigration_masks[1] is not None
-        if not np.array_equal(immigration_masks[0], immigration_masks[1]):
-            raise ValueError(
-                "ACS immigration transfer must impute its paired target cells "
-                "on exactly the same recipient rows."
-            )
-        mutable_immigration = immigration_masks[0]
-        immigration_provenance = [
-            (index, item)
-            for index, item in enumerate(provenance)
-            if item.entity == "person" and item.column in _IMMIGRATION_STATUS_TARGETS
-        ]
-        source_operator_family = any(
-            item.family.split("__batch_", 1)[0] == "source_operator_immigration"
-            for _, item in immigration_provenance
-        )
-        if mutable_immigration.any() and source_operator_family:
-            reconciled, receipt = reconcile_us_immigration_humanitarian_transfer(
-                person,
-                weights=np.asarray(
-                    recipient.resolve_weights("person").values,
-                    dtype=np.float64,
-                ),
-                mutable_rows=mutable_immigration,
-                seed=seed,
-                time_period=ACS_2024_1YR_VINTAGE,
-            )
-            for target in _IMMIGRATION_STATUS_TARGETS:
-                person[target] = reconciled[target]
-            for index, item in immigration_provenance:
-                provenance[index] = replace(item, reconciliation=receipt)
 
     post_transfer_contract = execution_contract["post_transfer_structure"]
     assert isinstance(post_transfer_contract, Mapping)
@@ -1927,18 +1803,7 @@ def _apply_post_transfer_structure(
 def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:
     """Return the exact chained-QRF target order for exported leaves."""
 
-    requested = set(targets)
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-    model_targets: list[str] = []
-    joint_added = False
-    for target in targets:
-        if target in immigration_pair and immigration_pair.issubset(requested):
-            if not joint_added:
-                model_targets.append(_IMMIGRATION_STATUS_MODEL_TARGET)
-                joint_added = True
-            continue
-        model_targets.append(target)
-    return tuple(model_targets)
+    return tuple(targets)
 
 
 def _selected_model_target_names(
@@ -1955,20 +1820,7 @@ def _selected_model_target_names(
         raise ValueError(
             f"Selected ACS regime-evidence targets are outside the family: {unknown}."
         )
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-    selected_model_targets = {
-        (
-            _IMMIGRATION_STATUS_MODEL_TARGET
-            if target in immigration_pair and immigration_pair.issubset(family_set)
-            else target
-        )
-        for target in selected
-    }
-    return tuple(
-        target
-        for target in _model_target_names(family)
-        if target in selected_model_targets
-    )
+    return tuple(target for target in _model_target_names(family) if target in selected)
 
 
 def _regime_evidence_model_targets(
@@ -2694,38 +2546,6 @@ def _transfer_feature_surface(
     else:
         surface = _group_feature_surface(donor, recipient, entity=entity)
 
-    if set(_IMMIGRATION_STATUS_TARGETS).issubset(targets):
-        if entity != donor.schema.person_entity:
-            raise ValueError(
-                "The paired immigration targets must be transferred on person."
-            )
-        donor_evidence = us_immigration_evidence_features(
-            donor,
-            time_period=ACS_2024_1YR_VINTAGE,
-        ).rename(
-            columns={
-                "is_us_citizen": _IMMIGRATION_CITIZENSHIP_FEATURE,
-                "birth_country_code": _IMMIGRATION_ORIGIN_FEATURE,
-                "arrival_year": _IMMIGRATION_ARRIVAL_FEATURE,
-            }
-        )
-        recipient_evidence = us_immigration_evidence_features(
-            recipient,
-            time_period=ACS_2024_1YR_VINTAGE,
-        ).rename(
-            columns={
-                "is_us_citizen": _IMMIGRATION_CITIZENSHIP_FEATURE,
-                "birth_country_code": _IMMIGRATION_ORIGIN_FEATURE,
-                "arrival_year": _IMMIGRATION_ARRIVAL_FEATURE,
-            }
-        )
-        surface = _FeatureSurface(
-            donor=pd.concat([surface.donor, donor_evidence], axis=1),
-            recipient=pd.concat([surface.recipient, recipient_evidence], axis=1),
-            required=(*surface.required, *_IMMIGRATION_REQUIRED_FEATURES),
-            optional=surface.optional,
-        )
-
     housing = bool(_HOUSING_TRANSFER_TARGETS.intersection(targets))
     if not housing:
         return surface
@@ -3257,6 +3077,15 @@ def _normalize_target_families(
                     f"ACS transfer family {family!r} on entity {entity!r} has "
                     f"invalid target name(s): {bad}."
                 )
+            immigration_targets = sorted(
+                set(targets).intersection(US_IMMIGRATION_ALL_OUTPUT_COLUMNS)
+            )
+            if immigration_targets:
+                raise ValueError(
+                    "Immigration facts and their PolicyEngine projection are "
+                    "whole-pool source outputs, not QRF targets: "
+                    f"{immigration_targets}."
+                )
             duplicates = sorted(
                 {target for target in targets if targets.count(target) > 1}
             )
@@ -3287,17 +3116,8 @@ def _split_large_target_families(
     """Bound retained QRF forests and isolate hard-domain target draws."""
 
     bounded: list[tuple[str, str, tuple[str, ...]]] = []
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
     for entity, family, targets in families:
-        atoms: list[tuple[str, ...]] = []
-        pair_added = False
-        for target in targets:
-            if target in immigration_pair and immigration_pair.issubset(targets):
-                if not pair_added:
-                    atoms.append(_IMMIGRATION_STATUS_TARGETS)
-                    pair_added = True
-                continue
-            atoms.append((target,))
+        atoms = [(target,) for target in targets]
 
         batches: list[tuple[str, ...]] = []
         current: list[str] = []
@@ -3353,18 +3173,6 @@ def _missing_target_families(
                 )
             incomplete.append(target)
 
-        # A joint codec needs both columns to learn only observed donor pairs.
-        # The complete companion is fitted but its recipient values are not
-        # written because target-level null masks remain authoritative.
-        immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-        if immigration_pair.issubset(targets) and immigration_pair.intersection(
-            incomplete
-        ):
-            incomplete = [
-                target
-                for target in targets
-                if target in immigration_pair or target in incomplete
-            ]
         if incomplete:
             active.append((entity, family, tuple(incomplete)))
     return active
@@ -3611,78 +3419,11 @@ def _target_encodings(
     *,
     targets: Sequence[str],
 ) -> dict[str, _TargetEncoding]:
-    """Encode requested targets, preserving registered joint support."""
+    """Encode requested targets independently."""
 
-    requested = set(targets)
-    immigration = requested.intersection(_IMMIGRATION_STATUS_TARGETS)
-    if immigration and immigration != set(_IMMIGRATION_STATUS_TARGETS):
-        missing = sorted(set(_IMMIGRATION_STATUS_TARGETS) - immigration)
-        raise ValueError(
-            "ACS transfer must impute ssn_card_type and immigration_status_str "
-            f"jointly; missing paired target(s): {missing}."
-        )
-
-    result: dict[str, _TargetEncoding] = {}
-    if immigration:
-        pairs = list(
-            _baseline_immigration_pair(ssn, status)
-            for ssn, status in zip(
-                table[_IMMIGRATION_STATUS_TARGETS[0]].to_numpy(dtype=object),
-                table[_IMMIGRATION_STATUS_TARGETS[1]].to_numpy(dtype=object),
-                strict=True,
-            )
-        )
-        categories = tuple(
-            sorted(
-                set(pairs),
-                key=lambda pair: tuple(
-                    (
-                        type(value).__module__,
-                        type(value).__qualname__,
-                        repr(value),
-                    )
-                    for value in pair
-                ),
-            )
-        )
-        lookup = {pair: position for position, pair in enumerate(categories)}
-        codes = np.fromiter(
-            (lookup[pair] for pair in pairs),
-            dtype=np.float64,
-            count=len(pairs),
-        )
-        model_values = pd.Series(
-            codes,
-            index=table.index,
-            name=_IMMIGRATION_STATUS_MODEL_TARGET,
-        )
-        for position, target in enumerate(_IMMIGRATION_STATUS_TARGETS):
-            result[target] = _TargetEncoding(
-                model_values=model_values,
-                kind="joint_categorical",
-                support=np.arange(len(categories), dtype=np.float64),
-                categories=categories,
-                model_target=_IMMIGRATION_STATUS_MODEL_TARGET,
-                category_position=position,
-            )
-
-    for target in targets:
-        if target in result:
-            continue
-        result[target] = _target_encoding(table[target], target=target)
-    return result
-
-
-def _baseline_immigration_pair(ssn: object, status: object) -> tuple[object, object]:
-    """Remove evidence-constrained labels from the unconstrained codec."""
-
-    if status not in _CONSTRAINED_IMMIGRATION_STATUSES:
-        return ssn, status
-    if ssn == "CITIZEN":
-        return "CITIZEN", "CITIZEN"
-    if ssn == "NONE":
-        return "NONE", "UNDOCUMENTED"
-    return ssn, "LEGAL_PERMANENT_RESIDENT"
+    return {
+        target: _target_encoding(table[target], target=target) for target in targets
+    }
 
 
 def _complete_case_target_encodings(
@@ -3932,24 +3673,6 @@ def _prediction_values(
             return values.astype(np.int64)
         result = pd.array([pd.NA] * len(values), dtype="Int64")
         result[finite] = values[finite].astype(np.int64)
-        return result
-
-    if encoding.kind == "joint_categorical":
-        result = np.full(len(values), np.nan, dtype=object)
-        finite = np.isfinite(values)
-        codes = values[finite].astype(np.int64)
-        if ((codes < 0) | (codes >= len(encoding.categories))).any():
-            raise ValueError(
-                f"ACS transfer categorical target {target!r} on entity "
-                f"{entity!r} produced codes outside donor support."
-            )
-        if encoding.category_position is None:  # pragma: no cover - codec invariant
-            raise RuntimeError("Joint categorical encoding lacks a component index.")
-        decoded = np.asarray(
-            [encoding.categories[code][encoding.category_position] for code in codes],
-            dtype=object,
-        )
-        result[finite] = decoded
         return result
 
     finite = np.isfinite(values)

@@ -22,7 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
+US_SCHEDULE_SHA256 = "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185"
 
 
 @pytest.fixture(scope="module")
@@ -61,19 +61,19 @@ def test_us_compiles_exact_stage_dag_and_lossless_producer_graph(
 ) -> None:
     graph = compiled_us.producer_graph
     assert graph.present
-    assert len(graph.nodes) == 38
-    assert len(graph.edges) == 71
+    assert len(graph.nodes) == 37
+    assert len(graph.edges) == 69
     assert len(graph.waves) == 6
-    assert len(graph.order) == 38
-    assert len(set(graph.order)) == 38
+    assert len(graph.order) == 37
+    assert len(set(graph.order)) == 37
     assert len(graph.ownership_matrix) == 18
-    assert graph.compiled_output_count == 227
+    assert graph.compiled_output_count == 294
     assert graph.schedule_sha256 == US_SCHEDULE_SHA256
     assert sha256_json(graph.schedule_wire()) == US_SCHEDULE_SHA256
 
     authored = graph.authored
     assert authored is not None
-    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 92
+    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 161
     assert compiled_us.stage_dag.edges == graph.edges
     assert compiled_us.stage_dag.waves == graph.waves
     assert compiled_us.stage_dag.order == graph.order
@@ -97,8 +97,8 @@ def test_us_ownership_matrix_is_cell_closed(compiled_us: CompiledSpecIR) -> None
         ]
         assert final == [row["final_owner"]]
     policy = compiled_us.producer_graph.incomparable_node_policy
-    assert policy["incomparable_pair_count"] == 587
-    assert policy["disjoint_write_pair_count"] == 587
+    assert policy["incomparable_pair_count"] == 553
+    assert policy["disjoint_write_pair_count"] == 553
 
 
 def test_us_seed_stream_map_is_complete_and_owner_typed(
@@ -107,9 +107,9 @@ def test_us_seed_stream_map_is_complete_and_owner_typed(
 ) -> None:
     seed_map = compiled_us.seed_stream_map
     assert seed_map.protocol_id == "legacy-v1"
-    assert len(seed_map.sites) == 66
-    assert len(seed_map.owners) == 54
-    assert sum(len(site.owners) for site in seed_map.sites) == 125
+    assert len(seed_map.sites) == 92
+    assert len(seed_map.owners) == 53
+    assert sum(len(site.owners) for site in seed_map.sites) == 148
     assert {site.id for site in seed_map.sites} == {
         site.id for site in resolved_us.seed_protocol.sites
     }
@@ -127,8 +127,8 @@ def test_us_seed_stream_map_is_complete_and_owner_typed(
 def test_us_node_slices_are_transitive_and_content_attested(
     compiled_us: CompiledSpecIR,
 ) -> None:
-    assert len(compiled_us.nodes) == 38
-    assert len({node.node_key for node in compiled_us.nodes}) == 38
+    assert len(compiled_us.nodes) == 37
+    assert len({node.node_key for node in compiled_us.nodes}) == 37
     for node in compiled_us.nodes:
         assert sha256_json(node.node_slice_wire()) == node.node_slice_sha256
         transitive_ids = {row.id for row in node.transitive_nodes}
@@ -140,10 +140,10 @@ def test_us_node_slices_are_transitive_and_content_attested(
 def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -> None:
     inventory = compiled_us.typed_inventory
     assert len(inventory["entities"]) == 8
-    assert len(inventory["columns"]) == 176
-    assert len(inventory["artifacts"]) == 84
+    assert len(inventory["columns"]) == 245
+    assert len(inventory["artifacts"]) == 83
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 334
+    assert len(inventory["references"]) == 402
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {
@@ -244,5 +244,5 @@ def test_bundle_without_imputation_compiles_empty_graph(
     assert compiled.producer_graph.nodes == ()
     assert compiled.stage_dag.nodes == ()
     assert compiled.nodes == ()
-    assert len(compiled.seed_stream_map.sites) == 66
+    assert len(compiled.seed_stream_map.sites) == 92
     assert compiled.seed_stream_map.owners == ()

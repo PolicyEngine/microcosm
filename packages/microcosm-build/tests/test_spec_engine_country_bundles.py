@@ -25,7 +25,11 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
-AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9"
+# Every country binds the shared seed protocol, including its US immigration
+# draw ledger and implementation-source hashes; country formulas are unchanged.
+# Restoring just that contract from pre-humanitarian base e0c41b17 reproduces
+# that base's three country identities exactly.
+AM_SPEC_SHA256 = "30a4055fb69b089d4081989de808b4a429ce70012e6c7193645a27c2e43a78d8"
 
 
 @pytest.mark.parametrize(
@@ -45,7 +49,7 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
         ),
         (
             "be",
-            "16118de0f95b7821a7ede20104d1466235d6900c665d5220b2a68a0a52007515",
+            "049238558d9234c80abfc6d52f80db1b409e24910588b2e9e9d70667acab5bf3",
             {
                 "household.household_id",
                 "person.person_id",
@@ -55,7 +59,7 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
         ),
         (
             "uk",
-            "c4e77decba4be76d920af1c61c1244c365132bea0e77324c1a1f8f868475b990",
+            "517969bf08ebf8c8efd0ff9df59661f619d5a4c4307592a10dc96a6a73f0259b",
             {
                 "benunit.benunit_id",
                 "household.household_id",

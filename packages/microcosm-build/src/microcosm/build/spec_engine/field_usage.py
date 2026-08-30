@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_521
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_017
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_538
+EXPECTED_AUTHORED_FIELD_COUNT = 32_710
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_546
+EXPECTED_CONFIGURATION_FIELD_COUNT = 43_256
 
 
 class FieldUsageError(AssertionError):
@@ -341,8 +341,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        797,
-        "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
+        781,
+        "293f319f5648ba1d446691774eb3606213bc68f73f8f6c72b0e2860c66b9c0c9",
     ),
     "bundle_country": (
         1,
@@ -365,8 +365,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
     ),
     "catalog_columns": (
-        1_673,
-        "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
+        2_294,
+        "e3903d1386320c724ca5095cc4869589f489ec86c468fe9cda8719619425311b",
     ),
     "catalog_metadata_waivers": (
         5,
@@ -389,8 +389,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "e6f1851db8754554dcbab4b09ca911a63ddba82fdd9743a7af542f216037bf9d",
     ),
     "imputation_chaining": (
-        20,
-        "e910767eb8a7df05d22ec1a901a00580a3cd5aa26b66bf881b3297e47cca66b8",
+        18,
+        "59c8645b3ce0a5db296255f8260832b062166c64d91c9777a1912148195a3800",
     ),
     "imputation_concepts": (
         20,
@@ -398,11 +398,11 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "imputation_family_concept_validation": (
         52,
-        "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
+        "d491a2bcc6b1f6ea437e60956fb6350a1d743cc9d5c07661d5d2c1a24ffb2611",
     ),
     "imputation_family_execution": (
-        1_769,
-        "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        1_740,
+        "6727bfd76e611664b8685debe22ea3c1812a863af6b1145e9ff465919dec8d9f",
     ),
     "imputation_gap_fill_schedule": (
         5,
@@ -421,12 +421,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_554,
-        "18140dbc554c2a17a673fec5ae5839f504d4b9980c5d8f1c1ccb545342977cb4",
+        24_066,
+        "618ba43a5d9c85c0ed58240f6a0bc3d81cbe5f8ea8e18c228df76be5cc3830f8",
     ),
     "imputation_transfer_execution": (
-        115,
-        "545f626e7b9c6aed25a5ae8dd3156c96db2cd35e5637ec1ebe443432d1684277",
+        94,
+        "3094fe330e02d6e442d28434ae46071af4eace4ca45ec56c26a23f09099eea51",
     ),
     "imputation_waiver_records": (
         70,
@@ -453,12 +453,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        1_032,
-        "6d4af2d988ee87ed38a044c1007e854176af17be4782e802d86d960f10376f7a",
+        1_489,
+        "aa533c9cf48dfa16ee82a19c962379499a57f9688b78ccad23b26e65f50213ca",
     ),
     "resolved_seed_site_bindings": (
-        316,
-        "199ec98045871070860164b522892327ab840b48c0c6a53972ebc0ff0d7d091f",
+        388,
+        "a0a37b39974d53850c713dad850289bdbc0684d31d2e90778724cd4dc9010693",
     ),
     "resolved_vintage_authorities": (
         63,
@@ -485,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_715,
-        "78227f34c3f4ef946c06693dec9177dd906069f98016854bfd4d39c4cd4c51fa",
+        1_767,
+        "30077fa3fae28b7bcc444dea3ab9b12defa388486471a29f48d3abfbf12ef438",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -513,8 +513,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "29c6c1b3243e178783e7ab139993ba3a9b42d62edd4e9e4e1f3b28688daf2c6d",
     ),
     "spine_seed_site_bindings": (
-        316,
-        "bb848f38e068858ac23e964a4ffbbf5542253da50515c72fe7753d8c56912486",
+        388,
+        "e864dbceaa2987a0b9df77d8e74f81a774baeaeb3facf28177bd885a2c7ae6e4",
     ),
     "spine_support_roles": (
         29,

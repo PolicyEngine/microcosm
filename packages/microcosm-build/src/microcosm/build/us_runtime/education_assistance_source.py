@@ -6,10 +6,8 @@ from ASEC ``ED_VAL`` (archived ``datasets/cps/cps.py`` line 1493:
 recode, filter, or universe restriction), and the archived
 ``datasets/cps/census_cps.py`` listed ``ED_VAL`` among the raw ASEC columns it
 kept.  The frozen ``census_cps_*.h5`` inputs microcosm builds from never
-carried that column. Those frozen inputs also omitted current civilian labor-
-force status ``A_LFSR``, which the immigration stage needs to reproduce Pew's
-age-16+ working-or-looking-for-work definition without a prior-year earnings
-proxy. This module restores both fields from the official, immutable Census
+carried that column. Those frozen inputs also omitted measured current civilian
+labor-force status ``A_LFSR``. This module restores both fields from the official Census
 ASEC public-use archives — the same repair class as
 :mod:`.weeks_unemployed`'s ``LKWEEKS`` sidecar, extended to every pooled
 income year.

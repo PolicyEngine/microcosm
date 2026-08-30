@@ -155,9 +155,8 @@ def test_snap_restoration_reincludes_refugee_members(hr1_probes) -> None:
 
 
 def test_probe_magnitude_floors_sit_far_below_plausible_scale(hr1_probes) -> None:
-    # The floors are release-scale guards: far above numerical noise, far
-    # below the plausible aggregate effect of the imputed stocks (about
-    # 1.6M weighted persons across the humanitarian categories).
+    # These are reform-channel smoke-test thresholds, not population totals
+    # or inputs to neutral immigration assignment.
     floors = {
         "hr1_medicaid_humanitarian_eligibility_restoration": 50_000_000.0,
         "hr1_aca_below_fpl_exception_restoration": 5_000_000.0,

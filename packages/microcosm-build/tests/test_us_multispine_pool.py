@@ -1131,10 +1131,8 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
         "spm_unit",
         "source_operator_housing_inputs",
     )
-    assert owners["immigration_status_str"] == (
-        "person",
-        "source_operator_immigration",
-    )
+    assert "immigration_status_str" not in owners
+    assert "ssn_card_type" not in owners
     assert owners["hours_worked_last_week"] == (
         "person",
         "model_required_numeric",
@@ -1171,10 +1169,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 118
+    assert len(target_names) == 116
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "c792f12f0ef34f8a2ca9f16e68f5b306391eed56f120cda247bf778a95118c15"
+        == "260c0fffdd2ab5a9b35d17e27bc1abc393ccc09179fa0ebd8f68be0fe2126386"
     )
 
 
@@ -1194,11 +1192,11 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     source_producers = keys(pool_post_puf_source_producer_target_families())
 
     assert len(early) == 48
-    assert len(late) == 70
+    assert len(late) == 68
     assert early.isdisjoint(late)
     assert early | late == full
     assert len(puf_producers) == 43
-    assert len(source_producers) == 29
+    assert len(source_producers) == 27
     assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
     assert ("person", "source_operator_cps_carried", "strike_benefits") in early
@@ -1235,7 +1233,8 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 118,
+            "pool_transfer_target_families": 116,
+            "whole_pool_source_operator": 2,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
             "load_take_up_contract": 17,
@@ -2143,7 +2142,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 118
+    assert len(targets) == 116
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -2168,8 +2167,8 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 118
-    assert len(predictors) == 35
+    assert len(targets) == 116
+    assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
         (
@@ -2185,7 +2184,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 119
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -2403,17 +2402,9 @@ def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
         "has_marketplace_health_coverage_at_interview",
     ) in registered
 
-    immigration_spec = next(
-        spec
+    assert not any(
+        spec.family == "source_operator_immigration"
         for spec in POOL_SPINE_AGREEMENT_REGISTRY
-        if (spec.entity, spec.family) == ("person", "source_operator_immigration")
-    )
-    assert immigration_spec.columns == (
-        "immigration_status_str",
-        "ssn_card_type",
-    )
-    assert immigration_spec.joint_categorical_groups == (
-        ("ssn_card_type", "immigration_status_str"),
     )
 
 
@@ -2474,7 +2465,7 @@ def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
         name
         for name, contract in POOL_OPERATOR_CONTRACTS.items()
         if contract.execution_scope == "whole_pool"
-    } == set(POOL_DERIVE_OPERATOR_ORDER)
+    } == set(POOL_DERIVE_OPERATOR_ORDER) | {"with_us_immigration_inputs"}
 
 
 def test_single_post_clone_source_entrypoint_dispatches_one_operator(
@@ -2771,7 +2762,11 @@ def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
     return {
         "phase": "post_clone",
         "operator_order": [operator],
-        "cps_source_evidence": {"column": "PERIDNUM", "person_rows": 4},
+        "cps_source_evidence": (
+            None
+            if POOL_OPERATOR_CONTRACTS[operator].execution_scope == "whole_pool"
+            else {"column": "PERIDNUM", "person_rows": 4}
+        ),
         "transient_outputs_carried_through_clone": {},
         "suboperators": [
             {
@@ -2832,6 +2827,39 @@ def test_source_finalizer_rejects_incomplete_receipts_before_deferred_inputs(
     }
 
     with pytest.raises(ValueError, match=r"exactly.*16.*missing=.*education"):
+        finalize_multispine_source_inputs(
+            _source_frame(),
+            operator_receipts=receipts,
+        )
+
+
+@pytest.mark.parametrize(
+    ("operator", "expected_error"),
+    [
+        ("with_us_immigration_inputs", "Whole-pool source operator.*CPS-only"),
+        ("with_us_education_inputs", "disagree on the CPS source-evidence"),
+    ],
+)
+def test_source_finalizer_rejects_misbound_source_evidence_before_deferred_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    operator: str,
+    expected_error: str,
+) -> None:
+    receipts = {
+        name: _single_post_clone_source_receipt(name)
+        for name in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    }
+    receipts[operator]["cps_source_evidence"] = {
+        "column": "PERIDNUM",
+        "person_rows": 5,
+    }
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        lambda _frame: pytest.fail("deferred inputs must not be materialized"),
+    )
+
+    with pytest.raises(ValueError, match=expected_error):
         finalize_multispine_source_inputs(
             _source_frame(),
             operator_receipts=receipts,
@@ -3477,6 +3505,8 @@ def test_every_source_operator_output_has_a_pool_owner() -> None:
 
     unowned: list[str] = []
     for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        if POOL_OPERATOR_CONTRACTS[operator_name].execution_scope == "whole_pool":
+            continue
         family = multispine_pool_module._SOURCE_OPERATOR_FAMILIES[operator_name]
         for columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].values():
             for column in columns:
@@ -3539,19 +3569,20 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
             name: str = operator_name,
             column: str = output,
             value: float = float(index + 1),
-            person_weight_scale: float = 1.0,
         ) -> Frame:
             calls.append(name)
-            if name == "with_us_immigration_inputs":
-                assert person_weight_scale > 1.0
+            whole_pool = POOL_OPERATOR_CONTRACTS[name].execution_scope == "whole_pool"
+            if whole_pool:
+                assert available.metadata == boundary_frame.metadata
+                assert available.mass_log == boundary_frame.mass_log
             else:
-                assert person_weight_scale == 1.0
-            assert "us_spine_assembly_manifest" not in available.metadata
-            assert not available.mass_log
+                assert "us_spine_assembly_manifest" not in available.metadata
+                assert not available.mass_log
             person = available.table("person")
             assert ("person_support_channel" in person.columns) is physically_clone
             assert ("person_support_clone_index" in person.columns) is physically_clone
-            assert person["PERIDNUM"].notna().all()
+            if not whole_pool:
+                assert person["PERIDNUM"].notna().all()
             updated = person.copy()
             updated[column] = value
             return _replace_person(available, updated)
@@ -3596,12 +3627,17 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
         assert receipt["order_index"] == index
         assert receipt["operator"] == operator_names[index]
         assert receipt["pool_input_rows"]["person"] == pool_rows
-        assert receipt["cps_available_rows"]["person"] == cps_rows
-        assert receipt["operator_output_rows"]["person"] == cps_rows
-        assert receipt["merged_rows"]["person"] == cps_rows
+        whole_pool = receipt["execution_scope"] == "whole_pool"
+        if whole_pool:
+            assert receipt["cps_available_rows"] is None
+        else:
+            assert receipt["cps_available_rows"]["person"] == cps_rows
+        expected_rows = pool_rows if whole_pool else cps_rows
+        assert receipt["operator_output_rows"]["person"] == expected_rows
+        assert receipt["merged_rows"]["person"] == expected_rows
         assert receipt["operator_projection"] == {
-            "selection": "PERIDNUM",
-            "lineage_state_persisted": False,
+            "selection": "whole_pool" if whole_pool else "PERIDNUM",
+            "lineage_state_persisted": whole_pool,
             "support_role_metadata_exposed": physically_clone,
         }
 

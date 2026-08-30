@@ -99,11 +99,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     TargetFamilies,
     transfer_acs_inputs,
 )
-from microcosm.build.us_runtime.immigration import (
-    us_immigration_controls,
-    us_immigration_humanitarian_draw_mask,
-    us_immigration_humanitarian_transfer_selection_masks,
-)
+from microcosm.build.us_runtime.immigration import US_IMMIGRATION_ALL_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -3002,12 +2998,6 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
         "categorical_tvd": (
             ("person", "model_required_discrete", "own_children_in_household"),
             (
-                "person",
-                "source_operator_immigration",
-                "immigration_status_str",
-            ),
-            ("person", "source_operator_immigration", "ssn_card_type"),
-            (
                 "tax_unit",
                 "puf_tax_itemization",
                 "first_home_mortgage_origination_year",
@@ -3069,16 +3059,7 @@ CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _explicit_origin_battery_metric_regis
 )
 CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY: Mapping[
     tuple[str, str, tuple[str, ...], int], str
-] = MappingProxyType(
-    {
-        (
-            "person",
-            "source_operator_immigration",
-            ("ssn_card_type", "immigration_status_str"),
-            0,
-        ): "categorical_tvd"
-    }
-)
+] = MappingProxyType({})
 CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
     profile_id="us_stacked_origin_battery_support",
     version=1,
@@ -4149,54 +4130,6 @@ _ACS_TRANSFER_ROW_COUNT_FIELDS = (
     "unmodeled_rows",
     "residual_null_rows",
 )
-_IMMIGRATION_TRANSFER_FAMILY = "source_operator_immigration"
-_IMMIGRATION_TRANSFER_TARGETS = ("ssn_card_type", "immigration_status_str")
-_IMMIGRATION_RECONCILIATION_KEY = "post_transfer_reconciliation"
-_IMMIGRATION_RECONCILIATION_DRAW_FIELDS = frozenset(
-    {
-        "target",
-        "immutable_population",
-        "residual_target",
-        "eligible_recipient_population",
-        "selected_recipient_population",
-        "achieved_population",
-        "absolute_error",
-        "selection_threshold_tie_population",
-        "residual_selection_error",
-        "within_residual_discrete_weight_bound",
-        "immutable_overshoot",
-        "within_discrete_weight_bound",
-    }
-)
-
-
-def _is_immigration_transfer_target(
-    *,
-    entity: str,
-    family: str,
-    target: str,
-) -> bool:
-    return (
-        entity == "person"
-        and family.split("__batch_", 1)[0] == _IMMIGRATION_TRANSFER_FAMILY
-        and target in _IMMIGRATION_TRANSFER_TARGETS
-    )
-
-
-def _immigration_qrf_evidence_targets(
-    surface: TargetFamilies,
-) -> tuple[tuple[str, str], ...]:
-    return tuple(
-        (entity, target)
-        for entity, families in surface.items()
-        for family, targets in families.items()
-        for target in targets
-        if _is_immigration_transfer_target(
-            entity=entity,
-            family=family,
-            target=target,
-        )
-    )
 
 
 def _validate_acs_transfer_row_counts(
@@ -4230,260 +4163,6 @@ def _validate_acs_transfer_row_counts(
     ):
         raise ValueError(f"{boundary}: ACS transfer row-count accounting is invalid.")
     return typed_counts
-
-
-def _validate_immigration_post_transfer_reconciliation(
-    target_receipt: Mapping[str, object],
-    *,
-    boundary: str,
-    frame: Frame | None = None,
-) -> Mapping[str, object]:
-    """Validate the persisted constrained-recipient reconciliation evidence."""
-
-    reconciliation = target_receipt.get(_IMMIGRATION_RECONCILIATION_KEY)
-    if not isinstance(reconciliation, Mapping):
-        raise ValueError(
-            f"{boundary}: immigration post-transfer reconciliation is absent."
-        )
-    expected_keys = {
-        "kind",
-        "seed",
-        "time_period",
-        "mutable_rows",
-        "immutable_rows",
-        "citizenship_repairs",
-        "pair_repairs",
-        "special_status_assignments",
-        "floating_tolerance",
-        "selection_order",
-        "draws",
-    }
-    if set(reconciliation) != expected_keys or reconciliation.get("kind") != (
-        "deterministic_humanitarian_residual_target"
-    ):
-        raise ValueError(
-            f"{boundary}: immigration post-transfer reconciliation schema is invalid."
-        )
-    integer_fields = (
-        "seed",
-        "time_period",
-        "mutable_rows",
-        "immutable_rows",
-        "citizenship_repairs",
-        "pair_repairs",
-        "special_status_assignments",
-    )
-    if any(
-        not isinstance(reconciliation.get(field), int)
-        or isinstance(reconciliation[field], bool)
-        or reconciliation[field] < 0
-        for field in integer_fields
-    ):
-        raise ValueError(
-            f"{boundary}: immigration reconciliation integer evidence is invalid."
-        )
-    counts = _validate_acs_transfer_row_counts(
-        target_receipt,
-        boundary=boundary,
-        required=True,
-    )
-    if (
-        reconciliation["mutable_rows"] != counts["imputed_rows"]
-        or reconciliation["citizenship_repairs"] > reconciliation["mutable_rows"]
-        or reconciliation["pair_repairs"] > reconciliation["mutable_rows"]
-        or reconciliation["special_status_assignments"] > reconciliation["mutable_rows"]
-        or reconciliation["citizenship_repairs"] > reconciliation["pair_repairs"]
-    ):
-        raise ValueError(
-            f"{boundary}: immigration reconciliation row accounting is invalid."
-        )
-    producer_rows = target_receipt.get("producer_rows")
-    if producer_rows is not None and (
-        not isinstance(producer_rows, int)
-        or isinstance(producer_rows, bool)
-        or producer_rows < 0
-        or reconciliation["immutable_rows"] != producer_rows
-    ):
-        raise ValueError(
-            f"{boundary}: immigration reconciliation immutable-row binding is invalid."
-        )
-    controls = us_immigration_controls()
-    canonical_tolerance = max(
-        1e-6,
-        max((draw.target for draw in controls.humanitarian), default=0.0) * 1e-12,
-    )
-    tolerance = reconciliation.get("floating_tolerance")
-    if (
-        not isinstance(tolerance, (int, float))
-        or isinstance(tolerance, bool)
-        or not np.isfinite(float(tolerance))
-        or tolerance <= 0
-        or float(tolerance) != canonical_tolerance
-    ):
-        raise ValueError(
-            f"{boundary}: immigration reconciliation tolerance is non-canonical."
-        )
-    tolerance = float(tolerance)
-    live_draw_populations: dict[str, tuple[float, float, float]] = {}
-    live_mutable_draw_masks: dict[str, np.ndarray] = {}
-    expected_mutable_draw_masks: dict[str, np.ndarray] = {}
-    if frame is not None:
-        person_entity = frame.schema.person_entity
-        person = frame.table(person_entity)
-        channel = person[support_channel_column(person_entity)].astype(str)
-        immutable_rows = channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy(dtype=bool)
-        mutable_rows = channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy(dtype=bool)
-        if (
-            not np.logical_or(immutable_rows, mutable_rows).all()
-            or int(immutable_rows.sum()) != reconciliation["immutable_rows"]
-            or int(mutable_rows.sum()) != reconciliation["mutable_rows"]
-        ):
-            raise ValueError(
-                f"{boundary}: immigration reconciliation row counts differ "
-                "from the live ASEC/ACS frame."
-            )
-        weights = np.asarray(
-            frame.resolve_weights(person_entity).values,
-            dtype=np.float64,
-        )
-        if (
-            weights.shape != (len(person),)
-            or not np.isfinite(weights).all()
-            or (weights < 0).any()
-        ):
-            raise ValueError(
-                f"{boundary}: immigration reconciliation live person weights "
-                "are invalid."
-            )
-        for control in controls.humanitarian:
-            emitted = us_immigration_humanitarian_draw_mask(
-                frame,
-                control,
-                time_period=int(reconciliation["time_period"]),
-            )
-            live_draw_populations[control.label] = (
-                float(weights[emitted & immutable_rows].sum()),
-                float(weights[emitted & mutable_rows].sum()),
-                float(weights[emitted].sum()),
-            )
-            live_mutable_draw_masks[control.label] = emitted & mutable_rows
-        expected_mutable_draw_masks = (
-            us_immigration_humanitarian_transfer_selection_masks(
-                frame,
-                mutable_rows=mutable_rows,
-                seed=int(reconciliation["seed"]),
-                time_period=int(reconciliation["time_period"]),
-                controls=controls,
-            )
-        )
-    selection_order = reconciliation.get("selection_order")
-    draws = reconciliation.get("draws")
-    expected_order = [draw.label for draw in controls.humanitarian]
-    targets_by_label = {
-        draw.label: float(draw.target) for draw in controls.humanitarian
-    }
-    if (
-        not isinstance(selection_order, list)
-        or selection_order != expected_order
-        or not isinstance(draws, Mapping)
-        or set(draws) != set(expected_order)
-    ):
-        raise ValueError(
-            f"{boundary}: immigration reconciliation draw order is non-canonical."
-        )
-    numeric_fields = _IMMIGRATION_RECONCILIATION_DRAW_FIELDS - {
-        "within_residual_discrete_weight_bound",
-        "within_discrete_weight_bound",
-    }
-    for label in expected_order:
-        draw = draws[label]
-        if not isinstance(draw, Mapping) or set(draw) != (
-            _IMMIGRATION_RECONCILIATION_DRAW_FIELDS
-        ):
-            raise ValueError(
-                f"{boundary}: immigration reconciliation draw {label!r} schema "
-                "is invalid."
-            )
-        if any(
-            not isinstance(draw.get(field), (int, float))
-            or isinstance(draw[field], bool)
-            or not np.isfinite(float(draw[field]))
-            or draw[field] < 0
-            for field in numeric_fields
-        ) or any(
-            draw.get(field) is not True
-            for field in (
-                "within_residual_discrete_weight_bound",
-                "within_discrete_weight_bound",
-            )
-        ):
-            raise ValueError(
-                f"{boundary}: immigration reconciliation draw {label!r} values "
-                "are invalid."
-            )
-        target = targets_by_label[label]
-        immutable = float(draw["immutable_population"])
-        residual = float(draw["residual_target"])
-        eligible = float(draw["eligible_recipient_population"])
-        selected = float(draw["selected_recipient_population"])
-        achieved = float(draw["achieved_population"])
-        tie = float(draw["selection_threshold_tie_population"])
-        expected_residual = max(0.0, target - immutable)
-        residual_error = abs(selected - residual)
-        absolute_error = abs(achieved - target)
-        immutable_overshoot = max(0.0, immutable - target)
-        if frame is not None:
-            live_immutable, live_selected, live_achieved = live_draw_populations[label]
-            if (
-                abs(immutable - live_immutable) > tolerance
-                or abs(selected - live_selected) > tolerance
-                or abs(achieved - live_achieved) > tolerance
-            ):
-                raise ValueError(
-                    f"{boundary}: immigration reconciliation draw {label!r} "
-                    "differs from the live ASEC/ACS weighted population."
-                )
-            if not np.array_equal(
-                live_mutable_draw_masks[label],
-                expected_mutable_draw_masks[label],
-            ):
-                raise ValueError(
-                    f"{boundary}: immigration reconciliation draw {label!r} "
-                    "selected mutable-row identities differ from the canonical "
-                    "seeded selection."
-                )
-        if target <= 0 and immutable > tolerance:
-            raise ValueError(
-                f"{boundary}: immigration reconciliation draw {label!r} has "
-                "immutable mass against an explicit-zero target."
-            )
-        if eligible + tolerance < residual:
-            raise ValueError(
-                f"{boundary}: immigration reconciliation draw {label!r} "
-                "conceals a recipient candidate shortfall."
-            )
-        if selected + tolerance < residual:
-            raise ValueError(
-                f"{boundary}: immigration reconciliation draw {label!r} "
-                "underfills its residual target."
-            )
-        if (
-            abs(float(draw["target"]) - target) > tolerance
-            or abs(residual - expected_residual) > tolerance
-            or selected > eligible + tolerance
-            or tie > eligible + tolerance
-            or abs(achieved - (immutable + selected)) > tolerance
-            or abs(float(draw["residual_selection_error"]) - residual_error) > tolerance
-            or residual_error > tie + tolerance
-            or abs(float(draw["absolute_error"]) - absolute_error) > tolerance
-            or abs(float(draw["immutable_overshoot"]) - immutable_overshoot) > tolerance
-            or absolute_error > immutable_overshoot + tie + tolerance
-        ):
-            raise ValueError(
-                f"{boundary}: immigration reconciliation draw {label!r} "
-                "accounting is invalid."
-            )
-    return reconciliation
 
 
 _PREGNANCY_STRUCTURAL_COUNT_FIELDS = (
@@ -4623,11 +4302,6 @@ def _acs_pattern_predictor_authority(
         assert isinstance(housing, Mapping)
         if set(family_targets).intersection(housing["targets"]):
             mandatory = tuple(housing["mandatory_features"])
-            required = (*required, *mandatory)
-            optional = tuple(item for item in optional if item not in mandatory)
-        immigration_targets = set(contract["immigration_status_targets"])
-        if immigration_targets.issubset(family_targets):
-            mandatory = tuple(contract["immigration_required_predictors"])
             required = (*required, *mandatory)
             optional = tuple(item for item in optional if item not in mandatory)
         return tuple(required), tuple(optional)
@@ -5105,7 +4779,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(groups, Mapping) or set(groups) != set(expected_groups):
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer group surface is not the "
-            "canonical 19-group partition; production manifest emission is "
+            "canonical 18-group partition; production manifest emission is "
             "forbidden."
         )
     validated_calibration_keys: set[str] = set()
@@ -5168,7 +4842,6 @@ def validate_stacked_post_puf_transfer_receipt(
         validated_calibration_keys.update(
             spec.key for spec in expected_calibrations.values()
         )
-        group_immigration_reconciliations: list[Mapping[str, object]] = []
         for target_key, target_receipt in group_targets.items():
             if not isinstance(target_receipt, Mapping):
                 raise ValueError(
@@ -5196,35 +4869,13 @@ def validate_stacked_post_puf_transfer_receipt(
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
             target = target_key.rsplit("/", 1)[1]
-            is_immigration = _is_immigration_transfer_target(
-                entity=group.entity,
-                family=group.family,
-                target=target,
-            )
-            if is_immigration:
-                group_immigration_reconciliations.append(
-                    _validate_immigration_post_transfer_reconciliation(
-                        target_receipt,
-                        boundary=f"{boundary} target {target_key}",
-                        frame=frame,
-                    )
-                )
-                _validate_acs_imputed_pattern_evidence(
-                    target_receipt,
-                    expected_entity=group.entity,
-                    expected_family=group.family,
-                    expected_target=target,
-                    expected_family_targets=group.targets,
-                    expected_regime_targets=group.targets,
-                    boundary=f"{boundary} target {target_key}",
-                )
-            elif _IMMIGRATION_RECONCILIATION_KEY in target_receipt:
+            if "post_transfer_reconciliation" in target_receipt:
                 raise ValueError(
-                    f"{boundary}: undeclared immigration reconciliation is "
+                    f"{boundary}: retired immigration reconciliation is "
                     f"attached to {target_key!r}."
                 )
             if spec is None:
-                if "qrf_pattern_evidence" in target_receipt and not is_immigration:
+                if "qrf_pattern_evidence" in target_receipt:
                     raise ValueError(
                         f"{boundary}: undeclared ACS QRF pattern evidence is "
                         f"attached to {target_key!r}."
@@ -5348,17 +4999,6 @@ def validate_stacked_post_puf_transfer_receipt(
                     spec=spec,
                     boundary=f"{boundary} target {target_key}",
                 )
-        if group_immigration_reconciliations:
-            if len(group_immigration_reconciliations) != len(
-                _IMMIGRATION_TRANSFER_TARGETS
-            ) or any(
-                _json_ready(item) != _json_ready(group_immigration_reconciliations[0])
-                for item in group_immigration_reconciliations[1:]
-            ):
-                raise ValueError(
-                    f"{boundary}: paired immigration reconciliation evidence "
-                    f"is incomplete or inconsistent for group {name!r}."
-                )
     if validated_calibration_keys != set(late_calibration_specs):
         raise ValueError(
             f"{boundary}: post-transfer calibration coverage does not match "
@@ -5374,7 +5014,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer target surface is not the "
-            "canonical 70-target surface; production manifest emission is "
+            "canonical 68-target surface; production manifest emission is "
             "forbidden."
         )
     for name, group in expected_groups.items():
@@ -5406,8 +5046,8 @@ def validate_stacked_post_puf_transfer_receipt(
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
-        "group_count": 19,
-        "target_count": 70,
+        "group_count": 18,
+        "target_count": 68,
         "residual_null_rows": 0,
     }:
         raise ValueError(
@@ -7664,11 +7304,21 @@ def _late_output_column_evidence(
             }
         )
     else:
+        output_values = table.loc[scope, [output.column]]
+        is_immigration_output = output.column in US_IMMIGRATION_ALL_OUTPUT_COLUMNS
+        if is_immigration_output:
+            # Persisted H5 may restore a RangeIndex as an ordinary integer
+            # Index. Bind actual person identity and ordered values, not that
+            # incidental pandas representation.
+            output_values = table.loc[
+                scope, [frame.schema.entity_id_column(output.entity), output.column]
+            ].reset_index(drop=True)
         payload.update(
             {
                 "status": "present",
                 "content_sha256": _late_table_values_sha256(
-                    table.loc[scope, [output.column]]
+                    output_values,
+                    normalize_strings=is_immigration_output,
                 ),
             }
         )
@@ -8422,9 +8072,28 @@ def validate_stacked_late_producer_transition_authority(
     transfer = receipt.get("post_puf_transfer")
     assert isinstance(transfer, Mapping)
     # Downstream fiscal and gate operators intentionally change the complete
-    # late-output digest, but they do not own source channels, resolved
-    # weights, or immigration outputs. Replay that reconstructible terminal
-    # evidence before authenticating the immutable transition carrier.
+    # late-output digest, but they do not own immigration facts or the legacy
+    # projection. Authenticate their source-stage evidence directly, without
+    # interpreting any population total as an assignment control.
+    producer_name = "source:with_us_immigration_inputs"
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+    execution = receipt["execution"]
+    assert isinstance(execution, list)
+    source_row = next(row for row in execution if row["producer"] == producer_name)
+    producer_receipt = source_row["producer_receipt"]
+    for output, recorded in zip(
+        contract.outputs, source_row["output_surface"], strict=True
+    ):
+        if output.column not in US_IMMIGRATION_ALL_OUTPUT_COLUMNS:
+            continue
+        live = _late_output_column_evidence(
+            frame, output=output, producer_receipt=producer_receipt
+        )
+        if live != recorded:
+            raise ValueError(
+                f"{boundary}: immigration output {output.entity}.{output.column} "
+                "differs from its sealed neutral source-stage evidence."
+            )
     validate_stacked_post_puf_transfer_receipt(
         transfer,
         boundary=boundary,
@@ -8585,7 +8254,15 @@ def validate_stacked_late_producer_receipt(
         normalized = dict(source_suboperators[0])
         normalized["order_index"] = index
         normalized_suboperators.append(normalized)
-        source_evidence.append(source_receipt.get("cps_source_evidence"))
+        evidence = source_receipt.get("cps_source_evidence")
+        if POOL_OPERATOR_CONTRACTS[operator].execution_scope == "whole_pool":
+            if evidence is not None:
+                raise ValueError(
+                    f"{boundary}: whole-pool source producer {operator!r} may "
+                    "not claim a CPS-only source-evidence projection."
+                )
+        else:
+            source_evidence.append(evidence)
     if suboperators != normalized_suboperators:
         raise ValueError(
             f"{boundary}: stacked source completion is not reconstructed from "
@@ -8666,7 +8343,7 @@ def validate_stacked_late_producer_receipt(
     if _json_ready(transfer["targets"]) != _json_ready(reconstructed_targets):
         raise ValueError(
             f"{boundary}: aggregate late-transfer targets are not reconstructed "
-            "from the nineteen producer receipts."
+            "from the eighteen producer receipts."
         )
 
     unsigned = dict(receipt)
@@ -9140,12 +8817,12 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 134
-    or len(set(_canonical_surface_keys)) != 134
+    len(_canonical_surface_keys) != 132
+    or len(set(_canonical_surface_keys)) != 132
     or len(_canonical_early_transfer_keys) != 48
-    or len(_canonical_late_transfer_keys) != 70
+    or len(_canonical_late_transfer_keys) != 68
     or len(_canonical_late_puf_producer_keys) != 43
-    or len(_canonical_late_source_producer_keys) != 29
+    or len(_canonical_late_source_producer_keys) != 27
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
     != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
@@ -9153,13 +8830,13 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 118
+    or len(_canonical_full_transfer_keys) != 116
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
     or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
     != set(_canonical_surface_keys)
-    or len(_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR) != 1
+    or _CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR
     or any(
         (entity, family, column, clone_index) not in _canonical_surface_keys
         or _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR[
@@ -9173,10 +8850,10 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 118-target "
-        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 134-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "Canonical stacked authority must partition the exact 116-target "
+        "transfer surface into 48 early gap-fill and 68 post-PUF targets "
+        "inside an exact 132-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 43 PUF-clone and 27 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
 
@@ -10632,7 +10309,6 @@ def _transfer_stacked_post_puf_inputs_evaluate(
                             stage="late_transfer",
                         )
                     ),
-                    *_immigration_qrf_evidence_targets(surface),
                 )
             )
         ),
@@ -10878,8 +10554,7 @@ def _verify_post_puf_transfer_outcome(
             target_families,
             stage="late_transfer",
         )
-    } | set(_immigration_qrf_evidence_targets(target_families))
-    immigration_reconciliations: dict[str, Mapping[str, object]] = {}
+    }
     for entity, families in target_families.items():
         table = frame.table(entity)
         for family, family_targets in families.items():
@@ -10959,43 +10634,11 @@ def _verify_post_puf_transfer_outcome(
                     target_receipt["qrf_pattern_evidence"] = (
                         _acs_imputed_pattern_evidence(record)
                     )
-                if _is_immigration_transfer_target(
-                    entity=entity,
-                    family=family,
-                    target=target,
-                ):
-                    if record is None or not isinstance(record.reconciliation, Mapping):
-                        failures.append(
-                            f"{label}: constrained immigration reconciliation "
-                            "evidence is absent."
-                        )
-                    else:
-                        evidence = _json_ready(record.reconciliation)
-                        assert isinstance(evidence, Mapping)
-                        target_receipt[_IMMIGRATION_RECONCILIATION_KEY] = evidence
-                        immigration_reconciliations[target] = evidence
                 if record is not None and record.structural_receipt is not None:
                     target_receipt["structural_policy"] = dict(
                         record.structural_receipt
                     )
                 target_receipts[target_receipt_key] = target_receipt
-    if set(immigration_reconciliations) not in (
-        set(),
-        set(_IMMIGRATION_TRANSFER_TARGETS),
-    ):
-        failures.append(
-            "post_puf_transfer/person/source_operator_immigration: paired "
-            "reconciliation evidence is incomplete."
-        )
-    elif immigration_reconciliations and any(
-        _json_ready(evidence)
-        != _json_ready(immigration_reconciliations[_IMMIGRATION_TRANSFER_TARGETS[0]])
-        for evidence in immigration_reconciliations.values()
-    ):
-        failures.append(
-            "post_puf_transfer/person/source_operator_immigration: paired "
-            "reconciliation evidence disagrees."
-        )
     if failures:
         raise ValueError(
             "Stacked post-PUF transfer outcome verification failed:\n  "
@@ -11338,7 +10981,7 @@ def _aggregate_late_transfer_result(
     ],
     execution_order: Sequence[str],
 ) -> StackedPostPufTransferResult:
-    """Bind all bounded group outcomes into the canonical 70-target receipt."""
+    """Bind all bounded group outcomes into the canonical 68-target receipt."""
 
     expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
     if set(group_results) != set(expected_groups):
@@ -13644,7 +13287,7 @@ def by_origin_battery(
     *,
     tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Run the canonical 134-target plus joint by-origin battery."""
+    """Run the canonical 132-target by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,

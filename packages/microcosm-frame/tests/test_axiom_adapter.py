@@ -33,6 +33,8 @@ from microcosm.frame.adapters.axiom import (
     BE_SCHEMA,
     AxiomEngine,
     AxiomEntityTableDataset,
+    AxiomInputBindingContract,
+    _batch_from_table,
     _period_bounds,
 )
 
@@ -124,6 +126,150 @@ class TestConstruction:
         adapter = AxiomEngine(FIXTURE_MODULE)
         assert adapter._entity_names == {"person": "Person", "household": "Household"}
 
+    def test_input_bindings_are_copied_at_construction(self) -> None:
+        bindings = {"statutory_input": "neutral_fact"}
+        adapter = AxiomEngine(FIXTURE_MODULE, input_bindings=bindings)
+        bindings["statutory_input"] = "mutated_later"
+        assert adapter._input_bindings == {"statutory_input": "neutral_fact"}
+
+    def test_versioned_input_binding_contract_is_content_addressed(self) -> None:
+        contract = AxiomInputBindingContract(
+            version="us-snap-humanitarian-v1",
+            bindings={
+                "statutory_refugee_history": "immigration_refugee_history",
+                "statutory_lpr_status": "immigration_is_lpr",
+            },
+        )
+        receipt = AxiomEngine(
+            FIXTURE_MODULE, input_bindings=contract
+        ).input_binding_receipt()
+
+        assert receipt["version"] == "us-snap-humanitarian-v1"
+        assert receipt["sha256"] == contract.sha256
+        assert receipt["bindings"] == dict(contract.bindings)
+
+    def test_binding_digest_is_order_independent(self) -> None:
+        left = AxiomInputBindingContract(
+            version="v1",
+            bindings={"legal_b": "fact_b", "legal_a": "fact_a"},
+        )
+        right = AxiomInputBindingContract(
+            version="v1",
+            bindings={"legal_a": "fact_a", "legal_b": "fact_b"},
+        )
+        assert left.sha256 == right.sha256
+
+    @pytest.mark.parametrize(
+        "bindings",
+        [
+            {"": "neutral_fact"},
+            {"statutory_input": ""},
+            {1: "neutral_fact"},
+            {"statutory_input": 1},
+        ],
+    )
+    def test_rejects_invalid_input_bindings(self, bindings) -> None:
+        with pytest.raises(ValueError, match="input_bindings"):
+            AxiomEngine(FIXTURE_MODULE, input_bindings=bindings)
+
+
+class TestInputBindings:
+    def test_neutral_fact_can_feed_multiple_axiom_inputs(self) -> None:
+        table = pd.DataFrame(
+            {
+                "neutral_refugee_history": [True, False],
+                "unbound_count": [2, 3],
+            }
+        )
+        batch = _batch_from_table(
+            table,
+            (
+                "refugee_input_in_statute_a",
+                "refugee_input_in_statute_b",
+                "unbound_count",
+            ),
+            input_bindings={
+                "refugee_input_in_statute_a": "neutral_refugee_history",
+                "refugee_input_in_statute_b": "neutral_refugee_history",
+            },
+        )
+        assert set(batch) == {
+            "refugee_input_in_statute_a",
+            "refugee_input_in_statute_b",
+            "unbound_count",
+        }
+        np.testing.assert_array_equal(
+            batch["refugee_input_in_statute_a"], [True, False]
+        )
+        np.testing.assert_array_equal(
+            batch["refugee_input_in_statute_b"], [True, False]
+        )
+        np.testing.assert_array_equal(batch["unbound_count"], [2, 3])
+
+    def test_absent_bound_column_is_omitted_for_engine_defaulting(self) -> None:
+        batch = _batch_from_table(
+            pd.DataFrame({"person_id": [1]}),
+            ("optional_axiom_input",),
+            input_bindings={"optional_axiom_input": "absent_neutral_fact"},
+        )
+        assert batch == {}
+
+    def test_period_year_binding_is_broadcast_at_materialization_time(self) -> None:
+        batch = _batch_from_table(
+            pd.DataFrame({"person_id": [1, 2, 3]}),
+            ("benefit_evaluation_year",),
+            input_bindings={"benefit_evaluation_year": "@period.year"},
+            period_year=2027,
+        )
+        np.testing.assert_array_equal(
+            batch["benefit_evaluation_year"],
+            [2027, 2027, 2027],
+        )
+
+    def test_period_year_binding_requires_period_context(self) -> None:
+        with pytest.raises(ValueError, match="no period_year"):
+            _batch_from_table(
+                pd.DataFrame({"person_id": [1]}),
+                ("benefit_evaluation_year",),
+                input_bindings={"benefit_evaluation_year": "@period.year"},
+            )
+
+    def test_period_month_index_binding_is_broadcast_at_materialization_time(
+        self,
+    ) -> None:
+        batch = _batch_from_table(
+            pd.DataFrame({"person_id": [1, 2]}),
+            ("benefit_evaluation_month_index",),
+            input_bindings={"benefit_evaluation_month_index": "@period.month_index"},
+            period_month_index=2027 * 12 + 5,
+        )
+        np.testing.assert_array_equal(
+            batch["benefit_evaluation_month_index"],
+            [2027 * 12 + 5, 2027 * 12 + 5],
+        )
+
+    def test_period_month_index_binding_requires_period_context(self) -> None:
+        with pytest.raises(ValueError, match="no period_month_index"):
+            _batch_from_table(
+                pd.DataFrame({"person_id": [1]}),
+                ("benefit_evaluation_month_index",),
+                input_bindings={
+                    "benefit_evaluation_month_index": "@period.month_index"
+                },
+            )
+
+    def test_bound_object_column_error_names_both_surfaces(self) -> None:
+        table = pd.DataFrame({"neutral_fact": pd.Series(["yes"], dtype=object)})
+        with pytest.raises(
+            ValueError,
+            match="neutral_fact.*statutory_input",
+        ):
+            _batch_from_table(
+                table,
+                ("statutory_input",),
+                input_bindings={"statutory_input": "neutral_fact"},
+            )
+
 
 class TestPeriodBounds:
     def test_year_as_int_and_str(self) -> None:
@@ -176,6 +322,18 @@ class TestVariableMetadata:
         assert "toy_income_tax" not in names  # derived output
         assert names == sorted(names)
 
+    def test_variables_reports_bound_frame_columns(self) -> None:
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            input_bindings=AxiomInputBindingContract(
+                version="toy-v1",
+                bindings={"toy_taxable_income": "neutral_taxable_income"},
+            ),
+        )
+        names = adapter.variables()
+        assert "neutral_taxable_income" in names
+        assert "toy_taxable_income" not in names
+
 
 @needs_engine
 class TestMaterialize:
@@ -188,9 +346,7 @@ class TestMaterialize:
         results = adapter.materialize(bundle, ["toy_income_tax"], period=2025)
         # 5,000 * 10% = 500; 10,000 * 10% = 1,000;
         # 10,000 * 10% + 10,000 * 25% = 3,500.
-        np.testing.assert_allclose(
-            results["toy_income_tax"], [500.0, 1_000.0, 3_500.0]
-        )
+        np.testing.assert_allclose(results["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
 
     def test_bool_column_drives_the_exemption_predicate(self, adapter) -> None:
         bundle = _toy_bundle(exempt=(True, False, True))
@@ -204,9 +360,7 @@ class TestMaterialize:
         )
         assert results["toy_income_tax"].shape == (bundle.n("person"),)
         assert results["toy_housing_allowance"].shape == (bundle.n("household"),)
-        np.testing.assert_allclose(
-            results["toy_housing_allowance"], [1_200.0, 0.0]
-        )
+        np.testing.assert_allclose(results["toy_housing_allowance"], [1_200.0, 0.0])
 
     def test_integer_column_feeds_count_inputs(self, adapter) -> None:
         bundle = _toy_bundle(children=(0, 2, 1))
@@ -217,8 +371,40 @@ class TestMaterialize:
         fast = AxiomEngine(FIXTURE_MODULE, arithmetic="f64")
         bundle = _toy_bundle()
         results = fast.materialize(bundle, ["toy_income_tax"], period=2025)
+        np.testing.assert_allclose(results["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
+
+    def test_period_year_binding_changes_with_requested_period(self) -> None:
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            input_bindings=AxiomInputBindingContract(
+                version="toy-period-v1",
+                bindings={"toy_taxable_income": "@period.year"},
+            ),
+        )
+        bundle = _toy_bundle()
+
+        in_2025 = adapter.materialize(bundle, ["toy_income_tax"], period=2025)
+        in_2030 = adapter.materialize(bundle, ["toy_income_tax"], period=2030)
+
+        np.testing.assert_allclose(in_2025["toy_income_tax"], [202.5] * 3)
+        np.testing.assert_allclose(in_2030["toy_income_tax"], [203.0] * 3)
+
+    def test_period_month_index_binding_changes_with_requested_month(self) -> None:
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            input_bindings=AxiomInputBindingContract(
+                version="toy-period-month-v1",
+                bindings={"toy_taxable_income": "@period.month_index"},
+            ),
+        )
+        bundle = _toy_bundle(incomes=(0.0, 0.0, 0.0))
+
+        february = adapter.materialize(bundle, ["toy_income_tax"], period="2025-02")
+        march = adapter.materialize(bundle, ["toy_income_tax"], period="2025-03")
+
         np.testing.assert_allclose(
-            results["toy_income_tax"], [500.0, 1_000.0, 3_500.0]
+            march["toy_income_tax"] - february["toy_income_tax"],
+            [0.25, 0.25, 0.25],
         )
 
     def test_wrong_bundle_entities_are_refused(self, adapter) -> None:
@@ -263,6 +449,18 @@ class TestWriteDataset:
             10_000.0,
             20_000.0,
         ]
+
+    def test_round_trip_carries_versioned_input_binding_receipt(self, tmp_path) -> None:
+        contract = AxiomInputBindingContract(
+            version="toy-v1",
+            bindings={"toy_taxable_income": "neutral_taxable_income"},
+        )
+        adapter = AxiomEngine(FIXTURE_MODULE, input_bindings=contract)
+        path = tmp_path / "bound.h5"
+        adapter.write_dataset(_toy_bundle(), path, period=2025)
+
+        reloaded = AxiomEntityTableDataset(file_path=path)
+        assert reloaded.input_binding_receipt == contract.receipt()
 
     def test_typed_weights_overwrite_a_stale_weight_column(self, tmp_path) -> None:
         adapter = AxiomEngine(FIXTURE_MODULE)
@@ -463,10 +661,7 @@ class TestBelgianPilotSlice:
 
     @pytest.fixture(scope="class")
     def adapter(self) -> AxiomEngine:
-        module = (
-            Path(RULESPEC_BE)
-            / "be/statutes/income_tax/individual/rate_scale.yaml"
-        )
+        module = Path(RULESPEC_BE) / "be/statutes/income_tax/individual/rate_scale.yaml"
         return AxiomEngine(module)
 
     def _be_bundle(self) -> Frame:
