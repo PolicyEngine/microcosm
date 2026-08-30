@@ -28,6 +28,10 @@ Incumbent comparisons and historical replacement benchmarks live outside this
 repo. The live Microcosm repo owns the library, build contracts, published
 population registry, and acceptance gates.
 
+For new countries, follow the [country-expansion playbook](docs/country-expansion-playbook.md):
+parallel facts, Axiom coverage, and external scores; then population calibration
+and dashboard publication; then independently receipted score replication.
+
 ## Development
 
 ```bash

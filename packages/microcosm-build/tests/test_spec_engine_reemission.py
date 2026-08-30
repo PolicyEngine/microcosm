@@ -44,7 +44,7 @@ def _mutate_yaml(path: Path, mutation) -> None:
     path.write_bytes(canonical_yaml_bytes(value, source=str(path)))
 
 
-@pytest.mark.parametrize("country", ["be", "uk", "us"])
+@pytest.mark.parametrize("country", ["am", "be", "nz", "uk", "us"])
 def test_resolved_bundle_round_trip_is_lossless_deterministic_and_alias_free(
     tmp_path: Path,
     country: str,

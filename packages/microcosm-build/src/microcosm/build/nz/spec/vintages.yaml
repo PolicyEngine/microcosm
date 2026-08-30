@@ -1,0 +1,41 @@
+records:
+- id: nz_support_pool_2024_buildp
+  kind: survey_period_ref
+  authority_ref:
+    kind: source_record
+    source: source:nz_populace_us_support_contract
+    authority: nz_support_pool_2024_buildp
+  compatible_with:
+  - vintage:nz_target_2026
+- id: nz_target_2026
+  kind: target_period_ref
+  authority_ref:
+    kind: dataset_run
+    pointer: /dataset_run/target_period
+  compatible_with:
+  - vintage:nz_support_pool_2024_buildp
+  - vintage:nz_rulespec_wff_2026
+- id: nz_region_2025
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:nz_region_assignment_contract
+    authority: nz_region_2025
+  compatible_with:
+  - vintage:nz_region_roster_2025
+- id: nz_region_roster_2025
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:nz_region_assignment_contract
+    authority: nz_region_roster_2025
+  compatible_with:
+  - vintage:nz_region_2025
+- id: nz_rulespec_wff_2026
+  kind: tax_period_ref
+  authority_ref:
+    kind: source_record
+    source: source:nz_wff_axiom_transport_contract
+    authority: nz_rulespec_wff_2026
+  compatible_with:
+  - vintage:nz_target_2026

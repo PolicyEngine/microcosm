@@ -60,6 +60,9 @@ compiled upstream, not behind a protocol change.
 """
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal, localcontext
 from pathlib import Path
 from typing import Any
 
@@ -71,7 +74,13 @@ from microcosm.frame.materialize import engine_tables, put_frame_table, read_fra
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
-__all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
+__all__ = [
+    "AxiomEngine",
+    "AxiomEntityTableDataset",
+    "AxiomPeriod",
+    "BE_SCHEMA",
+    "NZ_SCHEMA",
+]
 
 #: The Belgian frame schema for the populace-be pilot: persons in households.
 #: Belgian PIT is individual with household-level elements (joint assessment,
@@ -79,6 +88,10 @@ __all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
 #: units beyond the household enter as group entities when the encoded slice
 #: needs them, mapped via ``entity_names``.
 BE_SCHEMA = EntitySchema(group_entities=("household",))
+
+#: The NZ transport contract declares family units separately from households.
+#: Only households carry explicit weights; families inherit through membership.
+NZ_SCHEMA = EntitySchema(group_entities=("household", "family"))
 
 #: Engine dtype vocabulary -> kernel dtype kind. ``judgment`` is tri-state
 #: (holds / not holds / undetermined) and materializes as int8 codes
@@ -98,6 +111,38 @@ _DTYPE_KIND_BY_ENGINE: dict[str, str] = {
 _PERIOD_BY_ENGINE: dict[str, str] = {"year": "year", "month": "month"}
 
 _WEIGHT_COLUMN_SUFFIX = "_weight"
+
+
+@dataclass(frozen=True)
+class AxiomPeriod:
+    """Explicit dense-execution dates for a non-calendar policy period.
+
+    ``kind`` is the engine's period identifier (for example ``tax_year``),
+    not a display label. No fiscal-year convention is inferred from a year.
+    """
+
+    start: str
+    end: str
+    kind: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, str) or not self.kind.strip():
+            raise ValueError("Axiom period kind must be a non-empty string.")
+        try:
+            start = date.fromisoformat(self.start)
+            end = date.fromisoformat(self.end)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Axiom period dates must be valid ISO YYYY-MM-DD dates."
+            ) from exc
+        if start.isoformat() != self.start or end.isoformat() != self.end:
+            raise ValueError("Axiom period dates must use ISO YYYY-MM-DD format.")
+        if start > end:
+            raise ValueError("Axiom period start must not follow end.")
+
+    def bounds(self) -> tuple[str, str, str]:
+        """Return the dense executor's ``(start, end, period_kind)`` tuple."""
+        return self.start, self.end, self.kind
 
 
 class AxiomEngine:
@@ -123,6 +168,10 @@ class AxiomEngine:
         arithmetic: ``"decimal"`` (exact, canonical) or ``"f64"`` (faster,
             floating-point rounding) — which dense execution mode
             :meth:`materialize` uses.
+        periods: Optional year/period-label to explicit bounds mapping. If
+            supplied, an unmapped label fails instead of becoming a calendar
+            year. :meth:`materialize` also accepts an :class:`AxiomPeriod`
+            directly.
 
     The compiled dense programs (one per engine entity) and the module's
     variable metadata are loaded lazily and cached; constructing the adapter
@@ -139,6 +188,7 @@ class AxiomEngine:
         defaults: Mapping[str, object] | None = None,
         entity_names: Mapping[str, str] | None = None,
         arithmetic: str = "decimal",
+        periods: Mapping[int | str, AxiomPeriod] | None = None,
     ) -> None:
         if arithmetic not in ("decimal", "f64"):
             raise ValueError(
@@ -160,6 +210,16 @@ class AxiomEngine:
             )
         self._module = Path(module)
         self._rulespec_roots = tuple(Path(root) for root in roots)
+        self._periods: dict[str, AxiomPeriod] | None = None
+        if periods is not None:
+            self._periods = {}
+            for label, bounds in periods.items():
+                if not isinstance(bounds, AxiomPeriod):
+                    raise TypeError("periods values must be AxiomPeriod instances.")
+                key = str(label)
+                if key in self._periods:
+                    raise ValueError(f"Duplicate explicit Axiom period label {key!r}.")
+                self._periods[key] = bounds
         self._schema = schema
         self._contract = contract if contract is not None else ExportContract.empty()
         self._defaults = dict(defaults or {})
@@ -253,7 +313,7 @@ class AxiomEngine:
         self,
         bundle: Frame,
         variables: Sequence[str],
-        period: int | str,
+        period: int | str | AxiomPeriod,
     ) -> Mapping[str, np.ndarray]:
         """Compute ``variables`` for ``period`` over the bundle's tables.
 
@@ -265,7 +325,8 @@ class AxiomEngine:
             bundle: A bundle whose entities match the adapter's schema.
             variables: Computed (derived) variable names.
             period: ``2025`` / ``"2025"`` for a calendar year, ``"2025-01"``
-                for a month.
+                for a month, or explicit :class:`AxiomPeriod` bounds. Labels
+                use the constructor's ``periods`` mapping when supplied.
 
         Returns:
             One array per variable, row-aligned to the variable's entity
@@ -282,7 +343,7 @@ class AxiomEngine:
                 pilot slice declares none).
         """
         self._require_schema(bundle)
-        start, end, period_kind = _period_bounds(period)
+        start, end, period_kind = self._materialization_period(period)
 
         by_entity: dict[str, list[str]] = {}
         for name in variables:
@@ -321,6 +382,17 @@ class AxiomEngine:
                     )
                 results[name] = values
         return results
+
+    def _materialization_period(
+        self, period: int | str | AxiomPeriod
+    ) -> tuple[str, str, str]:
+        if isinstance(period, AxiomPeriod):
+            return period.bounds()
+        if self._periods is not None:
+            if str(period) not in self._periods:
+                raise ValueError(f"No explicit Axiom period bounds for {period!r}.")
+            return self._periods[str(period)].bounds()
+        return _period_bounds(period)
 
     # ------------------------------------------------------------------
     # Export
@@ -508,6 +580,38 @@ class AxiomEngine:
                 f"{list(self._schema.entities)}; bundle has "
                 f"{list(bundle.entities)}."
             )
+        # Explicit group-to-group id columns assert nesting. Check them
+        # through the Frame's membership placement, independently of whether
+        # household weights happen to be equal. Weight agreement alone does
+        # not prove that a family belongs to one household.
+        person = bundle.table(self._schema.person_entity)
+        for group in self._schema.group_entities:
+            for parent in self._schema.group_entities:
+                if group == parent:
+                    continue
+                column = f"{group}_{parent}_id"
+                try:
+                    owner = bundle.column_entity(column)
+                except ValueError:
+                    if column in self._contract.required:
+                        raise ValueError(
+                            f"Required relation column {column!r} is missing "
+                            f"from entity {group!r}."
+                        ) from None
+                    continue
+                if owner != group:
+                    raise ValueError(
+                        f"{column!r} must be on entity {group!r}, not {owner!r}."
+                    )
+                broadcast = bundle.place(
+                    column, self._schema.person_entity, how="broadcast"
+                ).table(self._schema.person_entity)[column]
+                membership = person[self._schema.membership_column(parent)]
+                if not np.array_equal(broadcast.to_numpy(), membership.to_numpy()):
+                    raise ValueError(
+                        f"{column!r} disagrees with person membership; every "
+                        f"{group!r} must be nested in its declared {parent!r}."
+                    )
 
     def _engine_tables(self, bundle: Frame) -> dict[str, pd.DataFrame]:
         """Copy the bundle's tables and materialize typed weights as columns.
@@ -654,11 +758,25 @@ class AxiomEntityTableDataset:
         with pd.HDFStore(str(path)) as store:
             for name, table in self.tables.items():
                 if len(table) > 0:
+                    # PyTables table format cannot store Decimal objects.
+                    # Keep exact decimal inputs in fixed format; never coerce
+                    # persisted money to float just to satisfy the writer.
+                    decimal_columns = [
+                        column
+                        for column in table.columns
+                        if table[column].dtype.kind == "O"
+                        and any(isinstance(value, Decimal) for value in table[column])
+                    ]
+                    stored_table = table
+                    if decimal_columns:
+                        stored_table = table.astype(
+                            {column: object for column in decimal_columns}
+                        )
                     put_frame_table(
                         store,
                         name,
-                        table,
-                        preferred_format="table",
+                        stored_table,
+                        preferred_format="fixed" if decimal_columns else "table",
                         data_columns=True,
                     )
             store.put(
@@ -716,12 +834,15 @@ def _batch_from_table(
     The table's column dtypes are authoritative: bool columns become Bool
     engine columns (truthiness-context inputs require them), integers become
     Integer, floats become the numeric column of the active arithmetic.
+    Decimal columns cross the native float64 ABI only when its nine-place
+    rounding recovers every original value exactly; wider decimal values
+    are refused, not rounded silently.
     Inputs the table does not carry are omitted — the engine defaults
     declared-optional inputs and errors on required ones, naming the input.
 
     Raises:
-        ValueError: If a needed column's dtype is not bool/integer/float
-            (object/string columns cannot become dense columns).
+        ValueError: If a needed column is not bool/integer/float/Decimal,
+            or a Decimal cannot be recovered through the native boundary.
     """
     batch: dict[str, np.ndarray] = {}
     for name in root_inputs:
@@ -735,9 +856,49 @@ def _batch_from_table(
             batch[name] = column.to_numpy(dtype=np.int64)
         elif kind == "f":
             batch[name] = column.to_numpy(dtype=np.float64)
+        elif any(isinstance(value, Decimal) for value in column):
+            batch[name] = _checked_decimal_array(name, column)
         else:
             raise ValueError(
                 f"Column {name!r} has dtype kind {kind!r}; dense inputs must "
-                "be bool, integer, or float columns."
+                "be bool, integer, float, or exact-boundary decimal columns."
             )
     return batch
+
+
+def _checked_decimal_array(name: str, column: pd.Series) -> np.ndarray:
+    """Prove recovery through native ``from_f64_retain(...).round_dp(9)``.
+
+    The strict half-unit error bound avoids depending on the native tie
+    rounding rule. This is bounded conversion, not general Decimal128 ABI
+    support; the original Decimal values remain untouched in the Frame.
+    """
+    values: list[float] = []
+    for value in column:
+        valid = isinstance(value, Decimal) and value.is_finite()
+        if valid:
+            parts = value.as_tuple()
+            trailing_zeros = 0
+            for digit in reversed(parts.digits):
+                if digit != 0:
+                    break
+                trailing_zeros += 1
+            # Inspect the tuple, not a context-rounded rescaling: extreme
+            # subnormals must not underflow to zero during validation.
+            valid = value.is_zero() or parts.exponent + trailing_zeros >= -9
+            floating = float(value)
+            valid = valid and np.isfinite(floating)
+            if valid:
+                with localcontext() as context:
+                    context.prec = max(50, len(parts.digits) + 10)
+                    valid = abs(Decimal.from_float(floating) - value) < Decimal(
+                        "0.0000000005"
+                    )
+        if not valid:
+            raise ValueError(
+                f"Column {name!r} contains a decimal value outside the exact "
+                "native nine-place boundary (finite Decimal, at most nine "
+                "places, float64 conversion error strictly below 5e-10 required)."
+            )
+        values.append(floating)
+    return np.asarray(values, dtype=np.float64)

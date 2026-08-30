@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "country": "nz",
+  "policy": "One national New Zealand dataset carries Stats NZ region codes for calibration and filtering. Region is target-assigned on US donor support records, never represented as observed donor geography. Territorial-authority and SA2 assignment are deliberately out of scope for the first national build; future local layers remain columns on this same national dataset, not separate files.",
+  "geography_spine": {
+    "stage": "assign_nz_regions",
+    "method": "clone_assign_uniform",
+    "geography_level": "region",
+    "code_system": "nz_stats_region",
+    "code_column": "region_code",
+    "vintage": "2025",
+    "vintage_policy": "error",
+    "clones_per_record": 1,
+    "collision_avoidance": true,
+    "constrain_to_column": "",
+    "assignment_source": {
+      "survey": "Stats NZ subnational population estimates at 30 June 2025",
+      "source": "https://www.stats.govt.nz/information-releases/subnational-population-estimates-at-30-june-2025/",
+      "notes": "Assign one region at household grain from the harvested age-by-sex-by-region population cells, then broadcast it to family and person tables. Chronicle must supply the complete current region roster and cell-level facts before the operator can run."
+    },
+    "notes": "One clone per record is the compile-safe national starting point. The shared clone-and-assign operator, exact 16-region roster, geography source artifact identity, and reviewed support diagnostics must land before execution."
+  }
+}

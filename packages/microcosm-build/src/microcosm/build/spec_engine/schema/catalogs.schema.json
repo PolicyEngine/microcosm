@@ -97,8 +97,10 @@
         "enum": [
          "float64",
          "float32",
+         "decimal128(18,2)",
          "int64",
          "int32",
+         "int16",
          "bool",
          "string",
          "category"
@@ -109,6 +111,7 @@
          {
           "enum": [
            "usd",
+           "nzd",
            "count",
            "ratio",
            "boolean",

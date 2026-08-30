@@ -1,0 +1,331 @@
+columns:
+- key: household.household_id
+  contract:
+    entity: household
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: household.household_weight
+  contract:
+    entity: household
+    dtype: float64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_weight
+    public_stability: internal
+- key: family.family_id
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: family.family_household_id
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.person_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: person.person_household_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.person_family_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.support_stratum
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: eternity
+    vintage: vintage:nz_support_pool_2024_buildp
+    nullable: false
+    domain: support_provenance
+    public_stability: internal
+- key: person.donor_country_code
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: eternity
+    vintage: vintage:nz_support_pool_2024_buildp
+    nullable: false
+    domain: support_provenance
+    public_stability: internal
+- key: person.age
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: donor_demography
+    public_stability: internal
+- key: person.sex
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: donor_demography
+    public_stability: internal
+- key: person.region_code
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:nz_region_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
+- key: family.family_tax_credit_eldest_dependent_child_care_units
+  contract:
+    entity: family
+    dtype: decimal128(18,2)
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.family_tax_credit_subsequent_dependent_child_care_units
+  contract:
+    entity: family
+    dtype: decimal128(18,2)
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.family_tax_credit_entitlement_days
+  contract:
+    entity: family
+    dtype: int16
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.wff_family_scheme_income_for_relationship_period
+  contract:
+    entity: family
+    dtype: decimal128(18,2)
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.wff_family_credit_abatement_days
+  contract:
+    entity: family
+    dtype: int16
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.entitled_to_in_work_tax_credit
+  contract:
+    entity: family
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.in_work_tax_credit_allowed_children_count
+  contract:
+    entity: family
+    dtype: int16
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.in_work_tax_credit_weekly_periods
+  contract:
+    entity: family
+    dtype: int16
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.child_tax_credit_for_entitlement_period
+  contract:
+    entity: family
+    dtype: decimal128(18,2)
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.parental_tax_credit_for_entitlement_period
+  contract:
+    entity: family
+    dtype: decimal128(18,2)
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.parental_tax_credit_additional_abatement
+  contract:
+    entity: family
+    dtype: decimal128(18,2)
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_required_input
+    public_stability: internal
+- key: family.best_start_abatement_days
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.best_start_child_care_fraction
+  contract:
+    entity: family
+    dtype: float64
+    unit: ratio
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.best_start_entitlement_days
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.best_start_family_scheme_income_for_relationship_period
+  contract:
+    entity: family
+    dtype: float64
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.minimum_family_adjusted_income_tax_liability
+  contract:
+    entity: family
+    dtype: float64
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.minimum_family_amount_paid
+  contract:
+    entity: family
+    dtype: float64
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.minimum_family_amount_received
+  contract:
+    entity: family
+    dtype: float64
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.minimum_family_full_time_earner_weeks
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.minimum_family_scheme_income_attributable_to_full_time_weeks
+  contract:
+    entity: family
+    dtype: float64
+    unit: nzd
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal
+- key: family.minimum_family_tax_credit_weekly_periods
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: axiom_adapter_padding_zero
+    public_stability: internal

@@ -1,0 +1,29 @@
+phase: legacy
+status: >-
+  Contract-only expression of region assignment for the national NZ build.
+  The complete 2025 Stats NZ region roster and cell facts remain Chronicle
+  inputs, and the shared executable assignment operator is not yet bound.
+  Region is target-assigned on US donor records, never source-observed.
+assignment:
+  anchor: region
+  order: before_gap_fill
+  kernels:
+    assign: kernel:assign_nz_regions
+    validate: kernel:nz_region_geography_gate
+  draw:
+    region:
+      universe: region_nationally
+      weight: stats_nz_population
+  derive:
+  - region_code
+  assertions:
+  - assigned_region_complete
+  - geography_vintage_exact
+  ladder_source: source:nz_region_assignment_contract
+  seed: stream:geography_legacy
+  default_seed: 0
+  layer_vintages:
+    region: vintage:nz_region_2025
+  validation:
+  - region_assignment_support
+  - vintage_refusal

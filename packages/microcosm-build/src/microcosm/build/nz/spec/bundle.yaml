@@ -1,0 +1,16 @@
+country: nz
+identity_generation: 1
+seed_protocol: legacy-v1
+dataset_run:
+  target_period: 2026
+status: >-
+  New Zealand public-donor transport walking skeleton for tax year 2026-27.
+  The exact Microcosm US Build P donor is pinned, and the rules boundary names
+  the reviewed 21-input Axiom transport contract at rulespec-nz commit 3b663b3.
+  Execution still requires cell-expanded
+  Chronicle facts with a reviewed 2026 basis, shared donor/family/geography
+  operator bindings, the eleven evidenced Family input bridges, and country
+  calibration thresholds. The upstream CLI unit-aggregation fixture is not
+  green, so automatic unit derivation is not claimed. A tiny real-Axiom
+  Frame smoke passes, but Treasury source activation still needs immutable
+  corpus publication. No runtime or release may substitute stubs.
