@@ -27,6 +27,15 @@ capitalize). Engine entities outside the mapping (rulespec-be also defines
 ``Child``, ``Vehicle``, ...) are invisible to the kernel: their variables
 resolve and materialize only once a frame entity is mapped to them.
 
+RuleSpec authority roots
+------------------------
+Filesystem compilation requires a non-empty, explicit sequence of canonical
+``rulespec-<country>`` roots. The adapter forwards exactly the caller-supplied
+roots to Axiom; it never searches the working directory, environment, module
+ancestors, or sibling checkouts. Axiom remains the authority for validating
+that each root is absolute, canonical, and structurally valid when the module
+is compiled lazily.
+
 Inputs are declared by usage, not typed
 ---------------------------------------
 The dense surface enumerates input *names* per entity but carries no input
@@ -142,8 +151,11 @@ class AxiomEngine:
     Args:
         module: Path to the RuleSpec module to compile (e.g.
             ``rulespec-be/be/statutes/income_tax/individual/rate_scale.yaml``).
-            Imports resolve through the country-monorepo layout the file
-            lives in; compilation happens in-process on first engine use.
+            Compilation happens in-process on first engine use.
+        rulespec_roots: Non-empty explicit sequence of canonical
+            ``rulespec-<country>`` checkout roots. These are forwarded exactly
+            to Axiom as its filesystem authority boundary; the adapter never
+            infers roots from the module, environment, or working directory.
         schema: The frame-side entity structure (:data:`BE_SCHEMA` for the
             Belgian pilot).
         contract: Column-parity contract for :meth:`write_dataset` exports.
@@ -156,10 +168,6 @@ class AxiomEngine:
         arithmetic: ``"decimal"`` (exact, canonical) or ``"f64"`` (faster,
             floating-point rounding) — which dense execution mode
             :meth:`materialize` uses.
-        rulespec_roots: Canonical RuleSpec repository roots used to resolve
-            imports. Paths are made absolute. Defaults to the nearest
-            ``rulespec-<country>`` ancestor when present; otherwise the
-            module's parent (which the engine may reject as non-canonical).
         periods: Optional year/period-label to explicit bounds mapping. If
             supplied, an unmapped label fails instead of becoming a calendar
             year. :meth:`materialize` also accepts an :class:`AxiomPeriod`
@@ -175,34 +183,33 @@ class AxiomEngine:
         module: str | Path,
         schema: EntitySchema = BE_SCHEMA,
         *,
+        rulespec_roots: Sequence[str | Path],
         contract: ExportContract | None = None,
         defaults: Mapping[str, object] | None = None,
         entity_names: Mapping[str, str] | None = None,
         arithmetic: str = "decimal",
-        rulespec_roots: Sequence[str | Path] | None = None,
         periods: Mapping[int | str, AxiomPeriod] | None = None,
     ) -> None:
         if arithmetic not in ("decimal", "f64"):
             raise ValueError(
                 f"arithmetic must be 'decimal' or 'f64', got {arithmetic!r}."
             )
-        self._module = Path(module).resolve()
-        self._rulespec_roots = (
-            tuple(Path(root).resolve() for root in rulespec_roots)
-            if rulespec_roots is not None
-            else (
-                next(
-                    (
-                        parent
-                        for parent in self._module.parents
-                        if parent.name.startswith("rulespec-")
-                    ),
-                    self._module.parent,
-                ),
+        if isinstance(rulespec_roots, (str, Path)):
+            raise TypeError(
+                "rulespec_roots must be a non-empty sequence of explicit "
+                "rulespec-<country> root paths, not a scalar path."
             )
-        )
-        if not self._rulespec_roots:
-            raise ValueError("rulespec_roots must contain at least one canonical root.")
+        roots = tuple(rulespec_roots)
+        if not roots:
+            raise ValueError(
+                "at least one explicit rulespec-<country> root is required"
+            )
+        if not all(isinstance(root, (str, Path)) for root in roots):
+            raise TypeError(
+                "rulespec_roots entries must each be a str or pathlib.Path."
+            )
+        self._module = Path(module)
+        self._rulespec_roots = tuple(Path(root) for root in roots)
         self._periods: dict[str, AxiomPeriod] | None = None
         if periods is not None:
             self._periods = {}
@@ -529,9 +536,16 @@ class AxiomEngine:
                 entity=engine_entity,
             )
         except ValueError as exc:
-            # Only an absent entity is optional. Never disguise canonical
-            # root, import, or compilation errors as an empty program.
-            if "could not find derived outputs for entity" not in str(exc):
+            missing_entity = (
+                "dense compilation could not find derived outputs for entity "
+                f"`{engine_entity}`"
+            )
+            if str(exc) != missing_entity:
+                # The native surface currently reports both an entity with no
+                # derived outputs and authority-root/module validation failures
+                # as ValueError. Only the exact former condition is optional;
+                # root or module failures must propagate instead of becoming a
+                # silently absent program under missing_ok=True.
                 raise
             self._programs[frame_entity] = None
             if missing_ok:

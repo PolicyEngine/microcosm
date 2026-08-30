@@ -58,9 +58,9 @@ needs_tables = pytest.mark.skipif(
     reason="pytables (microcosm-frame[axiom]) is not installed",
 )
 
-FIXTURE_MODULE = (
-    Path(__file__).parent / "fixtures/rulespec-xx/xx/policies/axiom_toy_country.yaml"
-)
+FIXTURE_RULESPEC_ROOT = Path(__file__).parent / "fixtures" / "rulespec-zz"
+FIXTURE_MODULE = FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_country.yaml"
+FIXTURE_RULESPEC_ROOTS = (FIXTURE_RULESPEC_ROOT,)
 RULESPEC_BE = os.environ.get("POPULACE_RULESPEC_BE")
 
 
@@ -91,11 +91,16 @@ def _toy_bundle(
 
 class TestLazyImport:
     def test_adapter_constructs_without_the_engine(self) -> None:
-        adapter = AxiomEngine(FIXTURE_MODULE)
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
         assert isinstance(adapter, RulesEngine)
 
     def test_entity_schema_needs_no_engine(self) -> None:
-        assert AxiomEngine(FIXTURE_MODULE).entity_schema() == BE_SCHEMA
+        assert (
+            AxiomEngine(
+                FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS
+            ).entity_schema()
+            == BE_SCHEMA
+        )
 
     def test_export_contract_needs_no_engine(self) -> None:
         contract = ExportContract(
@@ -104,12 +109,16 @@ class TestLazyImport:
             optional=(),
             formula_owned_excluded=(),
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+        )
         assert adapter.export_contract() is contract
 
     @pytest.mark.skipif(_ENGINE_INSTALLED, reason="axiom engine is installed here")
     def test_engine_methods_describe_installation_when_missing(self) -> None:
-        adapter = AxiomEngine(FIXTURE_MODULE)
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
         with pytest.raises(ImportError, match="axiom-rules-engine"):
             adapter.variable_metadata("toy_income_tax")
 
@@ -122,7 +131,7 @@ class TestConstruction:
         tax_year = AxiomPeriod(start="2026-04-01", end="2027-03-31", kind="tax_year")
         adapter = AxiomEngine(
             FIXTURE_MODULE,
-            rulespec_roots=(FIXTURE_MODULE.parent,),
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
             periods={"2026": tax_year},
         )
         assert adapter._materialization_period(2026) == (
@@ -134,19 +143,39 @@ class TestConstruction:
         with pytest.raises(ValueError, match="No explicit Axiom period"):
             adapter._materialization_period(2025)
 
+    def test_requires_explicit_rulespec_roots(self) -> None:
+        with pytest.raises(TypeError, match="rulespec_roots"):
+            AxiomEngine(FIXTURE_MODULE)  # type: ignore[call-arg]
+
+    def test_rejects_empty_rulespec_roots(self) -> None:
+        with pytest.raises(ValueError, match="at least one explicit rulespec"):
+            AxiomEngine(FIXTURE_MODULE, rulespec_roots=())
+
+    @pytest.mark.parametrize(
+        "roots", [FIXTURE_RULESPEC_ROOT, str(FIXTURE_RULESPEC_ROOT)]
+    )
+    def test_rejects_a_scalar_rulespec_root(self, roots) -> None:
+        with pytest.raises(TypeError, match="non-empty sequence"):
+            AxiomEngine(FIXTURE_MODULE, rulespec_roots=roots)
+
     def test_rejects_unknown_arithmetic(self) -> None:
         with pytest.raises(ValueError, match="arithmetic"):
-            AxiomEngine(FIXTURE_MODULE, arithmetic="float32")
+            AxiomEngine(
+                FIXTURE_MODULE,
+                rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+                arithmetic="float32",
+            )
 
     def test_rejects_entity_names_outside_the_schema(self) -> None:
         with pytest.raises(ValueError, match="undeclared frame entit"):
             AxiomEngine(
                 FIXTURE_MODULE,
+                rulespec_roots=FIXTURE_RULESPEC_ROOTS,
                 entity_names={"person": "Person", "tax_unit": "TaxUnit"},
             )
 
     def test_default_entity_names_capitalize(self) -> None:
-        adapter = AxiomEngine(FIXTURE_MODULE)
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
         assert adapter._entity_names == {"person": "Person", "household": "Household"}
 
     def test_cross_household_family_is_refused_even_with_equal_weights(self) -> None:
@@ -166,7 +195,11 @@ class TestConstruction:
             {"household": Weights(values=np.array([2.0, 2.0]), kind=WeightKind.DESIGN)},
         )
         with pytest.raises(ValueError, match="family_household_id.*membership"):
-            AxiomEngine(FIXTURE_MODULE, schema=NZ_SCHEMA).materialize(frame, [], 2026)
+            AxiomEngine(
+                FIXTURE_MODULE,
+                schema=NZ_SCHEMA,
+                rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            ).materialize(frame, [], 2026)
 
     def test_group_parent_id_on_wrong_entity_blocks_materialization_and_export(
         self, tmp_path
@@ -187,13 +220,67 @@ class TestConstruction:
             NZ_SCHEMA,
             {"household": Weights(values=np.array([2.0, 2.0]), kind=WeightKind.DESIGN)},
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, schema=NZ_SCHEMA)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            schema=NZ_SCHEMA,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+        )
         with pytest.raises(ValueError, match="family_household_id.*family.*person"):
             adapter.materialize(frame, [], 2026)
         path = tmp_path / "wrong_owner.h5"
         with pytest.raises(ValueError, match="family_household_id.*family.*person"):
             adapter.write_dataset(frame, path, 2026)
         assert not path.exists()
+
+    def test_forwards_exact_roots_and_entity_to_the_dense_loader(
+        self, monkeypatch
+    ) -> None:
+        calls: list[dict[str, object]] = []
+
+        class RecordingProgram:
+            derived_metadata: tuple[object, ...] = ()
+
+            @classmethod
+            def from_file(cls, path, *, rulespec_roots, entity):
+                calls.append(
+                    {
+                        "path": path,
+                        "rulespec_roots": rulespec_roots,
+                        "entity": entity,
+                    }
+                )
+                return cls()
+
+        class RecordingEngine:
+            CompiledDenseProgram = RecordingProgram
+
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
+        monkeypatch.setattr(adapter, "_import_engine", lambda: RecordingEngine)
+
+        assert adapter._program("person").derived_metadata == ()
+        assert calls == [
+            {
+                "path": FIXTURE_MODULE,
+                "rulespec_roots": FIXTURE_RULESPEC_ROOTS,
+                "entity": "Person",
+            }
+        ]
+
+    def test_does_not_mask_rulespec_root_validation_errors(self, monkeypatch) -> None:
+        class RejectingProgram:
+            @classmethod
+            def from_file(cls, path, *, rulespec_roots, entity):
+                raise ValueError("repository root error: root must be canonical")
+
+        class RejectingEngine:
+            CompiledDenseProgram = RejectingProgram
+
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
+        monkeypatch.setattr(adapter, "_import_engine", lambda: RejectingEngine)
+
+        with pytest.raises(ValueError, match="root must be canonical"):
+            adapter.variables()
+        assert adapter._programs == {}
 
 
 class TestPeriodBounds:
@@ -262,7 +349,7 @@ class TestDecimalBatch:
 class TestVariableMetadata:
     @pytest.fixture(scope="class")
     def adapter(self) -> AxiomEngine:
-        return AxiomEngine(FIXTURE_MODULE)
+        return AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
 
     def test_person_variable(self, adapter) -> None:
         meta = adapter.variable_metadata("toy_income_tax")
@@ -299,7 +386,7 @@ class TestVariableMetadata:
 class TestMaterialize:
     @pytest.fixture(scope="class")
     def adapter(self) -> AxiomEngine:
-        return AxiomEngine(FIXTURE_MODULE)
+        return AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
 
     def test_person_values_row_aligned_and_hand_computed(self, adapter) -> None:
         bundle = _toy_bundle()
@@ -328,7 +415,11 @@ class TestMaterialize:
         np.testing.assert_allclose(results["toy_monthly_benefit"], [0.0, 200.0, 100.0])
 
     def test_f64_arithmetic_matches_decimal(self) -> None:
-        fast = AxiomEngine(FIXTURE_MODULE, arithmetic="f64")
+        fast = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            arithmetic="f64",
+        )
         bundle = _toy_bundle()
         results = fast.materialize(bundle, ["toy_income_tax"], period=2025)
         np.testing.assert_allclose(results["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
@@ -363,7 +454,7 @@ class TestMaterialize:
 @needs_tables
 class TestWriteDataset:
     def test_round_trips_and_carries_household_weight(self, tmp_path) -> None:
-        adapter = AxiomEngine(FIXTURE_MODULE)
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
         bundle = _toy_bundle()
         path = tmp_path / "toy.h5"
         adapter.write_dataset(bundle, path, period=2025)
@@ -377,7 +468,7 @@ class TestWriteDataset:
         ]
 
     def test_typed_weights_overwrite_a_stale_weight_column(self, tmp_path) -> None:
-        adapter = AxiomEngine(FIXTURE_MODULE)
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
         bundle = _toy_bundle()
         household = bundle.table("household").copy()
         household["household_weight"] = [999.0, 999.0]
@@ -392,7 +483,7 @@ class TestWriteDataset:
         assert reloaded.household["household_weight"].tolist() == [1500.0, 900.0]
 
     def test_formula_owned_column_blocks_the_write(self, tmp_path) -> None:
-        adapter = AxiomEngine(FIXTURE_MODULE)
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
         bundle = _toy_bundle()
         person = bundle.table("person").copy()
         person["toy_income_tax"] = [0.0, 0.0, 0.0]  # persisted engine output
@@ -413,7 +504,11 @@ class TestWriteDataset:
             optional=(),
             formula_owned_excluded=(),
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+        )
         path = tmp_path / "missing.h5"
         with pytest.raises(ValueError, match="definitely_absent"):
             adapter.write_dataset(_toy_bundle(), path, period=2025)
@@ -427,7 +522,10 @@ class TestWriteDataset:
             formula_owned_excluded=(),
         )
         adapter = AxiomEngine(
-            FIXTURE_MODULE, contract=contract, defaults={"toy_default_flag": 0.0}
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+            defaults={"toy_default_flag": 0.0},
         )
         path = tmp_path / "defaulted.h5"
         adapter.write_dataset(_toy_bundle(), path, period=2025)
@@ -442,7 +540,11 @@ class TestWriteDataset:
             formula_owned_excluded=(),
             closed=True,
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+        )
         path = tmp_path / "closed.h5"
         with pytest.raises(ValueError, match="unexpected"):
             adapter.write_dataset(_toy_bundle(), path, period=2025)
@@ -455,7 +557,11 @@ class TestWriteDataset:
             optional=(),
             formula_owned_excluded=(),
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+        )
         path = tmp_path / "forbidden.h5"
         with pytest.raises(ValueError, match="toy_child_count"):
             adapter.write_dataset(_toy_bundle(), path, period=2025)
@@ -481,7 +587,11 @@ class TestWriteDataset:
             optional=(),
             formula_owned_excluded=("legacy_output",),
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+        )
         path = tmp_path / "contract_formula_blocked.h5"
         with pytest.raises(ValueError, match="legacy_output"):
             adapter.write_dataset(rebuilt, path, period=2025)
@@ -513,7 +623,11 @@ class TestWriteDataset:
             formula_owned_excluded=("legacy_output",),
             closed=True,
         )
-        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            contract=contract,
+        )
         path = tmp_path / "closed_formula_blocked.h5"
         with pytest.raises(ValueError, match="legacy_output"):
             adapter.write_dataset(rebuilt, path, period=2025)
@@ -589,7 +703,10 @@ class TestBelgianPilotSlice:
     @pytest.fixture(scope="class")
     def adapter(self) -> AxiomEngine:
         module = Path(RULESPEC_BE) / "be/statutes/income_tax/individual/rate_scale.yaml"
-        return AxiomEngine(module, rulespec_roots=[Path(RULESPEC_BE)])
+        return AxiomEngine(
+            module,
+            rulespec_roots=(Path(RULESPEC_BE),),
+        )
 
     def _be_bundle(self) -> Frame:
         person = pd.DataFrame(

@@ -47,9 +47,8 @@ if _AXIOM_INSTALLED:
 else:
     _AXIOM_DENSE = False
 
-_FIXTURE_MODULE = (
-    Path(__file__).parent / "fixtures/rulespec-xx/xx/policies/axiom_toy_country.yaml"
-)
+_FIXTURE_RULESPEC_ROOT = Path(__file__).parent / "fixtures" / "rulespec-zz"
+_FIXTURE_MODULE = _FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_country.yaml"
 
 
 @dataclass(frozen=True)
@@ -155,7 +154,10 @@ CASES = [
     ),
     pytest.param(
         AdapterCase(
-            make_adapter=lambda: AxiomEngine(_FIXTURE_MODULE),
+            make_adapter=lambda: AxiomEngine(
+                _FIXTURE_MODULE,
+                rulespec_roots=(_FIXTURE_RULESPEC_ROOT,),
+            ),
             make_bundle=_axiom_bundle,
             computed_variables=("toy_income_tax", "toy_housing_allowance"),
             known_input="toy_taxable_income",
