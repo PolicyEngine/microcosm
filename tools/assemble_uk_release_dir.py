@@ -204,7 +204,15 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             "re-assembling"
         )
     staging_parent = args.out_dir / f".assemble-{uuid.uuid4().hex}"
-    calibration_path = staging_parent / calibration_filename
+    # The NPZ stages beside its own destination, not under staging_parent:
+    # its finalizing rename must never cross a filesystem boundary, where
+    # Path.rename raises and the staging cleanup would delete the artifact
+    # out from under an already-renamed release directory.
+    # The temp name must keep the .npz suffix: np.savez appends it to any
+    # other filename, silently writing beside the path the code then hashes.
+    calibration_path = npz_destination.with_name(
+        f".{calibration_filename}.{uuid.uuid4().hex}.tmp.npz"
+    )
     target_surface = _mapping(
         diagnostics.get("target_surface"), "diagnostics.target_surface"
     )
@@ -268,6 +276,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
+        calibration_path.unlink(missing_ok=True)
 
 
 def _stage_and_finalize(
@@ -476,9 +485,18 @@ def _stage_and_finalize(
     validate_release_dir(release_dir)
 
     # Only a directory that already validated moves into place, and only into
-    # the destinations proven empty before staging began.
-    release_dir.rename(destination)
+    # the destinations proven empty before staging began. Both renames stay
+    # inside their own directory tree (the NPZ staged beside its
+    # destination), so neither can fail on a filesystem boundary. The NPZ
+    # lands first and the release directory is the commit point: a failure
+    # between the two rolls the NPZ back rather than leaving a published
+    # directory without its artifact.
     calibration_path.rename(npz_destination)
+    try:
+        release_dir.rename(destination)
+    except BaseException:
+        npz_destination.unlink(missing_ok=True)
+        raise
 
     publish_command = shlex.join(
         [

@@ -2205,6 +2205,38 @@ def test_uk_national_release_requires_signed_evidence_files(tmp_path: Path) -> N
         validate_release_dir(directory)
 
 
+def test_uk_national_release_refuses_unbindable_score_digest(
+    tmp_path: Path,
+) -> None:
+    # score_receipt.sha256 is the one signed digest outside the shape-checked
+    # parts block: a malformed value must refuse the binding, never skip it.
+    directory = _write_uk_national_release_dir(tmp_path)
+    certification = _green_uk_certification(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        release_id=UK_NATIONAL_RELEASE_ID,
+        diagnostics_sha256=_sha256(directory / "calibration_diagnostics.json"),
+        part_shas={
+            "spine": _sha256(directory / "spine_gates.json"),
+            "calibration_seam": _sha256(directory / "terminal_gates.json"),
+            "release_cut": _sha256(directory / "release_cut_gates.json"),
+        },
+        score_receipt_sha256="not-a-digest",
+    )
+    certification_path = directory / "release_certification.json"
+    certification_path.write_text(json.dumps(certification))
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["release_certification"]["sha256"] = _sha256(
+        certification_path
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(
+        ReleaseContractError, match=r"score_receipt\.sha256 is not a"
+    ):
+        validate_release_dir(directory)
+
+
 def test_us_release_rejects_dash_suffixed_artifact_revision(
     release_dir: Path,
 ) -> None:

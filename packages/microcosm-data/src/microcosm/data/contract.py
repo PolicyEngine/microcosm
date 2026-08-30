@@ -3077,9 +3077,14 @@ def _check_uk_certification_evidence_binding(
                 f"release directory is missing {filename!r}."
             )
             continue
-        if not isinstance(signed_sha, str):
-            # The certification shape check already reported the malformed
-            # digest; without it no binding is possible.
+        if not isinstance(signed_sha, str) or not _SHA256_RE.fullmatch(signed_sha):
+            # Refuse, never skip: the parts block is shape-checked elsewhere
+            # but score_receipt.sha256 is not, and a malformed digest must
+            # not leave its evidence file unbound.
+            failures.append(
+                f"{_UK_RELEASE_CERTIFICATION_FILE} {owner}.sha256 is not a "
+                f"sha256 digest; {filename!r} cannot be bound."
+            )
             continue
         if _sha256(path) != signed_sha:
             failures.append(

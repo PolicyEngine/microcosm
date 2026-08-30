@@ -312,6 +312,7 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         np.testing.assert_array_equal(
             calibration["initial_household_weight"], [1.0, 2.0]
         )
+    assert not list(assembler_inputs["candidate"].parent.glob(".*.tmp.npz"))
 
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
@@ -485,6 +486,9 @@ def test_assemble_late_failure_leaves_no_partial_release(
     assert not list(
         assembler_inputs["candidate"].parent.glob("*_calibration.npz")
     )
+    # The NPZ stages beside its destination as a dotted temp file; a late
+    # failure must clean that up too.
+    assert not list(assembler_inputs["candidate"].parent.glob(".*.tmp.npz"))
 
 
 def test_assemble_refuses_cut_tag_outside_the_grammar(assembler_inputs) -> None:
