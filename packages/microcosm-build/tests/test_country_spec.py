@@ -863,6 +863,7 @@ class TestNewZealandAxiomTransport:
             "wff_family_scheme_income_for_relationship_period",
             "child_tax_credit_for_entitlement_period",
             "entitled_to_in_work_tax_credit",
+            "family_household_id",
         ],
     )
     def test_missing_substantive_inputs_never_default(

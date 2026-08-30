@@ -579,6 +579,11 @@ class AxiomEngine:
                 try:
                     owner = bundle.column_entity(column)
                 except ValueError:
+                    if column in self._contract.required:
+                        raise ValueError(
+                            f"Required relation column {column!r} is missing "
+                            f"from entity {group!r}."
+                        ) from None
                     continue
                 if owner != group:
                     raise ValueError(
