@@ -154,6 +154,7 @@ until that review is complete.
 Do not write `latest.json` for this line yet. The current pointer cannot name a
 per-cut tag, while the certified loader expects the artifact revision to equal
 the release id and fetches the manifest from a tag named by that id. Promotion
-needs the follow-up loader/pointer design before a reviewed cut can become the
-default. Until then, publish every national cut with `--no-latest` and its
-explicit per-cut tag.
+needs the loader/pointer design tracked in microcosm#823 before a reviewed cut
+can become the default; publication enforces this by refusing a pointer move
+for any per-cut tag. Until then, publish every national cut with `--no-latest`
+and its explicit per-cut tag.
