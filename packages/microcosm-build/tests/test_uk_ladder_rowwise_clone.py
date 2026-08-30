@@ -447,6 +447,7 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     )
     assert set(summary["area_support"]["constituency"]) == {
         "n_areas",
+        "rows_basis",
         "min_rows",
         "median_rows",
         "min_ess",
@@ -770,8 +771,67 @@ def test_driver_ladder_sha256_refuses_crosswalk(monkeypatch, tmp_path) -> None:
         ],
     )
 
-    with pytest.raises(ValueError, match="ladder-sha256.*crosswalk"):
+    with pytest.raises(ValueError, match="ladder-sha256.*ladder"):
         builder.main()
+
+
+def test_driver_ladder_sha256_refuses_generated_crosswalk_route(
+    monkeypatch, tmp_path
+) -> None:
+    # Neither --ladder nor --crosswalk: the driver would download and build a
+    # crosswalk, and there is no ladder artifact the pin could verify. A
+    # silently ignored pin would report verification that never happened.
+    pytest.importorskip("tables")
+    import sys
+
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="ladder-sha256 requires --ladder"):
+        builder.main()
+
+
+def test_area_support_stats_read_nonzero_rows_not_assigned() -> None:
+    # An area whose only rows are zero-weight synthetics shapes no estimate
+    # there: the stats and the thinness ranking must read mass-carrying rows,
+    # with the assigned count still visible per bottom area.
+    builder = _load_builder_module()
+    support = pd.DataFrame(
+        {
+            "area_code": ["A1", "A2"],
+            "assigned_households": [40, 3],
+            "nonzero_households": [0, 3],
+            "nonzero_source_households": [0, 3],
+            "weight_sum": [0.0, 30.0],
+            "max_weight": [0.0, 10.0],
+            "effective_sample_size": [0.0, 3.0],
+        }
+    )
+
+    stats = builder._area_support_stats(support)
+
+    assert stats["rows_basis"] == "nonzero_households"
+    assert stats["min_rows"] == 0
+    assert stats["bottom_by_rows"][0] == {
+        "area_code": "A1",
+        "rows": 0,
+        "assigned": 40,
+    }
 
 
 def test_driver_ladder_pin_mismatch_refuses_before_parse(

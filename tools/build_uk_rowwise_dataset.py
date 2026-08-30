@@ -419,8 +419,12 @@ def _main_impl(
         source_year=source_year,
     )
     _validate_output_paths(input_h5=input_h5, output_h5=output_h5, args=args)
-    if args.crosswalk is not None and args.ladder_sha256 is not None:
-        raise ValueError("--ladder-sha256 and --crosswalk are mutually exclusive.")
+    if args.ladder_sha256 is not None and args.ladder is None:
+        raise ValueError(
+            "--ladder-sha256 requires --ladder; the crosswalk routes have no "
+            "ladder artifact to pin, and silently ignoring a supplied pin "
+            "would report verification that never happened."
+        )
     if args.ladder is not None:
         if args.crosswalk is not None:
             raise ValueError("--ladder and --crosswalk are mutually exclusive.")
@@ -1081,14 +1085,16 @@ def _run_ladder_route(
         "details": dict(result.gate.details),
     }
     household = _result_household(result)
-    area_support, area_support_long = _ladder_area_support_diagnostics(
+    area_support, area_support_summaries = _ladder_area_support_diagnostics(
         household,
         ladder,
     )
     rowwise_summary["area_support"] = area_support
     rowwise_summary["region_mix"] = uk_region_mix(household).to_dict("records")
     area_support_path = args.out / AREA_SUPPORT_FILENAME
-    area_support_long.to_csv(area_support_path, index=False)
+    _area_support_long_frame(area_support_summaries).to_csv(
+        area_support_path, index=False
+    )
     manifest = {
         "schema_version": 1,
         "build_kind": "uk_rowwise_local_geography_dataset",
@@ -1207,7 +1213,7 @@ def _ladder_dry_run_plan(
         ladder,
         n_clones=args.n_clones,
     )
-    area_support, _area_support_long = _ladder_area_support_diagnostics(
+    area_support, _ = _ladder_area_support_diagnostics(
         assigned,
         ladder,
     )
@@ -1358,7 +1364,7 @@ def _ladder_candidate_plans(
             ladder,
             n_clones=n_clones,
         )
-        area_support, _area_support_long = _ladder_area_support_diagnostics(
+        area_support, _ = _ladder_area_support_diagnostics(
             assigned,
             ladder,
         )
@@ -1551,7 +1557,7 @@ def _result_household(result: Any) -> pd.DataFrame:
 def _ladder_area_support_diagnostics(
     household: pd.DataFrame,
     ladder: Any,
-) -> tuple[dict[str, Any], pd.DataFrame]:
+) -> tuple[dict[str, Any], dict[str, pd.DataFrame]]:
     source_basis = (
         "source_household_id"
         if "source_household_id" in household.columns
@@ -1569,20 +1575,30 @@ def _ladder_area_support_diagnostics(
             for area_type in ("constituency", "la")
         },
     }
+    return block, summaries
+
+
+def _area_support_long_frame(summaries: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """The full per-area table, built only where a consumer writes it."""
+
     long_frames = []
     for area_type in ("constituency", "la"):
         frame = summaries[area_type].copy()
         frame.insert(0, "area_type", area_type)
         long_frames.append(frame)
-    return block, pd.concat(long_frames, ignore_index=True)
+    return pd.concat(long_frames, ignore_index=True)
 
 
 def _area_support_stats(support: pd.DataFrame) -> dict[str, Any]:
-    rows = support["assigned_households"]
+    # Support means rows that carry mass: a row assigned to an area at zero
+    # weight shapes no estimate there, so the headline stats and the thinness
+    # ranking read nonzero_households. The assigned count stays visible per
+    # bottom area and in the full per-area CSV.
+    rows = support["nonzero_households"]
     ess = support["effective_sample_size"]
     sources = support["nonzero_source_households"]
     bottom_by_rows = support.sort_values(
-        ["assigned_households", "area_code"],
+        ["nonzero_households", "area_code"],
         kind="mergesort",
     ).head(EXPECTED_SUPPORT_BOTTOM_AREAS)
     bottom_by_ess = support.sort_values(
@@ -1591,6 +1607,7 @@ def _area_support_stats(support: pd.DataFrame) -> dict[str, Any]:
     ).head(EXPECTED_SUPPORT_BOTTOM_AREAS)
     return {
         "n_areas": int(len(support)),
+        "rows_basis": "nonzero_households",
         "min_rows": int(rows.min()) if len(rows) else 0,
         "median_rows": float(rows.median()) if len(rows) else 0.0,
         "min_ess": float(ess.min()) if len(ess) else 0.0,
@@ -1600,7 +1617,11 @@ def _area_support_stats(support: pd.DataFrame) -> dict[str, Any]:
             float(sources.median()) if len(sources) else 0.0
         ),
         "bottom_by_rows": [
-            {"area_code": str(row.area_code), "rows": int(row.assigned_households)}
+            {
+                "area_code": str(row.area_code),
+                "rows": int(row.nonzero_households),
+                "assigned": int(row.assigned_households),
+            }
             for row in bottom_by_rows.itertuples(index=False)
         ],
         "bottom_by_ess": [

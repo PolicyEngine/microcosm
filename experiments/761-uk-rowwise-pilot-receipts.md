@@ -56,6 +56,13 @@ The analytic expectation tracks the realized draw at every K on both grains
 expected vs 42 realized — a single seed's draw at a 42-row floor). Full
 per-K stats: `experiments/761-uk-rowwise-pilot-support.json`.
 
+Basis note (post review round): the stats block now reads
+`nonzero_households` (`rows_basis` recorded), so a zero-weight row can never
+count as support. Round A measured `assigned == nonzero` for all 1,011 areas
+— the spine's SPI channel carries positive importance mass, unlike the old
+pool's zero-weight convention — so every figure above stands unchanged;
+Round B emits the labelled shape natively.
+
 ## R2 — the real K=1 build
 
 `--n-clones 1 --seed 42`, both pins armed, 2026-08-29T00:26Z:
