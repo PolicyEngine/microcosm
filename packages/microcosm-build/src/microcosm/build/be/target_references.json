@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "description": "Belgian calibration and validation schema groundwork, by reference only. Values and source projections would resolve from Chronicle consumer facts at build time, but the current Chronicle Belgian catalog does not satisfy this full selector and period surface. Criticality tiers, relative tolerances, and target_role are validated declaration metadata only: this package does not yet wire them into runtime calibration objectives or release gates. Multi-cell series remain non-executable until Chronicle fanout produces cell-pinned references. No external-oracle implementation from #264 is included. The file never copies a target value from Chronicle, a survey publication, or a validation oracle.",
+  "description": "Belgian calibration and validation schema groundwork, by reference only. Values and source projections would resolve from Chronicle consumer facts at build time, but the current Chronicle Belgian catalog does not satisfy this full selector and period surface. Criticality tiers, relative tolerances, and target_role are validated declaration metadata only: this package does not yet wire them into runtime calibration objectives or release gates. Multi-cell series remain non-executable until Chronicle fanout produces cell-pinned references. The GRAPA and Flemish child-recipient rows are validation-only declarations whose Microcosm population inputs and PolicyEngine behavior/input support are absent. The Brussels entitled-child row is a distinct legal-rights anchor whose document-grounded Axiom output is absent; it is not behavior owned by PolicyEngine. Both regional source facts also require an explicit NUTS1-vintage projection before they can satisfy the typed selectors. These rows do not form a national child-benefit sum, do not combine child and family/payee entities, and do not declare behavioral take-up concepts in Axiom. German-speaking Community and French-language Wallonia facts remain outside this target surface until typed administrative geography support exists. No external-oracle implementation from #264 is included. The file never copies a target value from Chronicle, a survey publication, or a validation oracle.",
   "allowed_value_operations": [
     "identity"
   ],
@@ -123,14 +123,158 @@
       "assertion_policy": "allow_source_projection",
       "period_match_policy": "exact",
       "metadata": {
+        "activation_status": "requires_policyengine_unemployment_receipt_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_derive_receipt_or_takeup_from_positive_amount",
+        "axiom_behavior_ownership": "none",
         "basis_period": "calendar_year_2022",
+        "behavior_owner": "PolicyEngine",
+        "behavioral_takeup_flag_status": "absent",
         "criticality": "release_blocking",
         "criticality_tier": "caseload_release",
+        "measure_semantics": "recipient_caseload_not_behavioral_takeup",
+        "microcosm_population_input_status": "absent",
+        "policyengine_behavior_input_status": "absent",
         "publisher": "ONEM/RVA",
         "series": "Unemployment benefit recipients",
+        "support_status": "absent",
         "target_role": "calibration"
       },
-      "notes": "The initial caseload family uses the calendar-year recipient count. Pension and regional child-benefit caseload references can join this family when their Chronicle packages and model mappings land."
+      "notes": "The initial caseload family declares the calendar-year recipient count, not a behavioral take-up rate. It remains non-executable because PolicyEngine-owned unemployment receipt/behavior input support and an exact period mapping are absent; no Axiom take-up, propensity, elasticity, or latent-draw concept is declared or implied. Pension and regional child-benefit caseload references can join this family only when their Chronicle packages, typed geographies, and distinct model mappings land."
+    },
+    {
+      "name": "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+      "ledger_selector": {
+        "source_name": "sfpd_grapa",
+        "source_measure_id": "beneficiaries",
+        "period_type": "month",
+        "period_value": "2025-01",
+        "geography_level": "country",
+        "geography_id": "BE",
+        "entity_name": "person",
+        "record_set_id": "sfpd_grapa.month2025_01.regular_payment_beneficiaries.by_sex",
+        "layout_groupby_value_id": "all",
+        "dimensions": []
+      },
+      "entity": "person",
+      "measure": "belgium_grapa_regular_payment_recipient_indicator",
+      "period": "2025-01",
+      "family": "caseloads",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_policyengine_payment_recipient_input_and_snapshot_alignment",
+        "anti_proxy_rule": "do_not_derive_receipt_or_takeup_from_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "grapa_regular_payment_snapshot_2025_01",
+        "behavior_owner": "PolicyEngine",
+        "behavioral_takeup_flag_status": "absent",
+        "chronicle_package_alias": "sfpd-grapa-monthly-statistics-2025-02",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "measure_semantics": "regular_payment_recipient_snapshot_not_behavioral_takeup",
+        "microcosm_population_input_status": "absent",
+        "policyengine_behavior_input_status": "absent",
+        "publisher": "SFPD",
+        "series": "GRAPA beneficiaries in the January 2025 regular-payment population",
+        "support_status": "absent",
+        "target_role": "validation"
+      },
+      "notes": "Validation-only declaration for the SFPD January 2025 regular-payment population. This is a point-in-time payment-recipient snapshot, not an eligibility denominator, annual caseload, transaction count, or behavioral take-up rate; an unresolved same-date PensionStat total also makes it unsuitable as a silent release-blocking target. PolicyEngine must own and supply a distinct receipt/behavior input before Microcosm can estimate this row. A positive Axiom entitlement or payment amount is not an observed receipt flag, and no Axiom take-up, propensity, elasticity, or latent-draw concept is declared or implied."
+    },
+    {
+      "name": "opgroeien_basic_amount_child_recipients_2025_12",
+      "ledger_selector": {
+        "source_name": "opgroeien_groeipakket_dashboard",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "nuts1",
+        "geography_id": "BE2",
+        "geography_vintage": "nuts1_2025",
+        "entity_name": "person",
+        "record_set_id": "opgroeien.groeipakket.month2025_12.basic_amount.children",
+        "dimensions": {
+          "groeipakket.component": "basic_amount",
+          "publication_status": "provisional"
+        }
+      },
+      "entity": "person",
+      "measure": "belgium_child_benefit_basic_amount_recipient_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_policyengine_child_recipient_input_and_nuts1_projection",
+        "anti_proxy_rule": "do_not_derive_receipt_or_takeup_from_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "child_benefit_rights_month_2025_12",
+        "behavior_owner": "PolicyEngine",
+        "behavioral_takeup_flag_status": "absent",
+        "chronicle_package_alias": "opgroeien-groeipakket-basic-caseload-2025-12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "geography_alignment_status": "requires_explicit_source_projection_to_nuts1_2025",
+        "geography_vintage": "nuts1_2025",
+        "measure_semantics": "basic_amount_child_recipient_snapshot_not_behavioral_takeup",
+        "microcosm_population_input_status": "absent",
+        "policyengine_behavior_input_status": "absent",
+        "publication_status": "provisional",
+        "publisher": "Opgroeien",
+        "series": "Children receiving the Groeipakket basic amount in December 2025",
+        "source_geography_vintage": "NUTS_2024",
+        "support_status": "absent",
+        "target_role": "validation"
+      },
+      "notes": "Validation-only declaration for provisional December 2025 children receiving the Groeipakket basic amount in the Flemish Region. December 2025 is the publisher's rights month, not a payment-execution month. This is a child-recipient count, not a family/payee count, eligibility denominator, or behavioral take-up rate. Microcosm population support for the distinct recipient input and PolicyEngine behavior/input support are absent. The Chronicle source fact identifies BE2 under NUTS_2024 while the Belgian typed Microcosm registry binds NUTS1 to 2025; the stable region code is not enough to relabel the source, so an explicit Chronicle source projection must precede activation. No Axiom take-up or behavioral concept is declared or implied."
+    },
+    {
+      "name": "iriscare_child_benefit_entitled_children_2025_12",
+      "ledger_selector": {
+        "source_name": "iriscare_child_benefit_dashboard",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "nuts1",
+        "geography_id": "BE1",
+        "geography_vintage": "nuts1_2025",
+        "entity_name": "person",
+        "record_set_id": "iriscare.child_benefit.month2025_12.entitled_children",
+        "dimensions": {
+          "iriscare.statistic": "entitled_children",
+          "publication_status": "provisional"
+        }
+      },
+      "entity": "person",
+      "measure": "belgium_child_benefit_entitled_child_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "allow_source_projection",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_document_grounded_axiom_entitlement_output_and_nuts1_projection",
+        "anti_proxy_rule": "do_not_derive_receipt_or_takeup_from_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "axiom_legal_output_status": "absent",
+        "basis_period": "child_benefit_entitlement_month_2025_12",
+        "behavior_owner": "none",
+        "behavioral_takeup_flag_status": "not_applicable",
+        "chronicle_package_alias": "iriscare-child-benefit-caseload-2025-12",
+        "concept_owner": "Axiom",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "geography_alignment_status": "requires_explicit_source_projection_to_nuts1_2025",
+        "geography_vintage": "nuts1_2025",
+        "measure_semantics": "entitled_child_snapshot_not_observed_receipt_or_behavioral_takeup",
+        "legal_authority_requirement": "public_policy_document",
+        "publication_status": "provisional",
+        "publisher": "Iriscare",
+        "series": "Children entitled to child benefit in Brussels in December 2025",
+        "source_geography_vintage": "NUTS_2024",
+        "support_status": "absent",
+        "target_role": "validation"
+      },
+      "notes": "Validation-only declaration for provisional December 2025 children entitled to child benefit in Brussels. Entitlement is a legal-rights anchor, not observed receipt, the separately published payment-recipient count, or behavioral take-up. Activation requires an Axiom entitlement output whose concept and rule are each grounded in cited public-policy documents; PolicyEngine does not own this legal concept. This row deliberately uses a different intended measure from the Flemish child-recipient count. The Chronicle source fact identifies BE1 under NUTS_2024 while the typed Microcosm selector binds NUTS1 to 2025, so activation also requires an explicit source projection. No Axiom take-up or behavioral concept is declared or implied."
     },
     {
       "name": "nbb_household_disposable_income",
@@ -223,6 +367,27 @@
         "income_reference_offset_years": -1,
         "mismatch_policy": "requires_source_projection",
         "description": "Calendar-year administrative or national-accounts fact aligned to the 2022 income reference year."
+      },
+      "grapa_regular_payment_snapshot_2025_01": {
+        "period": "2025-01",
+        "basis": "regular_payment_snapshot",
+        "fact_period_type": "month",
+        "mismatch_policy": "requires_source_projection",
+        "description": "SFPD regular-payment beneficiary population observed for January 2025; no annual or behavioral take-up interpretation."
+      },
+      "child_benefit_rights_month_2025_12": {
+        "period": "2025-12",
+        "basis": "rights_month",
+        "fact_period_type": "month",
+        "mismatch_policy": "requires_source_projection",
+        "description": "Child-level basic-amount recipient population published for the December 2025 rights month; this does not assert a payment-execution month."
+      },
+      "child_benefit_entitlement_month_2025_12": {
+        "period": "2025-12",
+        "basis": "entitlement_month",
+        "fact_period_type": "month",
+        "mismatch_policy": "requires_source_projection",
+        "description": "Child-level entitlement population observed for December 2025, distinct from receipt or payee counts."
       }
     },
     "hierarchy_reconciliations": []

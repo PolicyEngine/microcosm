@@ -530,6 +530,9 @@ class TestBelgianPackage:
             "spf_finances_pit_total",
             "onss_employee_contribution_total",
             "onem_unemployment_caseload",
+            "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+            "opgroeien_basic_amount_child_recipients_2025_12",
+            "iriscare_child_benefit_entitled_children_2025_12",
             "nbb_household_disposable_income",
         } <= names
         by_name = {reference.name: reference for reference in spec.target_references}
@@ -600,6 +603,30 @@ class TestBelgianPackage:
                 "country",
                 None,
             ),
+            "sfpd_grapa_regular_payment_beneficiaries_2025_01": (
+                "sfpd_grapa",
+                "beneficiaries",
+                "month",
+                "2025-01",
+                "country",
+                None,
+            ),
+            "opgroeien_basic_amount_child_recipients_2025_12": (
+                "opgroeien_groeipakket_dashboard",
+                "children",
+                "month",
+                "2025-12",
+                "nuts1",
+                "nuts1_2025",
+            ),
+            "iriscare_child_benefit_entitled_children_2025_12": (
+                "iriscare_child_benefit_dashboard",
+                "children",
+                "month",
+                "2025-12",
+                "nuts1",
+                "nuts1_2025",
+            ),
             "nbb_household_disposable_income": (
                 "nbb_national_accounts",
                 "household_disposable_income",
@@ -630,6 +657,178 @@ class TestBelgianPackage:
                 reference.ledger_selector.get("geography_vintage") == geography_vintage
             )
 
+    def test_benefit_participation_selectors_pin_scalar_chronicle_facts(
+        self, spec
+    ) -> None:
+        references = {reference.name: reference for reference in spec.target_references}
+        expected_selector_fields = {
+            "sfpd_grapa_regular_payment_beneficiaries_2025_01": {
+                "record_set_id": (
+                    "sfpd_grapa.month2025_01.regular_payment_beneficiaries.by_sex"
+                ),
+                "period_value": "2025-01",
+                "geography_id": "BE",
+                "entity_name": "person",
+                "layout_groupby_value_id": "all",
+                "dimensions": [],
+            },
+            "opgroeien_basic_amount_child_recipients_2025_12": {
+                "record_set_id": (
+                    "opgroeien.groeipakket.month2025_12.basic_amount.children"
+                ),
+                "period_value": "2025-12",
+                "geography_id": "BE2",
+                "entity_name": "person",
+                "dimensions": {
+                    "groeipakket.component": "basic_amount",
+                    "publication_status": "provisional",
+                },
+            },
+            "iriscare_child_benefit_entitled_children_2025_12": {
+                "record_set_id": (
+                    "iriscare.child_benefit.month2025_12.entitled_children"
+                ),
+                "period_value": "2025-12",
+                "geography_id": "BE1",
+                "entity_name": "person",
+                "dimensions": {
+                    "iriscare.statistic": "entitled_children",
+                    "publication_status": "provisional",
+                },
+            },
+        }
+
+        for name, expected in expected_selector_fields.items():
+            selector = references[name].ledger_selector
+            assert {key: selector[key] for key in expected} == expected
+
+    def test_benefit_participation_references_are_support_aware_validations(
+        self, spec
+    ) -> None:
+        references = {reference.name: reference for reference in spec.target_references}
+        names = {
+            "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+            "opgroeien_basic_amount_child_recipients_2025_12",
+            "iriscare_child_benefit_entitled_children_2025_12",
+        }
+        participation = [references[name] for name in names]
+
+        assert {reference.metadata["target_role"] for reference in participation} == {
+            "validation"
+        }
+        assert {
+            reference.metadata["criticality_tier"] for reference in participation
+        } == {"validation_only"}
+        assert {
+            reference.metadata["support_status"] for reference in participation
+        } == {"absent"}
+        assert {
+            reference.metadata["axiom_behavior_ownership"]
+            for reference in participation
+        } == {"none"}
+        assert {
+            reference.metadata["anti_proxy_rule"] for reference in participation
+        } == {"do_not_derive_receipt_or_takeup_from_positive_amount"}
+        assert all(
+            reference.metadata["activation_status"] != "active"
+            for reference in participation
+        )
+        assert all(reference.entity == "person" for reference in participation)
+
+        grapa = references["sfpd_grapa_regular_payment_beneficiaries_2025_01"]
+        flanders = references["opgroeien_basic_amount_child_recipients_2025_12"]
+        brussels = references["iriscare_child_benefit_entitled_children_2025_12"]
+        assert grapa.measure == "belgium_grapa_regular_payment_recipient_indicator"
+        assert (
+            flanders.measure == "belgium_child_benefit_basic_amount_recipient_indicator"
+        )
+        assert brussels.measure == "belgium_child_benefit_entitled_child_indicator"
+        assert len({grapa.measure, flanders.measure, brussels.measure}) == 3
+        assert flanders.metadata["publication_status"] == "provisional"
+        assert brussels.metadata["publication_status"] == "provisional"
+        assert flanders.metadata["source_geography_vintage"] == "NUTS_2024"
+        assert brussels.metadata["source_geography_vintage"] == "NUTS_2024"
+        assert {
+            flanders.metadata["geography_alignment_status"],
+            brussels.metadata["geography_alignment_status"],
+        } == {"requires_explicit_source_projection_to_nuts1_2025"}
+        assert "not_behavioral_takeup" in grapa.metadata["measure_semantics"]
+        assert "not_behavioral_takeup" in flanders.metadata["measure_semantics"]
+        assert (
+            "not_observed_receipt_or_behavioral_takeup"
+            in brussels.metadata["measure_semantics"]
+        )
+        assert {
+            grapa.metadata["behavior_owner"],
+            flanders.metadata["behavior_owner"],
+        } == {"PolicyEngine"}
+        assert {
+            grapa.metadata["behavioral_takeup_flag_status"],
+            flanders.metadata["behavioral_takeup_flag_status"],
+        } == {"absent"}
+        assert {
+            grapa.metadata["microcosm_population_input_status"],
+            flanders.metadata["microcosm_population_input_status"],
+        } == {"absent"}
+        assert {
+            grapa.metadata["policyengine_behavior_input_status"],
+            flanders.metadata["policyengine_behavior_input_status"],
+        } == {"absent"}
+        assert brussels.metadata["behavior_owner"] == "none"
+        assert brussels.metadata["behavioral_takeup_flag_status"] == "not_applicable"
+        assert brussels.metadata["concept_owner"] == "Axiom"
+        assert brussels.metadata["axiom_legal_output_status"] == "absent"
+        assert (
+            brussels.metadata["legal_authority_requirement"] == "public_policy_document"
+        )
+
+        unemployment = references["onem_unemployment_caseload"]
+        assert unemployment.metadata["activation_status"] != "active"
+        assert unemployment.metadata["support_status"] == "absent"
+        assert unemployment.metadata["behavior_owner"] == "PolicyEngine"
+        assert unemployment.metadata["axiom_behavior_ownership"] == "none"
+        assert unemployment.metadata["behavioral_takeup_flag_status"] == "absent"
+        assert unemployment.metadata["microcosm_population_input_status"] == "absent"
+        assert unemployment.metadata["policyengine_behavior_input_status"] == "absent"
+        assert (
+            unemployment.metadata["anti_proxy_rule"]
+            == "do_not_derive_receipt_or_takeup_from_positive_amount"
+        )
+        assert (
+            unemployment.metadata["measure_semantics"]
+            == "recipient_caseload_not_behavioral_takeup"
+        )
+        assert all(
+            reference.metadata.get("activation_status") != "active"
+            for reference in spec.target_references
+            if reference.family == "caseloads"
+        )
+
+    def test_child_benefit_declarations_do_not_construct_a_national_total(
+        self, spec
+    ) -> None:
+        child_references = {
+            reference.name: reference
+            for reference in spec.target_references
+            if reference.measure is not None and "child_benefit" in reference.measure
+        }
+
+        assert set(child_references) == {
+            "opgroeien_basic_amount_child_recipients_2025_12",
+            "iriscare_child_benefit_entitled_children_2025_12",
+        }
+        assert {
+            reference.ledger_selector["geography_id"]
+            for reference in child_references.values()
+        } == {"BE1", "BE2"}
+        assert all(
+            reference.ledger_selector["geography_level"] == "nuts1"
+            for reference in child_references.values()
+        )
+        assert all(
+            reference.entity == "person" for reference in child_references.values()
+        )
+
     def test_target_profile_declares_tiers_and_income_basis(self, spec) -> None:
         profile = spec.target_profile
         assert profile["schema_version"] == 2
@@ -651,6 +850,25 @@ class TestBelgianPackage:
         assert income_basis["survey_year"] == 2023
         assert income_basis["income_reference_offset_years"] == -1
         assert income_basis["mismatch_policy"] == "requires_source_projection"
+
+        grapa_basis = profile["basis_periods"]["grapa_regular_payment_snapshot_2025_01"]
+        assert grapa_basis["period"] == "2025-01"
+        assert grapa_basis["basis"] == "regular_payment_snapshot"
+        assert grapa_basis["fact_period_type"] == "month"
+
+        child_rights_basis = profile["basis_periods"][
+            "child_benefit_rights_month_2025_12"
+        ]
+        assert child_rights_basis["period"] == "2025-12"
+        assert child_rights_basis["basis"] == "rights_month"
+        assert child_rights_basis["fact_period_type"] == "month"
+
+        child_entitlement_basis = profile["basis_periods"][
+            "child_benefit_entitlement_month_2025_12"
+        ]
+        assert child_entitlement_basis["period"] == "2025-12"
+        assert child_entitlement_basis["basis"] == "entitlement_month"
+        assert child_entitlement_basis["fact_period_type"] == "month"
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
@@ -688,6 +906,14 @@ class TestBelgianPackage:
                 "statbel_fiscal_income_by_commune",
                 ("be_nis_2025", "nis_2025", "2025_nis"),
             ),
+            (
+                "opgroeien_basic_amount_child_recipients_2025_12",
+                ("be_nuts1_2025", "nuts1_2025", "2025_nuts1"),
+            ),
+            (
+                "iriscare_child_benefit_entitled_children_2025_12",
+                ("be_nuts1_2025", "nuts1_2025", "2025_nuts1"),
+            ),
         ],
     )
     def test_subnational_targets_accept_only_declared_typed_vintage_aliases(
@@ -718,6 +944,8 @@ class TestBelgianPackage:
         [
             ("statbel_population_by_age_sex_region", "NUTS_2024"),
             ("statbel_fiscal_income_by_commune", "nis_2024"),
+            ("opgroeien_basic_amount_child_recipients_2025_12", "NUTS_2024"),
+            ("iriscare_child_benefit_entitled_children_2025_12", "NUTS_2024"),
         ],
     )
     def test_subnational_targets_refuse_vintages_outside_typed_registry(
@@ -756,9 +984,13 @@ class TestBelgianPackage:
         [
             "statbel_population_by_age_sex_region",
             "statbel_fiscal_income_by_commune",
+            "onem_unemployment_caseload",
+            "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+            "opgroeien_basic_amount_child_recipients_2025_12",
+            "iriscare_child_benefit_entitled_children_2025_12",
         ],
     )
-    def test_multicell_be_placeholders_cannot_compile_before_fanout(
+    def test_nonactive_be_target_references_cannot_compile(
         self, spec, reference_name
     ) -> None:
         reference = next(
@@ -767,6 +999,79 @@ class TestBelgianPackage:
 
         with pytest.raises(ValueError, match="non-executable placeholder"):
             compile_ledger_target_references([], [reference], country="be")
+
+    @pytest.mark.parametrize(
+        ("reference_name", "blocker"),
+        [
+            (
+                "onem_unemployment_caseload",
+                "microcosm_population_input_status='absent'",
+            ),
+            (
+                "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+                "policyengine_behavior_input_status='absent'",
+            ),
+            (
+                "opgroeien_basic_amount_child_recipients_2025_12",
+                "geography_alignment_status='requires_explicit_source_projection_to_nuts1_2025'",
+            ),
+            (
+                "iriscare_child_benefit_entitled_children_2025_12",
+                "axiom_legal_output_status='absent'",
+            ),
+        ],
+    )
+    def test_be_target_activation_is_fail_closed_while_support_is_unresolved(
+        self, spec, reference_name, blocker
+    ) -> None:
+        reference = next(
+            row for row in spec.target_references if row.name == reference_name
+        )
+        active_reference = replace(
+            reference,
+            metadata={**reference.metadata, "activation_status": "active"},
+        )
+
+        with pytest.raises(ValueError, match=blocker):
+            compile_ledger_target_references([], [active_reference], country="be")
+
+    def test_be_target_activation_refuses_unknown_guarded_status(self, spec) -> None:
+        reference = next(
+            row
+            for row in spec.target_references
+            if row.name == "sfpd_grapa_regular_payment_beneficiaries_2025_01"
+        )
+        active_reference = replace(
+            reference,
+            metadata={
+                "activation_status": "active",
+                "publication_status": "provisional",
+                "support_status": "pending",
+            },
+        )
+
+        with pytest.raises(ValueError, match="support_status='pending'"):
+            compile_ledger_target_references([], [active_reference], country="be")
+
+    def test_be_target_activation_ignores_unrelated_publication_status(
+        self, spec
+    ) -> None:
+        reference = next(
+            row
+            for row in spec.target_references
+            if row.name == "sfpd_grapa_regular_payment_beneficiaries_2025_01"
+        )
+        active_reference = replace(
+            reference,
+            metadata={
+                "activation_status": "active",
+                "publication_status": "provisional",
+                "support_status": "ready",
+            },
+        )
+
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references([], [active_reference], country="be")
 
     def test_gates_select_no_incumbent_comparison(self, spec) -> None:
         selected = {gate.gate for gate in spec.gates.gates}

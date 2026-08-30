@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "6f1dab96ccedb21fc261acf9ebbccfc036b2e354a78cf9314e394707a1888cf6",
+  "fingerprint": "43f60f15313bd2d8e92c0f511614927c427a3a01cbab409490ab1fd374eaa7fe",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -39,7 +39,7 @@
     "spec/sources.yaml": "1ca516ad27ee815cb60f451901dcdc6b8989c4f1731d0f6f3f1e50714e29e35e",
     "spec/spine.yaml": "908d99488c3905806ec6878d96b0e4a4cbb67c6ec69d53fe5f1d160246fdb513",
     "spec/vintages.yaml": "c842490287404cf306907800b0bcadec5d954e7e9c510f4b293786c5bedd0910",
-    "target_references.json": "a8c9f875e3a04d082fbacfa8511c856b3879077d8a4276df50ea38c345e702ea"
+    "target_references.json": "5bf3ab14cbbc27c9bfec75ad5a4fb0bf72ba1ddf23f598aa09a6f1fad0702bfb"
   },
   "resources": [
     "spec/bundle.yaml",
@@ -63,6 +63,9 @@
     "spf_finances_pit_total",
     "onss_employee_contribution_total",
     "onem_unemployment_caseload",
+    "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+    "opgroeien_basic_amount_child_recipients_2025_12",
+    "iriscare_child_benefit_entitled_children_2025_12",
     "nbb_household_disposable_income"
   ]
 }
