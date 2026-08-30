@@ -119,11 +119,39 @@ survives the spine swap, at the top of the range:
   H5 and ~15 GB RSS) and adds zero information; hold it unless #762's solve
   diagnostics show support-limited misses at K=4.
 
-**Adjudication (María):** _pending — rules on the Round B (spine-j) numbers,
-this section then records the ruling and #761 carries it._
+**Adjudication (María):** _pending — Round B below confirms the Round-A
+numbers bit-for-bit, so the recommendation stands on both spine vintages;
+this section records the ruling and #761 carries it._
 
-## Round B — spine-j
+## Round B — spine-k (2026-08-30)
 
-_Pending the #804 licensed phase. Re-run R1's dry-run and R2's build with the
-re-cut acceptance receipt's sha; support deltas vs Round A should be
-region-mix-stable._
+The spine line moved past spine-i in the recert lane before any acceptance
+re-cut: spine-j (`spine-j-remeasure`) and then **spine-k**
+(`data/ukds/acceptance/spine-k-stack/spine-k.h5`, built 2026-08-30, release
+id `uk-frs-spine-20260830T120239Z`, **14/14 spine gates passed**, importance
+weights, mass total 29,247,433.0, the same 52,846/61,211/113,649 row
+identity). Round B ran against spine-k, sha-pinned at the artifact:
+`b4403ea4b2d345de06e9f297fdeb9f144519407e98d653b09cf77b16c1e436cb`. The
+committed `spine_candidate_acceptance.json` still names spine-i — the
+acceptance re-mint is the recert lane's step; this pilot pins bytes, not the
+receipt, and records that status honestly.
+
+Same two commands as Round A (multi-K dry-run at seed 42; real K=1 build,
+Logbook row chained onto the genesis digest `a4d2c0b2…`):
+
+- **Support is bit-identical to Round A at every K on both grains** — every
+  min/median rows, ESS, and distinct-sources figure in R1's tables
+  reproduces exactly. Spine-k preserves the household roster, region mix,
+  and importance-weight allocation, so the seeded two-stage draw reproduces;
+  the pension-wealth split and sibling recert changes live in value columns
+  the assignment never reads. This is the strongest possible control: the K
+  decision surface is invariant across the spine vintages.
+- Build receipts: gate passed 650/650 + 361/361, `missing_geography_rows: 0`,
+  mass `abs_delta: 0.0`, `importance` carried, mass log 6 → 7, lineage
+  identical (16,288 distinct sources; frs 16,288 / spi 10,000; flags
+  20,085 / 26,420 / 270). 11.4 s wall, 1.51 GB peak RSS.
+- Receipts: dry-run plan sha `5edc378eeac7e1ab…`, build manifest sha
+  `ded07a6122a3c36e…`, evidence `…/761-rowwise-pilot/spine-k/`; Logbook row
+  `15f6b09944f749cd…` (chain tail; `logbook/uk/local.jsonl` validates at 2
+  rows). Stats emitted in the post-review `rows_basis: nonzero_households`
+  shape; `assigned == nonzero` for all 1,011 areas here too.
