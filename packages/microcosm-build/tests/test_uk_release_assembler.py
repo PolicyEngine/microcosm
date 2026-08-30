@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
 from pathlib import Path
 
 import numpy as np
@@ -78,7 +79,7 @@ def _frame(weights: list[float], *, weight_kind: WeightKind):
     )
 
 
-def _diagnostics() -> dict:
+def _diagnostics(spine_sha256: str) -> dict:
     return {
         "schema_version": 6,
         "weight_entity": "household",
@@ -161,12 +162,36 @@ def _diagnostics() -> dict:
                 )
             ],
         },
-        "build": {"code_pin": _CODE_PIN},
+        "build": {
+            "code_pin": _CODE_PIN,
+            "build_id": _ATTEMPT_ID,
+            "input_posture": {"tier": "staging_candidate", "sha256": spine_sha256},
+            "runtime": dict(_SIGNED_RUNTIME),
+        },
     }
+
+
+_SIGNED_RUNTIME = {
+    "python": "3.13.5",
+    "policyengine-core": "3.19.0",
+    "policyengine-uk": "2.89.0",
+    "microcosm-data": "0.1.0",
+    "microcosm-build": "0.1.0",
+    "microcosm-calibrate": "0.1.0",
+}
 
 
 @pytest.fixture
 def assembler_inputs(green_certification_inputs, tmp_path: Path):
+    return _build_assembler_inputs(green_certification_inputs, tmp_path)
+
+
+def _build_assembler_inputs(
+    green_certification_inputs,
+    tmp_path: Path,
+    *,
+    spine_frame=None,
+):
     pytest.importorskip("tables")  # pandas HDF backend
     pytest.importorskip("h5py")
     candidate = green_certification_inputs["candidate_path"]
@@ -174,10 +199,14 @@ def assembler_inputs(green_certification_inputs, tmp_path: Path):
     write_uk_national_frame(
         _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED), candidate
     )
-    write_uk_national_frame(_frame([1.0, 2.0], weight_kind=WeightKind.DESIGN), spine)
+    if spine_frame is None:
+        spine_frame = _frame([1.0, 2.0], weight_kind=WeightKind.DESIGN)
+    write_uk_national_frame(spine_frame, spine)
 
     diagnostics_path = tmp_path / "calibration_diagnostics.json"
-    diagnostics_path.write_text(json.dumps(_diagnostics()), encoding="utf-8")
+    diagnostics_path.write_text(
+        json.dumps(_diagnostics(sha256(spine))), encoding="utf-8"
+    )
     diagnostics_sha = sha256(diagnostics_path)
     for report_name in ("seam_report_path", "release_cut_report_path"):
         report_path = green_certification_inputs[report_name]
@@ -301,12 +330,23 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     ).read_bytes() == assembler_inputs["certification"].read_bytes()
     assert summary["cut_tag"] == _CUT_TAG
     assert summary["release_dir"] == str(release_dir)
-    assert summary["publish_command"] == (
-        f"uv run python -m microcosm.data.publish_cli {release_dir} "
-        "--repo-id policyengine/populace-uk-private "
-        f"--artifact-root {assembler_inputs['candidate'].parent} --no-latest "
-        f"--tag-name {_CUT_TAG}"
-    )
+    # The command is rendered shell-safe; parse it back rather than comparing
+    # one quoting of it.
+    assert shlex.split(summary["publish_command"]) == [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "microcosm.data.publish_cli",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--artifact-root",
+        str(assembler_inputs["candidate"].parent),
+        "--no-latest",
+        "--tag-name",
+        _CUT_TAG,
+    ]
 
 
 def test_assemble_refuses_candidate_sha_mismatch(assembler_inputs) -> None:
@@ -338,33 +378,53 @@ def test_assemble_refuses_unprefixed_cut_tag(assembler_inputs) -> None:
         )
 
 
-def _rewrite_spine(assembler_inputs, frame) -> None:
-    """Replace the spine H5 and re-pin its digest in the build record."""
-    write_uk_national_frame(frame, assembler_inputs["spine"])
+def test_assemble_refuses_substituted_spine(assembler_inputs) -> None:
+    # A same-shape spine with different weights, with only the unsigned build
+    # record's digest updated to match: the signed diagnostics pin must catch
+    # the substitution before any NPZ pairing happens.
+    write_uk_national_frame(
+        _frame([9.0, 9.0], weight_kind=WeightKind.DESIGN),
+        assembler_inputs["spine"],
+    )
     record_path = assembler_inputs["diagnostics"].parent / "build_record.json"
     record = json.loads(record_path.read_text(encoding="utf-8"))
     record["input_posture"]["sha256"] = sha256(assembler_inputs["spine"])
     record_path.write_text(json.dumps(record), encoding="utf-8")
-
-
-def test_assemble_refuses_spine_with_different_household_count(
-    assembler_inputs,
-) -> None:
-    _rewrite_spine(
-        assembler_inputs,
-        _frame([1.0, 2.0, 3.0], weight_kind=WeightKind.DESIGN),
-    )
-    with pytest.raises(SystemExit, match="misaligned.*2 vs 3 household rows"):
+    with pytest.raises(SystemExit, match="signed diagnostics.build.input_posture"):
         _load_driver_module().main(assembler_inputs["argv"])
 
 
+def test_assemble_refuses_build_record_attempt_id_tamper(assembler_inputs) -> None:
+    record_path = assembler_inputs["diagnostics"].parent / "build_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["build_id"] = "uk-frs-calibration-attempt-20260901T000000Z-deadbeef"
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    with pytest.raises(SystemExit, match="signed diagnostics.build.build_id"):
+        _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_spine_with_different_household_count(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    # The whole fixture chain signs the mismatched spine coherently, so the
+    # row-alignment check itself is what refuses.
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        spine_frame=_frame([1.0, 2.0, 3.0], weight_kind=WeightKind.DESIGN),
+    )
+    with pytest.raises(SystemExit, match="misaligned.*2 vs 3 household rows"):
+        _load_driver_module().main(inputs["argv"])
+
+
 def test_assemble_refuses_spine_with_different_household_ids(
-    assembler_inputs,
+    green_certification_inputs, tmp_path: Path
 ) -> None:
     ids = np.asarray([5, 6], dtype="int64")
-    _rewrite_spine(
-        assembler_inputs,
-        uk_national_frame(
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        spine_frame=uk_national_frame(
             person=pd.DataFrame(
                 {
                     "person_id": ids,
@@ -384,7 +444,47 @@ def test_assemble_refuses_spine_with_different_household_ids(
         ),
     )
     with pytest.raises(SystemExit, match="misaligned.*household ids differ"):
-        _load_driver_module().main(assembler_inputs["argv"])
+        _load_driver_module().main(inputs["argv"])
+
+
+def test_assemble_refuses_runtime_override_contradicting_provenance(
+    assembler_inputs,
+) -> None:
+    with pytest.raises(SystemExit, match="contradicts the signed provenance"):
+        _load_driver_module().main(
+            [
+                *assembler_inputs["argv"],
+                "--runtime-version",
+                "policyengine-uk=9.99.0",
+            ]
+        )
+
+
+def test_assemble_refuses_existing_destination(assembler_inputs, capsys) -> None:
+    driver = _load_driver_module()
+    assert driver.main(assembler_inputs["argv"]) == 0
+    capsys.readouterr()
+    with pytest.raises(SystemExit, match="already exists"):
+        driver.main(assembler_inputs["argv"])
+
+
+def test_assemble_late_failure_leaves_no_partial_release(
+    assembler_inputs, monkeypatch
+) -> None:
+    driver = _load_driver_module()
+
+    def _explode(_release_dir):
+        raise RuntimeError("late validation failure")
+
+    monkeypatch.setattr(driver, "validate_release_dir", _explode)
+    with pytest.raises(RuntimeError, match="late validation failure"):
+        driver.main(assembler_inputs["argv"])
+    out_dir = assembler_inputs["out_dir"]
+    assert not (out_dir / UK_NATIONAL_RELEASE_ID).exists()
+    assert not list(out_dir.glob(".assemble-*"))
+    assert not list(
+        assembler_inputs["candidate"].parent.glob("*_calibration.npz")
+    )
 
 
 def test_assemble_refuses_cut_tag_outside_the_grammar(assembler_inputs) -> None:

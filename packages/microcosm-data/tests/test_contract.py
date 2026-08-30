@@ -1435,10 +1435,27 @@ def _write_uk_national_release_dir(tmp_path: Path) -> Path:
     for artifact in release["artifacts"].values():
         artifact["revision"] = UK_NATIONAL_CUT_TAG
 
+    # The certification signs the evidence copies' actual bytes: the seam
+    # report already sits in the directory (terminal_gates.json from the
+    # exact-k shape); the other three are written here so every signed digest
+    # binds to a real local file.
+    (national / "spine_gates.json").write_text(json.dumps({"fixture": "spine"}))
+    (national / "release_cut_gates.json").write_text(
+        json.dumps({"fixture": "release_cut"})
+    )
+    (national / "score_vs_enhanced_frs.json").write_text(
+        json.dumps({"fixture": "score"})
+    )
     certification = _green_uk_certification(
         TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
         release_id=UK_NATIONAL_RELEASE_ID,
         diagnostics_sha256=_sha256(national / "calibration_diagnostics.json"),
+        part_shas={
+            "spine": _sha256(national / "spine_gates.json"),
+            "calibration_seam": _sha256(national / "terminal_gates.json"),
+            "release_cut": _sha256(national / "release_cut_gates.json"),
+        },
+        score_receipt_sha256=_sha256(national / "score_vs_enhanced_frs.json"),
     )
     certification_path = national / "release_certification.json"
     certification_path.write_text(json.dumps(certification))
@@ -2145,6 +2162,46 @@ def test_uk_national_release_rejects_invalid_artifact_revisions(
     release_path.write_text(json.dumps(release))
 
     with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_rejects_mixed_cut_revisions(tmp_path: Path) -> None:
+    # Two individually grammar-valid cut tags are still two cuts: the
+    # contract refuses the mixture, not just publish.
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    first_key = next(iter(release["artifacts"]))
+    release["artifacts"][first_key]["revision"] = (
+        UK_NATIONAL_RELEASE_ID + "-20260901T000000Z-deadbeef"
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="more than one revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_binds_signed_evidence_bytes(tmp_path: Path) -> None:
+    # Rewriting a copied part report must refuse: the certification signs the
+    # evidence bytes, not just the digest fields' shapes.
+    directory = _write_uk_national_release_dir(tmp_path)
+    (directory / "release_cut_gates.json").write_text(
+        json.dumps({"fixture": "tampered"})
+    )
+
+    with pytest.raises(
+        ReleaseContractError, match="does not match the certification's signed"
+    ):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_signed_evidence_files(tmp_path: Path) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    (directory / "terminal_gates.json").unlink()
+
+    with pytest.raises(
+        ReleaseContractError, match="missing 'terminal_gates.json'"
+    ):
         validate_release_dir(directory)
 
 
@@ -5080,12 +5137,14 @@ def _green_uk_certification(
     *,
     release_id: str = "uk-757-first-certified-cut",
     diagnostics_sha256: str = "c" * 64,
+    part_shas: dict[str, str] | None = None,
+    score_receipt_sha256: str = "d" * 64,
 ) -> dict:
     parts = {}
     for part_name, scope in contract._UK_CERTIFICATION_PART_SCOPES.items():
         parts[part_name] = {
             "path": f"{part_name}.json",
-            "sha256": "a" * 64,
+            "sha256": (part_shas or {}).get(part_name, "a" * 64),
             "release_id": release_id,
             "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
             "entry_ids": sorted(scope),
@@ -5119,7 +5178,10 @@ def _green_uk_certification(
         },
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
         "diagnostics_sha256": diagnostics_sha256,
-        "score_receipt": {"filename": "score_vs_enhanced_frs.json", "sha256": "d" * 64},
+        "score_receipt": {
+            "filename": "score_vs_enhanced_frs.json",
+            "sha256": score_receipt_sha256,
+        },
         "exclusions_evaluated_on": "2026-08-27",
         "shippable": True,
     }

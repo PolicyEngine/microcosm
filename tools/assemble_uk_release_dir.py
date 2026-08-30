@@ -11,12 +11,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import platform
 import re
+import shlex
 import shutil
+import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import numpy as np
@@ -156,18 +156,55 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             "error: certification.shippable must be true before release assembly"
         )
 
-    attempt_id = build_record.get("build_id")
-    if not isinstance(attempt_id, str):
-        raise SystemExit("error: build_record.build_id must be a string")
+    # Release identity comes only from the signed diagnostics build block
+    # (its bytes are pinned by certification.diagnostics_sha256). The
+    # separately supplied build record is convenience input and must agree
+    # with the authenticated fields, never substitute for them.
+    build_block = _mapping(diagnostics.get("build"), "diagnostics.build")
+    attempt_id = build_block.get("build_id")
+    if not isinstance(attempt_id, str) or not attempt_id:
+        raise SystemExit(
+            "error: diagnostics.build.build_id must be a non-empty string"
+        )
+    _require_equal(
+        "build_record.build_id vs signed diagnostics.build.build_id",
+        build_record.get("build_id"),
+        attempt_id,
+    )
+    signed_input_posture = _mapping(
+        build_block.get("input_posture"), "diagnostics.build.input_posture"
+    )
+    _require_equal(
+        "spine H5 vs signed diagnostics.build.input_posture.sha256",
+        measured["spine H5"],
+        signed_input_posture.get("sha256"),
+    )
     cut_tag = _cut_tag(attempt_id, args.cut_tag)
-    runtime = _runtime_versions(build_record, dict(args.runtime_version))
+    runtime = _runtime_versions(build_block, dict(args.runtime_version))
     code_pin = _diagnostics_code_pin(diagnostics)
     candidate_filename = candidate.get("filename")
     if not isinstance(candidate_filename, str) or not candidate_filename:
         raise SystemExit("error: certification.candidate.filename must be non-empty")
     dataset_key = Path(candidate_filename).stem
     calibration_filename = f"{dataset_key}_calibration.npz"
-    calibration_path = args.candidate_h5.parent / calibration_filename
+    # Nothing is written in place: assembly stages into a private directory,
+    # validates there, and only then atomically renames into empty
+    # destinations — a late failure can never leave a plausible partial
+    # release or corrupt a previous assembly.
+    destination = args.out_dir / UK_NATIONAL_RELEASE_ID
+    if destination.exists() or destination.is_symlink():
+        raise SystemExit(
+            f"error: {destination} already exists; remove the previous "
+            "assembly before re-assembling"
+        )
+    npz_destination = args.candidate_h5.parent / calibration_filename
+    if npz_destination.exists() or npz_destination.is_symlink():
+        raise SystemExit(
+            f"error: {npz_destination} already exists; remove it before "
+            "re-assembling"
+        )
+    staging_parent = args.out_dir / f".assemble-{uuid.uuid4().hex}"
+    calibration_path = staging_parent / calibration_filename
     target_surface = _mapping(
         diagnostics.get("target_surface"), "diagnostics.target_surface"
     )
@@ -204,6 +241,59 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         spine_frame.weights_for("household").values, dtype=np.float64
     )
 
+    staging_parent.mkdir(parents=True)
+    try:
+        return _stage_and_finalize(
+            args=args,
+            staging_parent=staging_parent,
+            destination=destination,
+            npz_destination=npz_destination,
+            calibration_path=calibration_path,
+            calibration_filename=calibration_filename,
+            household_weight=household_weight,
+            initial_household_weight=initial_household_weight,
+            measured=measured,
+            candidate_filename=candidate_filename,
+            dataset_key=dataset_key,
+            cut_tag=cut_tag,
+            attempt_id=attempt_id,
+            runtime=runtime,
+            code_pin=code_pin,
+            target_surface=target_surface,
+            target_registry=target_registry,
+            spine_part=spine_part,
+            seam_part=seam_part,
+            release_cut_part=release_cut_part,
+            spine_report_path=spine_report_path,
+        )
+    finally:
+        shutil.rmtree(staging_parent, ignore_errors=True)
+
+
+def _stage_and_finalize(
+    *,
+    args: argparse.Namespace,
+    staging_parent: Path,
+    destination: Path,
+    npz_destination: Path,
+    calibration_path: Path,
+    calibration_filename: str,
+    household_weight: np.ndarray,
+    initial_household_weight: np.ndarray,
+    measured: Mapping[str, str],
+    candidate_filename: str,
+    dataset_key: str,
+    cut_tag: str,
+    attempt_id: str,
+    runtime: Mapping[str, str],
+    code_pin: str,
+    target_surface: Mapping[str, object],
+    target_registry: Mapping[str, object],
+    spine_part: Mapping[str, object],
+    seam_part: Mapping[str, object],
+    release_cut_part: Mapping[str, object],
+    spine_report_path: Path,
+) -> dict[str, object]:
     np.savez(
         calibration_path,
         household_weight=household_weight,
@@ -212,8 +302,8 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     calibration_sha = _sha256(calibration_path)
 
     created_at = datetime.now(UTC).isoformat()
-    release_dir = args.out_dir / UK_NATIONAL_RELEASE_ID
-    release_dir.mkdir(parents=True, exist_ok=True)
+    release_dir = staging_parent / UK_NATIONAL_RELEASE_ID
+    release_dir.mkdir(parents=True)
     build_manifest = {
         "build_id": UK_NATIONAL_RELEASE_ID,
         "code": {
@@ -239,11 +329,13 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
                 "n_specs": target_registry.get("n_specs"),
             },
         },
+        # Signed sources only: the certification's part statuses. The build
+        # record's gate summary is unsigned convenience input and deliberately
+        # does not reach the manifest.
         "gates": {
             "spine": spine_part.get("statuses"),
             "calibration_seam": seam_part.get("statuses"),
             "release_cut": release_cut_part.get("statuses"),
-            "gate_summary": build_record.get("gate_summary"),
         },
         "attempt_id": attempt_id,
         "cut_tag": cut_tag,
@@ -374,38 +466,56 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
 
     evidence_summary: dict[str, dict[str, str]] = {}
     for key, (source, filename) in evidence.items():
-        destination = release_dir / filename
-        shutil.copyfile(source, destination)
+        copy_path = release_dir / filename
+        shutil.copyfile(source, copy_path)
         evidence_summary[key] = {
-            "path": str(destination),
-            "sha256": _sha256(destination),
+            "path": str(destination / filename),
+            "sha256": _sha256(copy_path),
         }
 
     validate_release_dir(release_dir)
-    publish_command = (
-        f"uv run python -m microcosm.data.publish_cli {release_dir} "
-        f"--repo-id {_REPO_ID} --artifact-root {args.candidate_h5.parent} "
-        f"--no-latest --tag-name {cut_tag}"
+
+    # Only a directory that already validated moves into place, and only into
+    # the destinations proven empty before staging began.
+    release_dir.rename(destination)
+    calibration_path.rename(npz_destination)
+
+    publish_command = shlex.join(
+        [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "microcosm.data.publish_cli",
+            str(destination),
+            "--repo-id",
+            _REPO_ID,
+            "--artifact-root",
+            str(args.candidate_h5.parent),
+            "--no-latest",
+            "--tag-name",
+            cut_tag,
+        ]
     )
     return {
         "release_id": UK_NATIONAL_RELEASE_ID,
-        "release_dir": str(release_dir),
+        "release_dir": str(destination),
         "cut_tag": cut_tag,
         "dataset": {
             "path": str(args.candidate_h5),
             "sha256": measured["candidate"],
         },
         "calibration": {
-            "path": str(calibration_path),
+            "path": str(npz_destination),
             "sha256": calibration_sha,
         },
         "build_manifest": {
-            "path": str(build_manifest_path),
-            "sha256": _sha256(build_manifest_path),
+            "path": str(destination / "build_manifest.json"),
+            "sha256": _sha256(destination / "build_manifest.json"),
         },
         "release_manifest": {
-            "path": str(release_manifest_path),
-            "sha256": _sha256(release_manifest_path),
+            "path": str(destination / "release_manifest.json"),
+            "sha256": _sha256(destination / "release_manifest.json"),
         },
         "evidence": evidence_summary,
         "publish_command": publish_command,
@@ -469,43 +579,37 @@ def _runtime_version(value: str) -> tuple[str, str]:
 
 
 def _runtime_versions(
-    build_record: Mapping[str, object], overrides: dict[str, str]
+    build_block: Mapping[str, object], overrides: dict[str, str]
 ) -> dict[str, str]:
-    spine_provenance = _mapping(
-        build_record.get("spine_provenance"), "build_record.spine_provenance"
+    """Runtime pins from the signed diagnostics build block, and only there.
+
+    The seam captures the calibrating environment's versions at solve time
+    (``diagnostics.build.runtime``), signed with the diagnostics bytes. An
+    override may re-assert an authenticated value but never replace it: a
+    manifest pin that contradicts the signed provenance is an invented
+    environment, which is exactly what the release contract cannot detect.
+    """
+
+    signed_runtime = _mapping(
+        build_block.get("runtime"), "diagnostics.build.runtime"
     )
-    rules_engine = _mapping(
-        spine_provenance.get("rules_engine"),
-        "build_record.spine_provenance.rules_engine",
-    )
-    policyengine_uk = overrides.get("policyengine-uk") or rules_engine.get("version")
-    if not isinstance(policyengine_uk, str) or not policyengine_uk:
-        raise SystemExit(
-            "error: build_record.spine_provenance.rules_engine.version is required"
-        )
-    runtime = {
-        "python": overrides.get("python", platform.python_version()),
-        "policyengine-core": _distribution_version("policyengine-core", overrides),
-        "policyengine-uk": policyengine_uk,
-        "microcosm-data": _distribution_version("microcosm-data", overrides),
-        "microcosm-build": _distribution_version("microcosm-build", overrides),
-        "microcosm-calibrate": _distribution_version(
-            "microcosm-calibrate", overrides
-        ),
-    }
+    runtime: dict[str, str] = {}
+    for package in _RUNTIME_PACKAGES:
+        value = signed_runtime.get(package)
+        if not isinstance(value, str) or not value or value == "unavailable":
+            raise SystemExit(
+                f"error: diagnostics.build.runtime.{package!r} is missing or "
+                "unresolved; the candidate must be re-cut by a seam that "
+                "records runtime provenance"
+            )
+        override = overrides.get(package)
+        if override is not None and override != value:
+            raise SystemExit(
+                f"error: --runtime-version {package}={override} contradicts "
+                f"the signed provenance {value}"
+            )
+        runtime[package] = value
     return runtime
-
-
-def _distribution_version(package: str, overrides: Mapping[str, str]) -> str:
-    if package in overrides:
-        return overrides[package]
-    try:
-        return version(package)
-    except PackageNotFoundError as error:
-        raise SystemExit(
-            f"error: runtime version for {package} is unavailable; pass "
-            f"--runtime-version {package}=VERSION"
-        ) from error
 
 
 def _diagnostics_code_pin(diagnostics: Mapping[str, object]) -> str:

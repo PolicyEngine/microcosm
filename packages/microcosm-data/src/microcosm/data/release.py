@@ -352,6 +352,16 @@ def publish_release(
             "release_manifest.json pins artifacts to revisions; tag_name must "
             "match the release id or uniform per-cut artifact revision."
         )
+    # A pointer may only ever name a release whose immutable tag IS the
+    # release id: per-cut tags are the inspect lane, and the pointer/loader
+    # contract cannot follow them. Refusing here makes that a publisher
+    # invariant rather than a runbook convention.
+    if update_latest and tag != release_id:
+        raise ValueError(
+            "per-cut tags publish inspect-only: the release pointer cannot "
+            f"name tag {tag!r} for release {release_id!r}. Pass "
+            "update_latest=False (--no-latest)."
+        )
     if root_artifacts and artifact_root is None:
         raise ValueError(
             "release_manifest.json declares root artifacts; pass artifact_root "

@@ -102,8 +102,15 @@ The output is
 digest, the derived cut tag, and the exact publication command. Use
 `--cut-tag microcosm-uk-2024-25-national-<YYYYMMDDTHHMMSSZ>-<uuid8>` only to
 override the derived tag deliberately; the override must keep that grammar,
-which the contract validates on every artifact revision. `--runtime-version PACKAGE=VERSION` is available when a
-package's runtime version cannot be resolved from the assembly environment.
+which the contract validates on every artifact revision.
+
+Assembly stages into a private directory, validates there, and atomically
+renames into empty destinations: re-assembling a cut requires removing the
+previous `releases/microcosm-uk-2024-25-national/` directory and the
+previously minted calibration NPZ first. Release identity — the attempt id,
+spine digest, and every runtime pin — comes only from the signed diagnostics
+build block; `--runtime-version PACKAGE=VERSION` may re-assert a signed value
+as an operator cross-check but refuses to replace one.
 
 ## 4. Publish for inspection
 
@@ -120,7 +127,9 @@ uv run python -m microcosm.data.publish_cli \
 
 Do not omit `--tag-name`, and do not pass `--no-create-tag`: every artifact in
 the manifest is pinned to that immutable per-cut tag. `--no-latest` is
-mandatory for this inspect lane.
+mandatory for this inspect lane — and enforced: publication refuses to move
+`latest.json` for any tag that is not the release id itself, so omitting the
+flag fails closed instead of promoting an inspect cut.
 
 If tag creation returns HTTP 409 after the staging commit, publication can
 leave the constant branch

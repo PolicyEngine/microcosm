@@ -1208,6 +1208,36 @@ def test_empty_artifact_revisions_refuse_publication(
     assert hub.tags == []
 
 
+def test_per_cut_tag_refuses_latest_promotion(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    # The pointer may only ever name a release whose tag IS the release id:
+    # a per-cut inspect tag with the default update_latest must refuse before
+    # any remote mutation, not promote.
+    cut_tag = RELEASE_ID + "-20260828T101112Z-1a2b3c4d"
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = cut_tag
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="inspect-only"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=cut_tag,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+    assert hub.events == []
+
+
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:
     (release_dir / "build_manifest.json").unlink()
     with pytest.raises(ReleaseContractError):

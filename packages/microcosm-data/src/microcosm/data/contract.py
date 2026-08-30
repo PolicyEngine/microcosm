@@ -542,6 +542,16 @@ _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 # a hand-edited or stale revision cannot claim a cut the attempt chain never
 # produced.
 _UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+# The canonical release-dir filenames of the evidence the certification signs
+# (tools/assemble_uk_release_dir.py copies each byte-for-byte). Validation
+# binds every local file to its signed digest: a certification whose evidence
+# was removed or rewritten must refuse, not validate around the gap.
+_UK_CERTIFICATION_PART_EVIDENCE_FILES: Mapping[str, str] = {
+    "spine": "spine_gates.json",
+    "calibration_seam": "terminal_gates.json",
+    "release_cut": "release_cut_gates.json",
+}
+_UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_enhanced_frs.json"
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
@@ -1135,6 +1145,23 @@ def _check_release_manifest(
                     value=entry.get("sha256"),
                     failures=failures,
                 )
+        # One release pins one revision: individually grammar-valid revisions
+        # from two different cuts must refuse here, not later at publish.
+        distinct_revisions = sorted(
+            {
+                entry.get("revision")
+                for entry in artifacts.values()
+                if isinstance(entry, Mapping)
+                and isinstance(entry.get("revision"), str)
+                and entry.get("revision")
+            }
+        )
+        if len(distinct_revisions) > 1:
+            failures.append(
+                "release_manifest.json artifacts pin more than one revision "
+                f"({distinct_revisions}); every artifact must pin the same "
+                "release revision."
+            )
         if release_id.startswith("populace-us-"):
             _check_us_release_has_no_split_microdata_artifacts(
                 artifacts,
@@ -3011,6 +3038,56 @@ def _check_uk_release_certification(
         )
 
 
+def _check_uk_certification_evidence_binding(
+    certification: Mapping,
+    release_dir: Path,
+    failures: list[str],
+) -> None:
+    """Bind every signed evidence digest to the local file's actual bytes.
+
+    The certification signs the part-report and score-receipt digests; a
+    release directory whose copies were removed or rewritten must refuse
+    here, not validate on the digest fields alone.
+    """
+
+    parts = certification.get("parts")
+    parts = parts if isinstance(parts, Mapping) else {}
+    bindings: list[tuple[str, str, object]] = []
+    for part, filename in _UK_CERTIFICATION_PART_EVIDENCE_FILES.items():
+        part_payload = parts.get(part)
+        signed_sha = (
+            part_payload.get("sha256") if isinstance(part_payload, Mapping) else None
+        )
+        bindings.append((f"parts.{part}", filename, signed_sha))
+    score_receipt = certification.get("score_receipt")
+    bindings.append(
+        (
+            "score_receipt",
+            _UK_CERTIFICATION_SCORE_RECEIPT_FILE,
+            score_receipt.get("sha256")
+            if isinstance(score_receipt, Mapping)
+            else None,
+        )
+    )
+    for owner, filename, signed_sha in bindings:
+        path = release_dir / filename
+        if not path.is_file():
+            failures.append(
+                f"{_UK_RELEASE_CERTIFICATION_FILE} signs {owner} but the "
+                f"release directory is missing {filename!r}."
+            )
+            continue
+        if not isinstance(signed_sha, str):
+            # The certification shape check already reported the malformed
+            # digest; without it no binding is possible.
+            continue
+        if _sha256(path) != signed_sha:
+            failures.append(
+                f"{filename} does not match the certification's signed "
+                f"{owner}.sha256."
+            )
+
+
 def _check_calibration_diagnostics(
     diagnostics: Mapping,
     failures: list[str],
@@ -4441,6 +4518,11 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 release_id=release_id,
                 calibration_diagnostics_sha256=calibration_diagnostics_sha256,
                 failures=failures,
+            )
+            _check_uk_certification_evidence_binding(
+                certification,
+                release_dir,
+                failures,
             )
 
     _check_cross_manifest_consistency(
