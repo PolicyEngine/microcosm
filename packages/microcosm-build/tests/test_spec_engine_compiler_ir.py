@@ -22,9 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = (
-    "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
-)
+US_SCHEDULE_SHA256 = "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185"
 
 
 @pytest.fixture(scope="module")
@@ -63,19 +61,19 @@ def test_us_compiles_exact_stage_dag_and_lossless_producer_graph(
 ) -> None:
     graph = compiled_us.producer_graph
     assert graph.present
-    assert len(graph.nodes) == 38
-    assert len(graph.edges) == 71
+    assert len(graph.nodes) == 37
+    assert len(graph.edges) == 69
     assert len(graph.waves) == 6
-    assert len(graph.order) == 38
-    assert len(set(graph.order)) == 38
+    assert len(graph.order) == 37
+    assert len(set(graph.order)) == 37
     assert len(graph.ownership_matrix) == 18
-    assert graph.compiled_output_count == 227
+    assert graph.compiled_output_count == 294
     assert graph.schedule_sha256 == US_SCHEDULE_SHA256
     assert sha256_json(graph.schedule_wire()) == US_SCHEDULE_SHA256
 
     authored = graph.authored
     assert authored is not None
-    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 92
+    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 161
     assert compiled_us.stage_dag.edges == graph.edges
     assert compiled_us.stage_dag.waves == graph.waves
     assert compiled_us.stage_dag.order == graph.order
@@ -99,8 +97,8 @@ def test_us_ownership_matrix_is_cell_closed(compiled_us: CompiledSpecIR) -> None
         ]
         assert final == [row["final_owner"]]
     policy = compiled_us.producer_graph.incomparable_node_policy
-    assert policy["incomparable_pair_count"] == 587
-    assert policy["disjoint_write_pair_count"] == 587
+    assert policy["incomparable_pair_count"] == 553
+    assert policy["disjoint_write_pair_count"] == 553
 
 
 def test_us_seed_stream_map_is_complete_and_owner_typed(
@@ -109,9 +107,9 @@ def test_us_seed_stream_map_is_complete_and_owner_typed(
 ) -> None:
     seed_map = compiled_us.seed_stream_map
     assert seed_map.protocol_id == "legacy-v1"
-    assert len(seed_map.sites) == 53
-    assert len(seed_map.owners) == 54
-    assert sum(len(site.owners) for site in seed_map.sites) == 112
+    assert len(seed_map.sites) == 92
+    assert len(seed_map.owners) == 53
+    assert sum(len(site.owners) for site in seed_map.sites) == 148
     assert {site.id for site in seed_map.sites} == {
         site.id for site in resolved_us.seed_protocol.sites
     }
@@ -129,8 +127,8 @@ def test_us_seed_stream_map_is_complete_and_owner_typed(
 def test_us_node_slices_are_transitive_and_content_attested(
     compiled_us: CompiledSpecIR,
 ) -> None:
-    assert len(compiled_us.nodes) == 38
-    assert len({node.node_key for node in compiled_us.nodes}) == 38
+    assert len(compiled_us.nodes) == 37
+    assert len({node.node_key for node in compiled_us.nodes}) == 37
     for node in compiled_us.nodes:
         assert sha256_json(node.node_slice_wire()) == node.node_slice_sha256
         transitive_ids = {row.id for row in node.transitive_nodes}
@@ -142,10 +140,10 @@ def test_us_node_slices_are_transitive_and_content_attested(
 def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -> None:
     inventory = compiled_us.typed_inventory
     assert len(inventory["entities"]) == 8
-    assert len(inventory["columns"]) == 176
-    assert len(inventory["artifacts"]) == 84
+    assert len(inventory["columns"]) == 245
+    assert len(inventory["artifacts"]) == 83
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 334
+    assert len(inventory["references"]) == 402
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {
@@ -180,9 +178,7 @@ def test_normative_node_mutation_changes_its_slice_and_descendant_keys(
 
     def mutation(value: dict[str, Any]) -> None:
         node = next(
-            row
-            for row in value["producer_graph"]["nodes"]
-            if row["id"] == leaf_id
+            row for row in value["producer_graph"]["nodes"] if row["id"] == leaf_id
         )
         node["capabilities"]["retry_safety"] = "nonretryable"
 
@@ -196,9 +192,9 @@ def test_normative_node_mutation_changes_its_slice_and_descendant_keys(
 
 def test_dangling_compiler_dependency_refuses(resolved_us: ResolvedSpec) -> None:
     def mutation(value: dict[str, Any]) -> None:
-        value["producer_graph"]["nodes"][0]["inputs"][0][
-            "producing_stage"
-        ] = "missing_producer"
+        value["producer_graph"]["nodes"][0]["inputs"][0]["producing_stage"] = (
+            "missing_producer"
+        )
 
     mutated = _mutate_domain(resolved_us, ResourceKind.IMPUTATION, mutation)
     with pytest.raises(CompilerIRError, match="dangling producer"):
@@ -211,9 +207,7 @@ def test_contract_only_kernel_cannot_back_a_producer(
     contract_only_kernel = min(F0_CONTRACT_ONLY_KERNEL_IDS)
 
     def mutation(value: dict[str, Any]) -> None:
-        value["producer_graph"]["nodes"][0]["kernel"] = (
-            f"kernel:{contract_only_kernel}"
-        )
+        value["producer_graph"]["nodes"][0]["kernel"] = f"kernel:{contract_only_kernel}"
 
     mutated = _mutate_domain(resolved_us, ResourceKind.IMPUTATION, mutation)
     with pytest.raises(
@@ -250,5 +244,5 @@ def test_bundle_without_imputation_compiles_empty_graph(
     assert compiled.producer_graph.nodes == ()
     assert compiled.stage_dag.nodes == ()
     assert compiled.nodes == ()
-    assert len(compiled.seed_stream_map.sites) == 53
+    assert len(compiled.seed_stream_map.sites) == 92
     assert compiled.seed_stream_map.owners == ()

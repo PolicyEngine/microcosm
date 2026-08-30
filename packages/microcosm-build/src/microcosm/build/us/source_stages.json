@@ -1865,52 +1865,110 @@
     },
     {
       "stage": "immigration_status",
-      "survey": "CPS ASEC + published unauthorized-population estimates",
-      "source": "https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/",
+      "survey": "Census CPS ASEC + American Community Survey PUMS",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
       "grain": "person",
       "artifacts": [
         {
           "kind": "public_microdata",
           "format": "census_asec",
           "vintage": "build_year",
-          "locator": "Census CPS ASEC person file citizenship (PRCITSHP), entry year (PEINUSYR), nativity (PENATVTY), and program-participation fields"
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person file citizenship (PRCITSHP), entry-year interval (PEINUSYR), nativity (PENATVTY), raw age (A_AGE, with mapped age fallback), and lawful-status evidence fields"
         },
         {
-          "kind": "administrative_table",
-          "format": "published_estimate",
-          "vintage": "latest_available",
-          "locator": "Pew Research Center unauthorized-immigrant population and worker estimates; Higher Ed Immigration Portal undocumented-student estimates"
+          "kind": "public_microdata",
+          "format": "census_acs_pums",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/acs/microdata.html",
+          "locator": "Census ACS PUMS person file citizenship (CIT), birthplace (POBP), year of entry (YOEP), age (AGEP, retained as A_AGE with mapped age fallback), Social Security income (SSP), and Supplemental Security Income (SSIP); native not-in-universe blanks remain valid evidence absence"
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "person",
-          "weight": "person_weight"
+          "table": "person"
         },
         {
           "kind": "derive_immigration_status",
           "seed_from_build_config": true,
-          "time_period_from_build_config": true,
-          "undocumented_workers": {
-            "target": 8300000,
-            "source": "https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/"
-          },
-          "undocumented_students": {
-            "target": 408000,
-            "source": "https://www.higheredimmigrationportal.org/research/undocumented-students-in-higher-education-updated-march-2021/"
-          },
-          "undocumented_population_anchor": {
-            "value": 11000000,
-            "source": "https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/"
-          }
+          "time_period_from_build_config": true
         }
       ],
       "outputs": [
+        "immigration_is_us_citizen",
+        "immigration_is_us_national",
+        "immigration_is_us_resident",
+        "immigration_is_alien",
+        "immigration_has_lawful_status_evidence",
+        "immigration_has_other_lawful_status",
+        "immigration_is_lawful_permanent_resident",
+        "immigration_was_admitted_as_refugee",
+        "immigration_has_been_granted_asylum",
+        "immigration_was_paroled",
+        "immigration_is_currently_paroled",
+        "immigration_has_deportation_or_removal_withheld",
+        "immigration_was_granted_conditional_entry",
+        "immigration_is_current_cuban_haitian_entrant",
+        "immigration_is_current_cofa_resident",
+        "immigration_is_current_tps",
+        "immigration_is_current_daca",
+        "immigration_is_amerasian_immigrant",
+        "immigration_has_iraqi_or_afghan_special_immigrant_history",
+        "immigration_has_qualifying_afghan_humanitarian_parole_history",
+        "immigration_has_qualifying_ukrainian_humanitarian_parole_history",
+        "immigration_is_battered_alien_or_qualifying_relative",
+        "immigration_is_severe_trafficking_victim_or_qualifying_relative",
+        "immigration_adjusted_to_lpr_from_refugee_status",
+        "immigration_adjusted_to_lpr_from_asylum_status",
+        "immigration_adjusted_to_lpr_from_withholding_status",
+        "immigration_adjusted_to_lpr_from_conditional_entry_status",
+        "immigration_adjusted_to_lpr_from_cuban_haitian_entrant_status",
+        "immigration_adjusted_to_lpr_from_cofa_status",
+        "immigration_adjusted_to_lpr_from_amerasian_status",
+        "immigration_adjusted_to_lpr_from_iraqi_afghan_special_immigrant_status",
+        "immigration_adjusted_to_lpr_from_qualifying_afghan_parole",
+        "immigration_adjusted_to_lpr_from_qualifying_ukrainian_parole",
+        "immigration_adjusted_to_lpr_from_battered_alien_status",
+        "immigration_adjusted_to_lpr_from_severe_trafficking_victim_status",
+        "immigration_adjusted_to_lpr_from_parole_for_at_least_one_year",
+        "immigration_has_employment_authorization",
+        "immigration_has_ssn_evidence",
+        "immigration_has_ssn",
+        "immigration_ssn_is_valid_for_employment",
+        "immigration_us_entry_year",
+        "immigration_us_entry_year_lower_bound",
+        "immigration_us_entry_year_upper_bound",
+        "immigration_entry_year_is_interval_midpoint",
+        "immigration_us_entry_month_index",
+        "immigration_status_start_year_is_imputed",
+        "immigration_status_start_month_is_imputed",
+        "immigration_lpr_status_start_year",
+        "immigration_lpr_status_start_month_index",
+        "immigration_refugee_admission_year",
+        "immigration_refugee_admission_month_index",
+        "immigration_asylum_grant_year",
+        "immigration_asylum_grant_month_index",
+        "immigration_parole_start_year",
+        "immigration_parole_start_month_index",
+        "immigration_parole_period_years",
+        "immigration_withholding_start_year",
+        "immigration_withholding_start_month_index",
+        "immigration_conditional_entry_year",
+        "immigration_conditional_entry_month_index",
+        "immigration_cuban_haitian_entrant_start_year",
+        "immigration_cuban_haitian_entrant_start_month_index",
+        "immigration_amerasian_admission_year",
+        "immigration_amerasian_admission_month_index",
+        "immigration_first_qualified_status_start_year",
+        "immigration_first_qualified_status_start_month_index",
+        "immigration_first_qualified_status_start_year_is_imputed",
+        "immigration_first_qualified_status_start_month_is_imputed",
+        "immigration_first_qualified_status_started_on_or_after_1996_08_22",
         "ssn_card_type",
         "immigration_status_str"
       ],
-      "notes": "Citizenship is measured (PRCITSHP), not imputed. Non-citizens with any ASEC-UA legal-status indicator (Van Hook et al., SSRN 4662801) become OTHER_NON_CITIZEN. The CPS carries no work-authorization variable, so among residual non-citizens, workers and students spill to NON_CITIZEN_VALID_EAD in deterministic seeded order until the remaining undocumented worker count matches Pew's 8.3M and the undocumented student count matches the Higher Ed Immigration Portal's ~408k \u2014 the only forced margins. The total undocumented population is emergent (\u224813M on the 2024 ASEC, within the range of published 2023-24 estimates) and is gated against Pew's 11.0M 2022 anchor with a coarse plausibility band rather than forced; reconciling the level is the calibration lane's job. Immigration-status tags carry only statutory tests the data supports: DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival); other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true status \u2014 blanket REFUGEE/TPS labels are deliberately not fabricated because they would mislabel millions and over-grant refugee-class benefit exemptions."
+      "notes": "The stage derives a nonexclusive immigration fact surface directly from Census source evidence on both survey origins. Stable seeded draws add support only within source-compatible cohorts and never read weights or population targets. Representation against government facts belongs to calibration. The two PolicyEngine columns are a one-way lossy projection of the neutral facts; they never feed facts back into assignment."
     },
     {
       "stage": "hours_worked",

@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "4b39450dbdb8dafb83c3b627123b8026c6f82c660b66fe76f341a67c4f37c77b",
+  "documentation_sha256": "4795851fb37d5da225a5229e7d786c06d667a63487ef315f541b04cdc5a84ef0",
   "field_usage": {
-    "authored_normative_field_count": 32384,
+    "authored_normative_field_count": 32710,
     "claim_count": 49,
     "claims": [
       {
@@ -33,8 +33,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 797,
-        "pointer_sha256": "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
+        "pointer_count": 781,
+        "pointer_sha256": "293f319f5648ba1d446691774eb3606213bc68f73f8f6c72b0e2860c66b9c0c9",
         "rationale": null,
         "relative_sink_prefix": "/battery_contract",
         "source_prefix": "/authored/spec~1battery.yaml",
@@ -136,8 +136,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1673,
-        "pointer_sha256": "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
+        "pointer_count": 2294,
+        "pointer_sha256": "e3903d1386320c724ca5095cc4869589f489ec86c468fe9cda8719619425311b",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -220,8 +220,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 97,
-        "pointer_sha256": "cabaaa3d96c534f5ec37f51811c3f549d0ed20791e2892c868888c0da6d7d80e",
+        "pointer_count": 94,
+        "pointer_sha256": "3094fe330e02d6e442d28434ae46071af4eace4ca45ec56c26a23f09099eea51",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/transfer_execution",
@@ -274,8 +274,8 @@
         ],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 24488,
-        "pointer_sha256": "6382a3ed07016414c31462b8bedb24590d92b792405a89c927d85fa1bd2a8347",
+        "pointer_count": 24066,
+        "pointer_sha256": "618ba43a5d9c85c0ed58240f6a0bc3d81cbe5f8ea8e18c228df76be5cc3830f8",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/producer_graph",
@@ -288,8 +288,8 @@
         "legacy_sinks": [],
         "mode": "front_end_validation",
         "pointer_class": "all",
-        "pointer_count": 20,
-        "pointer_sha256": "e910767eb8a7df05d22ec1a901a00580a3cd5aa26b66bf881b3297e47cca66b8",
+        "pointer_count": 18,
+        "pointer_sha256": "59c8645b3ce0a5db296255f8260832b062166c64d91c9777a1912148195a3800",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/chaining",
@@ -334,8 +334,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "family_execution",
-        "pointer_count": 1769,
-        "pointer_sha256": "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        "pointer_count": 1740,
+        "pointer_sha256": "6727bfd76e611664b8685debe22ea3c1812a863af6b1145e9ff465919dec8d9f",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -349,7 +349,7 @@
         "mode": "front_end_validation",
         "pointer_class": "family_concept_validation",
         "pointer_count": 52,
-        "pointer_sha256": "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
+        "pointer_sha256": "d491a2bcc6b1f6ea437e60956fb6350a1d743cc9d5c07661d5d2c1a24ffb2611",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -514,8 +514,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1702,
-        "pointer_sha256": "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        "pointer_count": 1767,
+        "pointer_sha256": "30077fa3fae28b7bcc444dea3ab9b12defa388486471a29f48d3abfbf12ef438",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -530,8 +530,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 88,
-        "pointer_sha256": "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        "pointer_count": 89,
+        "pointer_sha256": "8d281f8f1e2f9914684150b0424ff816d0ec09ed0d9053ea5a64e877a86cc35b",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract",
@@ -544,8 +544,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 277,
-        "pointer_sha256": "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        "pointer_count": 388,
+        "pointer_sha256": "e864dbceaa2987a0b9df77d8e74f81a774baeaeb3facf28177bd885a2c7ae6e4",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/seed_site_bindings",
@@ -736,8 +736,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 824,
-        "pointer_sha256": "7537385c3fd399a2dbb7dcd8ed7cf1ff2481ed336db621eafcbfd741d5792f40",
+        "pointer_count": 1489,
+        "pointer_sha256": "aa533c9cf48dfa16ee82a19c962379499a57f9688b78ccad23b26e65f50213ca",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -750,8 +750,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 277,
-        "pointer_sha256": "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        "pointer_count": 388,
+        "pointer_sha256": "a0a37b39974d53850c713dad850289bdbc0684d31d2e90778724cd4dc9010693",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_site_bindings",
@@ -772,21 +772,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42154,
-    "consumed_field_count": 42154,
+    "configuration_field_count": 43256,
+    "consumed_field_count": 43256,
     "generation0_effect_counts": {
-      "legacy_behavior": 38476,
-      "no_generation0_effect": 3678
+      "legacy_behavior": 38072,
+      "no_generation0_effect": 5184
     },
     "mode_counts": {
-      "compiler_semantic": 27715,
-      "front_end_validation": 348,
+      "compiler_semantic": 28801,
+      "front_end_validation": 346,
       "identity_only": 103,
-      "legacy_behavior": 13988
+      "legacy_behavior": 14006
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "3fc6b9480ea81b9635bd0db56e180c2daf32a5cd2006a70d350586c570f96754",
-    "resolved_binding_field_count": 9770,
+    "pointer_inventory_sha256": "0cbfd4342e597cdf84f7820f85d7282d917c1d267e826296d5b9a6ddf2a75fb1",
+    "resolved_binding_field_count": 10546,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -802,22 +802,22 @@
       "early_targets": 48,
       "itemization_batches": 5,
       "itemization_targets": 37,
-      "late_groups": 19,
-      "late_targets": 70,
+      "late_groups": 18,
+      "late_targets": 68,
       "ownership_rows": 18,
       "primary_effective_predictor_tuples": 65,
       "primary_families": 1,
       "primary_targets": 65,
-      "producer_authored_outputs": 92,
-      "producer_compiled_outputs": 227,
-      "producer_inputs": 2744,
-      "producer_nodes": 38,
-      "producer_virtual_resources": 75,
+      "producer_authored_outputs": 161,
+      "producer_compiled_outputs": 294,
+      "producer_inputs": 2649,
+      "producer_nodes": 37,
+      "producer_virtual_resources": 73,
       "release_rungs": 5,
-      "resolved_references": 334,
-      "seed_owner_bindings": 112,
-      "seed_owner_rows": 54,
-      "seed_sites": 53,
+      "resolved_references": 402,
+      "seed_owner_bindings": 148,
+      "seed_owner_rows": 53,
+      "seed_sites": 92,
       "seed_streams": 14,
       "source_operators": 16,
       "source_stages": 37,
@@ -827,8 +827,8 @@
       "tail_control_fields": 934,
       "take_up_pipeline_steps": 28,
       "take_up_programs": 17,
-      "typed_artifacts": 84,
-      "typed_columns": 176,
+      "typed_artifacts": 83,
+      "typed_columns": 245,
       "typed_entities": 8,
       "typed_scopes": 7
     },
@@ -1074,11 +1074,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+          "schedule_sha256": "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185"
         },
         "failures": [],
         "observed": {
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+          "schedule_sha256": "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185"
         },
         "status": "covered"
       },
@@ -1095,15 +1095,15 @@
           "legacy_adapter.imputation.late_producer_schedule_receipt"
         ],
         "expected": {
-          "groups": 19,
-          "sha256": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-          "targets": 70
+          "groups": 18,
+          "sha256": "c989cbc21b0a9f35b691a4f684a9fd1693fad6613f5b6975b138e1729b50553f",
+          "targets": 68
         },
         "failures": [],
         "observed": {
-          "groups": 19,
-          "sha256": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-          "targets": 70
+          "groups": 18,
+          "sha256": "c989cbc21b0a9f35b691a4f684a9fd1693fad6613f5b6975b138e1729b50553f",
+          "targets": 68
         },
         "status": "covered"
       },
@@ -1248,23 +1248,23 @@
           "legacy_adapter.imputation.late_producer_schedule_receipt"
         ],
         "expected": {
-          "edges": 71,
-          "nodes": 38,
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
+          "edges": 69,
+          "nodes": 37,
+          "schedule_sha256": "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185",
           "waves": 6
         },
         "failures": [],
         "observed": {
-          "edges": 71,
-          "nodes": 38,
-          "schedule_sha256": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
+          "edges": 69,
+          "nodes": 37,
+          "schedule_sha256": "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185",
           "waves": 6
         },
         "status": "covered"
       },
       "producer_inputs_exact": {
         "bundle_home_match_counts": {
-          "/imputation/producer_graph/nodes/*/inputs": 38
+          "/imputation/producer_graph/nodes/*/inputs": 37
         },
         "bundle_homes": [
           "/imputation/producer_graph/nodes/*/inputs"
@@ -1275,18 +1275,18 @@
         ],
         "expected": {
           "relation": "source rows preserved exactly",
-          "rows": 2744
+          "rows": 2649
         },
         "failures": [],
         "observed": {
-          "rows": 2744
+          "rows": 2649
         },
         "status": "covered"
       },
       "producer_outputs_exact": {
         "bundle_home_match_counts": {
-          "/imputation/families/*/targets": 33,
-          "/imputation/producer_graph/nodes/*/outputs": 38
+          "/imputation/families/*/targets": 32,
+          "/imputation/producer_graph/nodes/*/outputs": 37
         },
         "bundle_homes": [
           "/imputation/producer_graph/nodes/*/outputs",
@@ -1297,14 +1297,14 @@
           "compiler_ir.producer_graph.nodes.outputs"
         ],
         "expected": {
-          "authored_rows": 92,
-          "compiled_rows": 227,
+          "authored_rows": 161,
+          "compiled_rows": 294,
           "relation": "typed closure exact"
         },
         "failures": [],
         "observed": {
-          "authored_rows": 92,
-          "compiled_rows": 227
+          "authored_rows": 161,
+          "compiled_rows": 294
         },
         "status": "covered"
       },
@@ -1321,7 +1321,7 @@
         "expected": "complete execution-row and transition-authority object",
         "failures": [],
         "observed": {
-          "sha256": "503428f6e9d98f19ed3a6ada5bc9883ae44c1b5dc27f09e60b7ac98895a99bc0"
+          "sha256": "55c9eba3255c4d84e8f2948869c6d6b795024d19eeefe4805a2c0e3dafe10745"
         },
         "status": "covered"
       },
@@ -1337,19 +1337,19 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "nodes": 38,
-          "sha256": "271a7bb8d0b3f97ff344e0b7e68184fa74738a6585c24fc8781793db669f388b"
+          "nodes": 37,
+          "sha256": "4423174b8751a0384724c337f4e580cab7e47ef7b2d2b7c3189d471a1af08943"
         },
         "failures": [],
         "observed": {
-          "nodes": 38,
-          "sha256": "271a7bb8d0b3f97ff344e0b7e68184fa74738a6585c24fc8781793db669f388b"
+          "nodes": 37,
+          "sha256": "4423174b8751a0384724c337f4e580cab7e47ef7b2d2b7c3189d471a1af08943"
         },
         "status": "covered"
       },
       "producer_resource_semantics_exact": {
         "bundle_home_match_counts": {
-          "/imputation/producer_graph/nodes/*/virtual_resources": 38,
+          "/imputation/producer_graph/nodes/*/virtual_resources": 37,
           "/imputation/producer_graph/resource_semantics": 1
         },
         "bundle_homes": [
@@ -1360,19 +1360,19 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "producer_count": 38,
-          "sha256": "afebb6725373abf5b8dd4fdb77bf2814cb6fcc569cb606c0c30963a8f65c0bab"
+          "producer_count": 37,
+          "sha256": "2564ebe2d7aa1e972cee4db10e1abf75404779eb197b17f8a970708f3b3ff2b4"
         },
         "failures": [],
         "observed": {
-          "producer_count": 38,
-          "sha256": "afebb6725373abf5b8dd4fdb77bf2814cb6fcc569cb606c0c30963a8f65c0bab"
+          "producer_count": 37,
+          "sha256": "2564ebe2d7aa1e972cee4db10e1abf75404779eb197b17f8a970708f3b3ff2b4"
         },
         "status": "covered"
       },
       "producer_virtual_resources_exact": {
         "bundle_home_match_counts": {
-          "/imputation/producer_graph/nodes/*/virtual_resources": 38
+          "/imputation/producer_graph/nodes/*/virtual_resources": 37
         },
         "bundle_homes": [
           "/imputation/producer_graph/nodes/*/virtual_resources"
@@ -1383,11 +1383,11 @@
         ],
         "expected": {
           "relation": "source node slices preserve full bindings",
-          "rows": 75
+          "rows": 73
         },
         "failures": [],
         "observed": {
-          "rows": 75
+          "rows": 73
         },
         "status": "covered"
       },
@@ -1533,7 +1533,7 @@
         "expected": {
           "groups": 12,
           "partition": "disjoint and exhaustive",
-          "sites": 53
+          "sites": 92
         },
         "failures": [],
         "observed": {
@@ -1550,8 +1550,47 @@
               "pregnancy_assignment",
               "wic_claim_assignment",
               "snap_discretionary_exemption_assignment",
-              "immigration_ead_workers_assignment",
-              "immigration_ead_students_assignment",
+              "immigration_amerasian_admission_history_support",
+              "immigration_amerasian_admission_month_within_year",
+              "immigration_asylum_grant_history_support",
+              "immigration_asylum_grant_month_within_year",
+              "immigration_asylum_grant_year_after_entry",
+              "immigration_battered_alien_or_qualifying_relative_support",
+              "immigration_battered_alien_qualified_status_start_month_within_year",
+              "immigration_battered_alien_qualified_status_start_year",
+              "immigration_cofa_status_start_month_within_year",
+              "immigration_conditional_entry_history_support",
+              "immigration_conditional_entry_month_within_year",
+              "immigration_cuban_haitian_entrant_start_month_within_year",
+              "immigration_current_cofa_resident_support",
+              "immigration_current_cuban_haitian_entrant_support",
+              "immigration_current_daca_support",
+              "immigration_current_lpr_support",
+              "immigration_current_parole_support",
+              "immigration_current_tps_support",
+              "immigration_employment_authorization_grant_support",
+              "immigration_entry_month_within_imputed_year",
+              "immigration_entry_year_within_reported_interval",
+              "immigration_first_qualified_status_1996_cutoff_day",
+              "immigration_iraqi_afghan_special_immigrant_history_support",
+              "immigration_lpr_adjustment_from_humanitarian_history_support",
+              "immigration_lpr_status_acquisition_month_within_year",
+              "immigration_lpr_status_acquisition_year",
+              "immigration_other_lawful_status_support",
+              "immigration_parole_start_month_within_year",
+              "immigration_qualifying_afghan_parole_history_support",
+              "immigration_qualifying_ukrainian_parole_history_support",
+              "immigration_refugee_admission_history_support",
+              "immigration_refugee_admission_month_within_year",
+              "immigration_severe_trafficking_victim_or_relative_support",
+              "immigration_special_immigrant_status_start_month_within_year",
+              "immigration_ssn_not_valid_for_employment_support",
+              "immigration_ssn_valid_for_employment_support",
+              "immigration_trafficking_qualified_status_start_month_within_year",
+              "immigration_trafficking_qualified_status_start_year",
+              "immigration_withholding_grant_year_after_entry",
+              "immigration_withholding_start_month_within_year",
+              "immigration_withholding_support",
               "ssi_take_up_assignment",
               "medicaid_take_up_assignment",
               "snap_state_take_up_assignment",
@@ -1616,7 +1655,7 @@
               "sipp_tip_training_cap"
             ]
           },
-          "sites": 53
+          "sites": 92
         },
         "status": "covered"
       },
@@ -1633,12 +1672,12 @@
           "compiler_ir.seed_stream_map.owners"
         ],
         "expected": {
-          "owner_rows": 54,
+          "owner_rows": 53,
           "relation": "site-order-preserving owner aggregation"
         },
         "failures": [],
         "observed": {
-          "owner_rows": 54
+          "owner_rows": 53
         },
         "status": "covered"
       },
@@ -1656,13 +1695,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "271c23eca777b63bbfecc5b0bdbfffee634e13f79dd37273172f5fadda4afefb",
-          "protocol_sha256": "870f9b43766d4c11f6dc1538bf97e360c6a85dd0d4a4a68c149595dfc0902f0a"
+          "map_sha256": "7814f71aec096132920f8c6a5758b0581d7b4988134e191a88cc00fb79e5f4e3",
+          "protocol_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "271c23eca777b63bbfecc5b0bdbfffee634e13f79dd37273172f5fadda4afefb",
-          "protocol_sha256": "870f9b43766d4c11f6dc1538bf97e360c6a85dd0d4a4a68c149595dfc0902f0a"
+          "map_sha256": "7814f71aec096132920f8c6a5758b0581d7b4988134e191a88cc00fb79e5f4e3",
+          "protocol_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33"
         },
         "status": "covered"
       },
@@ -1677,7 +1716,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "870f9b43766d4c11f6dc1538bf97e360c6a85dd0d4a4a68c149595dfc0902f0a",
+          "implementation_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1698,7 +1737,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "870f9b43766d4c11f6dc1538bf97e360c6a85dd0d4a4a68c149595dfc0902f0a",
+          "implementation_sha256": "855d2a2fbe63a5966c1e177a1343a6bdde4a57c4dae7ae7a2e31ebf8bc210e33",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1732,12 +1771,12 @@
         ],
         "expected": {
           "relation": "all site fields preserved exactly",
-          "sites": 53
+          "sites": 92
         },
         "failures": [],
         "observed": {
-          "sha256": "a0366cd518f42a240b589af3ef6580aac44ad7ed70969bcc669b365d315146ab",
-          "sites": 53
+          "sha256": "ae4f3b3005ed554e86c13ac0f62eb4c0683028773d4de4a9795de02cd7a70e1f",
+          "sites": 92
         },
         "status": "covered"
       },
@@ -1752,12 +1791,12 @@
           "compiler_ir.seed_stream_map.sites.owners"
         ],
         "expected": {
-          "bindings": 112,
-          "coverage": "all 53 sites"
+          "bindings": 148,
+          "coverage": "all 92 sites"
         },
         "failures": [],
         "observed": {
-          "bindings": 112
+          "bindings": 148
         },
         "status": "covered"
       },
@@ -1775,12 +1814,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "cd5ba8924d64da5425ee14cca82a774e3f4b2bb5aabe06df291cc3cc457287a9",
+          "sha256": "cecb13a306a87918905e6db198d3241588248939bf264f97626702c042a19f95",
           "stages": 37
         },
         "failures": [],
         "observed": {
-          "sha256": "cd5ba8924d64da5425ee14cca82a774e3f4b2bb5aabe06df291cc3cc457287a9",
+          "sha256": "cecb13a306a87918905e6db198d3241588248939bf264f97626702c042a19f95",
           "stages": 37
         },
         "status": "covered"
@@ -1840,11 +1879,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2"
+          "sha256": "6761af0fa25e80f15eb960dc75a2838c2b3a09fda3e487bb4cf9ada5dcabf6db"
         },
         "failures": [],
         "observed": {
-          "sha256": "e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2"
+          "sha256": "6761af0fa25e80f15eb960dc75a2838c2b3a09fda3e487bb4cf9ada5dcabf6db"
         },
         "status": "covered"
       },
@@ -1887,7 +1926,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b88f2d9c0f6f92c6cd81eb14d6b126afe59577b8bb392b394b2c6fbbafd195c5"
+          "sha256": "19347a97fb7531c4c6fd7460acfdfafecb3c04ab096b7797e13837a3ae944e07"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1950,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b88f2d9c0f6f92c6cd81eb14d6b126afe59577b8bb392b394b2c6fbbafd195c5"
+          "sha256": "19347a97fb7531c4c6fd7460acfdfafecb3c04ab096b7797e13837a3ae944e07"
         },
         "status": "covered"
       },
@@ -1975,7 +2014,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "04899daa491e8f089899c9df64cdb2ed44d61d11da2b4c733db6f20f38a1668a"
+          "sha256": "26507cf6ca8bf6542fd3d83929b982f613fd250164ade3d4f1d6886e7b4f79d5"
         },
         "status": "covered"
       },
@@ -2599,7 +2638,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "835b4d61de3b153b13c536e371dca6a16fad6d41e003d070f9804c7c251f3590"
+      "spec_sha256": "e97e3103df047113e393f38d33328eca48f51c4b20d3be515a69974d7fdd6af2"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2648,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "835b4d61de3b153b13c536e371dca6a16fad6d41e003d070f9804c7c251f3590"
+    "spec_sha256": "e97e3103df047113e393f38d33328eca48f51c4b20d3be515a69974d7fdd6af2"
   },
   "status": "pass"
 }

@@ -508,10 +508,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 11 = target checkpoints preserve nullable booleans explicitly; schema 2
-    # distinguishes the new values+mask codec from schema-1 checkpoints.
+    # 13 = target checkpoints use neutral facts, without source-stage targets;
+    # schema 2 distinguishes the values+mask codec from schema-1 checkpoints.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 11
+    assert identity["materializer_version"] == 13
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -716,16 +716,17 @@ def test_target_frame_checkpoint_rejects_schema_one(
         builder._read_target_frame_checkpoint(path, identity={}, target_specs=())
 
 
+@pytest.mark.parametrize("stale_materializer_version", [10, 11, 12])
 def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     monkeypatch,
     tmp_path,
     small_frame,
+    stale_materializer_version,
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    Version 11 adds the lossless nullable-boolean checkpoint codec. The version
-    constant participates in the identity comparison; this pins stored-10
-    versus current-11 rejection directly.
+    Version 13 retires target-anchored immigration assignment and source-stage
+    stock targets. Older target frames must not bypass the neutral-fact stage.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -759,10 +760,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 10 = the pre-nullable-boolean-codec world; 9 = the still-older pre-#557
-    # release-refit world. Both must miss against expected version 11.
-    stale_identity = {**dict(identity), "materializer_version": 10}
-    older_identity = {**dict(identity), "materializer_version": 9}
+    stale_identity = {
+        **dict(identity),
+        "materializer_version": stale_materializer_version,
+    }
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -778,21 +779,6 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     )
 
     assert loaded is None
-
-    builder._write_target_frame_checkpoint(
-        path,
-        frame=frame,
-        identity=older_identity,
-        compilation={"declared_targets": 1},
-    )
-    assert (
-        builder._read_target_frame_checkpoint(
-            path,
-            identity=identity,
-            target_specs=(target,),
-        )
-        is None
-    )
 
     # Instance 2 of the same class (microcosm#543): a checkpoint written by a
     # run without --ssi-take-up-prior-weight-basis must not serve a run that
@@ -1743,20 +1729,16 @@ def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
             )
         return
 
-    loaded_frame, receipt, loaded_identity = (
-        builder._load_base_pool_if_identified(
-            pool_h5,
-            allow_gate_failed_base_pool=allow_gate_failed,
-        )
+    loaded_frame, receipt, loaded_identity = builder._load_base_pool_if_identified(
+        pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
     )
 
     assert loaded_frame is frame
     assert loaded_identity is authenticated
     assert receipt["status"] == status
     assert receipt["allow_gate_failed_base_pool"] is allow_gate_failed
-    assert receipt["agreement_gate_reference"]["failure_count"] == len(
-        gate_failures
-    )
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(gate_failures)
 
 
 def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
@@ -1777,7 +1759,9 @@ def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
     )
     out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
     monkeypatch.setattr(
         builder,
         "_load_frame",
@@ -1826,7 +1810,9 @@ def test_builder_refuses_bare_stamped_pool_h5_before_generic_load(
         )
     out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
     monkeypatch.setattr(
         builder,
         "_load_frame",
@@ -4203,7 +4189,15 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
 
 @pytest.mark.parametrize(
     "terminal_mode",
-    ["merge", "integrity", "retirement", "crash", "telemetry", "puf_tail"],
+    [
+        "merge",
+        "integrity",
+        "retirement",
+        "crash",
+        "telemetry",
+        "puf_tail",
+        "immigration_drift",
+    ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
@@ -4231,6 +4225,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``puf_tail``: exact-k selection loses the original PUF capital-gains tail;
     the failure is batched while diagnostics and final-weight evidence remain,
     every later terminal group runs, and release artifacts stay suppressed.
+    ``immigration_drift``: the source-frame immigration composition passes, then
+    calibrated weights make the same selected status mix fail on the final
+    export-frame recheck; that final verdict reaches diagnostics and aborts
+    publication.
     """
     builder = _load_builder_module()
     release_id = (
@@ -4285,9 +4283,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             return 2 if terminal_mode == "puf_tail" else 4
 
         def table(self, entity):
-            assert entity == "household"
             size = self.n("household")
-            return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
+            if entity == "household":
+                return pd.DataFrame(
+                    {"household_id": np.arange(1, size + 1, dtype="int64")}
+                )
+            assert entity == "person"
+            return pd.DataFrame(
+                {
+                    "household_id": np.arange(1, size + 1, dtype="int64"),
+                    "immigration_status_str": [
+                        "REFUGEE",
+                        "LEGAL_PERMANENT_RESIDENT",
+                        "ASYLEE",
+                        "LEGAL_PERMANENT_RESIDENT",
+                    ][:size],
+                }
+            )
 
         def weights_for(self, entity):
             assert entity == "household"
@@ -4309,8 +4321,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             )
 
         def table(self, entity):
-            assert entity == "household"
-            return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
+            if entity == "household":
+                return pd.DataFrame(
+                    {"household_id": np.asarray([10, 20], dtype="int64")}
+                )
+            assert entity == "person"
+            return pd.DataFrame(
+                {
+                    "household_id": np.asarray([10, 20], dtype="int64"),
+                    "immigration_status_str": [
+                        "REFUGEE",
+                        "LEGAL_PERMANENT_RESIDENT",
+                    ],
+                }
+            )
 
     if terminal_mode == "puf_tail":
         loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
@@ -4458,7 +4482,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
-    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "immigration_drift",
+    }:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -4919,14 +4949,50 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "with_us_immigration_inputs",
         lambda frame, *, seed, time_period: frame,
     )
+
+    def fake_immigration_composition_gate(frame):
+        statuses = frame.table("person")["immigration_status_str"].astype(str)
+        household_weights = frame.weights_for("household")
+        weights = np.asarray(household_weights.values, dtype=np.float64)
+        assert len(statuses) == len(weights)
+        humanitarian = statuses.isin(
+            {"REFUGEE", "ASYLEE", "DEPORTATION_WITHHELD", "CUBAN_HAITIAN_ENTRANT"}
+        ).to_numpy(dtype=bool)
+        humanitarian_share = float(np.average(humanitarian, weights=weights))
+        calls = captured.setdefault("immigration_gate_calls", [])
+        is_final_drift = (
+            terminal_mode == "immigration_drift"
+            and household_weights.kind == WeightKind.CALIBRATED
+        )
+        calls.append(
+            {
+                "weight_kind": household_weights.kind.value,
+                "weights": weights.tolist(),
+                "statuses": statuses.tolist(),
+                "humanitarian_share": humanitarian_share,
+                "passed": not is_final_drift,
+            }
+        )
+        failure = (
+            "weighted humanitarian status share drifted from 0.500000 to "
+            f"{humanitarian_share:.6f} after calibration "
+            "[final-immigration-sentinel]"
+        )
+        return builder.GateResult(
+            name="immigration_composition",
+            passed=not is_final_drift,
+            failures=(failure,) if is_final_drift else (),
+            details={
+                "checked": True,
+                "weight_kind": household_weights.kind.value,
+                "humanitarian_share": humanitarian_share,
+            },
+        )
+
     monkeypatch.setattr(
         builder,
         "us_immigration_composition_gate",
-        lambda frame: builder.GateResult(
-            name="immigration_composition",
-            passed=True,
-            details={"checked": True},
-        ),
+        fake_immigration_composition_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -5678,6 +5744,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 passed=True,
                 details={"checked": True},
             )
+        if terminal_mode == "immigration_drift":
+            return builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            )
         # Export-frame call fails deliberately: the microcosm#547 cofailure
         # regression proves a failing post-solve signal gate batches
         # alongside the SSI delivery failure instead of masking it with an
@@ -5867,7 +5939,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # own early failure. Other modes retain the microcosm#547 delivery
         # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode in {"integrity", "retirement", "puf_tail"}
+        passes = terminal_mode in {
+            "integrity",
+            "retirement",
+            "puf_tail",
+            "immigration_drift",
+        }
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -5905,6 +5982,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_release_gate_failures(*args, **kwargs):
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        if terminal_mode == "immigration_drift":
+            final_immigration_gate = args[6]
+            assert final_immigration_gate.name == "immigration_composition"
+            assert not final_immigration_gate.passed
+            return [
+                f"Immigration composition failed: {failure}"
+                for failure in final_immigration_gate.failures
+            ]
         if terminal_mode == "retirement":
             # The degraded pre-solve contract (PR #557 round 3): the failing
             # degenerate gate is NOT raised early — the gate object itself
@@ -5973,16 +6058,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Bernoulli-law violation [final-integrity-sentinel]"
             )
             assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "immigration_drift":
+            assert message == (
+                "Release gates failed: Immigration composition failed: weighted "
+                "humanitarian status share drifted from 0.500000 to 0.255319 "
+                "after calibration [final-immigration-sentinel]"
+            )
         else:
             assert message.startswith(
                 "Release gates failed: SSI take-up delivery failed: "
                 "18_64 delivered over envelope [cofailure-sentinel]"
             )
-        assert (
-            "Other health insurance signal failed on the export frame: "
-            "premiums signal flattened [cofailure-sentinel]" in message
-        )
-        if terminal_mode != "crash":
+        if terminal_mode != "immigration_drift":
+            assert (
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]" in message
+            )
+        if terminal_mode not in {"crash", "immigration_drift"}:
             assert "ctc failed" in message
             if terminal_mode == "telemetry":
                 assert (
@@ -5990,12 +6082,32 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                     "attach_artifact('calibration_diagnostics') crashed" in message
                 )
                 assert "telemetry-crash-sentinel" in message
-        else:
+        elif terminal_mode == "crash":
             assert "health-input exploded [crash-sentinel]" in message
             assert "release-gate evaluation exploded [crash-sentinel]" in message
             assert "ctc failed" not in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
+
+    if terminal_mode == "immigration_drift":
+        immigration_calls = captured["immigration_gate_calls"]
+        assert len(immigration_calls) == 2
+        source_call, final_call = immigration_calls
+        assert source_call["weight_kind"] == "importance"
+        assert source_call["weights"] == [1.0, 1.0, 1.0, 1.0]
+        assert source_call["statuses"] == [
+            "REFUGEE",
+            "LEGAL_PERMANENT_RESIDENT",
+            "ASYLEE",
+            "LEGAL_PERMANENT_RESIDENT",
+        ]
+        assert source_call["humanitarian_share"] == pytest.approx(0.5)
+        assert source_call["passed"] is True
+        assert final_call["weight_kind"] == "calibrated"
+        assert final_call["weights"] == [12.0, 35.0]
+        assert final_call["statuses"] == ["REFUGEE", "LEGAL_PERMANENT_RESIDENT"]
+        assert final_call["humanitarian_share"] == pytest.approx(12.0 / 47.0)
+        assert final_call["passed"] is False
 
     release_dir = out / "releases" / release_id
     written_diagnostics = json.loads(
@@ -6019,6 +6131,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "Bernoulli-law violation [final-integrity-sentinel]"
             in written_diagnostics["build"]["release_gates"]["failures"]
         )
+    elif terminal_mode == "immigration_drift":
+        assert written_diagnostics["build"]["release_gates"]["failures"] == [
+            "Immigration composition failed: weighted humanitarian status share "
+            "drifted from 0.500000 to 0.255319 after calibration "
+            "[final-immigration-sentinel]"
+        ]
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
@@ -6043,6 +6161,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     cache_context = captured["materialize_kwargs"][
         "target_materialization_cache_context"
     ]
+    active_specs = captured["ssi_band_targets_specs"]
+    assert not any(
+        spec.metadata.get("target_role") == "humanitarian_immigration_stock"
+        for spec in active_specs
+    )
+    assert (
+        cache_context["target_registry_version"]
+        == TargetRegistry(active_specs, country="us").version
+    )
     expected_evidence_identity = builder._target_frame_checkpoint_identity(
         base_dataset_sha256=cache_context["base_dataset_sha256"],
         policyengine_us_version=cache_context["policyengine_us_version"],
@@ -6104,7 +6231,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
             "source_rows": 2,
         }
-    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "immigration_drift",
+    }:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
@@ -6144,6 +6277,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Other health insurance signal failed on the export frame: "
                 "premiums signal flattened [cofailure-sentinel]",
                 "ctc failed",
+            ]
+        elif terminal_mode == "immigration_drift":
+            expected_gate_failures = [
+                "Immigration composition failed: weighted humanitarian status share "
+                "drifted from 0.500000 to 0.255319 after calibration "
+                "[final-immigration-sentinel]"
             ]
         else:
             # The retry line carries the written artifact's sha256 — the
@@ -6387,7 +6526,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
     ]
-    if terminal_mode not in {"integrity", "retirement"}:
+    if terminal_mode not in {"integrity", "retirement", "immigration_drift"}:
         # A delivery miss rewrites the final measurement as the retry basis.
         expected_ssi_event_order.append("write:us_ssi_take_up.json")
     assert captured["ssi_event_order"] == expected_ssi_event_order
@@ -8828,6 +8967,75 @@ def test_population_age_targets_materialize_person_age_counts(
     assert compilation["dropped_target_names"] == []
 
 
+def test_source_generation_does_not_define_fiscal_target_values() -> None:
+    builder = _load_builder_module()
+    assert not hasattr(builder, "us_immigration_controls")
+    assert not hasattr(builder, "_humanitarian_immigration_stock_specs")
+    assert not hasattr(builder, "_materialize_humanitarian_immigration_stock_targets")
+
+
+def test_dense_and_l0_solvers_consume_compiled_registry_target_set() -> None:
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    for solver_name in ("calibrate", "calibrate_l0_refit"):
+        calls = [
+            node
+            for node in ast.walk(main_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == solver_name
+        ]
+        assert len(calls) == 1
+        assert ast.unparse(calls[0].args[0]) == "target_frame"
+        assert ast.unparse(calls[0].args[1]) == "registry.to_target_set()"
+
+
+def test_main_rechecks_immigration_composition_on_export_for_terminal_gates() -> None:
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    final_assignments = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "final_immigration_gate"
+            for target in node.targets
+        )
+    ]
+    assert len(final_assignments) == 1
+    final_assignment = final_assignments[0]
+    assert isinstance(final_assignment.value, ast.Call)
+    assert getattr(final_assignment.value.func, "id", None) == (
+        "us_immigration_composition_gate"
+    )
+    assert ast.unparse(final_assignment.value.args[0]) == "export_frame"
+
+    terminal_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "_release_gate_failures"
+        and node.lineno > final_assignment.lineno
+    ]
+    assert len(terminal_calls) == 1
+    assert ast.unparse(terminal_calls[0].args[6]) == "final_immigration_gate"
+
+
 def test_unknown_ledger_filter_metadata_fails_closed() -> None:
     builder = _load_builder_module()
     target = TargetSpec(
@@ -9160,9 +9368,7 @@ def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> N
     builder = _load_builder_module()
 
     with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
-        builder._exact_k_ladder_manifest_payload(
-            **_gate_failed_exact_k_inputs(builder)
-        )
+        builder._exact_k_ladder_manifest_payload(**_gate_failed_exact_k_inputs(builder))
 
 
 def _gate_failed_base_pool_receipt() -> dict[str, object]:

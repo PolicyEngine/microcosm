@@ -73,28 +73,28 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2"
+        "6761af0fa25e80f15eb960dc75a2838c2b3a09fda3e487bb4cf9ada5dcabf6db"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
     } == {
         "declared_surface": (
-            "5b5a4470e2612365f253e933833bb08b8f9c857ea0bc175b958ead9a74abee01"
+            "3cd7bd2a96595c6a836029db16580a05aa727751ba58dd9a43962eb8783f0ec1"
         ),
         "gap_fill_plan": (
             "f41319a95750a441676bc6599b1de6bb49a87b45d83b9263d627c402cfe8e750"
         ),
         "joint_metric_registry": (
-            "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
+            "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
         ),
         "late_producer_schedule": (
-            "1b81157b0e21e4763884620ec27b5c4e6e36cc28237273c24eeccdef05a7fbca"
+            "5308a5644ab9d74009c7dace075d23d4b9f378288cdee07c82b01d0c1dbb6a1a"
         ),
         "metric_registry": (
-            "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
+            "abb2e8c9ec8982ac93d0a33ebc9888a27fd2642ab86833bffa1a4411c98e2b00"
         ),
         "post_puf_transfer_surface": (
-            "a31e8a9512ec829c98745ed9ca2177e66d529bdc4b096ecfa2b4452f7bd41d73"
+            "cb9d878ed03fdc3dfcacd1b3516650a6afe830ca2910d572cf21978498636b58"
         ),
         "post_transfer_calibration": (
             "141519684c72ab84a077ae0f5716a0416f1e19da57262948e459633cbe560576"
@@ -191,7 +191,7 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
     ]
     assert (
         projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "1fa79f7d95660fa9c5e33d153d547238d321eac7550fc43c4f0b3d87fd99a185"
     )
 
 

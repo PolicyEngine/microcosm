@@ -2093,12 +2093,12 @@ def _assert_invariants(
     expected = {
         "gap_fill_stacked_spine": (13, 48),
         "primary_puf_qrf": (1, 65),
-        "late_producer_dag": (19, 70),
+        "late_producer_dag": (18, 68),
     }
     expected_dtypes = {
         "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
         "primary_puf_qrf": {"bool": 8, "float": 55, "int": 2},
-        "late_producer_dag": {"bool": 17, "float": 50, "int": 1, "str": 2},
+        "late_producer_dag": {"bool": 17, "float": 50, "int": 1},
     }
     for stage, (family_count, target_count) in expected.items():
         rows = by_stage.get(stage, [])
@@ -2119,13 +2119,16 @@ def _assert_invariants(
             )
     graph = result["producer_graph"]
     compiled_schedule, _ = _derive_canonical_schedule(result)
-    if (
+    producer_graph_counts = (
         len(graph["nodes"]),
         len(compiled_schedule["edges"]),
         len(compiled_schedule["waves"]),
         len(graph["ownership_matrix"]),
-    ) != (38, 71, 6, 18):
-        raise RuntimeError("US producer graph count invariant changed.")
+    )
+    if producer_graph_counts != (37, 69, 6, 18):
+        raise RuntimeError(
+            f"US producer graph count invariant changed: {producer_graph_counts}."
+        )
     input_count = sum(len(node["inputs"]) for node in graph["nodes"])
     authored_output_count = sum(len(node["outputs"]) for node in graph["nodes"])
     compiled_outputs = _compile_node_outputs(result, graph)
@@ -2152,7 +2155,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    expected_graph_counts = (2649, 161, 294, 35, 0, 207)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "
@@ -2272,13 +2275,43 @@ def _assert_invariants(
     ):
         raise RuntimeError("Live resource-semantics SHA is not canonical.")
     if projected["late_producer_resource_semantics"] != live_resource_semantics:
+        observed_resource_semantics = projected["late_producer_resource_semantics"]
+        changed_resource_keys = sorted(
+            key
+            for key in set(observed_resource_semantics) | set(live_resource_semantics)
+            if observed_resource_semantics.get(key) != live_resource_semantics.get(key)
+        )
+        observed_producers = {
+            row["producer"]: row
+            for row in observed_resource_semantics.get("producers", [])
+        }
+        live_producers = {
+            row["producer"]: row for row in live_resource_semantics.get("producers", [])
+        }
+        changed_producers = sorted(
+            producer
+            for producer in set(observed_producers) | set(live_producers)
+            if observed_producers.get(producer) != live_producers.get(producer)
+        )
+        first_changed_producer = changed_producers[0] if changed_producers else None
+        first_changed_detail = (
+            {
+                "producer": first_changed_producer,
+                "projected": observed_producers.get(first_changed_producer),
+                "live": live_producers.get(first_changed_producer),
+            }
+            if first_changed_producer is not None
+            else None
+        )
         raise RuntimeError(
-            "Resolved resource-semantics projection differs from the live receipt."
+            "Resolved resource-semantics projection differs from the live receipt: "
+            f"keys={changed_resource_keys}, producers={changed_producers}, "
+            f"first_detail={first_changed_detail}."
         )
     execution_contracts = projected["transfer_execution_contract_identities"]
     if (len(execution_contracts["early"]), len(execution_contracts["late"])) != (
         2,
-        19,
+        18,
     ):
         raise RuntimeError("US transfer execution-contract coverage changed.")
     expected_with_resources = {
@@ -2347,7 +2380,7 @@ def build_imputation() -> dict[str, object]:
             "splits": "declared_only",
             "split_after": _split_after(),
             "memory_policy": "release_after_draw",
-            "keep_together": [["ssn_card_type", "immigration_status_str"]],
+            "keep_together": [],
         },
         # These are required eligibility semantics, not newly-added runtime
         # predictors.  The waiver below attests the exact constants-era gaps.

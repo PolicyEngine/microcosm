@@ -29,6 +29,9 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.acs_transfer_bank import (
     AcsTransferTargetBankStore,
 )
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_ALL_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.fit import Regime
@@ -84,6 +87,9 @@ def _donor_frame() -> Frame:
             ),
             "age": [45.0, 43.0, 30.0, 8.0, 68.0, 66.0, 39.0, 17.0],
             "is_female": [False, True, True, False, False, True, True, False],
+            "PRCITSHP": [1, 1, 1, 1, 1, 1, 5, 5],
+            "PENATVTY": [57, 57, 57, 57, 57, 57, 164, 373],
+            "PEINUSYR": [0, 0, 0, 0, 0, 0, 28, 24],
             "is_household_head": [True, False, True, False, True, False, True, False],
             "employment_income_before_lsr": [
                 80_000.0,
@@ -208,6 +214,9 @@ def _recipient_frame() -> Frame:
             ),
             "age": [41.0, 40.0, 27.0, 72.0, 69.0, 15.0],
             "is_female": [False, True, True, False, True, False],
+            "CIT": [1, 1, 5, 1, 1, 5],
+            "POBP": [6, 6, 164, 36, 36, 373],
+            "YOEP": [np.nan, np.nan, 2023, np.nan, np.nan, 2015],
             "is_household_head": [True, False, True, True, False, False],
             "employment_income_before_lsr": [
                 65_000.0,
@@ -677,7 +686,6 @@ def test_explicit_declared_plan_preserves_deferred_geography(
         lambda: plan,
     )
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
-
     result = transfer_acs_inputs(
         _recipient_frame(),
         _donor_frame(),
@@ -798,18 +806,9 @@ def test_explicit_transfer_adds_requested_model_inputs(
             "has_esi": [True, False, True, False, True, False, True, False],
             "is_blind": [False, False, False, False, True, False, False, False],
             "other_medical_expenses": [10.0, 0.0, 5.0, 0.0, 8.0, 1.0, 0.0, 2.0],
-            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
-            "immigration_status_str": ["CITIZEN"] * 6
-            + ["UNDOCUMENTED", "UNDOCUMENTED"],
         },
     )
-    required = {
-        "has_esi",
-        "is_blind",
-        "other_medical_expenses",
-        "ssn_card_type",
-        "immigration_status_str",
-    }
+    required = {"has_esi", "is_blind", "other_medical_expenses"}
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
     _MeanQRF.calls = []
 
@@ -819,10 +818,6 @@ def test_explicit_transfer_adds_requested_model_inputs(
         target_families={
             "person": {
                 "model_required_boolean": ("has_esi", "is_blind"),
-                "model_required_categorical": (
-                    "ssn_card_type",
-                    "immigration_status_str",
-                ),
                 "model_required_numeric": ("other_medical_expenses",),
             }
         },
@@ -831,46 +826,25 @@ def test_explicit_transfer_adds_requested_model_inputs(
         max_targets_per_fit=1,
     )
 
-    person = result.frame.person
-    assert required.issubset(person.columns)
+    assert required.issubset(result.frame.person.columns)
     assert {entry.column for entry in result.imputed_inputs}.issuperset(required)
-    required_families = {
+    assert {
         entry.family.split("__batch_", 1)[0]
         for entry in result.imputed_inputs
         if entry.column in required
-    }
-    assert required_families == {
-        "model_required_boolean",
-        "model_required_categorical",
-        "model_required_numeric",
-    }
-    assert set(person["ssn_card_type"]) <= {"CITIZEN", "NONE"}
-    observed_pairs = set(
-        zip(
-            donor.person["ssn_card_type"],
-            donor.person["immigration_status_str"],
-            strict=True,
+    } == {"model_required_boolean", "model_required_numeric"}
+
+
+@pytest.mark.parametrize("column", US_IMMIGRATION_ALL_OUTPUT_COLUMNS)
+def test_immigration_outputs_cannot_be_qrf_transfer_targets(column: str) -> None:
+    with pytest.raises(ValueError, match="whole-pool source outputs"):
+        transfer_acs_inputs(
+            _recipient_frame(),
+            _donor_frame(),
+            target_families={"person": {"custom": (column,)}},
+            seed=4,
+            n_estimators=1,
         )
-    )
-    imputed_pairs = set(
-        zip(
-            person["ssn_card_type"],
-            person["immigration_status_str"],
-            strict=True,
-        )
-    )
-    assert imputed_pairs <= observed_pairs
-    joint_calls = [
-        call
-        for call in _MeanQRF.calls
-        if "__acs_transfer_immigration_status_pair" in call["targets"]
-    ]
-    assert joint_calls
-    assert all(
-        "ssn_card_type" not in call["targets"]
-        and "immigration_status_str" not in call["targets"]
-        for call in joint_calls
-    )
 
 
 def test_large_target_family_is_split_to_bound_retained_qrf_forests(
@@ -1153,74 +1127,6 @@ def test_target_bank_fsyncs_file_then_parent_directory_after_each_rename(
         ]
 
 
-def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    _lock_bank_fixture_threads(monkeypatch)
-    donor = _with_columns(
-        _donor_frame(),
-        "person",
-        {
-            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
-            "immigration_status_str": ["CITIZEN"] * 6
-            + ["UNDOCUMENTED", "UNDOCUMENTED"],
-        },
-    )
-    families = {
-        "person": {
-            "source_operator_immigration": (
-                "ssn_card_type",
-                "immigration_status_str",
-            )
-        }
-    }
-
-    def run(
-        target_bank: AcsTransferTargetBankStore | None = None,
-    ) -> AcsTransferResult:
-        return transfer_acs_inputs(
-            _recipient_frame(),
-            donor,
-            target_families=families,
-            seed=37,
-            n_estimators=1,
-            target_bank=target_bank,
-        )
-
-    monolithic = run()
-    bank_root = tmp_path / "joint-bank"
-    cold_bank = _bank_store(bank_root)
-    cold = run(cold_bank)
-    _assert_transfer_results_exact(cold, monolithic)
-
-    warm_bank = _bank_store(bank_root)
-    resumed = run(warm_bank)
-    _assert_transfer_results_exact(resumed, monolithic)
-    for result in (monolithic, cold, resumed):
-        person = result.frame.table("person")
-        assert all(
-            person[target].dtype == CANONICAL_STRING_DTYPE
-            for target in ("ssn_card_type", "immigration_status_str")
-        )
-        assert all(
-            not pattern.target_regimes
-            for record in result.imputed_inputs
-            for pattern in record.patterns
-        )
-
-    targets = warm_bank.receipt()["targets"]
-    assert set(targets) == {"0"}
-    assert targets["0"]["source"] == "checkpoint"
-    assert targets["0"]["descriptor"]["model_target"] == (
-        "__acs_transfer_immigration_status_pair"
-    )
-    assert targets["0"]["descriptor"]["exported_targets"] == [
-        "ssn_card_type",
-        "immigration_status_str",
-    ]
-
-
 def test_target_bank_interrupt_resumes_durable_prefix_byte_identically(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1467,9 +1373,8 @@ def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
     )
 
     person = result.frame.person
-    eligible = (
-        person["is_female"].astype(bool)
-        & person["age"].between(15, 44, inclusive="both")
+    eligible = person["is_female"].astype(bool) & person["age"].between(
+        15, 44, inclusive="both"
     )
     assert person.loc[eligible, "is_pregnant"].all()
     assert not person.loc[~eligible, "is_pregnant"].any()
@@ -1490,7 +1395,9 @@ def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
         .first()
         .sum()
     )
-    record = next(item for item in result.imputed_inputs if item.column == "is_pregnant")
+    record = next(
+        item for item in result.imputed_inputs if item.column == "is_pregnant"
+    )
     receipt = record.structural_receipt
     assert receipt is not None
     assert sum(pattern.recipient_rows for pattern in record.patterns) == (
@@ -1576,12 +1483,8 @@ def test_pregnancy_partial_clone_fanout_receipt_categories_are_disjoint(
     record = result.imputed_inputs[0]
     receipt = record.structural_receipt
     assert receipt is not None
-    assert receipt["preexisting_value_fanout_rows"] == int(
-        (missing & eligible).sum()
-    )
-    assert receipt["ineligible_rows_assigned_false"] == int(
-        (missing & ~eligible).sum()
-    )
+    assert receipt["preexisting_value_fanout_rows"] == int((missing & eligible).sum())
+    assert receipt["ineligible_rows_assigned_false"] == int((missing & ~eligible).sum())
     assert (
         receipt["preexisting_value_fanout_rows"]
         + receipt["ineligible_rows_assigned_false"]

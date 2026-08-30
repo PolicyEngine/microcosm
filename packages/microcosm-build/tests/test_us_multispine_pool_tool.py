@@ -22,6 +22,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
+import microcosm.build.us_runtime.immigration as immigration_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
@@ -182,6 +183,43 @@ def _many_household_source_frame(
         US_SCHEMA,
         {"household": Weights(np.full(count, 2.0), WeightKind.DESIGN)},
         pd.Series(["fixture"] * count, dtype=object),
+    )
+
+
+def _with_household_design_weights(frame: Frame, values: np.ndarray) -> Frame:
+    """Return a source fixture with replacement household design weights."""
+
+    weights = np.asarray(values, dtype=np.float64)
+    assert weights.shape == (len(frame.table("household")),)
+    return Frame(
+        {entity: frame.table(entity).copy(deep=True) for entity in frame.entities},
+        frame.schema,
+        {"household": Weights(weights, frame.weights_for("household").kind)},
+        frame.strata.copy(deep=True),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _neutral_source_frames(
+    *,
+    asec_count: int,
+    acs_count: int,
+    sample_fraction: float,
+    sample_seed: int,
+    state_fips: str | None = None,
+    puma: str | None = None,
+) -> tuple[Frame, Frame]:
+    """Return survey fixtures with native design weights, without status targets."""
+
+    return (
+        _many_household_source_frame(count=asec_count, state_fips=state_fips),
+        _many_household_source_frame(
+            count=acs_count,
+            measured_offset=1_000.0,
+            state_fips=state_fips,
+            puma=puma,
+        ),
     )
 
 
@@ -1222,6 +1260,37 @@ def _canonical_late_calibration_owner_receipt(
     return owner
 
 
+def _with_neutral_immigration_fixture(frame: Frame) -> Frame:
+    """Assign survey-derived neutral facts without reshaping rows or weights."""
+
+    person = (
+        frame.table("person")
+        .drop(
+            columns=list(immigration_module.US_IMMIGRATION_ALL_OUTPUT_COLUMNS),
+            errors="ignore",
+        )
+        .copy()
+    )
+    channels = person.get(
+        support_channel_column("person"),
+        pd.Series("asec", index=person.index),
+    ).astype(str)
+    acs = channels.eq("acs").to_numpy(dtype=bool)
+    person["PRCITSHP"] = np.where(acs, np.nan, 1.0)
+    person["PENATVTY"] = np.where(acs, np.nan, 57.0)
+    person["PEINUSYR"] = np.where(acs, np.nan, 0.0)
+    person["CIT"] = np.where(acs, 5.0, np.nan)
+    person["POBP"] = np.where(acs, 164.0, np.nan)
+    person["YOEP"] = np.where(acs, 2022.0, np.nan)
+    person["age"] = 50
+    person["source_year"] = 2024
+    person["source_household_id"] = person["person_household_id"]
+    person["source_person_id"] = person["person_id"]
+    return immigration_module.with_us_immigration_inputs(
+        _replace_person(frame, person), seed=0, time_period=2024
+    )
+
+
 def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
     policy = acs_transfer_module.acs_transfer_execution_contract_identity(
         targets=("is_pregnant",),
@@ -1333,8 +1402,8 @@ def _canonical_late_transfer_receipt(
         "targets": targets,
         "completion": {
             "status": "complete",
-            "group_count": 19,
-            "target_count": 70,
+            "group_count": 18,
+            "target_count": 68,
             "residual_null_rows": 0,
         },
     }
@@ -1362,7 +1431,14 @@ def _canonical_late_dag_receipt(
             "phase": "post_clone",
             "operator_order": [operator],
             "suboperators": [{"operator": operator, "order_index": 0}],
-            "cps_source_evidence": cps_source_evidence,
+            "cps_source_evidence": (
+                None
+                if multispine_pool_module.POOL_OPERATOR_CONTRACTS[
+                    operator
+                ].execution_scope
+                == "whole_pool"
+                else cps_source_evidence
+            ),
         }
         for operator in source_order
     }
@@ -1551,6 +1627,27 @@ def _canonical_late_dag_receipt(
             }
             for output in contract.outputs
         ]
+        if producer_name == "source:with_us_immigration_inputs" and frame is not None:
+            for declared in declared_inputs:
+                evidence = declared["evidence"]
+                for alternative in evidence["alternatives"]:
+                    for column in alternative:
+                        if column["entity"] != "frame":
+                            column["scope_rows"] = int(
+                                stacked_spine_module._late_required_scope_mask(
+                                    frame,
+                                    entity=column["entity"],
+                                    required_scope=column["required_scope"],
+                                ).sum()
+                            )
+                evidence.pop("sha256")
+                evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
+            output_surface = [
+                stacked_spine_module._late_output_column_evidence(
+                    frame, output=output, producer_receipt=producer_receipt
+                )
+                for output in contract.outputs
+            ]
         row: dict[str, object] = {
             "execution_index": index,
             "producer": producer_name,
@@ -1610,8 +1707,9 @@ def _authorized_late_impute_fixture(
     *,
     authority: Mapping[str, object] | None = None,
 ) -> tuple[Frame, dict[str, object], str]:
-    """Bind one structurally signed synthetic DAG proof to a live fixture frame."""
+    """Bind one structurally signed fixture DAG proof to its live frame."""
 
+    frame = _with_neutral_immigration_fixture(frame)
     tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
     for entity, table in tables.items():
         if support_channel_column(entity) not in table:
@@ -1686,15 +1784,17 @@ def _install_stacked_entrypoint_stubs(
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     source_manifest = pool_tool.load_acs_source_manifest()
     puf_donor = pd.DataFrame({"fixture": np.arange(7)})
+    asec_source, acs_source = _neutral_source_frames(
+        asec_count=100,
+        acs_count=1_200,
+        sample_fraction=0.01,
+        sample_seed=578,
+        state_fips="06" if real_geography_assignment else None,
+        puma="0600100" if real_geography_assignment else None,
+    )
     loaded = pool_tool._LoadedInputs(
-        asec=_many_household_source_frame(
-            state_fips="06" if real_geography_assignment else None,
-        ),
-        acs=_many_household_source_frame(
-            measured_offset=1_000.0,
-            state_fips="06" if real_geography_assignment else None,
-            puma="0600100" if real_geography_assignment else None,
-        ),
+        asec=asec_source,
+        acs=acs_source,
         acs_rent_donor=pd.DataFrame({"fixture": [1.0]}),
         puf_donor=puf_donor,
         asec_raw_stage_checkpoint={"artifact": "fixture-raw-stage"},
@@ -1835,8 +1935,8 @@ def _install_stacked_entrypoint_stubs(
         )
         assert counts == {
             ("person", "strike_benefits"): {
-                "authorized_null_rows": 1,
-                "recipient_rows": 1,
+                "authorized_null_rows": 12,
+                "recipient_rows": 12,
                 "donor_rows": 1,
             }
         }
@@ -1947,9 +2047,10 @@ def _install_stacked_entrypoint_stubs(
                 "family": group.family,
                 "ordered_targets": list(group.targets),
             }
+        late_base = _with_neutral_immigration_fixture(primary_puf_result.frame)
         late_tables = {
-            entity: primary_puf_result.frame.table(entity).copy(deep=True)
-            for entity in primary_puf_result.frame.entities
+            entity: late_base.table(entity).copy(deep=True)
+            for entity in late_base.entities
         }
         for (
             spec
@@ -1977,22 +2078,17 @@ def _install_stacked_entrypoint_stubs(
             index=late_person.index,
             dtype="string",
         )
-        late_tables.update(
-            {
-                name: primary_puf_result.frame.link(name)
-                for name in primary_puf_result.frame.links
-            }
-        )
+        late_tables.update({name: late_base.link(name) for name in late_base.links})
         late_frame = Frame(
             late_tables,
-            primary_puf_result.frame.schema,
+            late_base.schema,
             {
-                entity: primary_puf_result.frame.weights_for(entity)
-                for entity in primary_puf_result.frame.weighted_entities
+                entity: late_base.weights_for(entity)
+                for entity in late_base.weighted_entities
             },
-            primary_puf_result.frame.strata,
-            mass_log=primary_puf_result.frame.mass_log,
-            metadata=primary_puf_result.frame.metadata,
+            late_base.strata,
+            mass_log=late_base.mass_log,
+            metadata=late_base.metadata,
         )
         dag_receipt = _canonical_late_dag_receipt(
             pool_tool,
@@ -2092,6 +2188,18 @@ def _install_stacked_entrypoint_stubs(
 
     monkeypatch.setattr(pool_tool, "stacked_completeness_gate", completeness)
     monkeypatch.setattr(pool_tool, "by_origin_battery", battery)
+
+    def immigration(_frame: Frame) -> GateResult:
+        order.append("immigration")
+        if terminal == "immigration_red":
+            return GateResult(
+                name="fixture_immigration",
+                passed=False,
+                failures=("fixture immigration terminal failure",),
+            )
+        return GateResult(name="fixture_immigration", passed=True)
+
+    monkeypatch.setattr(pool_tool, "us_immigration_composition_gate", immigration)
     real_publish = pool_tool._write_stacked_outputs
 
     def publish(*args, **kwargs):
@@ -2152,6 +2260,7 @@ def test_stacked_operator_target_requires_preparation_before_activation_authorit
     [
         ("success", 0, "iterating"),
         ("red", 1, "failed"),
+        ("immigration_red", 1, "failed"),
         ("error", None, "failed"),
     ],
 )
@@ -2214,6 +2323,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "simulate",
             "completeness",
             "battery",
+            "immigration",
             "publish",
         ]
         # Exported rows must never embed host-absolute paths; pytest tmp
@@ -2232,6 +2342,28 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         manifest = json.loads(
             (tmp_path / "stacked-pool.manifest.json").read_text(encoding="utf-8")
         )
+        if terminal == "immigration_red":
+            assert manifest["status"] == "gate_failed"
+            assert manifest["simulation_ready"] is False
+            assert manifest["terminal_gates"]["passed"] is False
+            assert (
+                manifest["terminal_gates"]["gates"]["fixture_battery"]["passed"] is True
+            )
+            assert manifest["terminal_gates"]["gates"]["fixture_immigration"] == {
+                "passed": False,
+                "failures": ["fixture immigration terminal failure"],
+                "details": {},
+            }
+            assert row.gate_verdicts["fixture_battery"]["verdict"] == "passed"
+            assert row.gate_verdicts["fixture_immigration"]["verdict"] == "failed"
+            immigration_receipt = json.loads(
+                _receipt_file_from_reference(
+                    row.gate_verdicts["fixture_immigration"]["receipt"]
+                ).read_text(encoding="utf-8")
+            )
+            assert immigration_receipt["terminal_gates"]["gates"][
+                "fixture_immigration"
+            ]["failures"] == ["fixture immigration terminal failure"]
         assert manifest["schema_version"] == pool_tool.POOL_MANIFEST_SCHEMA_VERSION
         assert manifest["pipeline"] == "us-stacked-pool"
         assert manifest["pool_h5"]["materializer_version"] == (
@@ -2248,8 +2380,8 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         published_transfer = published_dag["post_puf_transfer"]
         assert published_transfer["completion"] == {
             "status": "complete",
-            "group_count": 19,
-            "target_count": 70,
+            "group_count": 18,
+            "target_count": 68,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -2300,13 +2432,14 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "materialize_multispine_agreement_outputs",
             "stacked_completeness_gate",
             "by_origin_battery",
+            "us_immigration_composition_gate",
         ]
         assert manifest["sampling"] == {
             **manifest["sampling"],
             "sample_fraction": 0.01,
             "fraction_token": "f001",
             "sample_seed": 578,
-            "realized_households": {"asec": 1, "acs": 1},
+            "realized_households": {"asec": 1, "acs": 12},
         }
 
 
@@ -2499,7 +2632,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "835b4d61de3b153b13c536e371dca6a16fad6d41e003d070f9804c7c251f3590",
+            "spec_sha256": "e97e3103df047113e393f38d33328eca48f51c4b20d3be515a69974d7fdd6af2",
         },
     }
 
@@ -2702,7 +2835,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "5378bb9189aec96f50da22aac71e5bd2c3d919e9795f6ef2147e0bc9c739dd8e",
+        "spec_sha256": "ea202eebdfe30a68323af5cdce6abcc16b94c9f3f18f44ae5369fe7c1d9a5702",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -3246,6 +3379,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     assert set(row.gate_verdicts) == {
         "fixture_completeness",
         "fixture_battery",
+        "fixture_immigration",
         "pipeline_error",
     }
     terminal_path = _receipt_file_from_reference(
@@ -3518,7 +3652,7 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
     assert changed == current
 
 
-def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
+def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3551,7 +3685,7 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
 
     current = identity()
     pool_code = current["pool_code"]
-    assert current["materializer_version"] == 12
+    assert current["materializer_version"] == 13
     assert current["stacked_authority"]["version"] == 11
     assert current["geography_assignment"] == (
         pool_tool._stacked_geography_assignment_contract()
@@ -3574,6 +3708,7 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
         "materialize_multispine_agreement_outputs",
         "stacked_completeness_gate",
         "by_origin_battery",
+        "us_immigration_composition_gate",
     ]
     assert pool_code["late_producer_schedule"] == pool_tool._json_ready(
         pool_tool.us_late_producer_schedule_receipt()
@@ -3584,7 +3719,7 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
     assert resource_semantics_sha256 == stacked_spine_module._canonical_sha256(
         unsigned_resource_semantics
     )
-    assert resource_semantics["producer_count"] == 38
+    assert resource_semantics["producer_count"] == 37
     resource_rows = {
         row["producer"]: row["resources"] for row in resource_semantics["producers"]
     }
@@ -3779,7 +3914,7 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
         )
     )
 
-    assert current["materializer_version"] == stale_qrf["materializer_version"] == 12
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 13
     assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
@@ -3827,7 +3962,7 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
     assert "checkpoint base identity is stale" in capsys.readouterr().out
 
 
-def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
+def test_pool_envelope_v8_preserves_stacked_bank_identity_but_rejects_v7(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3860,7 +3995,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         legacy.setattr(
             pool_tool,
             "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
-            6,
+            7,
         )
         assert identity() == current_identity
         legacy_store = pool_tool._PoolStageCheckpointStore(
@@ -3881,7 +4016,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         )
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert identity() == current_identity
     current_store = pool_tool._PoolStageCheckpointStore(
         checkpoint_root,
@@ -4034,7 +4169,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -4088,7 +4223,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 12
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 13
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -4107,9 +4242,15 @@ def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
+    asec_source, acs_source = _neutral_source_frames(
+        asec_count=10,
+        acs_count=120,
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
     stack = pool_tool.assemble_stacked_spine(
-        _many_household_source_frame(),
-        _many_household_source_frame(measured_offset=1_000.0),
+        asec_source,
+        acs_source,
         sample_fraction=0.10,
         sample_seed=578,
     )
@@ -4230,12 +4371,14 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "simulate",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     assert simulated_resume_order == [
         "build_stacked_pool",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     assert transferred_resume_order == [
@@ -4246,6 +4389,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "simulate",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     assert assembled_resume_order == [
@@ -4260,6 +4404,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "simulate",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     final_rows = [
@@ -4488,12 +4633,18 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     checkpoint_store = keywords["checkpoint"].__self__
     assert checkpoint_store.base_identity["materializer_version"] == 3
     assert "late_producer_schedule" not in checkpoint_store.base_identity["pool_code"]
+    assert (
+        "source_operator_immigration"
+        not in checkpoint_store.base_identity["pool_code"]["transfer_target_families"][
+            "person"
+        ]
+    )
 
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
-    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 9
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 10
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4
     assert "materializer_version" not in manifest["pool_h5"]
@@ -4521,9 +4672,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # The PE-US 1.819.0 compatibility edits legitimately move the pool-code
-        # checkpoint identities embedded in the otherwise legacy publication.
-        "manifest": "63c6e6973079f0b793d5435113aaae66184564b70271f8af120fecdbb5015f63",
+        # Removing the immigration QRF family moves only the embedded
+        # checkpoint identities and identity-keyed paths. Reinstating that
+        # family in the identity exactly reproduces the prior manifest hash;
+        # the legacy pool and agreement bytes above remain unchanged.
+        "manifest": "dd6b002bcf2c8a789c6a3ac4b733a9735ccb67bd105cd3751dfdccf3c84726c6",
     }
 
 
@@ -5802,7 +5955,7 @@ def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
         manifest = pool_tool._read_json_object(
             cold_store.checkpoint_manifest_path(stage)
         )
-        assert manifest["materializer_version"] == 7
+        assert manifest["materializer_version"] == 8
         loaded = pool_tool.load_frame_checkpoint(path).frame
         if stage == "assembled":
             assert "fixture_declared_boolean" not in loaded.person
@@ -5823,11 +5976,11 @@ def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
     assert resumed.frame.person["fixture_declared_boolean"].isna().sum() == 1
 
 
-def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
+def test_simulated_v8_checkpoint_accepts_both_string_encodings_without_rewrite(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """V7 authenticates both physical string encodings as one logical frame."""
+    """V8 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -5839,7 +5992,7 @@ def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
     canonical_v2_bytes = checkpoint_path.read_bytes()
     canonical_identity = loaded.metadata["identity"]
-    assert loaded.metadata["materializer_version"] == 7
+    assert loaded.metadata["materializer_version"] == 8
     assert any(
         column["dtype"] == str(CANONICAL_STRING_DTYPE)
         for columns in loaded.metadata["frame_schema"]["entities"].values()
@@ -5870,7 +6023,7 @@ def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
     banked_v2_bytes = checkpoint_path.read_bytes()
     assert banked_v2_bytes != canonical_v2_bytes
     assert legacy_metadata["identity"] == canonical_identity
-    assert legacy_metadata["materializer_version"] == 7
+    assert legacy_metadata["materializer_version"] == 8
     assert any(
         column["dtype"] == "object"
         for columns in legacy_metadata["frame_schema"]["entities"].values()
@@ -6245,7 +6398,7 @@ def test_tail_support_contract_identity_mutation_rebuilds_pool_checkpoints(
     assert changed_store.load_deepest() is None
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7))
 def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -6278,9 +6431,9 @@ def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
             assert manifest["identity"]["materializer_version"] == legacy_version
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-    assert current_store.base_identity["materializer_version"] == 7
+    assert current_store.base_identity["materializer_version"] == 8
     assert current_store.load_deepest() is None
 
     output = capsys.readouterr().out

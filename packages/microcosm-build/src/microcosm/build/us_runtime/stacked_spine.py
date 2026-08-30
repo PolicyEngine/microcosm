@@ -99,6 +99,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     TargetFamilies,
     transfer_acs_inputs,
 )
+from microcosm.build.us_runtime.immigration import US_IMMIGRATION_ALL_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -2997,12 +2998,6 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
         "categorical_tvd": (
             ("person", "model_required_discrete", "own_children_in_household"),
             (
-                "person",
-                "source_operator_immigration",
-                "immigration_status_str",
-            ),
-            ("person", "source_operator_immigration", "ssn_card_type"),
-            (
                 "tax_unit",
                 "puf_tax_itemization",
                 "first_home_mortgage_origination_year",
@@ -3064,16 +3059,7 @@ CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY = _explicit_origin_battery_metric_regis
 )
 CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY: Mapping[
     tuple[str, str, tuple[str, ...], int], str
-] = MappingProxyType(
-    {
-        (
-            "person",
-            "source_operator_immigration",
-            ("ssn_card_type", "immigration_status_str"),
-            0,
-        ): "categorical_tvd"
-    }
-)
+] = MappingProxyType({})
 CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
     profile_id="us_stacked_origin_battery_support",
     version=1,
@@ -4220,7 +4206,9 @@ def _validate_pregnancy_structural_receipt(
         or structural.get("status") != "verified"
     ):
         raise ValueError(f"{boundary}: pregnancy structural policy is invalid.")
-    counts = {field: structural.get(field) for field in _PREGNANCY_STRUCTURAL_COUNT_FIELDS}
+    counts = {
+        field: structural.get(field) for field in _PREGNANCY_STRUCTURAL_COUNT_FIELDS
+    }
     if any(
         not isinstance(value, int) or isinstance(value, bool) or value < 0
         for value in counts.values()
@@ -4250,9 +4238,7 @@ def _validate_pregnancy_structural_receipt(
             != row_counts["imputed_rows"]
         )
     ):
-        raise ValueError(
-            f"{boundary}: pregnancy structural accounting is invalid."
-        )
+        raise ValueError(f"{boundary}: pregnancy structural accounting is invalid.")
 
 
 def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
@@ -4793,7 +4779,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(groups, Mapping) or set(groups) != set(expected_groups):
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer group surface is not the "
-            "canonical 19-group partition; production manifest emission is "
+            "canonical 18-group partition; production manifest emission is "
             "forbidden."
         )
     validated_calibration_keys: set[str] = set()
@@ -4882,6 +4868,12 @@ def validate_stacked_post_puf_transfer_receipt(
                 )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
+            target = target_key.rsplit("/", 1)[1]
+            if "post_transfer_reconciliation" in target_receipt:
+                raise ValueError(
+                    f"{boundary}: retired immigration reconciliation is "
+                    f"attached to {target_key!r}."
+                )
             if spec is None:
                 if "qrf_pattern_evidence" in target_receipt:
                     raise ValueError(
@@ -4903,7 +4895,7 @@ def validate_stacked_post_puf_transfer_receipt(
                 target_receipt,
                 expected_entity=group.entity,
                 expected_family=group.family,
-                expected_target=target_key.rsplit("/", 1)[1],
+                expected_target=target,
                 expected_family_targets=group.targets,
                 expected_regime_targets=expected_regime_targets,
                 boundary=f"{boundary} target {target_key}",
@@ -5022,7 +5014,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer target surface is not the "
-            "canonical 70-target surface; production manifest emission is "
+            "canonical 68-target surface; production manifest emission is "
             "forbidden."
         )
     for name, group in expected_groups.items():
@@ -5054,8 +5046,8 @@ def validate_stacked_post_puf_transfer_receipt(
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
-        "group_count": 19,
-        "target_count": 70,
+        "group_count": 18,
+        "target_count": 68,
         "residual_null_rows": 0,
     }:
         raise ValueError(
@@ -7312,11 +7304,21 @@ def _late_output_column_evidence(
             }
         )
     else:
+        output_values = table.loc[scope, [output.column]]
+        is_immigration_output = output.column in US_IMMIGRATION_ALL_OUTPUT_COLUMNS
+        if is_immigration_output:
+            # Persisted H5 may restore a RangeIndex as an ordinary integer
+            # Index. Bind actual person identity and ordered values, not that
+            # incidental pandas representation.
+            output_values = table.loc[
+                scope, [frame.schema.entity_id_column(output.entity), output.column]
+            ].reset_index(drop=True)
         payload.update(
             {
                 "status": "present",
                 "content_sha256": _late_table_values_sha256(
-                    table.loc[scope, [output.column]]
+                    output_values,
+                    normalize_strings=is_immigration_output,
                 ),
             }
         )
@@ -8067,6 +8069,36 @@ def validate_stacked_late_producer_transition_authority(
     """Validate the anchor after declared downstream operators have run."""
 
     validate_stacked_late_producer_receipt(receipt, boundary=boundary)
+    transfer = receipt.get("post_puf_transfer")
+    assert isinstance(transfer, Mapping)
+    # Downstream fiscal and gate operators intentionally change the complete
+    # late-output digest, but they do not own immigration facts or the legacy
+    # projection. Authenticate their source-stage evidence directly, without
+    # interpreting any population total as an assignment control.
+    producer_name = "source:with_us_immigration_inputs"
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+    execution = receipt["execution"]
+    assert isinstance(execution, list)
+    source_row = next(row for row in execution if row["producer"] == producer_name)
+    producer_receipt = source_row["producer_receipt"]
+    for output, recorded in zip(
+        contract.outputs, source_row["output_surface"], strict=True
+    ):
+        if output.column not in US_IMMIGRATION_ALL_OUTPUT_COLUMNS:
+            continue
+        live = _late_output_column_evidence(
+            frame, output=output, producer_receipt=producer_receipt
+        )
+        if live != recorded:
+            raise ValueError(
+                f"{boundary}: immigration output {output.entity}.{output.column} "
+                "differs from its sealed neutral source-stage evidence."
+            )
+    validate_stacked_post_puf_transfer_receipt(
+        transfer,
+        boundary=boundary,
+        frame=frame,
+    )
     _validate_late_transition_authority(
         frame,
         receipt,
@@ -8222,7 +8254,15 @@ def validate_stacked_late_producer_receipt(
         normalized = dict(source_suboperators[0])
         normalized["order_index"] = index
         normalized_suboperators.append(normalized)
-        source_evidence.append(source_receipt.get("cps_source_evidence"))
+        evidence = source_receipt.get("cps_source_evidence")
+        if POOL_OPERATOR_CONTRACTS[operator].execution_scope == "whole_pool":
+            if evidence is not None:
+                raise ValueError(
+                    f"{boundary}: whole-pool source producer {operator!r} may "
+                    "not claim a CPS-only source-evidence projection."
+                )
+        else:
+            source_evidence.append(evidence)
     if suboperators != normalized_suboperators:
         raise ValueError(
             f"{boundary}: stacked source completion is not reconstructed from "
@@ -8303,7 +8343,7 @@ def validate_stacked_late_producer_receipt(
     if _json_ready(transfer["targets"]) != _json_ready(reconstructed_targets):
         raise ValueError(
             f"{boundary}: aggregate late-transfer targets are not reconstructed "
-            "from the nineteen producer receipts."
+            "from the eighteen producer receipts."
         )
 
     unsigned = dict(receipt)
@@ -8777,12 +8817,12 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 134
-    or len(set(_canonical_surface_keys)) != 134
+    len(_canonical_surface_keys) != 132
+    or len(set(_canonical_surface_keys)) != 132
     or len(_canonical_early_transfer_keys) != 48
-    or len(_canonical_late_transfer_keys) != 70
+    or len(_canonical_late_transfer_keys) != 68
     or len(_canonical_late_puf_producer_keys) != 43
-    or len(_canonical_late_source_producer_keys) != 29
+    or len(_canonical_late_source_producer_keys) != 27
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
     != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
@@ -8790,13 +8830,13 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 118
+    or len(_canonical_full_transfer_keys) != 116
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
     or set(_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR)
     != set(_canonical_surface_keys)
-    or len(_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR) != 1
+    or _CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR
     or any(
         (entity, family, column, clone_index) not in _canonical_surface_keys
         or _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR[
@@ -8810,10 +8850,10 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 118-target "
-        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 134-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "Canonical stacked authority must partition the exact 116-target "
+        "transfer surface into 48 early gap-fill and 68 post-PUF targets "
+        "inside an exact 132-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 43 PUF-clone and 27 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
 
@@ -10260,10 +10300,16 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         derive_schedule_d=derive_schedule_d,
         execution_contract=execution_contract,
         regime_evidence_targets=tuple(
-            (spec.entity, spec.target)
-            for spec in _stacked_post_transfer_calibration_specs(
-                surface,
-                stage="late_transfer",
+            dict.fromkeys(
+                (
+                    *(
+                        (spec.entity, spec.target)
+                        for spec in _stacked_post_transfer_calibration_specs(
+                            surface,
+                            stage="late_transfer",
+                        )
+                    ),
+                )
             )
         ),
     )
@@ -10935,7 +10981,7 @@ def _aggregate_late_transfer_result(
     ],
     execution_order: Sequence[str],
 ) -> StackedPostPufTransferResult:
-    """Bind all bounded group outcomes into the canonical 70-target receipt."""
+    """Bind all bounded group outcomes into the canonical 68-target receipt."""
 
     expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
     if set(group_results) != set(expected_groups):
@@ -13241,7 +13287,7 @@ def by_origin_battery(
     *,
     tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Run the canonical 134-target plus joint by-origin battery."""
+    """Run the canonical 132-target by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,

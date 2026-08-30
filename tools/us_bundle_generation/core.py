@@ -990,13 +990,15 @@ def build_vintages() -> dict[str, Any]:
 def build_catalogs() -> dict[str, Any]:
     """Build the complete physical column contract catalog.
 
-    PolicyEngine metadata covers the 142 modeled inputs.  The producer graph
-    additionally emits generation-0 Frame structure, linkage, support
-    provenance, and resolved weights which are deliberately outside the engine
-    variable index; those contracts are derived from the canonical producer
-    output authority below instead of being hand-maintained alongside it.
+    PolicyEngine metadata covers the modeled compatibility inputs.  The
+    producer graph additionally emits neutral immigration facts, generation-0
+    Frame structure, linkage, support provenance, and resolved weights which
+    are deliberately outside the engine variable index; those contracts are
+    derived from the canonical producer output authority below instead of
+    being hand-maintained alongside it.
     """
 
+    from microcosm.build.us_runtime.immigration import US_IMMIGRATION_FACT_COLUMNS
     from microcosm.build.us_runtime.multispine_pool import (
         POOL_DEFERRED_TRANSFER_INPUTS,
         pool_input_surface,
@@ -1066,7 +1068,7 @@ def build_catalogs() -> dict[str, Any]:
         or output["column"] == "@resolved_weight"
     }
     missing_graph_contracts = graph_physical_keys - seen
-    if len(graph_physical_keys) != 134 or len(missing_graph_contracts) != 34:
+    if len(graph_physical_keys) != 203 or len(missing_graph_contracts) != 103:
         raise ValueError(
             "Canonical producer/catalog closure changed; "
             f"physical_outputs={len(graph_physical_keys)}, "
@@ -1080,6 +1082,29 @@ def build_catalogs() -> dict[str, Any]:
             definition_period = "year"
             nullable = False
             domain = "frame_weight"
+        elif entity == "person" and column in US_IMMIGRATION_FACT_COLUMNS:
+            dtype = (
+                "int64"
+                if column.endswith("_year")
+                or column.endswith("_month_index")
+                or column
+                in {
+                    "immigration_us_entry_year_lower_bound",
+                    "immigration_us_entry_year_upper_bound",
+                    "immigration_parole_period_years",
+                }
+                else "bool"
+            )
+            unit = (
+                "count"
+                if column.endswith("_month_index")
+                else "year"
+                if dtype == "int64"
+                else "boolean"
+            )
+            definition_period = "year"
+            nullable = False
+            domain = "immigration_fact"
         elif column == "TYPEHUGQ":
             # TYPEHUGQ is source-categorical and only defined on ACS rows.
             dtype = "float64"
@@ -1143,8 +1168,8 @@ def build_catalogs() -> dict[str, Any]:
         seen.add(key)
     if not deferred <= {key.split(".", 1)[1] for key in seen}:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
-    if len(seen) != 176:
-        raise ValueError(f"Closed US catalog must contain 176 keys, got {len(seen)}.")
+    if len(seen) != 245:
+        raise ValueError(f"Closed US catalog must contain 245 keys, got {len(seen)}.")
     return {
         "metadata_waivers": [
             {

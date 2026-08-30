@@ -27,6 +27,52 @@ from microcosm.build.us_runtime.puf_source_agi import (
     PUF_AGGREGATE_DISAGGREGATION_SEED,
 )
 
+# Independently audited from immigration.py's literal support/year salts and
+# event_month call names. Keep this separate from the production seed ledger.
+AUDITED_IMMIGRATION_DRAW_LABELS = (
+    "amerasian_admission_history_support",
+    "amerasian_admission_month_within_year",
+    "asylum_grant_history_support",
+    "asylum_grant_month_within_year",
+    "asylum_grant_year_after_entry",
+    "battered_alien_or_qualifying_relative_support",
+    "battered_alien_qualified_status_start_month_within_year",
+    "battered_alien_qualified_status_start_year",
+    "cofa_status_start_month_within_year",
+    "conditional_entry_history_support",
+    "conditional_entry_month_within_year",
+    "cuban_haitian_entrant_start_month_within_year",
+    "current_cofa_resident_support",
+    "current_cuban_haitian_entrant_support",
+    "current_daca_support",
+    "current_lpr_support",
+    "current_parole_support",
+    "current_tps_support",
+    "employment_authorization_grant_support",
+    "entry_month_within_imputed_year",
+    "entry_year_within_reported_interval",
+    "first_qualified_status_1996_cutoff_day",
+    "iraqi_afghan_special_immigrant_history_support",
+    "lpr_adjustment_from_humanitarian_history_support",
+    "lpr_status_acquisition_month_within_year",
+    "lpr_status_acquisition_year",
+    "other_lawful_status_support",
+    "parole_start_month_within_year",
+    "qualifying_afghan_parole_history_support",
+    "qualifying_ukrainian_parole_history_support",
+    "refugee_admission_history_support",
+    "refugee_admission_month_within_year",
+    "severe_trafficking_victim_or_relative_support",
+    "special_immigrant_status_start_month_within_year",
+    "ssn_not_valid_for_employment_support",
+    "ssn_valid_for_employment_support",
+    "trafficking_qualified_status_start_month_within_year",
+    "trafficking_qualified_status_start_year",
+    "withholding_grant_year_after_entry",
+    "withholding_start_month_within_year",
+    "withholding_support",
+)
+
 EXPECTED_LEGACY_V1_SITES = {
     "acs_qrf_fit_draw",
     "acs_rent_archived_training_cap",
@@ -41,8 +87,7 @@ EXPECTED_LEGACY_V1_SITES = {
     "energy_subsidy_training_cap",
     "exact_k_pcg64_selection",
     "housing_inputs_training_cap",
-    "immigration_ead_students_assignment",
-    "immigration_ead_workers_assignment",
+    *(f"immigration_{label}" for label in AUDITED_IMMIGRATION_DRAW_LABELS),
     "legacy_congressional_district_assignment",
     "legacy_geography_ladder",
     "legacy_puma_ladder",
@@ -137,10 +182,7 @@ AUDITED_SOURCE_BY_SITE = {
     "wic_claim_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/wic_claim.py",
     "snap_discretionary_exemption_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/snap_discretionary_exemption.py",
     **dict.fromkeys(
-        (
-            "immigration_ead_workers_assignment",
-            "immigration_ead_students_assignment",
-        ),
+        (f"immigration_{label}" for label in AUDITED_IMMIGRATION_DRAW_LABELS),
         "packages/microcosm-build/src/microcosm/build/us_runtime/immigration.py",
     ),
     "ssi_take_up_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py",
@@ -278,12 +320,25 @@ def test_audited_source_manifest_is_independent_and_total() -> None:
 
 
 def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
-    worker = LEGACY_V1_PROTOCOL.site("immigration_ead_workers_assignment")
-    student = LEGACY_V1_PROTOCOL.site("immigration_ead_students_assignment")
-    assert "literal_salt=immigration:ead_workers" in worker.seed_material
-    assert "literal_salt=immigration:ead_students" in student.seed_material
-    assert worker.consumption_order[0] == "all_person_rows_then_worker_candidate_mask"
-    assert student.consumption_order[0] == "all_person_rows_then_student_candidate_mask"
+    support = LEGACY_V1_PROTOCOL.site("immigration_refugee_admission_history_support")
+    month = LEGACY_V1_PROTOCOL.site("immigration_refugee_admission_month_within_year")
+    assert (
+        "literal_salt=immigration:refugee_admission_history_support"
+        in support.seed_material
+    )
+    assert (
+        "literal_salt=immigration:refugee_admission_month_within_year"
+        in month.seed_material
+    )
+    for site in (support, month):
+        assert site.consumption_order[0] == (
+            "all_person_rows_before_source_fact_support_mask"
+        )
+        assert site.seed_material[2:] == (
+            "complete_source_year:source_household_id:source_person_id",
+            "else_complete_source_year:source_person_id",
+            "else_complete_person_id",
+        )
 
     count = LEGACY_V1_PROTOCOL.site("source_count_calibration")
     joint = LEGACY_V1_PROTOCOL.site("source_joint_count_calibration")
@@ -304,7 +359,12 @@ def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
 
     vectors = (
         (0, "snap_take_up", "2024:10:2", 9_193_979_365_434_741_258),
-        (0, "immigration:ead_workers", "2024:2", 3_846_788_339_087_460_008),
+        (
+            0,
+            "immigration:refugee_admission_history_support",
+            "2024:2",
+            18_060_565_836_495_564_010,
+        ),
         (
             578,
             "aca:takes_up_aca_if_eligible",

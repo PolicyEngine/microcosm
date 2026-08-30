@@ -10,7 +10,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
+from microcosm.build.spec_engine.seeds import (
+    LEGACY_V1_PROTOCOL,
+    US_IMMIGRATION_NEUTRAL_DRAW_LABELS,
+)
 from microcosm.build.us_runtime.h5_io import US_STACKED_POOL_OPERATOR_ORDER
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_DERIVE_OPERATOR_ORDER,
@@ -102,7 +105,7 @@ def _stages_with_operation(
 def build_seed_site_bindings(
     source_document: Mapping[str, Any],
 ) -> list[dict[str, object]]:
-    """Bind all 53 legacy-v1 sites to their concrete execution owners."""
+    """Bind all declared sites to their concrete execution owners."""
 
     source_ids = _source_stage_ids(source_document)
     transfer_nodes = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
@@ -173,8 +176,10 @@ def build_seed_site_bindings(
         "snap_discretionary_exemption_assignment": source(
             "snap_abawd_discretionary_exemption"
         ),
-        "immigration_ead_workers_assignment": source("immigration_status"),
-        "immigration_ead_students_assignment": source("immigration_status"),
+        **{
+            f"immigration_{label}": source("immigration_status")
+            for label in US_IMMIGRATION_NEUTRAL_DRAW_LABELS
+        },
         "ssi_take_up_assignment": source("ssi_take_up"),
         "medicaid_take_up_assignment": source("medicaid_take_up"),
         "snap_state_take_up_assignment": source("snap_state_take_up"),
@@ -203,9 +208,9 @@ def build_seed_site_bindings(
     }
 
     protocol_site_ids = tuple(site.id for site in LEGACY_V1_PROTOCOL.sites)
-    if len(protocol_site_ids) != 53 or set(owners) != set(protocol_site_ids):
+    if len(protocol_site_ids) != 92 or set(owners) != set(protocol_site_ids):
         raise RuntimeError(
-            "legacy-v1 seed owner ledger must cover exactly 53 protocol sites; "
+            "legacy-v1 seed owner ledger must cover exactly 92 protocol sites; "
             f"missing={sorted(set(protocol_site_ids) - owners.keys())!r}, "
             f"extra={sorted(owners.keys() - set(protocol_site_ids))!r}"
         )

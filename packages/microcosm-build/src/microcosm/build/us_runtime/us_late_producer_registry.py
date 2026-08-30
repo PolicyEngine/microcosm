@@ -1,7 +1,7 @@
 """Canonical producer-input DAG for the US stacked late stage.
 
 This module is the data-only production declaration that binds the primary
-PUF pass, the sixteen post-clone source operators, and the nineteen bounded
+PUF pass, the post-clone source operators, and the bounded
 late-transfer groups.  It deliberately separates two kinds of input data:
 
 * :class:`ProducerInput` values are the role-scoped dependencies which can
@@ -99,7 +99,11 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v16 declares person.s_corp_income as a whole-pool primary-PUF output: its
+# v18 moves all immigration facts and their PE projection into a target-free
+# whole-pool source operator and removes the paired transfer/reconciliation.
+# v17 binds the ASEC and ACS source-scoped evidence read by constrained
+# immigration transfer and reconciliation. v16 declares person.s_corp_income
+# as a whole-pool primary-PUF output: its
 # certified combined-source semantics are carried by partnership_income, while
 # the separate S-corporation leaf is an exact-zero universe. v15 content-binds
 # the complete late dual-producer ownership matrix and
@@ -122,9 +126,12 @@ __all__ = [
 # implicit. Receipt v3 reconciles repeated physical evidence and scope
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
-# resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
+# resources it consumed. Receipt v4 additionally persists and validates the
+# paired constrained-immigration reconciliation and QRF evidence. Receipt v5
+# retires that reconciliation and authenticates neutral source output digests. Receipt v2
+# introduced exact virtual-resource payloads.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 18
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 5
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
@@ -166,7 +173,9 @@ _GROUP_ENTITIES = _STRUCTURAL_ENTITIES[1:]
 _ASSEMBLY_MANIFEST_INPUT = "@us_spine_assembly_manifest"
 _STACKED_MANIFEST_INPUT = "@us_stacked_spine_manifest"
 _PUF_ATTACHMENT_MANIFEST_INPUT = "@us_puf_clone_attachment_manifest"
-_STRING_LATE_TARGETS = frozenset({"ssn_card_type", "immigration_status_str"})
+# Immigration strings are emitted by the whole-pool immigration source
+# operator.  No string-valued target remains on the late QRF surface.
+_STRING_LATE_TARGETS: frozenset[str] = frozenset()
 _BOOLEAN_LATE_TARGETS = frozenset(
     {
         "is_incapable_of_self_care",
@@ -945,17 +954,18 @@ _source_input_inventories = {
     ),
     "with_us_immigration_inputs": _inventory(
         "with_us_immigration_inputs",
-        *_raw_person_requirements(
-            (
+        *(
+            _single(
+                f"immigration_asec:{column}",
+                "person",
+                column,
+                value_kind="finite_numeric",
+                required_scope=_ASEC_SOURCE_SCOPE,
+            )
+            for column in (
                 "PRCITSHP",
                 "PEINUSYR",
                 "PENATVTY",
-                "A_AGE",
-                "A_MARITL",
-                "A_SPOUSE",
-                "A_HSCOL",
-                "WSAL_VAL",
-                "SEMP_VAL",
                 "MCARE",
                 "CAID",
                 "IHSFLG",
@@ -973,10 +983,53 @@ _source_input_inventories = {
                 "SPM_CAPHOUSESUB",
             )
         ),
+        _single(
+            "immigration_raw_age",
+            "person",
+            "A_AGE",
+            optional=True,
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "immigration_acs:CIT",
+            "person",
+            "CIT",
+            value_kind="finite_numeric",
+            required_scope=_ACS_SOURCE_SCOPE,
+        ),
+        _single(
+            "immigration_acs:POBP",
+            "person",
+            "POBP",
+            value_kind="finite_numeric",
+            required_scope=_ACS_SOURCE_SCOPE,
+        ),
+        _single(
+            "immigration_acs:YOEP",
+            "person",
+            "YOEP",
+            value_kind="column_present",
+            required_scope=_ACS_SOURCE_SCOPE,
+        ),
+        *(
+            _single(
+                f"immigration_acs:{column}",
+                "person",
+                column,
+                value_kind="column_present",
+                required_scope=_ACS_SOURCE_SCOPE,
+            )
+            for column in ("SSP", "SSIP")
+        ),
+        _single("age", "person", "age", value_kind="finite_numeric"),
         _single("person_id", "person", "person_id"),
-        _single("resolved_person_weight", "person", "@resolved_weight"),
         _requirement(
             "stable_source_identity",
+            (
+                _column("person", "source_year"),
+                _column("person", "source_household_id"),
+                _column("person", "source_person_id"),
+            ),
             (
                 _column("person", "source_year"),
                 _column("person", "source_person_id"),
@@ -1004,7 +1057,18 @@ _source_input_inventories = {
 _source_input_inventories = {
     operator: SourceInputInventory(
         operator,
-        (*inventory.requirements, *_POST_CLONE_SOURCE_WRAPPER_REQUIREMENTS),
+        (
+            *inventory.requirements,
+            *(
+                requirement
+                for requirement in _POST_CLONE_SOURCE_WRAPPER_REQUIREMENTS
+                if not (
+                    POOL_OPERATOR_CONTRACTS[operator].execution_scope
+                    == _WHOLE_POOL_SCOPE
+                    and requirement.label == "source_wrapper:source_evidence"
+                )
+            ),
+        ),
     )
     for operator, inventory in _source_input_inventories.items()
 }
@@ -1352,18 +1416,8 @@ def _bounded_transfer_groups(
     if max_targets_per_fit <= 0:
         raise ValueError("US late transfer max_targets_per_fit must be positive.")
     groups: list[TransferProducerGroup] = []
-    immigration_pair = ("ssn_card_type", "immigration_status_str")
-    immigration_set = set(immigration_pair)
     for entity, family, targets in _surface_rows(surface):
-        atoms: list[tuple[str, ...]] = []
-        pair_added = False
-        for target in targets:
-            if target in immigration_set and immigration_set.issubset(targets):
-                if not pair_added:
-                    atoms.append(immigration_pair)
-                    pair_added = True
-                continue
-            atoms.append((target,))
+        atoms = [(target,) for target in targets]
         batches: list[tuple[str, ...]] = []
         current: list[str] = []
         for atom in atoms:
@@ -1408,25 +1462,25 @@ CANONICAL_US_LATE_TRANSFER_GROUPS = _bounded_transfer_groups(
     max_targets_per_fit=_DEFAULT_MAX_TARGETS_PER_FIT,
 )
 if (
-    len(CANONICAL_US_LATE_TRANSFER_GROUPS) != 19
-    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 70
+    len(CANONICAL_US_LATE_TRANSFER_GROUPS) != 18
+    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 68
 ):
     raise RuntimeError(
-        "Canonical US late transfer must contain exactly 19 bounded groups "
-        "and 70 ordered targets."
+        "Canonical US late transfer must contain exactly 18 bounded groups "
+        "and 68 ordered targets."
     )
 _canonical_late_targets = {
     target for group in CANONICAL_US_LATE_TRANSFER_GROUPS for target in group.targets
 }
 if (
     len(_BOOLEAN_LATE_TARGETS) != 17
-    or len(_STRING_LATE_TARGETS) != 2
+    or _STRING_LATE_TARGETS
     or not (_BOOLEAN_LATE_TARGETS | _STRING_LATE_TARGETS) <= _canonical_late_targets
-    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 51
+    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS) != 51
 ):
     raise RuntimeError(
-        "Canonical US late target kinds must partition 70 targets into "
-        "51 numeric, 17 boolean, and 2 string inputs."
+        "Canonical US late target kinds must partition 68 targets into "
+        "51 numeric and 17 boolean inputs."
     )
 US_LATE_TRANSFER_INPUT_INVENTORIES: Mapping[str, SourceInputInventory] = (
     MappingProxyType(
@@ -1443,8 +1497,13 @@ def _source_outputs() -> dict[str, tuple[ProducerOutput, ...]]:
     for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
         family = POOL_OPERATOR_CONTRACTS[operator].family
         outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family]
+        coverage_scope = (
+            _WHOLE_POOL_SCOPE
+            if POOL_OPERATOR_CONTRACTS[operator].execution_scope == "whole_pool"
+            else _ASEC_SOURCE_SCOPE
+        )
         result[operator] = tuple(
-            ProducerOutput(entity, column, _ASEC_SOURCE_SCOPE)
+            ProducerOutput(entity, column, coverage_scope)
             for entity in sorted(outputs)
             for column in sorted(
                 set(outputs[entity]) - set(FORMULA_OWNED_SOURCE_COLUMNS.get(entity, ()))
@@ -1845,6 +1904,11 @@ def _build_registry() -> dict[str, ProducerContract]:
                             )
                         )
                         direct_dependency_keys.add(key)
+        source_scope = (
+            _WHOLE_POOL_SCOPE
+            if POOL_OPERATOR_CONTRACTS[operator].execution_scope == "whole_pool"
+            else _ASEC_SOURCE_SCOPE
+        )
         registry[name] = ProducerContract(
             name=name,
             kind="post_clone_source",
@@ -1854,7 +1918,7 @@ def _build_registry() -> dict[str, ProducerContract]:
                     *_inventory_contract_inputs(
                         name,
                         US_LATE_SOURCE_INPUT_INVENTORIES[operator],
-                        required_scope=_ASEC_SOURCE_SCOPE,
+                        required_scope=source_scope,
                     ),
                 }
             ),
@@ -2076,7 +2140,8 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
             ),
             "top_binding": (
                 "entry_and_output_frame_sha256_execution_chain_source_"
-                "completion_and_nineteen_transfer_groups"
+                "completion_eighteen_transfer_groups_and_whole_pool_"
+                "immigration_assignment"
             ),
             "transition_authority": {
                 "authority_id": US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,

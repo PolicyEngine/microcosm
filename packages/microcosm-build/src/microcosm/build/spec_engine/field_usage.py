@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_384
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_770
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_154
+EXPECTED_AUTHORED_FIELD_COUNT = 32_710
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_546
+EXPECTED_CONFIGURATION_FIELD_COUNT = 43_256
 
 
 class FieldUsageError(AssertionError):
@@ -249,13 +249,9 @@ def _claim_rows(
         )
 
     if claim.pointer_class == "stacked_geography_source_identity":
-        return [
-            row for row in rows if is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if is_stacked_geography_source_identity(row[0])]
     if claim.pointer_class == "source_validation":
-        return [
-            row for row in rows if not is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if not is_stacked_geography_source_identity(row[0])]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -345,8 +341,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        797,
-        "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
+        781,
+        "293f319f5648ba1d446691774eb3606213bc68f73f8f6c72b0e2860c66b9c0c9",
     ),
     "bundle_country": (
         1,
@@ -369,8 +365,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
     ),
     "catalog_columns": (
-        1_673,
-        "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
+        2_294,
+        "e3903d1386320c724ca5095cc4869589f489ec86c468fe9cda8719619425311b",
     ),
     "catalog_metadata_waivers": (
         5,
@@ -393,8 +389,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "e6f1851db8754554dcbab4b09ca911a63ddba82fdd9743a7af542f216037bf9d",
     ),
     "imputation_chaining": (
-        20,
-        "e910767eb8a7df05d22ec1a901a00580a3cd5aa26b66bf881b3297e47cca66b8",
+        18,
+        "59c8645b3ce0a5db296255f8260832b062166c64d91c9777a1912148195a3800",
     ),
     "imputation_concepts": (
         20,
@@ -402,11 +398,11 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "imputation_family_concept_validation": (
         52,
-        "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
+        "d491a2bcc6b1f6ea437e60956fb6350a1d743cc9d5c07661d5d2c1a24ffb2611",
     ),
     "imputation_family_execution": (
-        1_769,
-        "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        1_740,
+        "6727bfd76e611664b8685debe22ea3c1812a863af6b1145e9ff465919dec8d9f",
     ),
     "imputation_gap_fill_schedule": (
         5,
@@ -425,12 +421,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_488,
-        "6382a3ed07016414c31462b8bedb24590d92b792405a89c927d85fa1bd2a8347",
+        24_066,
+        "618ba43a5d9c85c0ed58240f6a0bc3d81cbe5f8ea8e18c228df76be5cc3830f8",
     ),
     "imputation_transfer_execution": (
-        97,
-        "cabaaa3d96c534f5ec37f51811c3f549d0ed20791e2892c868888c0da6d7d80e",
+        94,
+        "3094fe330e02d6e442d28434ae46071af4eace4ca45ec56c26a23f09099eea51",
     ),
     "imputation_waiver_records": (
         70,
@@ -457,12 +453,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        824,
-        "7537385c3fd399a2dbb7dcd8ed7cf1ff2481ed336db621eafcbfd741d5792f40",
+        1_489,
+        "aa533c9cf48dfa16ee82a19c962379499a57f9688b78ccad23b26e65f50213ca",
     ),
     "resolved_seed_site_bindings": (
-        277,
-        "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        388,
+        "a0a37b39974d53850c713dad850289bdbc0684d31d2e90778724cd4dc9010693",
     ),
     "resolved_vintage_authorities": (
         63,
@@ -489,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_702,
-        "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        1_767,
+        "30077fa3fae28b7bcc444dea3ab9b12defa388486471a29f48d3abfbf12ef438",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -509,16 +505,16 @@ _PINS: dict[str, tuple[int, str]] = {
         "cf0000464013118955571dac2691d4cc1b900c97c6570349b489678cdf937649",
     ),
     "spine_pipeline_contract": (
-        88,
-        "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        89,
+        "8d281f8f1e2f9914684150b0424ff816d0ec09ed0d9053ea5a64e877a86cc35b",
     ),
     "spine_sampling": (
         17,
         "29c6c1b3243e178783e7ab139993ba3a9b42d62edd4e9e4e1f3b28688daf2c6d",
     ),
     "spine_seed_site_bindings": (
-        277,
-        "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        388,
+        "e864dbceaa2987a0b9df77d8e74f81a774baeaeb3facf28177bd885a2c7ae6e4",
     ),
     "spine_support_roles": (
         29,
@@ -1125,7 +1121,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1468,9 +1466,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),

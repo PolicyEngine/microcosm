@@ -76,6 +76,11 @@ from microcosm.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from microcosm.build.us_runtime.axiom_immigration import (
+    US_IMMIGRATION_AXIOM_BINDING_CONTRACT,
+    US_IMMIGRATION_AXIOM_MODULE,
+    us_immigration_axiom_engine,
+)
 from microcosm.build.us_runtime.capital_gain_details import (
     CAPITAL_GAIN_DETAILS_ARCHIVED_DERIVATION_URL,
     CAPITAL_GAIN_DETAILS_ARCHIVED_EXPORT_URL,
@@ -210,8 +215,12 @@ from microcosm.build.us_runtime.domestic_production import (
 from microcosm.build.us_runtime.education_assistance_source import (
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
     ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS,
+    ASEC_LABOR_FORCE_STATUS_COLUMN,
+    ASEC_LABOR_FORCE_STATUS_VALID_CODES,
     fetch_asec_education_assistance_source,
     fill_asec_education_assistance_source,
+    fill_asec_labor_force_status_source,
     load_asec_education_assistance_sources,
 )
 from microcosm.build.us_runtime.education_inputs import (
@@ -373,14 +382,18 @@ from microcosm.build.us_runtime.housing_inputs import (
 from microcosm.build.us_runtime.immigration import (
     IMMIGRATION_STATUS_VALUES,
     SSN_CARD_TYPE_VALUES,
+    US_IMMIGRATION_ALL_OUTPUT_COLUMNS,
+    US_IMMIGRATION_FACT_COLUMNS,
+    US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS,
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     US_IMMIGRATION_OUTPUT_COLUMNS,
     US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS,
     US_IMMIGRATION_STAGE_NAME,
-    UndocumentedControls,
+    derive_us_immigration_facts,
     derive_us_immigration_status_from_manifest,
     us_immigration_composition_gate,
     us_immigration_composition_summary,
+    us_immigration_evidence_features,
     us_immigration_stage_spec,
     with_us_immigration_inputs,
 )
@@ -1152,11 +1165,13 @@ __all__ = [
     "SOI_VARIABLE_MAP",
     "IMMIGRATION_STATUS_VALUES",
     "SSN_CARD_TYPE_VALUES",
+    "US_IMMIGRATION_ALL_OUTPUT_COLUMNS",
+    "US_IMMIGRATION_FACT_COLUMNS",
+    "US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS",
     "US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS",
     "US_IMMIGRATION_OUTPUT_COLUMNS",
     "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
     "US_IMMIGRATION_STAGE_NAME",
-    "UndocumentedControls",
     "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
     "US_HOURS_WORKED_OUTPUT_COLUMNS",
     "US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS",
@@ -1464,8 +1479,12 @@ __all__ = [
     "US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS",
     "ASEC_EDUCATION_ASSISTANCE_ARCHIVES",
     "ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS",
+    "ASEC_EDUCATION_ASSISTANCE_SOURCE_COLUMNS",
+    "ASEC_LABOR_FORCE_STATUS_COLUMN",
+    "ASEC_LABOR_FORCE_STATUS_VALID_CODES",
     "fetch_asec_education_assistance_source",
     "fill_asec_education_assistance_source",
+    "fill_asec_labor_force_status_source",
     "load_asec_education_assistance_sources",
     "ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS",
     "ASEC_PUBLIC_ASSISTANCE_TYPE_INCOME_YEARS",
@@ -1759,9 +1778,14 @@ __all__ = [
     "us_prior_year_income_stage_spec",
     "us_prior_year_income_summary",
     "with_us_prior_year_income_inputs",
+    "US_IMMIGRATION_AXIOM_BINDING_CONTRACT",
+    "US_IMMIGRATION_AXIOM_MODULE",
+    "us_immigration_axiom_engine",
+    "derive_us_immigration_facts",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
+    "us_immigration_evidence_features",
     "us_immigration_stage_spec",
     "with_us_immigration_inputs",
     "US_TAKE_UP_SHARE_BAND",
@@ -2164,16 +2188,14 @@ US_DONORS: Mapping[str, DonorSpec] = {
         ),
     ),
     US_IMMIGRATION_STAGE_NAME: DonorSpec(
-        survey="CPS ASEC + published unauthorized-population estimates",
-        source=(
-            "https://www.pewresearch.org/short-reads/2024/07/22/"
-            "what-we-know-about-unauthorized-immigrants-living-in-the-us/"
-        ),
+        survey="Census CPS ASEC + American Community Survey PUMS",
+        source="https://www.census.gov/programs-surveys/cps.html",
         notes=(
-            "SSN card type and immigration status from ASEC citizenship, "
-            "entry-year, nativity, and program-participation fields via the "
-            "ASEC-UA residual method (SSRN 4662801), targeted to published "
-            "undocumented population/worker/student control totals."
+            "Neutral, nonexclusive immigration facts from survey citizenship, "
+            "birthplace, arrival cohorts, and lawful-status evidence. Stable "
+            "seeded support draws use no weights or population targets. The "
+            "two PolicyEngine compatibility columns are one-way projections "
+            "of those facts; representation belongs to calibration."
         ),
     ),
     US_HOURS_WORKED_STAGE_NAME: DonorSpec(

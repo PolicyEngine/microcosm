@@ -34,6 +34,9 @@ from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtype
 from microcosm.build.us_runtime.capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
 )
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_ALL_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -182,11 +185,6 @@ def _pregnancy_structural_policy_identity(*, enabled: bool) -> dict[str, object]
     ).hexdigest()
     return payload
 
-_IMMIGRATION_STATUS_TARGETS = (
-    "ssn_card_type",
-    "immigration_status_str",
-)
-_IMMIGRATION_STATUS_MODEL_TARGET = "__acs_transfer_immigration_status_pair"
 
 # RNTP/GRNTP are not pre-subsidy rent, so this leaf remains donor-transferable.
 _ADDITIONAL_PERSON_TRANSFER_TARGETS = ("pre_subsidy_rent",)
@@ -286,7 +284,7 @@ def acs_transfer_execution_contract_identity(
     )
     adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
     payload: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
         "person_optional_predictors": list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS),
         "group_required_predictors": list(ACS_GROUP_TRANSFER_PREDICTORS),
@@ -310,8 +308,6 @@ def acs_transfer_execution_contract_identity(
             ],
         },
         "tenure_codes": dict(sorted(_TENURE_CODES.items())),
-        "immigration_status_targets": list(_IMMIGRATION_STATUS_TARGETS),
-        "immigration_status_model_target": _IMMIGRATION_STATUS_MODEL_TARGET,
         "discrete_numeric_targets": sorted(_DISCRETE_NUMERIC_TARGETS),
         "structural_target_policies": {
             _PREGNANCY_TARGET: _pregnancy_structural_policy_identity(
@@ -493,7 +489,7 @@ class AcsImputedInput:
     derivation: str | None = None
     #: Post-fit structural reconciliation counts, when the column's surface
     #: was adjusted to a statute contract after prediction.
-    reconciliation: Mapping[str, int] | None = None
+    reconciliation: Mapping[str, object] | None = None
     #: Hard-domain and source-person fanout proof for structurally constrained
     #: transfer targets. This is receipt-only and never enters the frame.
     structural_receipt: Mapping[str, object] | None = None
@@ -606,9 +602,7 @@ class _TargetEncoding:
     model_values: pd.Series
     kind: str
     support: np.ndarray | None = None
-    categories: tuple[Any, ...] = ()
     model_target: str = ""
-    category_position: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1138,8 +1132,8 @@ def _prepare_pregnancy_structural_plan(
             "through 44."
         )
 
-    source_codes, group_count, key_column, representatives = (
-        _pregnancy_source_groups(table)
+    source_codes, group_count, key_column, representatives = _pregnancy_source_groups(
+        table
     )
     eligible_min = np.ones(group_count, dtype=np.int8)
     eligible_max = np.zeros(group_count, dtype=np.int8)
@@ -1449,9 +1443,7 @@ def transfer_acs_inputs(
                 person,
                 pregnancy_plan,
             )
-            pregnancy_entity, pregnancy_family, pregnancy_targets = (
-                pregnancy_request
-            )
+            pregnancy_entity, pregnancy_family, pregnancy_targets = pregnancy_request
             if pregnancy_targets != (_PREGNANCY_TARGET,):  # pragma: no cover
                 raise AssertionError(
                     "Pregnancy structural target was not isolated before receipt."
@@ -1689,7 +1681,7 @@ def _apply_post_transfer_structure(
 ) -> None:
     """Apply the deterministic post-fit steps the base's construction implies.
 
-    Both steps key off cells THIS transfer filled, so custom test plans that
+    All steps key off cells THIS transfer filled, so custom test plans that
     never touch these families are unaffected:
 
     - The Schedule D CGD memo leg is derived from the two transferred
@@ -1811,18 +1803,7 @@ def _apply_post_transfer_structure(
 def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:
     """Return the exact chained-QRF target order for exported leaves."""
 
-    requested = set(targets)
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-    model_targets: list[str] = []
-    joint_added = False
-    for target in targets:
-        if target in immigration_pair and immigration_pair.issubset(requested):
-            if not joint_added:
-                model_targets.append(_IMMIGRATION_STATUS_MODEL_TARGET)
-                joint_added = True
-            continue
-        model_targets.append(target)
-    return tuple(model_targets)
+    return tuple(targets)
 
 
 def _selected_model_target_names(
@@ -1839,20 +1820,7 @@ def _selected_model_target_names(
         raise ValueError(
             f"Selected ACS regime-evidence targets are outside the family: {unknown}."
         )
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-    selected_model_targets = {
-        (
-            _IMMIGRATION_STATUS_MODEL_TARGET
-            if target in immigration_pair and immigration_pair.issubset(family_set)
-            else target
-        )
-        for target in selected
-    }
-    return tuple(
-        target
-        for target in _model_target_names(family)
-        if target in selected_model_targets
-    )
+    return tuple(target for target in _model_target_names(family) if target in selected)
 
 
 def _regime_evidence_model_targets(
@@ -3109,6 +3077,15 @@ def _normalize_target_families(
                     f"ACS transfer family {family!r} on entity {entity!r} has "
                     f"invalid target name(s): {bad}."
                 )
+            immigration_targets = sorted(
+                set(targets).intersection(US_IMMIGRATION_ALL_OUTPUT_COLUMNS)
+            )
+            if immigration_targets:
+                raise ValueError(
+                    "Immigration facts and their PolicyEngine projection are "
+                    "whole-pool source outputs, not QRF targets: "
+                    f"{immigration_targets}."
+                )
             duplicates = sorted(
                 {target for target in targets if targets.count(target) > 1}
             )
@@ -3139,17 +3116,8 @@ def _split_large_target_families(
     """Bound retained QRF forests and isolate hard-domain target draws."""
 
     bounded: list[tuple[str, str, tuple[str, ...]]] = []
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
     for entity, family, targets in families:
-        atoms: list[tuple[str, ...]] = []
-        pair_added = False
-        for target in targets:
-            if target in immigration_pair and immigration_pair.issubset(targets):
-                if not pair_added:
-                    atoms.append(_IMMIGRATION_STATUS_TARGETS)
-                    pair_added = True
-                continue
-            atoms.append((target,))
+        atoms = [(target,) for target in targets]
 
         batches: list[tuple[str, ...]] = []
         current: list[str] = []
@@ -3205,18 +3173,6 @@ def _missing_target_families(
                 )
             incomplete.append(target)
 
-        # A joint codec needs both columns to learn only observed donor pairs.
-        # The complete companion is fitted but its recipient values are not
-        # written because target-level null masks remain authoritative.
-        immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-        if immigration_pair.issubset(targets) and immigration_pair.intersection(
-            incomplete
-        ):
-            incomplete = [
-                target
-                for target in targets
-                if target in immigration_pair or target in incomplete
-            ]
         if incomplete:
             active.append((entity, family, tuple(incomplete)))
     return active
@@ -3463,65 +3419,11 @@ def _target_encodings(
     *,
     targets: Sequence[str],
 ) -> dict[str, _TargetEncoding]:
-    """Encode requested targets, preserving registered joint support."""
+    """Encode requested targets independently."""
 
-    requested = set(targets)
-    immigration = requested.intersection(_IMMIGRATION_STATUS_TARGETS)
-    if immigration and immigration != set(_IMMIGRATION_STATUS_TARGETS):
-        missing = sorted(set(_IMMIGRATION_STATUS_TARGETS) - immigration)
-        raise ValueError(
-            "ACS transfer must impute ssn_card_type and immigration_status_str "
-            f"jointly; missing paired target(s): {missing}."
-        )
-
-    result: dict[str, _TargetEncoding] = {}
-    if immigration:
-        pairs = list(
-            zip(
-                table[_IMMIGRATION_STATUS_TARGETS[0]].to_numpy(dtype=object),
-                table[_IMMIGRATION_STATUS_TARGETS[1]].to_numpy(dtype=object),
-                strict=True,
-            )
-        )
-        categories = tuple(
-            sorted(
-                set(pairs),
-                key=lambda pair: tuple(
-                    (
-                        type(value).__module__,
-                        type(value).__qualname__,
-                        repr(value),
-                    )
-                    for value in pair
-                ),
-            )
-        )
-        lookup = {pair: position for position, pair in enumerate(categories)}
-        codes = np.fromiter(
-            (lookup[pair] for pair in pairs),
-            dtype=np.float64,
-            count=len(pairs),
-        )
-        model_values = pd.Series(
-            codes,
-            index=table.index,
-            name=_IMMIGRATION_STATUS_MODEL_TARGET,
-        )
-        for position, target in enumerate(_IMMIGRATION_STATUS_TARGETS):
-            result[target] = _TargetEncoding(
-                model_values=model_values,
-                kind="joint_categorical",
-                support=np.arange(len(categories), dtype=np.float64),
-                categories=categories,
-                model_target=_IMMIGRATION_STATUS_MODEL_TARGET,
-                category_position=position,
-            )
-
-    for target in targets:
-        if target in result:
-            continue
-        result[target] = _target_encoding(table[target], target=target)
-    return result
+    return {
+        target: _target_encoding(table[target], target=target) for target in targets
+    }
 
 
 def _complete_case_target_encodings(
@@ -3771,24 +3673,6 @@ def _prediction_values(
             return values.astype(np.int64)
         result = pd.array([pd.NA] * len(values), dtype="Int64")
         result[finite] = values[finite].astype(np.int64)
-        return result
-
-    if encoding.kind == "joint_categorical":
-        result = np.full(len(values), np.nan, dtype=object)
-        finite = np.isfinite(values)
-        codes = values[finite].astype(np.int64)
-        if ((codes < 0) | (codes >= len(encoding.categories))).any():
-            raise ValueError(
-                f"ACS transfer categorical target {target!r} on entity "
-                f"{entity!r} produced codes outside donor support."
-            )
-        if encoding.category_position is None:  # pragma: no cover - codec invariant
-            raise RuntimeError("Joint categorical encoding lacks a component index.")
-        decoded = np.asarray(
-            [encoding.categories[code][encoding.category_position] for code in codes],
-            dtype=object,
-        )
-        result[finite] = decoded
         return result
 
     finite = np.isfinite(values)

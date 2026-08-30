@@ -562,16 +562,6 @@ metric_registry:
   clone_index: 0
   metric: monetary_sign_separated
 - entity: person
-  family: source_operator_immigration
-  column: immigration_status_str
-  clone_index: 0
-  metric: categorical_tvd
-- entity: person
-  family: source_operator_immigration
-  column: ssn_card_type
-  clone_index: 0
-  metric: categorical_tvd
-- entity: person
   family: source_operator_medicare_take_up
   column: takes_up_medicare_if_eligible
   clone_index: 0
@@ -781,14 +771,7 @@ metric_registry:
   column: takes_up_nm_premium_assistance_if_eligible
   clone_index: 0
   metric: boolean_incidence
-joint_metric_registry:
-- entity: person
-  family: source_operator_immigration
-  columns:
-  - ssn_card_type
-  - immigration_status_str
-  clone_index: 0
-  metric: categorical_tvd
+joint_metric_registry: []
 thresholds:
   incidence_ratio:
     lower_inclusive: 0.8

@@ -60,7 +60,10 @@ from microcosm.build.us_runtime.housing_inputs import (
     impute_us_housing_assistance_to_puf_support,
     with_us_housing_inputs,
 )
-from microcosm.build.us_runtime.immigration import with_us_immigration_inputs
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS,
+    with_us_immigration_inputs,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     with_us_medicare_take_up_input,
 )
@@ -469,7 +472,7 @@ class MultispinePoolResult:
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 type AgreementGate = Callable[[Frame], GateResult]
-type SourceFrameOperator = Callable[[Frame], Frame | PoolStageOutput]
+type SourceFrameOperator = Callable[..., Frame | PoolStageOutput]
 
 
 @dataclass(frozen=True)
@@ -587,7 +590,11 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
     "with_us_immigration_inputs": SourceOperatorContract(
         "immigration",
         (_POST_CLONE_PHASE,),
-        "source-keyed draws preserve equality across support clones",
+        (
+            "source-aware neutral facts are derived directly for both ASEC and "
+            "ACS rows after assembly"
+        ),
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
     "with_us_education_inputs": SourceOperatorContract(
         "education_inputs",
@@ -720,6 +727,14 @@ def pool_transfer_target_families() -> TargetFamilies:
         for column in columns
     }
     for operator_name in POOL_SOURCE_OPERATOR_ORDER:
+        # Whole-pool source operators already materialize every origin.  Their
+        # outputs must never be treated as ACS recipient gaps or routed through
+        # QRF; only CPS-scoped producers need cross-origin transfer.
+        if (
+            POOL_OPERATOR_CONTRACTS[operator_name].execution_scope
+            == _WHOLE_POOL_EXECUTION_SCOPE
+        ):
+            continue
         family = _SOURCE_OPERATOR_FAMILIES[operator_name]
         additions: dict[str, tuple[str, ...]] = {}
         for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items():
@@ -861,9 +876,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -879,10 +893,12 @@ def pool_input_surface(
     """Return the complete registry-derived pool input/imputation surface.
 
     The surface is deliberately limited to transfer targets, explicit deferred
-    inputs, the production primary-QRF target order, and every checked-in
-    take-up contract variable. Variables repeated across registries are merged
-    by variable/entity and carry every provenance receipt. A variable assigned
-    to conflicting entities fails closed.
+    inputs, the production primary-QRF target order, the PolicyEngine bridge
+    emitted by whole-pool source operators, and every checked-in take-up
+    contract variable. Variables repeated across registries are merged by
+    variable/entity and carry every provenance receipt. A variable assigned to
+    conflicting entities fails closed. Neutral Axiom facts remain on the Frame
+    but do not enter this PolicyEngine-specific input registry.
     """
 
     entries: dict[tuple[str, str], PoolInputSurfaceEntry] = {}
@@ -928,6 +944,14 @@ def pool_input_surface(
                     family=family,
                     provenance="pool_transfer_target_families",
                 )
+
+    for variable in US_IMMIGRATION_LEGACY_OUTPUT_COLUMNS:
+        register(
+            variable,
+            entity="person",
+            family="immigration",
+            provenance="whole_pool_source_operator",
+        )
 
     for variable, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items():
         register(
@@ -1333,9 +1357,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 
@@ -1418,6 +1440,7 @@ def pool_remaining_stage_input_manifest(
     actual_surface_provenance = {
         "pool_transfer_target_families",
         "PRIMARY_QRF_TARGET_ORDER",
+        "whole_pool_source_operator",
     }
     ssi_provisions: dict[str, int] = {}
     for variable in closure.input_leaves:
@@ -2054,7 +2077,19 @@ def finalize_multispine_source_inputs(
         normalized_suboperator = dict(suboperators[0])
         normalized_suboperator["order_index"] = receipt_index
         normalized.append(normalized_suboperator)
-        evidence_receipts.append(receipt.get("cps_source_evidence"))
+        contract = POOL_OPERATOR_CONTRACTS.get(operator_name)
+        evidence = receipt.get("cps_source_evidence")
+        if (
+            contract is not None
+            and contract.execution_scope == _WHOLE_POOL_EXECUTION_SCOPE
+        ):
+            if evidence is not None:
+                raise ValueError(
+                    f"Whole-pool source operator {operator_name!r} may not "
+                    "claim a CPS-only source-evidence projection."
+                )
+        else:
+            evidence_receipts.append(evidence)
 
     expected = set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER)
     observed = set(operator_order)

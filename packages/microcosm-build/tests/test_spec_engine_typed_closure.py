@@ -57,20 +57,20 @@ def test_us_typed_closure_has_exact_inventory_counts(
     typed_resources: dict[str, Any],
     typed_result: TypedClosureResult,
 ) -> None:
-    assert len(typed_result.columns) == 176
-    assert len(typed_result.artifacts) == 84
+    assert len(typed_result.columns) == 245
+    assert len(typed_result.artifacts) == 83
     assert len(typed_result.scopes) == 7
     assert Counter(artifact.kind for artifact in typed_result.artifacts) == {
-        "producer_node": 38,
+        "producer_node": 37,
         "virtual_output": 18,
         "virtual_resource_binding": 28,
     }
 
     graph = typed_resources["imputation"]["producer_graph"]
-    assert sum(len(node["outputs"]) for node in graph["nodes"]) == 92
+    assert sum(len(node["outputs"]) for node in graph["nodes"]) == 161
     compiled_outputs = compile_producer_outputs(typed_resources)
-    assert sum(len(rows) for rows in compiled_outputs.values()) == 227
-    assert sum(len(node["virtual_resources"]) for node in graph["nodes"]) == 75
+    assert sum(len(rows) for rows in compiled_outputs.values()) == 294
+    assert sum(len(node["virtual_resources"]) for node in graph["nodes"]) == 73
     column_keys = {column.key for column in typed_result.columns}
     output_artifact_ids = {
         artifact.id
@@ -104,7 +104,7 @@ def test_us_typed_closure_has_exact_inventory_counts(
             len(thaw_json(artifact.binding)["rows"])
             for artifact in resource_artifacts.values()
         )
-        == 75
+        == 73
     )
 
 
@@ -151,9 +151,7 @@ def test_family_owned_output_mirrors_refuse_before_typed_compilation(
         if family["stage"] == "primary_puf_qrf"
     )
     target = next(
-        row
-        for row in primary["targets"]
-        if row["output_coverage_scope"] == "puf_clone"
+        row for row in primary["targets"] if row["output_coverage_scope"] == "puf_clone"
     )
     node = next(
         row

@@ -110,6 +110,7 @@
           "enum": [
            "usd",
            "count",
+           "year",
            "ratio",
            "boolean",
            "categorical"

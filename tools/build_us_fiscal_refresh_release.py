@@ -439,7 +439,13 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 11: target-frame checkpoint columns now preserve nullable booleans as
 # canonical bool values plus an explicit uint8 null mask. Older checkpoints
 # cannot attest this lossless physical representation.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 11
+# 12: source-aware humanitarian-stock targets now materialize from the paired
+# immigration labels and native ASEC/ACS origin/arrival evidence. Version-11
+# checkpoints cannot attest those per-draw calibration columns or mask semantics.
+# 13: neutral whole-pool immigration facts replace target-anchored assignment,
+# and source-stage-derived humanitarian stock targets are retired. Earlier
+# checkpoints cannot attest the target-free staged facts or derived PE inputs.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 13
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -1605,9 +1611,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             len(value) != 64
             or any(character not in "0123456789abcdef" for character in value)
         ):
-            parser.error(
-                f"{flag} must be exactly 64 lowercase hexadecimal characters."
-            )
+            parser.error(f"{flag} must be exactly 64 lowercase hexadecimal characters.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
             "--evidence-release is incompatible with --exact-k: ladder "
@@ -10870,6 +10874,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    # Calibration can redistribute person stocks even though the persisted
+    # labels remain structurally valid. Re-evaluate the composition contract
+    # at delivered weights and use this final verdict in every terminal gate
+    # and release artifact below.
+    final_immigration_gate = us_immigration_composition_gate(export_frame)
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -11157,7 +11166,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             health_input_gate,
             base_population_gate,
             incumbent_diagnostics,
-            immigration_gate,
+            final_immigration_gate,
             enforced_input_mass_reference_gate,
             degenerate_input_gate,
             ecps_parity_gate=enforced_ecps_parity_gate,
@@ -11206,7 +11215,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
-        immigration_gate=immigration_gate,
+        immigration_gate=final_immigration_gate,
         input_mass_reference_gate=input_mass_reference_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
@@ -11852,7 +11861,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
-        immigration_gate=immigration_gate,
+        immigration_gate=final_immigration_gate,
         input_mass_reference_gate=enforced_input_mass_reference_gate,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=enforced_ecps_parity_gate,

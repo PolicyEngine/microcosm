@@ -343,9 +343,9 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     registry = CANONICAL_US_LATE_PRODUCER_REGISTRY
     groups = CANONICAL_US_LATE_TRANSFER_GROUPS
 
-    assert len(registry) == 38
-    assert len(groups) == 19
-    assert sum(len(group.targets) for group in groups) == 70
+    assert len(registry) == 37
+    assert len(groups) == 18
+    assert sum(len(group.targets) for group in groups) == 68
     assert {contract.kind for contract in registry.values()} == {
         "primary_puf",
         "acs_earnings_universe",
@@ -435,9 +435,9 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
     declared = set(US_LATE_OVERLAP_OWNERSHIP_TARGETS)
 
     assert len(primary) == 65
-    assert len(source_writes) == 35
-    assert len(source_writes & transfer) == 29
-    assert len(transfer) == 70
+    assert len(source_writes) == 104
+    assert len(source_writes & transfer) == 27
+    assert len(transfer) == 68
     assert len(recipient_owned) == 60
     assert (
         callback_passthroughs
@@ -626,7 +626,7 @@ def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> Non
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
     edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
 
-    assert len(edges) == 71
+    assert len(edges) == 69
     assert (
         US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
         US_LATE_PRIMARY_PUF_STAGE,
@@ -784,9 +784,9 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 16
+    assert receipt["schema_version"] == 18
     assert receipt["execution_receipt_contract"] == {
-        "version": 3,
+        "version": 5,
         "row_binding": (
             "declared_globally_reconciled_input_and_scope_exact_output_source_"
             "and_primary_callback_resource_receipt_and_previous_execution_sha256"
@@ -794,7 +794,8 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
         "virtual_resource_binding": ("exact_kind_specific_semantic_payload_and_sha256"),
         "top_binding": (
             "entry_and_output_frame_sha256_execution_chain_source_"
-            "completion_and_nineteen_transfer_groups"
+            "completion_eighteen_transfer_groups_and_whole_pool_"
+            "immigration_assignment"
         ),
         "transition_authority": {
             "authority_id": "us_stacked_late_producer_transition",
@@ -805,10 +806,10 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     }
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
-    assert receipt["producer_count"] == 38
+    assert receipt["producer_count"] == 37
     assert receipt["source_producer_count"] == 16
-    assert receipt["transfer_group_count"] == 19
-    assert receipt["transfer_target_count"] == 70
+    assert receipt["transfer_group_count"] == 18
+    assert receipt["transfer_target_count"] == 68
     assert receipt["order"][:2] == [
         US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
         US_LATE_PRIMARY_PUF_STAGE,
@@ -910,6 +911,80 @@ def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> N
         )
 
 
+def test_immigration_source_declares_survey_scoped_evidence_and_whole_pool_outputs() -> (
+    None
+):
+    producer = source_producer_name("with_us_immigration_inputs")
+    inventory = US_LATE_SOURCE_INPUT_INVENTORIES["with_us_immigration_inputs"]
+    by_label = {item.label: item for item in inventory.requirements}
+    expected = {
+        "immigration_asec:PRCITSHP": ("PRCITSHP", "asec_source"),
+        "immigration_asec:PENATVTY": ("PENATVTY", "asec_source"),
+        "immigration_asec:PEINUSYR": ("PEINUSYR", "asec_source"),
+        "immigration_acs:CIT": ("CIT", "acs_source"),
+        "immigration_acs:POBP": ("POBP", "acs_source"),
+        "immigration_acs:YOEP": ("YOEP", "acs_source"),
+        "immigration_acs:SSP": ("SSP", "acs_source"),
+        "immigration_acs:SSIP": ("SSIP", "acs_source"),
+    }
+    for label, (column, scope) in expected.items():
+        requirement = by_label[label]
+        assert requirement.required_scope == scope
+        assert not requirement.optional
+        value_kind = (
+            "column_present" if column in {"YOEP", "SSP", "SSIP"} else "finite_numeric"
+        )
+        assert requirement.alternatives == (
+            (ProducerInputColumn("person", column, value_kind),),
+        )
+    raw_age = by_label["immigration_raw_age"]
+    assert raw_age.required_scope is None  # Inherits the whole-pool operator scope.
+    assert raw_age.optional
+    assert raw_age.alternatives == (
+        (ProducerInputColumn("person", "A_AGE", "finite_numeric"),),
+    )
+    assert by_label["age"].required_scope is None
+    assert not by_label["age"].optional
+    assert (
+        not {
+            "immigration_asec:A_MARITL",
+            "immigration_asec:A_SPOUSE",
+            "immigration_asec:A_HSCOL",
+            "immigration_asec:A_LFSR",
+        }
+        & by_label.keys()
+    )
+    assert {
+        tuple(column.column for column in alternative)
+        for alternative in by_label["stable_source_identity"].alternatives
+    } == {
+        ("person_id",),
+        ("source_person_id", "source_year"),
+        ("source_household_id", "source_person_id", "source_year"),
+    }
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer]
+    assert {
+        output.coverage_scope
+        for output in contract.outputs
+        if not output.column.startswith("@")
+    } == {"whole_pool"}
+    # Structure validation still binds household weights, but the assignment
+    # kernel never consumes person weights or a CPS-only evidence projection.
+    assert "resolved_person_weight" not in by_label
+    assert "source_wrapper:source_evidence" not in by_label
+    assert {
+        item.label
+        for item in inventory.requirements
+        for alternative in item.alternatives
+        for column in alternative
+        if column.column == "@resolved_weight"
+    } == {"source_wrapper:resolved_household_weight"}
+    assert (
+        transfer_producer_name("person", "source_operator_immigration")
+        not in CANONICAL_US_LATE_PRODUCER_REGISTRY
+    )
+
+
 def test_every_transfer_declares_complete_cross_grain_validation_surface() -> None:
     entities = (
         "person",
@@ -965,7 +1040,6 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
         *(("person", column) for column in acs_pums_module._PERSON_REQUIRED),
     }
     asec_person_raw_columns = {
-        "A_HSCOL",
         "A_MJOCC",
         "CAID",
         "CHAMPVA",
@@ -1016,9 +1090,9 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
         ("household", "H_TENURE"): "asec_source",
     }
     expected_counts = {
-        ("household", "TYPEHUGQ"): 39,
+        ("household", "TYPEHUGQ"): 37,
         ("person", "MCARE"): 2,
-        ("person", "PERIDNUM"): 18,
+        ("person", "PERIDNUM"): 17,
         ("person", "SEMP"): 2,
         ("person", "WAGP"): 2,
         **{
@@ -1034,6 +1108,14 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
                 "PERIDNUM",
             }
         },
+        ("person", "PRCITSHP"): 1,
+        ("person", "PENATVTY"): 1,
+        ("person", "PEINUSYR"): 1,
+        ("person", "CIT"): 1,
+        ("person", "POBP"): 1,
+        ("person", "YOEP"): 1,
+        ("person", "SSP"): 1,
+        ("person", "SSIP"): 1,
     }
 
     observed: Counter[tuple[str, str, str]] = Counter()
@@ -1055,15 +1137,15 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     assert observed == Counter(
         {(*key, required_scope[key]): count for key, count in expected_counts.items()}
     )
-    assert sum(observed.values()) == 101
-    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 43
+    assert sum(observed.values()) == 102
+    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 46
     assert (
-        sum(count for key, count in observed.items() if key[2] == "asec_source") == 58
+        sum(count for key, count in observed.items() if key[2] == "asec_source") == 56
     )
     assert receipts[("household", "TYPEHUGQ")] == set()
 
     execution_identity = acs_transfer_module.acs_transfer_execution_contract_identity()
-    assert execution_identity["schema_version"] == 2
+    assert execution_identity["schema_version"] == 3
     assert execution_identity["housing"]["head_source_precedence"] == [
         {"source": "is_household_head", "head_codes": [True]},
         {"source": "A_EXPRRP", "head_codes": [1, 2]},
@@ -1265,11 +1347,9 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
             "PEINUSYR",
             "PENATVTY",
             "A_AGE",
-            "A_MARITL",
-            "A_SPOUSE",
-            "A_HSCOL",
-            "WSAL_VAL",
-            "SEMP_VAL",
+            "age",
+            "CIT",
+            "POBP",
             "MCARE",
             "CAID",
             "IHSFLG",
@@ -1324,10 +1404,8 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
         } == {"finite_numeric"}
 
 
-def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string() -> (
-    None
-):
-    string_targets = {"ssn_card_type", "immigration_status_str"}
+def test_late_target_dependency_kinds_partition_51_numeric_17_boolean() -> None:
+    string_targets: set[str] = set()
     boolean_targets = {
         "is_incapable_of_self_care",
         "is_pregnant",
@@ -1363,7 +1441,7 @@ def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string()
     assert (len(numeric_targets), len(boolean_targets), len(string_targets)) == (
         51,
         17,
-        2,
+        0,
     )
     assert all(observed[target] == {"finite_numeric"} for target in numeric_targets)
     assert all(

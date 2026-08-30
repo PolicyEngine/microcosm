@@ -3,7 +3,7 @@ pipeline_contract:
   artifact_protocol:
     artifact_kind: populace_us_stacked_pool_checkpoint_identity
     schema_version: 1
-    materializer_version: 12
+    materializer_version: 13
     pipeline: us-stacked-pool
   stacked_operator_order:
   - assemble_stacked_spine
@@ -17,6 +17,7 @@ pipeline_contract:
   - materialize_multispine_agreement_outputs
   - stacked_completeness_gate
   - by_origin_battery
+  - us_immigration_composition_gate
   pre_clone_source_operator_order:
   - derive_us_cps_carried_inputs
   - with_us_hours_worked_inputs
@@ -193,8 +194,6 @@ seed_site_bindings:
   - kind: producer_node
     id: transfer:person/source_operator_education_inputs
   - kind: producer_node
-    id: transfer:person/source_operator_immigration
-  - kind: producer_node
     id: transfer:person/source_operator_medicare_take_up
   - kind: producer_node
     id: transfer:person/source_operator_retirement_contributions
@@ -234,8 +233,6 @@ seed_site_bindings:
     id: transfer:person/source_operator_disability_benefits
   - kind: producer_node
     id: transfer:person/source_operator_education_inputs
-  - kind: producer_node
-    id: transfer:person/source_operator_immigration
   - kind: producer_node
     id: transfer:person/source_operator_medicare_take_up
   - kind: producer_node
@@ -280,8 +277,6 @@ seed_site_bindings:
     id: transfer:person/source_operator_disability_benefits
   - kind: producer_node
     id: transfer:person/source_operator_education_inputs
-  - kind: producer_node
-    id: transfer:person/source_operator_immigration
   - kind: producer_node
     id: transfer:person/source_operator_medicare_take_up
   - kind: producer_node
@@ -330,11 +325,167 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: snap_abawd_discretionary_exemption
-- site: immigration_ead_workers_assignment
+- site: immigration_amerasian_admission_history_support
   owners:
   - kind: source_stage
     id: immigration_status
-- site: immigration_ead_students_assignment
+- site: immigration_amerasian_admission_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_asylum_grant_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_asylum_grant_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_asylum_grant_year_after_entry
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_battered_alien_or_qualifying_relative_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_battered_alien_qualified_status_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_battered_alien_qualified_status_start_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_cofa_status_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_conditional_entry_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_conditional_entry_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_cuban_haitian_entrant_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_current_cofa_resident_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_current_cuban_haitian_entrant_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_current_daca_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_current_lpr_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_current_parole_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_current_tps_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_employment_authorization_grant_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_entry_month_within_imputed_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_entry_year_within_reported_interval
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_first_qualified_status_1996_cutoff_day
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_iraqi_afghan_special_immigrant_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_lpr_adjustment_from_humanitarian_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_lpr_status_acquisition_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_lpr_status_acquisition_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_other_lawful_status_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_parole_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_qualifying_afghan_parole_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_qualifying_ukrainian_parole_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_refugee_admission_history_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_refugee_admission_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_severe_trafficking_victim_or_relative_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_special_immigrant_status_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_ssn_not_valid_for_employment_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_ssn_valid_for_employment_support
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_trafficking_qualified_status_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_trafficking_qualified_status_start_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_withholding_grant_year_after_entry
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_withholding_start_month_within_year
+  owners:
+  - kind: source_stage
+    id: immigration_status
+- site: immigration_withholding_support
   owners:
   - kind: source_stage
     id: immigration_status

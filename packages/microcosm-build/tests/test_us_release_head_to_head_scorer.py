@@ -179,8 +179,8 @@ def _tiny_frame_with_marketplace_columns(
             [True, False], dtype=bool
         )
     if interview_leaf:
-        tables["person"]["has_marketplace_health_coverage_at_interview"] = (
-            np.asarray([True, False], dtype=bool)
+        tables["person"]["has_marketplace_health_coverage_at_interview"] = np.asarray(
+            [True, False], dtype=bool
         )
     return Frame(
         tables,
@@ -328,19 +328,19 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
 
     single = len(module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY)
     joint = len(module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY)
-    assert single == 134
-    assert joint == 1
+    assert single == 132
+    assert joint == 0
     assert len(contract) == single + joint
-    assert sum(len(row["metric_legs"]) for row in contract.values()) == 372
+    assert sum(len(row["metric_legs"]) for row in contract.values()) == 369
     assert (
         sum(row["metric"] == "monetary_sign_separated" for row in contract.values())
         == 79
     )
     assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 51
-    assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 5
+    assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 2
     assert (
         "person/source_operator_immigration/"
-        "joint[ssn_card_type,immigration_status_str][clone_0]" in contract
+        "joint[ssn_card_type,immigration_status_str][clone_0]" not in contract
     )
     for row in contract.values():
         assert row["metric_legs"] == list(module._metric_legs(row["metric"]))
@@ -385,10 +385,10 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     assert asec_only["observed_origins"]["entities"]["person"]["asec_rows"] == 2
     assert both_origins["status"] == "computed_finished_h5"
     assert both_origins["production_receipt_authenticated"] is False
-    assert both_origins["metric_leg_count"] == 372
-    assert both_origins["scalar_leg_status_counts"] == {"computed": 372}
+    assert both_origins["metric_leg_count"] == 369
+    assert both_origins["scalar_leg_status_counts"] == {"computed": 369}
     for payload in (no_columns, asec_only):
-        assert payload["comparison_count"] == 135
+        assert payload["comparison_count"] == 132
         assert all(
             row["status"] == "inapplicable" for row in payload["comparisons"].values()
         )

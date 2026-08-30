@@ -26,6 +26,7 @@ from pandas.testing import assert_frame_equal
 
 import microcosm.build.us_runtime.acs_income_universe as universe_module
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
+import microcosm.build.us_runtime.immigration as immigration_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
@@ -1746,7 +1747,7 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         calibration["scope"]["reference"] = "forged"
 
 
-def test_canonical_metric_registry_covers_the_declared_134_target_split() -> None:
+def test_canonical_metric_registry_covers_the_declared_132_target_split() -> None:
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     surface_targets = {
@@ -1756,9 +1757,9 @@ def test_canonical_metric_registry_covers_the_declared_134_target_split() -> Non
         for target in targets
     }
 
-    assert len(surface_targets) == 134
+    assert len(surface_targets) == 132
     assert Counter(entity for entity, _family, _target, _clone in surface_targets) == {
-        "person": 114,
+        "person": 112,
         "tax_unit": 12,
         "spm_unit": 8,
     }
@@ -1770,13 +1771,13 @@ def test_canonical_metric_registry_covers_the_declared_134_target_split() -> Non
                 for family in families
             }
         )
-        == 31
+        == 30
     )
     assert set(registry) == surface_targets
     assert Counter(registry.values()) == {
         "monetary_sign_separated": 79,
         "boolean_incidence": 51,
-        "categorical_tvd": 4,
+        "categorical_tvd": 2,
     }
     assert (
         registry[("person", "puf_tax_itemization", "taxable_interest_income", 0)]
@@ -1815,13 +1816,13 @@ def test_canonical_metric_registry_covers_the_declared_134_target_split() -> Non
         for target in targets
     }
     assert len(gap_targets) == 48
-    assert len(post_puf_targets) == 70
+    assert len(post_puf_targets) == 68
     assert len(puf_producer_targets) == 43
-    assert len(source_producer_targets) == 29
+    assert len(source_producer_targets) == 27
     assert len(puf_producer_targets & source_producer_targets) == 2
     assert puf_producer_targets | source_producer_targets == post_puf_targets
     assert gap_targets.isdisjoint(post_puf_targets)
-    assert len(gap_targets | post_puf_targets) == 118
+    assert len(gap_targets | post_puf_targets) == 116
     assert gap_targets | post_puf_targets < surface_targets
     assert not {
         "bank_account_assets",
@@ -1922,7 +1923,7 @@ def test_canonical_metric_registry_drives_checkpoint_round_trip(
     assert Counter(registry.values()) == {
         "monetary_sign_separated": 79,
         "boolean_incidence": 51,
-        "categorical_tvd": 4,
+        "categorical_tvd": 2,
     }
     for (entity, _family, column, _clone_index), metric in registry.items():
         expected = frame.table(entity)[column]
@@ -2088,7 +2089,7 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for (entity, _family, column, _clone_index), metric in registry.items()
     }
-    assert len(by_column) == len(registry) == 134
+    assert len(by_column) == len(registry) == 132
 
     representative = {
         "monetary_sign_separated": pd.Series([1.0, pd.NA], dtype="Float64"),
@@ -2130,23 +2131,23 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         for output in contract.outputs
         if (key := (output.entity, output.column)) in by_column
     ]
-    assert len(registered_occurrences) == 163
+    assert len(registered_occurrences) == 159
     assert Counter(
         metric for _producer, _entity, _column, metric in registered_occurrences
     ) == {
         "monetary_sign_separated": 120,
         "boolean_incidence": 37,
-        "categorical_tvd": 6,
+        "categorical_tvd": 2,
     }
     unique_late_targets = {
         (entity, column): metric
         for _producer, entity, column, metric in registered_occurrences
     }
-    assert len(unique_late_targets) == 90
+    assert len(unique_late_targets) == 88
     assert Counter(unique_late_targets.values()) == {
         "monetary_sign_separated": 67,
         "boolean_incidence": 20,
-        "categorical_tvd": 3,
+        "categorical_tvd": 1,
     }
 
 
@@ -3659,6 +3660,94 @@ def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
             invalid_rows=invalid,
             absence_receipts={},
         )
+
+
+@pytest.mark.parametrize("column", ["SSP", "SSIP"])
+@pytest.mark.parametrize("column_present", [True, False])
+def test_immigration_acs_cash_evidence_allows_native_child_blanks_not_missing_columns(
+    column: str,
+    column_present: bool,
+) -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person")
+    acs_rows = person[support_channel_column("person")].astype(str).eq("acs")
+    person.loc[acs_rows, "age"] = 10
+    person[column] = np.nan
+    if not column_present:
+        person.drop(columns=[column], inplace=True)
+    source = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        "source:with_us_immigration_inputs"
+    ]
+    requirement = next(
+        item
+        for item in source.inputs
+        if item.column == f"@effective:immigration_acs:{column}"
+    )
+    contract = replace(source, inputs=(requirement,), outputs=())
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(frame, contract)
+
+    assert invalid == {requirement: 0}
+    assert requirement.required_scope == "acs_source"
+    assert requirement.tolerated_absence_receipts == ()
+    assert int(acs_rows.sum()) > 0
+    if column_present:
+        assert unfilled == {requirement: 0}
+        assert (
+            stacked_spine_module.run_producer_when_ready(
+                contract,
+                lambda: "ran",
+                unfilled_rows=unfilled,
+                invalid_rows=invalid,
+                absence_receipts={},
+            )
+            == "ran"
+        )
+    else:
+        assert unfilled == {requirement: int(acs_rows.sum())}
+        with pytest.raises(ValueError, match=column):
+            stacked_spine_module.run_producer_when_ready(
+                contract,
+                lambda: pytest.fail("missing ACS evidence reached assignment"),
+                unfilled_rows=unfilled,
+                invalid_rows=invalid,
+                absence_receipts={},
+            )
+
+
+@pytest.mark.parametrize("origin", ["asec", "acs"])
+def test_immigration_age_evidence_binds_preferred_raw_age_for_both_origins(
+    origin: str,
+) -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person")
+    selected_rows = person[support_channel_column("person")].astype(str).eq(origin)
+    person["A_AGE"] = 40.0
+    source = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        "source:with_us_immigration_inputs"
+    ]
+    requirement = next(
+        item
+        for item in source.inputs
+        if item.column == "@effective:immigration_raw_age"
+    )
+
+    def evidence() -> dict[str, object]:
+        return stacked_spine_module._late_input_column_evidence(
+            frame,
+            input_column=requirement.alternatives[0][0],
+            required_scope=requirement.required_scope,
+            producer_name=source.name,
+            available_input_receipts={},
+        )
+
+    before = evidence()
+    assert before["missing_rows"] == before["invalid_rows"] == 0
+    assert requirement.required_scope == "whole_pool"
+    assert selected_rows.any()
+    person.loc[selected_rows, "A_AGE"] = 41.0
+    after = evidence()
+    assert before["content_sha256"] != after["content_sha256"]
 
 
 def _typehugq_cross_origin_readiness_fixture() -> tuple[
@@ -5207,15 +5296,114 @@ def test_universe_raw_authority_binds_present_column_with_structural_nulls() -> 
         )
 
 
+def _humanitarian_late_executor_entry_fixture() -> Frame:
+    """Build varied ACS source evidence with ordinary synthetic design weights."""
+
+    profiles = {
+        "paroled_one_year:afghanistan": (200, 2021),
+        "paroled_one_year:ukraine": (164, 2022),
+        "paroled_one_year:nicaragua": (315, 2023),
+        "paroled_one_year:venezuela": (373, 2022),
+        "refugee": (412, 2022),
+        "asylee": (207, 2016),
+        "tps:venezuela": (373, 2021),
+        "tps:el_salvador": (312, 2001),
+        "tps:honduras": (314, 1998),
+        "tps:nicaragua": (315, 1998),
+        "tps:nepal": (229, 2015),
+        "tps:other_designated": (224, 2024),
+    }
+    asec = _source_frame(
+        household_ids=[11],
+        weights=[24.0],
+        stratum="asec_2024",
+    )
+    asec_person = asec.table("person")
+    asec_person["is_female"] = False
+    asec_person["is_household_head"] = True
+    asec_person["employment_income_before_lsr"] = 10_000.0
+    asec_person["self_employment_income_before_lsr"] = 0.0
+    asec_person["pre_subsidy_rent"] = 12_000.0
+    asec_person["unemployment_compensation"] = 1.0
+    asec_person["is_disabled"] = False
+    for column, value in (
+        ("taxable_interest_income", 100.0),
+        ("tax_exempt_interest_income", 0.0),
+        ("qualified_dividend_income", 50.0),
+        ("non_qualified_dividend_income", 25.0),
+        ("rental_income", 0.0),
+        ("estate_income", 0.0),
+    ):
+        asec_person[column] = value
+    asec_person["PRCITSHP"] = 1.0
+    asec_person["PENATVTY"] = 57.0
+    asec_person["PEINUSYR"] = 0.0
+    asec_person["source_year"] = 2024
+    asec_person["source_household_id"] = asec_person["person_household_id"]
+    asec_person["source_person_id"] = asec_person["person_id"]
+    asec.table("household")["tenure_type"] = "RENTED"
+
+    acs = _source_frame(
+        household_ids=list(range(101, 101 + len(profiles))),
+        weights=[1.0] * len(profiles),
+        stratum="acs_2024_1yr",
+    )
+    acs_person = acs.table("person")
+    acs_person["is_female"] = False
+    acs_person["is_household_head"] = True
+    acs_person["employment_income_before_lsr"] = 10_000.0
+    acs_person["WAGP"] = 10_000.0
+    acs_person["self_employment_income_before_lsr"] = 0.0
+    acs_person["SEMP"] = 0.0
+    acs_person["acs_interest_dividend_rental_income"] = 0.0
+    acs_person["CIT"] = 5.0
+    acs_person["POBP"] = [birth for birth, _year in profiles.values()]
+    acs_person["YOEP"] = [year for _birth, year in profiles.values()]
+    acs_person["age"] = [12.0, *([60.0] * (len(profiles) - 1))]
+    acs_person["source_year"] = 2024
+    acs_person["source_household_id"] = acs_person["person_household_id"]
+    acs_person["source_person_id"] = acs_person["person_id"]
+    acs.table("household")["TYPEHUGQ"] = 1
+    acs.table("household")["tenure_type"] = "RENTED"
+
+    registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
+    initial = _fill_late_contract_surface(
+        assemble_stacked_spine(
+            asec,
+            acs,
+            acs_sample_fraction=1.0,
+            acs_sample_seed=578,
+        ).frame,
+        contracts=(primary_contract,),
+        include_outputs=False,
+    )
+    initial_person = initial.table("person")
+    structural_row = initial_person.index[
+        initial_person[support_channel_column("person")].eq("acs")
+    ][0]
+    initial_person.loc[
+        structural_row,
+        [
+            "WAGP",
+            "SEMP",
+            "employment_income_before_lsr",
+            "self_employment_income_before_lsr",
+        ],
+    ] = np.nan
+    return initial
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,
     bank_identity_sha256: str | None = None,
     bound_clone_attachment_seed: int = 578,
     asec_earnings_delta: float = 0.0,
+    claim_cps_projection_for_immigration: bool = False,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
-    initial = _late_universe_entry_fixture()
+    initial = _humanitarian_late_executor_entry_fixture()
     initial_person = initial.table("person")
     if asec_earnings_delta:
         asec_row = initial_person.index[
@@ -5281,6 +5469,13 @@ def _run_real_late_executor_fixture(
             include_outputs=True,
         )
         completed_person = completed.table("person")
+        asec_rows = completed_person[support_channel_column("person")].eq("asec")
+        completed_person.loc[asec_rows, ["CIT", "POBP", "YOEP"]] = np.nan
+        completed_person.loc[
+            ~asec_rows,
+            ["PRCITSHP", "PENATVTY", "PEINUSYR"],
+        ] = np.nan
+        completed_person["A_AGE"] = completed_person["age"]
         completed_person["unemployment_compensation"] = np.ones(
             len(completed_person),
             dtype=np.float64,
@@ -5320,12 +5515,49 @@ def _run_real_late_executor_fixture(
 
     def source(frame: Frame, operator: str) -> PoolStageOutput:
         events.append(f"source:{operator}")
+        if operator == "with_us_immigration_inputs":
+            person = frame.table("person").drop(
+                columns=list(immigration_module.US_IMMIGRATION_ALL_OUTPUT_COLUMNS),
+                errors="ignore",
+            )
+            frame = Frame(
+                {
+                    entity: person if entity == "person" else frame.table(entity)
+                    for entity in frame.entities
+                },
+                frame.schema,
+                {
+                    entity: frame.weights_for(entity)
+                    for entity in frame.weighted_entities
+                },
+                frame.strata,
+                mass_log=frame.mass_log,
+                metadata=frame.metadata,
+            )
+            frame = immigration_module.with_us_immigration_inputs(
+                frame, seed=0, time_period=2024
+            )
+        uses_cps_source = (
+            multispine_pool_module.POOL_OPERATOR_CONTRACTS[operator].execution_scope
+            == "cps_source"
+        )
+        cps_source_evidence = None
+        if uses_cps_source or claim_cps_projection_for_immigration:
+            cps_source_evidence = {
+                "column": "PERIDNUM",
+                "person_rows": int(
+                    multispine_pool_module._cps_source_evidence_mask(
+                        frame, phase="post_clone"
+                    ).sum()
+                ),
+            }
         return PoolStageOutput(
             frame,
             {
                 "phase": "post_clone",
                 "operator_order": [operator],
                 "suboperators": [{"operator": operator}],
+                "cps_source_evidence": cps_source_evidence,
             },
         )
 
@@ -5338,11 +5570,21 @@ def _run_real_late_executor_fixture(
         finalizer_calls += 1
         events.append(stacked_spine_module.US_LATE_SOURCE_FINALIZER_STAGE)
         source_order = list(operator_receipts)
+        cps_source_evidence = [
+            receipt["cps_source_evidence"]
+            for operator, receipt in operator_receipts.items()
+            if multispine_pool_module.POOL_OPERATOR_CONTRACTS[operator].execution_scope
+            == "cps_source"
+        ]
+        assert cps_source_evidence and all(
+            evidence == cps_source_evidence[0] for evidence in cps_source_evidence
+        )
         return PoolStageOutput(
             frame,
             {
                 "phase": "post_clone",
                 "operator_order": source_order,
+                "cps_source_evidence": cps_source_evidence[0],
                 "suboperators": [
                     {"operator": operator, "order_index": index}
                     for index, operator in enumerate(source_order)
@@ -5390,6 +5632,7 @@ def _run_real_late_executor_fixture(
             for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
             if spec.stage == "late_transfer"
         }
+        imputed_recipient_rows = 1
         evidence_targets = tuple(
             target
             for target in group.targets
@@ -5403,7 +5646,7 @@ def _run_real_late_executor_fixture(
             seed=0,
             weight_kind="design",
             donor_rows=1,
-            recipient_rows=1,
+            recipient_rows=imputed_recipient_rows,
             target_regimes=tuple((target, "positive_only") for target in model_targets),
         )
         plain_pattern = replace(pattern, target_regimes=())
@@ -5418,7 +5661,7 @@ def _run_real_late_executor_fixture(
                 seed=pattern.seed,
                 weight_kind=pattern.weight_kind,
                 patterns=(pattern if target in evidence_targets else plain_pattern,),
-                imputed_recipient_rows=1,
+                imputed_recipient_rows=imputed_recipient_rows,
             )
             for target in group.targets
         )
@@ -5440,15 +5683,15 @@ def _run_real_late_executor_fixture(
         ):
             key = f"{group.entity}/{group.family}/{target}"
             target_receipt: dict[str, object] = {
-                "authorized_null_rows": 1,
-                "imputed_rows": 1,
+                "authorized_null_rows": imputed_recipient_rows,
+                "imputed_rows": imputed_recipient_rows,
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
             if target == "is_pregnant":
-                pregnancy_policy = execution_contract[
-                    "structural_target_policies"
-                ]["is_pregnant"]
+                pregnancy_policy = execution_contract["structural_target_policies"][
+                    "is_pregnant"
+                ]
                 target_receipt["structural_policy"] = {
                     "policy_sha256": pregnancy_policy["sha256"],
                     "source_person_key": "person_source_id",
@@ -5684,12 +5927,38 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
             stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
         ]["sha256"]
     )
+    assert not any(
+        "immigration" in name for name in result.receipt["post_puf_transfer"]["groups"]
+    )
+    source_row = next(
+        row
+        for row in result.receipt["execution"]
+        if row["producer"] == "source:with_us_immigration_inputs"
+    )
+    assert {row["column"] for row in source_row["output_surface"]} >= set(
+        immigration_module.US_IMMIGRATION_ALL_OUTPUT_COLUMNS
+    )
+    assert source_row["producer_receipt"]["cps_source_evidence"] is None
+    assert result.receipt["source_completion"]["cps_source_evidence"]["person_rows"] > 0
     stacked_spine_module.validate_stacked_late_producer_receipt(
         result.receipt,
         boundary="executor regression",
         frame=result.frame,
         expected_transition_authority_sha256=result.transition_authority_sha256,
     )
+
+
+def test_late_replay_rejects_cps_projection_claim_from_whole_pool_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="whole-pool source producer.*immigration.*CPS-only",
+    ):
+        _run_real_late_executor_fixture(
+            monkeypatch,
+            claim_cps_projection_for_immigration=True,
+        )
 
 
 def test_late_executor_signature_rejects_qrf_regime_evidence_tampering(
@@ -5905,7 +6174,7 @@ def test_late_executor_authority_binds_every_transfer_bank_identity(
     transfer_rows = [
         row for row in first.receipt["execution"] if row["kind"] == "late_transfer"
     ]
-    assert len(transfer_rows) == 19
+    assert len(transfer_rows) == 18
     for row in transfer_rows:
         available = row["available_input_receipts"]
         assert len(available) == 2
@@ -6360,7 +6629,9 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     )
 
 
-def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> None:
+def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> (
+    None
+):
     frame = _post_puf_transfer_fixture()
     person = frame.table("person").copy()
     recipient_rows = person[support_channel_column("person")].astype(str).eq("acs")
@@ -6389,9 +6660,7 @@ def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt()
         n_estimators=10,
     )
 
-    receipt = result.receipt["targets"][
-        "person/model_required_boolean/is_pregnant"
-    ]
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
     assert receipt["authorized_null_rows"] == 0
     assert receipt["imputed_rows"] == 0
     assert receipt["structural_policy"]["status"] == "verified"
@@ -6412,9 +6681,7 @@ def test_post_puf_transfer_refuses_invalid_pregnancy_source_producer() -> None:
         person["is_female"].astype(bool)
         & person["age"].between(15, 44, inclusive="both")
     )
-    donor_ineligible = ineligible & person[
-        support_clone_index_column("person")
-    ].eq(1)
+    donor_ineligible = ineligible & person[support_clone_index_column("person")].eq(1)
     person.loc[person.index[donor_ineligible][0], "is_pregnant"] = True
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
@@ -8049,7 +8316,7 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     )
     canonical = stacked_completeness_gate(frame)
     assert canonical.passed, canonical.failures
-    assert canonical.details["declared_targets"] == 134
+    assert canonical.details["declared_targets"] == 132
     authority = canonical.details["authority"]
     assert authority["authority_form"] == "CANONICAL"
     assert authority["canonical"] is True
@@ -8269,7 +8536,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     component = receipt["components"]["late_producer_schedule"]
 
     assert receipt["version"] == 11
-    assert component["producer_count"] == 38
+    assert component["producer_count"] == 37
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
     )
@@ -8537,7 +8804,7 @@ def test_fresh_gate_result_cannot_graft_canonical_authority_onto_test_surface() 
 
     with pytest.raises(
         ValueError,
-        match="must declare exactly 134 targets.*manifest emission is forbidden",
+        match="must declare exactly 132 targets.*manifest emission is forbidden",
     ):
         GateReport((grafted,)).to_manifest()
 
@@ -8672,7 +8939,7 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
 
     with pytest.raises(
         ValueError,
-        match="coverage receipt must bind all 134 targets.*emission is forbidden",
+        match="coverage receipt must bind all 132 targets.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 
@@ -9129,36 +9396,6 @@ def test_battery_boolean_incidence_is_declared_not_dispatched() -> None:
     )
 
 
-def test_battery_joint_immigration_tvd_preserves_dependence_guarantee() -> None:
-    frame = _battery_frame(
-        {
-            "ssn_card_type": (
-                np.asarray(["A"] * 4 + ["B"] * 4, dtype=object),
-                np.asarray(["A"] * 4 + ["B"] * 4, dtype=object),
-            ),
-            "immigration_status_str": (
-                np.asarray(["X"] * 4 + ["Y"] * 4, dtype=object),
-                np.asarray(["Y"] * 4 + ["X"] * 4, dtype=object),
-            ),
-        }
-    )
-
-    result = by_origin_battery(frame)
-
-    assert not result.passed
-    for column in ("ssn_card_type", "immigration_status_str"):
-        marginal = result.details["comparisons"][
-            f"person/source_operator_immigration/{column}[clone_0]"
-        ]
-        assert marginal["total_variation_distance"] == 0.0
-    joint_label = (
-        "person/source_operator_immigration/"
-        "joint[ssn_card_type,immigration_status_str][clone_0]"
-    )
-    assert result.details["comparisons"][joint_label]["total_variation_distance"] == 1.0
-    assert any(joint_label in failure for failure in result.failures)
-
-
 def test_battery_rejects_registry_omitting_declared_champva_before_comparisons() -> (
     None
 ):
@@ -9204,7 +9441,7 @@ def test_battery_taxable_interest_metric_cannot_be_relabelled_rare_incidence() -
     assert not result.passed
     assert result.details["tested_comparisons"] == 0
     metric_receipt = result.details["authority"]["components"]["metric_registry"]
-    assert metric_receipt["target_count"] == 134
+    assert metric_receipt["target_count"] == 132
     assert any(
         "person/puf_tax_itemization/taxable_interest_income[clone_0]" in failure
         and "authoritative metric 'monetary_sign_separated'" in failure

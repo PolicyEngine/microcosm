@@ -59,8 +59,12 @@ validation oracles (microcosm#264), which sequence behind reform modules
 compiled upstream, not behind a protocol change.
 """
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -71,7 +75,12 @@ from microcosm.frame.materialize import engine_tables, put_frame_table, read_fra
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
-__all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
+__all__ = [
+    "AxiomEngine",
+    "AxiomEntityTableDataset",
+    "AxiomInputBindingContract",
+    "BE_SCHEMA",
+]
 
 #: The Belgian frame schema for the populace-be pilot: persons in households.
 #: Belgian PIT is individual with household-level elements (joint assessment,
@@ -98,6 +107,64 @@ _DTYPE_KIND_BY_ENGINE: dict[str, str] = {
 _PERIOD_BY_ENGINE: dict[str, str] = {"year": "year", "month": "month"}
 
 _WEIGHT_COLUMN_SUFFIX = "_weight"
+_PERIOD_YEAR_BINDING = "@period.year"
+_PERIOD_MONTH_INDEX_BINDING = "@period.month_index"
+_SUPPORTED_PERIOD_BINDINGS = {
+    _PERIOD_YEAR_BINDING,
+    _PERIOD_MONTH_INDEX_BINDING,
+}
+
+
+@dataclass(frozen=True)
+class AxiomInputBindingContract:
+    """Versioned, content-addressed Axiom-input to frame-column bindings.
+
+    RuleSpec authors name inputs in the language of each legal authority,
+    while a population frame stores neutral real-world facts. The reserved
+    sources ``@period.year`` and ``@period.month_index`` inject the requested
+    evaluation period supplied to :meth:`AxiomEngine.materialize`, so elapsed-
+    time and anniversary rules are not frozen when a dataset is built. Month
+    indices use ``year * 12 + month - 1``. This contract makes the adapter
+    between those surfaces reviewable and reproducible. Its digest is
+    persisted with every Axiom entity-table export.
+    """
+
+    version: str
+    bindings: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.version, str) or not self.version.strip():
+            raise ValueError("Axiom input binding version must be a non-empty string.")
+        normalized = _normalize_input_bindings(self.bindings)
+        object.__setattr__(self, "version", self.version.strip())
+        object.__setattr__(
+            self,
+            "bindings",
+            MappingProxyType(dict(sorted(normalized.items()))),
+        )
+
+    @property
+    def sha256(self) -> str:
+        """Digest of the canonical versioned binding document."""
+
+        payload = json.dumps(
+            {
+                "version": self.version,
+                "bindings": dict(self.bindings),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def receipt(self) -> dict[str, object]:
+        """JSON-safe export provenance for this contract."""
+
+        return {
+            "version": self.version,
+            "sha256": self.sha256,
+            "bindings": dict(self.bindings),
+        }
 
 
 class AxiomEngine:
@@ -118,6 +185,13 @@ class AxiomEngine:
             surface checks).
         defaults: Scalar defaults broadcast onto the owning entity table for
             contract-required columns no bundle table provides.
+        input_bindings: A versioned :class:`AxiomInputBindingContract`, or an
+            ad-hoc Axiom-root-input -> frame-column mapping. Unlisted inputs
+            keep the identity binding. Multiple Axiom inputs may bind to one
+            neutral fact column when separate legal modules refer to the same
+            real-world fact with different authored names. Production country
+            integrations should pass a versioned contract; a plain mapping is
+            retained for small experiments and receives version ``unversioned``.
         entity_names: Frame entity -> engine entity mapping. Defaults to
             capitalizing the frame name (``person`` -> ``Person``).
         arithmetic: ``"decimal"`` (exact, canonical) or ``"f64"`` (faster,
@@ -137,6 +211,7 @@ class AxiomEngine:
         rulespec_roots: Sequence[str | Path],
         contract: ExportContract | None = None,
         defaults: Mapping[str, object] | None = None,
+        input_bindings: Mapping[str, str] | AxiomInputBindingContract | None = None,
         entity_names: Mapping[str, str] | None = None,
         arithmetic: str = "decimal",
     ) -> None:
@@ -163,6 +238,14 @@ class AxiomEngine:
         self._schema = schema
         self._contract = contract if contract is not None else ExportContract.empty()
         self._defaults = dict(defaults or {})
+        if isinstance(input_bindings, AxiomInputBindingContract):
+            self._input_binding_contract = input_bindings
+        else:
+            self._input_binding_contract = AxiomInputBindingContract(
+                version="unversioned",
+                bindings=input_bindings or {},
+            )
+        self._input_bindings = dict(self._input_binding_contract.bindings)
         self._entity_names = (
             dict(entity_names)
             if entity_names is not None
@@ -201,7 +284,8 @@ class AxiomEngine:
         """
         derived = self._derived_metadata()
         if name not in derived:
-            if name in set(self.variables()):
+            root_inputs = self._root_input_names()
+            if name in root_inputs or name in set(self.variables()):
                 raise ValueError(
                     f"{name!r} is an input variable: RuleSpec inputs are "
                     "declared by usage and carry no dtype/period metadata; "
@@ -226,10 +310,12 @@ class AxiomEngine:
         )
 
     def variables(self) -> list[str]:
-        """Return the input variables the engine accepts on a dataset.
+        """Return the effective frame columns the engine accepts as inputs.
 
-        The union of the dense root inputs across every mapped engine
-        entity, sorted. Computed (derived) outputs are not included.
+        The dense surface exposes legal RuleSpec root names; a binding
+        contract may map those names to neutral population facts. This method
+        reports the latter because it describes the dataset-facing contract.
+        Computed (derived) outputs are not included.
 
         Raises:
             ImportError: If ``axiom_rules_engine`` is not installed.
@@ -238,8 +324,29 @@ class AxiomEngine:
         for frame_entity in self._schema.entities:
             program = self._program(frame_entity, missing_ok=True)
             if program is not None:
-                names.update(program.root_inputs)
+                names.update(
+                    source
+                    for name in program.root_inputs
+                    if not (source := self._input_bindings.get(name, name)).startswith(
+                        "@period."
+                    )
+                )
         return sorted(names)
+
+    def input_binding_receipt(self) -> dict[str, object]:
+        """Return the version, digest, and complete legal-to-fact mapping."""
+
+        return self._input_binding_contract.receipt()
+
+    def _root_input_names(self) -> set[str]:
+        """Return the unbound legal root names exposed by RuleSpec."""
+
+        names: set[str] = set()
+        for frame_entity in self._schema.entities:
+            program = self._program(frame_entity, missing_ok=True)
+            if program is not None:
+                names.update(program.root_inputs)
+        return names
 
     def entity_schema(self) -> EntitySchema:
         """Return the frame entity schema (no engine import required)."""
@@ -299,7 +406,13 @@ class AxiomEngine:
                     "batches from frame membership are not wired yet."
                 )
             table = bundle.table(frame_entity)
-            inputs = _batch_from_table(table, program.root_inputs)
+            inputs = _batch_from_table(
+                table,
+                program.root_inputs,
+                input_bindings=self._input_bindings,
+                period_year=int(start[:4]),
+                period_month_index=(int(start[:4]) * 12 + int(start[5:7]) - 1),
+            )
             execute = (
                 program.execute_f64 if self._arithmetic == "f64" else program.execute
             )
@@ -412,7 +525,11 @@ class AxiomEngine:
                 f"column(s) present: {sorted(unexpected)}."
             )
 
-        dataset = AxiomEntityTableDataset(tables=tables, time_period=int(period))
+        dataset = AxiomEntityTableDataset(
+            tables=tables,
+            time_period=int(period),
+            input_binding_receipt=self.input_binding_receipt(),
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         dataset.save(output_path)
         self._verify_round_trip(tables, output_path)
@@ -602,6 +719,8 @@ class AxiomEntityTableDataset:
     Attributes:
         tables: Entity name -> table.
         time_period: The dataset's period (e.g. ``2025``).
+        input_binding_receipt: Versioned and content-addressed mapping from
+            RuleSpec legal input names to the neutral columns stored here.
     """
 
     def __init__(
@@ -609,14 +728,24 @@ class AxiomEntityTableDataset:
         *,
         tables: Mapping[str, pd.DataFrame] | None = None,
         time_period: int | None = None,
+        input_binding_receipt: Mapping[str, object] | None = None,
         file_path: str | Path | None = None,
     ) -> None:
         if file_path is not None:
-            if tables is not None or time_period is not None:
+            if (
+                tables is not None
+                or time_period is not None
+                or input_binding_receipt is not None
+            ):
                 raise ValueError(
-                    "Pass either file_path or (tables, time_period), not both."
+                    "Pass either file_path or (tables, time_period, "
+                    "input_binding_receipt), not both."
                 )
-            self.tables, self.time_period = self._read(Path(file_path))
+            (
+                self.tables,
+                self.time_period,
+                self.input_binding_receipt,
+            ) = self._read(Path(file_path))
             return
         if tables is None or time_period is None:
             raise ValueError(
@@ -624,8 +753,10 @@ class AxiomEntityTableDataset:
             )
         self.tables = {name: table.copy() for name, table in tables.items()}
         self.time_period = int(time_period)
+        self.input_binding_receipt = _normalize_binding_receipt(input_binding_receipt)
 
     _TIME_PERIOD_KEY = "_time_period"
+    _INPUT_BINDING_RECEIPT_KEY = "_axiom_input_binding_receipt"
 
     def table(self, entity: str) -> pd.DataFrame:
         """Return the ``entity`` table.
@@ -666,23 +797,44 @@ class AxiomEntityTableDataset:
                 pd.Series([int(self.time_period)]),
                 format="table",
             )
+            if self.input_binding_receipt is not None:
+                store.put(
+                    self._INPUT_BINDING_RECEIPT_KEY,
+                    pd.Series(
+                        [
+                            json.dumps(
+                                self.input_binding_receipt,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            )
+                        ]
+                    ),
+                    format="table",
+                )
 
     @classmethod
-    def _read(cls, path: Path) -> tuple[dict[str, pd.DataFrame], int]:
+    def _read(
+        cls, path: Path
+    ) -> tuple[dict[str, pd.DataFrame], int, dict[str, object] | None]:
         if not path.exists():
             raise FileNotFoundError(f"No dataset at {path}.")
         tables: dict[str, pd.DataFrame] = {}
         time_period: int | None = None
+        input_binding_receipt: dict[str, object] | None = None
         with pd.HDFStore(str(path), mode="r") as store:
             for key in store.keys():
                 name = key.lstrip("/")
                 if name == cls._TIME_PERIOD_KEY:
                     time_period = int(store[key].iloc[0])
                     continue
+                if name == cls._INPUT_BINDING_RECEIPT_KEY:
+                    parsed = json.loads(str(store[key].iloc[0]))
+                    input_binding_receipt = _normalize_binding_receipt(parsed)
+                    continue
                 tables[name] = read_frame_table(store, key)
         if time_period is None:
             raise ValueError(f"Dataset at {path} carries no {cls._TIME_PERIOD_KEY}.")
-        return tables, time_period
+        return tables, time_period, input_binding_receipt
 
 
 def _period_bounds(period: int | str) -> tuple[str, str, str]:
@@ -709,25 +861,58 @@ def _period_bounds(period: int | str) -> tuple[str, str, str]:
 
 
 def _batch_from_table(
-    table: pd.DataFrame, root_inputs: Sequence[str]
+    table: pd.DataFrame,
+    root_inputs: Sequence[str],
+    *,
+    input_bindings: Mapping[str, str] | None = None,
+    period_year: int | None = None,
+    period_month_index: int | None = None,
 ) -> dict[str, np.ndarray]:
     """Build the dense input batch from an entity table.
 
     The table's column dtypes are authoritative: bool columns become Bool
     engine columns (truthiness-context inputs require them), integers become
     Integer, floats become the numeric column of the active arithmetic.
-    Inputs the table does not carry are omitted — the engine defaults
-    declared-optional inputs and errors on required ones, naming the input.
+    ``input_bindings`` maps Axiom root input names to neutral frame columns;
+    unlisted inputs use their own name. Reserved period sources broadcast
+    values derived from the requested materialization period. Inputs whose
+    bound frame column is absent are omitted — the engine defaults declared-
+    optional inputs and errors on required ones, naming the Axiom input.
 
     Raises:
         ValueError: If a needed column's dtype is not bool/integer/float
             (object/string columns cannot become dense columns).
     """
     batch: dict[str, np.ndarray] = {}
+    bindings = input_bindings or {}
     for name in root_inputs:
-        if name not in table.columns:
+        column_name = bindings.get(name, name)
+        if column_name == _PERIOD_YEAR_BINDING:
+            if period_year is None:
+                raise ValueError(
+                    f"Axiom input {name!r} binds to {_PERIOD_YEAR_BINDING!r}, "
+                    "but no period_year was supplied."
+                )
+            batch[name] = np.full(len(table), int(period_year), dtype=np.int64)
             continue
-        column = table[name]
+        if column_name == _PERIOD_MONTH_INDEX_BINDING:
+            if period_month_index is None:
+                raise ValueError(
+                    f"Axiom input {name!r} binds to "
+                    f"{_PERIOD_MONTH_INDEX_BINDING!r}, but no "
+                    "period_month_index was supplied."
+                )
+            batch[name] = np.full(len(table), int(period_month_index), dtype=np.int64)
+            continue
+        if column_name.startswith("@period."):
+            raise ValueError(
+                f"Axiom input {name!r} uses unsupported period binding "
+                f"{column_name!r}; supported bindings: "
+                f"{sorted(_SUPPORTED_PERIOD_BINDINGS)}."
+            )
+        if column_name not in table.columns:
+            continue
+        column = table[column_name]
         kind = column.dtype.kind
         if kind == "b":
             batch[name] = column.to_numpy(dtype=bool)
@@ -737,7 +922,58 @@ def _batch_from_table(
             batch[name] = column.to_numpy(dtype=np.float64)
         else:
             raise ValueError(
-                f"Column {name!r} has dtype kind {kind!r}; dense inputs must "
-                "be bool, integer, or float columns."
+                f"Frame column {column_name!r} bound to Axiom input {name!r} "
+                f"has dtype kind {kind!r}; dense inputs must be bool, integer, "
+                "or float columns."
             )
     return batch
+
+
+def _normalize_input_bindings(
+    input_bindings: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """Validate and copy the Axiom-input -> frame-column binding map."""
+    normalized: dict[str, str] = {}
+    for axiom_input, frame_column in (input_bindings or {}).items():
+        if not isinstance(axiom_input, str) or not axiom_input:
+            raise ValueError("input_bindings keys must be non-empty Axiom input names.")
+        if not isinstance(frame_column, str) or not frame_column:
+            raise ValueError(
+                "input_bindings values must be non-empty frame column names."
+            )
+        if (
+            frame_column.startswith("@")
+            and frame_column not in _SUPPORTED_PERIOD_BINDINGS
+        ):
+            raise ValueError(
+                "input_bindings reserved sources support only "
+                f"{sorted(_SUPPORTED_PERIOD_BINDINGS)}; got {frame_column!r}."
+            )
+        normalized[axiom_input] = frame_column
+    return normalized
+
+
+def _normalize_binding_receipt(
+    receipt: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    """Validate an exported binding receipt, including its content digest."""
+
+    if receipt is None:
+        return None
+    if not isinstance(receipt, Mapping):
+        raise ValueError("Axiom input binding receipt must be a mapping.")
+    version = receipt.get("version")
+    digest = receipt.get("sha256")
+    bindings = receipt.get("bindings")
+    if not isinstance(bindings, Mapping):
+        raise ValueError("Axiom input binding receipt needs a bindings mapping.")
+    contract = AxiomInputBindingContract(
+        version=version if isinstance(version, str) else "",
+        bindings=bindings,  # type: ignore[arg-type]
+    )
+    if not isinstance(digest, str) or digest != contract.sha256:
+        raise ValueError(
+            "Axiom input binding receipt digest does not match its version and "
+            "bindings."
+        )
+    return contract.receipt()

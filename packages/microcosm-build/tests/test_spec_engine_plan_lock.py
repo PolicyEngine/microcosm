@@ -40,17 +40,15 @@ def test_plan_lock_is_complete_and_closed_world(compiled_us: CompiledSpecIR) -> 
         "nodes",
     }
     assert payload["spec_binding"]["attestation"] == "mirror-attested"
-    assert len(payload["producer_graph"]["nodes"]) == 38
+    assert len(payload["producer_graph"]["nodes"]) == 37
     assert len(payload["producer_graph"]["authored"]["ownership_matrix"]) == 18
-    assert len(payload["seed_stream_map"]["sites"]) == 53
-    assert len(payload["nodes"]) == 38
+    assert len(payload["seed_stream_map"]["sites"]) == 92
+    assert len(payload["nodes"]) == 37
 
     mutated = copy.deepcopy(payload)
     mutated["ignored_field"] = True
     with pytest.raises(SpecValidationError, match="Additional properties"):
-        load_schema_registry().validate(
-            mutated, "locks.schema.json#/$defs/plan_lock"
-        )
+        load_schema_registry().validate(mutated, "locks.schema.json#/$defs/plan_lock")
 
 
 def test_plan_lock_emits_and_asserts_exact_canonical_bytes(
@@ -98,8 +96,6 @@ def test_duplicate_json_key_is_rejected_before_comparison(
     tmp_path,
 ) -> None:
     path = tmp_path / "plan.lock.json"
-    path.write_text(
-        '{"compiler_ir_abi":{},"compiler_ir_abi":{}}', encoding="utf-8"
-    )
+    path.write_text('{"compiler_ir_abi":{},"compiler_ir_abi":{}}', encoding="utf-8")
     with pytest.raises(PlanLockError, match="duplicate JSON key"):
         assert_plan_lock_current(compiled_us, path)
