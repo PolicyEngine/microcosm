@@ -1172,7 +1172,9 @@ def _validate_target_profile(
                 f"{basis_id!r}."
             )
         basis_period, fact_period_type = normalized_periods[basis_id]
-        if not period_values_semantically_equal(reference.period, basis_period):
+        if not period_values_semantically_equal(
+            reference.period, basis_period, declared_type=fact_period_type
+        ):
             raise ValueError(
                 f"target_references.json: {context} period {reference.period!r} "
                 f"does not match basis period {basis_id!r}."

@@ -1,5 +1,5 @@
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -13,8 +13,10 @@ from microcosm.build.ledger_targets import (
     apply_ledger_target_profile,
     compile_ledger_target_references,
     ledger_target_registry_parity_report,
+    period_values_semantically_equal,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
+    target_spec_from_ledger_reference,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -2775,3 +2777,165 @@ def test_ledger_reference_latest_selection_uses_policy_eligible_facts():
     )
 
     assert registry.specs[0].value == 15_000_000_000_000
+
+
+def _target_spec_via_contract_route(fact, reference, resolution_route):
+    if resolution_route == "direct_helper":
+        return target_spec_from_ledger_reference(fact, reference)
+    if resolution_route == "ledger_fact_key":
+        reference = replace(reference, ledger_fact_key=fact["aggregate_fact_key"])
+    elif resolution_route == "ledger_source_record_id":
+        reference = replace(
+            reference,
+            ledger_source_record_id=fact["lineage"]["source_record_id"],
+        )
+    else:
+        assert resolution_route == "selector"
+    (spec,) = compile_ledger_target_references([fact], [reference], country="us").specs
+    return spec
+
+
+@pytest.mark.parametrize(
+    "resolution_route",
+    ["selector", "ledger_fact_key", "ledger_source_record_id", "direct_helper"],
+)
+@pytest.mark.parametrize(
+    ("period_type", "invalid_period"),
+    [
+        ("academic_year", "2023_25"),
+        ("academic_year", "2023_2025"),
+        ("academic_year", "2023_04"),
+        ("tax_year", "2023_25"),
+        ("calendar_year", "2023_2025"),
+        ("fiscal_year", "2023_00"),
+        ("month", "2023_00"),
+        ("month", "2023_13"),
+        ("month", "2023_24"),
+        ("month", "2023_2024"),
+        ("month", "2023"),
+    ],
+)
+def test_exact_period_contract_refuses_equal_malformed_untyped_labels(
+    resolution_route, period_type, invalid_period
+) -> None:
+    fact = _consumer_fact_row(period={"type": period_type, "value": invalid_period})
+    reference = _exact_agi_reference(
+        ledger_selector={"period_type": period_type},
+        period=invalid_period,
+    )
+
+    with pytest.raises(ValueError, match="exact (target )?period"):
+        _target_spec_via_contract_route(fact, reference, resolution_route)
+
+
+@pytest.mark.parametrize(
+    "resolution_route",
+    ["selector", "ledger_fact_key", "ledger_source_record_id", "direct_helper"],
+)
+@pytest.mark.parametrize(
+    ("period_type", "reference_period", "fact_period"),
+    [
+        ("tax_year", 2023, "ty2023"),
+        ("calendar_year", "2023", "calendar_year_2023"),
+        ("fiscal_year", "2023_24", "fy2023_2024"),
+        ("academic_year", "2003_04", "ay2003_04"),
+        ("academic_year", "1999_00", "academic_year_1999_2000"),
+        ("academic_year", 2023, "ay2023"),
+        ("month", "2003_04", "month_2003_04"),
+        ("month", "2023_1", "month_2023_01"),
+        ("academic_year", "publisher_revision_a", "publisher_revision_a"),
+        ("reporting_window", "publisher_release_a", "publisher_release_a"),
+    ],
+)
+def test_exact_period_contract_preserves_valid_aliases_and_opaque_labels(
+    resolution_route, period_type, reference_period, fact_period
+) -> None:
+    fact = _consumer_fact_row(period={"type": period_type, "value": fact_period})
+    reference = _exact_agi_reference(
+        ledger_selector={"period_type": period_type},
+        period=reference_period,
+    )
+
+    spec = _target_spec_via_contract_route(fact, reference, resolution_route)
+
+    assert spec.value == fact["value"]
+    assert spec.period == reference_period
+
+
+@pytest.mark.parametrize(
+    "resolution_route",
+    ["selector", "ledger_fact_key", "ledger_source_record_id", "direct_helper"],
+)
+@pytest.mark.parametrize("period_match_policy", ["exact", "latest_not_after"])
+@pytest.mark.parametrize("vintage_pin", ["2010_census", ["2010_census", "2000_census"]])
+@pytest.mark.parametrize("fact_vintage", ["2010_census", "2020_census", None, ""])
+def test_geography_vintage_contract_applies_to_every_resolution_route(
+    resolution_route, period_match_policy, vintage_pin, fact_vintage
+) -> None:
+    fact = _consumer_fact_row()
+    if fact_vintage is None:
+        fact["geography"].pop("vintage")
+    else:
+        fact["geography"]["vintage"] = fact_vintage
+    reference = _exact_agi_reference(
+        ledger_selector={"geography_vintage": vintage_pin},
+        period_match_policy=period_match_policy,
+    )
+
+    if fact_vintage != "2010_census":
+        with pytest.raises(ValueError, match="(vintage|fact selector)"):
+            _target_spec_via_contract_route(fact, reference, resolution_route)
+    else:
+        spec = _target_spec_via_contract_route(fact, reference, resolution_route)
+        assert spec.metadata["ledger_geography_vintage"] == "2010_census"
+        assert spec.value == fact["value"]
+
+
+@pytest.mark.parametrize(
+    "resolution_route",
+    ["selector", "ledger_fact_key", "ledger_source_record_id", "direct_helper"],
+)
+def test_geography_vintage_contract_does_not_add_an_undeclared_pin(
+    resolution_route,
+) -> None:
+    fact = _consumer_fact_row()
+    fact["geography"].pop("vintage")
+
+    spec = _target_spec_via_contract_route(
+        fact, _exact_agi_reference(), resolution_route
+    )
+
+    assert spec.value == fact["value"]
+
+
+@pytest.mark.parametrize(
+    "invalid_period", ["2023_25", "2023_2025", "2023_00", "2023_13"]
+)
+def test_period_contract_comparator_rejects_malformed_numeric_literal_equality(
+    invalid_period,
+) -> None:
+    assert not period_values_semantically_equal(invalid_period, invalid_period)
+
+
+def test_exact_period_contract_sum_keeps_equivalent_untyped_annual_range_cells() -> (
+    None
+):
+    first = _consumer_fact_row_for_period(2003, value=10.0)
+    first["period"] = {"type": "academic_year", "value": "2003_04"}
+    second = _consumer_fact_row_for_period(2003, value=20.0)
+    second["aggregate_fact_key"] += "-second"
+    second["legacy_fact_key"] += "-second"
+    second["semantic_fact_key"] += "-second"
+    second["lineage"]["source_record_id"] += ".second"
+    second["period"] = {"type": "academic_year", "value": "ay2003_04"}
+    reference = _exact_agi_reference(
+        ledger_selector={"period_type": "academic_year"},
+        period="academic_year_2003_2004",
+        value_operation="sum",
+    )
+
+    (spec,) = compile_ledger_target_references(
+        [first, second], [reference], country="us"
+    ).specs
+
+    assert spec.value == 30.0  # Both synthetic cells belong to the same academic year.

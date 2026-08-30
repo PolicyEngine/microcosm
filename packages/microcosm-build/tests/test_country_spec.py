@@ -2064,3 +2064,129 @@ class TestRefusals:
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="vintage_policy"):
             load_country_spec(package_dir)
+
+
+@pytest.mark.parametrize(
+    ("period_type", "invalid_period"),
+    [
+        ("academic_year", "2023_25"),
+        ("academic_year", "2023_2025"),
+        ("academic_year", "2023_04"),
+        ("tax_year", "2023_25"),
+        ("calendar_year", "2023_2025"),
+        ("fiscal_year", "2023_00"),
+        ("month", "2023_00"),
+        ("month", "2023_13"),
+        ("month", "2023_24"),
+        ("month", "2023_2024"),
+        ("month", "2023"),
+    ],
+)
+def test_schema2_period_contract_refuses_equal_malformed_untyped_labels(
+    tmp_path, period_type, invalid_period
+) -> None:
+    files = _package_with_schema2_targets()
+    reference = files["target_references.json"]["target_references"][0]
+    reference["period"] = invalid_period
+    reference["ledger_selector"]["period_type"] = period_type
+    basis = files["target_references.json"]["target_profile"]["basis_periods"][
+        "population_2023"
+    ]
+    basis["period"] = invalid_period
+    basis["fact_period_type"] = period_type
+    package_dir = _write_package(tmp_path, files)
+
+    with pytest.raises(ValueError, match="does not match basis period"):
+        load_country_spec(package_dir)
+
+
+@pytest.mark.parametrize(
+    ("period_type", "reference_period", "basis_period"),
+    [
+        ("tax_year", 2023, "ty2023"),
+        ("calendar_year", "2023", "calendar_year_2023"),
+        ("fiscal_year", "2023_24", "fy2023_2024"),
+        ("academic_year", "2003_04", "ay2003_04"),
+        ("academic_year", "1999_00", "academic_year_1999_2000"),
+        ("academic_year", 2023, "ay2023"),
+        ("month", "2003_04", "month_2003_04"),
+        ("month", "2023_1", "month_2023_01"),
+        ("academic_year", "publisher_revision_a", "publisher_revision_a"),
+        ("reporting_window", "publisher_release_a", "publisher_release_a"),
+    ],
+)
+def test_schema2_period_contract_preserves_valid_aliases_and_opaque_labels(
+    tmp_path, period_type, reference_period, basis_period
+) -> None:
+    files = _package_with_schema2_targets()
+    reference = files["target_references.json"]["target_references"][0]
+    reference["period"] = reference_period
+    reference["ledger_selector"]["period_type"] = period_type
+    basis = files["target_references.json"]["target_profile"]["basis_periods"][
+        "population_2023"
+    ]
+    basis["period"] = basis_period
+    basis["fact_period_type"] = period_type
+    package_dir = _write_package(tmp_path, files)
+
+    loaded = load_country_spec(package_dir)
+
+    assert loaded.target_references[0].period == reference_period
+
+
+@pytest.mark.parametrize(
+    "identifier_field", ["ledger_fact_key", "ledger_source_record_id"]
+)
+@pytest.mark.parametrize("fact_vintage", ["nis_2025", "nis_2024", None])
+def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
+    tmp_path, identifier_field, fact_vintage
+) -> None:
+    package_dir = tmp_path / "be"
+    shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+    target_path = package_dir / "target_references.json"
+    payload = json.loads(target_path.read_text(encoding="utf-8"))
+    raw_reference = next(
+        row
+        for row in payload["target_references"]
+        if row["name"] == "statbel_fiscal_income_by_commune"
+    )
+    raw_reference["metadata"]["activation_status"] = "active"
+    raw_reference["ledger_selector"]["geography_id"] = "21004"
+    fact_key = "ledger.aggregate_fact.v2:synthetic-be-commune"
+    record_id = "statbel_fiscal_income.synthetic-commune"
+    raw_reference[identifier_field] = (
+        fact_key if identifier_field == "ledger_fact_key" else record_id
+    )
+    target_path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = load_country_spec(package_dir)
+    reference = next(
+        row
+        for row in loaded.target_references
+        if row.name == "statbel_fiscal_income_by_commune"
+    )
+    fact = {
+        "aggregate_fact_key": fact_key,
+        "lineage": {"source_record_id": record_id},
+        "value": 10.0,  # Synthetic resolver probe, not a Belgian source value.
+        "period": {"type": "tax_year", "value": 2022},
+        "geography": {"level": "commune", "id": "21004"},
+        "entity": {"name": "household"},
+        "observed_measure": {
+            "source_name": "statbel_fiscal_income",
+            "source_measure_id": "taxable_income",
+            "unit": "eur",
+        },
+        "aggregation": {"method": "sum"},
+    }
+    if fact_vintage is not None:
+        fact["geography"]["vintage"] = fact_vintage
+
+    if fact_vintage != "nis_2025":
+        with pytest.raises(ValueError, match="vintage"):
+            compile_ledger_target_references([fact], [reference], country="be")
+    else:
+        (spec,) = compile_ledger_target_references(
+            [fact], [reference], country="be"
+        ).specs
+        assert spec.metadata["ledger_geography_vintage"] == "nis_2025"
+        assert spec.value == 10.0

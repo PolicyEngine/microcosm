@@ -1271,7 +1271,8 @@ def _validate_resolved_reference_fact(
 
     Selector filtering still uses these predicates to choose an eligible row
     from a series.  This post-resolution check is the authority: exact keys and
-    source-record identifiers must not bypass the assertion or period policy.
+    source-record identifiers must not bypass assertion, period, or declared
+    geography-vintage policy.
     """
 
     _validate_reference_period(fact, reference)
@@ -1281,6 +1282,16 @@ def _validate_resolved_reference_fact(
             f"{reference.assertion_policy!r} does not allow resolved fact "
             f"assertion {_fact_assertion(fact)!r}."
         )
+    vintage_pin = reference.ledger_selector.get("geography_vintage")
+    if vintage_pin is not None and vintage_pin != "":
+        if not _str_at(fact, "geography", "vintage") or not _fact_matches_selector(
+            fact, {"geography_vintage": vintage_pin}
+        ):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r} requires geography "
+                f"vintage {vintage_pin!r}, but resolved fact has vintage "
+                f"{_at(fact, 'geography', 'vintage')!r}."
+            )
 
 
 def _validate_reference_period(fact: object, reference: LedgerTargetReference) -> None:
@@ -1447,9 +1458,6 @@ def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> boo
 
     expected_value = reference.period
     actual_value = _at(fact, "period", "value")
-    if not period_values_semantically_equal(expected_value, actual_value):
-        return False
-
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
     expected_type_hint = period_type_hint(expected_value)
@@ -1459,30 +1467,51 @@ def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> boo
     if expected_type and actual_type != expected_type:
         return False
     actual_type_hint = period_type_hint(actual_value)
-    return not actual_type_hint or actual_type_hint == actual_type
+    if actual_type_hint and actual_type_hint != actual_type:
+        return False
+    return period_values_semantically_equal(
+        expected_value,
+        actual_value,
+        declared_type=expected_type or actual_type,
+    )
 
 
 def _reference_period_partition_key(
     fact: object,
     reference: LedgerTargetReference,
 ) -> tuple[int, int, str]:
-    period_key = _period_key(fact)
+    period_key = (
+        _normalize_period_value(
+            _at(fact, "period", "value"),
+            declared_type=_str_at(fact, "period", "type"),
+        )[0]
+        if reference.period_match_policy == "exact"
+        else _period_key(fact)
+    )
     if reference.period_match_policy == "exact" and period_key[0]:
         return (period_key[0], period_key[1], "")
     return period_key
 
 
-def period_values_semantically_equal(left: object, right: object) -> bool:
-    """Treat supported typed and scalar spellings of one period as equal."""
+def period_values_semantically_equal(
+    left: object, right: object, *, declared_type: str = ""
+) -> bool:
+    """Compare valid period spellings, using the declared type for untyped values.
 
-    left_key, left_hint, left_range_end = _normalize_period_value(left)
-    right_key, right_hint, right_range_end = _normalize_period_value(right)
+    Opaque publisher labels retain literal equality. Malformed numeric period
+    shapes do not, even when the same invalid spelling appears on both sides.
+    """
+
+    left_key, _, left_range_end, left_malformed = _normalize_period_value(
+        left, declared_type=declared_type
+    )
+    right_key, _, right_range_end, right_malformed = _normalize_period_value(
+        right, declared_type=declared_type
+    )
+    if left_malformed or right_malformed:
+        return False
     if left_key[0] and right_key[0]:
         return left_key[:2] == right_key[:2] and left_range_end == right_range_end
-    if left_hint or right_hint:
-        # Recognized but malformed typed values must not match, even when the
-        # same invalid label appears on both sides of the contract.
-        return False
     return left_key == right_key
 
 
@@ -1498,15 +1527,19 @@ def _period_key_from_value(value: object) -> tuple[int, int, str]:
 
 def _normalize_period_value(
     value: object,
-) -> tuple[tuple[int, int, str], str, int | None]:
+    *,
+    declared_type: str = "",
+) -> tuple[tuple[int, int, str], str, int | None, bool]:
     """Normalize one scalar/typed period spelling once for all consumers.
 
     Annual aliases (``ty``, ``cy``, ``fy``, and ``ay``) and their long forms
     share one parser.  A two-part value under an annual prefix is an annual
-    range (for example ``academic_year_2023_24``), while an untyped or
-    ``month``-prefixed ``2023_04`` remains a monthly point. Annual ranges must
-    end in the following year. Keep that explicit end year in the semantic
-    identity: an annual range is not interchangeable with a scalar year.
+    range (for example ``academic_year_2023_24``). A declared annual type also
+    disambiguates untyped ``2003_04`` as a range rather than a monthly point.
+    Annual ranges must end in the following year. Keep that explicit end year
+    in the semantic identity: a range is not interchangeable with a scalar year.
+    The final flag distinguishes malformed numeric shapes from opaque labels,
+    so only the latter can fall back to literal equality.
     """
 
     label = "" if value is None else str(value)
@@ -1539,31 +1572,44 @@ def _normalize_period_value(
             normalized = suffix
             type_hint = aliases[alias]
 
+    annual_types = {"tax_year", "calendar_year", "fiscal_year", "academic_year"}
+    if (
+        not type_hint
+        and declared_type in annual_types | {"month"}
+        and normalized[:1].isdigit()
+    ):
+        type_hint = declared_type
+
     parts = normalized.split("_", maxsplit=1)
     if len(parts) == 2:
         year, suffix = parts
         if year.isdigit() and suffix.isdigit() and len(suffix) in {1, 2, 4}:
-            annual_range = type_hint in {
-                "tax_year",
-                "calendar_year",
-                "fiscal_year",
-                "academic_year",
-            } or (not type_hint and (len(suffix) == 4 or int(suffix) > 12))
+            annual_range = type_hint in annual_types or (
+                not type_hint and (len(suffix) == 4 or int(suffix) > 12)
+            )
             if annual_range:
                 range_end = int(year) + 1
                 expected_suffix = range_end if len(suffix) == 4 else range_end % 100
                 if len(suffix) not in {2, 4} or int(suffix) != expected_suffix:
-                    return (0, 0, label), type_hint, None
-                return (1, int(year) * 100 + 99, label), type_hint, range_end
+                    return (0, 0, label), type_hint, None, True
+                return (1, int(year) * 100 + 99, label), type_hint, range_end, False
             if len(suffix) <= 2 and 1 <= int(suffix) <= 12:
-                return (1, int(year) * 100 + int(suffix), label), type_hint, None
-        return (0, 0, label), type_hint, None
+                return (
+                    (1, int(year) * 100 + int(suffix), label),
+                    type_hint,
+                    None,
+                    False,
+                )
+        numeric_shape = year.isdigit() and all(
+            part.isdigit() or not part for part in suffix.split("_")
+        )
+        return (0, 0, label), type_hint, None, bool(type_hint) or numeric_shape
     if type_hint == "month":
-        return (0, 0, label), type_hint, None
+        return (0, 0, label), type_hint, None, True
     try:
-        return (1, int(normalized) * 100 + 99, label), type_hint, None
+        return (1, int(normalized) * 100 + 99, label), type_hint, None, False
     except ValueError:
-        return (0, 0, label), type_hint, None
+        return (0, 0, label), type_hint, None, bool(type_hint)
 
 
 def _prefer_period_candidate(
