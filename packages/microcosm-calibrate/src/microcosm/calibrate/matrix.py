@@ -16,15 +16,23 @@ A target the frame cannot compile (a measure column missing on the entity or a
 length mismatch) is **skipped and reported**, never silently dropped: the returned
 problem carries a
 :class:`SkippedTarget` for each, naming the target and the reason.
+Receipt-bearing monetary targets are stricter: a stale, misaligned, or
+uncompilable receipt refuses the complete compilation rather than silently
+excluding a fact that was intentionally bound.
 """
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 import numpy as np
 from scipy import sparse
 
+from microcosm.calibrate.monetary_binding import (
+    MonetaryBindingIntegrityError,
+    verify_monetary_binding,
+)
 from microcosm.calibrate.target import Target, TargetSet
 from microcosm.frame import Frame, Weights
 
@@ -264,6 +272,8 @@ def build_constraint_matrix(
 
     Raises:
         TypeError: If ``targets`` is not a :class:`TargetSet`.
+        MonetaryBindingIntegrityError: If a receipt-bearing monetary target no
+            longer matches its bound frame column or cannot compile safely.
         ValueError: If ``weight_entity`` is not a declared entity, or every
             target was skipped (an empty system has nothing to calibrate — the
             message lists each skip reason so the cause is visible).
@@ -284,33 +294,35 @@ def build_constraint_matrix(
     skipped: list[SkippedTarget] = []
 
     for target in targets:
+        verify_monetary_binding(target, frame)
+        monetary = "monetary_binding" in target.metadata
         try:
-            row = _entity_row(target, frame, weight_entity)
-        except (KeyError, ValueError) as exc:
+            errors = (
+                np.errstate(over="raise", invalid="raise")
+                if monetary
+                else nullcontext()
+            )
+            with errors:
+                row = _entity_row(target, frame, weight_entity)
+            if row.shape != (n_weights,):
+                raise ValueError(
+                    f"compiled row has shape {row.shape}, expected "
+                    f"({n_weights},) for entity {weight_entity!r}."
+                )
+            if not np.isfinite(row).all():
+                n_bad = int((~np.isfinite(row)).sum())
+                raise ValueError(
+                    f"compiled row has {n_bad} non-finite value(s) (a "
+                    "measure produced NaN/inf on the entity)."
+                )
+        except Exception as exc:
+            if monetary:
+                raise MonetaryBindingIntegrityError(
+                    f"{target.row_name}: monetary constraint compilation failed ({exc})."
+                ) from exc
+            if not isinstance(exc, (KeyError, ValueError)):
+                raise
             skipped.append(SkippedTarget(target=target, reason=str(exc)))
-            continue
-        if row.shape != (n_weights,):  # pragma: no cover - defensive
-            skipped.append(
-                SkippedTarget(
-                    target=target,
-                    reason=(
-                        f"compiled row has shape {row.shape}, expected "
-                        f"({n_weights},) for entity {weight_entity!r}."
-                    ),
-                )
-            )
-            continue
-        if not np.isfinite(row).all():
-            n_bad = int((~np.isfinite(row)).sum())
-            skipped.append(
-                SkippedTarget(
-                    target=target,
-                    reason=(
-                        f"compiled row has {n_bad} non-finite value(s) (a "
-                        "measure produced NaN/inf on the entity)."
-                    ),
-                )
-            )
             continue
         indices = np.flatnonzero(row)
         if len(indices):
