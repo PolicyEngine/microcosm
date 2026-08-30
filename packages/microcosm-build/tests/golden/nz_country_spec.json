@@ -1,0 +1,85 @@
+{
+  "country": "nz",
+  "fingerprint": "b8b1b7a745c50ddc548adc9843d7e217d19e7d774d31b631999ce9ee6a1901c7",
+  "gate_ids": [
+    "calibration_per_family_fit",
+    "national_and_region_admin_aggregates",
+    "calibration_reference_inventory",
+    "target_profile_coverage",
+    "release_input_coverage",
+    "donor_support_bounds",
+    "calibration_weights_audit",
+    "exported_nonzero",
+    "formula_owned_export",
+    "nonnegative_columns",
+    "weight_effective_sample_size",
+    "weight_max_to_median_ratio",
+    "macro_realism_nz"
+  ],
+  "geography_spine_stage": "assign_nz_regions",
+  "release": {
+    "artifact_repo": "policyengine/populace-nz",
+    "builder": "populace-nz",
+    "dataset_filename_template": "populace_nz_{year}.h5",
+    "required_release_files": [
+      "populace_nz_{year}.h5",
+      "populace_nz_{year}_calibration.npz",
+      "build_manifest.json",
+      "release_manifest.json",
+      "calibration_diagnostics.json",
+      "source_coverage.json",
+      "demographics.json",
+      "reform_validation.json"
+    ],
+    "staging_repo": "policyengine/populace-nz-staging"
+  },
+  "resource_hashes": {
+    "country_package.json": "074e0571215a87c10d8933b3b401b02dc0d91171740cd412e43b88512a81fd22",
+    "export_contract.json": "5e8e4cf9a8aa3363958dfd816fdf412d7d51b3d27ba77caa7b087257107a4487",
+    "gates.json": "bca805b7aa3c0589ec6242ea8b99c013e8e84a654850ec2d81a3e3796d28eeb9",
+    "geography_spine.json": "fe248a59c11a2a7ee275ca9a32a58feb4c0b2bc6f873b446caf312bc16513e36",
+    "release_contract.json": "c0acc8122acf90e7a1d0bcb363ac95dd92928d9f521608525f729df10de421a2",
+    "source_stages.json": "1b9e3267730774d39008f1ef7d73ff943abc43acc12adcd446e02d6621c6440b",
+    "spec/bundle.yaml": "47526762837b4479f14156061ec33cf173e91bf5e747244d23a71e6060fc3f05",
+    "spec/catalogs.yaml": "8376a74620d3c49d34343704a4661064eae0b86c1bf601e50d67949ec06ecea4",
+    "spec/geography.yaml": "346ae6a19f1da015121e64498549e9b88daf77073629782443171b1d7099e287",
+    "spec/sources.yaml": "f1d0e3fb981d3e8306cd6c66421d270ae673ee9b11a0c9e928954b7a79ca0316",
+    "spec/spine.yaml": "b3e6a2832ff7671777cae113b7fc45f5e3492bb519526f229118d0851083533e",
+    "spec/vintages.yaml": "9050d7d05082c23eacfb418bfc5445af88d92263fad5bc7376e5d32fb53fa843",
+    "target_references.json": "8798f394f356d9c7d407d7bf4a985debdf48648bc924e3a8f1613e3a45c567d7"
+  },
+  "resources": [
+    "spec/bundle.yaml",
+    "spec/catalogs.yaml",
+    "spec/geography.yaml",
+    "spec/sources.yaml",
+    "spec/spine.yaml",
+    "spec/vintages.yaml",
+    "export_contract.json",
+    "gates.json",
+    "geography_spine.json",
+    "release_contract.json",
+    "source_stages.json",
+    "target_references.json"
+  ],
+  "stage_names": [
+    "load_populace_us_support_pool",
+    "prepare_nz_wff_axiom_inputs"
+  ],
+  "target_reference_names": [
+    "stats_nz_population_by_age_sex_region",
+    "stats_nz_population_by_single_year_age_sex",
+    "stats_nz_census_households_by_composition",
+    "stats_nz_census_households_by_tenure_region",
+    "ird_taxable_income_people_by_band",
+    "ird_taxable_income_total_by_band",
+    "ird_wage_salary_people_by_band",
+    "msd_main_benefit_recipients_by_program_age",
+    "msd_accommodation_supplement_recipients_by_region",
+    "msd_nz_super_veterans_pension_recipients",
+    "ird_wff_recipient_families",
+    "ird_iwtc_recipient_families",
+    "ird_student_loan_borrowers",
+    "stats_nz_census_ethnicity_by_age_region"
+  ]
+}

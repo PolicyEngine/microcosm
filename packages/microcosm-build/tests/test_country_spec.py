@@ -11,7 +11,9 @@ reviewed golden diff, never an accident.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import FrozenInstanceError
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -29,7 +31,7 @@ from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
 
 COUNTRY_PACKAGE_ROOT = Path(__file__).parents[1] / "src/microcosm/build"
 GOLDEN_ROOT = Path(__file__).parent / "golden"
-GOLDEN_COUNTRIES = ("am", "be")
+GOLDEN_COUNTRIES = ("am", "be", "nz")
 FORBIDDEN_TARGET_VALUE_KEYS = {"value", "values", "observed", "observed_value"}
 
 
@@ -495,6 +497,436 @@ class TestBelgianPackage:
 
     def test_fingerprint_is_stable_across_loads(self, spec) -> None:
         assert load_country_spec("be").fingerprint == spec.fingerprint
+
+
+class TestNewZealandPackage:
+    @pytest.fixture(scope="class")
+    def spec(self):
+        return load_country_spec("nz")
+
+    def test_loads_with_every_declared_resource(self, spec) -> None:
+        assert spec.country == "nz"
+        assert set(spec.resources) == {
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
+            "source_stages.json",
+            "geography_spine.json",
+            "target_references.json",
+            "gates.json",
+            "export_contract.json",
+            "release_contract.json",
+        }
+        assert set(spec.resource_hashes) == set(spec.resources) | {
+            "country_package.json"
+        }
+
+    def test_donor_pin_and_us_support_provenance_are_explicit(self, spec) -> None:
+        stages = spec.sources.stage_map()
+        assert tuple(stages) == (
+            "load_populace_us_support_pool",
+            "prepare_nz_wff_axiom_inputs",
+        )
+        donor = stages["load_populace_us_support_pool"]
+        artifact = donor.artifacts[0]
+        assert artifact["revision"] == (
+            "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
+        )
+        assert artifact["locator"] == "populace_us_2024.h5"
+        assert artifact["sha256"] == (
+            "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
+        )
+        assert artifact["size_bytes"] == 462915783
+        assert {"donor_country_code", "support_stratum"} <= set(donor.outputs)
+        assert "US donor support records" in donor.survey
+        assert "execution remains blocked" in donor.notes
+
+    def test_axiom_contract_has_eleven_required_inputs_and_ten_padding_fields(
+        self, spec
+    ) -> None:
+        columns = {column.key: column for column in spec.resolved_spec.columns}
+        required = {
+            column.key.removeprefix("family."): column.dtype
+            for column in columns.values()
+            if column.domain == "axiom_required_input"
+        }
+        assert required == {
+            "family_tax_credit_eldest_dependent_child_care_units": "decimal128(18,2)",
+            "family_tax_credit_subsequent_dependent_child_care_units": "decimal128(18,2)",
+            "family_tax_credit_entitlement_days": "int16",
+            "wff_family_scheme_income_for_relationship_period": "decimal128(18,2)",
+            "wff_family_credit_abatement_days": "int16",
+            "entitled_to_in_work_tax_credit": "bool",
+            "in_work_tax_credit_allowed_children_count": "int16",
+            "in_work_tax_credit_weekly_periods": "int16",
+            "child_tax_credit_for_entitlement_period": "decimal128(18,2)",
+            "parental_tax_credit_for_entitlement_period": "decimal128(18,2)",
+            "parental_tax_credit_additional_abatement": "decimal128(18,2)",
+        }
+        padding = {
+            column.key.removeprefix("family.")
+            for column in columns.values()
+            if column.domain == "axiom_adapter_padding_zero"
+        }
+        assert len(padding) == 10
+        assert all(
+            name.startswith(("best_start_", "minimum_family_")) for name in padding
+        )
+        stage = spec.sources.stage_map()["prepare_nz_wff_axiom_inputs"]
+        predictors = stage.operations[0].parameters["predictors"]
+        assert set(predictors) == set(required) | padding
+        assert len(predictors) == 21
+        assert {"family_id", "family_household_id", "person_family_id"} <= set(
+            stage.outputs
+        )
+        assert all(
+            "3b663b3e6eb6408351154990be0c4b92d42c92da" in row["resource"]
+            for row in stage.artifacts
+        )
+        assert 'Frame.resolve_weights("family")' in stage.notes
+        assert "family_weight" not in stage.outputs
+        assert (
+            "wff_family_scheme_income_for_relationship_period"
+            not in stage.nonnegative_outputs
+        )
+        assert "budget_2025_wff_abatement_entitlement_change" not in stage.outputs
+        assert "budget_2026_iwtc_entitlement_change" not in stage.outputs
+        income = columns["family.wff_family_scheme_income_for_relationship_period"]
+        assert income.unit == "nzd"
+        assert income.unit_waiver is None
+
+    def test_geography_is_national_with_target_assigned_regions(self, spec) -> None:
+        spine = spec.geography_spine.geography_spine
+        assert spine.stage == "assign_nz_regions"
+        assert spine.geography_level == "region"
+        assert spine.code_system == "nz_stats_region"
+        assert spine.vintage == "2025"
+        assert spine.vintage_policy == "error"
+        assert spine.clones_per_record == 1
+        assert spine.collision_avoidance is True
+
+    def test_targets_are_unactivated_chronicle_references_not_budget_scores(
+        self, spec
+    ) -> None:
+        references = {reference.name: reference for reference in spec.target_references}
+        assert len(references) == 14
+        assert all(
+            reference.metadata["activation_status"].startswith("requires_")
+            for reference in references.values()
+        )
+        assert all(
+            reference.metadata["target_role"] == "calibration"
+            for reference in references.values()
+        )
+        wff = references["ird_wff_recipient_families"]
+        assert wff.entity == "family"
+        assert wff.measure == "receives_working_for_families"
+        assert (
+            wff.metadata["chronicle_package_id"]
+            == "ird-working-for-families-statistics-sept-2025"
+        )
+        assert wff.ledger_selector["source_name"] == "ird"
+        assert wff.ledger_source_record_id == (
+            "ird_wff_statistics.ty2024.recipient_families.all.wff_recipient_families"
+        )
+        assert references["ird_iwtc_recipient_families"].ledger_source_record_id == (
+            "ird_wff_statistics.ty2024.recipient_families.all.iwtc_recipient_families"
+        )
+        assert not any(
+            token in name
+            for name in references
+            for token in ("budget_2025", "budget_2026", "expenditure", "treasury")
+        )
+        raw = json.loads(
+            (COUNTRY_PACKAGE_ROOT / "nz/target_references.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
+            _nested_mapping_keys(raw["target_references"])
+        )
+
+    def test_release_gates_refuse_missing_inputs_and_preserve_external_oracles(
+        self, spec
+    ) -> None:
+        selected = {gate.gate for gate in spec.gates.gates}
+        assert {"parity", "export_surface", "target_surface"}.isdisjoint(selected)
+        active = {
+            gate.gate: gate for gate in spec.gates.gates if gate.not_applicable is None
+        }
+        for name in (
+            "calibration_reference_coverage",
+            "target_profile_coverage",
+            "release_input_coverage",
+            "weights_audit",
+            "formula_owned_export",
+        ):
+            assert active[name].criticality == "release_blocking"
+            assert active[name].evidence_absent_blocks is True
+        assert (
+            len(active["target_profile_coverage"].parameters["required_families"]) == 11
+        )
+
+    def test_dashboard_contract_is_public_and_capability_scoped(self, spec) -> None:
+        contract = spec.release_contract
+        assert contract.artifact_repo == "policyengine/populace-nz"
+        assert contract.staging_repo == "policyengine/populace-nz-staging"
+        assert contract.artifact_repo_private is False
+        assert contract.licence_restricted is False
+        assert contract.dataset_filename_template == "populace_nz_{year}.h5"
+        assert contract.private_artifacts == ()
+        assert set(contract.required_release_files) <= set(contract.public_artifacts)
+        assert {"calibration_diagnostics.json", "reform_validation.json"} <= set(
+            contract.required_release_files
+        )
+        raw = json.loads(
+            (COUNTRY_PACKAGE_ROOT / "nz/release_contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert raw["release_manifest_country"] == {
+            "code": "nz",
+            "label": "New Zealand",
+            "geography_id": None,
+            "geography_label": "New Zealand",
+            "repository_visibility": "public",
+            "capabilities": ["calibration", "targets", "compare"],
+        }
+
+    def test_fingerprint_is_stable_across_loads(self, spec) -> None:
+        assert load_country_spec("nz").fingerprint == spec.fingerprint
+
+    def test_closed_export_contract_matches_the_typed_input_catalog(self, spec) -> None:
+        from microcosm.frame import ExportContract
+
+        path = COUNTRY_PACKAGE_ROOT / "nz/export_contract.json"
+        raw = json.loads(path.read_text())
+        contract = ExportContract.from_path(path)
+        fields = {
+            column.key.removeprefix("family."): column.dtype
+            for column in spec.resolved_spec.columns
+            if column.domain in {"axiom_required_input", "axiom_adapter_padding_zero"}
+        }
+        assert contract.closed
+        assert set(fields) <= set(contract.required)
+        assert raw["_input_dtypes"] == fields
+        assert len(raw["_required_target_inputs"]) == 11
+        assert len(raw["_padding_defaults"]) == 10
+        assert set(raw["_required_target_inputs"]).isdisjoint(raw["_padding_defaults"])
+        assert set(contract.forbidden) == {"person_weight", "family_weight"}
+        assert len(contract.formula_owned_excluded) == 6
+        assert raw["_period"] == {
+            "label": 2026,
+            "period_kind": "tax_year",
+            "start": "2026-04-01",
+            "end": "2027-03-31",
+        }
+        assert raw["_source"]["source_release"] == "pending_treasury_corpus_publication"
+
+
+@pytest.mark.skipif(
+    not os.environ.get("POPULACE_RULESPEC_NZ"),
+    reason="set POPULACE_RULESPEC_NZ to a pinned rulespec-nz checkout for real-runtime smoke",
+)
+class TestNewZealandAxiomTransport:
+    """Real Axiom execution on synthetic records; no population/calibration claim.
+
+    The first two family cases and expected entitlement deltas come from
+    rulespec-nz's official_budget_reform_replication companion tests. The
+    third is a zero-entitlement control. Unequal household weights exercise
+    the actual Frame family-weight path rather than a manual person sum.
+    """
+
+    @pytest.fixture(scope="class")
+    def adapter(self):
+        pytest.importorskip("axiom_rules_engine")
+        from axiom_rules_engine.dense import NativeCompiledDenseProgram
+
+        from microcosm.frame import ExportContract
+        from microcosm.frame.adapters.axiom import NZ_SCHEMA, AxiomEngine, AxiomPeriod
+
+        if NativeCompiledDenseProgram is None:
+            pytest.skip("real Axiom dense native extension is not installed")
+        root = Path(os.environ["POPULACE_RULESPEC_NZ"])
+        return AxiomEngine(
+            root / "nz/policies/budget/official_budget_reform_replication.yaml",
+            schema=NZ_SCHEMA,
+            rulespec_roots=[root],
+            periods={
+                2026: AxiomPeriod(start="2026-04-01", end="2027-03-31", kind="tax_year")
+            },
+            contract=ExportContract.from_path(
+                COUNTRY_PACKAGE_ROOT / "nz/export_contract.json"
+            ),
+            arithmetic="decimal",
+        )
+
+    @pytest.fixture
+    def frame(self):
+        import numpy as np
+        import pandas as pd
+
+        from microcosm.frame import Frame, WeightKind, Weights
+        from microcosm.frame.adapters.axiom import NZ_SCHEMA
+
+        raw = json.loads((COUNTRY_PACKAGE_ROOT / "nz/export_contract.json").read_text())
+        inputs = {
+            "family_tax_credit_eldest_dependent_child_care_units": [1, 1, 0],
+            "family_tax_credit_subsequent_dependent_child_care_units": [1, 0, 0],
+            "family_tax_credit_entitlement_days": [365, 365, 0],
+            "wff_family_scheme_income_for_relationship_period": [50000, 100000, 0],
+            "wff_family_credit_abatement_days": [365, 365, 0],
+            "entitled_to_in_work_tax_credit": [False, True, False],
+            "in_work_tax_credit_allowed_children_count": [0, 1, 0],
+            "in_work_tax_credit_weekly_periods": [0, 52, 0],
+            "child_tax_credit_for_entitlement_period": [0, 0, 0],
+            "parental_tax_credit_for_entitlement_period": [0, 0, 0],
+            "parental_tax_credit_additional_abatement": [0, 0, 0],
+        }
+        inputs.update(
+            {name: [value] * 3 for name, value in raw["_padding_defaults"].items()}
+        )
+        family = pd.DataFrame(
+            {"family_id": [1, 2, 3], "family_household_id": [1, 2, 2]}
+        )
+        for name, values in inputs.items():
+            dtype = raw["_input_dtypes"][name]
+            family[name] = (
+                pd.Series([Decimal(value) for value in values], dtype=object)
+                if dtype.startswith("decimal128")
+                else pd.Series(values, dtype=dtype)
+            )
+        return Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": [1, 2, 3, 4, 5, 6],
+                        "person_household_id": [1, 1, 1, 2, 2, 2],
+                        "person_family_id": [1, 1, 1, 2, 2, 3],
+                    }
+                ),
+                "household": pd.DataFrame({"household_id": [1, 2]}),
+                "family": family,
+            },
+            NZ_SCHEMA,
+            {"household": Weights(values=np.array([2.0, 7.0]), kind=WeightKind.DESIGN)},
+        )
+
+    def test_real_rules_and_nonuniform_family_weights(self, adapter, frame) -> None:
+        import numpy as np
+
+        from microcosm.frame import Frame, wsum
+
+        names = [
+            "budget_2025_wff_abatement_entitlement_change",
+            "budget_2026_iwtc_entitlement_change",
+        ]
+        outputs = adapter.materialize(frame, names, period=2026)
+        np.testing.assert_array_equal(outputs[names[0]], [568.5, 0.0, 0.0])
+        np.testing.assert_array_equal(outputs[names[1]], [0.0, 438.5, 0.0])
+        np.testing.assert_array_equal(
+            frame.resolve_weights("family").values, [2.0, 7.0, 7.0]
+        )
+        assert all(adapter.variable_metadata(name).entity == "family" for name in names)
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["family"] = frame.table("family").assign(**outputs)
+        result_frame = Frame(
+            tables, frame.schema, {"household": frame.weights_for("household")}
+        )
+        assert wsum(result_frame, names[0], entity="family") == 1137.0
+        assert wsum(result_frame, names[1], entity="family") == 3069.5
+
+    def test_exact_inputs_round_trip_without_formula_or_family_weights(
+        self, adapter, frame, tmp_path
+    ) -> None:
+        pytest.importorskip("tables")
+        from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
+
+        path = tmp_path / "nz_runtime_fixture.h5"
+        adapter.write_dataset(frame, path, period=2026)
+        dataset = AxiomEntityTableDataset(file_path=path)
+        assert dataset.time_period == 2026
+        assert dataset.household["household_weight"].tolist() == [2.0, 7.0]
+        assert dataset.family[
+            "wff_family_scheme_income_for_relationship_period"
+        ].tolist() == [Decimal(50000), Decimal(100000), Decimal(0)]
+        columns = {name for table in dataset.tables.values() for name in table.columns}
+        assert {"person_weight", "family_weight"}.isdisjoint(columns)
+        assert set(adapter.export_contract().formula_owned_excluded).isdisjoint(columns)
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "wff_family_scheme_income_for_relationship_period",
+            "child_tax_credit_for_entitlement_period",
+            "entitled_to_in_work_tax_credit",
+        ],
+    )
+    def test_missing_substantive_inputs_never_default(
+        self, adapter, frame, field, tmp_path
+    ) -> None:
+        from microcosm.frame import Frame
+
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["family"] = frame.table("family").drop(columns=[field])
+        incomplete = Frame(
+            tables, frame.schema, {"household": frame.weights_for("household")}
+        )
+        with pytest.raises((ValueError, RuntimeError), match=field):
+            adapter.materialize(
+                incomplete, ["budget_2025_wff_abatement_entitlement_change"], 2026
+            )
+        path = tmp_path / "must_not_exist.h5"
+        with pytest.raises(ValueError, match=field):
+            adapter.write_dataset(incomplete, path, 2026)
+        assert not path.exists()
+
+    def test_formula_owned_output_blocks_export(self, adapter, frame, tmp_path) -> None:
+        from microcosm.frame import Frame
+
+        name = "budget_2026_iwtc_entitlement_change"
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["family"] = frame.table("family").assign(**{name: [0.0, 0.0, 0.0]})
+        poisoned = Frame(
+            tables, frame.schema, {"household": frame.weights_for("household")}
+        )
+        path = tmp_path / "must_not_exist.h5"
+        with pytest.raises(ValueError, match=name):
+            adapter.write_dataset(poisoned, path, 2026)
+        assert not path.exists()
+
+    def test_misplaced_family_link_cannot_bypass_nesting(
+        self, adapter, frame, tmp_path
+    ) -> None:
+        import numpy as np
+
+        from microcosm.frame import Frame, WeightKind, Weights
+
+        person = frame.table("person").copy()
+        person["family_household_id"] = person["person_household_id"]
+        # Attach a person from household 2 to family 1; equal weights cannot
+        # reveal the invalid cross-household membership by themselves.
+        person.loc[3, "person_family_id"] = 1
+        misplaced = Frame(
+            {
+                "person": person,
+                "household": frame.table("household"),
+                "family": frame.table("family").drop(columns=["family_household_id"]),
+            },
+            frame.schema,
+            {"household": Weights(values=np.array([2.0, 2.0]), kind=WeightKind.DESIGN)},
+        )
+        with pytest.raises(ValueError, match="family_household_id.*family.*person"):
+            adapter.materialize(
+                misplaced, ["budget_2025_wff_abatement_entitlement_change"], 2026
+            )
+        path = tmp_path / "wrong_owner.h5"
+        with pytest.raises(ValueError, match="family_household_id.*family.*person"):
+            adapter.write_dataset(misplaced, path, 2026)
+        assert not path.exists()
 
 
 class TestGoldenCountrySpecs:

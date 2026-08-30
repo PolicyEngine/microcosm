@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "country": "nz",
+  "policy": "New Zealand v0 transports the immutable public Microcosm US support artifact into a destination Frame. Donor records remain US support records, preserve their support-stratum provenance, and are never represented as observed New Zealand microdata. Only the Axiom inputs declared by the reviewed rulespec-nz transport contract may cross the rules boundary; missing substantive inputs fail closed and no country-specific Python runtime is permitted.",
+  "stages": [
+    {
+      "stage": "load_populace_us_support_pool",
+      "survey": "Microcosm US Build P support population (US donor support records)",
+      "source": "https://huggingface.co/datasets/policyengine/populace-us",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "hdf5",
+          "vintage": "2024",
+          "locator": "populace_us_2024.h5",
+          "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+          "repository": {
+            "provider": "huggingface",
+            "owner": "policyengine",
+            "name_parts": [
+              "populace-us"
+            ],
+            "repo_type": "dataset"
+          },
+          "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+          "size_bytes": 462915783,
+          "integrity_note": "The revision is the immutable release tag named by the public latest.json pointer on 2026-08-29. Execution must verify both SHA-256 and byte size before reading; main/latest fallback is forbidden."
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "person",
+            "household"
+          ],
+          "weight": "household_weight"
+        }
+      ],
+      "outputs": [
+        "person_id",
+        "household_id",
+        "person_household_id",
+        "household_weight",
+        "support_stratum",
+        "donor_country_code",
+        "age",
+        "sex"
+      ],
+      "nonnegative_outputs": [
+        "household_weight",
+        "age"
+      ],
+      "notes": "This pins an authenticated donor artifact, not an executable NZ loader. The generic loader must preserve Frame entity ids, membership, typed household design weights, and support strata; set donor_country_code to US; refuse unreceipted aliases; and convert donor mass to a Chronicle-supplied NZ population total with a mass-conservation receipt. The typed operation vocabulary cannot represent that destination-mass bridge without inventing its still-missing target value, so execution remains blocked."
+    },
+    {
+      "stage": "prepare_nz_wff_axiom_inputs",
+      "survey": "rulespec-nz Working for Families transport contract",
+      "source": "https://github.com/TheAxiomFoundation/rulespec-nz",
+      "grain": "family",
+      "artifacts": [
+        {
+          "kind": "public_parameter_reference",
+          "role": "rules_engine_contract",
+          "resource": "rulespec-nz@3b663b3e6eb6408351154990be0c4b92d42c92da:data/microsimulation/official-budget-reform-transport.json",
+          "format": "rulespec_json"
+        },
+        {
+          "kind": "public_parameter_reference",
+          "role": "rules_engine_module",
+          "resource": "rulespec-nz@3b663b3e6eb6408351154990be0c4b92d42c92da:nz/policies/budget/official_budget_reform_replication.yaml",
+          "format": "rulespec_yaml"
+        },
+        {
+          "kind": "public_parameter_reference",
+          "role": "rules_engine_program",
+          "resource": "rulespec-nz@3b663b3e6eb6408351154990be0c4b92d42c92da:nz/programs/official_budget_reform_replication.yaml",
+          "format": "rulespec_yaml"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "family_tax_credit_eldest_dependent_child_care_units",
+            "family_tax_credit_subsequent_dependent_child_care_units",
+            "family_tax_credit_entitlement_days",
+            "wff_family_scheme_income_for_relationship_period",
+            "wff_family_credit_abatement_days",
+            "entitled_to_in_work_tax_credit",
+            "in_work_tax_credit_allowed_children_count",
+            "in_work_tax_credit_weekly_periods",
+            "child_tax_credit_for_entitlement_period",
+            "parental_tax_credit_for_entitlement_period",
+            "parental_tax_credit_additional_abatement",
+            "best_start_abatement_days",
+            "best_start_child_care_fraction",
+            "best_start_entitlement_days",
+            "best_start_family_scheme_income_for_relationship_period",
+            "minimum_family_adjusted_income_tax_liability",
+            "minimum_family_amount_paid",
+            "minimum_family_amount_received",
+            "minimum_family_full_time_earner_weeks",
+            "minimum_family_scheme_income_attributable_to_full_time_weeks",
+            "minimum_family_tax_credit_weekly_periods"
+          ],
+          "consumed_only": true
+        }
+      ],
+      "outputs": [
+        "family_id",
+        "family_household_id",
+        "person_family_id",
+        "family_tax_credit_eldest_dependent_child_care_units",
+        "family_tax_credit_subsequent_dependent_child_care_units",
+        "family_tax_credit_entitlement_days",
+        "wff_family_scheme_income_for_relationship_period",
+        "wff_family_credit_abatement_days",
+        "entitled_to_in_work_tax_credit",
+        "in_work_tax_credit_allowed_children_count",
+        "in_work_tax_credit_weekly_periods",
+        "child_tax_credit_for_entitlement_period",
+        "parental_tax_credit_for_entitlement_period",
+        "parental_tax_credit_additional_abatement",
+        "best_start_abatement_days",
+        "best_start_child_care_fraction",
+        "best_start_entitlement_days",
+        "best_start_family_scheme_income_for_relationship_period",
+        "minimum_family_adjusted_income_tax_liability",
+        "minimum_family_amount_paid",
+        "minimum_family_amount_received",
+        "minimum_family_full_time_earner_weeks",
+        "minimum_family_scheme_income_attributable_to_full_time_weeks",
+        "minimum_family_tax_credit_weekly_periods"
+      ],
+      "nonnegative_outputs": [
+        "family_tax_credit_eldest_dependent_child_care_units",
+        "family_tax_credit_subsequent_dependent_child_care_units",
+        "family_tax_credit_entitlement_days",
+        "wff_family_credit_abatement_days",
+        "in_work_tax_credit_allowed_children_count",
+        "in_work_tax_credit_weekly_periods",
+        "child_tax_credit_for_entitlement_period",
+        "parental_tax_credit_for_entitlement_period",
+        "parental_tax_credit_additional_abatement",
+        "best_start_abatement_days",
+        "best_start_child_care_fraction",
+        "best_start_entitlement_days",
+        "best_start_family_scheme_income_for_relationship_period",
+        "minimum_family_adjusted_income_tax_liability",
+        "minimum_family_amount_paid",
+        "minimum_family_amount_received",
+        "minimum_family_full_time_earner_weeks",
+        "minimum_family_scheme_income_attributable_to_full_time_weeks",
+        "minimum_family_tax_credit_weekly_periods"
+      ],
+      "notes": "The transport contract carries 21 inputs from the imported module; the current Family-root dense batch requests 17 of them. Eleven target-dependent inputs have no default and must be transported from reviewed donor or derived evidence. Only the ten Best Start and Minimum Family Tax Credit fields may be adapter-padding zeros because they lie outside both requested Budget reform outputs' dependency graphs. The generic binder must create family_id, family_household_id, and person_family_id; refuse ambiguous or cross-household families; and invoke the real AxiomEngine. Pinned receipts: contract SHA-256 cd650c191a8a98faedf2bc45c80b6026eb06037b3357d9af37d25ee1dd460dfa; module SHA-256 fbbc936a6a14b02b1301658c91075def93a5481184ed73fa3fd0cfb06608bf69; program SHA-256 c041310945a3d35e1392262162030497b43ddfca63f4fc4a90deb19fe9044868; Axiom Engine v0.2.2 commit bb4b5684870547756078a62f1866a77c5b56f7f3. Household is the sole explicit weighted entity; family accounting uses Frame.resolve_weights(\"family\") and never persists family_weight. Automatic NZ unit derivation remains blocked because the current upstream unit-aggregation CLI golden fixture fails and the existing Belgium adapter does not run that stage. Source activation remains pending immutable Treasury corpus publication and protected validation; a passing runtime smoke is not that source-release receipt. Decimal inputs cross the native float64 ABI only within the adapter's proven exact nine-place recovery boundary. The scaffold's input-preparation operation is a dependency contract, not an implemented family-input binder."
+    }
+  ]
+}

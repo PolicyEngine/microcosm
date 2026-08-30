@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "country": "nz",
+  "policy": "New Zealand v0 is a public synthetic transport artifact: its unit records derive only from the public Microcosm US support release and its calibration facts are public New Zealand aggregates. Every record and public presentation must retain the US-donor/support-stratum provenance banner and must never be described as observed New Zealand microdata. Releases use data_build_id plus immutable Hugging Face revision, never ordinal versions.",
+  "builder": "populace-nz",
+  "hf": {
+    "artifact_repo": "policyengine/populace-nz",
+    "private": false,
+    "staging_repo": "policyengine/populace-nz-staging"
+  },
+  "release_manifest_country": {
+    "code": "nz",
+    "label": "New Zealand",
+    "geography_id": null,
+    "geography_label": "New Zealand",
+    "repository_visibility": "public",
+    "capabilities": [
+      "calibration",
+      "targets",
+      "compare"
+    ]
+  },
+  "dataset_filename_template": "populace_nz_{year}.h5",
+  "required_release_files": [
+    "populace_nz_{year}.h5",
+    "populace_nz_{year}_calibration.npz",
+    "build_manifest.json",
+    "release_manifest.json",
+    "calibration_diagnostics.json",
+    "source_coverage.json",
+    "demographics.json",
+    "reform_validation.json"
+  ],
+  "boundary": {
+    "private": [],
+    "public": [
+      "populace_nz_{year}.h5",
+      "populace_nz_{year}_calibration.npz",
+      "build_manifest.json",
+      "release_manifest.json",
+      "calibration_diagnostics.json",
+      "source_coverage.json",
+      "demographics.json",
+      "reform_validation.json",
+      "latest.json"
+    ]
+  },
+  "licence": {
+    "name": "Microcosm US public synthetic release plus public NZ administrative aggregates",
+    "restricted": false,
+    "notes": "The donor artifact is the immutable public Build P release pinned in source_stages.json. Chronicle owns per-source licence evidence for each NZ aggregate. Any future HES CURF, IDI, or other restricted unit-record contribution requires a separate private-repository and destination-guard review before it enters this contract."
+  },
+  "notes": "The target dataset period is tax year 2026-27, represented by 2026 in the current single-year kernel. The generic release assembler must copy release_manifest_country to release_manifest.json.country exactly. The dashboard registry reads policyengine/populace-nz/latest.json; the staging repository is for build telemetry. calibration_diagnostics.json is the published target-fit surface and reform_validation.json carries the Treasury official-score comparisons with explicit entitlement-to-operating-cost bridges. The two Hugging Face repositories and generic NZ release assembler do not yet exist, so this contract authorizes no publication by itself."
+}

@@ -1,0 +1,148 @@
+{
+  "_description": "Closed Frame export contract for the NZ WFF official-Budget transport smoke. This is an input artifact contract, not a calibrated population or official operating-cost replication. Fields must already be evidenced and bound on the family table.",
+  "_source": {
+    "repository": "TheAxiomFoundation/rulespec-nz",
+    "commit": "3b663b3e6eb6408351154990be0c4b92d42c92da",
+    "path": "data/microsimulation/official-budget-reform-transport.json",
+    "sha256": "cd650c191a8a98faedf2bc45c80b6026eb06037b3357d9af37d25ee1dd460dfa",
+    "source_release": "pending_treasury_corpus_publication"
+  },
+  "_schema": {
+    "entities": [
+      "person",
+      "household",
+      "family"
+    ],
+    "engine_entity_names": {
+      "person": "Person",
+      "household": "Household",
+      "family": "Family"
+    },
+    "structural_columns": {
+      "person": [
+        "person_id",
+        "person_household_id",
+        "person_family_id"
+      ],
+      "household": [
+        "household_id"
+      ],
+      "family": [
+        "family_id",
+        "family_household_id"
+      ]
+    }
+  },
+  "_period": {
+    "label": 2026,
+    "period_kind": "tax_year",
+    "start": "2026-04-01",
+    "end": "2027-03-31"
+  },
+  "_required_target_inputs": [
+    "family_tax_credit_eldest_dependent_child_care_units",
+    "family_tax_credit_subsequent_dependent_child_care_units",
+    "family_tax_credit_entitlement_days",
+    "wff_family_scheme_income_for_relationship_period",
+    "wff_family_credit_abatement_days",
+    "entitled_to_in_work_tax_credit",
+    "in_work_tax_credit_allowed_children_count",
+    "in_work_tax_credit_weekly_periods",
+    "child_tax_credit_for_entitlement_period",
+    "parental_tax_credit_for_entitlement_period",
+    "parental_tax_credit_additional_abatement"
+  ],
+  "_input_dtypes": {
+    "family_tax_credit_eldest_dependent_child_care_units": "decimal128(18,2)",
+    "family_tax_credit_subsequent_dependent_child_care_units": "decimal128(18,2)",
+    "family_tax_credit_entitlement_days": "int16",
+    "wff_family_scheme_income_for_relationship_period": "decimal128(18,2)",
+    "wff_family_credit_abatement_days": "int16",
+    "entitled_to_in_work_tax_credit": "bool",
+    "in_work_tax_credit_allowed_children_count": "int16",
+    "in_work_tax_credit_weekly_periods": "int16",
+    "child_tax_credit_for_entitlement_period": "decimal128(18,2)",
+    "parental_tax_credit_for_entitlement_period": "decimal128(18,2)",
+    "parental_tax_credit_additional_abatement": "decimal128(18,2)",
+    "best_start_abatement_days": "int64",
+    "best_start_child_care_fraction": "float64",
+    "best_start_entitlement_days": "int64",
+    "best_start_family_scheme_income_for_relationship_period": "float64",
+    "minimum_family_adjusted_income_tax_liability": "float64",
+    "minimum_family_amount_paid": "float64",
+    "minimum_family_amount_received": "float64",
+    "minimum_family_full_time_earner_weeks": "int64",
+    "minimum_family_scheme_income_attributable_to_full_time_weeks": "float64",
+    "minimum_family_tax_credit_weekly_periods": "int64"
+  },
+  "_padding_defaults": {
+    "best_start_abatement_days": 0,
+    "best_start_child_care_fraction": 0,
+    "best_start_entitlement_days": 0,
+    "best_start_family_scheme_income_for_relationship_period": 0,
+    "minimum_family_adjusted_income_tax_liability": 0,
+    "minimum_family_amount_paid": 0,
+    "minimum_family_amount_received": 0,
+    "minimum_family_full_time_earner_weeks": 0,
+    "minimum_family_scheme_income_attributable_to_full_time_weeks": 0,
+    "minimum_family_tax_credit_weekly_periods": 0
+  },
+  "_decimal_boundary": "Store substantive decimal128(18,2) values as Decimal columns. The native dense ABI accepts float64, so materialization permits only values exactly recovered by its nine-decimal-place rounding and rejects the remainder; arbitrary Decimal128 support is not claimed. HDF export preserves Decimal objects exactly.",
+  "_weight_contract": {
+    "stored_weight_entity": "household",
+    "stored_weight_column": "household_weight",
+    "family_weight_column_stored": false,
+    "family_weight_resolution": "The frame must call resolve_weights('family'); each family must map to exactly one household and inherit that household's calibrated weight.",
+    "forbid_manual_person_weight_aggregation": true
+  },
+  "required": [
+    "person_id",
+    "person_household_id",
+    "person_family_id",
+    "household_id",
+    "household_weight",
+    "family_id",
+    "family_household_id",
+    "family_tax_credit_eldest_dependent_child_care_units",
+    "family_tax_credit_subsequent_dependent_child_care_units",
+    "family_tax_credit_entitlement_days",
+    "wff_family_scheme_income_for_relationship_period",
+    "wff_family_credit_abatement_days",
+    "entitled_to_in_work_tax_credit",
+    "in_work_tax_credit_allowed_children_count",
+    "in_work_tax_credit_weekly_periods",
+    "child_tax_credit_for_entitlement_period",
+    "parental_tax_credit_for_entitlement_period",
+    "parental_tax_credit_additional_abatement",
+    "best_start_abatement_days",
+    "best_start_child_care_fraction",
+    "best_start_entitlement_days",
+    "best_start_family_scheme_income_for_relationship_period",
+    "minimum_family_adjusted_income_tax_liability",
+    "minimum_family_amount_paid",
+    "minimum_family_amount_received",
+    "minimum_family_full_time_earner_weeks",
+    "minimum_family_scheme_income_attributable_to_full_time_weeks",
+    "minimum_family_tax_credit_weekly_periods"
+  ],
+  "forbidden": [
+    "person_weight",
+    "family_weight"
+  ],
+  "optional": [
+    "age",
+    "sex",
+    "region_code",
+    "support_stratum",
+    "donor_country_code"
+  ],
+  "formula_owned_excluded": [
+    "budget_2025_wff_abatement_baseline_total_credit",
+    "budget_2025_wff_abatement_reform_total_credit",
+    "budget_2025_wff_abatement_entitlement_change",
+    "budget_2026_iwtc_baseline_total_credit",
+    "budget_2026_iwtc_reform_total_credit",
+    "budget_2026_iwtc_entitlement_change"
+  ],
+  "closed": true
+}

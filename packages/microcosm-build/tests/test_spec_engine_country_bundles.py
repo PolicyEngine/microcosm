@@ -26,6 +26,42 @@ EXPECTED_RESOURCES = {
     "vintages",
 }
 AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9"
+NZ_SPEC_SHA256 = "7ca62ede964e4e0d5d9d700a136ff2be170b863de3f9fe9e2577394bac12f92f"
+NZ_COLUMN_KEYS = {
+    "family.best_start_abatement_days",
+    "family.best_start_child_care_fraction",
+    "family.best_start_entitlement_days",
+    "family.best_start_family_scheme_income_for_relationship_period",
+    "family.child_tax_credit_for_entitlement_period",
+    "family.entitled_to_in_work_tax_credit",
+    "family.family_household_id",
+    "family.family_id",
+    "family.family_tax_credit_eldest_dependent_child_care_units",
+    "family.family_tax_credit_entitlement_days",
+    "family.family_tax_credit_subsequent_dependent_child_care_units",
+    "family.in_work_tax_credit_allowed_children_count",
+    "family.in_work_tax_credit_weekly_periods",
+    "family.minimum_family_adjusted_income_tax_liability",
+    "family.minimum_family_amount_paid",
+    "family.minimum_family_amount_received",
+    "family.minimum_family_full_time_earner_weeks",
+    "family.minimum_family_scheme_income_attributable_to_full_time_weeks",
+    "family.minimum_family_tax_credit_weekly_periods",
+    "family.parental_tax_credit_additional_abatement",
+    "family.parental_tax_credit_for_entitlement_period",
+    "family.wff_family_credit_abatement_days",
+    "family.wff_family_scheme_income_for_relationship_period",
+    "household.household_id",
+    "household.household_weight",
+    "person.age",
+    "person.donor_country_code",
+    "person.person_family_id",
+    "person.person_household_id",
+    "person.person_id",
+    "person.region_code",
+    "person.sex",
+    "person.support_stratum",
+}
 
 
 @pytest.mark.parametrize(
@@ -52,6 +88,12 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
                 "person.region_nuts1",
             },
             {"household", "person"},
+        ),
+        (
+            "nz",
+            NZ_SPEC_SHA256,
+            NZ_COLUMN_KEYS,
+            {"family", "household", "person"},
         ),
         (
             "uk",
@@ -96,6 +138,7 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
 def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None:
     am = compile_spec(load_bundle("am"))
     be = compile_spec(load_bundle("be"))
+    nz = compile_spec(load_bundle("nz"))
     uk = compile_spec(load_bundle("uk"))
 
     assert am.resource("spine")["support_roles"] == [
@@ -103,6 +146,9 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
     ]
     assert be.resource("spine")["support_roles"] == [
         {"id": "silc_base", "kind": "none"}
+    ]
+    assert nz.resource("spine")["support_roles"] == [
+        {"id": "populace_us_donor_base", "kind": "none"}
     ]
     assert uk.resource("spine")["support_roles"] == [
         {
@@ -119,6 +165,10 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
         "assign": "kernel:clone_assign_communes",
         "validate": "kernel:be_commune_geography_gate",
     }
+    assert nz.resource("geography")["assignment"]["kernels"] == {
+        "assign": "kernel:assign_nz_regions",
+        "validate": "kernel:nz_region_geography_gate",
+    }
     assert uk.resource("geography")["assignment"]["kernels"] == {
         "assign": "kernel:assign_uk_geography_ladder",
         "validate": "kernel:uk_geography_ladder_gate",
@@ -129,12 +179,15 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
     country_contract_ids = {
         "am_community_geography_gate",
         "assign_am_marz",
+        "assign_nz_regions",
         "clone_assign_communities",
         "load_populace_us_support_pool",
         "silc_load",
         "clone_assign_communes",
         "be_commune_geography_gate",
         "load_uk_national_frame",
+        "nz_region_geography_gate",
+        "prepare_nz_wff_axiom_inputs",
         "assign_uk_geography_ladder",
         "uk_geography_ladder_gate",
     }
@@ -190,6 +243,29 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
     assert spec.release_contract is not None
     assert spec.release_contract.artifact_repo_private
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
+        "gates.json",
+        "geography_spine.json",
+        "release_contract.json",
+        "source_stages.json",
+        "target_references.json",
+    }
+
+
+def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
+    spec = load_country_spec("nz")
+
+    assert spec.sources is not None
+    assert tuple(spec.sources.stage_map()) == (
+        "load_populace_us_support_pool",
+        "prepare_nz_wff_axiom_inputs",
+    )
+    assert spec.geography_spine is not None
+    assert spec.geography_spine.geography_spine.stage == "assign_nz_regions"
+    assert spec.gates is not None
+    assert spec.release_contract is not None
+    assert not spec.release_contract.artifact_repo_private
+    assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
+        "export_contract.json",
         "gates.json",
         "geography_spine.json",
         "release_contract.json",
@@ -302,6 +378,39 @@ def test_am_smoke_build_refuses_without_harvests_and_stage_bindings() -> None:
         match=(
             r"missing \['load_populace_us_support_pool', 'assign_am_marz', "
             r"'clone_assign_communities'\].*There are no stubs or fallbacks"
+        ),
+    ):
+        country_stage_plan(spec, {})
+
+
+def test_nz_smoke_build_refuses_without_evidenced_inputs_and_stage_bindings() -> None:
+    """A valid scaffold must not turn missing NZ runtime bindings into stubs."""
+
+    spec = load_country_spec("nz")
+    compiled = compile_spec(spec.resolved_spec)
+    assert compiled.spec_binding.country == "nz"
+    assert not compiled.producer_graph.present
+    assert compiled.nodes == ()
+
+    stages = spec.sources.stage_map()
+    assert {
+        artifact["kind"]
+        for artifact in stages["load_populace_us_support_pool"].artifacts
+    } == {"public_microdata"}
+    assert (
+        len(
+            stages["prepare_nz_wff_axiom_inputs"].operations[0].parameters["predictors"]
+        )
+        == 21
+    )
+    build_package = Path(__file__).parents[1] / "src/microcosm/build"
+    assert not (build_package / "nz_runtime").exists()
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"missing \['load_populace_us_support_pool', 'prepare_nz_wff_axiom_inputs', "
+            r"'assign_nz_regions'\].*There are no stubs or fallbacks"
         ),
     ):
         country_stage_plan(spec, {})

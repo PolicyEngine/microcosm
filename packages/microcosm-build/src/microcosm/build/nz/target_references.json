@@ -1,0 +1,311 @@
+{
+  "country": "nz",
+  "description": "New Zealand v0 calibration authoring contracts. Observed values and source lineage live only in Chronicle. WFF and IWTC national counts have cell-pinned identities; the remaining series-level rows require expansion. Every row needs a reviewed Frame column and period bridge before activation; no table-level placeholder is itself a calibration target. Treasury DistributionExplorer full-entitlement outputs, official Budget reform scores, and administrative expenditure totals remain external validation evidence rather than solver targets.",
+  "allowed_value_operations": [
+    "identity"
+  ],
+  "target_references": [
+    {
+      "name": "stats_nz_population_by_age_sex_region",
+      "ledger_selector": {
+        "source_name": "stats_nz_population_estimates",
+        "source_measure_id": "estimated_resident_population_by_age_sex_region",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2025,
+      "family": "demography",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "geography_vintage": "2025",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration"
+      },
+      "notes": "Primary age-band x sex x region population surface. Chronicle must supply one dimension- and region-pinned fact per selected cell, the complete region roster, uncertainty, and a reviewed bridge from the 30 June 2025 reference date to the 2026-27 build basis."
+    },
+    {
+      "name": "stats_nz_population_by_single_year_age_sex",
+      "ledger_selector": {
+        "source_name": "stats_nz_population_estimates",
+        "source_measure_id": "estimated_resident_population_by_single_year_age_sex",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2025,
+      "family": "demography",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration"
+      },
+      "notes": "National single-year age x sex cells constrain the age tail. The profile must prove reconciliation with the region surface rather than double-counting inconsistent totals."
+    },
+    {
+      "name": "stats_nz_census_households_by_composition",
+      "ledger_selector": {
+        "source_name": "stats_nz_census_2023_households",
+        "source_measure_id": "households_by_composition",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "households",
+      "period": 2023,
+      "family": "household_structure",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration"
+      },
+      "notes": "Household and family composition is the structural control for WFF family assembly. Chronicle must expand the published categories and supply a reviewed 2023-to-2026 basis before activation."
+    },
+    {
+      "name": "stats_nz_census_households_by_tenure_region",
+      "ledger_selector": {
+        "source_name": "stats_nz_census_2023_households",
+        "source_measure_id": "households_by_tenure_region",
+        "geography_level": "region"
+      },
+      "entity": "household",
+      "measure": "households",
+      "filter": "housing_tenure_cell_indicator",
+      "period": 2023,
+      "family": "housing_tenure",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_prepared_indicators",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration"
+      },
+      "notes": "Each tenure x region cell needs its own deterministic indicator binding. Market-rent amounts are validation/input evidence for Accommodation Supplement, not household-count calibration rows."
+    },
+    {
+      "name": "ird_taxable_income_people_by_band",
+      "ledger_selector": {
+        "source_name": "ird_taxable_income_distribution",
+        "source_measure_id": "individuals_by_taxable_income_band",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "people",
+      "filter": "taxable_income_band_indicator",
+      "period": 2024,
+      "family": "income",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration"
+      },
+      "notes": "Administrative count backbone. Chronicle must emit one income-band fact and reviewed prepared indicator per cell; the target basis must be advanced explicitly to the build period."
+    },
+    {
+      "name": "ird_taxable_income_total_by_band",
+      "ledger_selector": {
+        "source_name": "ird_taxable_income_distribution",
+        "source_measure_id": "total_taxable_income_by_band_nzd",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "taxable_income_nzd",
+      "filter": "taxable_income_band_indicator",
+      "period": 2024,
+      "family": "income",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_candidate_column_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration"
+      },
+      "notes": "Dollar companion to the count bands. Activation requires a destination-NZD taxable-income column with a reviewed donor bridge; US-dollar values may never be compared directly with NZD thresholds."
+    },
+    {
+      "name": "ird_wage_salary_people_by_band",
+      "ledger_selector": {
+        "source_name": "ird_wage_salary_statistics",
+        "source_measure_id": "individuals_by_wage_salary_band",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "people",
+      "filter": "wage_salary_band_indicator",
+      "period": 2024,
+      "family": "earnings",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_candidate_column_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration"
+      },
+      "notes": "Each wage/salary band needs a destination-NZD indicator and source-period bridge. QES average earnings is a macro diagnostic, not an additional hard total over these cells."
+    },
+    {
+      "name": "msd_main_benefit_recipients_by_program_age",
+      "ledger_selector": {
+        "source_name": "msd_quarterly_benefit_facts",
+        "source_measure_id": "main_benefit_recipients_by_program_age",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_main_benefit",
+      "period": "2026-03",
+      "family": "main_benefits",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "calibration"
+      },
+      "notes": "Count-only administrative cells constrain an explicit receipt/take-up layer. They must never be bound to Axiom full-entitlement outputs or used to force entitlement dollars to equal actual expenditure."
+    },
+    {
+      "name": "msd_accommodation_supplement_recipients_by_region",
+      "ledger_selector": {
+        "source_name": "msd_quarterly_benefit_facts",
+        "source_measure_id": "accommodation_supplement_recipients_by_region",
+        "geography_level": "region"
+      },
+      "entity": "family",
+      "measure": "receives_accommodation_supplement",
+      "period": "2026-03",
+      "family": "accommodation_supplement",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_geography_bridge_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "calibration"
+      },
+      "notes": "MSD Work and Income regions are not Stats NZ regions. Activation requires an explicit geography bridge and a family-level receipt assignment; the ~44 percent survey estimate remains held-out validation."
+    },
+    {
+      "name": "msd_nz_super_veterans_pension_recipients",
+      "ledger_selector": {
+        "source_name": "msd_nz_super_veterans_pension_facts",
+        "source_measure_id": "nz_super_veterans_pension_recipients",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_nz_super_or_veterans_pension",
+      "period": "2025-06",
+      "family": "superannuation",
+      "metadata": {
+        "activation_status": "requires_harvested_fact_reference_and_take_up_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Social Development",
+        "target_role": "calibration"
+      },
+      "notes": "Recipient stock is a receipt-state target, not an entitlement-output target. Expenditure is validation evidence and stays outside the calibration manifest."
+    },
+    {
+      "name": "ird_wff_recipient_families",
+      "ledger_selector": {
+        "source_name": "ird",
+        "source_measure_id": "wff_recipient_families",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "receives_working_for_families",
+      "period": 2024,
+      "family": "working_for_families",
+      "metadata": {
+        "activation_status": "requires_receipt_assignment_and_2026_basis",
+        "chronicle_package_id": "ird-working-for-families-statistics-sept-2025",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration",
+        "chronicle_package_path": "ird/working_for_families_statistics_sept_2025",
+        "source_period_kind": "tax_year",
+        "source_period_start": "2023-04-01",
+        "source_period_end": "2024-03-31"
+      },
+      "notes": "Cell-pinned IRD administrative count of families with a claim and non-zero final entitlement, not every eligible family and not cash paid. Chronicle owns the September 2025 workbook facts. Activation requires a separate family receipt/claim state and an explicit bridge from tax year ending 2024 to the 2026-27 build basis. Total and average entitlement NZD remain held-out validation, never calibration values.",
+      "ledger_source_record_id": "ird_wff_statistics.ty2024.recipient_families.all.wff_recipient_families"
+    },
+    {
+      "name": "ird_iwtc_recipient_families",
+      "ledger_selector": {
+        "source_name": "ird",
+        "source_measure_id": "iwtc_recipient_families",
+        "geography_level": "country"
+      },
+      "entity": "family",
+      "measure": "receives_in_work_tax_credit",
+      "period": 2024,
+      "family": "working_for_families",
+      "metadata": {
+        "activation_status": "requires_receipt_assignment_and_2026_basis",
+        "chronicle_package_id": "ird-working-for-families-statistics-sept-2025",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration",
+        "chronicle_package_path": "ird/working_for_families_statistics_sept_2025",
+        "source_period_kind": "tax_year",
+        "source_period_start": "2023-04-01",
+        "source_period_end": "2024-03-31"
+      },
+      "notes": "Cell-pinned IRD administrative count of families with a claim and non-zero final entitlement, not every eligible family and not cash paid. Chronicle owns the September 2025 workbook facts. Activation requires a separate family receipt/claim state and an explicit bridge from tax year ending 2024 to the 2026-27 build basis. Total and average entitlement NZD remain held-out validation, never calibration values.",
+      "ledger_source_record_id": "ird_wff_statistics.ty2024.recipient_families.all.iwtc_recipient_families"
+    },
+    {
+      "name": "ird_student_loan_borrowers",
+      "ledger_selector": {
+        "source_name": "ird_student_loan_statistics",
+        "source_measure_id": "nz_based_borrowers",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "has_student_loan_balance",
+      "period": 2025,
+      "family": "student_loans",
+      "metadata": {
+        "activation_status": "requires_harvested_fact_reference_and_borrower_assignment",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Inland Revenue",
+        "target_role": "calibration"
+      },
+      "notes": "Borrower counts require a reviewed person-level assignment and period definition. Balance dollars are a separate validation or imputation problem."
+    },
+    {
+      "name": "stats_nz_census_ethnicity_by_age_region",
+      "ledger_selector": {
+        "source_name": "stats_nz_census_2023_individuals",
+        "source_measure_id": "people_by_ethnicity_age_region",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "people",
+      "filter": "ethnicity_age_region_cell_indicator",
+      "period": 2023,
+      "family": "equity",
+      "metadata": {
+        "activation_status": "requires_harvested_cell_references_multi_response_policy_and_2026_basis",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "calibration"
+      },
+      "notes": "Ethnicity is multiple-response, not a partition. Chronicle and the target compiler must preserve the publisher's total-response-person convention and must not force mutually exclusive assignment."
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}

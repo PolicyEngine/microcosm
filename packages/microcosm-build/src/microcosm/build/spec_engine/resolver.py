@@ -62,8 +62,7 @@ class KernelRegistry:
         overlap = sorted(implemented & contract_only)
         if overlap:
             raise ValueError(
-                "kernel ids cannot be both implemented and contract-only: "
-                f"{overlap!r}"
+                f"kernel ids cannot be both implemented and contract-only: {overlap!r}"
             )
         digest = hashlib.sha256(canonical_json_bytes(sorted(implemented))).hexdigest()
         return cls(implemented | contract_only, implemented, digest)
@@ -150,7 +149,7 @@ F0_IMPLEMENTED_KERNEL_IDS = frozenset(
     }
 )
 
-# UK, BE, and AM use these reviewed ids to prove that their shared-core bundle
+# UK, BE, AM, and NZ use these reviewed ids to prove that their shared-core bundle
 # shapes resolve through the same compiler.  F0 does not yet bind them into the
 # generic executor: the Belgian and Armenian implementations are absent, and
 # the existing UK functions have no compiler-owned producer binding or
@@ -160,12 +159,15 @@ F0_CONTRACT_ONLY_KERNEL_IDS = frozenset(
     {
         "am_community_geography_gate",
         "assign_am_marz",
+        "assign_nz_regions",
         "assign_uk_geography_ladder",
         "be_commune_geography_gate",
         "clone_assign_communities",
         "clone_assign_communes",
         "load_populace_us_support_pool",
         "load_uk_national_frame",
+        "nz_region_geography_gate",
+        "prepare_nz_wff_axiom_inputs",
         "silc_load",
         "uk_geography_ladder_gate",
     }
@@ -648,9 +650,7 @@ def _validate_imputation_structure(
 
     # RAW dependencies have one authority: each input's producing_stage.
     # Global edges and equality-only depends_on arrays are compiler outputs.
-    predecessors = {
-        node_id: set(input_predecessors[node_id]) for node_id in node_ids
-    }
+    predecessors = {node_id: set(input_predecessors[node_id]) for node_id in node_ids}
     successors = {node_id: set() for node_id in node_ids}
     for consumer, producers in predecessors.items():
         for producer in producers:
@@ -1063,9 +1063,7 @@ def _validate_imputation_structure(
     producer_family_links: dict[str, tuple[int, Mapping[str, object]]] = {}
     for family_index, family in [*primary_families, *late_families]:
         family_location = f"imputation/families/{family_index}"
-        stage = _identifier(
-            family.get("stage"), location=f"{family_location}/stage"
-        )
+        stage = _identifier(family.get("stage"), location=f"{family_location}/stage")
         producer_field = (
             "execution_contract" if stage == "primary_puf_qrf" else "runtime_name"
         )
@@ -1086,8 +1084,7 @@ def _validate_imputation_structure(
     orphan_primary_nodes = sorted(
         node_id
         for node_id, node in nodes_by_id.items()
-        if node.get("kind") == "primary_puf"
-        and node_id not in producer_family_links
+        if node.get("kind") == "primary_puf" and node_id not in producer_family_links
     )
     if orphan_primary_nodes:
         raise SpecResolutionError(
@@ -1131,8 +1128,7 @@ def _validate_imputation_structure(
                     else "conflicting"
                 )
                 raise SpecResolutionError(
-                    f"{output_location}: {relation} authored producer output "
-                    f"{key!r}"
+                    f"{output_location}: {relation} authored producer output {key!r}"
                 )
             authored_outputs[key] = coverage_scope
 
@@ -1148,12 +1144,8 @@ def _validate_imputation_structure(
             target_location = f"{family_location}/targets/{target_index}"
             target = _mapping(target_value, target_location)
             key = (
-                _identifier(
-                    target.get("entity"), location=f"{target_location}/entity"
-                ),
-                _identifier(
-                    target.get("name"), location=f"{target_location}/name"
-                ),
+                _identifier(target.get("entity"), location=f"{target_location}/entity"),
+                _identifier(target.get("name"), location=f"{target_location}/name"),
             )
             coverage_scope = _identifier(
                 target.get("output_coverage_scope"),
@@ -1166,8 +1158,7 @@ def _validate_imputation_structure(
                     else "conflicting"
                 )
                 raise SpecResolutionError(
-                    f"{target_location}: {relation} expanded producer output "
-                    f"{key!r}"
+                    f"{target_location}: {relation} expanded producer output {key!r}"
                 )
             expanded_outputs[key] = coverage_scope
             if key in authored_outputs:
@@ -1182,9 +1173,7 @@ def _validate_imputation_structure(
                 )
         # Materialize the deterministic compile order here so resolution fails
         # before an adapter can observe an ambiguous union.
-        compiled_output_keys = tuple(
-            sorted({**authored_outputs, **expanded_outputs})
-        )
+        compiled_output_keys = tuple(sorted({**authored_outputs, **expanded_outputs}))
         if len(compiled_output_keys) != len(authored_outputs) + len(expanded_outputs):
             raise SpecResolutionError(
                 f"{node_location}/outputs: duplicate expanded producer output"

@@ -47,7 +47,9 @@ if _AXIOM_INSTALLED:
 else:
     _AXIOM_DENSE = False
 
-_FIXTURE_MODULE = Path(__file__).parent / "fixtures" / "axiom_toy_country.yaml"
+_FIXTURE_MODULE = (
+    Path(__file__).parent / "fixtures/rulespec-xx/xx/policies/axiom_toy_country.yaml"
+)
 
 
 @dataclass(frozen=True)

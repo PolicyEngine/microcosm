@@ -1,0 +1,136 @@
+{
+  "version": 2,
+  "country": "nz",
+  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. Gates with not_applicable are explicit receipts for missing country policy or evidence, never borrowed Belgium/US thresholds; active identity, reference, support, weights, nonzero, formula-ownership, and nonnegative gates fail closed.",
+  "phases": [
+    "terminal"
+  ],
+  "gates": [
+    {
+      "id": "calibration_per_family_fit",
+      "gate": "per_family_fit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "Chronicle has not yet supplied the complete cell-expanded NZ target inventory, covariance, or steward-reviewed per-family tolerances. Belgium and shared runner defaults may not silently govern New Zealand.",
+      "notes": "Activate with explicit NZ policy after the target harvest. Every hard family must report separately so an easy demographic family cannot hide a weak income or programme family."
+    },
+    {
+      "id": "national_and_region_admin_aggregates",
+      "gate": "aggregate_admin",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "The complete ledger-nz fact rows, projection basis to tax year 2026-27, uncertainty, and reviewed fact-specific tolerances are not yet bound.",
+      "notes": "Activate at country and region levels only after every hard reference resolves. Consume table leaves or totals, never both as independent targets."
+    },
+    {
+      "id": "calibration_reference_inventory",
+      "gate": "calibration_reference_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every table-level authoring contract must be replaced by generated cell-pinned Chronicle references with direct, prepared, or engine-derived bindings; every activated reference must enter the matrix."
+    },
+    {
+      "id": "target_profile_coverage",
+      "gate": "target_profile_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "required_families": [
+          "demography",
+          "household_structure",
+          "housing_tenure",
+          "income",
+          "earnings",
+          "main_benefits",
+          "accommodation_supplement",
+          "superannuation",
+          "working_for_families",
+          "student_loans",
+          "equity"
+        ]
+      },
+      "evidence_absent_blocks": true,
+      "notes": "The active national profile must retain every declared v0 calibration family. Treasury full-entitlement model outputs and official Budget reform scores are validation oracles, never calibration targets."
+    },
+    {
+      "id": "release_input_coverage",
+      "gate": "release_input_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive WFF root input is a build failure, never an engine default."
+    },
+    {
+      "id": "donor_support_bounds",
+      "gate": "support",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every direct or derived calibration measure and every substantive Axiom input must carry a donor-support receipt."
+    },
+    {
+      "id": "calibration_weights_audit",
+      "gate": "weights_audit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Household weights must receipt their design-to-calibrated transition and destination-population mass change. Family scoring resolves those weights through Frame; it may not persist a second ambiguous vector."
+    },
+    {
+      "id": "exported_nonzero",
+      "gate": "exported_nonzero",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "No all-zero stored calibration layer, substantive Axiom input, geography layer, or provenance banner may ship."
+    },
+    {
+      "id": "formula_owned_export",
+      "gate": "formula_owned_export",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "No Axiom-derived rule output may persist as an input column and mask a baseline or reform calculation."
+    },
+    {
+      "id": "nonnegative_columns",
+      "gate": "nonnegative_columns",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "The source manifest is authoritative for physically non-negative weights, counts, days, periods, care units, and currency inputs."
+    },
+    {
+      "id": "weight_effective_sample_size",
+      "gate": "weight_ess",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "No ex-ante steward-reviewed NZ effective-sample-size floor or shared country-neutral evaluator binding has been supplied.",
+      "notes": "Activate before a candidate release; never set the threshold from the candidate to make it pass."
+    },
+    {
+      "id": "weight_max_to_median_ratio",
+      "gate": "weight_ratio",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "No ex-ante steward-reviewed NZ max-to-median weight threshold or shared country-neutral evaluator binding has been supplied.",
+      "notes": "Activate before a candidate release; do not copy an empirical US, UK, Belgium, or Armenia fence."
+    },
+    {
+      "id": "macro_realism_nz",
+      "gate": "macro_realism",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "The Stats NZ national-accounts quantities, destination-unit candidate metrics, reviewed concept bridges, and low/high NZ bands are not yet packaged.",
+      "notes": "Activate broad income and expenditure backstops after evidence review. Treasury DistributionExplorer remains an external model comparator, not a macro target."
+    }
+  ]
+}

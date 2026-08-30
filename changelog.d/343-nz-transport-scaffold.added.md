@@ -1,0 +1,1 @@
+Add a spec-only New Zealand transport package with pinned donor and WFF contracts, a closed family export surface, real-Axiom Frame smoke tests, a calibration-dashboard release contract, and a reusable country-expansion playbook. Extend the shared Axiom adapter with canonical roots, explicit policy periods, bounded exact Decimal conversion, and lossless Decimal HDF persistence.

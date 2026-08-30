@@ -15,6 +15,7 @@ liabilities.
 
 import importlib.util
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
@@ -31,8 +32,11 @@ from microcosm.frame import (
 )
 from microcosm.frame.adapters.axiom import (
     BE_SCHEMA,
+    NZ_SCHEMA,
     AxiomEngine,
     AxiomEntityTableDataset,
+    AxiomPeriod,
+    _batch_from_table,
     _period_bounds,
 )
 
@@ -54,7 +58,9 @@ needs_tables = pytest.mark.skipif(
     reason="pytables (microcosm-frame[axiom]) is not installed",
 )
 
-FIXTURE_MODULE = Path(__file__).parent / "fixtures" / "axiom_toy_country.yaml"
+FIXTURE_MODULE = (
+    Path(__file__).parent / "fixtures/rulespec-xx/xx/policies/axiom_toy_country.yaml"
+)
 RULESPEC_BE = os.environ.get("POPULACE_RULESPEC_BE")
 
 
@@ -109,6 +115,25 @@ class TestLazyImport:
 
 
 class TestConstruction:
+    def test_nz_schema_has_families_and_households(self) -> None:
+        assert NZ_SCHEMA.entities == ("person", "household", "family")
+
+    def test_explicit_rulespec_roots_and_tax_year_bounds(self) -> None:
+        tax_year = AxiomPeriod(start="2026-04-01", end="2027-03-31", kind="tax_year")
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            rulespec_roots=(FIXTURE_MODULE.parent,),
+            periods={"2026": tax_year},
+        )
+        assert adapter._materialization_period(2026) == (
+            "2026-04-01",
+            "2027-03-31",
+            "tax_year",
+        )
+        assert adapter._materialization_period(tax_year) == tax_year.bounds()
+        with pytest.raises(ValueError, match="No explicit Axiom period"):
+            adapter._materialization_period(2025)
+
     def test_rejects_unknown_arithmetic(self) -> None:
         with pytest.raises(ValueError, match="arithmetic"):
             AxiomEngine(FIXTURE_MODULE, arithmetic="float32")
@@ -124,8 +149,62 @@ class TestConstruction:
         adapter = AxiomEngine(FIXTURE_MODULE)
         assert adapter._entity_names == {"person": "Person", "household": "Household"}
 
+    def test_cross_household_family_is_refused_even_with_equal_weights(self) -> None:
+        frame = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": [1, 2],
+                        "person_household_id": [1, 2],
+                        "person_family_id": [1, 1],
+                    }
+                ),
+                "household": pd.DataFrame({"household_id": [1, 2]}),
+                "family": pd.DataFrame({"family_id": [1], "family_household_id": [1]}),
+            },
+            NZ_SCHEMA,
+            {"household": Weights(values=np.array([2.0, 2.0]), kind=WeightKind.DESIGN)},
+        )
+        with pytest.raises(ValueError, match="family_household_id.*membership"):
+            AxiomEngine(FIXTURE_MODULE, schema=NZ_SCHEMA).materialize(frame, [], 2026)
+
+    def test_group_parent_id_on_wrong_entity_blocks_materialization_and_export(
+        self, tmp_path
+    ) -> None:
+        frame = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": [1, 2],
+                        "person_household_id": [1, 2],
+                        "person_family_id": [1, 1],
+                        "family_household_id": [1, 2],
+                    }
+                ),
+                "household": pd.DataFrame({"household_id": [1, 2]}),
+                "family": pd.DataFrame({"family_id": [1]}),
+            },
+            NZ_SCHEMA,
+            {"household": Weights(values=np.array([2.0, 2.0]), kind=WeightKind.DESIGN)},
+        )
+        adapter = AxiomEngine(FIXTURE_MODULE, schema=NZ_SCHEMA)
+        with pytest.raises(ValueError, match="family_household_id.*family.*person"):
+            adapter.materialize(frame, [], 2026)
+        path = tmp_path / "wrong_owner.h5"
+        with pytest.raises(ValueError, match="family_household_id.*family.*person"):
+            adapter.write_dataset(frame, path, 2026)
+        assert not path.exists()
+
 
 class TestPeriodBounds:
+    def test_explicit_period_refuses_invalid_or_reversed_dates(self) -> None:
+        with pytest.raises(ValueError, match="start.*end"):
+            AxiomPeriod(start="2027-03-31", end="2026-04-01", kind="tax_year")
+        with pytest.raises(ValueError):
+            AxiomPeriod(start="2026-02-30", end="2027-03-31", kind="tax_year")
+        with pytest.raises(ValueError, match="kind"):
+            AxiomPeriod(start="2026-04-01", end="2027-03-31", kind="")
+
     def test_year_as_int_and_str(self) -> None:
         assert _period_bounds(2025) == ("2025-01-01", "2025-12-31", "calendar_year")
         assert _period_bounds("2025") == ("2025-01-01", "2025-12-31", "calendar_year")
@@ -138,6 +217,45 @@ class TestPeriodBounds:
             _period_bounds("2025-Q1")
         with pytest.raises(ValueError, match="Invalid month"):
             _period_bounds("2025-13")
+
+
+class TestDecimalBatch:
+    def test_decimal_cents_recover_exactly_through_the_native_nine_place_boundary(
+        self,
+    ) -> None:
+        table = pd.DataFrame(
+            {
+                "money": [Decimal("50000.01"), Decimal("100000.00")],
+                "days": pd.Series([365, 0], dtype="int16"),
+                "eligible": [True, False],
+            }
+        )
+        batch = _batch_from_table(table, ("money", "days", "eligible"))
+        assert batch["money"].dtype == np.float64
+        assert batch["days"].dtype == np.int64
+        assert batch["eligible"].dtype == np.bool_
+        np.testing.assert_array_equal(batch["money"], [50000.01, 100000.0])
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            Decimal("123456789.01"),
+            Decimal("0.0000000001"),
+            Decimal("NaN"),
+            Decimal("1e-10000000"),
+            Decimal("1e10000000"),
+        ],
+    )
+    def test_decimal_values_outside_the_exact_dense_boundary_are_refused(
+        self, value
+    ) -> None:
+        with pytest.raises(ValueError, match="money.*decimal"):
+            _batch_from_table(pd.DataFrame({"money": [value]}), ("money",))
+
+    def test_object_floats_do_not_impersonate_decimal_columns(self) -> None:
+        table = pd.DataFrame({"money": pd.Series([1.0], dtype=object)})
+        with pytest.raises(ValueError, match="money"):
+            _batch_from_table(table, ("money",))
 
 
 @needs_engine
@@ -188,9 +306,7 @@ class TestMaterialize:
         results = adapter.materialize(bundle, ["toy_income_tax"], period=2025)
         # 5,000 * 10% = 500; 10,000 * 10% = 1,000;
         # 10,000 * 10% + 10,000 * 25% = 3,500.
-        np.testing.assert_allclose(
-            results["toy_income_tax"], [500.0, 1_000.0, 3_500.0]
-        )
+        np.testing.assert_allclose(results["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
 
     def test_bool_column_drives_the_exemption_predicate(self, adapter) -> None:
         bundle = _toy_bundle(exempt=(True, False, True))
@@ -204,9 +320,7 @@ class TestMaterialize:
         )
         assert results["toy_income_tax"].shape == (bundle.n("person"),)
         assert results["toy_housing_allowance"].shape == (bundle.n("household"),)
-        np.testing.assert_allclose(
-            results["toy_housing_allowance"], [1_200.0, 0.0]
-        )
+        np.testing.assert_allclose(results["toy_housing_allowance"], [1_200.0, 0.0])
 
     def test_integer_column_feeds_count_inputs(self, adapter) -> None:
         bundle = _toy_bundle(children=(0, 2, 1))
@@ -217,9 +331,7 @@ class TestMaterialize:
         fast = AxiomEngine(FIXTURE_MODULE, arithmetic="f64")
         bundle = _toy_bundle()
         results = fast.materialize(bundle, ["toy_income_tax"], period=2025)
-        np.testing.assert_allclose(
-            results["toy_income_tax"], [500.0, 1_000.0, 3_500.0]
-        )
+        np.testing.assert_allclose(results["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
 
     def test_wrong_bundle_entities_are_refused(self, adapter) -> None:
         person = pd.DataFrame(
@@ -409,6 +521,19 @@ class TestWriteDataset:
 
 
 class TestAxiomEntityTableDataset:
+    @needs_tables
+    def test_decimal_columns_round_trip_without_float_coercion(self, tmp_path) -> None:
+        values = [Decimal("50000.01"), Decimal("100000.00")]
+        tables = {
+            "person": pd.DataFrame({"person_id": [1, 2]}),
+            "family": pd.DataFrame({"family_id": [1, 2], "money": values}),
+        }
+        path = tmp_path / "decimal.h5"
+        AxiomEntityTableDataset(tables=tables, time_period=2026).save(path)
+        reloaded = AxiomEntityTableDataset(file_path=path)
+        assert reloaded.family["money"].tolist() == values
+        assert all(isinstance(value, Decimal) for value in reloaded.family["money"])
+
     def test_requires_exactly_one_construction_mode(self, tmp_path) -> None:
         with pytest.raises(ValueError, match="tables and time_period"):
             AxiomEntityTableDataset()
@@ -463,11 +588,8 @@ class TestBelgianPilotSlice:
 
     @pytest.fixture(scope="class")
     def adapter(self) -> AxiomEngine:
-        module = (
-            Path(RULESPEC_BE)
-            / "be/statutes/income_tax/individual/rate_scale.yaml"
-        )
-        return AxiomEngine(module)
+        module = Path(RULESPEC_BE) / "be/statutes/income_tax/individual/rate_scale.yaml"
+        return AxiomEngine(module, rulespec_roots=[Path(RULESPEC_BE)])
 
     def _be_bundle(self) -> Frame:
         person = pd.DataFrame(
