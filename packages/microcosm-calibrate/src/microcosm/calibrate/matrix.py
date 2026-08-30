@@ -18,7 +18,9 @@ problem carries a
 :class:`SkippedTarget` for each, naming the target and the reason.
 Receipt-bearing monetary targets are stricter: a stale, misaligned, or
 uncompilable receipt refuses the complete compilation rather than silently
-excluding a fact that was intentionally bound.
+excluding a fact that was intentionally bound. They currently compile only on
+the calibrated entity itself; cross-entity collapse stays closed until the
+entity-to-weight mapping has its own receipt.
 """
 
 from __future__ import annotations
@@ -296,6 +298,12 @@ def build_constraint_matrix(
     for target in targets:
         verify_monetary_binding(target, frame)
         monetary = "monetary_binding" in target.metadata
+        if monetary and target.entity != weight_entity:
+            raise MonetaryBindingIntegrityError(
+                f"{target.row_name}: cross-entity monetary compilation from "
+                f"{target.entity!r} to {weight_entity!r} is unsupported until the "
+                "entity-to-weight mapping has its own receipt."
+            )
         try:
             errors = (
                 np.errstate(over="raise", invalid="raise")

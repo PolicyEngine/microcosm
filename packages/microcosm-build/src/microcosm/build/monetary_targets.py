@@ -242,6 +242,17 @@ def bind_monetary_target(
     if prepared.readiness != "ready" or prepared.measure_kind != "direct":
         raise ValueError("Only ready direct measures may bind.")
     metadata = reference.metadata
+    reserved_metadata = {
+        "monetary_binding",
+        "monetary_binding_sha256",
+        "monetary_source_activation_status",
+    }
+    conflicts = reserved_metadata.intersection(metadata)
+    if conflicts:
+        raise ValueError(
+            "Reference metadata may not predeclare generated monetary binding "
+            f"fields: {sorted(conflicts)}."
+        )
     if metadata.get("monetary_target_role", "calibration") != "calibration":
         raise ValueError(
             "Only calibration references may bind; validation is held out."

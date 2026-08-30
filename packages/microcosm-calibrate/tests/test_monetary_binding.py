@@ -30,12 +30,17 @@ def _frame(values=(2.0, 4.0), ids=(1, 2)):
 
 
 def _target(values=(2.0, 4.0), ids=(1, 2)):
+    source_metadata = {
+        "activation_status": "requires_prepared_measure",
+        "monetary_target_role": "calibration",
+    }
     target = Target(
         "synthetic/deposits",
         "household",
         "deposits",
         6,
         2024,
+        tolerance=0.01,
         source="Synthetic",
         metadata={
             "activation_status": "active",
@@ -73,11 +78,35 @@ def _target(values=(2.0, 4.0), ids=(1, 2)):
     }
     prepared["bridge_sha256"] = monetary_digest(prepared["bridge"])
     prepared["receipt_sha256"] = monetary_digest(prepared)
+    source_reference = {
+        "name": target.name,
+        "ledger_fact_key": "",
+        "ledger_source_record_id": "synthetic.fact",
+        "ledger_selector": {},
+        "value_operation": "identity",
+        "entity": target.entity,
+        "measure": target.measure,
+        "filter": target.filter,
+        "period": target.period,
+        "source": target.source,
+        "family": "synthetic",
+        "signed": False,
+        "se": None,
+        "tolerance": target.tolerance,
+        "notes": "",
+        "metadata": source_metadata,
+        "assertion_policy": "observed_only",
+        "period_match_policy": "latest_not_after",
+        "uprating_index": None,
+        "uprating_from_period": None,
+        "uprating_to_period": None,
+    }
     binding = {
         "reference": {
-            key: getattr(target, key)
-            for key in ("name", "entity", "measure", "period", "filter", "metadata")
+            **source_reference,
+            "metadata": target.metadata,
         },
+        "source_reference": source_reference,
         "value": target.value,
         "source": target.source,
         "source_assertion": "observed",
@@ -108,6 +137,60 @@ def test_partial_receipt_cannot_be_used_as_an_opt_out(key):
     with pytest.raises(MonetaryBindingIntegrityError):
         build_constraint_matrix(
             _frame(), TargetSet((replace(target, metadata=metadata),))
+        )
+
+
+def test_complete_receipt_removal_cannot_bypass_remaining_monetary_markers():
+    target = _target()
+    metadata = {
+        key: value
+        for key, value in target.metadata.items()
+        if key not in {"monetary_binding", "monetary_binding_sha256"}
+    }
+    with pytest.raises(MonetaryBindingIntegrityError, match="markers remain"):
+        build_constraint_matrix(
+            _frame((20, 40)),
+            TargetSet((replace(target, metadata=metadata),)),
+        )
+
+
+def test_receipt_carried_tolerance_cannot_drift():
+    with pytest.raises(MonetaryBindingIntegrityError, match="tolerance differs"):
+        build_constraint_matrix(
+            _frame(),
+            TargetSet((replace(_target(), tolerance=1e30),)),
+        )
+
+
+def test_source_reference_must_match_the_activated_reference():
+    target = _target()
+    binding = json.loads(target.metadata["monetary_binding"])
+    binding["source_reference"]["family"] = "different"
+    metadata = {
+        **target.metadata,
+        "monetary_binding": json.dumps(binding),
+        "monetary_binding_sha256": monetary_digest(binding),
+    }
+    with pytest.raises(MonetaryBindingIntegrityError, match="source reference"):
+        build_constraint_matrix(
+            _frame(),
+            TargetSet((replace(target, metadata=metadata),)),
+        )
+
+
+def test_schema_two_receipt_rejects_extra_keys_even_when_rehashed():
+    target = _target()
+    binding = json.loads(target.metadata["monetary_binding"])
+    binding["ignored_future_semantics"] = "must bump the schema instead"
+    metadata = {
+        **target.metadata,
+        "monetary_binding": json.dumps(binding),
+        "monetary_binding_sha256": monetary_digest(binding),
+    }
+    with pytest.raises(MonetaryBindingIntegrityError, match="binding keys differ"):
+        build_constraint_matrix(
+            _frame(),
+            TargetSet((replace(target, metadata=metadata),)),
         )
 
 

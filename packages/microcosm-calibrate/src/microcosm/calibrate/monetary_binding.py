@@ -3,6 +3,8 @@
 This module deliberately knows nothing about country packages or accounting
 concepts.  It verifies that a receipt-bearing target is still attached to the
 exact prepared direct column and entity-row ordering it was bound against.
+The canonical hashes detect accidental drift; provenance authenticity still
+belongs to the signed producer or outer artifact manifest.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import hashlib
 import json
 import math
 import re
+from datetime import date
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -23,8 +26,78 @@ class MonetaryBindingIntegrityError(RuntimeError):
     """A monetary receipt cannot safely describe its compiled constraint."""
 
 
+_RECEIPT_KEYS = frozenset({"monetary_binding", "monetary_binding_sha256"})
+_BINDING_MARKER_KEYS = frozenset(
+    {"monetary_source_activation_status", "monetary_target_role"}
+)
+_BINDING_KEYS = frozenset(
+    {
+        "reference",
+        "source_reference",
+        "value",
+        "source",
+        "source_assertion",
+        "source_identity_sha256",
+        "prepared",
+    }
+)
+_REFERENCE_KEYS = frozenset(
+    {
+        "name",
+        "ledger_fact_key",
+        "ledger_source_record_id",
+        "ledger_selector",
+        "value_operation",
+        "entity",
+        "measure",
+        "filter",
+        "period",
+        "source",
+        "family",
+        "signed",
+        "se",
+        "tolerance",
+        "notes",
+        "metadata",
+        "assertion_policy",
+        "period_match_policy",
+        "uprating_index",
+        "uprating_from_period",
+        "uprating_to_period",
+    }
+)
+_PREPARED_KEYS = frozenset(
+    {
+        "schema_version",
+        "basis",
+        "n_records",
+        "source_identity_sha256",
+        "source_values_sha256",
+        "values_sha256",
+        "record_ids_sha256",
+        "bridge",
+        "bridge_sha256",
+        "readiness",
+        "measure_kind",
+        "receipt_sha256",
+    }
+)
+_BASIS_KEYS = frozenset(
+    {
+        "currency",
+        "unit",
+        "period",
+        "temporal_basis",
+        "sector",
+        "perimeter",
+        "valuation",
+    }
+)
+_BRIDGE_KEYS = frozenset({"factor", "description", "source_sha256"})
+
+
 def monetary_digest(value: object) -> str:
-    """Return the SHA-256 of canonical JSON, rejecting non-finite numbers."""
+    """Return a canonical-JSON checksum, not a provenance signature."""
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(encoded.encode()).hexdigest()
 
@@ -56,42 +129,106 @@ def _hash(value: object, label: str) -> None:
     )
 
 
+def _exact_mapping(value: object, keys: frozenset[str], label: str) -> dict:
+    _require(isinstance(value, dict), f"{label} must be an object")
+    actual = set(value)
+    _require(
+        actual == keys,
+        f"{label} keys differ: expected {sorted(keys)}, got {sorted(actual)}",
+    )
+    return value
+
+
+def _validate_basis(value: object) -> dict:
+    basis = _exact_mapping(value, _BASIS_KEYS, "monetary basis")
+    for key in ("sector", "perimeter", "valuation"):
+        _require(
+            isinstance(basis[key], str) and basis[key].strip(),
+            f"invalid monetary basis {key}",
+        )
+    _require(
+        isinstance(basis["currency"], str)
+        and re.fullmatch(r"[A-Z]{3}", basis["currency"]) is not None,
+        "invalid monetary currency",
+    )
+    _require(basis["unit"] == "base_currency", "invalid monetary unit")
+    period = basis["period"]
+    temporal_basis = basis["temporal_basis"]
+    if temporal_basis == "annual_flow":
+        _require(
+            isinstance(period, str)
+            and re.fullmatch(r"[0-9]{4}", period) is not None,
+            "invalid annual-flow period",
+        )
+        date(int(period), 1, 1)
+    elif temporal_basis == "closing_stock":
+        _require(
+            isinstance(period, str)
+            and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", period) is not None,
+            "invalid closing-stock period",
+        )
+        date.fromisoformat(period)
+    else:
+        raise ValueError("invalid temporal basis")
+    return basis
+
+
 def verify_monetary_binding(target: Target, frame: Frame) -> None:
     """Fail closed if an opted-in monetary target no longer matches its receipt.
 
-    Targets without either receipt key preserve the ordinary compiler behavior.
-    A partial receipt is itself an integrity error, rather than an opt-out.
+    Targets without receipt keys or monetary-binding markers preserve the
+    ordinary compiler behavior. A partial receipt, or binding markers whose
+    receipt was stripped, is an integrity error rather than an opt-out.
     """
-    receipt_keys = {"monetary_binding", "monetary_binding_sha256"}
-    if not receipt_keys.intersection(target.metadata):
+    present_receipt_keys = _RECEIPT_KEYS.intersection(target.metadata)
+    if not present_receipt_keys:
+        remaining_markers = _BINDING_MARKER_KEYS.intersection(target.metadata)
+        if remaining_markers:
+            raise MonetaryBindingIntegrityError(
+                f"{target.row_name}: monetary binding markers remain without the "
+                f"required receipt ({sorted(remaining_markers)})."
+            )
         return
     try:
         _require(target.filter is None, "monetary filters are unsupported")
         binding = json.loads(target.metadata["monetary_binding"])
-        _require(isinstance(binding, dict), "binding must be an object")
+        binding = _exact_mapping(binding, _BINDING_KEYS, "binding")
         _require(
             monetary_digest(binding) == target.metadata["monetary_binding_sha256"],
             "binding hash differs",
         )
-        reference = binding["reference"]
-        prepared = binding["prepared"]
-        _require(isinstance(reference, dict), "invalid reference receipt")
-        _require(isinstance(prepared, dict), "invalid prepared receipt")
-        required = {
-            "schema_version",
-            "basis",
-            "n_records",
-            "source_identity_sha256",
-            "source_values_sha256",
-            "values_sha256",
-            "record_ids_sha256",
-            "bridge",
-            "bridge_sha256",
-            "readiness",
-            "measure_kind",
-            "receipt_sha256",
+        reference = _exact_mapping(
+            binding["reference"], _REFERENCE_KEYS, "activated reference receipt"
+        )
+        source_reference = _exact_mapping(
+            binding["source_reference"], _REFERENCE_KEYS, "source reference receipt"
+        )
+        prepared = _exact_mapping(
+            binding["prepared"], _PREPARED_KEYS, "prepared receipt"
+        )
+        _require(
+            {key: value for key, value in reference.items() if key != "metadata"}
+            == {
+                key: value
+                for key, value in source_reference.items()
+                if key != "metadata"
+            },
+            "activated reference differs from its source reference",
+        )
+        source_metadata = source_reference["metadata"]
+        _require(isinstance(source_metadata, dict), "invalid source reference metadata")
+        expected_reference_metadata = {
+            **source_metadata,
+            "activation_status": "active",
+            "monetary_source_activation_status": source_metadata.get(
+                "activation_status", "ready"
+            ),
+            "monetary_target_role": "calibration",
         }
-        _require(required <= prepared.keys(), "incomplete prepared receipt")
+        _require(
+            reference["metadata"] == expected_reference_metadata,
+            "activated reference metadata differs from its source reference",
+        )
         _require(prepared["schema_version"] == 2, "unsupported receipt version")
         raw_receipt = {
             key: value for key, value in prepared.items() if key != "receipt_sha256"
@@ -116,31 +253,12 @@ def verify_monetary_binding(target: Target, frame: Frame) -> None:
             "record_ids_sha256",
         ):
             _hash(prepared[key], key)
-        _hash(binding["source_identity_sha256"], "source identity")
-        basis = prepared["basis"]
-        _require(isinstance(basis, dict), "invalid monetary basis")
-        fields = (
-            "currency",
-            "unit",
-            "period",
-            "temporal_basis",
-            "sector",
-            "perimeter",
-            "valuation",
-        )
-        _require(
-            all(
-                isinstance(basis.get(key), str) and basis[key].strip() for key in fields
-            ),
-            "incomplete monetary basis",
-        )
-        _require(basis["unit"] == "base_currency", "invalid monetary unit")
-        _require(
-            basis["temporal_basis"] in {"annual_flow", "closing_stock"},
-            "invalid temporal basis",
-        )
-        bridge = prepared["bridge"]
-        _require(isinstance(bridge, dict), "invalid transport bridge")
+        # These identities deliberately describe different evidence: the binding
+        # identity receipts the aggregate fact/value, while the prepared identity
+        # receipts the entity-level column used to distribute that aggregate.
+        _hash(binding["source_identity_sha256"], "target source identity")
+        basis = _validate_basis(prepared["basis"])
+        bridge = _exact_mapping(prepared["bridge"], _BRIDGE_KEYS, "transport bridge")
         _require(
             monetary_digest(bridge) == prepared["bridge_sha256"], "bridge hash differs"
         )
@@ -156,7 +274,14 @@ def verify_monetary_binding(target: Target, frame: Frame) -> None:
             "missing transport description",
         )
         _hash(bridge.get("source_sha256"), "transport source")
-        for field in ("name", "entity", "measure", "period", "filter"):
+        for field in (
+            "name",
+            "entity",
+            "measure",
+            "period",
+            "tolerance",
+            "filter",
+        ):
             expected = reference[field]
             if field == "period" and expected is None:
                 expected = basis["period"]
@@ -172,7 +297,7 @@ def verify_monetary_binding(target: Target, frame: Frame) -> None:
             {
                 key: value
                 for key, value in target.metadata.items()
-                if key not in receipt_keys
+                if key not in _RECEIPT_KEYS
             }
             == receipt_metadata,
             "reference metadata differs",

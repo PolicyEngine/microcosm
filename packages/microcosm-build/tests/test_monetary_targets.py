@@ -75,6 +75,8 @@ def test_direct_binding_receipts_exact_basis_values_and_entity_ids():
     assert target.measure == "deposits"
     assert receipt["prepared"]["basis"]["period"] == "2024-12-31"
     assert receipt["prepared"]["values_sha256"] == _prepared().values_sha256
+    assert receipt["source_identity_sha256"] == "c" * 64
+    assert receipt["prepared"]["source_identity_sha256"] == "a" * 64
     assert len(target.metadata["monetary_binding_sha256"]) == 64
     assert target.metadata["activation_status"] == "active"
     assert target.metadata["monetary_source_activation_status"] == "ready"
@@ -91,6 +93,18 @@ def test_binding_preserves_existing_target_role_without_repurposing_it():
     )
     assert target.metadata["target_role"] == "federal_income_tax_total"
     assert target.metadata["monetary_target_role"] == "calibration"
+
+
+def test_binding_rejects_predeclared_generated_receipt_metadata():
+    with pytest.raises(ValueError, match="may not predeclare"):
+        bind_monetary_target(
+            _reference(metadata={"monetary_binding_sha256": "d" * 64}),
+            value=6,
+            source_basis=_basis(),
+            source_assertion="observation",
+            source_identity_sha256="c" * 64,
+            prepared=_prepared(),
+        )
 
 
 @pytest.mark.parametrize(
@@ -195,7 +209,7 @@ def test_bound_target_uses_existing_sparse_compiler_api():
         )
 
 
-def test_person_receipt_is_verified_before_household_weight_collapse():
+def test_person_receipt_refuses_unreceipted_household_weight_collapse():
     prepared = _prepared(record_ids=[11, 12])
     target = bind_monetary_target(
         _reference(entity="person"),
@@ -219,7 +233,7 @@ def test_person_receipt_is_verified_before_household_weight_collapse():
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.array([3.0]), WeightKind.DESIGN)},
     )
-    problem = build_constraint_matrix(
-        frame, TargetRegistry([target], country="xx").to_target_set()
-    )
-    np.testing.assert_array_equal(problem.matrix.toarray(), [[6]])
+    with pytest.raises(MonetaryBindingIntegrityError, match="cross-entity"):
+        build_constraint_matrix(
+            frame, TargetRegistry([target], country="xx").to_target_set()
+        )
