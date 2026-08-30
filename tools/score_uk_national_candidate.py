@@ -9,6 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.target_materialization import MeasureResolutionError
 from microcosm.build.uk_runtime.national_calibration import prepare_uk_target_frame
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.calibrate import TargetRegistry, score_targets
@@ -36,6 +37,23 @@ def _holdout_loss(basis: str) -> float | None:
     )
 
 
+def _counterfactual_skips(error: MeasureResolutionError) -> dict[str, str]:
+    """The counterfactual-delta skips a resolution failure names, by spec.
+
+    Only counterfactual-delta reasons qualify: those measures need a
+    precomputed delta the build attaches at spine time and the export
+    surface deliberately strips, so no amount of injection resolves them on
+    a scored artifact. Any other resolution failure stays fatal.
+    """
+
+    skips: dict[str, str] = {}
+    for entry in error.receipt.get("skips", ()):
+        reason = str(entry.get("reason", ""))
+        if "counterfactual" in reason:
+            skips[str(entry["name"])] = reason
+    return skips
+
+
 def score_uk_national_candidate(
     *,
     candidate_h5: str | Path,
@@ -47,6 +65,7 @@ def score_uk_national_candidate(
     measure_resolver_factory: Callable[[Path, Any], Any] | None = None,
     candidate_label: str | None = None,
     incumbent_label: str = "enhanced_frs_2024_25",
+    prune_unresolvable_counterfactuals: bool = False,
 ) -> dict[str, Any]:
     """Return the #578 rule-1 score block on a shared target registry.
 
@@ -63,20 +82,55 @@ def score_uk_national_candidate(
         candidate_label = candidate_path.stem
     candidate_pin = _verify_artifact("candidate", candidate_h5, candidate_sha256)
     incumbent_pin = _verify_artifact("incumbent", incumbent_h5, incumbent_sha256)
-    candidate_frame, candidate_resolution = _scored_frame(
-        candidate_h5, target_registry, calibration_year, measure_resolver_factory
-    )
-    incumbent_frame, incumbent_resolution = _scored_frame(
-        incumbent_h5, target_registry, calibration_year, measure_resolver_factory
-    )
+    # Counterfactual-delta measures only exist where the build attached the
+    # precomputed deltas (the spine); a scored export artifact cannot carry
+    # them on either side. With the prune opt-in, those specs — and only
+    # those — are removed from BOTH sides' scored surface and named in the
+    # receipt, so the head-to-head stays row-identical and the cap is loud.
+    # Without the opt-in the first counterfactual skip refuses, unchanged.
+    pruned: dict[str, str] = {}
+    scored_registry = target_registry
+    while True:
+        try:
+            candidate_frame, candidate_resolution = _scored_frame(
+                candidate_h5, scored_registry, calibration_year,
+                measure_resolver_factory,
+            )
+            incumbent_frame, incumbent_resolution = _scored_frame(
+                incumbent_h5, scored_registry, calibration_year,
+                measure_resolver_factory,
+            )
+            break
+        except MeasureResolutionError as error:
+            if not prune_unresolvable_counterfactuals:
+                raise
+            found = _counterfactual_skips(error)
+            new = {
+                name: reason
+                for name, reason in found.items()
+                if name not in pruned
+            }
+            if not new:
+                raise
+            pruned.update(new)
+            scored_registry = TargetRegistry(
+                country=target_registry.country,
+                specs=tuple(
+                    spec
+                    for spec in target_registry.specs
+                    if spec.name not in pruned
+                ),
+            )
+            if not scored_registry.specs:
+                raise
     candidate = score_targets(
         candidate_frame,
-        target_registry.to_target_set(),
+        scored_registry.to_target_set(),
         target_loss_cap=UK_SCORE_LOSS_CAP,
     )
     incumbent = score_targets(
         incumbent_frame,
-        target_registry.to_target_set(),
+        scored_registry.to_target_set(),
         target_loss_cap=UK_SCORE_LOSS_CAP,
     )
     candidate_errors = _relative_errors(candidate)
@@ -108,7 +162,12 @@ def score_uk_national_candidate(
             "country": target_registry.country,
             "version": target_registry.version,
             "n_specs": len(target_registry),
+            "n_specs_scored": len(scored_registry),
         },
+        "pruned_counterfactual_targets": [
+            {"name": name, "reason": reason}
+            for name, reason in sorted(pruned.items())
+        ],
         "artifacts": {
             "candidate": {"label": candidate_label, **candidate_pin},
             "incumbent": {"label": incumbent_label, **incumbent_pin},
@@ -118,7 +177,7 @@ def score_uk_national_candidate(
             "incumbent": incumbent_resolution,
         },
         "target_drift": _target_drift(
-            target_registry, candidate_errors, incumbent_errors
+            scored_registry, candidate_errors, incumbent_errors
         ),
         "signed_asymmetries": [
             {
@@ -138,7 +197,7 @@ def score_uk_national_candidate(
             },
         ],
         "target_wins_by_family": _target_wins_by_family(
-            target_registry,
+            scored_registry,
             candidate_errors,
             incumbent_errors,
         ),
@@ -306,6 +365,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Override the incumbent/reference label.",
     )
     parser.add_argument(
+        "--prune-unresolvable-counterfactuals",
+        action="store_true",
+        help=(
+            "Drop counterfactual-delta measures neither scored artifact can "
+            "materialize (their precomputed deltas exist on the spine only) "
+            "from BOTH sides' surface, and name every dropped spec in the "
+            "score receipt. Without this flag the first such measure refuses."
+        ),
+    )
+    parser.add_argument(
         "--no-measure-resolution",
         action="store_true",
         help=(
@@ -338,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         measure_resolver_factory=factory,
         candidate_label=args.candidate_label,
         incumbent_label=args.incumbent_label,
+        prune_unresolvable_counterfactuals=args.prune_unresolvable_counterfactuals,
     )
     _write_json(args.output_json, {"score_vs_enhanced_frs": score})
     return 0
