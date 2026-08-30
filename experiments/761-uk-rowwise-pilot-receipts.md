@@ -119,9 +119,14 @@ survives the spine swap, at the top of the range:
   H5 and ~15 GB RSS) and adds zero information; hold it unless #762's solve
   diagnostics show support-limited misses at K=4.
 
-**Adjudication (María):** _pending — Round B below confirms the Round-A
-numbers bit-for-bit, so the recommendation stands on both spine vintages;
-this section records the ruling and #761 carries it._
+**Adjudication (María, 2026-08-30): K=4 approved** for #762's first
+calibrated rowwise candidate, on the measurement above — constituency floor
+101 rows / ESS 86.4 / 97 distinct sources, median 287 rows, at ≈640 MB and
+≈6 GB solve headroom — confirmed unchanged on spine-k (Round B: support
+inputs measured-preserved, tables reproduce exactly). K=10 stays held unless
+#762's solve diagnostics show support-limited misses at K=4; the LA-grain
+floor (Scilly, City of London) is target-side work at any K. The ruled K
+becomes #762's declared `--n-clones`, recorded in that build's manifest.
 
 ## Round B — spine-k (2026-08-30)
 
@@ -129,8 +134,10 @@ The spine line moved past spine-i in the recert lane before any acceptance
 re-cut: spine-j (`spine-j-remeasure`) and then **spine-k**
 (`data/ukds/acceptance/spine-k-stack/spine-k.h5`, built 2026-08-30, release
 id `uk-frs-spine-20260830T120239Z`, **14/14 spine gates passed**, importance
-weights, mass total 29,247,433.0, the same 52,846/61,211/113,649 row
-identity). Round B ran against spine-k, sha-pinned at the artifact:
+weights, mass total 29,247,433.0, the same 52,846/61,211/113,649 **row-count
+roster** — the artifact bytes differ, and the Logbook `identity_digest` is
+re-derived for this run, never carried over). Round B ran against spine-k,
+sha-pinned at the artifact:
 `b4403ea4b2d345de06e9f297fdeb9f144519407e98d653b09cf77b16c1e436cb`. The
 committed `spine_candidate_acceptance.json` still names spine-i — the
 acceptance re-mint is the recert lane's step; this pilot pins bytes, not the
@@ -141,11 +148,19 @@ Logbook row chained onto the genesis digest `a4d2c0b2…`):
 
 - **Support is bit-identical to Round A at every K on both grains** — every
   min/median rows, ESS, and distinct-sources figure in R1's tables
-  reproduces exactly. Spine-k preserves the household roster, region mix,
-  and importance-weight allocation, so the seeded two-stage draw reproduces;
-  the pension-wealth split and sibling recert changes live in value columns
-  the assignment never reads. This is the strongest possible control: the K
-  decision surface is invariant across the spine vintages.
+  reproduces exactly. Read precisely, this establishes two things and
+  entails a third. Measured: (a) spine-k **preserves the support inputs** —
+  household roster, region mix, and the importance-weight vector — which was
+  not knowable a priori (the recert changes could have moved any of them);
+  (b) the seeded two-stage draw is **reproducible** and the assignment
+  surface is **value-column-independent**. Entailed, once (a) holds: the
+  support tables reproduce bit-for-bit — the metric is a function of those
+  inputs only, so identity here is arithmetic, not an independent check.
+  The K adjudication is defined over the support surface (#761 items 6–7),
+  so it carries to spine-k because its inputs are measured-unchanged.
+  Anything value-dependent — whether the solve at the ruled K fits spine-k's
+  revised wealth columns — is invisible to this metric by design and belongs
+  to #762's fit diagnostics, not this pilot.
 - Build receipts: gate passed 650/650 + 361/361, `missing_geography_rows: 0`,
   mass `abs_delta: 0.0`, `importance` carried, mass log 6 → 7, lineage
   identical (16,288 distinct sources; frs 16,288 / spi 10,000; flags

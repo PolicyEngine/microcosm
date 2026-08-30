@@ -530,6 +530,10 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     )
     for area_type in ("constituency", "la"):
         area_support = expected_support[area_type]
+        # Same-named stats keys carry their semantics: an expected-mass
+        # figure must never be silently compared against a realized count.
+        assert area_support["rows_basis"] == "expected_rows"
+        assert plan["realized_support"][area_type]["rows_basis"] == "assigned_rows"
         assert area_support["n_areas"] <= builder.EXPECTED_SUPPORT_BOTTOM_AREAS
         assert len(area_support["bottom"]) == area_support["n_areas"]
         assert sum(row["rows"] for row in area_support["bottom"]) == pytest.approx(

@@ -899,7 +899,9 @@ def _dry_run_plan(
                 "sampleable areas included"
             ),
             **{
-                area_type: _support_summary(realized, area_type)
+                area_type: _support_summary(
+                    realized, area_type, rows_basis="assigned_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
@@ -910,7 +912,9 @@ def _dry_run_plan(
                 "constituency count"
             ),
             **{
-                area_type: _support_summary(collision_free, area_type)
+                area_type: _support_summary(
+                    collision_free, area_type, rows_basis="expected_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
@@ -972,16 +976,18 @@ def _crosswalk_candidate_plans(
         plans.append(
             {
                 "n_clones": n_clones,
-                "rows": {
-                    name: rows * n_clones for name, rows in table_rows.items()
-                },
+                "rows": {name: rows * n_clones for name, rows in table_rows.items()},
                 "output_bytes_estimate": input_bytes * n_clones,
                 "realized_support": {
-                    area_type: _support_summary(realized, area_type)
+                    area_type: _support_summary(
+                        realized, area_type, rows_basis="assigned_rows"
+                    )
                     for area_type in ("constituency", "la")
                 },
                 "collision_free_expected_support": {
-                    area_type: _support_summary(collision_free, area_type)
+                    area_type: _support_summary(
+                        collision_free, area_type, rows_basis="expected_rows"
+                    )
                     for area_type in ("constituency", "la")
                 },
             }
@@ -1257,7 +1263,9 @@ def _ladder_dry_run_plan(
                 "ladder areas included"
             ),
             **{
-                area_type: _support_summary(realized, area_type)
+                area_type: _support_summary(
+                    realized, area_type, rows_basis="assigned_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
@@ -1268,7 +1276,9 @@ def _ladder_dry_run_plan(
                 "population shares within constituency for LA support"
             ),
             **{
-                area_type: _support_summary(expected, area_type)
+                area_type: _support_summary(
+                    expected, area_type, rows_basis="expected_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
@@ -1305,9 +1315,7 @@ def _ladder_planned_assignment(
 
     household_for_clone = household.copy()
     if "source_household_id" not in household_for_clone.columns:
-        household_for_clone["source_household_id"] = household_for_clone[
-            "household_id"
-        ]
+        household_for_clone["source_household_id"] = household_for_clone["household_id"]
     cloned = clone_entity_frame(
         household_for_clone,
         id_columns=("household_id",),
@@ -1371,16 +1379,18 @@ def _ladder_candidate_plans(
         plans.append(
             {
                 "n_clones": n_clones,
-                "rows": {
-                    name: rows * n_clones for name, rows in table_rows.items()
-                },
+                "rows": {name: rows * n_clones for name, rows in table_rows.items()},
                 "output_bytes_estimate": input_bytes * n_clones,
                 "realized_support": {
-                    area_type: _support_summary(realized, area_type)
+                    area_type: _support_summary(
+                        realized, area_type, rows_basis="assigned_rows"
+                    )
                     for area_type in ("constituency", "la")
                 },
                 "expected_support": {
-                    area_type: _support_summary(expected, area_type)
+                    area_type: _support_summary(
+                        expected, area_type, rows_basis="expected_rows"
+                    )
                     for area_type in ("constituency", "la")
                 },
                 "area_support": area_support,
@@ -1513,12 +1523,14 @@ def _support_summary(
     support: pd.DataFrame,
     area_type: str,
     *,
+    rows_basis: str,
     bottom: int = EXPECTED_SUPPORT_BOTTOM_AREAS,
 ) -> dict[str, Any]:
     subset = support[support["area_type"] == area_type]
     if subset.empty:
         return {
             "n_areas": 0,
+            "rows_basis": rows_basis,
             "min_rows": 0.0,
             "median_rows": 0.0,
             "mean_rows": 0.0,
@@ -1532,6 +1544,7 @@ def _support_summary(
     ).head(bottom)
     return {
         "n_areas": int(len(subset)),
+        "rows_basis": rows_basis,
         "min_rows": float(values.min()),
         "median_rows": float(values.median()),
         "mean_rows": float(values.mean()),
@@ -1613,9 +1626,7 @@ def _area_support_stats(support: pd.DataFrame) -> dict[str, Any]:
         "min_ess": float(ess.min()) if len(ess) else 0.0,
         "median_ess": float(ess.median()) if len(ess) else 0.0,
         "min_distinct_sources": int(sources.min()) if len(sources) else 0,
-        "median_distinct_sources": (
-            float(sources.median()) if len(sources) else 0.0
-        ),
+        "median_distinct_sources": (float(sources.median()) if len(sources) else 0.0),
         "bottom_by_rows": [
             {
                 "area_code": str(row.area_code),
