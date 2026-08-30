@@ -439,6 +439,21 @@ def prepare_uk_target_frame(
             "target measures did not materialize for scoring: "
             f"{[skip.__dict__ for skip in materialized.skipped]}."
         )
+    if resolution is not None:
+        # Injected raw engine inputs are consumed by materialization; the
+        # scored surface reads the slash-named prepared measures only. Two
+        # targets may bind one variable at different grains (the re-bound
+        # register does), so leaving the injections in place hands the Frame
+        # constructor a column duplicated across entity tables — the
+        # flattening rule refuses it. Original columns stay untouched.
+        _drop_injected_measure_inputs(
+            adapter,
+            resolution.measure_inputs,
+            {
+                name: set(table.columns)
+                for name, table in adapter._original_tables.items()
+            },
+        )
     return adapter.prepared_frame(), (
         None if resolution is None else dict(resolution.receipt)
     )

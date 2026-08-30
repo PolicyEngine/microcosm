@@ -265,3 +265,146 @@ def test_scorer_refuses_prepared_measures_it_cannot_materialize(tmp_path) -> Non
             target_registry=production_shaped,
             calibration_year=2025,
         )
+
+
+def test_scorer_prunes_counterfactual_measures_only_with_the_opt_in(
+    tmp_path, monkeypatch
+) -> None:
+    """Counterfactual-delta measures prune loudly, and only when asked.
+
+    The precomputed deltas those measures need exist on the spine alone, so
+    a scored export artifact can never materialize them. With the opt-in the
+    scorer drops exactly those specs from BOTH sides and names them in the
+    receipt; without it the first counterfactual skip still refuses.
+    """
+
+    pytest.importorskip("tables")
+    import tools.score_uk_national_candidate as scorer_module
+    from microcosm.build.target_materialization import MeasureResolutionError
+
+    candidate = tmp_path / "candidate.h5"
+    incumbent = tmp_path / "incumbent.h5"
+    _write(candidate, measure_a=[5.0, 5.0], measure_b=[5.0, 5.0])
+    _write(incumbent, measure_a=[4.0, 4.0], measure_b=[10.0, 10.0])
+
+    real_scored_frame = scorer_module._scored_frame
+
+    def counterfactual_aware(h5_path, registry, year, factory):
+        names = {spec.name for spec in registry.specs}
+        if "target_b" in names:
+            raise MeasureResolutionError(
+                "counterfactual target measure cannot be resolved",
+                receipt={
+                    "rounds": [],
+                    "skips": [
+                        {
+                            "name": "target_b",
+                            "measure": "measure_b",
+                            "reason": (
+                                "frame does not carry precomputed "
+                                "counterfactual delta 'measure_b'"
+                            ),
+                        }
+                    ],
+                },
+            )
+        return real_scored_frame(h5_path, registry, year, None)
+
+    monkeypatch.setattr(scorer_module, "_scored_frame", counterfactual_aware)
+
+    with pytest.raises(MeasureResolutionError):
+        score_uk_national_candidate(
+            candidate_h5=candidate,
+            incumbent_h5=incumbent,
+            candidate_sha256=_sha256_file(candidate),
+            incumbent_sha256=_sha256_file(incumbent),
+            target_registry=_registry(),
+            calibration_year=2025,
+        )
+
+    score = score_uk_national_candidate(
+        candidate_h5=candidate,
+        incumbent_h5=incumbent,
+        candidate_sha256=_sha256_file(candidate),
+        incumbent_sha256=_sha256_file(incumbent),
+        target_registry=_registry(),
+        calibration_year=2025,
+        prune_unresolvable_counterfactuals=True,
+    )
+    assert score["register"]["n_specs"] == 2
+    assert score["register"]["n_specs_scored"] == 1
+    assert [row["name"] for row in score["pruned_counterfactual_targets"]] == [
+        "target_b"
+    ]
+    assert (
+        "counterfactual delta" in (score["pruned_counterfactual_targets"][0]["reason"])
+    )
+    assert {row["target"] for row in score["target_drift"]} == {"target_a@0"}
+
+
+def test_prepared_frame_drops_injected_inputs_that_would_collide(
+    tmp_path, monkeypatch
+) -> None:
+    """Injected raw engine inputs never survive into the prepared frame.
+
+    Two targets may bind one engine variable at different grains, so leaving
+    the injections in place duplicates a column across entity tables and the
+    Frame constructor's flattening rule refuses. The prepared measures carry
+    the scored surface; the raw inputs are scratch.
+    """
+
+    pytest.importorskip("tables")
+    from types import MappingProxyType
+
+    import microcosm.build.uk_runtime.national_calibration as nc
+
+    n = 2
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(n),
+            "person_household_id": np.arange(n),
+            "person_benunit_id": np.arange(n),
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.arange(n)})
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(n),
+            "region": ["LONDON", "WALES"],
+            "measure_a": [5.0, 5.0],
+            "measure_b": [5.0, 5.0],
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2025",
+        weight_kind=WeightKind.CALIBRATED,
+        household_weights=np.ones(n),
+    )
+
+    class _CannedResolution:
+        measure_inputs = MappingProxyType(
+            {
+                ("person", "region"): np.array(["LONDON", "WALES"], dtype=object),
+                ("person", "esa_contrib"): np.zeros(n),
+                ("household", "esa_contrib"): np.zeros(n),
+            }
+        )
+        receipt = MappingProxyType({"rounds": []})
+
+    monkeypatch.setattr(
+        nc,
+        "resolve_target_measures",
+        lambda *args, **kwargs: _CannedResolution(),
+    )
+
+    prepared, receipt = nc.prepare_uk_target_frame(
+        frame, _registry(), period=2025, measure_resolver=object()
+    )
+    assert receipt == {"rounds": []}
+    assert "region" not in prepared.table("person").columns
+    assert "esa_contrib" not in prepared.table("person").columns
+    assert "esa_contrib" not in prepared.table("household").columns
+    assert list(prepared.table("household")["region"]) == ["LONDON", "WALES"]
