@@ -131,6 +131,33 @@ def test__given_country_like_directories__then_each_has_a_manifest() -> None:
     assert offenders == []
 
 
+def test__given_greenfield_country_packages__then_armenia_uses_the_typed_schema() -> (
+    None
+):
+    # Given
+    country_roots = {root.name: root for root in _country_package_roots()}
+
+    # When
+    armenia = country_roots["am"]
+    manifest = json.loads(
+        (armenia / "country_package.json").read_text(encoding="utf-8")
+    )
+    resource_kinds = {row["kind"] for row in manifest["resources"]}
+
+    # Then
+    assert {"am", "be"} <= set(country_roots)
+    assert manifest["schema_version"] == 1
+    assert resource_kinds == ALLOWED_COUNTRY_RESOURCE_KINDS & {
+        "bundle",
+        "catalogs",
+        "geography",
+        "legacy_json",
+        "sources",
+        "spine",
+        "vintages",
+    }
+
+
 def test__given_country_specs__then_no_python_entrypoints_are_declared() -> None:
     # Given
     specs = [

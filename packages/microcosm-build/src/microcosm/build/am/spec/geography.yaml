@@ -1,0 +1,31 @@
+phase: legacy
+status: >-
+  Compatibility expression of the 2022-census community spine. The assignment
+  table and complete code roster remain Chronicle harvest items, and the shared
+  executable clone-and-assign operator is not yet bound for Armenia. The marz
+  constraint is target-assigned on US donor records and must never be described
+  as source-observed Armenian microdata.
+assignment:
+  anchor: community
+  order: before_gap_fill
+  kernels:
+    assign: kernel:clone_assign_communities
+    validate: kernel:am_community_geography_gate
+  draw:
+    community:
+      universe: community_within_marz
+      weight: armstat_census_population
+  derive:
+  - community_code
+  assertions:
+  - assigned_marz_preserved
+  - geography_vintage_exact
+  ladder_source: source:am_community_spine_contract
+  seed: stream:geography_legacy
+  default_seed: 0
+  layer_vintages:
+    community: vintage:am_community_2022
+    marz: vintage:am_marz_2022
+  validation:
+  - community_assignment_support
+  - vintage_refusal

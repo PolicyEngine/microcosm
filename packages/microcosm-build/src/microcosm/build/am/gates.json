@@ -1,0 +1,120 @@
+{
+  "version": 2,
+  "country": "am",
+  "policy": "Armenia is greenfield and has no incumbent dataset, so parity, export_surface, and target_surface are deliberately absent. Public Armenian administrative and raw-survey margins govern the direct-column pool reweight; national accounts will provide broad macro backstops. CEQ and World Bank studies remain documented external validation-band candidates rather than gates until their facts are harvested into Ledger. Gates marked not_applicable are declarations awaiting evidence, not release blockers; active reference, coverage, support, audit, and output gates fail closed.",
+  "phases": ["terminal"],
+  "gates": [
+    {
+      "id": "calibration_per_family_fit",
+      "gate": "per_family_fit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "Chronicle has not yet supplied the target cell inventory, covariance, or steward-reviewed Armenia within/share thresholds. Shared runner defaults and Belgium's policy numbers may not silently govern Armenia.",
+      "notes": "Activate with explicit country policy after the target harvest; fit must be reported separately for every hard family so no family hides in an average."
+    },
+    {
+      "id": "national_and_marz_admin_aggregates",
+      "gate": "aggregate_admin",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "The ledger-am facts, their uncertainty, and reviewed fact-specific tolerances do not exist yet. The generic runner fallback and Belgium's tolerance are not Armenia policy.",
+      "notes": "Activate at country and marz level when every hard reference resolves. Consume leaf components or their total, never both as independent objectives."
+    },
+    {
+      "id": "community_assignment_fit",
+      "gate": "aggregate_admin",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "not_applicable": "The 2022 assignment distribution and complete 71-community code roster are harvest items, and the shared operator is not yet bound.",
+      "notes": "Community diagnostics remain non-blocking until the spine demonstrates adequate support (populace#263)."
+    },
+    {
+      "id": "calibration_reference_inventory",
+      "gate": "calibration_reference_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every harvested multi-cell series contract must be replaced by generated, cell-pinned Ledger references with direct or pre-built candidate bindings, and every activated reference must enter the calibration matrix. Table-level authoring placeholders or count mismatches block release."
+    },
+    {
+      "id": "target_profile_coverage",
+      "gate": "target_profile_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "required_families": [
+          "demography",
+          "household_structure",
+          "consumption",
+          "labour",
+          "earnings",
+          "pensions",
+          "family_benefit"
+        ]
+      },
+      "evidence_absent_blocks": true,
+      "notes": "The active profile must retain every engine-free v1 calibration family. National-accounts rows are validation-only and therefore are not counted as hard calibration coverage."
+    },
+    {
+      "id": "macro_realism_armstat_sna",
+      "gate": "macro_realism",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "The 2024 ArmStat SNA quantities, direct candidate metrics in destination units, analyst-reviewed concept bridges, and low/high Armenia band endpoints are all harvest or policy-review items. The supplied 26.9 percent survey-to-macro observation is validation evidence, not an invented acceptance band.",
+      "notes": "Activate named household-consumption and household-income bands once their evidence is reviewable. They remain broad backstops, never solver objectives."
+    },
+    {
+      "id": "donor_support_bounds",
+      "gate": "support",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every direct or deterministically transformed measure must carry its authenticated donor range; an absent support receipt cannot release."
+    },
+    {
+      "id": "calibration_weights_audit",
+      "gate": "weights_audit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every production fit and reweight step must receipt its resolved weight kind; silent unweighting is forbidden."
+    },
+    {
+      "id": "exported_nonzero",
+      "gate": "exported_nonzero",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "No all-zero stored calibration layer or provenance banner may ship."
+    },
+    {
+      "id": "nonnegative_columns",
+      "gate": "nonnegative_columns",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "The source manifest owns the physically non-negative direct and indicator column list."
+    },
+    {
+      "id": "weight_effective_sample_size",
+      "gate": "weight_ess",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "The vocabulary exists, but its current evaluator/binding is UK-specific and no ex-ante reviewed Armenia ESS threshold has been supplied. Promote a shared binding and record the threshold before runtime activation.",
+      "notes": "An explicit receipt is preferable to inventing an Armenia threshold."
+    },
+    {
+      "id": "weight_max_to_median_ratio",
+      "gate": "weight_ratio",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "not_applicable": "The vocabulary exists, but its current evaluator/binding is UK-specific and no ex-ante reviewed Armenia max-to-median threshold has been supplied. Promote a shared binding and record the threshold before runtime activation.",
+      "notes": "Never set the cap from the candidate merely to make a release pass, and do not copy the empirical UK fence."
+    }
+  ]
+}
