@@ -3,10 +3,11 @@
 ## State
 
 Active on 2026-08-31 on `be-benefit-participation-targets-resume` at
-`d77ccf78`. The complete Belgium value-free target/input contract, exact
+`c01b1c9e`. The complete Belgium value-free target/input contract, exact
 cross-links, runtime refusals, documentation, tests, and reviewed golden are
-committed. All 548 focused cases pass. The worktree contains only preserved,
-untracked `.lane-inputs/`; broad PR-CI-equivalent verification is next.
+committed and broadly verified. The only broad failures are two unrelated US
+parity regeneration cases reproduced unchanged on authoritative main. The
+worktree contains only this journal update and preserved `.lane-inputs/`.
 
 Reviewed Microcosm #824 head `ed6dc3d8` remains an ancestor, and authoritative
 main `d1e3e397` is merged at `03e4d494`, bringing in reviewed #825 head
@@ -40,6 +41,18 @@ required final report will be written there.
   and bundle cases pass. Focused Ruff and `git diff --check` pass.
 - Committed the complete semantic and reviewed-golden step as `d77ccf78`
   (`Complete Belgium target input boundary`) without staging lane bookkeeping.
+- Verified the unchanged lock offline (123 packages), CI grouping (319 tracked
+  test files, `verification=ok`), repository Ruff, and both worktree and
+  main-to-head diff whitespace checks.
+- Passed all 1,688 runnable shared-spec CI cases with 43 expected skips and two
+  explicit deselections, plus the full calibration shard (212 passed). The two
+  deselected US parity regeneration cases fail identically on
+  `main@d1e3e397`: the local feed exposes a CBO `source_projection` while the
+  committed US reference is `observed_only`; this branch does not alter that
+  reference or assertion path.
+- A broader build-shard attempt reached 1,218 passes and 18 skips before being
+  stopped after those same two baseline failures were captured. The complete
+  shared-spec group then passed as recorded above.
 
 - Re-read the complete Fable v3 review and official benefit-participation law
   audit. Confirmed that every receipt/status flag is Microcosm-populated,
@@ -108,9 +121,8 @@ required final report will be written there.
 
 ## Next
 
-- Run the full build shard and repository Ruff, CI-group, lock, and diff checks.
-- Perform the final adversarial diff/search audit, commit the resulting
-  verification checkpoint, and confirm exact base/head and dependency pins.
+- Commit this verification checkpoint, perform the final diff/search audit,
+  and confirm exact base/head and dependency pins.
 - Attempt a normal fast-forward push to existing draft #824's branch only.
   Preserve its body if GitHub remains unavailable; never open a duplicate,
   mark ready, merge, publish, or run a restricted build.
