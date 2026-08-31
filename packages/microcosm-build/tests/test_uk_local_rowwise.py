@@ -212,8 +212,9 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     stood_on = receipt["stood_on"]["census_households/constituency"]
     seed = stood_on["census_disclosure_control_noise"]
     assert seed["approved_by"] == "juaristi22"
-    assert seed["approved_on"] == "2026-08-27"
-    assert seed["expires_on"] == "2026-11-27"
+    assert seed["adjudication"] == "microcosm#802"
+    assert seed["approved_on"] == "2026-08-31"
+    assert seed["expires_on"] == "2026-11-30"
     assert receipt["stood_on"]["tenure/constituency"] == {}
 
 

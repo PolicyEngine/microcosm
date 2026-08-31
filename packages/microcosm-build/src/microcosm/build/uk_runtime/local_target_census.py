@@ -544,7 +544,10 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "national-total deltas at review: E&W +105, Scotland -554, NI "
             "+3). Binding treats the published counts as the target values "
             "with that noise documented — never as exact controls — and any "
-            "cross-grain reconciliation must name which grain wins."
+            "cross-grain reconciliation applies the standing cross-grain rule "
+            "declared in uk_runtime.ledger_targets: country wins, so a bound "
+            "national same-concept control rescales the constituency values "
+            "before the solve."
         ),
         "authority": (
             "ONS/NRS/NISRA statistical disclosure control documentation; "

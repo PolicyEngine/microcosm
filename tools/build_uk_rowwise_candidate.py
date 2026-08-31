@@ -59,6 +59,7 @@ from microcosm.build.uk_runtime import (
     UkOaLadder,
     UKRowwiseDoctrineSolve,
     UKRowwiseLocalMatrix,
+    apply_uk_cross_grain_reconciliation,
     build_uk_rowwise_local_matrix,
     clone_uk_dataset_with_ladder_geography,
     constituency_household_targets,
@@ -76,6 +77,7 @@ from microcosm.build.uk_runtime import (
 from microcosm.frame import MassChangeRecord
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
+BOUND_NATIONAL_TARGETS: tuple[str, ...] = ()
 CANDIDATE_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise_candidate.h5"
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 SOLVE_DIAGNOSTICS_FILENAME = "solve_diagnostics.csv"
@@ -367,7 +369,7 @@ def _run_candidate(
             append_phase(state, "cloned")
 
         print("binding census household targets...", file=sys.stderr, flush=True)
-        household, problem = _build_bound_problem(
+        household, problem, cross_grain = _build_bound_problem(
             assignment,
             target_ladder=ladder,
         )
@@ -394,6 +396,7 @@ def _run_candidate(
                 ladder_artifact=ladder_artifact,
                 target_provenance=target_provenance,
                 binding_adjudications=binding_adjudications,
+                cross_grain=cross_grain,
             )
             print(_json_text(plan), end="")
             return 0
@@ -495,6 +498,7 @@ def _run_candidate(
             input_artifact=input_artifact,
             ladder_artifact=ladder_artifact,
             target_provenance=target_provenance,
+            cross_grain=cross_grain,
         )
         append_phase(state, "published")
         manifest_path = output_paths["manifest"]
@@ -584,7 +588,7 @@ def _build_bound_problem(
     assignment: _LadderAssignment,
     *,
     target_ladder: UkOaLadder,
-) -> tuple[pd.DataFrame, UKRowwiseLocalMatrix]:
+) -> tuple[pd.DataFrame, UKRowwiseLocalMatrix, dict[str, Any]]:
     """Bind the one target family, refusing separately loaded ladders."""
 
     if assignment.ladder is not target_ladder:
@@ -607,6 +611,22 @@ def _build_bound_problem(
         name="constituency_code",
     )
     targets = constituency_household_targets(target_ladder)
+    local_surface = pd.DataFrame(
+        {
+            "grain": "constituency",
+            "geography_id": targets["code"].astype(str),
+            "target_id": "external:census_households/households",
+            "value": targets["households"].to_numpy(dtype=np.float64),
+        }
+    )
+    reconciled_surface, cross_grain = apply_uk_cross_grain_reconciliation(
+        local_surface,
+        BOUND_NATIONAL_TARGETS,
+    )
+    targets = targets.copy()
+    targets["households"] = reconciled_surface["value"].to_numpy(
+        dtype=np.float64
+    )
     problem = build_uk_rowwise_local_matrix(
         metrics,
         assigned,
@@ -614,7 +634,10 @@ def _build_bound_problem(
         area_type="constituency",
         code_column="code",
     )
-    return household, problem
+    return household, problem, {
+        "bound_national_targets": list(BOUND_NATIONAL_TARGETS),
+        **cross_grain,
+    }
 
 
 def _dry_run_plan(
@@ -627,6 +650,7 @@ def _dry_run_plan(
     ladder_artifact: Mapping[str, Any],
     target_provenance: Mapping[str, Any],
     binding_adjudications: Mapping[str, Any],
+    cross_grain: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -635,6 +659,7 @@ def _dry_run_plan(
         "candidate_scope": "adjudicated_partial",
         "bound_target_families": list(BOUND_TARGET_FAMILIES),
         "binding_adjudications": dict(binding_adjudications),
+        "cross_grain": dict(cross_grain),
         "ladder_target_provenance": dict(target_provenance),
         "inputs": {
             "dataset": dict(input_artifact),
@@ -666,6 +691,7 @@ def _write_output_bundle(
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
     target_provenance: Mapping[str, Any],
+    cross_grain: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Stage the complete bundle, then publish atomically per file."""
 
@@ -719,6 +745,7 @@ def _write_output_bundle(
             input_artifact=input_artifact,
             ladder_artifact=ladder_artifact,
             target_provenance=target_provenance,
+            cross_grain=cross_grain,
             outputs=outputs,
         )
         staged["manifest"].write_text(_json_text(manifest))
@@ -741,6 +768,7 @@ def _manifest(
     input_artifact: Mapping[str, Any],
     ladder_artifact: Mapping[str, Any],
     target_provenance: Mapping[str, Any],
+    cross_grain: Mapping[str, Any],
     outputs: Mapping[str, Any],
 ) -> dict[str, Any]:
     abs_errors = solve.diagnostics["abs_relative_error"].to_numpy(dtype=np.float64)
@@ -755,6 +783,7 @@ def _manifest(
         "git_commit": _git_commit(),
         "bound_target_families": list(BOUND_TARGET_FAMILIES),
         "binding_adjudications": dict(solve.binding_adjudications),
+        "cross_grain": dict(cross_grain),
         "ladder_target_provenance": dict(target_provenance),
         "parameters": _parameters(args, source_year=source_year),
         "inputs": {

@@ -90,7 +90,7 @@
       "enforcement": "review_required_before_binding",
       "fence_id": "census_disclosure_control_noise",
       "fenced_fact_count": null,
-      "rule": "All three census household-count legs are disclosure-controlled (ONS/NRS cell-key perturbation; NISRA flexible-table-builder controls), so area counts carry small deliberate noise and do not add exactly across grains (measured constituency-sum vs national-total deltas at review: E&W +105, Scotland -554, NI +3). Binding treats the published counts as the target values with that noise documented \u2014 never as exact controls \u2014 and any cross-grain reconciliation must name which grain wins."
+      "rule": "All three census household-count legs are disclosure-controlled (ONS/NRS cell-key perturbation; NISRA flexible-table-builder controls), so area counts carry small deliberate noise and do not add exactly across grains (measured constituency-sum vs national-total deltas at review: E&W +105, Scotland -554, NI +3). Binding treats the published counts as the target values with that noise documented \u2014 never as exact controls \u2014 and any cross-grain reconciliation applies the standing cross-grain rule declared in uk_runtime.ledger_targets: country wins, so a bound national same-concept control rescales the constituency values before the solve."
     },
     {
       "authority": "FRS background and methodology (private-household universe); ONS population estimates methodology (communal-establishment population); microcosm#495 scoping (cross-family review finding).",

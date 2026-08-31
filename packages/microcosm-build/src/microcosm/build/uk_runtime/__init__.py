@@ -251,8 +251,12 @@ from microcosm.build.uk_runtime.ladder_targets import (
     local_authority_household_targets,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
+    UK_CROSS_GRAIN_BRIDGES,
+    UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
+    UK_CROSS_GRAIN_RULE,
     UKFrameTargetAdapter,
     UKLedgerTargetCompilation,
+    apply_uk_cross_grain_reconciliation,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
@@ -525,6 +529,10 @@ __all__ = [
     "UK_FISCAL_TARGET_REGISTRY",
     "UKFrameTargetAdapter",
     "UKLedgerTargetCompilation",
+    "UK_CROSS_GRAIN_BRIDGES",
+    "UK_CROSS_GRAIN_GRAIN_PRECEDENCE",
+    "UK_CROSS_GRAIN_RULE",
+    "apply_uk_cross_grain_reconciliation",
     "compile_uk_target_registry",
     "materialize_uk_ledger_targets",
     "AGE_BANDS",
