@@ -24,8 +24,28 @@ no operator ever re-derives structure or silently corrupts weights:
 - **US unit structure**: `assign_us_unit_structure` builds the PolicyEngine
   entity systems (tax units delegated to `microunit`, install via
   `microcosm-frame[us]`) and returns a validated frame.
-- **The `RulesEngine` protocol** plus a lazy `policyengine_us` adapter
-  (install via `microcosm-frame[policyengine]`).
+- **The `RulesEngine` protocol** plus lazy `policyengine_us` (install via
+  `microcosm-frame[policyengine]`) and Axiom adapters. The Axiom adapter's HDF5
+  support installs via `microcosm-frame[axiom]`; the engine itself currently
+  installs from an `axiom-rules-engine` checkout.
+
+The Axiom adapter requires callers to declare the exact RuleSpec authority
+roots used for compilation. It does not infer them from the module path,
+environment, current directory, or sibling checkouts:
+
+```python
+from pathlib import Path
+
+from microcosm.frame.adapters.axiom import AxiomEngine
+
+rulespec_be = Path("/absolute/path/to/rulespec-be")
+module = rulespec_be / "be/statutes/income_tax/individual/rate_scale.yaml"
+engine = AxiomEngine(module, rulespec_roots=(rulespec_be,))
+```
+
+The sequence must be non-empty. On first engine-backed use, Axiom validates
+that every supplied root is an absolute, canonical `rulespec-<country>`
+checkout and resolves imports only through those roots.
 
 See the repository `DESIGN.md` for the charter and
 `tests/test_contracts.py` for the behavioral guarantees the kernel makes.

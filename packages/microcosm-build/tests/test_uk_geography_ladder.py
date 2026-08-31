@@ -21,10 +21,12 @@ from microcosm.build.uk_runtime import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
     assemble_uk_oa_ladder,
     assign_uk_geography_ladder,
+    expected_uk_ladder_area_support,
     join_uk_oa_ladder_layers,
     load_uk_oa_ladder,
     uk_geography_ladder_assignment_summary,
     uk_geography_ladder_gate,
+    uk_region_mix,
 )
 
 
@@ -267,6 +269,121 @@ def test_assignment_is_deterministic_and_two_stage_weighted(tmp_path) -> None:
     within = first[first["constituency_code"] == "E14000001"]
     dominant = (within["oa_code"] == "E00000001").mean()
     assert dominant > 0.95
+
+
+def test_expected_support_matches_hand_computed_two_stage_result(tmp_path) -> None:
+    ladder = load_uk_oa_ladder(
+        _write_ladder(
+            tmp_path / "ladder.npz",
+            local_authority_code=np.asarray(
+                ["E09000001", "E09000002", "E09000002", "W06000001"]
+            ),
+        )
+    )
+    household = pd.DataFrame(
+        {"household_id": [1, 2], "region": ["LONDON", "London"]}
+    )
+
+    support = expected_uk_ladder_area_support(household, ladder, n_clones=2)
+
+    assert support.columns.tolist() == ["area_type", "area_code", "expected_rows"]
+    assert set(support["area_type"]) == {"constituency", "la"}
+    expected = {
+        (row.area_type, row.area_code): row.expected_rows
+        for row in support.itertuples(index=False)
+    }
+    assert expected == pytest.approx(
+        {
+            ("constituency", "E14000001"): 1.0,
+            ("constituency", "E14000002"): 3.0,
+            ("constituency", "W07000041"): 0.0,
+            ("la", "E09000001"): 0.99,
+            ("la", "E09000002"): 3.01,
+            ("la", "W06000001"): 0.0,
+        }
+    )
+
+
+@pytest.mark.parametrize("n_clones", [0, -1, True, 1.5, "2"])
+def test_expected_support_requires_positive_integer_n_clones(
+    tmp_path, n_clones
+) -> None:
+    ladder = load_uk_oa_ladder(_write_ladder(tmp_path / "ladder.npz"))
+
+    with pytest.raises(ValueError, match="n_clones must be a positive integer"):
+        expected_uk_ladder_area_support(
+            _household(),
+            ladder,
+            n_clones=n_clones,
+        )
+
+
+def test_expected_support_matches_assignment_uncovered_region_refusal(tmp_path) -> None:
+    ladder = load_uk_oa_ladder(_write_ladder(tmp_path / "ladder.npz"))
+    household = pd.DataFrame({"household_id": [1], "region": ["SCOTLAND"]})
+
+    with pytest.raises(ValueError) as assignment_error:
+        assign_uk_geography_ladder(household, ladder)
+    with pytest.raises(ValueError) as expectation_error:
+        expected_uk_ladder_area_support(household, ladder)
+
+    assert str(expectation_error.value) == str(assignment_error.value)
+
+
+def test_expected_support_agrees_with_large_realized_assignment(tmp_path) -> None:
+    ladder = load_uk_oa_ladder(
+        _write_ladder(
+            tmp_path / "ladder.npz",
+            population=np.asarray([300.0, 100.0, 300.0, 400.0]),
+            local_authority_code=np.asarray(
+                ["E09000001", "E09000002", "E09000002", "W06000001"]
+            ),
+        )
+    )
+    household = pd.DataFrame(
+        {"household_id": range(20_000), "region": ["LONDON"] * 20_000}
+    )
+
+    expected = expected_uk_ladder_area_support(household, ladder)
+    assigned = assign_uk_geography_ladder(household, ladder, seed=91)
+    actual = {
+        (area_type, code): float(count)
+        for area_type, column in (
+            ("constituency", "constituency_code"),
+            ("la", "local_authority_code"),
+        )
+        for code, count in assigned[column].value_counts().items()
+    }
+
+    for row in expected[expected["expected_rows"] > 0].itertuples(index=False):
+        assert actual[(row.area_type, row.area_code)] == pytest.approx(
+            row.expected_rows,
+            rel=0.03,
+        )
+
+
+def test_region_mix_row_and_weight_shares_sum_to_one() -> None:
+    household = pd.DataFrame(
+        {
+            "region": ["LONDON", "London", "WALES"],
+            "household_weight": [1.0, 2.0, 7.0],
+        }
+    )
+
+    mix = uk_region_mix(household)
+
+    assert mix.columns.tolist() == [
+        "region_code",
+        "rows",
+        "row_share",
+        "weight_share",
+    ]
+    assert mix["row_share"].sum() == pytest.approx(1.0)
+    assert mix["weight_share"].sum() == pytest.approx(1.0)
+    london = mix.set_index("region_code").loc["E12000007"]
+    assert london["rows"] == 2
+    assert london["row_share"] == pytest.approx(2 / 3)
+    assert london["weight_share"] == pytest.approx(0.3)
 
 
 def test_assignment_requires_region(tmp_path) -> None:

@@ -97,6 +97,17 @@ def _household_frame() -> pd.DataFrame:
     )
 
 
+def _spine_household_frame() -> pd.DataFrame:
+    return _household_frame().assign(
+        source_household_id=[10, 20, 10, 30],
+        household_support_channel=["frs", "spi", "frs", "spi"],
+        household_support_clone_index=[0, 1, 0, 0],
+        household_is_spi_synthetic=[False, True, False, True],
+        household_is_capital_gains_clone=[False, False, True, False],
+        household_is_cgt_band_donor=[False, False, False, True],
+    )
+
+
 def _person_frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -250,6 +261,19 @@ def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:
         )
 
 
+def test_ladder_clone_refuses_preassigned_geography(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+    preassigned = _seam_frame(
+        household=_household_frame().assign(oa_code="stale-oa"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="pre-assigned geography cannot be silently overwritten",
+    ):
+        clone_uk_dataset_with_ladder_geography(preassigned, ladder, n_clones=1)
+
+
 def test_ladder_clone_refuses_uncovered_region(tmp_path) -> None:
     frame = _ladder_frame()
     england_only = frame[frame["region_code"].str.startswith("E")]
@@ -348,14 +372,14 @@ def _load_builder_module():
     return module
 
 
-def _write_seam_h5(path) -> None:
+def _write_seam_h5(path, *, household: pd.DataFrame | None = None) -> None:
     from microcosm.build.uk_runtime import write_uk_national_frame
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
     dataset = uk_national_frame(
         person=_person_frame(),
         benunit=_benunit_frame(),
-        household=_household_frame(),
+        household=_household_frame() if household is None else household,
         time_period="2023",
         weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
@@ -377,7 +401,7 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     import json
     import sys
 
-    _, ladder_path = toy_ladder
+    ladder, ladder_path = toy_ladder
     builder = _load_builder_module()
     input_h5 = tmp_path / "staging.h5"
     _write_seam_h5(input_h5)
@@ -404,12 +428,61 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
     assert manifest["parameters"]["assignment_route"] == "ladder"
     assert manifest["inputs"]["ladder"]["sha256"]
+    assert manifest["inputs"]["dataset"]["pin_verified"] is False
+    assert manifest["inputs"]["ladder"]["pin_verified"] is False
+    assert manifest["inputs"]["ladder"]["matches_local_area_crosswalk_pin"] is False
     summary = manifest["rowwise_dataset"]
     assert summary["gate"]["passed"] is True
     assert summary["missing_geography_rows"] == 0
     assert summary["assigned_constituencies"] >= 4
     assert summary["weights"]["household_weight_kind"] == "importance"
     assert summary["weights"]["mass_conservation"]["passed"] is True
+    assert summary["source_lineage"]["explicit"] is None
+    assert summary["area_support"]["source_basis"] == "source_household_id"
+    assert summary["area_support"]["constituency"]["n_areas"] == len(
+        np.unique(ladder.constituency_code)
+    )
+    assert summary["area_support"]["la"]["n_areas"] == len(
+        np.unique(ladder.local_authority_code)
+    )
+    assert set(summary["area_support"]["constituency"]) == {
+        "n_areas",
+        "rows_basis",
+        "min_rows",
+        "median_rows",
+        "min_ess",
+        "median_ess",
+        "min_distinct_sources",
+        "median_distinct_sources",
+        "bottom_by_rows",
+        "bottom_by_ess",
+    }
+    assert sum(row["row_share"] for row in summary["region_mix"]) == pytest.approx(
+        1.0
+    )
+    assert sum(
+        row["weight_share"] for row in summary["region_mix"]
+    ) == pytest.approx(1.0)
+    area_support_path = output_dir / builder.AREA_SUPPORT_FILENAME
+    assert area_support_path.exists()
+    assert manifest["outputs"]["area_support_summary"]["path"] == str(
+        area_support_path
+    )
+    area_support = pd.read_csv(area_support_path)
+    assert area_support.columns.tolist() == [
+        "area_type",
+        "area_code",
+        "assigned_households",
+        "nonzero_households",
+        "nonzero_source_households",
+        "weight_sum",
+        "max_weight",
+        "effective_sample_size",
+    ]
+    assert area_support["area_type"].tolist() == [
+        *(["constituency"] * len(np.unique(ladder.constituency_code))),
+        *(["la"] * len(np.unique(ladder.local_authority_code))),
+    ]
     assert (output_dir / "staging_rowwise.h5").exists()
 
 
@@ -427,13 +500,19 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     _write_seam_h5(input_h5)
     plan_dir = tmp_path / "plan"
     build_dir = tmp_path / "build"
+    input_sha256 = builder._sha256(input_h5)
+    ladder_sha256 = builder._sha256(ladder_path)
 
     base_argv = [
         "build_uk_rowwise_dataset.py",
         "--input-h5",
         str(input_h5),
+        "--input-sha256",
+        input_sha256,
         "--ladder",
         str(ladder_path),
+        "--ladder-sha256",
+        ladder_sha256,
         "--n-clones",
         "2",
         "--seed",
@@ -443,10 +522,35 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     assert builder.main() == 0
     plan = json.loads((plan_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
     assert not (plan_dir / "staging_rowwise.h5").exists()
+    expected_support = plan["expected_support"]
+    assert expected_support["basis"] == (
+        "analytic expectation: constituency household-count share within region x "
+        "the input's region mix x n_clones; OA population shares within "
+        "constituency for LA support"
+    )
+    for area_type in ("constituency", "la"):
+        area_support = expected_support[area_type]
+        # Same-named stats keys carry their semantics: an expected-mass
+        # figure must never be silently compared against a realized count.
+        assert area_support["rows_basis"] == "expected_rows"
+        assert plan["realized_support"][area_type]["rows_basis"] == "assigned_rows"
+        assert area_support["n_areas"] <= builder.EXPECTED_SUPPORT_BOTTOM_AREAS
+        assert len(area_support["bottom"]) == area_support["n_areas"]
+        assert sum(row["rows"] for row in area_support["bottom"]) == pytest.approx(
+            plan["plan"]["rows"]["household"]
+        )
 
     monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(build_dir)])
     assert builder.main() == 0
     manifest = json.loads((build_dir / builder.MANIFEST_FILENAME).read_text())
+    assert plan["input"]["dataset"]["pin_verified"] is True
+    assert plan["input"]["ladder"]["pin_verified"] is True
+    assert plan["input"]["ladder"]["matches_local_area_crosswalk_pin"] is False
+    assert manifest["inputs"]["dataset"]["pin_verified"] is True
+    assert manifest["inputs"]["ladder"]["pin_verified"] is True
+    assert manifest["inputs"]["ladder"]["matches_local_area_crosswalk_pin"] is False
+    assert plan["area_support"] == manifest["rowwise_dataset"]["area_support"]
+    assert plan["region_mix"] == manifest["rowwise_dataset"]["region_mix"]
 
     # The dry-run's realized support is exact: identical draws to the build.
     realized = {
@@ -462,6 +566,162 @@ def test_driver_ladder_dry_run_matches_real_assignment(
         plan["realized_support"]["constituency"]["n_areas"]
         >= manifest["rowwise_dataset"]["assigned_constituencies"]
     )
+    assert plan["source_lineage"]["explicit"] is None
+    assert manifest["rowwise_dataset"]["source_lineage"]["explicit"] is None
+
+
+def test_driver_ladder_candidate_k_matches_independent_single_k_plan(
+    monkeypatch, toy_ladder, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import json
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    candidate_dir = tmp_path / "candidates"
+    independent_dir = tmp_path / "independent"
+    base_argv = [
+        "build_uk_rowwise_dataset.py",
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--seed",
+        "7",
+    ]
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            *base_argv,
+            "--out",
+            str(candidate_dir),
+            "--n-clones",
+            "2",
+            "--candidate-clone-counts",
+            "3,1,3",
+            "--dry-run",
+        ],
+    )
+    assert builder.main() == 0
+    candidate_plan = json.loads(
+        (candidate_dir / builder.DRY_RUN_PLAN_FILENAME).read_text()
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            *base_argv,
+            "--out",
+            str(independent_dir),
+            "--n-clones",
+            "3",
+            "--dry-run",
+        ],
+    )
+    assert builder.main() == 0
+    independent_plan = json.loads(
+        (independent_dir / builder.DRY_RUN_PLAN_FILENAME).read_text()
+    )
+
+    assert candidate_plan["plan"]["n_clones"] == 2
+    candidates = candidate_plan["candidates"]
+    assert candidates["clone_counts"] == [1, 3]
+    assert [candidate["n_clones"] for candidate in candidates["plans"]] == [1, 3]
+    input_bytes = input_h5.stat().st_size
+    base_rows = {"person": 5, "benunit": 4, "household": 4}
+    for candidate in candidates["plans"]:
+        n_clones = candidate["n_clones"]
+        assert candidate["rows"] == {
+            name: rows * n_clones for name, rows in base_rows.items()
+        }
+        assert candidate["output_bytes_estimate"] == input_bytes * n_clones
+        assert set(candidate) == {
+            "n_clones",
+            "rows",
+            "output_bytes_estimate",
+            "realized_support",
+            "expected_support",
+            "area_support",
+        }
+
+    candidate_k3 = candidates["plans"][1]
+    assert candidate_k3["realized_support"] == {
+        area_type: independent_plan["realized_support"][area_type]
+        for area_type in ("constituency", "la")
+    }
+    assert candidate_k3["expected_support"] == {
+        area_type: independent_plan["expected_support"][area_type]
+        for area_type in ("constituency", "la")
+    }
+    assert candidate_k3["area_support"] == independent_plan["area_support"]
+
+
+def test_driver_ladder_spine_lineage_plan_manifest_parity(
+    monkeypatch, toy_ladder, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import json
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "spine.h5"
+    _write_seam_h5(input_h5, household=_spine_household_frame())
+    plan_dir = tmp_path / "plan"
+    build_dir = tmp_path / "build"
+    base_argv = [
+        "build_uk_rowwise_dataset.py",
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--n-clones",
+        "2",
+        "--seed",
+        "7",
+    ]
+
+    monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(plan_dir), "--dry-run"])
+    assert builder.main() == 0
+    plan = json.loads((plan_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
+
+    monkeypatch.setattr(sys, "argv", [*base_argv, "--out", str(build_dir)])
+    assert builder.main() == 0
+    manifest = json.loads((build_dir / builder.MANIFEST_FILENAME).read_text())
+
+    explicit = plan["source_lineage"]["explicit"]
+    assert explicit == manifest["rowwise_dataset"]["source_lineage"]["explicit"]
+    assert plan["area_support"]["source_basis"] == "source_household_id"
+    assert (
+        manifest["rowwise_dataset"]["area_support"]["source_basis"]
+        == "source_household_id"
+    )
+    assert explicit == {
+        "basis": "explicit_lineage_columns",
+        "columns_present": [
+            "source_household_id",
+            "household_support_channel",
+            "household_support_clone_index",
+            "household_is_spi_synthetic",
+            "household_is_capital_gains_clone",
+            "household_is_cgt_band_donor",
+        ],
+        "distinct_source_households": 3,
+        "distinct_by_support_channel": {"frs": 1, "spi": 2},
+        "flag_counts": {
+            "household_is_spi_synthetic": 2,
+            "household_is_capital_gains_clone": 1,
+            "household_is_cgt_band_donor": 1,
+        },
+    }
 
 
 def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path):
@@ -488,6 +748,166 @@ def test_driver_ladder_refuses_crosswalk_combo(monkeypatch, toy_ladder, tmp_path
         ],
     )
     with pytest.raises(ValueError, match="mutually exclusive"):
+        builder.main()
+
+
+def test_driver_ladder_sha256_refuses_crosswalk(monkeypatch, tmp_path) -> None:
+    pytest.importorskip("tables")
+    import sys
+
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--crosswalk",
+            str(tmp_path / "crosswalk.csv"),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="ladder-sha256.*ladder"):
+        builder.main()
+
+
+def test_driver_ladder_sha256_refuses_generated_crosswalk_route(
+    monkeypatch, tmp_path
+) -> None:
+    # Neither --ladder nor --crosswalk: the driver would download and build a
+    # crosswalk, and there is no ladder artifact the pin could verify. A
+    # silently ignored pin would report verification that never happened.
+    pytest.importorskip("tables")
+    import sys
+
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="ladder-sha256 requires --ladder"):
+        builder.main()
+
+
+def test_area_support_stats_read_nonzero_rows_not_assigned() -> None:
+    # An area whose only rows are zero-weight synthetics shapes no estimate
+    # there: the stats and the thinness ranking must read mass-carrying rows,
+    # with the assigned count still visible per bottom area.
+    builder = _load_builder_module()
+    support = pd.DataFrame(
+        {
+            "area_code": ["A1", "A2"],
+            "assigned_households": [40, 3],
+            "nonzero_households": [0, 3],
+            "nonzero_source_households": [0, 3],
+            "weight_sum": [0.0, 30.0],
+            "max_weight": [0.0, 10.0],
+            "effective_sample_size": [0.0, 3.0],
+        }
+    )
+
+    stats = builder._area_support_stats(support)
+
+    assert stats["rows_basis"] == "nonzero_households"
+    assert stats["min_rows"] == 0
+    assert stats["bottom_by_rows"][0] == {
+        "area_code": "A1",
+        "rows": 0,
+        "assigned": 40,
+    }
+
+
+def test_driver_ladder_pin_mismatch_refuses_before_parse(
+    monkeypatch, toy_ladder, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(input_h5)
+
+    def unexpected_parse(_path):
+        raise AssertionError("ladder pin mismatch must refuse before NPZ parsing")
+
+    monkeypatch.setattr(builder, "load_uk_oa_ladder", unexpected_parse)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--ladder-sha256",
+            "0" * 64,
+            "--out",
+            str(tmp_path / "out"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match=r"--ladder sha mismatch: measured"):
+        builder.main()
+
+
+def test_driver_ladder_dry_run_refuses_legacy_preassigned_geography(
+    monkeypatch, toy_ladder, tmp_path
+):
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "preassigned.h5"
+    household = _household_frame().assign(
+        constituency_code_oa="stale-constituency"
+    )
+    _write_seam_h5(input_h5, household=household)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--out",
+            str(tmp_path / "plan"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"stale \*_oa columns cannot ride through",
+    ):
         builder.main()
 
 

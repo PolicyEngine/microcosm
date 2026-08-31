@@ -30,7 +30,10 @@ psycopg = pytest.importorskip("psycopg")
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS = ROOT / "supabase/migrations"
-NEW_MIGRATION = MIGRATIONS / "20260818000000_logbook_chain_scopes.sql"
+CHAIN_SCOPES_MIGRATION = MIGRATIONS / "20260818000000_logbook_chain_scopes.sql"
+UK_LOCAL_SCOPE_MIGRATION = (
+    MIGRATIONS / "20260829000000_logbook_uk_local_scope.sql"
+)
 ROWS = ROOT / "logbook/us.jsonl"
 BASE_MIGRATIONS = [
     "20260805000000_logbook.sql",
@@ -172,7 +175,8 @@ def test_logbook_chain_scopes_migration_preserves_and_scopes_live_rows() -> None
         _insert(connection, row)
     assert _count_builds(connection) == 28
 
-    _apply_sql(connection, NEW_MIGRATION.read_text(encoding="utf-8"))
+    _apply_sql(connection, CHAIN_SCOPES_MIGRATION.read_text(encoding="utf-8"))
+    _apply_sql(connection, UK_LOCAL_SCOPE_MIGRATION.read_text(encoding="utf-8"))
 
     us_tail = _digest_of(connection, archived[-1]["build_id"])
     _insert(
@@ -198,17 +202,14 @@ def test_logbook_chain_scopes_migration_preserves_and_scopes_live_rows() -> None
             predecessor=None,
         ),
     )
-    # Vocabulary is closed-world and minimal: uk/locals and uk/firms both
-    # derive cleanly but are not ratified yet, so even their geneses are
-    # refused until a migration adds them (locals rows keep spooling locally
-    # in the meantime — recording never consults the allowlist). Cross-scope
+    # Vocabulary is closed-world and minimal: uk/local is ratified for #761,
+    # while uk/firms still derives cleanly but remains unratified. Cross-scope
     # independence is already proven above: uk/frs opened while us had rows.
-    _refuses(
+    _insert(
         connection,
         _build_row(
-            "uk-locals-genesis", pipeline="uk-locals-rowwise", predecessor=None
+            "uk-local-genesis", pipeline="uk-local-rowwise", predecessor=None
         ),
-        "not in the ratified scope list",
     )
     _refuses(
         connection,

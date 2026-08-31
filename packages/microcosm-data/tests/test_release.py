@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from microcosm.data import ReleaseContractError
+from microcosm.data import release as release_module
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
@@ -1078,7 +1079,7 @@ def test_release_tag_is_created_before_pointer(
 def test_release_id_artifact_revision_requires_release_tag(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
-    with pytest.raises(ValueError, match="must create the matching Hugging Face tag"):
+    with pytest.raises(ValueError, match="pins artifacts to revisions.*must create"):
         publish_release(
             release_dir,
             "policyengine/populace-us",
@@ -1093,7 +1094,7 @@ def test_release_id_artifact_revision_requires_release_tag(
 def test_release_id_artifact_revision_rejects_tag_name_override(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
-    with pytest.raises(ValueError, match="tag_name must match the release id"):
+    with pytest.raises(ValueError, match="tag_name must match.*artifact revision"):
         publish_release(
             release_dir,
             "policyengine/populace-us",
@@ -1103,6 +1104,138 @@ def test_release_id_artifact_revision_rejects_tag_name_override(
         )
     assert hub.uploads == []
     assert hub.tags == []
+
+
+def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    cut_tag = RELEASE_ID + "-20260828T101112Z-1a2b3c4d"
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = cut_tag
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        tag_name=cut_tag,
+        update_latest=False,
+    )
+
+    assert hub.tags == [{"tag": cut_tag, "revision": "commit-1"}]
+    assert all(path != LATEST_POINTER_PATH for path, _payload in hub.uploads)
+
+
+def test_per_cut_artifact_revision_refuses_dangling_default_tag(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    cut_tag = RELEASE_ID + "-20260828T101112Z-1a2b3c4d"
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = cut_tag
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="uniform per-cut artifact revision"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
+def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    # A non-string revision must not shrink the pin set into vacuous guards:
+    # the empty set may only ever mean "no artifacts declared", never
+    # "artifacts whose pins could not be read".
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = 123
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="missing or non-string revisions"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
+def test_empty_artifact_revisions_refuse_publication(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"] = {}
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="declares no artifact revisions"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
+def test_per_cut_tag_refuses_latest_promotion(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+) -> None:
+    # The pointer may only ever name a release whose tag IS the release id:
+    # a per-cut inspect tag with the default update_latest must refuse before
+    # any remote mutation, not promote.
+    cut_tag = RELEASE_ID + "-20260828T101112Z-1a2b3c4d"
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = cut_tag
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+
+    with pytest.raises(ValueError, match="inspect-only"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=cut_tag,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+    assert hub.events == []
 
 
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:

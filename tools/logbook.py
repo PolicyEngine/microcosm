@@ -60,11 +60,12 @@ LEGACY_US_PIPELINES = (
 _PIPELINE_SCOPE_PATTERN = re.compile(
     r"^(?P<country>[a-z]{2})-(?P<line>[a-z0-9_]+)(?:-[a-z0-9_-]+)?$"
 )
-#: Mirror of logbook.scope_declared() in the same migration: the ratified
+#: Mirror of logbook.scope_declared() in
+#: supabase/migrations/20260829000000_logbook_uk_local_scope.sql: the ratified
 #: scope vocabulary, closed-world. Opening a scope is a reviewed diff here,
 #: in the migration, and in logbook/README.md -- never a side effect of a
 #: well-formed pipeline name.
-DECLARED_SCOPES = frozenset({"us", "uk/frs"})
+DECLARED_SCOPES = frozenset({"us", "uk/frs", "uk/local"})
 
 
 def _parser() -> argparse.ArgumentParser:

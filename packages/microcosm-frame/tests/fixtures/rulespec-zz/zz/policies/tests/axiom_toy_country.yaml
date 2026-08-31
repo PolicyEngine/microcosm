@@ -1,4 +1,4 @@
-# Self-contained RuleSpec module for the Axiom adapter's behavioral tests:
+# Self-contained canonical-root RuleSpec module for the Axiom adapter's tests:
 # a two-bracket personal income tax with a boolean exemption predicate and a
 # monthly benefit on the person, plus a household-entity housing allowance —
 # small enough to hand-verify, shaped like the Belgian pilot (person +
@@ -6,7 +6,7 @@
 format: rulespec/v1
 module:
   summary: |-
-    populace-frame test fixture: person-scope two-bracket income tax with an
+    microcosm-frame test fixture: person-scope two-bracket income tax with an
     exemption predicate and a monthly benefit, and a household-scope housing
     allowance. Values are round numbers chosen for hand verification.
 units:

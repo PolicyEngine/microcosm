@@ -51,6 +51,17 @@ MASS_CONSERVATION_RELATIVE_TOLERANCE = 1e-9
 #: staging H5 already carries.
 POOL_SOURCE_LINEAGE_COLUMN = "pool_source_household_id"
 
+#: Explicit lineage carried by accepted UK spine inputs. These columns are
+#: authoritative for the spine id scheme and make the pool-only modulus rule
+#: inapplicable.
+UK_SPINE_LINEAGE_COLUMNS = (
+    "household_support_channel",
+    "household_support_clone_index",
+    "household_is_spi_synthetic",
+    "household_is_capital_gains_clone",
+    "household_is_cgt_band_donor",
+)
+
 PERSON_ID_COLUMNS = (
     "person_id",
     "person_household_id",
@@ -74,6 +85,29 @@ def ladder_clone_index_column(entity: str) -> str:
     """
 
     return f"{entity}_{ARTIFACT_CLONE_INDEX_COLUMN}"
+
+
+def _refuse_preassigned_geography(
+    table: pd.DataFrame,
+    *,
+    label: str,
+) -> None:
+    preassigned_columns = [
+        column
+        for column in (
+            *UK_GEOGRAPHY_LADDER_COLUMNS,
+            "la_code_oa",
+            "constituency_code_oa",
+            "region_code_oa",
+        )
+        if column in table.columns
+    ]
+    if preassigned_columns:
+        raise ValueError(
+            f"{label} carries pre-assigned geography column(s) "
+            f"{preassigned_columns!r}; pre-assigned geography cannot be "
+            "silently overwritten and stale *_oa columns cannot ride through."
+        )
 
 
 @dataclass(frozen=True)
@@ -296,6 +330,7 @@ def clone_uk_dataset_tables_with_ladder_geography(
         household_id_column="household_id",
         household_weight_column="household_weight",
     )
+    _refuse_preassigned_geography(household_frame, label="household")
     # The artifact's clone_index names the rowwise clone dimension. A
     # candidate-tier clone_index inherited from the staging input (SPI/pool
     # lineage) is replaced, exactly as the pre-Frame clone overwrote the
@@ -892,15 +927,15 @@ def apply_uk_source_lineage_modulus(
 ) -> pd.DataFrame:
     """Derive pool-grain lineage as ``pool_source_household_id``.
 
-    The certified UK pool encodes its 10x clone tiers as
-    ``household_id = tier * 10**8 + base``, so a modulus of ``10**8`` recovers
-    the enhanced-FRS pool source. The derived column is a *distinct lineage
-    layer*: any immediate-layer ``source_household_id``/``source_household_key``
-    the input carries (the national staging H5 does) is left untouched. The
-    modulus is only meaningful for rows whose ids follow the pool's tier
-    scheme — on a seam output, channel-rebuilt households (e.g. the rebuilt
-    SPI channel) carry ids outside that scheme, so pool-lineage diagnostics
-    must be read per support channel.
+    The pool scheme is ``household_id = tier * 10**8 + base``; a modulus of
+    ``10**8`` recovers the enhanced-FRS pool source as a *distinct lineage
+    layer*, leaving any immediate-layer ``source_household_id`` or
+    ``source_household_key`` untouched.
+
+    Spine inputs use a different scheme: ``household_id = sernum +
+    1{spi} * 10**d + 1{cgt_clone} * 10**(d+1) + 1{band_donor} * 10**(d+2)``.
+    Their explicit spine lineage columns are the source of truth, so applying
+    the pool modulus would mint a false second lineage layer and is refused.
 
     The mapping is refused when it would be ambiguous (the pool column
     already exists) or vacuous (no id reaches the modulus, making it the
@@ -914,6 +949,17 @@ def apply_uk_source_lineage_modulus(
         raise ValueError(
             f"household already carries {POOL_SOURCE_LINEAGE_COLUMN!r}; "
             "applying source_lineage_modulus would be ambiguous."
+        )
+    spine_lineage_columns = [
+        column for column in UK_SPINE_LINEAGE_COLUMNS if column in household.columns
+    ]
+    if spine_lineage_columns:
+        raise ValueError(
+            "household carries explicit spine lineage column(s) "
+            f"{spine_lineage_columns!r}; explicit spine lineage columns are "
+            "the source of truth. The source_lineage_modulus rule was written "
+            "for the pool's tier·10^8+base scheme and would mint a false "
+            "second lineage layer."
         )
     numeric = pd.to_numeric(household[household_id_column], errors="raise").to_numpy(
         dtype=np.float64

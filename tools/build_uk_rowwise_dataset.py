@@ -1,10 +1,13 @@
 """Build a Microcosm UK row-wise local-geography dataset.
 
-This is the narrow build driver for the UK local replacement path. It starts
-from an existing compact Microcosm UK single-year H5, builds or loads the
-official-source geography crosswalk, clones the entity tables, assigns each
-household a finest available geography row, and writes diagnostics that prove
-coverage and weight preservation.
+This is the narrow build driver for the UK local replacement path. Its
+sanctioned input is the microcosm-built national spine — the assembly seam's
+accepted, sha-pinned single-year H5 with its declared weight kind and mass
+log — never the retired certified compact and never anything upstream of the
+seam. The driver clones the entity tables, assigns each household a finest
+available geography row (the ratified OA ladder, or the crosswalk sampler as
+the coverage-check path), and writes diagnostics that prove coverage, weight
+preservation, and per-area support.
 """
 
 from __future__ import annotations
@@ -51,17 +54,25 @@ from microcosm.build.uk_runtime import (
     clone_entity_frame,
     clone_uk_dataset_with_ladder_geography,
     clone_uk_dataset_with_rowwise_geography,
+    expected_uk_ladder_area_support,
     expected_uk_rowwise_area_support,
     geography_coverage_summary,
     id_multiplier_for_values,
     ladder_clone_index_column,
+    load_uk_local_area_crosswalk,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
     uk_geography_ladder_gate,
     uk_household_weight_kind,
+    uk_ladder_area_support_summary,
+    uk_region_mix,
     uk_time_period,
     validate_geography_coverage,
     write_geography_crosswalk,
+)
+from microcosm.build.uk_runtime.rowwise_dataset import (
+    UK_SPINE_LINEAGE_COLUMNS,
+    _refuse_preassigned_geography,
 )
 from microcosm.frame import engine_tables
 
@@ -70,9 +81,29 @@ DATASET_FILENAME_TEMPLATE = "{input_stem}_rowwise.h5"
 MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
 DRY_RUN_PLAN_FILENAME = "rowwise_dry_run_plan.json"
+AREA_SUPPORT_FILENAME = "area_support_summary.csv"
 EXPECTED_SUPPORT_BOTTOM_AREAS = 15
-_UK_ROWWISE_PIPELINE = "uk-locals-rowwise"
+_UK_ROWWISE_PIPELINE = "uk-local-rowwise"
 _REPOSITORY = Path(__file__).resolve().parents[1]
+
+
+def _candidate_clone_counts_argument(value: str) -> tuple[int, ...]:
+    parts = value.split(",")
+    if not value.strip() or any(not part.strip() for part in parts):
+        raise argparse.ArgumentTypeError(
+            "candidate clone counts must be a non-empty comma list of positive integers"
+        )
+    try:
+        clone_counts = [int(part.strip()) for part in parts]
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "candidate clone counts must be a comma list of positive integers"
+        ) from error
+    if any(clone_count <= 0 for clone_count in clone_counts):
+        raise argparse.ArgumentTypeError(
+            "candidate clone counts must all be positive integers"
+        )
+    return tuple(sorted(set(clone_counts)))
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -82,6 +113,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help="Compact Microcosm UK single-year H5 to clone.",
+    )
+    parser.add_argument(
+        "--input-sha256",
+        type=sha256_argument,
+        help="Optional SHA-256 pin for --input-h5; mismatches fail before H5 parsing.",
     )
     parser.add_argument(
         "--out",
@@ -108,6 +144,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--ladder-sha256",
+        type=sha256_argument,
+        help="Optional SHA-256 pin for --ladder; mismatches fail before NPZ parsing.",
+    )
+    parser.add_argument(
         "--expected-constituency-vintage",
         default="2024_pcon",
         help=(
@@ -126,6 +167,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional CSV containing a `code` column for local-authority coverage checks.",
     )
     parser.add_argument("--n-clones", type=int, default=2)
+    parser.add_argument(
+        "--candidate-clone-counts",
+        type=_candidate_clone_counts_argument,
+        help=(
+            "Dry-run only: comma-separated candidate clone counts to plan "
+            "independently at the build seed (deduplicated and sorted)."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--source-year",
@@ -163,13 +212,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--source-lineage-modulus",
         type=int,
         help=(
-            "Derive pool_source_household_id as household_id mod this value "
-            "before cloning, recovering pool-grain lineage as a distinct "
-            "layer (the certified UK pool encodes its 10x clone tiers with a "
-            "10**8 id offset; the staging H5's immediate-layer "
-            "source_household_id is left untouched). Refused when the pool "
-            "column already exists or the modulus would be an identity "
-            "mapping."
+            "Pool inputs only: derive pool_source_household_id before cloning "
+            "from household_id = tier * 10**8 + base, leaving the immediate "
+            "source_household_id untouched. Spine inputs instead use sernum + "
+            "1{spi} * 10**d + 1{cgt_clone} * 10**(d+1) + 1{band_donor} * "
+            "10**(d+2) and carry authoritative explicit lineage columns, so "
+            "the modulus is refused for them. Also refused when the pool "
+            "column exists or the mapping would be an identity."
         ),
     )
     parser.add_argument(
@@ -203,7 +252,7 @@ def _new_rowwise_build_id(
 ) -> str:
     instant = timestamp.astimezone(UTC)
     return (
-        f"uk-locals-rowwise-{route}-f100-s{seed}-"
+        f"uk-local-rowwise-{route}-f100-s{seed}-"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     )
 
@@ -293,6 +342,11 @@ def _record_rowwise_error(
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    if args.candidate_clone_counts is not None and not args.dry_run:
+        raise ValueError(
+            "candidate-K planning is a dry-run surface; a real build has "
+            "exactly one K from --n-clones."
+        )
     if args.dry_run:
         return _main_impl(args, attempt=None)
 
@@ -348,10 +402,14 @@ def _main_impl(
     *,
     attempt: dict[str, object] | None,
 ) -> int:
-    args.out.mkdir(parents=True, exist_ok=True)
-
     input_h5 = args.input_h5.resolve()
     input_artifact = _artifact_info(input_h5)
+    _verify_artifact_pin(
+        input_artifact,
+        pinned_sha256=args.input_sha256,
+        option="--input-h5",
+    )
+    args.out.mkdir(parents=True, exist_ok=True)
     base_summary = _h5_summary(input_h5)
     source_year = _source_year(args.source_year, base_summary=base_summary)
     output_h5 = _dataset_output_path(
@@ -361,6 +419,12 @@ def _main_impl(
         source_year=source_year,
     )
     _validate_output_paths(input_h5=input_h5, output_h5=output_h5, args=args)
+    if args.ladder_sha256 is not None and args.ladder is None:
+        raise ValueError(
+            "--ladder-sha256 requires --ladder; the crosswalk routes have no "
+            "ladder artifact to pin, and silently ignoring a supplied pin "
+            "would report verification that never happened."
+        )
     if args.ladder is not None:
         if args.crosswalk is not None:
             raise ValueError("--ladder and --crosswalk are mutually exclusive.")
@@ -374,6 +438,7 @@ def _main_impl(
             (args.out / COVERAGE_FILENAME).resolve(),
             (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
             (args.out / CROSSWALK_FILENAME).resolve(),
+            (args.out / AREA_SUPPORT_FILENAME).resolve(),
         }
         if args.ladder.resolve() in sidecars:
             raise ValueError(
@@ -393,6 +458,8 @@ def _main_impl(
             source_year=source_year,
             attempt=attempt,
         )
+    if not args.dry_run:
+        (args.out / AREA_SUPPORT_FILENAME).unlink(missing_ok=True)
     crosswalk_source = _load_or_build_crosswalk(args)
     crosswalk = crosswalk_source.frame
     crosswalk_path = crosswalk_source.path
@@ -484,6 +551,7 @@ def _main_impl(
                 _artifact_info(crosswalk_path) if crosswalk_source.generated else None
             ),
             "coverage_summary": coverage_artifact,
+            "area_support_summary": None,
         },
         "base_dataset": base_summary,
         "rowwise_dataset": rowwise_summary,
@@ -561,6 +629,7 @@ def _dataset_output_path(
         MANIFEST_FILENAME,
         COVERAGE_FILENAME,
         DRY_RUN_PLAN_FILENAME,
+        AREA_SUPPORT_FILENAME,
     }
     if path.name in reserved:
         raise ValueError(
@@ -579,6 +648,7 @@ def _validate_output_paths(
         (args.out / MANIFEST_FILENAME).resolve(),
         (args.out / COVERAGE_FILENAME).resolve(),
         (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
+        (args.out / AREA_SUPPORT_FILENAME).resolve(),
     }
     generated_crosswalk_path = (args.out / CROSSWALK_FILENAME).resolve()
     reserved_paths = {
@@ -680,6 +750,11 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
     ladder_route = getattr(args, "ladder", None) is not None
     return {
         "n_clones": args.n_clones,
+        "candidate_clone_counts": (
+            list(args.candidate_clone_counts)
+            if args.candidate_clone_counts is not None
+            else None
+        ),
         "seed": args.seed,
         "source_year": source_year,
         # Crosswalk-sampler knobs are meaningless on the ladder route and are
@@ -790,7 +865,7 @@ def _dry_run_plan(
         for name in ("person", "benunit", "household")
     }
     input_bytes = input_h5.stat().st_size
-    return {
+    plan = {
         "schema_version": 1,
         "build_kind": "uk_rowwise_local_geography_dry_run",
         "created_at": datetime.now(UTC).isoformat(),
@@ -824,7 +899,9 @@ def _dry_run_plan(
                 "sampleable areas included"
             ),
             **{
-                area_type: _support_summary(realized, area_type)
+                area_type: _support_summary(
+                    realized, area_type, rows_basis="assigned_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
@@ -835,7 +912,9 @@ def _dry_run_plan(
                 "constituency count"
             ),
             **{
-                area_type: _support_summary(collision_free, area_type)
+                area_type: _support_summary(
+                    collision_free, area_type, rows_basis="expected_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
@@ -844,6 +923,83 @@ def _dry_run_plan(
             modulus=args.source_lineage_modulus,
         ),
         "coverage": coverage.to_dict("records") if not coverage.empty else [],
+    }
+    if args.candidate_clone_counts is not None:
+        plan["candidates"] = _crosswalk_candidate_plans(
+            args,
+            household=household,
+            crosswalk=crosswalk,
+            source_year=source_year,
+            id_multiplier=id_multiplier,
+            table_rows=table_rows,
+            input_bytes=input_bytes,
+        )
+    return plan
+
+
+def _crosswalk_candidate_plans(
+    args: argparse.Namespace,
+    *,
+    household: pd.DataFrame,
+    crosswalk: pd.DataFrame,
+    source_year: int,
+    id_multiplier: int,
+    table_rows: dict[str, int],
+    input_bytes: int,
+) -> dict[str, Any]:
+    clone_counts = args.candidate_clone_counts
+    assert clone_counts is not None
+    plans = []
+    for n_clones in clone_counts:
+        assignment = assign_household_geography(
+            household,
+            crosswalk,
+            n_clones=n_clones,
+            seed=args.seed,
+            id_multiplier=id_multiplier,
+            source_year=source_year,
+            require_all_countries=not args.allow_missing_country,
+            require_constituency=not args.allow_blank_constituency,
+            constrain_to_region=not args.allow_cross_region_assignment,
+            avoid_constituency_collisions=not args.allow_constituency_collisions,
+        )
+        realized = _realized_area_support(assignment.household, crosswalk)
+        collision_free = expected_uk_rowwise_area_support(
+            household,
+            crosswalk,
+            n_clones=n_clones,
+            source_year=source_year,
+            require_all_countries=not args.allow_missing_country,
+            require_constituency=not args.allow_blank_constituency,
+            constrain_to_region=not args.allow_cross_region_assignment,
+        )
+        plans.append(
+            {
+                "n_clones": n_clones,
+                "rows": {name: rows * n_clones for name, rows in table_rows.items()},
+                "output_bytes_estimate": input_bytes * n_clones,
+                "realized_support": {
+                    area_type: _support_summary(
+                        realized, area_type, rows_basis="assigned_rows"
+                    )
+                    for area_type in ("constituency", "la")
+                },
+                "collision_free_expected_support": {
+                    area_type: _support_summary(
+                        collision_free, area_type, rows_basis="expected_rows"
+                    )
+                    for area_type in ("constituency", "la")
+                },
+            }
+        )
+    return {
+        "basis": (
+            "independent crosswalk assignments at the build seed for each "
+            "candidate K; realized and collision-free expected support only "
+            "because this route has no ladder roster for area-support stats"
+        ),
+        "clone_counts": list(clone_counts),
+        "plans": plans,
     }
 
 
@@ -861,6 +1017,12 @@ def _run_ladder_route(
 
     ladder_path = args.ladder.resolve()
     ladder_artifact = _artifact_info(ladder_path)
+    _verify_artifact_pin(
+        ladder_artifact,
+        pinned_sha256=args.ladder_sha256,
+        option="--ladder",
+    )
+    _annotate_ladder_crosswalk_pin(ladder_artifact)
     ladder = load_uk_oa_ladder(ladder_path)
 
     if args.dry_run:
@@ -928,6 +1090,17 @@ def _run_ladder_route(
         "passed": bool(result.gate.passed),
         "details": dict(result.gate.details),
     }
+    household = _result_household(result)
+    area_support, area_support_summaries = _ladder_area_support_diagnostics(
+        household,
+        ladder,
+    )
+    rowwise_summary["area_support"] = area_support
+    rowwise_summary["region_mix"] = uk_region_mix(household).to_dict("records")
+    area_support_path = args.out / AREA_SUPPORT_FILENAME
+    _area_support_long_frame(area_support_summaries).to_csv(
+        area_support_path, index=False
+    )
     manifest = {
         "schema_version": 1,
         "build_kind": "uk_rowwise_local_geography_dataset",
@@ -942,6 +1115,7 @@ def _run_ladder_route(
             "dataset": _artifact_info(output_h5),
             "crosswalk": None,
             "coverage_summary": None,
+            "area_support_summary": _artifact_info(area_support_path),
         },
         "base_dataset": base_summary,
         "rowwise_dataset": rowwise_summary,
@@ -1004,6 +1178,7 @@ def _ladder_dry_run_plan(
         person_ids=person_ids,
         benunit_ids=benunit_ids,
     )
+    _refuse_preassigned_geography(household, label="household")
     id_multiplier = id_multiplier_for_values(
         household["household_id"],
         person_ids["person_id"],
@@ -1030,39 +1205,31 @@ def _ladder_dry_run_plan(
         raise ValueError("household weights must carry positive total mass.")
     _kind, mass_log = read_uk_single_year_weight_metadata(input_h5)
     _assert_mass_log_current(mass_log, float(weight_values.sum()))
-    cloned = clone_entity_frame(
+    assigned = _ladder_planned_assignment(
         household,
-        id_columns=("household_id",),
-        n_clones=args.n_clones,
-        id_multiplier=id_multiplier,
-        clone_index_column="clone_index",
-    ).reset_index(drop=True)
-    cloned["household_weight"] = (
-        pd.to_numeric(cloned["household_weight"], errors="raise").to_numpy(dtype=float)
-        / args.n_clones
-    )
-    assigned = assign_uk_geography_ladder(
-        cloned,
         ladder,
+        n_clones=args.n_clones,
         seed=args.seed,
+        id_multiplier=id_multiplier,
         expected_constituency_vintage=args.expected_constituency_vintage,
     )
-    gate = uk_geography_ladder_gate(
-        assigned,
-        assigned["household_weight"].to_numpy(dtype=float),
-    )
-    if not gate.passed:
-        raise ValueError(
-            "UK geography ladder gate would fail this build: "
-            + "; ".join(gate.failures)
-        )
     realized = _ladder_realized_support(assigned, ladder)
+    expected = expected_uk_ladder_area_support(
+        household,
+        ladder,
+        n_clones=args.n_clones,
+    )
+    area_support, _ = _ladder_area_support_diagnostics(
+        assigned,
+        ladder,
+    )
+    region_mix = uk_region_mix(assigned).to_dict("records")
     table_rows = {
         name: base_summary["tables"][name][0]
         for name in ("person", "benunit", "household")
     }
     input_bytes = input_h5.stat().st_size
-    return {
+    plan = {
         "schema_version": 1,
         "build_kind": "uk_rowwise_local_geography_dry_run",
         "created_at": datetime.now(UTC).isoformat(),
@@ -1096,15 +1263,146 @@ def _ladder_dry_run_plan(
                 "ladder areas included"
             ),
             **{
-                area_type: _support_summary(realized, area_type)
+                area_type: _support_summary(
+                    realized, area_type, rows_basis="assigned_rows"
+                )
                 for area_type in ("constituency", "la")
             },
         },
+        "expected_support": {
+            "basis": (
+                "analytic expectation: constituency household-count share "
+                "within region x the input's region mix x n_clones; OA "
+                "population shares within constituency for LA support"
+            ),
+            **{
+                area_type: _support_summary(
+                    expected, area_type, rows_basis="expected_rows"
+                )
+                for area_type in ("constituency", "la")
+            },
+        },
+        "area_support": area_support,
+        "region_mix": region_mix,
         "source_lineage": _source_lineage_report(
             household,
             modulus=args.source_lineage_modulus,
         ),
         "coverage": [],
+    }
+    if args.candidate_clone_counts is not None:
+        plan["candidates"] = _ladder_candidate_plans(
+            args,
+            household=household,
+            ladder=ladder,
+            id_multiplier=id_multiplier,
+            table_rows=table_rows,
+            input_bytes=input_bytes,
+        )
+    return plan
+
+
+def _ladder_planned_assignment(
+    household: pd.DataFrame,
+    ladder: Any,
+    *,
+    n_clones: int,
+    seed: int,
+    id_multiplier: int,
+    expected_constituency_vintage: str,
+) -> pd.DataFrame:
+    """Execute the fenced ladder assignment used by every dry-run K."""
+
+    household_for_clone = household.copy()
+    if "source_household_id" not in household_for_clone.columns:
+        household_for_clone["source_household_id"] = household_for_clone["household_id"]
+    cloned = clone_entity_frame(
+        household_for_clone,
+        id_columns=("household_id",),
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        clone_index_column="clone_index",
+    ).reset_index(drop=True)
+    cloned["household_weight"] = (
+        pd.to_numeric(cloned["household_weight"], errors="raise").to_numpy(dtype=float)
+        / n_clones
+    )
+    assigned = assign_uk_geography_ladder(
+        cloned,
+        ladder,
+        seed=seed,
+        expected_constituency_vintage=expected_constituency_vintage,
+    )
+    gate = uk_geography_ladder_gate(
+        assigned,
+        assigned["household_weight"].to_numpy(dtype=float),
+    )
+    if not gate.passed:
+        raise ValueError(
+            "UK geography ladder gate would fail this build: "
+            + "; ".join(gate.failures)
+        )
+    return assigned
+
+
+def _ladder_candidate_plans(
+    args: argparse.Namespace,
+    *,
+    household: pd.DataFrame,
+    ladder: Any,
+    id_multiplier: int,
+    table_rows: dict[str, int],
+    input_bytes: int,
+) -> dict[str, Any]:
+    clone_counts = args.candidate_clone_counts
+    assert clone_counts is not None
+    plans = []
+    for n_clones in clone_counts:
+        assigned = _ladder_planned_assignment(
+            household,
+            ladder,
+            n_clones=n_clones,
+            seed=args.seed,
+            id_multiplier=id_multiplier,
+            expected_constituency_vintage=args.expected_constituency_vintage,
+        )
+        realized = _ladder_realized_support(assigned, ladder)
+        expected = expected_uk_ladder_area_support(
+            household,
+            ladder,
+            n_clones=n_clones,
+        )
+        area_support, _ = _ladder_area_support_diagnostics(
+            assigned,
+            ladder,
+        )
+        plans.append(
+            {
+                "n_clones": n_clones,
+                "rows": {name: rows * n_clones for name, rows in table_rows.items()},
+                "output_bytes_estimate": input_bytes * n_clones,
+                "realized_support": {
+                    area_type: _support_summary(
+                        realized, area_type, rows_basis="assigned_rows"
+                    )
+                    for area_type in ("constituency", "la")
+                },
+                "expected_support": {
+                    area_type: _support_summary(
+                        expected, area_type, rows_basis="expected_rows"
+                    )
+                    for area_type in ("constituency", "la")
+                },
+                "area_support": area_support,
+            }
+        )
+    return {
+        "basis": (
+            "independent fenced ladder assignments at the build seed for each "
+            "candidate K; summary-only plans"
+        ),
+        "clone_counts": list(clone_counts),
+        "plans": plans,
     }
 
 
@@ -1225,12 +1523,14 @@ def _support_summary(
     support: pd.DataFrame,
     area_type: str,
     *,
+    rows_basis: str,
     bottom: int = EXPECTED_SUPPORT_BOTTOM_AREAS,
 ) -> dict[str, Any]:
     subset = support[support["area_type"] == area_type]
     if subset.empty:
         return {
             "n_areas": 0,
+            "rows_basis": rows_basis,
             "min_rows": 0.0,
             "median_rows": 0.0,
             "mean_rows": 0.0,
@@ -1244,6 +1544,7 @@ def _support_summary(
     ).head(bottom)
     return {
         "n_areas": int(len(subset)),
+        "rows_basis": rows_basis,
         "min_rows": float(values.min()),
         "median_rows": float(values.median()),
         "mean_rows": float(values.mean()),
@@ -1254,6 +1555,92 @@ def _support_summary(
                 "rows": float(row.expected_rows),
             }
             for row in ordered.itertuples(index=False)
+        ],
+    }
+
+
+def _result_household(result: Any) -> pd.DataFrame:
+    if isinstance(result, UKLadderRowwiseDatasetResult):
+        return engine_tables(result.frame, weighted_entities=("household",))[
+            "household"
+        ]
+    return result.household
+
+
+def _ladder_area_support_diagnostics(
+    household: pd.DataFrame,
+    ladder: Any,
+) -> tuple[dict[str, Any], dict[str, pd.DataFrame]]:
+    source_basis = (
+        "source_household_id"
+        if "source_household_id" in household.columns
+        else "household_id"
+    )
+    summaries = uk_ladder_area_support_summary(
+        household,
+        ladder,
+        source_column=source_basis,
+    )
+    block = {
+        "source_basis": source_basis,
+        **{
+            area_type: _area_support_stats(summaries[area_type])
+            for area_type in ("constituency", "la")
+        },
+    }
+    return block, summaries
+
+
+def _area_support_long_frame(summaries: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """The full per-area table, built only where a consumer writes it."""
+
+    long_frames = []
+    for area_type in ("constituency", "la"):
+        frame = summaries[area_type].copy()
+        frame.insert(0, "area_type", area_type)
+        long_frames.append(frame)
+    return pd.concat(long_frames, ignore_index=True)
+
+
+def _area_support_stats(support: pd.DataFrame) -> dict[str, Any]:
+    # Support means rows that carry mass: a row assigned to an area at zero
+    # weight shapes no estimate there, so the headline stats and the thinness
+    # ranking read nonzero_households. The assigned count stays visible per
+    # bottom area and in the full per-area CSV.
+    rows = support["nonzero_households"]
+    ess = support["effective_sample_size"]
+    sources = support["nonzero_source_households"]
+    bottom_by_rows = support.sort_values(
+        ["nonzero_households", "area_code"],
+        kind="mergesort",
+    ).head(EXPECTED_SUPPORT_BOTTOM_AREAS)
+    bottom_by_ess = support.sort_values(
+        ["effective_sample_size", "area_code"],
+        kind="mergesort",
+    ).head(EXPECTED_SUPPORT_BOTTOM_AREAS)
+    return {
+        "n_areas": int(len(support)),
+        "rows_basis": "nonzero_households",
+        "min_rows": int(rows.min()) if len(rows) else 0,
+        "median_rows": float(rows.median()) if len(rows) else 0.0,
+        "min_ess": float(ess.min()) if len(ess) else 0.0,
+        "median_ess": float(ess.median()) if len(ess) else 0.0,
+        "min_distinct_sources": int(sources.min()) if len(sources) else 0,
+        "median_distinct_sources": (float(sources.median()) if len(sources) else 0.0),
+        "bottom_by_rows": [
+            {
+                "area_code": str(row.area_code),
+                "rows": int(row.nonzero_households),
+                "assigned": int(row.assigned_households),
+            }
+            for row in bottom_by_rows.itertuples(index=False)
+        ],
+        "bottom_by_ess": [
+            {
+                "area_code": str(row.area_code),
+                "ess": float(row.effective_sample_size),
+            }
+            for row in bottom_by_ess.itertuples(index=False)
         ],
     }
 
@@ -1278,13 +1665,45 @@ def _pool_lineage_block(household: pd.DataFrame) -> dict[str, Any] | None:
     return block
 
 
+def _explicit_lineage_block(household: pd.DataFrame) -> dict[str, Any] | None:
+    spine_columns = [
+        column for column in UK_SPINE_LINEAGE_COLUMNS if column in household.columns
+    ]
+    if not spine_columns:
+        return None
+
+    columns_present = [
+        column
+        for column in ("source_household_id", *UK_SPINE_LINEAGE_COLUMNS)
+        if column in household.columns
+    ]
+    block: dict[str, Any] = {
+        "basis": "explicit_lineage_columns",
+        "columns_present": columns_present,
+        "flag_counts": {
+            column: int(household[column].fillna(False).astype(bool).sum())
+            for column in UK_SPINE_LINEAGE_COLUMNS
+            if column.startswith("household_is_") and column in household.columns
+        },
+    }
+    if "source_household_id" in household.columns:
+        block["distinct_source_households"] = int(
+            household["source_household_id"].nunique()
+        )
+        if "household_support_channel" in household.columns:
+            block["distinct_by_support_channel"] = {
+                str(channel): int(group["source_household_id"].nunique())
+                for channel, group in household.groupby("household_support_channel")
+            }
+    return block
+
+
 def _source_lineage_report(
     household: pd.DataFrame,
     *,
     modulus: int | None,
 ) -> dict[str, Any]:
-    """Report both lineage layers honestly: the derived pool layer (when a
-    modulus was applied) and any immediate layer the input already carries."""
+    """Report pool, immediate, and explicit spine lineage when supported."""
 
     pool = _pool_lineage_block(household)
     immediate = None
@@ -1298,6 +1717,7 @@ def _source_lineage_report(
         "pool_modulus": modulus,
         "pool": pool,
         "immediate": immediate,
+        "explicit": _explicit_lineage_block(household),
     }
 
 
@@ -1368,6 +1788,7 @@ def _rowwise_summary(
             if base_summary.get("distinct_source_households") is not None
             else None
         ),
+        "explicit": _explicit_lineage_block(clone0),
     }
     return {
         "weights": {
@@ -1437,6 +1858,36 @@ def _artifact_info(path: Path) -> dict[str, Any]:
         "sha256": _sha256(path),
         "bytes": path.stat().st_size,
     }
+
+
+def _verify_artifact_pin(
+    artifact: dict[str, Any],
+    *,
+    pinned_sha256: str | None,
+    option: str,
+) -> None:
+    measured_sha256 = str(artifact["sha256"])
+    if pinned_sha256 is not None and measured_sha256 != pinned_sha256:
+        raise SystemExit(
+            f"error: {option} sha mismatch: "
+            f"measured {measured_sha256}, pinned {pinned_sha256}"
+        )
+    artifact["pin_verified"] = pinned_sha256 is not None
+
+
+def _annotate_ladder_crosswalk_pin(ladder_artifact: dict[str, Any]) -> None:
+    try:
+        crosswalk = load_uk_local_area_crosswalk()
+        expected_sha256 = str(crosswalk["ladder_artifact_sha256"])
+    except Exception as error:
+        ladder_artifact["matches_local_area_crosswalk_pin"] = None
+        ladder_artifact["local_area_crosswalk_pin_error"] = (
+            f"{type(error).__name__}: {error}"
+        )
+        return
+    ladder_artifact["matches_local_area_crosswalk_pin"] = (
+        str(ladder_artifact["sha256"]) == expected_sha256
+    )
 
 
 def _sha256(path: Path) -> str:

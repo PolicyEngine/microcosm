@@ -132,6 +132,42 @@ def _crosswalk_frame() -> pd.DataFrame:
     )
 
 
+@pytest.mark.parametrize("route_option", ["--crosswalk", "--ladder"])
+def test_input_pin_mismatch_refuses_before_side_effects(
+    monkeypatch,
+    tmp_path,
+    route_option,
+) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "input.h5"
+    route_artifact = tmp_path / "route-artifact"
+    output_dir = tmp_path / "out"
+    _write_toy_h5(input_h5)
+    route_artifact.write_bytes(b"must not be read")
+
+    def unexpected_h5_read(_path):
+        raise AssertionError("input pin mismatch must refuse before H5 parsing")
+
+    monkeypatch.setattr(builder, "_h5_summary", unexpected_h5_read)
+
+    with pytest.raises(SystemExit, match=r"--input-h5 sha mismatch: measured"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--input-sha256",
+                "0" * 64,
+                "--out",
+                str(output_dir),
+                route_option,
+                str(route_artifact),
+            ]
+        )
+
+    assert not output_dir.exists()
+
+
 def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     monkeypatch, tmp_path, capsys
 ):
@@ -143,7 +179,11 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     la_codes = tmp_path / "local_authorities.csv"
     output_dir = tmp_path / "out"
     _write_toy_h5(input_h5)
+    input_sha256 = builder._sha256(input_h5)
     _crosswalk_frame().to_csv(crosswalk_path, index=False)
+    output_dir.mkdir()
+    stale_area_support = output_dir / builder.AREA_SUPPORT_FILENAME
+    stale_area_support.write_text("stale")
     pd.DataFrame({"code": ["E14000001", "W07000041", "S14000001", "N05000001"]}).to_csv(
         constituency_codes, index=False
     )
@@ -157,6 +197,8 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
             "build_uk_rowwise_dataset.py",
             "--input-h5",
             str(input_h5),
+            "--input-sha256",
+            input_sha256,
             "--out",
             str(output_dir),
             "--crosswalk",
@@ -182,11 +224,13 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     assert output_h5.exists()
     assert manifest_path.exists()
     assert coverage_path.exists()
+    assert not stale_area_support.exists()
     manifest = json.loads(manifest_path.read_text())
     assert manifest["build_kind"] == "uk_rowwise_local_geography_dataset"
     assert manifest["parameters"]["n_clones"] == 2
     assert manifest["parameters"]["source_year"] == 2023
     assert manifest["parameters"]["require_all_countries"] is False
+    assert manifest["inputs"]["dataset"]["pin_verified"] is True
     assert manifest["base_dataset"]["household_weight_sum"] == pytest.approx(30.0)
     assert manifest["rowwise_dataset"]["household_weight_sum"] == pytest.approx(30.0)
     assert manifest["rowwise_dataset"]["household_weight_delta"] == pytest.approx(0.0)
@@ -195,6 +239,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     assert manifest["rowwise_dataset"]["assigned_local_authorities"] == 2
     assert manifest["coverage"][0]["covered_areas"] == 4
     assert manifest["outputs"]["crosswalk"] is None
+    assert manifest["outputs"]["area_support_summary"] is None
     with pd.HDFStore(output_h5, mode="r") as store:
         assert store["household"].shape[0] == 4
         assert store["person"].shape[0] == 6
@@ -202,7 +247,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     rows = _spool_rows(output_dir)
     assert len(rows) == 1
     first_row = rows[0]
-    assert first_row.pipeline == "uk-locals-rowwise"
+    assert first_row.pipeline == "uk-local-rowwise"
     assert first_row.rung == "f100"
     assert first_row.seed == 42
     assert first_row.disposition == "iterating"
@@ -364,6 +409,7 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
                 "ward_code": ["E05000001", "W05000001"],
                 "constituency_code": ["E14000001", "W07000041"],
                 "region_code": ["E12000007", "W99999999"],
+                "region": ["LONDON", "WALES"],
                 "itl3_code": ["TLI", "TLL"],
                 "itl2_code": ["TL", "TL"],
                 "itl1_code": ["T", "T"],
@@ -391,7 +437,17 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
             },
         )()
 
-    monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: object())
+    ladder = type(
+        "Ladder",
+        (),
+        {
+            "constituency_code": pd.Series(["E14000001", "W07000041"]).to_numpy(),
+            "local_authority_code": pd.Series(
+                ["E06000063", "W06000001"]
+            ).to_numpy(),
+        },
+    )()
+    monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: ladder)
     monkeypatch.setattr(
         builder,
         "clone_uk_dataset_with_ladder_geography",
@@ -416,6 +472,10 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
     assert builder.main() == 0
 
     manifest_path = output_dir / builder.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["rowwise_dataset"]["area_support"]["source_basis"] == (
+        "household_id"
+    )
     rows = _spool_rows(output_dir)
     assert len(rows) == 1
     assert rows[0].gate_verdicts == {
@@ -470,6 +530,25 @@ def test_build_uk_rowwise_dataset_failure_records_pipeline_error(
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 
 
+def test_candidate_clone_counts_refused_on_real_build(tmp_path) -> None:
+    builder = _load_builder_module()
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="candidate-K planning is a dry-run surface"):
+        builder.main(
+            [
+                "--input-h5",
+                str(tmp_path / "not-read.h5"),
+                "--out",
+                str(output_dir),
+                "--candidate-clone-counts",
+                "1,2,4",
+            ]
+        )
+
+    assert not output_dir.exists()
+
+
 @pytest.mark.parametrize(
     "dataset_filename",
     [
@@ -477,6 +556,7 @@ def test_build_uk_rowwise_dataset_failure_records_pipeline_error(
         "/tmp/escaped.h5",
         "rowwise_build_manifest.json",
         "geography_coverage_summary.csv",
+        "area_support_summary.csv",
         "uk_official_geography_crosswalk.csv.gz",
     ],
 )
@@ -516,7 +596,11 @@ def test_validate_output_paths_rejects_crosswalk_collision(tmp_path):
 
 @pytest.mark.parametrize(
     "sidecar_name",
-    ["rowwise_build_manifest.json", "geography_coverage_summary.csv"],
+    [
+        "rowwise_build_manifest.json",
+        "geography_coverage_summary.csv",
+        "area_support_summary.csv",
+    ],
 )
 def test_validate_output_paths_rejects_supplied_crosswalk_sidecar_collision(
     sidecar_name,

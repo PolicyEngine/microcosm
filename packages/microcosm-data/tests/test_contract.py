@@ -31,6 +31,8 @@ from microcosm.data import (
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
+UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -312,7 +314,7 @@ DEDUCTION_CRITICAL_TARGETS = (
 
 
 def _model_package(release_id: str) -> tuple[str, str]:
-    if release_id.startswith("populace-uk-"):
+    if release_id.startswith("populace-uk-") or release_id == UK_NATIONAL_RELEASE_ID:
         return ("policyengine-uk", "2.89.0")
     return ("policyengine-us", "1.729.0")
 
@@ -1415,6 +1417,59 @@ def _copy_real_uk_june_release(tmp_path: Path) -> Path:
     return directory
 
 
+def _write_uk_national_release_dir(tmp_path: Path) -> Path:
+    """Build the constant-id national fixture from the green exact-k shape."""
+
+    directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID, tier="frs")
+    national = directory.with_name(UK_NATIONAL_RELEASE_ID)
+    directory.replace(national)
+
+    build_path = national / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["build_id"] = UK_NATIONAL_RELEASE_ID
+    build_path.write_text(json.dumps(build))
+
+    release_path = national / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = UK_NATIONAL_CUT_TAG
+
+    # The certification signs the evidence copies' actual bytes: the seam
+    # report already sits in the directory (terminal_gates.json from the
+    # exact-k shape); the other three are written here so every signed digest
+    # binds to a real local file.
+    (national / "spine_gates.json").write_text(json.dumps({"fixture": "spine"}))
+    (national / "release_cut_gates.json").write_text(
+        json.dumps({"fixture": "release_cut"})
+    )
+    (national / "score_vs_enhanced_frs.json").write_text(
+        json.dumps({"fixture": "score"})
+    )
+    certification = _green_uk_certification(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        release_id=UK_NATIONAL_RELEASE_ID,
+        diagnostics_sha256=_sha256(national / "calibration_diagnostics.json"),
+        part_shas={
+            "spine": _sha256(national / "spine_gates.json"),
+            "calibration_seam": _sha256(national / "terminal_gates.json"),
+            "release_cut": _sha256(national / "release_cut_gates.json"),
+        },
+        score_receipt_sha256=_sha256(national / "score_vs_enhanced_frs.json"),
+    )
+    certification_path = national / "release_certification.json"
+    certification_path.write_text(json.dumps(certification))
+    release["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": "release_certification.json",
+        "repo_id": "policyengine/populace-uk-private",
+        "revision": UK_NATIONAL_CUT_TAG,
+        "sha256": _sha256(certification_path),
+    }
+    release_path.write_text(json.dumps(release))
+    return national
+
+
 def _rewrite_exact_k_fixture_to_two_records(directory: Path) -> None:
     """Reproduce Sol's internally consistent k535080/n_records=2 probe."""
 
@@ -2033,6 +2088,165 @@ def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+def test_uk_national_release_dir_validates(tmp_path: Path) -> None:
+    validate_release_dir(_write_uk_national_release_dir(tmp_path))
+
+
+def test_uk_national_release_requires_uk_diagnostics(tmp_path: Path) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    diagnostics.pop("uk_diagnostics")
+    diagnostics_path.write_text(json.dumps(diagnostics))
+
+    with pytest.raises(ReleaseContractError, match="require a 'uk_diagnostics'"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_policyengine_uk_runtime(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["runtime"].pop("policyengine-uk")
+    build_path.write_text(json.dumps(build))
+
+    with pytest.raises(ReleaseContractError, match="runtime.policyengine-uk"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_policyengine_uk_model_pin(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["build"]["built_with_model_package"]["name"] = "policyengine-us"
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="built_with_model_package.name.*policyengine-uk",
+    ):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "main",
+        UK_NATIONAL_RELEASE_ID + "-",
+        # Prefixed but outside the attempt-derived cut-tag grammar: the
+        # contract validates the same <YYYYMMDDTHHMMSSZ>-<uuid8> shape the
+        # assembler mints, so a hand-edited suffix cannot claim a cut.
+        UK_NATIONAL_RELEASE_ID + "-hotfix",
+        UK_NATIONAL_RELEASE_ID + "-20260828t101112Z-1a2b3c4d",
+        UK_NATIONAL_RELEASE_ID + "-20260828T101112Z-1A2B3C4D",
+        # Present but non-string: must fail loudly rather than vanish from
+        # the publish layer's string-only revision collection.
+        123,
+    ],
+)
+def test_uk_national_release_rejects_invalid_artifact_revisions(
+    tmp_path: Path,
+    revision: str,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = revision
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_rejects_mixed_cut_revisions(tmp_path: Path) -> None:
+    # Two individually grammar-valid cut tags are still two cuts: the
+    # contract refuses the mixture, not just publish.
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    first_key = next(iter(release["artifacts"]))
+    release["artifacts"][first_key]["revision"] = (
+        UK_NATIONAL_RELEASE_ID + "-20260901T000000Z-deadbeef"
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="more than one revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_binds_signed_evidence_bytes(tmp_path: Path) -> None:
+    # Rewriting a copied part report must refuse: the certification signs the
+    # evidence bytes, not just the digest fields' shapes.
+    directory = _write_uk_national_release_dir(tmp_path)
+    (directory / "release_cut_gates.json").write_text(
+        json.dumps({"fixture": "tampered"})
+    )
+
+    with pytest.raises(
+        ReleaseContractError, match="does not match the certification's signed"
+    ):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_signed_evidence_files(tmp_path: Path) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    (directory / "terminal_gates.json").unlink()
+
+    with pytest.raises(
+        ReleaseContractError, match="missing 'terminal_gates.json'"
+    ):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_refuses_unbindable_score_digest(
+    tmp_path: Path,
+) -> None:
+    # score_receipt.sha256 is the one signed digest outside the shape-checked
+    # parts block: a malformed value must refuse the binding, never skip it.
+    directory = _write_uk_national_release_dir(tmp_path)
+    certification = _green_uk_certification(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        release_id=UK_NATIONAL_RELEASE_ID,
+        diagnostics_sha256=_sha256(directory / "calibration_diagnostics.json"),
+        part_shas={
+            "spine": _sha256(directory / "spine_gates.json"),
+            "calibration_seam": _sha256(directory / "terminal_gates.json"),
+            "release_cut": _sha256(directory / "release_cut_gates.json"),
+        },
+        score_receipt_sha256="not-a-digest",
+    )
+    certification_path = directory / "release_certification.json"
+    certification_path.write_text(json.dumps(certification))
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["release_certification"]["sha256"] = _sha256(
+        certification_path
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(
+        ReleaseContractError, match=r"score_receipt\.sha256 is not a"
+    ):
+        validate_release_dir(directory)
+
+
+def test_us_release_rejects_dash_suffixed_artifact_revision(
+    release_dir: Path,
+) -> None:
+    release_path = release_dir / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["populace_us_2024"]["revision"] = RELEASE_ID + "-cut"
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(release_dir)
 
 
 @pytest.mark.parametrize(
@@ -4950,13 +5164,20 @@ def test_breach_acknowledgment_matching_is_name_delimited() -> None:
 # --- UK release certification (microcosm#757 B5) ---------------------------
 
 
-def _green_uk_certification(key: bytes) -> dict:
+def _green_uk_certification(
+    key: bytes,
+    *,
+    release_id: str = "uk-757-first-certified-cut",
+    diagnostics_sha256: str = "c" * 64,
+    part_shas: dict[str, str] | None = None,
+    score_receipt_sha256: str = "d" * 64,
+) -> dict:
     parts = {}
     for part_name, scope in contract._UK_CERTIFICATION_PART_SCOPES.items():
         parts[part_name] = {
             "path": f"{part_name}.json",
-            "sha256": "a" * 64,
-            "release_id": "uk-757-first-certified-cut",
+            "sha256": (part_shas or {}).get(part_name, "a" * 64),
+            "release_id": release_id,
             "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
             "entry_ids": sorted(scope),
             "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
@@ -4971,7 +5192,7 @@ def _green_uk_certification(key: bytes) -> dict:
         "schema_version": 1,
         "kind": "uk_release_certification",
         "country": "uk",
-        "release_id": "uk-757-first-certified-cut",
+        "release_id": release_id,
         "candidate": {
             "name": "microcosm_uk_2024",
             "filename": "microcosm_uk_2024.h5",
@@ -4988,8 +5209,11 @@ def _green_uk_certification(key: bytes) -> dict:
             "shared_gate_ids": sorted(contract._UK_CERTIFICATION_SHARED_GATE_IDS),
         },
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
-        "diagnostics_sha256": "c" * 64,
-        "score_receipt": {"filename": "score_vs_enhanced_frs.json", "sha256": "d" * 64},
+        "diagnostics_sha256": diagnostics_sha256,
+        "score_receipt": {
+            "filename": "score_vs_enhanced_frs.json",
+            "sha256": score_receipt_sha256,
+        },
         "exclusions_evaluated_on": "2026-08-27",
         "shippable": True,
     }
