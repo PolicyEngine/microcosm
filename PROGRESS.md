@@ -2,7 +2,15 @@
 
 ## State
 
-Active on 2026-08-30 on `be-benefit-participation-targets-resume`. Reviewed
+Resumed on 2026-08-31 on `be-benefit-participation-targets-resume` at
+`779cf9e2`. The preserved worktree has edits to `be/country_package.json`,
+`be/target_references.json`, and `country_spec.py`, plus untracked
+`be/monetary_target_profile.json`, `be/population_inputs.json`, and
+`.lane-inputs/`; this checkpoint records them without staging or rewriting
+them. Live upstream, the salvage ref, PR metadata, and both supplied reviews
+are being re-audited before semantic edits.
+
+Previously active on 2026-08-30 on this branch. Reviewed
 Microcosm PR #824 head `ed6dc3d8` (reviewed base `a18c87ee`) remains an
 ancestor, and authoritative main `d1e3e397` is merged at `03e4d494`, bringing
 in reviewed PR #825 head `510e3e6c` and its generic monetary primitives.
@@ -62,6 +70,9 @@ local worktree. No remote mutation has occurred.
 
 ## Next
 
+- Fetch live upstream and confirm the authoritative base/head, existing draft
+  PR identity, dependency pins, and whether the preserved dirty work matches
+  the named salvage ref and supplied Fable/law-audit rulings.
 - Land and integrate the closed Microcosm-owned receipt/application/status/
   choice input schema, exact scheme-population mapping schema, row-aligned
   readiness receipt, and Belgium declarations. Link each defensible person
