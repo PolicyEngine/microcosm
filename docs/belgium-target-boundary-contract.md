@@ -57,6 +57,18 @@ The operational direction is therefore **Microcosm input -> PolicyEngine
 mechanic -> Axiom legal calculation where applicable**. A positive Axiom
 entitlement or payment is never evidence of observed receipt or application.
 
+## Unknown state and activation readiness
+
+Receipt, application, status, and choice inputs are nullable booleans. Missing
+means unknown; it must never be coerced to `false` or counted as nonreceipt.
+Microcosm may retain measured unknowns while it constructs or calibrates the
+population. A target can activate only after its typed mapping declares
+`completeness_readiness="ready"` and the activation receipt proves zero unknown
+rows. When complete latent imputation is required, the declaration remains
+`complete_imputation_required_missing` until that imputation is implemented and
+receipted. PolicyEngine consumes only the resulting Microcosm column and owns
+any non-legal behavior mechanics; this readiness gate supplies no formula.
+
 ## Follow-up issue drafts
 
 The following are ready-to-file issue scopes. They do not assert that an issue

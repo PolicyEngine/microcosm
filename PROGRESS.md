@@ -2,13 +2,15 @@
 
 ## State
 
-Resumed on 2026-08-31 on `be-benefit-participation-targets-resume` at
-`779cf9e2`. The preserved worktree has edits to `be/country_package.json`,
+Resumed on 2026-08-31 on `be-benefit-participation-targets-resume`; the
+committed checkpoint is `3c84c88b`. The preserved worktree has edits to `be/country_package.json`,
 `be/target_references.json`, and `country_spec.py`, plus untracked
 `be/monetary_target_profile.json`, `be/population_inputs.json`, and
-`.lane-inputs/`; this checkpoint records them without staging or rewriting
-them. Live upstream, the salvage ref, PR metadata, and both supplied reviews
-are being re-audited before semantic edits.
+`.lane-inputs/`; the salvage product blobs were verified byte-for-byte against
+those files without staging or rewriting the lane inputs. Direct live fetch is
+DNS-blocked; the canonical local clone independently confirms `origin/main` at
+`d1e3e397` and existing draft #824's branch/head at
+`be-benefit-participation-targets`/`ed6dc3d8`.
 
 Previously active on 2026-08-30 on this branch. Reviewed
 Microcosm PR #824 head `ed6dc3d8` (reviewed base `a18c87ee`) remains an
@@ -20,6 +22,23 @@ local worktree. No remote mutation has occurred.
 
 ## Done
 
+- Re-read the complete Fable v3 review and official benefit-participation law
+  audit. Confirmed that every receipt/status flag is Microcosm-populated,
+  PolicyEngine only consumes it and owns non-legal mechanics, and Axiom may see
+  only documented legal events/statuses/claims.
+- Attempted `git fetch --prune origin`; it failed because the managed shell
+  cannot resolve `github.com`. The canonical local clone has the same
+  `origin/main` (`d1e3e397`) and exact #824 branch/head, so no newer local
+  authority is available and the existing #825 merge remains the safe base.
+- Verified salvage `b89fa566` is a child of `779cf9e2` and every one of its ten
+  blobs matches the worktree. The five product files are preserved; the five
+  lane-input files remain untracked, so the salvage must not be cherry-picked
+  wholesale.
+- Made nullable boolean input storage explicit and added a separate
+  `completeness_readiness` gate. Unknown values remain null; activation requires
+  a complete-imputation receipt and proves `n_unknown=0`. Focused population
+  and country-profile tests pass, and both new test files are explicitly named
+  for the shared-spec CI group.
 - Read `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, and the GitNexus
   impact-analysis workflow.
 - Inspected the stopped lane's branch, status, worktrees, remotes, refs,
@@ -70,9 +89,6 @@ local worktree. No remote mutation has occurred.
 
 ## Next
 
-- Fetch live upstream and confirm the authoritative base/head, existing draft
-  PR identity, dependency pins, and whether the preserved dirty work matches
-  the named salvage ref and supplied Fable/law-audit rulings.
 - Land and integrate the closed Microcosm-owned receipt/application/status/
   choice input schema, exact scheme-population mapping schema, row-aligned
   readiness receipt, and Belgium declarations. Link each defensible person

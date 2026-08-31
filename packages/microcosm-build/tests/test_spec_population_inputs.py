@@ -1,4 +1,4 @@
-"""Closed, fail-closed population-input and scheme-mapping contracts."""
+"""Specification tests for fail-closed population-input and mapping contracts."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def _payload() -> dict[str, object]:
                 "column": "regular_payment_recipient_indicator",
                 "entity": "person",
                 "dtype": "bool",
-                "nullable": False,
+                "nullable": True,
                 "semantic_kind": "receipt",
                 "data_kind": "latent",
                 "owner": "Microcosm",
@@ -66,6 +66,7 @@ def _payload() -> dict[str, object]:
                 "input_readiness": "ready",
                 "mapping_readiness": "ready",
                 "period_readiness": "ready",
+                "completeness_readiness": "ready",
                 "notes": "Exact publisher scheme population and snapshot.",
             }
         ],
@@ -135,6 +136,7 @@ def test_every_schema_level_rejects_unknown_bypass_fields(path, key, value):
         (("mappings", 0), "chronicle_entity_role"),
         (("mappings", 0), "mapping_readiness"),
         (("mappings", 0), "period_readiness"),
+        (("mappings", 0), "completeness_readiness"),
     ],
 )
 def test_required_contract_fields_cannot_be_omitted(path, key):
@@ -152,7 +154,7 @@ def test_required_contract_fields_cannot_be_omitted(path, key):
     ("field", "value", "message"),
     [
         ("dtype", "int64", "dtype"),
-        ("nullable", True, "nullable"),
+        ("nullable", False, "nullable"),
         ("semantic_kind", "take_up", "semantic_kind"),
         ("data_kind", "modeled_behavior", "data_kind"),
         ("owner", "PolicyEngine", "owner"),
@@ -222,6 +224,7 @@ def test_ready_mapping_requires_exact_entity_geography_and_period(
         ("input_readiness", "pending"),
         ("mapping_readiness", "inferred"),
         ("period_readiness", "projected"),
+        ("completeness_readiness", "assume_false"),
     ],
 )
 def test_unknown_readiness_values_are_refused(field, value):
@@ -277,6 +280,31 @@ def test_nonready_contract_fails_before_touching_a_frame():
         )
 
 
+def test_unknown_values_remain_null_until_complete_imputation_is_receipted():
+    payload = copy.deepcopy(_payload())
+    payload["mappings"][0]["completeness_readiness"] = (
+        "complete_imputation_required_missing"
+    )
+    profile = _profile(payload)
+    frame = _frame(values=pd.array([True, pd.NA, False], dtype="boolean"))
+
+    with pytest.raises(
+        PopulationInputNotReadyError,
+        match="completeness_readiness='complete_imputation_required_missing'",
+    ):
+        validate_population_input_frame(
+            frame,
+            profile,
+            mapping_id="regular_payment_scheme_population",
+        )
+
+    assert frame.table("person")["regular_payment_recipient_indicator"].isna().tolist() == [
+        False,
+        True,
+        False,
+    ]
+
+
 def test_ready_boolean_column_emits_deterministic_row_value_identity_receipt():
     profile = _profile()
     receipt = validate_population_input_frame(
@@ -294,6 +322,7 @@ def test_ready_boolean_column_emits_deterministic_row_value_identity_receipt():
     assert receipt["n_rows"] == 3
     assert receipt["n_true"] == 2
     assert receipt["n_false"] == 1
+    assert receipt["n_unknown"] == 0
     assert receipt["chronicle_source_record_id"] == (
         "publisher.regular_payment.month2025_01.all.beneficiaries"
     )

@@ -32,6 +32,7 @@ PopulationDataKind = Literal["measured", "latent"]
 InputReadiness = Literal["ready", "required_missing"]
 MappingReadiness = Literal["ready", "required_missing"]
 PeriodReadiness = Literal["ready", "exact_alignment_missing"]
+CompletenessReadiness = Literal["ready", "complete_imputation_required_missing"]
 
 _INPUT_KEYS = frozenset(
     {
@@ -71,6 +72,7 @@ _MAPPING_KEYS = frozenset(
         "input_readiness",
         "mapping_readiness",
         "period_readiness",
+        "completeness_readiness",
         "notes",
     }
 )
@@ -90,6 +92,9 @@ _DATA_KINDS = frozenset({"measured", "latent"})
 _INPUT_READINESS = frozenset({"ready", "required_missing"})
 _MAPPING_READINESS = frozenset({"ready", "required_missing"})
 _PERIOD_READINESS = frozenset({"ready", "exact_alignment_missing"})
+_COMPLETENESS_READINESS = frozenset(
+    {"ready", "complete_imputation_required_missing"}
+)
 _BEHAVIORAL_NAME_TOKENS = (
     "take_up",
     "takeup",
@@ -155,7 +160,7 @@ def _digest(value: object) -> str:
 
 @dataclass(frozen=True)
 class PopulationInputContract:
-    """One complete Microcosm-owned boolean population input column."""
+    """One null-preserving Microcosm-owned boolean population input column."""
 
     input_id: str
     column: str
@@ -178,9 +183,10 @@ class PopulationInputContract:
             raise ValueError(
                 f"population input {self.input_id!r} dtype must be 'bool'."
             )
-        if self.nullable is not False:
+        if self.nullable is not True:
             raise ValueError(
-                f"population input {self.input_id!r} nullable must be false."
+                f"population input {self.input_id!r} nullable must be true so "
+                "unknown status remains null until an explicit completeness gate."
             )
         if self.semantic_kind not in _SEMANTIC_KINDS:
             raise ValueError(
@@ -250,6 +256,7 @@ class SchemePopulationMapping:
     input_readiness: InputReadiness
     mapping_readiness: MappingReadiness
     period_readiness: PeriodReadiness
+    completeness_readiness: CompletenessReadiness
     notes: str
 
     def __post_init__(self) -> None:
@@ -315,6 +322,12 @@ class SchemePopulationMapping:
                 f"scheme-population mapping {self.mapping_id!r} has unknown "
                 f"period_readiness {self.period_readiness!r}."
             )
+        if self.completeness_readiness not in _COMPLETENESS_READINESS:
+            raise ValueError(
+                f"scheme-population mapping {self.mapping_id!r} has unknown "
+                "completeness_readiness "
+                f"{self.completeness_readiness!r}."
+            )
         _text(self.notes, field=f"scheme-population mapping {self.mapping_id!r} notes")
 
         if (
@@ -372,6 +385,7 @@ class SchemePopulationMapping:
             "input_readiness": self.input_readiness,
             "mapping_readiness": self.mapping_readiness,
             "period_readiness": self.period_readiness,
+            "completeness_readiness": self.completeness_readiness,
         }
         return tuple(
             f"{key}={value!r}" for key, value in statuses.items() if value != "ready"
@@ -583,6 +597,7 @@ def validate_population_input_frame(
         "n_rows": len(boolean_values),
         "n_true": sum(boolean_values),
         "n_false": len(boolean_values) - sum(boolean_values),
+        "n_unknown": 0,
         "contract_sha256": _digest(contract_payload),
         "row_ids_sha256": _digest({"entity": contract.entity, "row_ids": row_ids}),
         "values_sha256": _digest({"column": contract.column, "values": boolean_values}),

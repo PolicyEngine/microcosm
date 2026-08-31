@@ -1,4 +1,4 @@
-"""CountrySpec loading for value-free population and monetary profiles."""
+"""Specification tests for value-free population and monetary profiles."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _population_profile() -> dict[str, object]:
                 "column": "receives_benefit",
                 "entity": "person",
                 "dtype": "bool",
-                "nullable": False,
+                "nullable": True,
                 "semantic_kind": "receipt",
                 "data_kind": "latent",
                 "owner": "Microcosm",
@@ -57,6 +57,7 @@ def _population_profile() -> dict[str, object]:
                 "input_readiness": "required_missing",
                 "mapping_readiness": "required_missing",
                 "period_readiness": "ready",
+                "completeness_readiness": "complete_imputation_required_missing",
                 "notes": "Execution remains blocked until the input exists.",
             }
         ],
