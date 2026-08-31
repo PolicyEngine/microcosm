@@ -2,14 +2,16 @@
 
 ## State
 
-Resumed on 2026-08-30 at `250e68cb` on
-`be-contract-gates-diagnostic`. The three-file dirty calibration-contract patch
-and all `.lane-inputs/` handoff material remain intact. The locally refreshed
-`origin/main` is `ac4a12a0` (fetched 2026-08-30 19:51 ET), 25 commits beyond the
-branch fork, and already contains the initial Belgian target contract from
-PR #819. Reconciliation is in progress before any implementation is retained or
-rewritten. A new fetch currently fails because the managed shell cannot resolve
-GitHub; no remote mutation has occurred.
+In progress on 2026-08-30 at merge head `45ae8f87` on
+`be-contract-gates-diagnostic`. Current local `origin/main` (`ac4a12a0`, fetched
+2026-08-30 19:51 ET) is merged. The reviewed PR #819 implementation won every
+three-file conflict because it strictly supersedes the recovered draft; the
+draft remains byte-for-byte recoverable at autosalvage ref `db229f3f`. All
+`.lane-inputs/` handoff material remains intact. The baseline country-spec,
+Ledger-resolution, and gate-battery suite passes. Additive role-aware target
+resolution and the supported Belgian declaration expansion are in progress. A
+new fetch still fails because the managed shell cannot resolve GitHub; no remote
+mutation has occurred.
 
 ## Done
 
@@ -24,6 +26,15 @@ GitHub; no remote mutation has occurred.
 - Confirmed local `origin/main` is `ac4a12a0` and includes PR #819's Belgian
   contract plus later exact-period and geography-vintage tests that must be
   reconciled rather than duplicated.
+- Verified every dirty code file against autosalvage commit `db229f3f`, restored
+  only those three tracked files, and merged current main as `45ae8f87`. The
+  resulting BE package, shared resolver, tests, and golden match main exactly.
+- Preserved the explicit compatibility decision from PR #819:
+  `metadata.nis_vintage="2025"` remains beside typed
+  `geography_vintage="nis_2025"`, and both the validator and package test bind
+  it to the 2025 commune spine.
+- Ran the focused baseline over `test_country_spec.py`,
+  `test_ledger_targets.py`, and `test_gate_battery.py`; all tests passed.
 - Confirmed that GitNexus repository resources and query tools are unavailable
   in this session, so call-flow discovery is proceeding directly from source and
   tests.
@@ -34,16 +45,31 @@ GitHub; no remote mutation has occurred.
   usable 2025 H5/component results. A comparable 2023-basis current result is
   therefore unavailable; the scorecard handoff will report the existing 2025
   aggregates and the period mismatch without running a simulation.
+- Audited the final local Chronicle Belgium lane at `9abf478f`. Exact public
+  source packages exist for Statbel population/fiscal income, SPF PIT, ONSS,
+  ONEM, SFPD legal-pension caseload, and Flemish Opgroeien component caseloads.
+  No Chronicle facts exist there for GRAPA, pension expenditure, Walloon,
+  Brussels, or German-speaking Community child-benefit caseload/expenditure, or
+  NBB/ECB HFCS wealth targets.
+- Confirmed the current PolicyEngine Belgium pilot exposes only worker-slice PIT
+  and employee-contribution outputs. It cannot consume unemployment, pension,
+  GRAPA, or regional child receipt/take-up flags; those require narrow
+  Microcosm data contracts and PolicyEngine follow-up, never synthetic Axiom
+  behavior concepts.
 
 ## Next
 
-- Reconcile the dirty patch onto `origin/main` while retaining only additions
-  not already reviewed in PR #819.
-- Fix and test the `metadata.nis_vintage` compatibility decision and regenerate
-  the reviewed BE loaded-spec golden only after its semantic diff is correct.
-- Expand the value-free public target surface only where repository facts and
-  model measures provide evidence; isolate unsupported items in precise
-  follow-up issues/contracts rather than inventing values or mechanics.
+- Add a schema-v2 resolution receipt that keeps calibration and validation
+  disjoint, carries relative tier policy without misusing absolute solver
+  tolerances, and feeds an identity-based coverage gate.
+- Add only the SFPD and Opgroeien public declarations supported by Chronicle,
+  with fail-closed Microcosm/PolicyEngine input-support metadata. Keep NBB,
+  JRC/EUROMOD, FPB, and Eurostat accounting comparisons validation-only.
+- Regenerate the reviewed BE loaded-spec golden only after the final semantic
+  diff is correct, retaining `metadata.nis_vintage` compatibility.
+- Draft precise follow-ups for missing GRAPA/regional/HFCS facts and the
+  PolicyEngine receipt-input surface rather than inventing facts or Axiom
+  mechanics.
 - Run focused and broader PR-CI checks, self-review, write `.lane-inputs/OUT.md`,
   then attempt the requested push and draft PR without publishing artifacts.
 
