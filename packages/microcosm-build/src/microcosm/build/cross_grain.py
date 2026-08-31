@@ -16,6 +16,18 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+# Closure of a rescaled leg onto its control is the property this pass exists
+# to establish, so it is asserted rather than assumed.  The tolerance matches
+# the frame kernel's mass-conservation bound (``_MASS_CONSERVE_RTOL``).
+_CLOSURE_RTOL = 1e-9
+# A leg whose members cancel to near-nothing would yield an arbitrarily large
+# factor, so the vanishing-total refusal is relative to the control rather than
+# an exact-zero test.
+_MIN_LEG_SUM_RTOL = 1e-9
+# Absent, null, and empty signature values are one canonical "unspecified", so
+# two spellings of the same measurement cannot land in different groups.
+_UNSPECIFIED = ("<unspecified>",)
+
 
 @dataclass(frozen=True)
 class CrossGrainBridge:
@@ -287,10 +299,18 @@ def reconcile_cross_grain_surface(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "contains a non-finite leg total."
                 )
-            if raw_sum == 0.0 and parent_value != 0.0:
+            if (raw_values > 0.0).any() and (raw_values < 0.0).any():
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
-                    "cannot scale a zero-valued lower leg to a nonzero control."
+                    "cannot reconcile a mixed-sign lower leg for parent "
+                    f"geography {control['parent_geography_id']!r}; the "
+                    "members would cancel and rescale by an arbitrary factor."
+                )
+            if abs(raw_sum) < _MIN_LEG_SUM_RTOL * abs(parent_value):
+                raise ValueError(
+                    f"cross-grain inconsistency {group.inconsistency_id!r} "
+                    f"cannot scale a vanishing lower-leg total {raw_sum!r} to "
+                    f"control {parent_value!r}."
                 )
             factor = 1.0 if raw_sum == 0.0 else parent_value / raw_sum
             if not np.isfinite(factor):
@@ -315,6 +335,15 @@ def reconcile_cross_grain_surface(
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "produced a non-finite reconciled total."
+                )
+            if not np.isclose(
+                new_total, parent_value, rtol=_CLOSURE_RTOL, atol=0.0
+            ):
+                raise ValueError(
+                    f"cross-grain inconsistency {group.inconsistency_id!r} "
+                    f"left leg {'+'.join(control['covered_legs'])!r} off its "
+                    f"control: reconciled total {new_total!r} against control "
+                    f"{parent_value!r}."
                 )
             areas = {
                 str(reconciled.iloc[position][columns["geography_id"]])
@@ -458,19 +487,59 @@ def _bridge_by_side(rule: CrossGrainRule) -> dict[str, CrossGrainBridge]:
 def _measurement_signature(
     contract: Mapping[str, Any], fields: tuple[str, ...]
 ) -> tuple[tuple[str, Any], ...]:
-    measurement = contract.get("measurement", contract)
+    """Canonicalize one contract entry's measurement into a grouping key.
+
+    A signature field that is absent, null, or an empty container collapses to
+    one canonical "unspecified" value: two spellings of the same measurement
+    must never land in different groups, because a silent split lets the joint
+    solve reconcile the pair implicitly.  Sequence-valued fields are compared
+    as unordered collections, since a filter list is a conjunction.
+    """
+
+    measurement = contract.get("measurement")
+    if measurement is None:
+        raise ValueError(
+            "cross-grain contract entry must carry a 'measurement' mapping; "
+            "a top-level fallback would let two contract spellings of the same "
+            f"measurement split silently. Got keys {sorted(contract)}."
+        )
     if not isinstance(measurement, Mapping):
         raise ValueError("cross-grain contract measurement must be a mapping.")
-    return tuple((field, _freeze(measurement.get(field))) for field in fields)
+    return tuple(
+        (field, _canonical_signature_value(measurement.get(field)))
+        for field in fields
+    )
+
+
+def _canonical_signature_value(value: Any) -> Any:
+    frozen = _freeze(value)
+    if frozen is None or frozen == () or frozen == "":
+        return _UNSPECIFIED
+    return frozen
 
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
         return tuple(sorted((str(key), _freeze(member)) for key, member in value.items()))
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze(member) for member in value)
+    if isinstance(value, (list, tuple, set, frozenset)):
+        members = [_freeze(member) for member in value]
+        # Order-insensitive: a conjunction of filter conditions is the same
+        # measurement however the contract happens to order it.
+        return tuple(
+            sorted(
+                members,
+                key=lambda member: json.dumps(
+                    _json_safe(member), sort_keys=True, separators=(",", ":")
+                ),
+            )
+        )
     if isinstance(value, np.generic):
-        return value.item()
+        value = value.item()
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        # 0 and 0.0 are the same signature value; keep one numeric spelling.
+        return float(value)
     return value
 
 

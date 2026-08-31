@@ -49,7 +49,16 @@ UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 
 
 def _uk_cross_grain_leg_of_area(area_code: str) -> str:
-    return next(iter(area_groups_from_codes((area_code,)).values()))
+    # area_groups_from_codes maps code -> country group, so the single value is
+    # this code's leg. It refuses an unknown prefix itself; the explicit miss
+    # below keeps the refusal fail-closed rather than a bare StopIteration if
+    # that mapping ever returns nothing for a code.
+    leg = next(iter(area_groups_from_codes((area_code,)).values()), "")
+    if not leg:
+        raise ValueError(
+            f"UK cross-grain area code {area_code!r} maps to no country leg."
+        )
+    return leg
 
 
 UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "constituency", "la")

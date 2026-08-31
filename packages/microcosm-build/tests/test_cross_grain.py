@@ -201,7 +201,7 @@ def test_target_matched_by_two_bridges_is_refused():
 @pytest.mark.parametrize(
     ("country_value", "local_values", "message"),
     [
-        (10.0, (0.0, 0.0), "zero-valued lower leg"),
+        (10.0, (0.0, 0.0), "vanishing lower-leg total"),
         (-10.0, (4.0, 6.0), "opposite-signed"),
     ],
 )
@@ -306,4 +306,176 @@ def test_non_finite_targets_are_refused():
     with pytest.raises(ValueError, match="finite"):
         apply_cross_grain_reconciliation(
             surface, (), {"local": _signature()}, _rule()
+        )
+
+
+def test_off_control_reconciliation_is_refused(monkeypatch):
+    """Fault injection: if a rescaled leg lands off its control, the pass fails.
+
+    Closure is the property the pass exists to establish, so it is asserted
+    after the write rather than inferred from the factor arithmetic.
+    """
+
+    from microcosm.build import cross_grain as module
+
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 120.0),
+            ("constituency", "E1", "local", 40.0),
+            ("constituency", "S1", "local", 20.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    signatures = {"national": _signature(), "local": _signature()}
+
+    monkeypatch.setattr(
+        module.np, "isclose", lambda *args, **kwargs: False
+    )
+    with pytest.raises(ValueError, match="off its control"):
+        apply_cross_grain_reconciliation(
+            surface, ("national",), signatures, _rule()
+        )
+
+
+def test_closure_holds_across_many_legs_with_awkward_floats():
+    """The closure assertion must not false-positive on ordinary float drift."""
+
+    rows = [("country", "UK", "national", 28_356_000.0)]
+    values = [1234.567_89 + index * 3.141_59 for index in range(200)]
+    for index, value in enumerate(values):
+        leg = "EWSN"[index % 4]
+        rows.append(("constituency", f"{leg}{index}", "local", value))
+    surface = pd.DataFrame(
+        rows, columns=["grain", "geography_id", "target_id", "value"]
+    )
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": _signature(), "local": _signature()},
+        _rule(),
+    )
+
+    local = reconciled.loc[reconciled["grain"] == "constituency", "value"]
+    assert local.sum() == pytest.approx(28_356_000.0, rel=1e-12)
+    assert receipt["groups"][0]["legs"][0]["new_total"] == pytest.approx(
+        28_356_000.0, rel=1e-12
+    )
+
+
+def test_absent_and_empty_signature_spellings_group_together():
+    """`filters: []` and an omitted `filters` are the same measurement."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 120.0),
+            ("constituency", "E1", "local", 40.0),
+            ("constituency", "S1", "local", 20.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    spelled_empty = {
+        "measurement": {
+            "concept": "households",
+            "entity": "household",
+            "map_to": None,
+            "filters": [],
+        }
+    }
+    spelled_absent = {"measurement": {"concept": "households", "entity": "household"}}
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": spelled_empty, "local": spelled_absent},
+        _rule(),
+    )
+
+    assert len(receipt["groups"]) == 1
+    assert reconciled.loc[1:, "value"].tolist() == [80.0, 40.0]
+
+
+def test_filter_order_does_not_split_a_signature():
+    conditions = [
+        {"concept": "uk.benefits.universal_credit.amount", "op": ">", "value": 0},
+        {"concept": "uk.household.tenure", "op": "==", "value": "rented"},
+    ]
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 100.0),
+            ("constituency", "E1", "local", 25.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    forward = {
+        "measurement": {
+            "concept": "households",
+            "entity": "household",
+            "filters": conditions,
+        }
+    }
+    reversed_order = {
+        "measurement": {
+            "concept": "households",
+            "entity": "household",
+            "filters": list(reversed(conditions)),
+        }
+    }
+
+    _, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": forward, "local": reversed_order},
+        _rule(),
+    )
+
+    assert len(receipt["groups"]) == 1
+
+
+def test_contract_entry_without_measurement_block_is_refused():
+    surface = pd.DataFrame(
+        [("constituency", "E1", "local", 10.0)],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="must carry a 'measurement' mapping"):
+        apply_cross_grain_reconciliation(
+            surface,
+            (),
+            {"local": {"concept": "households", "entity": "household"}},
+            _rule(),
+        )
+
+
+def test_mixed_sign_lower_leg_is_refused():
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("constituency", "E1", "local", 1e-12),
+            ("constituency", "E2", "local", -1e-12),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="mixed-sign lower leg"):
+        apply_cross_grain_reconciliation(
+            surface,
+            ("national",),
+            {"national": _signature(), "local": _signature()},
+            _rule(),
+        )
+
+
+def test_vanishing_lower_leg_total_is_refused():
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("constituency", "E1", "local", 1e-18),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="vanishing lower-leg total"):
+        apply_cross_grain_reconciliation(
+            surface,
+            ("national",),
+            {"national": _signature(), "local": _signature()},
+            _rule(),
         )
