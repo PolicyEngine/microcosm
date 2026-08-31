@@ -1,3 +1,34 @@
+# Axiom relation-adapter review repair
+
+## State
+
+In progress on 2026-08-30 from exact commit `f07b79fb`. This branch is being
+repaired locally only; no push, PR, merge, publication, or external Axiom
+repository change is authorized.
+
+## Done
+
+- Read `AGENTS.md`, `CLAUDE.md`, and the GitNexus debugging workflow.
+- Confirmed the worktree was clean at `f07b79fb` on
+  `feature/axiom-relation-bindings`, one commit above `origin/main`.
+- Read `/tmp/armenia-relation-review.md` and recorded all six required repair
+  areas: native duplicate-key behavior, owned execution snapshots and live
+  revalidation, general receipt IDs, naturally empty link tables, live output
+  authentication, and ordinary materialize sequence compatibility.
+- Confirmed GitNexus graph tools are unavailable in this session; source and
+  call-site tracing is the documented fallback.
+
+## Next
+
+- Reproduce each finding in focused tests and inspect the installed Axiom
+  runtime's actual dense-relation conversion boundary.
+- Implement fail-closed native capability handling plus the five remaining
+  compatibility/authentication repairs without changing the Axiom repository.
+- Add adversarial and native integration coverage, then run focused relation
+  tests, real-Axiom cases, Ruff, and `git diff --check`.
+
+---
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
