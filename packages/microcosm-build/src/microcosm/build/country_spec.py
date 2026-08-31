@@ -112,6 +112,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
     {
         "aggregate_admin",
         "calibration_reference_coverage",
+        "column_implication",
         "degenerate_release_surface",
         "enum_domain",
         "export_surface",

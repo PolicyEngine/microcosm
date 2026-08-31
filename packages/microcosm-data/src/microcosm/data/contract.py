@@ -375,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12c8a7fd526932decf19954881f43a123451f0454ac2603ff5ab08b0d246e37a"
+    "12aab28f1e8e49347887c53fe1fabd228a5eda045964d65224390e0ce8b118d5"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2a7cb1441d9c9bab3afde33ad1a2957484c7bde46f93c65386b98dd7a665b812"
+    "efdb12a1f97421197871aefbb7de4be90e5d9a4f0461e6c6e72e5dcc8cf65089"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "65a2c85db2abd8edd935fda79e5c5ef8e15f89ba59ec4e2763d485c5170fd550"
+    "96186a467471393be608dc638f8288db9ebfdcf2f54a1afbaf8f070db6716746"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -394,6 +394,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weight_ratio": "weight_ratio",
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
+    "uk_uc_capital_coherence": "column_implication",
     "uk_support": "support",
     "uk_aggregate_admin": "aggregate_vs_admin",
     "uk_export_surface": "export_surface",
@@ -460,6 +461,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weight_ratio": ("weight_ratio", "terminal"),
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
+    "uk_uc_capital_coherence": ("column_implication", "terminal"),
     "uk_support": ("support", "terminal"),
     "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
@@ -600,6 +602,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_target_surface_local_default_2025",
             "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
+            "uk_uc_capital_coherence",
             "uk_qrf_tail_concentration",
             "uk_release_family_build_stages",
             "uk_release_input_coverage",
@@ -631,10 +634,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "cb480ea8735648bd089322bb434ce87f48fb71b7ad62f55f091d7e7356049c55"
+            "97f25fa3cf48b8828450831be7c986704740eddb35ed08a27da950e8dc412b64"
         ),
         "policy_sha256": (
-            "775d7a91fa1fc4aebb312bd45f18e5d9a077bb38d936fc408a2f812c341ecc95"
+            "b72d6c6289e71e0e59556aea707676847b602a230e83f2d96bfd1fd4a9e86883"
         ),
     },
 }
@@ -3064,9 +3067,7 @@ def _check_uk_certification_evidence_binding(
         (
             "score_receipt",
             _UK_CERTIFICATION_SCORE_RECEIPT_FILE,
-            score_receipt.get("sha256")
-            if isinstance(score_receipt, Mapping)
-            else None,
+            score_receipt.get("sha256") if isinstance(score_receipt, Mapping) else None,
         )
     )
     for owner, filename, signed_sha in bindings:
@@ -3088,8 +3089,7 @@ def _check_uk_certification_evidence_binding(
             continue
         if _sha256(path) != signed_sha:
             failures.append(
-                f"{filename} does not match the certification's signed "
-                f"{owner}.sha256."
+                f"{filename} does not match the certification's signed {owner}.sha256."
             )
 
 
@@ -4432,9 +4432,10 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 failures,
                 grandfathered_uk_june=release_id == _UK_JUNE_RELEASE_ID,
             )
-            if _is_uk_exact_k_release_id(
-                release_id
-            ) or release_id == _UK_NATIONAL_RELEASE_ID:
+            if (
+                _is_uk_exact_k_release_id(release_id)
+                or release_id == _UK_NATIONAL_RELEASE_ID
+            ):
                 _check_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(

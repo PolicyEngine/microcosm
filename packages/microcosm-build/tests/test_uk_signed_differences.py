@@ -97,6 +97,45 @@ class TestCommittedRegister:
         assert register.differences
         assert register.scope_note
 
+    def test_uc_capital_entries_pin_new_exports_and_monotone_claim_lift(self) -> None:
+        register = load_uk_spine_swap_signed_differences()
+
+        for column, identifier in {
+            "frs_benunit_capital": "frs-benunit-capital-net-new-column",
+            "uc_reported_capital": "uc-reported-capital-net-new-column",
+        }.items():
+            entry = register.matching(
+                surface="nonzero_shares",
+                column=column,
+                expectation="column_missing_in_reference",
+                entity="benunit",
+            )
+            assert entry is not None
+            assert entry.id == identifier
+
+        claim = register.matching(
+            surface="nonzero_shares",
+            column="would_claim_uc",
+            expectation="column_differs",
+            entity="benunit",
+        )
+        assert claim is not None
+        assert claim.id == "uc-reporter-claim-refresh-lift"
+        assert claim.quantitative == {
+            "shares": {
+                "would_claim_uc": {
+                    "incumbent_share": 0.550692,
+                    "direction": "candidate_above",
+                    "max_abs_delta": 0.0367,
+                }
+            },
+            "magnitude_provenance": (
+                "I1 pre-change receipts .codex-work/828_before_ab.json and "
+                ".codex-work/828_before_c.json; 2,245 SPI-channel false "
+                "reporters divided by 61,211 benunits, rounded up at 1e-4 grain."
+            ),
+        }
+
     def test_committed_entries_are_precisely_scoped(self) -> None:
         # A surface-wide entry (empty columns) signs every column on that
         # surface. That is a real capability for entity_counts, but on a

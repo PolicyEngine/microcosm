@@ -129,6 +129,7 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_release_input_coverage",
     "uk_degenerate_release_surface",
     "uk_nonnegative_columns",
+    "uk_uc_capital_coherence",
     "uk_support",
     "uk_aggregate_admin",
     "uk_export_surface",

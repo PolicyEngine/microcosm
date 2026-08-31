@@ -56,6 +56,7 @@ from typing import Any, Protocol
 from microcosm.build.country_spec import CountrySpec, GateSelectionSpec, GatesManifest
 from microcosm.build.gates import (
     GateResult,
+    column_implication_gate,
     input_mass_parity_gate,
     tail_concentration_gate,
     weights_audit_gate,
@@ -348,6 +349,15 @@ def _input_mass_evidence(
 #: report, never a crash, so an incomplete registry cannot manufacture a
 #: pass.
 DEFAULT_REGISTRY: Mapping[str, GateBinding] = {
+    "column_implication": FunctionBinding(
+        name="column_implication",
+        gate=column_implication_gate,
+        parameter_keys=frozenset({"numeric_column", "boolean_column", "threshold"}),
+        artifact_arguments={
+            "numeric_values": "column_implication_numeric_values",
+            "boolean_values": "column_implication_boolean_values",
+        },
+    ),
     "weights_audit": FunctionBinding(
         name="weights_audit",
         gate=weights_audit_gate,

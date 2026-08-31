@@ -471,6 +471,25 @@
       "notes": "Every UK source-stage column declared in source_stages.json nonnegative_outputs must be finite and non-negative on the terminal frame; this makes the shared nonnegative column gate live for UK."
     },
     {
+      "id": "uk_uc_capital_coherence",
+      "gate": "column_implication",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "numeric_entity": "person",
+        "numeric_column": "universal_credit_reported",
+        "numeric_group_column": "person_benunit_id",
+        "boolean_entity": "benunit",
+        "boolean_id_column": "benunit_id",
+        "boolean_column": "would_claim_uc",
+        "threshold": 0.0,
+        "capital_column": "uc_reported_capital",
+        "carrier_column": "frs_benunit_capital",
+        "sentinel": -1.0
+      },
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. The reported-capital engine carrier is bounded below by its named -1 unavailable sentinel, may use that sentinel only where the FRS carrier is unavailable, and otherwise remains the exact same source value."
+    },
+    {
       "id": "uk_support",
       "gate": "support",
       "phase": "terminal",
@@ -535,6 +554,8 @@
       "parameters": {
         "allowed_extra_columns": [
           "benunit.child_benefit_opts_out",
+          "benunit.frs_benunit_capital",
+          "benunit.uc_reported_capital",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
           "household.cash_isa",

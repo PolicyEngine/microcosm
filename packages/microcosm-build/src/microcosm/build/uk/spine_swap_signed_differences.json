@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats any difference beyond the #723 acceptance band that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The twenty-six beyond-band divergences measured against the re-pinned 1.56.16 reference are signed below, each scoped to the divergence actually observed rather than carried across on its prose classification, and each deliberately split so that no entry covers both columns where the spine is closer to its donor and columns where the incumbent is: the direction of the evidence is part of what is being signed. Donor figures quoted as magnitude evidence are survey-weighted shares and population means computed on each stage's own committed cleaning function over its own pinned donor tab, which is the convention that reproduces the E6 acceptance receipt's education figure exactly. The incumbent side of every figure is measured on the pinned 1.56.16 artifact itself (sha256 e433e532), not on a local rebuild: an earlier pass read the 1.56.14 published artifact, whose shares differ by up to 0.0045 and which flipped one verdict.",
+  "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats any difference beyond the #723 acceptance band that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The twenty-nine beyond-band divergences measured or structurally expected against the re-pinned 1.56.16 reference are signed below, each scoped to the divergence actually observed rather than carried across on its prose classification, and each deliberately split so that no entry covers both columns where the spine is closer to its donor and columns where the incumbent is: the direction of the evidence is part of what is being signed. Donor figures quoted as magnitude evidence are survey-weighted shares and population means computed on each stage's own committed cleaning function over its own pinned donor tab, which is the convention that reproduces the E6 acceptance receipt's education figure exactly. The incumbent side of every figure is measured on the pinned 1.56.16 artifact itself (sha256 e433e532), not on a local rebuild: an earlier pass read the 1.56.14 published artifact, whose shares differ by up to 0.0045 and which flipped one verdict.",
   "differences": [
     {
       "id": "scottish-water-incumbent-nan-zeroing",
@@ -457,6 +457,84 @@
             "other_investment_income"
           ]
         }
+      }
+    },
+    {
+      "id": "frs-benunit-capital-net-new-column",
+      "class": "net_new_column",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": [
+          "frs_benunit_capital"
+        ],
+        "entities": [
+          "benunit"
+        ]
+      },
+      "expectation": "column_missing_in_reference",
+      "magnitude_evidence": "The spine now persists the FRS TOTCAPB4 benunit carrier as frs_benunit_capital. The pinned enhanced-FRS reference has no column with that name, so this is a structural candidate-only export rather than a value divergence on a shared surface. The I1 domain receipt found all 18,850 current-vintage donor rows populated: 16,038 positive and 2,812 zero, with no blank or negative rows.",
+      "evidence": ".codex-work/828_before_ab.json",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-31",
+      "quantitative": {
+        "structural": {
+          "expected_columns": [
+            "frs_benunit_capital"
+          ]
+        }
+      }
+    },
+    {
+      "id": "uc-reported-capital-net-new-column",
+      "class": "net_new_column",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": [
+          "uc_reported_capital"
+        ],
+        "entities": [
+          "benunit"
+        ]
+      },
+      "expectation": "column_missing_in_reference",
+      "magnitude_evidence": "The coherence stage now persists uc_reported_capital from the same frs_benunit_capital carrier for PolicyEngine-UK's UC means-test seam. The pinned enhanced-FRS reference has no column with that name, so its presence is a structural candidate-only export. The I1 receipt establishes the carrier domain and the separate before-engine receipt pins the complete 61,211-benunit join used by this seam.",
+      "evidence": ".codex-work/828_before_c.json",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-31",
+      "quantitative": {
+        "structural": {
+          "expected_columns": [
+            "uc_reported_capital"
+          ]
+        }
+      }
+    },
+    {
+      "id": "uc-reporter-claim-refresh-lift",
+      "class": "mechanism_change",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": [
+          "would_claim_uc"
+        ],
+        "entities": [
+          "benunit"
+        ]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "The refresh is monotone and limited to post-fill reported-UC benunits: it ORs the reporter anchor into would_claim_uc and never turns an existing true value false. Against the incumbent's 0.550692 unweighted nonzero share, the I1 sizing receipt identifies 2,245 SPI-channel reporter records that are false before refresh out of 61,211 spine benunits, an expected whole-spine lift of 0.03668 (bounded at 0.0367 below); those rows carry 1.640 million weighted benunits. The I1 before-engine receipt independently measures 0.893 million weighted reported-UC benunits blocked by a false would_claim_uc flag before this repair.",
+      "evidence": ".codex-work/828_before_ab.json",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-31",
+      "quantitative": {
+        "shares": {
+          "would_claim_uc": {
+            "incumbent_share": 0.550692,
+            "direction": "candidate_above",
+            "max_abs_delta": 0.0367
+          }
+        },
+        "magnitude_provenance": "I1 pre-change receipts .codex-work/828_before_ab.json and .codex-work/828_before_c.json; 2,245 SPI-channel false reporters divided by 61,211 benunits, rounded up at 1e-4 grain."
       }
     }
   ]

@@ -6699,6 +6699,63 @@
      "required": [
       "kind",
       "output",
+      "rows",
+      "donor_rows",
+      "dependent_children_bands",
+      "couple_status",
+      "weight_mapping",
+      "draw",
+      "identity",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_spi_reporter_capital"
+      },
+      "output": {
+       "type": "string"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "donor_rows": {
+       "type": "string"
+      },
+      "dependent_children_bands": {
+       "type": "array",
+       "minItems": 4,
+       "maxItems": 4,
+       "items": {
+        "type": "string"
+       }
+      },
+      "couple_status": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
       "inputs"
      ],
      "properties": {

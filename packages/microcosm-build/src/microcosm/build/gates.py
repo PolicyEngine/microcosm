@@ -72,6 +72,7 @@ __all__ = [
     "parity_gate",
     "support_gate",
     "aggregate_admin_gate",
+    "column_implication_gate",
     "per_family_fit_gate",
     "source_coverage_gate",
     "source_stage_input_coverage_gate",
@@ -215,9 +216,7 @@ def ledger_compile_parity_gate(
         actual = _drop_registry_keys(actual, signed_keys)
         expected = _drop_registry_keys(expected, signed_keys)
     report = ledger_target_registry_parity_report(expected, actual)
-    failures = (
-        signed_failures + _calibration_effective_parity_failures(report.failures)
-    )
+    failures = signed_failures + _calibration_effective_parity_failures(report.failures)
     return GateResult(
         name=name,
         passed=not failures,
@@ -478,9 +477,7 @@ def _signed_difference_check_failures(
         signed_kind = signed.get("kind")
         live_kind = live.get("kind")
         if not signed_kind:
-            failures.append(
-                f"signed ledger parity difference {label} is missing kind."
-            )
+            failures.append(f"signed ledger parity difference {label} is missing kind.")
             continue
         if signed_kind != live_kind:
             failures.append(
@@ -491,8 +488,7 @@ def _signed_difference_check_failures(
         for value_field in _signed_difference_required_value_fields(str(signed_kind)):
             if value_field not in signed:
                 failures.append(
-                    "signed ledger parity difference "
-                    f"{label} is missing {value_field}."
+                    f"signed ledger parity difference {label} is missing {value_field}."
                 )
                 continue
             if not _signed_difference_value_matches(
@@ -1411,6 +1407,78 @@ def nonnegative_columns_gate(
             "unused_reviewed_exclusions": unused_exclusions,
             "atol": float(atol),
             "chunk_size": int(chunk_size),
+        },
+    )
+
+
+def column_implication_gate(
+    numeric_values: Iterable[float],
+    boolean_values: Iterable[bool],
+    *,
+    numeric_column: str,
+    boolean_column: str,
+    threshold: float = 0.0,
+) -> GateResult:
+    """Require ``numeric_column > threshold`` to imply ``boolean_column``.
+
+    This row-wise primitive is country agnostic. Country bindings may derive
+    the aligned evidence at another entity grain before calling it (for
+    example, aggregating person-level benefit reports to benunits).
+    """
+
+    if not numeric_column:
+        raise ValueError("numeric_column must be non-empty.")
+    if not boolean_column:
+        raise ValueError("boolean_column must be non-empty.")
+    if not math.isfinite(float(threshold)):
+        raise ValueError(f"threshold must be finite, got {threshold!r}.")
+
+    try:
+        numeric = np.asarray(numeric_values, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{numeric_column} must be numeric.") from exc
+    raw_boolean = np.asarray(boolean_values).reshape(-1)
+    if numeric.shape != raw_boolean.shape:
+        raise ValueError(
+            f"{numeric_column} and {boolean_column} must have the same shape; "
+            f"got {numeric.shape} and {raw_boolean.shape}."
+        )
+    if raw_boolean.dtype.kind == "b":
+        boolean = raw_boolean.astype(bool, copy=False)
+    elif raw_boolean.dtype.kind in "iu" and np.isin(raw_boolean, (0, 1)).all():
+        boolean = raw_boolean.astype(bool)
+    else:
+        raise ValueError(
+            f"{boolean_column} must contain only boolean or integer 0/1 values."
+        )
+
+    nonfinite = ~np.isfinite(numeric)
+    implicated = numeric > float(threshold)
+    violations = implicated & ~boolean
+    failures: list[str] = []
+    if nonfinite.any():
+        failures.append(
+            f"{numeric_column}: {int(nonfinite.sum())} non-finite value(s); "
+            "the implication evidence must be finite."
+        )
+    if violations.any():
+        failures.append(
+            f"{numeric_column} > {float(threshold):g} must imply "
+            f"{boolean_column} is true; {int(violations.sum())} violation(s)."
+        )
+
+    return GateResult(
+        name="column_implication",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "numeric_column": numeric_column,
+            "boolean_column": boolean_column,
+            "threshold": float(threshold),
+            "rows_checked": int(numeric.size),
+            "implicated_rows": int(implicated.sum()),
+            "violation_count": int(violations.sum()),
+            "nonfinite_count": int(nonfinite.sum()),
         },
     )
 

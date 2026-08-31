@@ -96,6 +96,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.uc_capital_coherence import (
+    UKUCCapitalCoherenceStageTransform,
+)
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
@@ -128,6 +131,7 @@ _STAGE_NAMES = (
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
     "hmrc_spi_income_spine",
+    "uc_capital_coherence",
     "cgt_incidence_clone",
     "cgt_band_donors",
     "hmrc_cgt_gains_spine",
@@ -499,9 +503,7 @@ def _collect_stage_evidence(
             metadata = dict(metadata_hook())
             evidence = metadata.get("evidence", metadata)
         else:
-            evidence = _result_evidence(
-                getattr(implementation, "last_result", None)
-            )
+            evidence = _result_evidence(getattr(implementation, "last_result", None))
         if evidence is not None:
             evidence_by_stage[stage_name] = evidence
     return evidence_by_stage
@@ -532,10 +534,9 @@ def _collect_fit_weight_records(
             continue
         # Detect the hook without evaluating it: a raising property must
         # count as a fitting stage with unreadable records, not vanish.
-        exposes_records = (
-            getattr(type(implementation), "fit_weight_records", None) is not None
-            or "fit_weight_records" in getattr(implementation, "__dict__", {})
-        )
+        exposes_records = getattr(
+            type(implementation), "fit_weight_records", None
+        ) is not None or "fit_weight_records" in getattr(implementation, "__dict__", {})
         if not exposes_records:
             continue
         try:
@@ -1021,6 +1022,12 @@ def main(argv: list[str] | None = None) -> int:
             sample_fraction=args.sample_fraction,
         )
         implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+        if "uc_capital_coherence" in stage_names:
+            implementations["uc_capital_coherence"] = (
+                UKUCCapitalCoherenceStageTransform(
+                    stage=stages_by_name["uc_capital_coherence"]
+                )
+            )
         if "cgt_incidence_clone" in stage_names:
             implementations["cgt_incidence_clone"] = UKCGTIncidenceCloneStageTransform(
                 stage=stages_by_name["cgt_incidence_clone"]
