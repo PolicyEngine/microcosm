@@ -372,7 +372,16 @@ class AxiomEngine:
                 array's length does not match its entity table, or a declared
                 dense relation lacks an exact explicit frame-side binding.
         """
-        results, _ = self._materialize_with_receipt(bundle, variables, period)
+        # Preserve the pre-receipt RulesEngine contract: an empty request
+        # validates the frame/period and returns no columns, while duplicate
+        # names are harmless because the result is a name-keyed mapping.
+        requested = tuple(dict.fromkeys(variables))
+        if not requested:
+            bundle.revalidate()
+            self._require_schema(bundle)
+            _period_bounds(period)
+            return {}
+        results, _ = self._materialize_with_receipt(bundle, requested, period)
         return results
 
     def materialize_with_receipt(
@@ -430,7 +439,7 @@ class AxiomEngine:
                 )
             table = bundle.table(frame_entity)
             current_id_column = self._schema.entity_id_column(frame_entity)
-            current_ids = _integer_id_vector(
+            current_ids = _id_vector(
                 table[current_id_column],
                 f"{frame_entity}.{current_id_column}",
                 unique=True,
@@ -447,6 +456,10 @@ class AxiomEngine:
                 program=program,
                 current_ids=current_ids,
             )
+            current_id_receipt = _array_identity(current_ids)
+            root_input_receipts = {
+                name: _array_identity(inputs[name]) for name in sorted(inputs)
+            }
             execute = (
                 program.execute_f64 if self._arithmetic == "f64" else program.execute
             )
@@ -458,10 +471,17 @@ class AxiomEngine:
                 relations=relations or None,
                 outputs=list(names),
             )["outputs"]
+            bundle.revalidate()
+            _verify_execution_snapshots(
+                inputs=inputs,
+                input_receipts=root_input_receipts,
+                relations=relations,
+                relation_receipts=relation_receipts,
+            )
             expected = bundle.n(frame_entity)
             output_receipts: dict[str, object] = {}
             for name in names:
-                values = np.asarray(outputs[name])
+                values = np.array(outputs[name], copy=True)
                 if values.shape != (expected,):
                     raise ValueError(
                         f"Materialized variable {name!r} has shape "
@@ -484,11 +504,9 @@ class AxiomEngine:
                 "frame_entity": frame_entity,
                 "engine_entity": program.root_entity,
                 "current_id_column": current_id_column,
-                "current_ids": _array_identity(current_ids),
+                "current_ids": current_id_receipt,
                 "declared_root_inputs": list(declared_root_inputs),
-                "provided_root_inputs": {
-                    name: _array_identity(inputs[name]) for name in sorted(inputs)
-                },
+                "provided_root_inputs": root_input_receipts,
                 "relations": relation_receipts,
                 "requested_outputs": output_receipts,
             }
@@ -507,10 +525,15 @@ class AxiomEngine:
             "entities": entity_receipts,
             "input_frame_sha256": _canonical_digest(input_projection),
         }
-        return results, {
+        complete_receipt = {
             **receipt,
             "receipt_sha256": _canonical_digest(receipt),
         }
+        # Close the execution/receipt time-of-check gap against both an
+        # executor mutating its owned input snapshots and a concurrent alias
+        # mutating the live frame while Axiom runs.
+        verify_axiom_materialization_receipt(bundle, complete_receipt, results)
+        return results, complete_receipt
 
     def _relation_batches(
         self,
@@ -522,6 +545,15 @@ class AxiomEngine:
     ) -> tuple[dict[str, Any], dict[str, object]]:
         """Build exact dense relation batches and their drift receipt."""
         declared = _group_relation_declarations(program.relations)
+        repeated = sorted(key for key, items in declared.items() if len(items) > 1)
+        if repeated:
+            raise ValueError(
+                "The installed Axiom dense bridge cannot safely bind repeated "
+                "relation batch keys: its PyO3 conversion currently overwrites "
+                f"earlier schemas for {repeated}. Upgrade to a runtime that "
+                "exposes an authenticated relation-input union capability "
+                "before materializing this module."
+            )
         configured = {
             key: binding
             for key, binding in self._relation_bindings.items()
@@ -970,11 +1002,11 @@ def _batch_from_table(
         column = table[name]
         kind = column.dtype.kind
         if kind == "b":
-            batch[name] = column.to_numpy(dtype=bool)
+            batch[name] = column.to_numpy(dtype=bool, copy=True)
         elif kind in ("i", "u"):
-            batch[name] = column.to_numpy(dtype=np.int64)
+            batch[name] = column.to_numpy(dtype=np.int64, copy=True)
         elif kind == "f":
-            batch[name] = column.to_numpy(dtype=np.float64)
+            batch[name] = column.to_numpy(dtype=np.float64, copy=True)
         else:
             raise ValueError(
                 f"Column {name!r} has dtype kind {kind!r}; dense inputs must "
@@ -989,8 +1021,8 @@ def _group_relation_declarations(
     """Group Axiom relation schemas by their shared runtime batch key.
 
     Filtered or composed derived relations legitimately produce more than one
-    schema declaration backed by the same raw dense-relation batch. The batch
-    must be supplied once with the union of all declaration inputs.
+    schema declaration backed by the same raw dense-relation batch. Grouping
+    makes that native capability hazard explicit before batch conversion.
     """
 
     grouped: dict[str, list[dict[str, object]]] = {}
@@ -1047,7 +1079,7 @@ def _relation_projection(
         )
     related_table = bundle.table(binding.related_entity)
     related_id_column = bundle.schema.entity_id_column(binding.related_entity)
-    related_entity_ids = _integer_id_vector(
+    related_entity_ids = _id_vector(
         related_table[related_id_column],
         f"{binding.related_entity}.{related_id_column}",
         unique=True,
@@ -1062,25 +1094,30 @@ def _relation_projection(
                 f"Relation binding {relation_key!r} requires edge column "
                 f"{column!r} on table {binding.edge_table!r}."
             )
-    edge_current_ids = _integer_id_vector(
+    edge_current_ids = _id_vector(
         edge_table[binding.edge_current_id_column],
         f"{binding.edge_table}.{binding.edge_current_id_column}",
         unique=False,
+        empty_like=current_ids,
     )
-    edge_related_ids = _integer_id_vector(
+    edge_related_ids = _id_vector(
         edge_table[binding.edge_related_id_column],
         f"{binding.edge_table}.{binding.edge_related_id_column}",
         unique=False,
+        empty_like=related_entity_ids,
     )
     if edge_current_ids.shape != edge_related_ids.shape:
         raise ValueError(
             f"Relation binding {relation_key!r} edge id columns do not align."
         )
 
-    current_positions = {int(value): i for i, value in enumerate(current_ids)}
-    related_positions = {int(value): i for i, value in enumerate(related_entity_ids)}
+    current_positions = {_id_key(value): i for i, value in enumerate(current_ids)}
+    related_positions = {
+        _id_key(value): i for i, value in enumerate(related_entity_ids)
+    }
     unknown_current = sorted(
-        set(int(value) for value in edge_current_ids) - current_positions.keys()
+        set(_id_key(value) for value in edge_current_ids) - current_positions.keys(),
+        key=_id_sort_key,
     )
     if unknown_current:
         raise ValueError(
@@ -1088,7 +1125,8 @@ def _relation_projection(
             f"from {binding.current_entity!r}: {unknown_current[:5]}."
         )
     unknown_related = sorted(
-        set(int(value) for value in edge_related_ids) - related_positions.keys()
+        set(_id_key(value) for value in edge_related_ids) - related_positions.keys(),
+        key=_id_sort_key,
     )
     if unknown_related:
         raise ValueError(
@@ -1097,7 +1135,7 @@ def _relation_projection(
         )
 
     positions = np.fromiter(
-        (current_positions[int(value)] for value in edge_current_ids),
+        (current_positions[_id_key(value)] for value in edge_current_ids),
         dtype=np.int64,
         count=len(edge_current_ids),
     )
@@ -1109,7 +1147,7 @@ def _relation_projection(
     ordered_edge_current_ids = edge_current_ids[order]
     ordered_edge_related_ids = edge_related_ids[order]
     related_row_order = np.fromiter(
-        (related_positions[int(value)] for value in ordered_edge_related_ids),
+        (related_positions[_id_key(value)] for value in ordered_edge_related_ids),
         dtype=np.int64,
         count=len(ordered_edge_related_ids),
     )
@@ -1199,28 +1237,115 @@ def _input_projection_receipt(
     }
 
 
-def _integer_id_vector(
+def _id_vector(
     values: pd.Series,
     label: str,
     *,
     unique: bool,
+    empty_like: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Return a canonical signed-int64 id vector for a relation receipt."""
+    """Return canonical integer or text IDs for projection and receipts.
+
+    Entity IDs are never supplied to Axiom itself; relation batches use their
+    positions.  Preserve text IDs as text for receipts, canonicalize every
+    supported integer representation to signed int64, and use the referenced
+    entity's semantic dtype for an otherwise ambiguous empty object column.
+    """
+
     if values.isna().any():
         raise ValueError(f"{label} must not contain missing ids.")
-    kind = values.dtype.kind
-    if kind not in ("i", "u"):
+    raw = values.to_numpy(copy=True)
+    kind = raw.dtype.kind
+    if not raw.size and empty_like is not None:
+        if empty_like.dtype.kind in ("O", "U", "S"):
+            result = np.array([], dtype=object)
+        else:
+            result = np.array([], dtype="<i8")
+    elif kind in ("i", "u"):
+        if kind == "u" and raw.size and raw.max() > np.iinfo(np.int64).max:
+            raise ValueError(f"{label} contains an id outside signed int64 range.")
+        result = np.array(raw, dtype="<i8", copy=True)
+    elif kind in ("U", "S"):
+        result = np.array([str(item) for item in raw.tolist()], dtype=object)
+    elif kind == "O":
+        items = raw.tolist()
+        if all(isinstance(item, str) for item in items):
+            result = np.array(items, dtype=object)
+        elif all(
+            isinstance(item, (int, np.integer))
+            and not isinstance(item, (bool, np.bool_))
+            for item in items
+        ):
+            if any(
+                int(item) < np.iinfo(np.int64).min or int(item) > np.iinfo(np.int64).max
+                for item in items
+            ):
+                raise ValueError(f"{label} contains an id outside signed int64 range.")
+            result = np.array([int(item) for item in items], dtype="<i8")
+        elif not items:
+            # Empty entity tables have no values from which to infer an ID
+            # family. Canonical text is deterministic; relation edge columns
+            # instead pass ``empty_like`` above and inherit their target.
+            result = np.array([], dtype=object)
+        else:
+            raise ValueError(
+                f"{label} must contain only integer ids or only string ids."
+            )
+    else:
         raise ValueError(
-            f"{label} must use an integer dtype for Axiom relation binding, "
-            f"got dtype kind {kind!r}."
+            f"{label} must use an integer or string dtype for Axiom relation "
+            f"binding, got dtype kind {kind!r}."
         )
-    raw = values.to_numpy()
-    if kind == "u" and raw.size and raw.max() > np.iinfo(np.int64).max:
-        raise ValueError(f"{label} contains an id outside signed int64 range.")
-    result = raw.astype("<i8", copy=False)
-    if unique and len(np.unique(result)) != len(result):
+    if unique and pd.Index(result).has_duplicates:
         raise ValueError(f"{label} must contain unique ids.")
     return result
+
+
+def _id_key(value: object) -> object:
+    """Convert a NumPy scalar ID to its stable Python dictionary key."""
+
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _id_sort_key(value: object) -> tuple[str, str]:
+    """Order diagnostic IDs even if a malformed edge mixes Python types."""
+
+    return type(value).__name__, repr(value)
+
+
+def _verify_execution_snapshots(
+    *,
+    inputs: Mapping[str, np.ndarray],
+    input_receipts: Mapping[str, object],
+    relations: Mapping[str, Any],
+    relation_receipts: Mapping[str, object],
+) -> None:
+    """Refuse an executor that mutates any owned dense input snapshot."""
+
+    recomputed_inputs = {
+        name: _array_identity(values) for name, values in sorted(inputs.items())
+    }
+    if recomputed_inputs != dict(input_receipts):
+        raise ValueError("Axiom execution mutated an owned root-input snapshot.")
+    if set(relations) != set(relation_receipts):
+        raise ValueError("Axiom execution changed the relation batch set.")
+    for key, batch in relations.items():
+        receipt = relation_receipts[key]
+        if not isinstance(receipt, Mapping):
+            raise ValueError(f"Axiom relation receipt {key!r} is invalid.")
+        if _array_identity(batch.offsets) != receipt.get("offsets"):
+            raise ValueError(
+                f"Axiom execution mutated relation {key!r}'s offsets snapshot."
+            )
+        expected_inputs = receipt.get("provided_related_inputs")
+        live_inputs = {
+            name: _array_identity(values)
+            for name, values in sorted(batch.inputs.items())
+        }
+        if live_inputs != expected_inputs:
+            raise ValueError(
+                f"Axiom execution mutated relation {key!r}'s input snapshot."
+            )
 
 
 def _array_identity(values: np.ndarray) -> dict[str, object]:
@@ -1285,18 +1410,24 @@ def _typed_array_identity(values: object) -> dict[str, object]:
 def verify_axiom_materialization_receipt(
     frame: Frame,
     receipt: Mapping[str, object],
+    outputs: Mapping[str, object],
 ) -> None:
-    """Verify a schema-v2 Axiom receipt against the live input frame.
+    """Verify a schema-v2 Axiom receipt against live inputs and outputs.
 
     This verifier does not import or execute Axiom. It revalidates the Frame,
     authenticates the closed receipt/hash structure, and reconstructs every
-    exact root-input and relation-edge projection from the live tables. Output
-    identities are structurally and cryptographically bound by the receipt;
-    the signed outer manifest supplies authenticity for those hashes and the
+    exact root-input and relation-edge projection from the live tables. It
+    also recomputes every output identity from the caller's live materialized
+    arrays and requires exact name/cardinality agreement. The signed outer
+    manifest supplies authenticity for the resulting hashes and the
     RuleSpec/runtime parameter world.
     """
 
     frame.revalidate()
+    if not isinstance(outputs, Mapping):
+        raise ValueError("Axiom live outputs must be a name-keyed mapping.")
+    if any(not isinstance(name, str) or not name for name in outputs):
+        raise ValueError("Axiom live output names must be non-empty strings.")
     top = _exact_mapping(
         receipt,
         {
@@ -1328,6 +1459,7 @@ def verify_axiom_materialization_receipt(
     if not isinstance(raw_entities, Mapping) or not raw_entities:
         raise ValueError("Axiom materialization receipt needs executed entities.")
     recomputed_entities: dict[str, object] = {}
+    verified_output_names: set[str] = set()
     for entity_key in sorted(raw_entities):
         if not isinstance(entity_key, str) or not entity_key:
             raise ValueError("Axiom receipt entity keys must be non-empty strings.")
@@ -1335,8 +1467,16 @@ def verify_axiom_materialization_receipt(
             frame,
             frame_entity=entity_key,
             value=raw_entities[entity_key],
+            live_outputs=outputs,
         )
         recomputed_entities[entity_key] = entity
+        verified_output_names.update(entity["requested_outputs"])
+
+    if set(outputs) != verified_output_names:
+        raise ValueError(
+            "Axiom live output names differ from the receipt: "
+            f"expected={sorted(verified_output_names)}, got={sorted(outputs)}."
+        )
 
     input_projection = _input_projection_receipt(
         period=period,
@@ -1352,6 +1492,7 @@ def _verify_entity_receipt(
     *,
     frame_entity: str,
     value: object,
+    live_outputs: Mapping[str, object],
 ) -> dict[str, object]:
     entity = _exact_mapping(
         value,
@@ -1376,7 +1517,7 @@ def _verify_entity_receipt(
     expected_id_column = frame.schema.entity_id_column(frame_entity)
     if entity["current_id_column"] != expected_id_column:
         raise ValueError(f"Axiom receipt id column for {frame_entity!r} differs.")
-    current_ids = _integer_id_vector(
+    current_ids = _id_vector(
         frame.table(frame_entity)[expected_id_column],
         f"{frame_entity}.{expected_id_column}",
         unique=True,
@@ -1445,7 +1586,45 @@ def _verify_entity_receipt(
         ):
             if not isinstance(output[metadata_key], str) or not output[metadata_key]:
                 raise ValueError(f"Axiom output {name!r} metadata is invalid.")
-        _verify_array_identity(output["values"], f"output {name!r}")
+        kernel_dtype = output["declared_kernel_dtype"]
+        engine_dtype = output["declared_engine_dtype"]
+        period = output["declared_period"]
+        if kernel_dtype not in {"bool", "int", "float", "str"}:
+            raise ValueError(f"Axiom output {name!r} kernel dtype is invalid.")
+        if _DTYPE_KIND_BY_ENGINE.get(engine_dtype, engine_dtype) != kernel_dtype:
+            raise ValueError(f"Axiom output {name!r} dtype declarations differ.")
+        if period not in {"year", "month", "point"}:
+            raise ValueError(f"Axiom output {name!r} period is invalid.")
+        _verify_array_identity(
+            output["values"],
+            f"output {name!r}",
+            expected_length=frame.n(frame_entity),
+        )
+        values_identity = output["values"]
+        identity_dtype = values_identity["dtype"]
+        if kernel_dtype == "str":
+            dtype_matches = identity_dtype == "string"
+        else:
+            try:
+                identity_kind = np.dtype(identity_dtype).kind
+            except (TypeError, ValueError):
+                dtype_matches = False
+            else:
+                expected_kinds = {
+                    "bool": {"b"},
+                    "int": {"i", "u"},
+                    "float": {"f"},
+                }
+                dtype_matches = identity_kind in expected_kinds[kernel_dtype]
+        if not dtype_matches:
+            raise ValueError(
+                f"Axiom output {name!r} values do not match its declared dtype."
+            )
+        if name not in live_outputs:
+            raise ValueError(f"Axiom live outputs omit {name!r}.")
+        expected_identity = _typed_array_identity(live_outputs[name])
+        if output["values"] != expected_identity:
+            raise ValueError(f"Axiom live output {name!r} differs from its receipt.")
         normalized_outputs[name] = output
 
     return {
@@ -1589,7 +1768,12 @@ def _verify_period_receipt(value: object) -> dict[str, object]:
     return period
 
 
-def _verify_array_identity(value: object, label: str) -> None:
+def _verify_array_identity(
+    value: object,
+    label: str,
+    *,
+    expected_length: int | None = None,
+) -> None:
     identity = _exact_mapping(
         value,
         {"dtype", "storage_dtype", "encoding", "shape", "sha256"},
@@ -1606,6 +1790,35 @@ def _verify_array_identity(value: object, label: str) -> None:
         or shape[0] < 0
     ):
         raise ValueError(f"Axiom array identity {label} shape is invalid.")
+    if expected_length is not None and shape != [expected_length]:
+        raise ValueError(
+            f"Axiom array identity {label} cardinality differs: expected "
+            f"{expected_length}, got {shape[0]}."
+        )
+    encoding = identity["encoding"]
+    if encoding == "canonical_json_utf8_v1":
+        if identity["dtype"] != "string" or identity["storage_dtype"] != "utf8":
+            raise ValueError(
+                f"Axiom array identity {label} text encoding is not canonical."
+            )
+    elif encoding == "little_endian_raw_v1":
+        try:
+            dtype = np.dtype(identity["dtype"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Axiom array identity {label} numeric dtype is invalid."
+            ) from exc
+        if dtype.kind not in ("b", "i", "u", "f"):
+            raise ValueError(
+                f"Axiom array identity {label} raw encoding is not numeric."
+            )
+        expected_storage = dtype.newbyteorder("<").str
+        if identity["storage_dtype"] != expected_storage:
+            raise ValueError(
+                f"Axiom array identity {label} storage dtype is not canonical."
+            )
+    else:
+        raise ValueError(f"Axiom array identity {label} encoding is unsupported.")
     _require_sha256(identity["sha256"], f"array identity {label}")
 
 

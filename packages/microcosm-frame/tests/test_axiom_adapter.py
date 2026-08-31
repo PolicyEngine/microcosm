@@ -38,6 +38,7 @@ from microcosm.frame.adapters.axiom import (
     AxiomEngine,
     AxiomEntityTableDataset,
     AxiomRelationBinding,
+    _canonical_digest,
     _period_bounds,
     verify_axiom_materialization_receipt,
 )
@@ -64,6 +65,12 @@ FIXTURE_RULESPEC_ROOT = Path(__file__).parent / "fixtures" / "rulespec-zz"
 FIXTURE_MODULE = FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_country.yaml"
 FIXTURE_RELATION_MODULE = (
     FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_relation.yaml"
+)
+FIXTURE_DUPLICATE_RELATION_MODULE = (
+    FIXTURE_RULESPEC_ROOT / "zz/policies/tests/axiom_toy_duplicate_relation.yaml"
+)
+FIXTURE_DUPLICATE_RELATION_KEY = (
+    "zz:policies/tests/axiom_toy_duplicate_relation#relation.member_of_household:1:0"
 )
 FIXTURE_RULESPEC_ROOTS = (FIXTURE_RULESPEC_ROOT,)
 RULESPEC_BE = os.environ.get("POPULACE_RULESPEC_BE")
@@ -338,6 +345,68 @@ def _relation_bundle(*, alternate_membership=None) -> Frame:
     )
 
 
+def _string_relation_bundle() -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": ["p3", "p1", "p2"],
+            "person_household_id": ["h2", "h1", "h1"],
+            "toy_taxable_income": [20_000.0, 5_000.0, 10_000.0],
+            "toy_is_eligible": [True, False, True],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": ["h1", "h2"],
+            "toy_household_rent": [100.0, 200.0],
+        }
+    )
+    return Frame(
+        {"person": person, "household": household},
+        BE_SCHEMA,
+        {"household": Weights(values=np.ones(2), kind=WeightKind.DESIGN)},
+    )
+
+
+def _string_toy_bundle() -> Frame:
+    source = _toy_bundle()
+    person = source.table("person").copy()
+    person["person_id"] = ["p1", "p2", "p3"]
+    person["person_household_id"] = ["h1", "h1", "h2"]
+    household = source.table("household").copy()
+    household["household_id"] = ["h1", "h2"]
+    return Frame(
+        {"person": person, "household": household},
+        BE_SCHEMA,
+        {"household": source.weights_for("household")},
+    )
+
+
+def _empty_link_bundle() -> tuple[Frame, EntitySchema]:
+    schema = EntitySchema(
+        group_entities=("household",),
+        links=(
+            LinkSpec(
+                name="household_members",
+                left_entity="household",
+                right_entity="person",
+            ),
+        ),
+    )
+    source = _relation_bundle()
+    frame = Frame(
+        {
+            "person": source.table("person"),
+            "household": source.table("household"),
+            # This is pandas' natural construction for an empty link table:
+            # both ID columns infer object rather than the entity ID dtype.
+            "household_members": pd.DataFrame(columns=["household_id", "person_id"]),
+        },
+        schema,
+        {"household": source.weights_for("household")},
+    )
+    return frame, schema
+
+
 def _relation_adapter(monkeypatch, *, binding=None, program=None) -> AxiomEngine:
     if binding is None:
         binding = AxiomRelationBinding(
@@ -370,6 +439,21 @@ def _relation_adapter(monkeypatch, *, binding=None, program=None) -> AxiomEngine
 
 
 class TestRelationBindings:
+    def test_ordinary_materialize_preserves_empty_and_duplicate_requests(
+        self, monkeypatch
+    ) -> None:
+        program = _RecordingRelationProgram()
+        adapter = _relation_adapter(monkeypatch, program=program)
+
+        assert adapter.materialize(_relation_bundle(), [], period=2025) == {}
+        outputs = adapter.materialize(
+            _relation_bundle(),
+            ["toy_household_income", "toy_household_income"],
+            period=2025,
+        )
+        assert list(outputs) == ["toy_household_income"]
+        np.testing.assert_allclose(outputs["toy_household_income"], [15_000, 20_000])
+
     def test_materializes_stable_dense_batch_and_receipts_exact_order(
         self, monkeypatch
     ) -> None:
@@ -397,7 +481,7 @@ class TestRelationBindings:
         assert len(evidence["receipt_sha256"]) == 64
         assert len(receipt["input_frame_sha256"]) == 64
         assert len(receipt["receipt_sha256"]) == 64
-        verify_axiom_materialization_receipt(_relation_bundle(), receipt)
+        verify_axiom_materialization_receipt(_relation_bundle(), receipt, outputs)
 
         _, repeated = adapter.materialize_with_receipt(
             _relation_bundle(), ["toy_household_income"], period=2025
@@ -434,7 +518,9 @@ class TestRelationBindings:
                 _relation_bundle(), ["toy_household_income"], period=2025
             )
 
-    def test_duplicate_runtime_key_unions_declaration_inputs(self, monkeypatch) -> None:
+    def test_duplicate_runtime_key_fails_closed_before_the_native_boundary(
+        self, monkeypatch
+    ) -> None:
         program = _RecordingRelationProgram()
         program.relations.append(
             SimpleNamespace(
@@ -446,19 +532,11 @@ class TestRelationBindings:
             )
         )
         adapter = _relation_adapter(monkeypatch, program=program)
-        _, receipt = adapter.materialize_with_receipt(
-            _relation_bundle(), ["toy_household_income"], period=2025
-        )
-        batch = program.last_relations["member_of_household:1:0"]
-        assert set(batch.inputs) == {"toy_taxable_income", "toy_is_eligible"}
-        relation = receipt["entities"]["household"]["relations"][
-            "member_of_household:1:0"
-        ]
-        assert len(relation["declarations"]) == 2
-        assert set(relation["provided_related_inputs"]) == {
-            "toy_taxable_income",
-            "toy_is_eligible",
-        }
+        with pytest.raises(ValueError, match="cannot safely bind repeated relation"):
+            adapter.materialize_with_receipt(
+                _relation_bundle(), ["toy_household_income"], period=2025
+            )
+        assert program.last_relations is None
 
     def test_current_to_related_lookup_uses_explicit_edge(self, monkeypatch) -> None:
         program = _RecordingLookupProgram()
@@ -494,7 +572,26 @@ class TestRelationBindings:
         np.testing.assert_allclose(
             outputs["toy_person_household_rent"], [200.0, 100.0, 100.0]
         )
-        verify_axiom_materialization_receipt(_relation_bundle(), receipt)
+        verify_axiom_materialization_receipt(_relation_bundle(), receipt, outputs)
+
+    def test_string_entity_ids_project_by_position_and_receipt_as_text(
+        self, monkeypatch
+    ) -> None:
+        program = _RecordingRelationProgram()
+        adapter = _relation_adapter(monkeypatch, program=program)
+        frame = _string_relation_bundle()
+
+        outputs, receipt = adapter.materialize_with_receipt(
+            frame, ["toy_household_income"], period=2025
+        )
+
+        np.testing.assert_allclose(outputs["toy_household_income"], [15_000, 20_000])
+        entity = receipt["entities"]["household"]
+        relation = entity["relations"]["member_of_household:1:0"]
+        assert entity["current_ids"]["dtype"] == "string"
+        assert relation["source_related_entity_ids"]["dtype"] == "string"
+        assert relation["source_edge_current_ids"]["dtype"] == "string"
+        verify_axiom_materialization_receipt(frame, receipt, outputs)
 
     def test_declared_link_table_can_supply_explicit_edges(self, monkeypatch) -> None:
         schema = EntitySchema(
@@ -559,17 +656,62 @@ class TestRelationBindings:
             "member_of_household:1:0"
         ]
         assert relation["binding"]["edge_table"] == "household_members"
-        verify_axiom_materialization_receipt(frame, receipt)
+        verify_axiom_materialization_receipt(frame, receipt, outputs)
 
         frame.link("household_members").loc[0, "person_id"] = 3
         with pytest.raises(ValueError, match="relation receipt"):
-            verify_axiom_materialization_receipt(frame, receipt)
+            verify_axiom_materialization_receipt(frame, receipt, outputs)
+
+    def test_natural_empty_object_link_table_projects_zero_edges(
+        self, monkeypatch
+    ) -> None:
+        frame, schema = _empty_link_bundle()
+        adapter = AxiomEngine(
+            FIXTURE_MODULE,
+            schema=schema,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            relation_bindings={
+                "member_of_household:1:0": AxiomRelationBinding(
+                    current_entity="household",
+                    related_entity="person",
+                    edge_table="household_members",
+                    edge_current_id_column="household_id",
+                    edge_related_id_column="person_id",
+                )
+            },
+        )
+        program = _RecordingRelationProgram()
+        monkeypatch.setattr(adapter, "_program", lambda _entity: program)
+        monkeypatch.setattr(
+            adapter,
+            "variable_metadata",
+            lambda name: VariableMetadata(
+                name=name, entity="household", dtype="float", period="year"
+            ),
+        )
+        monkeypatch.setattr(
+            adapter,
+            "_import_engine",
+            lambda: SimpleNamespace(DenseRelationBatch=_FakeDenseRelationBatch),
+        )
+
+        outputs, receipt = adapter.materialize_with_receipt(
+            frame, ["toy_household_income"], period=2025
+        )
+
+        np.testing.assert_allclose(outputs["toy_household_income"], [0, 0])
+        relation = receipt["entities"]["household"]["relations"][
+            "member_of_household:1:0"
+        ]
+        assert relation["source_edge_current_ids"]["dtype"] == "int64"
+        assert relation["source_edge_current_ids"]["shape"] == [0]
+        verify_axiom_materialization_receipt(frame, receipt, outputs)
 
     @pytest.mark.parametrize(
         ("memberships", "message"),
         [
             ([1, 1, 999], "current ids absent from 'household'"),
-            ([1.0, 1.0, 2.0], "integer dtype"),
+            ([1.0, 1.0, 2.0], "integer or string dtype"),
         ],
     )
     def test_invalid_explicit_membership_fails_closed(
@@ -625,14 +767,14 @@ class TestRelationBindings:
     ) -> None:
         adapter = _relation_adapter(monkeypatch)
         frame = _relation_bundle()
-        _, receipt = adapter.materialize_with_receipt(
+        outputs, receipt = adapter.materialize_with_receipt(
             frame, ["toy_household_income"], period=2025
         )
-        verify_axiom_materialization_receipt(frame, receipt)
+        verify_axiom_materialization_receipt(frame, receipt, outputs)
 
         frame.table("person").loc[0, "toy_taxable_income"] = 99_999.0
         with pytest.raises(ValueError, match="provided inputs|relation receipt"):
-            verify_axiom_materialization_receipt(frame, receipt)
+            verify_axiom_materialization_receipt(frame, receipt, outputs)
 
         clean_frame = _relation_bundle()
         forged = json.loads(json.dumps(receipt))
@@ -640,12 +782,104 @@ class TestRelationBindings:
             "values"
         ]["sha256"] = "0" * 64
         with pytest.raises(ValueError, match="receipt digest differs"):
-            verify_axiom_materialization_receipt(clean_frame, forged)
+            verify_axiom_materialization_receipt(clean_frame, forged, outputs)
+
+        changed_outputs = {
+            "toy_household_income": outputs["toy_household_income"].copy()
+        }
+        changed_outputs["toy_household_income"][0] += 1
+        with pytest.raises(ValueError, match="live output.*differs"):
+            verify_axiom_materialization_receipt(clean_frame, receipt, changed_outputs)
+
+        forged = json.loads(json.dumps(receipt))
+        forged["entities"]["household"]["requested_outputs"]["toy_household_income"][
+            "values"
+        ]["shape"] = [999]
+        unsigned = {
+            key: value for key, value in forged.items() if key != "receipt_sha256"
+        }
+        forged["receipt_sha256"] = _canonical_digest(unsigned)
+        with pytest.raises(ValueError, match="cardinality differs"):
+            verify_axiom_materialization_receipt(clean_frame, forged, outputs)
 
         forged = json.loads(json.dumps(receipt))
         forged["period"]["end"] = "2025-12-30"
         with pytest.raises(ValueError, match="receipt digest differs"):
-            verify_axiom_materialization_receipt(clean_frame, forged)
+            verify_axiom_materialization_receipt(clean_frame, forged, outputs)
+
+    def test_executor_cannot_mutate_owned_root_snapshot(self, monkeypatch) -> None:
+        class MutatingProgram:
+            root_entity = "Person"
+            root_inputs = ("toy_taxable_income",)
+            relations = ()
+
+            @staticmethod
+            def execute(*, inputs, **_kwargs):
+                inputs["toy_taxable_income"][0] = 999_999.0
+                return {"outputs": {"toy_income_tax": np.zeros(3)}}
+
+            execute_f64 = execute
+
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
+        monkeypatch.setattr(adapter, "_program", lambda _entity: MutatingProgram())
+        monkeypatch.setattr(
+            adapter,
+            "variable_metadata",
+            lambda name: VariableMetadata(
+                name=name, entity="person", dtype="float", period="year"
+            ),
+        )
+
+        frame = _toy_bundle()
+        with pytest.raises(ValueError, match="mutated an owned root-input"):
+            adapter.materialize_with_receipt(frame, ["toy_income_tax"], period=2025)
+        assert frame.table("person").loc[0, "toy_taxable_income"] == 5_000.0
+
+    def test_executor_cannot_mutate_owned_relation_snapshot(self, monkeypatch) -> None:
+        class MutatingRelationProgram(_RecordingRelationProgram):
+            def execute(self, *, relations, **_kwargs):
+                relation = relations["member_of_household:1:0"]
+                relation.inputs["toy_taxable_income"][0] = 999_999.0
+                return {"outputs": {"toy_household_income": np.zeros(2)}}
+
+            execute_f64 = execute
+
+        adapter = _relation_adapter(monkeypatch, program=MutatingRelationProgram())
+        frame = _relation_bundle()
+        with pytest.raises(ValueError, match="mutated relation.*input snapshot"):
+            adapter.materialize_with_receipt(
+                frame, ["toy_household_income"], period=2025
+            )
+        assert frame.table("person").loc[0, "toy_taxable_income"] == 20_000.0
+
+    def test_live_frame_mutation_during_execution_is_refused(self, monkeypatch) -> None:
+        frame = _toy_bundle()
+
+        class AliasingProgram:
+            root_entity = "Person"
+            root_inputs = ("toy_taxable_income",)
+            relations = ()
+
+            @staticmethod
+            def execute(*, inputs, **_kwargs):
+                result = inputs["toy_taxable_income"] * 0.1
+                frame.table("person").loc[0, "toy_taxable_income"] = 999_999.0
+                return {"outputs": {"toy_income_tax": result}}
+
+            execute_f64 = execute
+
+        adapter = AxiomEngine(FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS)
+        monkeypatch.setattr(adapter, "_program", lambda _entity: AliasingProgram())
+        monkeypatch.setattr(
+            adapter,
+            "variable_metadata",
+            lambda name: VariableMetadata(
+                name=name, entity="person", dtype="float", period="year"
+            ),
+        )
+
+        with pytest.raises(ValueError, match="provided inputs.*differ"):
+            adapter.materialize_with_receipt(frame, ["toy_income_tax"], period=2025)
 
     def test_materialize_revalidates_mutated_frame(self, monkeypatch) -> None:
         adapter = _relation_adapter(monkeypatch)
@@ -691,11 +925,38 @@ class TestRelationBindings:
         ]
         assert identity["encoding"] == "canonical_json_utf8_v1"
         assert identity["dtype"] == "string"
-        verify_axiom_materialization_receipt(_relation_bundle(), receipt)
+        verify_axiom_materialization_receipt(_relation_bundle(), receipt, outputs)
 
 
 @needs_engine
 class TestRelationBindingsWithRealAxiom:
+    def test_native_duplicate_relation_key_fails_before_pyo3_conversion(
+        self,
+    ) -> None:
+        adapter = AxiomEngine(
+            FIXTURE_DUPLICATE_RELATION_MODULE,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            relation_bindings={
+                FIXTURE_DUPLICATE_RELATION_KEY: AxiomRelationBinding(
+                    current_entity="household",
+                    related_entity="person",
+                    edge_table="person",
+                    edge_current_id_column="person_household_id",
+                    edge_related_id_column="person_id",
+                )
+            },
+        )
+        program = adapter._program("household")
+        assert [item.key for item in program.relations] == [
+            FIXTURE_DUPLICATE_RELATION_KEY,
+            FIXTURE_DUPLICATE_RELATION_KEY,
+        ]
+
+        with pytest.raises(ValueError, match="cannot safely bind repeated relation"):
+            adapter.materialize(
+                _relation_bundle(), ["toy_household_income"], period=2025
+            )
+
     def test_root_input_and_output_change_materialization_receipt(self) -> None:
         adapter = AxiomEngine(
             FIXTURE_MODULE,
@@ -716,8 +977,10 @@ class TestRelationBindingsWithRealAxiom:
             != changed_receipt["input_frame_sha256"]
         )
         assert baseline_receipt["receipt_sha256"] != changed_receipt["receipt_sha256"]
-        verify_axiom_materialization_receipt(baseline, baseline_receipt)
-        verify_axiom_materialization_receipt(changed, changed_receipt)
+        verify_axiom_materialization_receipt(
+            baseline, baseline_receipt, baseline_outputs
+        )
+        verify_axiom_materialization_receipt(changed, changed_receipt, changed_outputs)
 
     def test_household_sum_executes_in_the_real_dense_runtime(self) -> None:
         adapter = AxiomEngine(
@@ -738,7 +1001,7 @@ class TestRelationBindingsWithRealAxiom:
         )
         np.testing.assert_allclose(outputs["toy_household_income"], [15_000, 20_000])
         assert receipt["entities"]["household"]["relations"]
-        verify_axiom_materialization_receipt(_relation_bundle(), receipt)
+        verify_axiom_materialization_receipt(_relation_bundle(), receipt, outputs)
 
     def test_real_dense_runtime_accepts_zero_cardinality_current_row(self) -> None:
         adapter = AxiomEngine(
@@ -759,7 +1022,31 @@ class TestRelationBindingsWithRealAxiom:
             frame, ["toy_household_income"], period=2025
         )
         np.testing.assert_allclose(outputs["toy_household_income"], [35_000, 0])
-        verify_axiom_materialization_receipt(frame, receipt)
+        verify_axiom_materialization_receipt(frame, receipt, outputs)
+
+    def test_real_dense_runtime_accepts_natural_empty_link_table(self) -> None:
+        frame, schema = _empty_link_bundle()
+        adapter = AxiomEngine(
+            FIXTURE_RELATION_MODULE,
+            schema=schema,
+            rulespec_roots=FIXTURE_RULESPEC_ROOTS,
+            relation_bindings={
+                "member_of_household:1:0": AxiomRelationBinding(
+                    current_entity="household",
+                    related_entity="person",
+                    edge_table="household_members",
+                    edge_current_id_column="household_id",
+                    edge_related_id_column="person_id",
+                )
+            },
+        )
+
+        outputs, receipt = adapter.materialize_with_receipt(
+            frame, ["toy_household_income"], period=2025
+        )
+
+        np.testing.assert_allclose(outputs["toy_household_income"], [0, 0])
+        verify_axiom_materialization_receipt(frame, receipt, outputs)
 
     def test_relation_side_input_is_part_of_dataset_input_surface(self) -> None:
         adapter = AxiomEngine(
@@ -842,6 +1129,16 @@ class TestMaterialize:
         # 5,000 * 10% = 500; 10,000 * 10% = 1,000;
         # 10,000 * 10% + 10,000 * 25% = 3,500.
         np.testing.assert_allclose(results["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
+
+    def test_relation_free_string_ids_materialize_and_verify(self, adapter) -> None:
+        bundle = _string_toy_bundle()
+        outputs, receipt = adapter.materialize_with_receipt(
+            bundle, ["toy_income_tax"], period=2025
+        )
+
+        np.testing.assert_allclose(outputs["toy_income_tax"], [500.0, 1_000.0, 3_500.0])
+        assert receipt["entities"]["person"]["current_ids"]["dtype"] == "string"
+        verify_axiom_materialization_receipt(bundle, receipt, outputs)
 
     def test_bool_column_drives_the_exemption_predicate(self, adapter) -> None:
         bundle = _toy_bundle(exempt=(True, False, True))
