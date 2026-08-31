@@ -54,6 +54,7 @@ def _population_profile() -> dict[str, object]:
                 "microcosm_geography_vintage": "scheme_scope_2024",
                 "microcosm_period_type": "calendar_year",
                 "microcosm_period": 2024,
+                "publisher_source_readiness": "ready",
                 "input_readiness": "required_missing",
                 "mapping_readiness": "required_missing",
                 "period_readiness": "ready",
@@ -207,9 +208,7 @@ def test_monetary_profile_refuses_nested_carried_values(
     tmp_path: Path, container: str
 ) -> None:
     resources = copy.deepcopy(_profile_resources())
-    reference = resources["monetary_target_profile.json"]["targets"][0][
-        "reference"
-    ]
+    reference = resources["monetary_target_profile.json"]["targets"][0]["reference"]
     reference.setdefault(container, {})["observed_value"] = 42
     package = _write_package(tmp_path, resources)
 
@@ -219,9 +218,7 @@ def test_monetary_profile_refuses_nested_carried_values(
 
 def test_monetary_profile_refuses_selector_period_drift(tmp_path: Path) -> None:
     resources = copy.deepcopy(_profile_resources())
-    reference = resources["monetary_target_profile.json"]["targets"][0][
-        "reference"
-    ]
+    reference = resources["monetary_target_profile.json"]["targets"][0]["reference"]
     reference["ledger_selector"] = {
         "period_type": "calendar_year",
         "period_value": 2023,

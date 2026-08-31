@@ -33,6 +33,10 @@ InputReadiness = Literal["ready", "required_missing"]
 MappingReadiness = Literal["ready", "required_missing"]
 PeriodReadiness = Literal["ready", "exact_alignment_missing"]
 CompletenessReadiness = Literal["ready", "complete_imputation_required_missing"]
+PublisherSourceReadiness = Literal[
+    "ready",
+    "native_publisher_artifact_required_missing",
+]
 
 _INPUT_KEYS = frozenset(
     {
@@ -69,6 +73,7 @@ _MAPPING_KEYS = frozenset(
         "microcosm_geography_vintage",
         "microcosm_period_type",
         "microcosm_period",
+        "publisher_source_readiness",
         "input_readiness",
         "mapping_readiness",
         "period_readiness",
@@ -92,8 +97,9 @@ _DATA_KINDS = frozenset({"measured", "latent"})
 _INPUT_READINESS = frozenset({"ready", "required_missing"})
 _MAPPING_READINESS = frozenset({"ready", "required_missing"})
 _PERIOD_READINESS = frozenset({"ready", "exact_alignment_missing"})
-_COMPLETENESS_READINESS = frozenset(
-    {"ready", "complete_imputation_required_missing"}
+_COMPLETENESS_READINESS = frozenset({"ready", "complete_imputation_required_missing"})
+_PUBLISHER_SOURCE_READINESS = frozenset(
+    {"ready", "native_publisher_artifact_required_missing"}
 )
 _BEHAVIORAL_NAME_TOKENS = (
     "take_up",
@@ -235,7 +241,7 @@ class PopulationInputContract:
 
 @dataclass(frozen=True)
 class SchemePopulationMapping:
-    """Exact Chronicle scheme population to one Microcosm input column."""
+    """Declared Chronicle scheme population to one Microcosm input column."""
 
     mapping_id: str
     target_reference: str
@@ -254,6 +260,7 @@ class SchemePopulationMapping:
     microcosm_geography_vintage: str
     microcosm_period_type: str
     microcosm_period: int | str
+    publisher_source_readiness: PublisherSourceReadiness
     input_readiness: InputReadiness
     mapping_readiness: MappingReadiness
     period_readiness: PeriodReadiness
@@ -308,6 +315,12 @@ class SchemePopulationMapping:
             self.microcosm_period,
             field=f"scheme-population mapping {self.mapping_id!r} microcosm_period",
         )
+        if self.publisher_source_readiness not in _PUBLISHER_SOURCE_READINESS:
+            raise ValueError(
+                f"scheme-population mapping {self.mapping_id!r} has unknown "
+                "publisher_source_readiness "
+                f"{self.publisher_source_readiness!r}."
+            )
         if self.input_readiness not in _INPUT_READINESS:
             raise ValueError(
                 f"scheme-population mapping {self.mapping_id!r} has unknown "
@@ -383,6 +396,7 @@ class SchemePopulationMapping:
         """Readiness fields that still block execution."""
 
         statuses = {
+            "publisher_source_readiness": self.publisher_source_readiness,
             "input_readiness": self.input_readiness,
             "mapping_readiness": self.mapping_readiness,
             "period_readiness": self.period_readiness,
@@ -393,7 +407,7 @@ class SchemePopulationMapping:
         )
 
     def require_ready(self) -> None:
-        """Refuse execution until input, mapping, and period are all ready."""
+        """Refuse execution until source, input, mapping, and period are ready."""
 
         if self.blockers:
             raise PopulationInputNotReadyError(
@@ -595,6 +609,7 @@ def validate_population_input_frame(
         "chronicle_geography_vintage": mapping.chronicle_geography_vintage,
         "chronicle_period_type": mapping.chronicle_period_type,
         "chronicle_period": mapping.chronicle_period,
+        "publisher_source_readiness": mapping.publisher_source_readiness,
         "n_rows": len(boolean_values),
         "n_true": sum(boolean_values),
         "n_false": len(boolean_values) - sum(boolean_values),

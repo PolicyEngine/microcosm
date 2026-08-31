@@ -2,27 +2,25 @@
 
 ## State
 
-Complete on 2026-08-31 on `be-benefit-participation-targets-resume`; the
-remote-handoff checkpoint is `cc5466a2`. The complete Belgium value-free target/input contract, exact
-cross-links, runtime refusals, documentation, tests, and reviewed golden are
-committed and broadly verified. The only broad failures are two unrelated US
-parity regeneration cases reproduced unchanged on authoritative main. The
-normal fast-forward update of existing draft #824 was attempted, but GitHub
-DNS remains unavailable. The worktree contains only this journal update and
-preserved `.lane-inputs/`; the required final report is written to
-`.lane-inputs/OUT.md`.
+Continued on 2026-08-31 on `be-benefit-participation-targets-resume` from the
+completed local handoff at `490caa69`. Live GitHub access is restored:
+authoritative Microcosm main remains `d1e3e397`, and existing #824 remains a
+draft at its reviewed head `ed6dc3d8`. Chronicle #213 now supplies the stricter
+source-faithfulness ruling that Opgroeien, Iriscare, and Ostbelgien require
+native publisher artifacts. The Belgium contract therefore carries a separate
+typed publisher-source readiness gate in addition to population construction,
+input, period, and completeness gates.
 
 Reviewed Microcosm #824 head `ed6dc3d8` remains an ancestor, and authoritative
 main `d1e3e397` is merged at `03e4d494`, bringing in reviewed #825 head
-`510e3e6c`. Exact Chronicle #212 base/head `10597ae6`/`0f75a2bb` are pinned in
-the contract. Direct GitHub fetch remains DNS-blocked, so no remote mutation
-has occurred. Preserved `.lane-inputs/` remains intact and untracked; only the
-required final report will be written there.
+`510e3e6c`. Exact Chronicle #212 base/head `10597ae6`/`0f75a2bb` and the live
+#213 head `fe3fd816` are recorded in the contract. Preserved `.lane-inputs/`
+remains intact and untracked.
 
 ## Done
 
-- Finished the 15-row Belgium target surface, ten exact nullable person-input
-  contracts, ten one-to-one Chronicle scheme-population links, and a separate
+- Finished the 15-row Belgium target surface, ten typed nullable person-input
+  contracts, ten one-to-one declared Chronicle record-to-input links, and a separate
   three-row monetary inventory. GRAPA has an exact unit/scope mapping but is
   still missing its input, period alignment, and completeness receipt; all
   nine child mappings additionally keep scheme construction `required_missing`.
@@ -31,17 +29,23 @@ required final report will be written there.
   Axiom receives no synthetic behavior concept. Pension and ONEM now carry the
   same explicit consumer/support direction.
 - Enforced unknown-as-null, complete-imputation readiness, exact selector/basis
-  periods, exact scheme source/scope/entity links, one-to-one mapping identity,
+  periods, typed declared scheme source/scope/entity contracts, one-to-one mapping identity,
   explicit missing geography bridges, recursive value-free monetary profiles,
   and refusal of behavioral names in both input IDs and columns.
 - Enforced validation-only exclusion from calibration compilation. PIT remains
   a blocked calibration candidate; ONSS and NBB are validation-only; EUROMOD,
   FPB, constructed comparisons, monthly monetary snapshots, and unreviewed
   HFCS wealth remain outside the calibration surface.
-- Regenerated the Belgium country golden only after semantic review and updated
-  the bundle spec identity to `935f8dedcd2d1b99abe57c1b5d990bc345f4cffbc7ab0cc8791733bde6721d14`.
+- Regenerated the Belgium country golden only after semantic review. Its country
+  fingerprint is now `75448d958ef56404fd343ae0ba19bc047f7d4f1d739b06c0970fb4281d618772`;
+  the separately tested bundle spec identity remains
+  `935f8dedcd2d1b99abe57c1b5d990bc345f4cffbc7ab0cc8791733bde6721d14`.
 - All 548 focused country, gate, Ledger, monetary, profile, population-input,
   and bundle cases pass. Focused Ruff and `git diff --check` pass.
+- After reconciling Chronicle #212 with #213, all 730 focused country, gate,
+  Ledger, monetary, profile, population-input, and bundle cases pass again;
+  repository Ruff, the unchanged 123-package lock, the 319-file CI grouping,
+  JSON parsing, and `git diff --check` also remain green.
 - Committed the complete semantic and reviewed-golden step as `d77ccf78`
   (`Complete Belgium target input boundary`) without staging lane bookkeeping.
 - Verified the unchanged lock offline (123 packages), CI grouping (319 tracked
@@ -98,9 +102,10 @@ required final report will be written there.
   say PolicyEngine supplies receipt/behavior flags. This continuation corrects
   the contract to Microcosm-owned measured or latent data consumed by
   PolicyEngine.
-- Located reviewed Chronicle PR #212 at exact head `0f75a2bb`. It already
-  supplies official GRAPA and regional child-benefit administration facts and
-  provenance, superseding the stopped lane's older absence claim.
+- Located reviewed Chronicle PR #212 at exact head `0f75a2bb`. It declares the
+  GRAPA and regional child-benefit record identities and scopes, but its
+  dashboard captures and manual transcriptions are not activation-grade where
+  the newer Chronicle #213 source audit requires native publisher artifacts.
 - Confirmed the immutable boundary: Chronicle owns publisher facts and
   provenance; Microcosm owns population construction, calibration/validation
   selection, measured or latent flag inputs, and their population; PolicyEngine
@@ -133,10 +138,10 @@ required final report will be written there.
 
 ## Next
 
-- When DNS is restored, fetch live upstream, verify #824 remains draft on
-  `be-benefit-participation-targets`, and retry the same normal fast-forward
-  push. Preserve its existing body; never open a duplicate, mark ready, merge,
-  publish, or run a restricted build.
+- Verify the source-readiness changes and regenerated Belgium golden, commit,
+  normal-fast-forward the existing `be-benefit-participation-targets` branch,
+  update only draft #824, and freeze its exact head for Fable review. Never
+  open a duplicate, mark ready, merge, publish, or run a restricted build.
 
 # ACS predictor release join
 

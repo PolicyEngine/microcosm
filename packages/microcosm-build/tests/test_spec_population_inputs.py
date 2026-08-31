@@ -63,6 +63,7 @@ def _payload() -> dict[str, object]:
                 "microcosm_geography_vintage": "SCHEME_ADMIN_SCOPE_2025",
                 "microcosm_period_type": "month",
                 "microcosm_period": "2025-01",
+                "publisher_source_readiness": "ready",
                 "input_readiness": "ready",
                 "mapping_readiness": "ready",
                 "period_readiness": "ready",
@@ -134,6 +135,7 @@ def test_every_schema_level_rejects_unknown_bypass_fields(path, key, value):
         (("inputs", 0), "semantic_kind"),
         (("mappings", 0), "chronicle_source_record_id"),
         (("mappings", 0), "chronicle_entity_role"),
+        (("mappings", 0), "publisher_source_readiness"),
         (("mappings", 0), "mapping_readiness"),
         (("mappings", 0), "period_readiness"),
         (("mappings", 0), "completeness_readiness"),
@@ -230,6 +232,7 @@ def test_ready_mapping_requires_exact_entity_geography_and_period(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("publisher_source_readiness", "dashboard_capture"),
         ("input_readiness", "pending"),
         ("mapping_readiness", "inferred"),
         ("period_readiness", "projected"),
@@ -242,6 +245,23 @@ def test_unknown_readiness_values_are_refused(field, value):
 
     with pytest.raises(ValueError, match=field):
         PopulationInputProfile.from_mapping(payload, country="xx")
+
+
+def test_native_publisher_artifact_gap_is_an_execution_blocker():
+    payload = copy.deepcopy(_payload())
+    payload["mappings"][0]["publisher_source_readiness"] = (
+        "native_publisher_artifact_required_missing"
+    )
+    profile = PopulationInputProfile.from_mapping(payload, country="xx")
+
+    assert profile.mappings[0].blockers == (
+        "publisher_source_readiness='native_publisher_artifact_required_missing'",
+    )
+    with pytest.raises(
+        PopulationInputNotReadyError,
+        match="publisher_source_readiness",
+    ):
+        profile.mappings[0].require_ready()
 
 
 def test_profile_rejects_orphan_inputs_unknown_links_and_duplicate_columns():
@@ -307,7 +327,9 @@ def test_unknown_values_remain_null_until_complete_imputation_is_receipted():
             mapping_id="regular_payment_scheme_population",
         )
 
-    assert frame.table("person")["regular_payment_recipient_indicator"].isna().tolist() == [
+    assert frame.table("person")[
+        "regular_payment_recipient_indicator"
+    ].isna().tolist() == [
         False,
         True,
         False,

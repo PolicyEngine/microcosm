@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "description": "Value-free Belgium calibration-candidate and validation-only references. Values remain in Chronicle. Every selector uses the exact official fact period and observed-only assertion policy; Microcosm owns any later population, period, unit, or geography bridge. Regional child-benefit facts from Chronicle PR #212 retain their publisher statistical scopes and link only to defensible person units through typed, currently missing Microcosm inputs and mappings. Publisher household rows remain outside the target surface until their unit is proven equivalent to a Microcosm household. Unknown receipt or status remains null, never false, until complete imputation is explicitly ready and receipted. PolicyEngine consumes Microcosm-populated flags and owns behavioral mechanics; it does not supply the flags. Axiom receives no synthetic behavior concept. No regional or national child-benefit total is constructed.",
+  "description": "Value-free Belgium calibration-candidate and validation-only references. Values remain in Chronicle. Every selector declares an exact intended period and observed-only assertion policy; Microcosm owns any later source-readiness, population, period, unit, or geography bridge. Chronicle #212 supplies provisional regional child-benefit record identities, but Chronicle #213 requires native publisher artifacts for Opgroeien, Iriscare, and Ostbelgien before those rows are activation-grade. They remain validation/input contracts with explicit source and scheme-population blockers. Publisher household rows remain outside the target surface until their unit is proven equivalent to a Microcosm household. Unknown receipt or status remains null, never false, until complete imputation is explicitly ready and receipted. PolicyEngine consumes Microcosm-populated flags and owns behavioral mechanics; it does not supply the flags. Axiom receives no synthetic behavior concept. No regional or national child-benefit total is constructed.",
   "allowed_value_operations": [
     "identity"
   ],
@@ -208,6 +208,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
         "population_input_id": "grapa_regular_payment_recipient",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "ready",
@@ -245,7 +246,7 @@
       "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
         "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
         "axiom_behavior_ownership": "none",
         "basis_period": "child_benefit_rights_month_2025_12",
@@ -254,6 +255,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
         "population_input_id": "groeipakket_basic_amount_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -263,7 +265,7 @@
         "scheme_population_mapping_id": "groeipakket_basic_amount_child_population_2025_12",
         "target_role": "validation"
       },
-      "notes": "The provisional scheme-wide child population includes cross-border categories and is not BE2 residence. The typed mapping retains the publisher scope and blocks until Microcosm supplies the exact child status."
+      "notes": "Chronicle #212 declares this provisional dashboard-derived record identity, but Chronicle #213 requires a pinned native Opgroeien export before it is activation-grade. The scheme-wide population includes cross-border categories and is not BE2 residence. The typed mapping retains the declared scope and blocks independently on publisher bytes, scheme-population construction, the exact child status, period alignment, and completeness."
     },
     {
       "name": "iriscare_entitled_children_2025_12",
@@ -291,7 +293,7 @@
       "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
         "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
         "axiom_behavior_ownership": "none",
         "basis_period": "child_benefit_rights_month_2025_12",
@@ -300,6 +302,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
         "population_input_id": "iriscare_entitled_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -309,7 +312,7 @@
         "scheme_population_mapping_id": "iriscare_entitled_child_population_2025_12",
         "target_role": "validation"
       },
-      "notes": "The publisher's entitled-child person status is preserved separately from payment recipients and from BE1 residence."
+      "notes": "Chronicle #212 declares this provisional dashboard-derived record identity, but Chronicle #213 requires a pinned native official Iriscare artifact before it is activation-grade. The intended entitled-child person status remains separate from payment recipients and from BE1 residence; source, scheme-population, input, period, and completeness gates all remain fail-closed."
     },
     {
       "name": "iriscare_payment_recipients_2025_12",
@@ -337,7 +340,7 @@
       "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
         "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
         "axiom_behavior_ownership": "none",
         "basis_period": "child_benefit_rights_month_2025_12",
@@ -346,6 +349,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
         "population_input_id": "iriscare_payment_recipient",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -355,7 +359,7 @@
         "scheme_population_mapping_id": "iriscare_payment_recipient_population_2025_12",
         "target_role": "validation"
       },
-      "notes": "Iriscare allocataires are associated payment-recipient persons, not households; this population remains distinct from entitled children."
+      "notes": "Chronicle #212 declares this provisional dashboard-derived record identity, but Chronicle #213 requires a pinned native official Iriscare artifact before it is activation-grade. The intended allocataire unit is a payment-recipient person, not a household, and remains distinct from entitled children; source, scheme-population, input, period, and completeness gates all remain fail-closed."
     },
     {
       "name": "ostbelgien_paid_children_2025_12",
@@ -382,7 +386,7 @@
       "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
         "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
         "axiom_behavior_ownership": "none",
         "basis_period": "child_benefit_rights_month_2025_12",
@@ -391,6 +395,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
         "population_input_id": "ostbelgien_paid_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -400,7 +405,7 @@
         "scheme_population_mapping_id": "ostbelgien_paid_child_population_2025_12",
         "target_role": "validation"
       },
-      "notes": "BE-DG is retained as the publisher's scheme population, not treated as resident geography. Paid children remain distinct from payment recipients."
+      "notes": "Chronicle #212 declares this manually transcribed record identity, but Chronicle #213 rejects manual transcription as a publisher artifact and requires a pinned native official response before activation. BE-DG remains the declared scheme scope, not resident geography. Paid children stay distinct from payment recipients, and every source, population, input, period, and completeness gate remains fail-closed."
     },
     {
       "name": "ostbelgien_payment_recipients_2025_12",
@@ -427,7 +432,7 @@
       "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
         "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
         "axiom_behavior_ownership": "none",
         "basis_period": "child_benefit_rights_month_2025_12",
@@ -436,6 +441,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
         "population_input_id": "ostbelgien_payment_recipient",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -445,7 +451,7 @@
         "scheme_population_mapping_id": "ostbelgien_payment_recipient_population_2025_12",
         "target_role": "validation"
       },
-      "notes": "This is the distinct payment-recipient person count in the publisher scheme scope, not a child, family, household, or take-up count."
+      "notes": "Chronicle #212 declares this manually transcribed record identity, but Chronicle #213 rejects manual transcription as a publisher artifact and requires a pinned native official response before activation. The intended unit is a distinct payment-recipient person in the declared scheme scope, not a child, family, household, or take-up count; every source, population, input, period, and completeness gate remains fail-closed."
     },
     {
       "name": "walloon_single_parent_with_supplement_children_2023_12",
@@ -482,6 +488,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
         "population_input_id": "walloon_single_parent_with_supplement_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -528,6 +535,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
         "population_input_id": "walloon_single_parent_without_supplement_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -574,6 +582,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
         "population_input_id": "walloon_other_household_with_supplement_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",
@@ -620,6 +629,7 @@
         "input_consumer": "PolicyEngine",
         "input_owner": "Microcosm",
         "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
         "population_input_id": "walloon_other_household_without_supplement_child",
         "population_input_readiness": "required_missing",
         "population_mapping_readiness": "required_missing",

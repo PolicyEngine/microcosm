@@ -679,6 +679,7 @@ class TestBelgianPackage:
             == "do_not_derive_receipt_from_positive_amount_or_entitlement"
         )
         assert grapa.metadata["activation_status"] != "active"
+        assert grapa.metadata["publisher_source_readiness"] == "ready"
         assert grapa.entity == "person"
         assert grapa.metadata["population_input_readiness"] == "required_missing"
         assert grapa.metadata["population_mapping_readiness"] == "ready"
@@ -830,7 +831,9 @@ class TestBelgianPackage:
         assert all(row.consumer == "PolicyEngine" for row in profile.inputs)
         assert all(row.mechanics_owner == "PolicyEngine" for row in profile.inputs)
         assert all(row.axiom_role == "none" for row in profile.inputs)
-        assert all(row.input_readiness == "required_missing" for row in profile.mappings)
+        assert all(
+            row.input_readiness == "required_missing" for row in profile.mappings
+        )
         assert all(
             row.period_readiness == "exact_alignment_missing"
             for row in profile.mappings
@@ -844,6 +847,14 @@ class TestBelgianPackage:
             "required_missing",
         }
         assert sum(row.mapping_readiness == "ready" for row in profile.mappings) == 1
+        assert (
+            sum(
+                row.publisher_source_readiness
+                == "native_publisher_artifact_required_missing"
+                for row in profile.mappings
+            )
+            == 5
+        )
 
         for mapping in profile.mappings:
             reference = references[mapping.target_reference]
@@ -861,11 +872,38 @@ class TestBelgianPackage:
             assert reference.ledger_selector["geography_id"] == (
                 mapping.chronicle_geography_id
             )
+            assert reference.metadata["publisher_source_readiness"] == (
+                mapping.publisher_source_readiness
+            )
             assert reference.metadata["activation_status"] != "active"
 
         child_mappings = profile.mappings[1:]
-        assert all(row.mapping_readiness == "required_missing" for row in child_mappings)
-        assert all(row.chronicle_geography_level == "statistical_scope" for row in child_mappings)
+        assert all(
+            row.mapping_readiness == "required_missing" for row in child_mappings
+        )
+        pending_native_sources = {
+            row.mapping_id
+            for row in child_mappings
+            if row.publisher_source_readiness
+            == "native_publisher_artifact_required_missing"
+        }
+        assert pending_native_sources == {
+            "groeipakket_basic_amount_child_population_2025_12",
+            "iriscare_entitled_child_population_2025_12",
+            "iriscare_payment_recipient_population_2025_12",
+            "ostbelgien_paid_child_population_2025_12",
+            "ostbelgien_payment_recipient_population_2025_12",
+        }
+        assert all(
+            "requires_native_publisher_artifact"
+            in references[row.target_reference].metadata["activation_status"]
+            for row in child_mappings
+            if row.mapping_id in pending_native_sources
+        )
+        assert all(
+            row.chronicle_geography_level == "statistical_scope"
+            for row in child_mappings
+        )
         assert all(
             references[row.target_reference].ledger_selector["entity_name"] == "person"
             for row in child_mappings
@@ -917,9 +955,7 @@ class TestBelgianPackage:
 
         monetary = spec.monetary_target_profile
         assert monetary is not None
-        monetary_by_name = {
-            row.reference.name: row for row in monetary.targets
-        }
+        monetary_by_name = {row.reference.name: row for row in monetary.targets}
         assert set(monetary_by_name) == {
             "spf_finances_pit_total_2023",
             "onss_worker_personal_contributions_2024_validation",
@@ -933,9 +969,9 @@ class TestBelgianPackage:
             "onss_worker_personal_contributions_2024_validation",
             "nbb_household_disposable_income_2024_validation",
         ):
-            assert monetary_by_name[name].reference.metadata["monetary_target_role"] == (
-                "validation"
-            )
+            assert monetary_by_name[name].reference.metadata[
+                "monetary_target_role"
+            ] == ("validation")
             assert monetary_by_name[name].readiness == "historical_validation_only"
 
         coverage = next(
@@ -959,7 +995,9 @@ class TestBelgianPackage:
         assert "Values remain in Chronicle" in description
         assert "Unknown receipt or status remains null, never false" in description
         assert "PolicyEngine consumes Microcosm-populated flags" in description
-        assert "PolicyEngine" in description and "does not supply the flags" in description
+        assert (
+            "PolicyEngine" in description and "does not supply the flags" in description
+        )
         assert "Axiom receives no synthetic behavior concept" in description
         assert "Target-profile tier tolerances remain declarations" in (
             spec.gates.policy
@@ -1028,7 +1066,9 @@ class TestBelgianPackage:
         with pytest.raises(ValueError, match="not an exact typed authority alias"):
             load_country_spec(package_dir)
 
-    @pytest.mark.parametrize("missing_field", ["geography_bridge_status", "activation_status"])
+    @pytest.mark.parametrize(
+        "missing_field", ["geography_bridge_status", "activation_status"]
+    )
     def test_population_source_vintage_requires_an_explicit_missing_bridge(
         self, tmp_path, missing_field
     ) -> None:
@@ -1044,7 +1084,9 @@ class TestBelgianPackage:
         reference["metadata"].pop(missing_field)
         target_path.write_text(json.dumps(payload), encoding="utf-8")
 
-        with pytest.raises(ValueError, match="explicit non-active required_missing bridge"):
+        with pytest.raises(
+            ValueError, match="explicit non-active required_missing bridge"
+        ):
             load_country_spec(package_dir)
 
     def test_subnational_target_requires_a_typed_geography_layer(
@@ -1103,6 +1145,11 @@ class TestBelgianPackage:
                 "sfpd_grapa_regular_payment_beneficiaries_2025_01",
                 "population_completeness_readiness="
                 "'complete_imputation_required_missing'",
+            ),
+            (
+                "opgroeien_groeipakket_basic_amount_children_2025_12",
+                "publisher_source_readiness="
+                "'native_publisher_artifact_required_missing'",
             ),
         ],
     )
@@ -1181,6 +1228,7 @@ class TestBelgianPackage:
         ("mutation", "message"),
         [
             ("metadata_owner", "metadata mismatch"),
+            ("publisher_source", "metadata mismatch"),
             ("source_record", "source record id"),
             ("selector_period", "selector period"),
             ("selector_scope", "Chronicle selector mismatch"),
@@ -1201,6 +1249,10 @@ class TestBelgianPackage:
         )
         if mutation == "metadata_owner":
             reference["metadata"]["input_owner"] = "PolicyEngine"
+        elif mutation == "publisher_source":
+            reference["metadata"]["publisher_source_readiness"] = (
+                "native_publisher_artifact_required_missing"
+            )
         elif mutation == "source_record":
             reference["ledger_source_record_id"] += ".wrong"
         elif mutation == "selector_period":
@@ -1232,9 +1284,7 @@ class TestBelgianPackage:
         with pytest.raises(ValueError, match="selector period 2023"):
             load_country_spec(package_dir)
 
-    def test_scheme_population_mapping_cannot_link_two_targets(
-        self, tmp_path
-    ) -> None:
+    def test_scheme_population_mapping_cannot_link_two_targets(self, tmp_path) -> None:
         package_dir = tmp_path / "be"
         shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
         target_path = package_dir / "target_references.json"

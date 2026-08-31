@@ -13,7 +13,8 @@ objective. *Blocked* rows must fail closed at compilation or binding.
 | --- | --- | --- | --- |
 | [Microcosm #824](https://github.com/PolicyEngine/microcosm/pull/824) | `a18c87ee3db8220038b894a25a695e9bc79871e2` | `ed6dc3d8d47947fecfffd1194d1c1009221ae7cb` | Existing draft to update; do not open a duplicate. |
 | [Microcosm #825](https://github.com/PolicyEngine/microcosm/pull/825) | — | `510e3e6c9c2cd7f61854c56f6edd2acb14bc1cd8` | Reviewed generic monetary-target head, merged into authoritative `main` by `d1e3e397bdc4b7e6b9e05dc73cf6345e7111e6db`. |
-| [Chronicle #212](https://github.com/PolicyEngine/chronicle/pull/212) | `10597ae602767b046ca1b294949e5df7bfd3b367` | `0f75a2bb5fae8a197e4e1f6541a5af34708fc206` | Existing draft dependency supplying official GRAPA and regional child-benefit facts and provenance. |
+| [Chronicle #212](https://github.com/PolicyEngine/chronicle/pull/212) | `10597ae602767b046ca1b294949e5df7bfd3b367` | `0f75a2bb5fae8a197e4e1f6541a5af34708fc206` | Existing draft declaring GRAPA, regional child-benefit record identities, and scheme scopes. Its dashboard captures and manual transcription are not treated as activation-grade. |
+| [Chronicle #213](https://github.com/PolicyEngine/chronicle/pull/213) | `10597ae602767b046ca1b294949e5df7bfd3b367` | `fe3fd81670f106c5509847312ba61dd4c4742626` | Newer source-faithfulness audit: pins official SFPD February 2025 facts and explicitly blocks Opgroeien, Iriscare, and Ostbelgien pending native publisher artifacts. |
 
 These hashes identify what was reviewed; later commits must not be described as
 reviewed under these coordinates. The Belgium work must incorporate #825 from
@@ -38,9 +39,9 @@ blocked until immutable engine and legal-module coordinates are reviewed.
 | Unemployment | ONEM/RVA calendar year 2024; Belgium complete-unemployment recipient statistic expressed as a monthly average of persons. | Calibration candidate, currently blocked. | Requires a Microcosm-owned receipt input, exact statistic/period support, and a population-universe mapping. Do not infer receipt from a positive payment or entitlement. |
 | Legal pension | SFPD January 2025 snapshot; Belgium recipient persons, with a published all-schemes total and overlapping scheme rows. | Blocked pending source-period correction and population inputs. | Chronicle presently encodes this snapshot as calendar year 2025. Correct it to the supported monthly period before targeting; do not sum overlapping scheme rows. |
 | GRAPA | SFPD January 2025 regular-payment snapshot; Belgium beneficiary persons by sex plus the matching monthly payment amount. | Validation-only and execution-blocked. | Chronicle #212 already supplies these exact facts. Binding still requires a Microcosm receipt flag, snapshot support, and an exact monthly monetary/statistical bridge; it is not an annual caseload, eligibility denominator, or take-up rate. |
-| Opgroeien child benefit | Rights month 2025-12, provisional; persons receiving the basic amount in the `BE-GROEIPAKKET-SCHEME` administrative scope. | Validation-only and execution-blocked. | Chronicle #212 supplies the fact. The scheme scope is not BE2 residence; require an exact Microcosm scheme-membership/receipt mapping and supported child-person population. |
-| Iriscare child benefit | Legal period 2025-12, provisional; entitled-child persons and distinct payment-recipient persons in `BE-IRISCARE-CHILD-BENEFIT-SCHEME`. | Validation-only and execution-blocked. | Chronicle #212 supplies both facts. The administrative scope includes records outside BE1; require separate typed inputs and never relabel it as Brussels residence. |
-| Ostbelgien child benefit | December 2025; paid-child persons and distinct payment-recipient persons in the `BE-DG` child-benefit statistical scope. | Validation-only and execution-blocked. | Chronicle #212 supplies both facts. `BE-DG` here is a scheme population, not a NUTS geography; require separate exact mappings and inputs. |
+| Opgroeien child benefit | Intended rights month 2025-12; persons receiving the basic amount in the declared `BE-GROEIPAKKET-SCHEME` administrative scope. | Validation/input contract only; execution-blocked. | Chronicle #212 declares a dashboard-derived record identity, while #213 requires unchanged native Opgroeien export bytes. After that source gate, the scheme scope still is not BE2 residence: require an exact Microcosm scheme-membership/receipt mapping and supported child-person population. |
+| Iriscare child benefit | Intended legal period 2025-12; entitled-child persons and distinct payment-recipient persons in the declared `BE-IRISCARE-CHILD-BENEFIT-SCHEME`. | Validation/input contracts only; execution-blocked. | Chronicle #212 declares dashboard-derived identities, while #213 says no direct official package exists and requires a native official artifact. After that source gate, require separate typed inputs and never relabel the administrative scope as Brussels residence. |
+| Ostbelgien child benefit | Intended December 2025 paid-child and payment-recipient person records in the declared `BE-DG` child-benefit scope. | Validation/input contracts only; execution-blocked. | Chronicle #212 carries a manual transcription, while #213 explicitly rejects manual transcription as a publisher artifact. Require unchanged official response bytes before considering the identities, then require separate scheme-population mappings and inputs; `BE-DG` is not NUTS residence. |
 | Walloon child benefit | December 2023; French-language Walloon scheme scope, with child persons and households in four publisher-defined household/social-supplement partitions. | Four child-person partitions are validation-only and execution-blocked; publisher household rows are not mapped. | Chronicle #212 supplies both units. Preserve the person/household distinction; retain only the four defensible child-person links, omit household rows until their Microcosm unit is proved equivalent, and do not construct an all-scope total or equate the scheme to Walloon residence. |
 | NBB national accounts | NBB calendar year 2024; Belgium S.14 household-sector gross disposable income in current-price EUR. | Validation-only. | Keep outside the calibration objective. Comparison requires an explicit model aggregation and unit/period receipt; national accounts are not a population-construction target. |
 | EUROMOD | JRC Belgium country-report comparators for calendar years 2021-2023, including 2022 distribution statistics; country-level person or government comparator entities as published. | Validation catalog only; not declared as a calibration target reference. | Preserve external, SILC, and EUROMOD series identities. None may enter solver targets or be treated as an administrative observation. |
@@ -70,20 +71,25 @@ Receipt, application, status, and choice inputs are nullable booleans. Missing
 means unknown; it must never be coerced to `false` or counted as nonreceipt.
 Microcosm may retain measured unknowns while it constructs or calibrates the
 population. A target can activate only after its typed mapping declares
-`completeness_readiness="ready"` and the activation receipt proves zero unknown
-rows. When complete latent imputation is required, the declaration remains
+`publisher_source_readiness="ready"`, every population/mapping/period gate is
+ready, `completeness_readiness="ready"`, and the activation receipt proves zero
+unknown rows. When complete latent imputation is required, the declaration remains
 `complete_imputation_required_missing` until that imputation is implemented and
 receipted. PolicyEngine consumes only the resulting Microcosm column and owns
 any non-legal behavior mechanics; this readiness gate supplies no formula.
-Setting a readiness string is not itself a receipt. Any future activation path
+For Opgroeien, Iriscare, and Ostbelgien the source readiness remains
+`native_publisher_artifact_required_missing`, independently of the missing
+scheme-population construction. Setting a readiness string is not itself a
+receipt. Any future activation path
 must call `validate_population_input_frame`, bind its row/value identity receipt,
 and verify `n_unknown == 0`. No receipt-binding activation path exists in this
 change, so every linked Belgium row remains explicitly non-active.
 
-## Follow-up issue drafts
+## Follow-up issues and scopes
 
-The following are ready-to-file issue scopes. They do not assert that an issue
-has already been opened.
+Chronicle #213 filed the native-source gaps as #216 (Iriscare), #217
+(Opgroeien), #218 (Ostbelgien), and #215 (HFCS). The scopes below remain the
+acceptance boundary; mentioning them does not satisfy a source-readiness gate.
 
 ### Chronicle: ingest official Belgium HFCS aggregate wealth facts
 

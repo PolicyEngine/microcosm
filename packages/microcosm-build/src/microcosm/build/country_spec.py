@@ -1246,9 +1246,7 @@ def _validate_target_profile(
         geography_level = str(reference.ledger_selector.get("geography_level", ""))
         if geography_level == "statistical_scope":
             scope_id = str(reference.ledger_selector.get("geography_id", ""))
-            scope_vintage = str(
-                reference.ledger_selector.get("geography_vintage", "")
-            )
+            scope_vintage = str(reference.ledger_selector.get("geography_vintage", ""))
             if not scope_id or not scope_vintage:
                 raise ValueError(
                     f"target_references.json: statistical-scope {context} must "
@@ -1272,9 +1270,7 @@ def _validate_target_profile(
                     "geography layer-vintage registry does not declare it."
                 )
             if selector_vintage not in accepted_typed_aliases:
-                model_vintage = reference.metadata.get(
-                    "model_geography_vintage", ""
-                )
+                model_vintage = reference.metadata.get("model_geography_vintage", "")
                 explicit_missing_bridge = (
                     model_vintage in accepted_typed_aliases
                     and reference.metadata.get("geography_bridge_status")
@@ -1463,6 +1459,7 @@ def _validate_population_target_links(
             "input_consumer": "PolicyEngine",
             "mechanics_owner": "PolicyEngine",
             "axiom_behavior_ownership": "none",
+            "publisher_source_readiness": mapping.publisher_source_readiness,
             "population_input_readiness": mapping.input_readiness,
             "population_mapping_readiness": mapping.mapping_readiness,
             "population_period_readiness": mapping.period_readiness,

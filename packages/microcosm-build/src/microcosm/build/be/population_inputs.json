@@ -3,7 +3,7 @@
   "country": "be",
   "profile_id": "belgium_benefit_population_inputs",
   "activation": "explicit_only",
-  "description": "Value-free Microcosm-owned nullable boolean population inputs for exact publisher benefit populations. Unknown remains null and never becomes false. PolicyEngine may consume these fields and owns any behavioral mechanics. Every field, complete-imputation receipt, and period alignment is currently absent, so every linked target remains fail-closed. Scheme statistical scopes are retained exactly and are never relabeled as resident NUTS geography.",
+  "description": "Value-free Microcosm-owned nullable boolean population-input contracts for declared benefit populations. Unknown remains null and never becomes false. PolicyEngine may consume these fields and owns any behavioral mechanics. Every field, complete-imputation receipt, and period alignment is currently absent, so every linked target remains fail-closed. Opgroeien, Iriscare, and Ostbelgien additionally remain blocked pending native publisher artifacts under Chronicle #213; their Chronicle #212 dashboard/transcription records are not activation-grade. Scheme statistical scopes are retained exactly and are never relabeled as resident NUTS geography.",
   "inputs": [
     {
       "input_id": "grapa_regular_payment_recipient",
@@ -165,6 +165,7 @@
       "microcosm_geography_vintage": "current",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "ready",
       "input_readiness": "required_missing",
       "mapping_readiness": "ready",
       "period_readiness": "exact_alignment_missing",
@@ -189,11 +190,12 @@
       "microcosm_geography_vintage": "GROEIPAKKET_ADMINISTRATIVE_SCOPE_2025",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "native_publisher_artifact_required_missing",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
       "completeness_readiness": "complete_imputation_required_missing",
-      "notes": "The required child-person mapping retains the scheme scope; no Microcosm scheme population is constructed yet, and it does not equate Groeipakket administration with BE2 residence. Unknown status remains null."
+      "notes": "Chronicle #212 declares the intended child-person record, but Chronicle #213 requires a native Opgroeien export before it is activation-grade. The mapping retains the scheme scope; no Microcosm scheme population is constructed yet, and it does not equate Groeipakket administration with BE2 residence. Unknown status remains null."
     },
     {
       "mapping_id": "iriscare_entitled_child_population_2025_12",
@@ -213,11 +215,12 @@
       "microcosm_geography_vintage": "IRISCARE_CHILD_BENEFIT_ADMIN_SCOPE_2025",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "native_publisher_artifact_required_missing",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
       "completeness_readiness": "complete_imputation_required_missing",
-      "notes": "The required entitled-child role is a person input retaining Iriscare's cross-region administrative scope, but no Microcosm scheme population is constructed yet. Unknown status remains null."
+      "notes": "Chronicle #212 declares the intended entitled-child record, but Chronicle #213 requires a native official Iriscare artifact before it is activation-grade. The person input retains Iriscare's cross-region administrative scope, but no Microcosm scheme population is constructed yet. Unknown status remains null."
     },
     {
       "mapping_id": "iriscare_payment_recipient_population_2025_12",
@@ -237,11 +240,12 @@
       "microcosm_geography_vintage": "IRISCARE_CHILD_BENEFIT_ADMIN_SCOPE_2025",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "native_publisher_artifact_required_missing",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
       "completeness_readiness": "complete_imputation_required_missing",
-      "notes": "The required allocataire unit is a person rather than a household and remains distinct from the entitled-child population, but no Microcosm scheme population is constructed yet. Unknown status remains null."
+      "notes": "Chronicle #212 declares the intended allocataire record, but Chronicle #213 requires a native official Iriscare artifact before it is activation-grade. The allocataire unit is a person rather than a household and remains distinct from the entitled-child population, but no Microcosm scheme population is constructed yet. Unknown status remains null."
     },
     {
       "mapping_id": "ostbelgien_paid_child_population_2025_12",
@@ -261,11 +265,12 @@
       "microcosm_geography_vintage": "child_benefit_scope_2025",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "native_publisher_artifact_required_missing",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
       "completeness_readiness": "complete_imputation_required_missing",
-      "notes": "BE-DG is retained as the required publisher child-benefit population and is not treated as resident geography; no matching Microcosm scheme population exists yet. Unknown status remains null."
+      "notes": "Chronicle #212 declares the intended paid-child record, but Chronicle #213 rejects the manual transcription as a publisher artifact and requires a native official response. BE-DG is retained as the declared child-benefit scope and is not treated as resident geography; no matching Microcosm scheme population exists yet. Unknown status remains null."
     },
     {
       "mapping_id": "ostbelgien_payment_recipient_population_2025_12",
@@ -285,11 +290,12 @@
       "microcosm_geography_vintage": "child_benefit_scope_2025",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "native_publisher_artifact_required_missing",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
       "completeness_readiness": "complete_imputation_required_missing",
-      "notes": "The required payment-recipient person population remains separate from the paid-child person population, but neither Microcosm scheme population exists yet. Unknown status remains null."
+      "notes": "Chronicle #212 declares the intended payment-recipient record, but Chronicle #213 rejects the manual transcription as a publisher artifact and requires a native official response. The payment-recipient person population remains separate from the paid-child population, but neither Microcosm scheme population exists yet. Unknown status remains null."
     },
     {
       "mapping_id": "walloon_single_parent_with_supplement_children_2023_12",
@@ -309,6 +315,7 @@
       "microcosm_geography_vintage": "child_benefit_scope_2023",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "ready",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
@@ -333,6 +340,7 @@
       "microcosm_geography_vintage": "child_benefit_scope_2023",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "ready",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
@@ -357,6 +365,7 @@
       "microcosm_geography_vintage": "child_benefit_scope_2023",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "ready",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",
@@ -381,6 +390,7 @@
       "microcosm_geography_vintage": "child_benefit_scope_2023",
       "microcosm_period_type": "calendar_year",
       "microcosm_period": 2023,
+      "publisher_source_readiness": "ready",
       "input_readiness": "required_missing",
       "mapping_readiness": "required_missing",
       "period_readiness": "exact_alignment_missing",

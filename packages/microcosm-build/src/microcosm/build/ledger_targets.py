@@ -43,6 +43,7 @@ EXECUTION_GUARDED_STATUS_KEYS = frozenset(
         "population_period_readiness",
         "policyengine_behavior_input_status",
         "policyengine_input_support_status",
+        "publisher_source_readiness",
         "support_status",
     )
 )
