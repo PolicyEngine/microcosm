@@ -39,6 +39,8 @@ __all__ = [
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
     "uk_target_geography_levels",
+    "uk_weakest_areas_by_fit",
+    "uk_weakest_families",
     "uk_weight_summary",
     "uk_zero_weight_strata",
     "write_uk_calibration_diagnostics",
@@ -64,6 +66,210 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 )
 
 _TARGET_PASS_RELATIVE_ERROR = 0.10
+_AREA_FIT_LIMIT = 15
+
+_COUNTRY_BY_AREA_PREFIX = {
+    "E": "England",
+    "N": "Northern Ireland",
+    "S": "Scotland",
+    "W": "Wales",
+}
+
+
+def _finite_target_error(row: Mapping[str, object]) -> tuple[str, float]:
+    name = str(row.get("name") or "")
+    raw_error = row.get("relative_error")
+    if (
+        not name
+        or not isinstance(raw_error, (int, float))
+        or isinstance(raw_error, bool)
+    ):
+        raise ValueError("UK target rollups require named finite relative errors.")
+    error = float(raw_error)
+    if not math.isfinite(error):
+        raise ValueError("UK target rollups require named finite relative errors.")
+    return name, error
+
+
+def _finite_loss_contribution(row: Mapping[str, object]) -> float:
+    raw = row.get("final_loss_contribution")
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+        raise ValueError(
+            "UK target rollups require schema-v6 final_loss_contribution values."
+        )
+    value = float(raw)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(
+            "UK target rollups require finite non-negative loss contributions."
+        )
+    return value
+
+
+def uk_weakest_families(
+    target_rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Rank every scored family by its schema-v6 loss contribution."""
+
+    buckets: dict[str, list[tuple[str, float, float]]] = {}
+    for row in target_rows:
+        registry = row.get("registry")
+        if not isinstance(registry, Mapping) or not str(registry.get("family") or ""):
+            raise ValueError(
+                "UK target rollups require a registry family on every row."
+            )
+        name, error = _finite_target_error(row)
+        buckets.setdefault(str(registry["family"]), []).append(
+            (name, abs(error), _finite_loss_contribution(row))
+        )
+    total_loss = math.fsum(
+        contribution for rows in buckets.values() for _, _, contribution in rows
+    )
+    result: list[dict[str, object]] = []
+    for family, rows in buckets.items():
+        worst_name, worst_error, _ = max(rows, key=lambda item: (item[1], item[0]))
+        contribution = math.fsum(item[2] for item in rows)
+        within = sum(item[1] <= _TARGET_PASS_RELATIVE_ERROR for item in rows)
+        result.append(
+            {
+                "family": family,
+                "n_targets": len(rows),
+                "n_within_10pct": within,
+                "pass_rate": within / len(rows),
+                "worst_target": worst_name,
+                "worst_abs_relative_error": worst_error,
+                "loss_contribution": contribution,
+                "loss_share": contribution / total_loss if total_loss else 0.0,
+            }
+        )
+    result.sort(
+        key=lambda row: (
+            -float(row["loss_contribution"]),
+            str(row["family"]),
+        )
+    )
+    return result
+
+
+def uk_weakest_areas_by_fit(
+    target_rows: Sequence[Mapping[str, object]],
+    area_support: pd.DataFrame,
+    *,
+    limit: int = _AREA_FIT_LIMIT,
+) -> dict[str, list[dict[str, object]]]:
+    """Return bottom-by-fit local areas plus country-level fit rollups."""
+
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ValueError("UK weakest-area limit must be a positive integer.")
+    required = {
+        "geography_level",
+        "area_code",
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
+    }
+    missing = sorted(required - set(area_support.columns))
+    if missing:
+        raise ValueError(f"UK area support is missing rollup column(s): {missing}.")
+    support_rows = {
+        (str(row.geography_level), str(row.area_code)): row
+        for row in area_support.itertuples(index=False)
+    }
+    if len(support_rows) != len(area_support):
+        raise ValueError("UK area support contains duplicate geography/area rows.")
+
+    grouped: dict[tuple[str, str], list[tuple[str, float, float]]] = {}
+    for row in target_rows:
+        metadata = row.get("metadata")
+        if not isinstance(metadata, Mapping):
+            raise ValueError("UK area rollups require target metadata.")
+        level = _normalize_geography_level(metadata.get("area_type"))
+        area_code = str(metadata.get("area_code") or "")
+        if level not in {"constituency", "local_authority"} or not area_code:
+            raise ValueError("UK area rollups require local target area metadata.")
+        name, error = _finite_target_error(row)
+        grouped.setdefault((level, area_code), []).append(
+            (name, abs(error), _finite_loss_contribution(row))
+        )
+
+    area_rows: list[dict[str, object]] = []
+    for (level, area_code), rows in grouped.items():
+        support = support_rows.get((level, area_code))
+        if support is None:
+            raise ValueError(
+                "UK area rollups require exact support for every scored area; "
+                f"missing {(level, area_code)!r}."
+            )
+        worst_name, worst_error, _ = max(rows, key=lambda item: (item[1], item[0]))
+        within = sum(item[1] <= _TARGET_PASS_RELATIVE_ERROR for item in rows)
+        area_rows.append(
+            {
+                "geography_level": level,
+                "area_code": area_code,
+                "country": _country_for_area(area_code),
+                "n_targets": len(rows),
+                "n_within_10pct": within,
+                "pass_rate": within / len(rows),
+                "worst_target": worst_name,
+                "worst_abs_relative_error": worst_error,
+                "loss_contribution": math.fsum(item[2] for item in rows),
+                "nonzero_households": int(support.nonzero_households),
+                "nonzero_source_households": int(support.nonzero_source_households),
+                "effective_sample_size": float(support.effective_sample_size),
+            }
+        )
+    area_rows.sort(
+        key=lambda row: (
+            -float(row["worst_abs_relative_error"]),
+            str(row["geography_level"]),
+            str(row["area_code"]),
+        )
+    )
+
+    countries: list[dict[str, object]] = []
+    for country in _COUNTRY_BY_AREA_PREFIX.values():
+        for level in ("constituency", "local_authority"):
+            members = [
+                row
+                for row in area_rows
+                if row["country"] == country and row["geography_level"] == level
+            ]
+            if not members:
+                continue
+            n_targets = sum(int(row["n_targets"]) for row in members)
+            n_within = sum(int(row["n_within_10pct"]) for row in members)
+            worst = max(
+                members,
+                key=lambda row: (
+                    float(row["worst_abs_relative_error"]),
+                    str(row["worst_target"]),
+                ),
+            )
+            countries.append(
+                {
+                    "country": country,
+                    "geography_level": level,
+                    "n_areas": len(members),
+                    "n_targets": n_targets,
+                    "n_within_10pct": n_within,
+                    "pass_rate": n_within / n_targets,
+                    "worst_target": worst["worst_target"],
+                    "worst_abs_relative_error": worst["worst_abs_relative_error"],
+                    "loss_contribution": math.fsum(
+                        float(row["loss_contribution"]) for row in members
+                    ),
+                }
+            )
+    countries.sort(key=lambda row: (str(row["country"]), str(row["geography_level"])))
+    return {"bottom_15": area_rows[:limit], "countries": countries}
+
+
+def _country_for_area(area_code: str) -> str:
+    try:
+        return _COUNTRY_BY_AREA_PREFIX[area_code[0]]
+    except (IndexError, KeyError) as error:
+        raise ValueError(
+            f"Cannot derive UK country from area code {area_code!r}."
+        ) from error
 
 
 def _as_weights(values: Sequence[float] | np.ndarray) -> np.ndarray:
@@ -438,6 +644,8 @@ def uk_calibration_diagnostics_payload(
     target_registry: TargetRegistry,
     stratum_columns: Sequence[str] = _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS,
     build: dict[str, Any] | None = None,
+    local_area_support: pd.DataFrame | None = None,
+    rotated_holdout: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Render shared diagnostics plus the versioned UK release evidence.
 
@@ -480,12 +688,21 @@ def uk_calibration_diagnostics_payload(
         stratum_columns=stratum_columns,
     )
 
-    payload["uk_diagnostics"] = {
+    uk_diagnostics: dict[str, object] = {
         "schema_version": UK_DIAGNOSTICS_SCHEMA_VERSION,
         "weights": weights,
         "zero_weight_rows_by_stratum": strata,
         "target_pass_rates_by_geography_level": pass_rates,
     }
+    if local_area_support is not None:
+        uk_diagnostics["weakest_families"] = uk_weakest_families(target_rows)
+        uk_diagnostics["weakest_areas_by_fit"] = uk_weakest_areas_by_fit(
+            target_rows,
+            local_area_support,
+        )
+    if rotated_holdout is not None:
+        uk_diagnostics["rotated_holdout"] = dict(rotated_holdout)
+    payload["uk_diagnostics"] = uk_diagnostics
     return payload
 
 
@@ -498,6 +715,8 @@ def write_uk_calibration_diagnostics(
     target_registry: TargetRegistry,
     stratum_columns: Sequence[str] = _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS,
     build: dict[str, Any] | None = None,
+    local_area_support: pd.DataFrame | None = None,
+    rotated_holdout: Mapping[str, object] | None = None,
 ) -> Path:
     """Atomically write strict shared-plus-UK diagnostics."""
 
@@ -510,6 +729,8 @@ def write_uk_calibration_diagnostics(
             target_registry=target_registry,
             stratum_columns=stratum_columns,
             build=build,
+            local_area_support=local_area_support,
+            rotated_holdout=rotated_holdout,
         ),
         indent=1,
         allow_nan=False,

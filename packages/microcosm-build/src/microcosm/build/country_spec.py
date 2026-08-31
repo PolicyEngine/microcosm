@@ -111,6 +111,7 @@ _GENERATED_LOCK_FILENAMES = frozenset(
 ALLOWED_GATE_FUNCTIONS = frozenset(
     {
         "aggregate_admin",
+        "area_support",
         "calibration_reference_coverage",
         "column_implication",
         "degenerate_release_surface",

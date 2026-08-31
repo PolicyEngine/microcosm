@@ -96,6 +96,15 @@ UK_CALIBRATION_GATE_SCOPE = (
     "uk_calibration_reference_coverage",
 )
 
+UK_LOCAL_GATE_SCOPE = (
+    "uk_local_geography_ladder_post_calibration",
+    "uk_local_area_support",
+    "uk_local_target_fit",
+    "uk_local_per_family_fit",
+    "uk_local_weight_ratio",
+    "uk_local_weight_ess",
+)
+
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_lcfs_consumption_support",
@@ -159,6 +168,7 @@ def _scope_exclusions() -> dict[str, str]:
     spine = set(UK_SPINE_GATE_SCOPE)
     national = set(UK_NATIONAL_GATE_SCOPE)
     calibration = set(UK_CALIBRATION_GATE_SCOPE)
+    local = set(UK_LOCAL_GATE_SCOPE)
     # Closed-world means both halves: every gate owned by someone (below), and
     # no gate owned twice without saying so. Coverage alone would let an
     # accidental overlap through, and the certification union is exactly where
@@ -166,7 +176,10 @@ def _scope_exclusions() -> dict[str, str]:
     for left_name, left, right_name, right in (
         ("calibration", calibration, "spine", spine),
         ("calibration", calibration, "national", national),
+        ("calibration", calibration, "local", local),
         ("spine", spine, "national", national),
+        ("spine", spine, "local", local),
+        ("national", national, "local", local),
     ):
         undeclared = (left & right) - UK_SHARED_GATE_IDS
         if undeclared:
@@ -175,7 +188,7 @@ def _scope_exclusions() -> dict[str, str]:
                 f"{sorted(undeclared)} without declaring them in "
                 "UK_SHARED_GATE_IDS."
             )
-    classified = calibration | spine | national
+    classified = calibration | spine | national | local
     rationales: dict[str, str] = {}
     for gate_id in sorted(full - set(UK_CALIBRATION_GATE_SCOPE)):
         if gate_id in spine:
@@ -186,6 +199,12 @@ def _scope_exclusions() -> dict[str, str]:
             reason = (
                 "owned by the release-cut certification producer; runner lands "
                 "with the certification, June runner retired"
+            )
+        elif gate_id in local:
+            reason = (
+                "local-candidate gate; owned by the rowwise candidate's "
+                "scoped battery and excluded from national certification "
+                "until microcosm#146."
             )
         elif "parity" in gate_id or gate_id in _SWAP_ACCEPTANCE_GATE_IDS:
             reason = "swap-acceptance evidence; produced by the swap lane, not the calibration seam."
@@ -198,6 +217,27 @@ def _scope_exclusions() -> dict[str, str]:
 
 
 UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS = _scope_exclusions()
+
+
+def uk_local_gate_scope_exclusions() -> dict[str, str]:
+    """Classify every declared entry the local-candidate battery does not run."""
+
+    full = {entry.id for entry in load_country_spec("uk").gates.gates}
+    local = set(UK_LOCAL_GATE_SCOPE)
+    exclusions: dict[str, str] = {}
+    for gate_id in sorted(full - local):
+        if gate_id in UK_SPINE_GATE_SCOPE:
+            reason = "spine-construction gate; owned by the spine build."
+        elif gate_id in UK_CALIBRATION_GATE_SCOPE:
+            reason = "national calibration-seam gate; outside the local candidate."
+        elif gate_id in UK_NATIONAL_GATE_SCOPE:
+            reason = "national release-cut gate; outside the local candidate."
+        else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
+            raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
+        exclusions[gate_id] = reason
+    if local | set(exclusions) != full:
+        raise RuntimeError("UK local gate scope does not classify every gate id.")
+    return exclusions
 
 
 def run_uk_calibration(

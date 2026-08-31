@@ -563,7 +563,12 @@ class TestBatteryRegressions:
         # student-loan enum gate; their evaluators have direct tests. The BRMA
         # enum gate is no longer among them: it moved to the spine battery's
         # assembled boundary, where its column is first written.
-        assert len(passed) == 16
+        # 15 before this lane, plus uk_uc_capital_coherence from #829, plus
+        # the two frame-only local weight diagnostics that also pass in this
+        # unscoped compatibility probe. The local ladder gate fails because
+        # this national fixture deliberately carries no ladder columns; the
+        # three evidence-backed local arms are named gaps below.
+        assert len(passed) == 18
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
@@ -620,6 +625,9 @@ class TestUnevidencedArms:
             "uk_target_fit",
             "uk_input_mass_parity",
             "uk_aggregate_admin",
+            "uk_local_area_support",
+            "uk_local_target_fit",
+            "uk_local_per_family_fit",
         }
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")
@@ -630,13 +638,18 @@ class TestUnevidencedArms:
             o.entry.id for o in battery.blocking_outcomes(release_candidate=False)
         }
         assert default_blocked == {
+            "uk_local_geography_ladder_post_calibration",
             "uk_qrf_tail_concentration",
             "uk_weights_audit",
         }
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
-        assert blocked == {*absent, "uk_qrf_tail_concentration"}
+        assert blocked == {
+            *(set(absent) - {"uk_local_target_fit", "uk_local_per_family_fit"}),
+            "uk_local_geography_ladder_post_calibration",
+            "uk_qrf_tail_concentration",
+        }
 
     def test_absent_fit_evidence_is_named(self) -> None:
         person, benunit, household = _tables()

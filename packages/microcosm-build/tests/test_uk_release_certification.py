@@ -16,6 +16,7 @@ from microcosm.build.gate_battery import gate_signing_key_env
 from microcosm.build.uk_runtime import release_certification
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
     UK_SPINE_GATE_SCOPE,
@@ -144,7 +145,12 @@ def test_compose_green_certification(green_certification_inputs):
     union = set()
     for part in certification["parts"].values():
         union.update(part["entry_ids"])
-    assert union == declared
+    assert union | set(certification["spec"]["certification_excluded_gate_ids"]) == (
+        declared
+    )
+    assert certification["spec"]["certification_excluded_gate_ids"] == sorted(
+        UK_LOCAL_GATE_SCOPE
+    )
     assert certification["spec"]["shared_gate_ids"] == sorted(UK_SHARED_GATE_IDS)
     assert certification["doctrine"]["overrides"] == {
         "epochs": {"default": 256, "effective": 1500}
@@ -313,7 +319,9 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
     assert set(payload["gates"]) == set(UK_NATIONAL_GATE_SCOPE)
     assert payload["blocked_at_phase"] is None
     assert set(payload["scope_exclusions"]) == (
-        set(UK_SPINE_GATE_SCOPE) | set(UK_CALIBRATION_GATE_SCOPE)
+        set(UK_SPINE_GATE_SCOPE)
+        | set(UK_CALIBRATION_GATE_SCOPE)
+        | set(UK_LOCAL_GATE_SCOPE)
     ) - set(UK_NATIONAL_GATE_SCOPE)
     on_disk = json.loads(report_path.read_text(encoding="utf-8"))
     assert on_disk["attestation"]["signature"] == payload["attestation"]["signature"]
