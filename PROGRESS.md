@@ -2,14 +2,13 @@
 
 ## State
 
-Resumed on 2026-08-30 on `be-benefit-participation-targets-resume` at exact
-reviewed Microcosm PR #824 head `ed6dc3d8` (reviewed base `a18c87ee`). The
-tracked tree is clean; untracked `.lane-inputs/` handoff material remains
-intact. Authoritative upstream main `d1e3e397` and reviewed PR #825 head
-`510e3e6c` were imported from the local canonical clone after a direct GitHub
-fetch failed at DNS, and their merge relationship is verified. Exact Chronicle
-PR #212 base `10597ae6` and head `0f75a2bb` are available in preserved local
-worktrees. No remote mutation has occurred.
+Active on 2026-08-30 on `be-benefit-participation-targets-resume`. Reviewed
+Microcosm PR #824 head `ed6dc3d8` (reviewed base `a18c87ee`) remains an
+ancestor, and authoritative main `d1e3e397` is merged at `03e4d494`, bringing
+in reviewed PR #825 head `510e3e6c` and its generic monetary primitives.
+Untracked `.lane-inputs/` handoff material remains intact. Exact Chronicle PR
+#212 base `10597ae6` and head `0f75a2bb` were audited directly in the preserved
+local worktree. No remote mutation has occurred.
 
 ## Done
 
@@ -37,19 +36,45 @@ worktrees. No remote mutation has occurred.
   consumes those inputs and owns take-up assignment, labor response, and Axiom
   orchestration. Axiom may receive only exact public-document concepts, never
   synthetic take-up concepts.
+- Merged authoritative main without conflict or duplicated commits. The merge
+  preserves both exact reviewed ancestries and makes #825's value-free
+  `MonetaryTargetProfile`, exact accounting basis, prepared-measure receipt,
+  and binding refusal rules available to the Belgium package.
+- Audited every reviewed Chronicle #212 GRAPA and regional child-benefit row.
+  The exact person-unit mappings that can be declared are scheme/statistical-
+  scope mappings, never NUTS proxies: Opgroeien basic-amount children;
+  Iriscare entitled children and payment recipients; Ostbelgien paid children
+  and payment recipients; and the four Walloon child partitions. Publisher
+  family/household units remain unmapped because equivalence to a SILC
+  household is not established. Every declared person mapping must remain
+  blocked until Microcosm populates the exact measured or latent status flag.
+- Audited the broader Belgian fact catalog. PIT 2023 is exact but mismatched to
+  SILC-2023's 2022 income reference; ONEM 2024 is a monthly-average recipient
+  stock without a matching population flag or period; the merged SFPD pension
+  package labels a January snapshot as calendar-year 2025; and ONSS explicitly
+  calls its current Axiom Article-17 mapping approximate. None may silently
+  activate. NBB national accounts, Eurostat, EUROMOD, FPB/BFP, and constructed
+  comparisons are validation-only.
+- Confirmed that no reviewed Chronicle branch contains an official, pinned
+  NBB/ECB HFCS fact. The preserved object is only an offline-fetch handoff, so
+  wealth stays blocked pending a checksummed workbook ingest and exact
+  interview-period/support mapping.
 
 ## Next
 
-- Merge authoritative main `d1e3e397` while preserving reviewed PR #824 as an
-  ancestor and #825 as an explicit dependency.
-- Inventory PR #212 facts exactly, then declare only facts with matching
-  period, geography, support, and defensible typed population mappings.
-- Incorporate #825 monetary primitives; keep calibration separate from
-  validation-only national accounts, EUROMOD, FPB, and constructed comparisons;
-  fail closed on absent prepared inputs or mappings.
-- Implement and test the narrow Microcosm-owned receipt/application/status/
-  choice data contract with no behavioral formulas, preserving
-  `metadata.nis_vintage` compatibility.
+- Land and integrate the closed Microcosm-owned receipt/application/status/
+  choice input schema, exact scheme-population mapping schema, row-aligned
+  readiness receipt, and Belgium declarations. Link each defensible person
+  mapping to an exact Chronicle record and preserve unsupported household
+  mappings as blockers.
+- Correct #824's target periods, assertion policies, source IDs, and ownership
+  wording. Keep target roles separate, keep every absent input/period/unit/
+  geography bridge non-executable, and preserve `metadata.nis_vintage="2025"`.
+- Add a Belgium value-free monetary inventory using #825's primitives for only
+  exact supported monetary facts; explicitly hold national accounts out for
+  validation and leave monthly GRAPA and unreviewed HFCS outside unsupported
+  accounting bases.
+- Add the reviewed target/ownership matrix and precise follow-up issue drafts.
 - Regenerate reviewed goldens only after semantic review; run focused and
   broader PR-CI tests, Ruff, CI-group verification, and `git diff --check`.
 - Update existing draft PR #824 only, write the final report to
