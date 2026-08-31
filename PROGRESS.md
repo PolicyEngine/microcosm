@@ -1,3 +1,61 @@
+# Belgium calibration, validation, and behavior-boundary contract
+
+## State
+
+Resumed on 2026-08-30 on `be-benefit-participation-targets-resume` at exact
+reviewed Microcosm PR #824 head `ed6dc3d8` (reviewed base `a18c87ee`). The
+tracked tree is clean; untracked `.lane-inputs/` handoff material remains
+intact. Authoritative upstream main `d1e3e397` and reviewed PR #825 head
+`510e3e6c` were imported from the local canonical clone after a direct GitHub
+fetch failed at DNS, and their merge relationship is verified. Exact Chronicle
+PR #212 base `10597ae6` and head `0f75a2bb` are available in preserved local
+worktrees. No remote mutation has occurred.
+
+## Done
+
+- Read `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, and the GitNexus
+  impact-analysis workflow.
+- Inspected the stopped lane's branch, status, worktrees, remotes, refs,
+  reflog, committed history, staged and unstaged diffs, salvage refs, preserved
+  inputs, journals, and the exact reviewed diffs for PR #824 and PR #825. No
+  tracked work was discarded or overwritten.
+- Attempted the required direct `git fetch origin main`; the managed shell
+  cannot resolve `github.com`. Imported the canonical clone's already-fetched
+  `origin/main` instead, verified it is exactly `d1e3e397`, and verified merge
+  parent `510e3e6c` contains the generic monetary-target primitives.
+- Located reviewed PR #824 at exact head `ed6dc3d8`. Its two commits add a
+  GRAPA validation declaration and a generic execution blocker, but incorrectly
+  say PolicyEngine supplies receipt/behavior flags. This continuation will
+  correct the contract to Microcosm-owned measured or latent data consumed by
+  PolicyEngine.
+- Located reviewed Chronicle PR #212 at exact head `0f75a2bb`. It already
+  supplies official GRAPA and regional child-benefit administration facts and
+  provenance, superseding the stopped lane's older absence claim.
+- Confirmed the immutable boundary: Chronicle owns publisher facts and
+  provenance; Microcosm owns population construction, calibration/validation
+  selection, measured or latent flag inputs, and their population; PolicyEngine
+  consumes those inputs and owns take-up assignment, labor response, and Axiom
+  orchestration. Axiom may receive only exact public-document concepts, never
+  synthetic take-up concepts.
+
+## Next
+
+- Merge authoritative main `d1e3e397` while preserving reviewed PR #824 as an
+  ancestor and #825 as an explicit dependency.
+- Inventory PR #212 facts exactly, then declare only facts with matching
+  period, geography, support, and defensible typed population mappings.
+- Incorporate #825 monetary primitives; keep calibration separate from
+  validation-only national accounts, EUROMOD, FPB, and constructed comparisons;
+  fail closed on absent prepared inputs or mappings.
+- Implement and test the narrow Microcosm-owned receipt/application/status/
+  choice data contract with no behavioral formulas, preserving
+  `metadata.nis_vintage` compatibility.
+- Regenerate reviewed goldens only after semantic review; run focused and
+  broader PR-CI tests, Ruff, CI-group verification, and `git diff --check`.
+- Update existing draft PR #824 only, write the final report to
+  `.lane-inputs/OUT.md`, verify commits and PR body, and do not merge, publish,
+  or run restricted builds.
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
