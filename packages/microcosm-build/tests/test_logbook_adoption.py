@@ -189,7 +189,7 @@ def test_error_receipt_and_placeholder_drop_only_when_sole_key(tmp_path: Path) -
     path = write_error_receipt(
         error_receipt_path(tmp_path, build_id=state.build_id),
         state=state,
-        pipeline="uk-locals-rowwise",
+        pipeline="uk-local-rowwise",
         error=RuntimeError("boom"),
     )
     apply_error_verdict(
@@ -205,7 +205,7 @@ def test_error_receipt_and_placeholder_drop_only_when_sole_key(tmp_path: Path) -
     }
     assert state.phases_reached == ["attempt_started", "error"]
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["pipeline"] == "uk-locals-rowwise"
+    assert payload["pipeline"] == "uk-local-rowwise"
     assert payload["error_type"] == "builtins.RuntimeError"
     assert payload["message"] == "boom"
 
@@ -240,7 +240,7 @@ def test_record_terminal_attempt_writes_one_validated_row_and_refuses_double_rec
         started_at=1.0,
         now=lambda: 3.5,
         started_ts=datetime(2026, 8, 13, 12, 0, tzinfo=UTC),
-        pipeline="uk-locals-rowwise",
+        pipeline="uk-local-rowwise",
         rung="f100",
         seed=42,
         code_pin="a" * 40,
@@ -253,7 +253,7 @@ def test_record_terminal_attempt_writes_one_validated_row_and_refuses_double_rec
     row = load_logbook_row(spool_path)
     assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
     assert row.build_id == "uk-fixture-attempt"
-    assert row.pipeline == "uk-locals-rowwise"
+    assert row.pipeline == "uk-local-rowwise"
     assert row.phases_reached == ("attempt_started", "configured")
     assert row.wall_seconds == 2.5
 
@@ -263,7 +263,7 @@ def test_record_terminal_attempt_writes_one_validated_row_and_refuses_double_rec
             started_at=1.0,
             now=lambda: 4.0,
             started_ts=datetime(2026, 8, 13, 12, 0, tzinfo=UTC),
-            pipeline="uk-locals-rowwise",
+            pipeline="uk-local-rowwise",
             rung="f100",
             seed=42,
             code_pin="a" * 40,

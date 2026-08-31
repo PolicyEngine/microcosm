@@ -12,6 +12,7 @@ when ``n_clones`` is comparable to a group's sampleable constituency count.
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import sys
@@ -141,6 +142,28 @@ def _dry_run_argv(
     ]
 
 
+def test_candidate_clone_counts_parser_deduplicates_and_sorts() -> None:
+    builder = _load_builder_module()
+
+    assert builder._candidate_clone_counts_argument("10, 2,4,2,1") == (
+        1,
+        2,
+        4,
+        10,
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", " ", ",", "0", "-1", "1,0", "1,-2", "1,junk", "1,,2"],
+)
+def test_candidate_clone_counts_parser_refuses_invalid_values(value) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(argparse.ArgumentTypeError, match="positive integers"):
+        builder._candidate_clone_counts_argument(value)
+
+
 def test_collision_free_expectation_matches_distribution_math() -> None:
     support = expected_uk_rowwise_area_support(
         _household_frame(),
@@ -214,6 +237,7 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
     assert plan["build_kind"] == "uk_rowwise_local_geography_dry_run"
     assert plan["parameters"]["n_clones"] == 2
     assert plan["input"]["dataset"]["sha256"]
+    assert plan["input"]["dataset"]["pin_verified"] is False
     assert plan["input"]["household_weight_kind"] == WeightKind.DESIGN.value
     assert plan["input"]["mass_log_records"] == 0
     assert plan["plan"]["rows"] == {
@@ -244,6 +268,54 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
 
     assert plan["source_lineage"]["pool_modulus"] is None
     assert plan["source_lineage"]["pool"] is None
+    assert plan["source_lineage"]["explicit"] is None
+
+
+def test_crosswalk_dry_run_reports_candidate_k_rows_bytes_and_support(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "populace_uk_2023.h5"
+    crosswalk_path = tmp_path / "crosswalk.csv.gz"
+    output_dir = tmp_path / "out"
+    _write_toy_h5(input_h5)
+    _crosswalk_frame().to_csv(crosswalk_path, index=False)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        _dry_run_argv(
+            input_h5,
+            output_dir,
+            crosswalk_path,
+            "--candidate-clone-counts",
+            "3,1,3",
+        ),
+    )
+    assert builder.main() == 0
+    plan = json.loads((output_dir / builder.DRY_RUN_PLAN_FILENAME).read_text())
+
+    assert plan["parameters"]["n_clones"] == 2
+    assert plan["parameters"]["candidate_clone_counts"] == [1, 3]
+    candidates = plan["candidates"]
+    assert candidates["clone_counts"] == [1, 3]
+    assert [candidate["n_clones"] for candidate in candidates["plans"]] == [1, 3]
+    input_bytes = input_h5.stat().st_size
+    base_rows = {"person": 3, "benunit": 2, "household": 2}
+    for candidate in candidates["plans"]:
+        n_clones = candidate["n_clones"]
+        assert candidate["rows"] == {
+            name: rows * n_clones for name, rows in base_rows.items()
+        }
+        assert candidate["output_bytes_estimate"] == input_bytes * n_clones
+        assert set(candidate["realized_support"]) == {"constituency", "la"}
+        assert set(candidate["collision_free_expected_support"]) == {
+            "constituency",
+            "la",
+        }
+        assert "area_support" not in candidate
 
 
 def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
@@ -316,6 +388,7 @@ def test_driver_dry_run_reports_weight_chain_and_pool_lineage(
     assert lineage["pool"]["pool_copies_per_source"]["max"] == 2
     # The staging input's immediate layer is reported untouched alongside.
     assert lineage["immediate"]["distinct_source_households"] == 4
+    assert lineage["explicit"] is None
 
 
 def test_driver_dry_run_supports_fixed_format_stores(monkeypatch, tmp_path) -> None:
@@ -466,6 +539,7 @@ def test_driver_full_build_records_weight_chain_and_lineage(
     assert lineage["pool"]["pool_copies_per_source"]["min"] == 2
     assert lineage["pool"]["pool_copies_per_source"]["max"] == 2
     assert lineage["immediate"] is None
+    assert lineage["explicit"] is None
     assert manifest["base_dataset"]["distinct_source_households"] is None
 
     output_h5 = output_dir / "pool_rowwise.h5"

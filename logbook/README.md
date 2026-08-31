@@ -22,7 +22,7 @@ the digest and destroy the evidence the chain exists to preserve.
 Every new archive uses `logbook/<country>/<dataset>.jsonl`. The dataset token
 names the line's base data, not an epic and not a build mechanism: `frs` is
 the FRS-derived survey-microdata line (persons, benunits, and households —
-its spine, staging, and every imputation stage share one chain), `locals` is
+its spine, staging, and every imputation stage share one chain), `local` is
 the local-areas product line, and a future firm line will carry its own
 base-data name. Different base data need different scopes, and scope is also
 where builds serialize: if two lines must append concurrently, they need
@@ -30,13 +30,12 @@ separate chains.
 
 ## The vocabulary is closed-world
 
-The ratified scopes are exactly `us` and `uk/frs` — deliberately minimal: a
-scope is ratified when its line starts archiving, not speculatively. The
-`uk-locals-*` drivers already follow the naming convention, and their rows
-spool locally regardless (recording never consults this list); `uk/locals`
-gets ratified when the local-areas line first archives. A pipeline whose
-name derives any unratified scope is refused — even at genesis. Opening a
-scope is a reviewed decision made in three places together: the
+The ratified scopes are exactly `us`, `uk/frs`, and `uk/local` — deliberately
+minimal: a scope is ratified when its line starts archiving, not speculatively.
+The `uk/local` scope was ratified for the local-areas line's first archived run
+in #761. A pipeline whose name derives any unratified scope is refused — even
+at genesis. Opening a scope is a reviewed decision made in three places
+together: the
 `logbook.scope_declared` migration, the `DECLARED_SCOPES` mirror in
 `tools/logbook.py`, and this list. It is never a side effect of a
 well-formed pipeline name: without the list, a typo'd `uk-huseholds-...`
@@ -102,7 +101,7 @@ The database keeps `builds_unique_predecessor` global because two rows
 claiming one predecessor is a fork wherever it happens. Genesis, tail
 discovery, and advisory locking are scoped: `logbook.chain_scope(pipeline)`
 maps the three legacy US pipeline names to `us`, and maps new pipelines like
-`uk-frs-staging` or `uk-locals-rowwise` to `uk/frs` and `uk/locals`;
+`uk-frs-staging` or `uk-local-rowwise` to `uk/frs` and `uk/local`;
 `logbook.scope_declared` then refuses any scope outside the ratified list. The per-scope advisory lock lets independent scopes append
 concurrently while appends within one scope still serialize.
 

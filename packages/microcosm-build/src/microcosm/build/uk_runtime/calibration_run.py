@@ -8,11 +8,13 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -438,6 +440,10 @@ def _run_uk_calibration_attempt(
     build_block = {
         "build_id": state.build_id,
         "code_pin": code_pin,
+        # Captured at solve time and signed with the diagnostics bytes, so a
+        # release assembler can only ever pin the environment that actually
+        # calibrated the candidate — never an invented one.
+        "runtime": _runtime_provenance(),
         "source_pins": dict(source_pins),
         "ledger": run_config["ledger"],
         "input_posture": {
@@ -892,6 +898,31 @@ def _ledger_provenance(artifact: Any) -> dict[str, object]:
             if manifest.get(key) is not None
         }
     return provenance
+
+
+#: Packages whose versions the seam pins into the signed diagnostics build
+#: block. The release assembler treats these as the only legitimate source
+#: for manifest runtime/compatibility pins.
+_RUNTIME_PROVENANCE_PACKAGES = (
+    "policyengine-core",
+    "policyengine-uk",
+    "microcosm-frame",
+    "microcosm-calibrate",
+    "microcosm-build",
+    "microcosm-data",
+)
+
+
+def _runtime_provenance() -> dict[str, str]:
+    """The calibrating environment's package versions, for the build block."""
+
+    runtime = {"python": platform.python_version()}
+    for package in _RUNTIME_PROVENANCE_PACKAGES:
+        try:
+            runtime[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            runtime[package] = "unavailable"
+    return runtime
 
 
 def _register_census(
