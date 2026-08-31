@@ -2,12 +2,11 @@
 
 ## State
 
-Active on 2026-08-31 on `be-benefit-participation-targets-resume` at committed
-checkpoint `5032a77d`. The complete Belgium value-free target/input contract,
-exact cross-links, runtime refusals, documentation, tests, and reviewed golden
-are implemented in the worktree and await the next coherent commit. Focused
-semantic tests pass; the broader focused set reached only two expected stale
-bundle assertions, which are corrected and whose complete file now passes.
+Active on 2026-08-31 on `be-benefit-participation-targets-resume` at
+`d77ccf78`. The complete Belgium value-free target/input contract, exact
+cross-links, runtime refusals, documentation, tests, and reviewed golden are
+committed. All 548 focused cases pass. The worktree contains only preserved,
+untracked `.lane-inputs/`; broad PR-CI-equivalent verification is next.
 
 Reviewed Microcosm #824 head `ed6dc3d8` remains an ancestor, and authoritative
 main `d1e3e397` is merged at `03e4d494`, bringing in reviewed #825 head
@@ -39,6 +38,8 @@ required final report will be written there.
   the bundle spec identity to `935f8dedcd2d1b99abe57c1b5d990bc345f4cffbc7ab0cc8791733bde6721d14`.
 - All 548 focused country, gate, Ledger, monetary, profile, population-input,
   and bundle cases pass. Focused Ruff and `git diff --check` pass.
+- Committed the complete semantic and reviewed-golden step as `d77ccf78`
+  (`Complete Belgium target input boundary`) without staging lane bookkeeping.
 
 - Re-read the complete Fable v3 review and official benefit-participation law
   audit. Confirmed that every receipt/status flag is Microcosm-populated,
@@ -107,8 +108,7 @@ required final report will be written there.
 
 ## Next
 
-- Commit the complete Belgium semantic/golden step, then run the full build
-  shard and repository Ruff, CI-group, lock, and diff checks.
+- Run the full build shard and repository Ruff, CI-group, lock, and diff checks.
 - Perform the final adversarial diff/search audit, commit the resulting
   verification checkpoint, and confirm exact base/head and dependency pins.
 - Attempt a normal fast-forward push to existing draft #824's branch only.
