@@ -1,0 +1,23 @@
+# Self-contained relation fixture for the Axiom adapter.  The household rule
+# executes in the real Axiom dense runtime and sums a person-table input through
+# the explicitly bound member_of_household relation.
+format: rulespec/v1
+module:
+  summary: |-
+    microcosm-frame relation fixture: household income is the exact sum of the
+    related persons' toy taxable incomes.
+units:
+  - name: EUR
+    kind: currency
+    minor_units: 2
+rules:
+  - name: toy_household_income
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Year
+    unit: EUR
+    source: populace-frame relation fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: sum(member_of_household.toy_taxable_income)
