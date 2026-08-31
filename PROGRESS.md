@@ -2,21 +2,39 @@
 
 ## State
 
-In progress on 2026-08-30 at merge head `45ae8f87` on
-`be-contract-gates-diagnostic`. Current local `origin/main` (`ac4a12a0`, fetched
-2026-08-30 19:51 ET) is merged. The reviewed PR #819 implementation won every
-three-file conflict because it strictly supersedes the recovered draft; the
-draft remains byte-for-byte recoverable at autosalvage ref `db229f3f`. All
-`.lane-inputs/` handoff material remains intact. The baseline country-spec,
-Ledger-resolution, and gate-battery suite passes. Additive role-aware target
-resolution and the supported Belgian declaration expansion are in progress. A
-new fetch still fails because the managed shell cannot resolve GitHub; no remote
-mutation has occurred.
+Resumed on 2026-08-30 at `23a01cc4` on
+`be-contract-gates-diagnostic`. The tracked tree is clean and its only branch
+delta from the then-current main is this committed Belgium journal; untracked
+`.lane-inputs/` handoff material remains intact. Authoritative upstream main
+`d1e3e397` and its reviewed PR #825 head `510e3e6c` were imported from the local
+canonical clone after a direct GitHub fetch failed at DNS, and the merge parent
+relationship is verified. Exact reviewed Microcosm PR #824 base `a18c87ee` and
+head `ed6dc3d8` and Chronicle PR #212 base `10597ae6` and head `0f75a2bb` are
+available in preserved local worktrees. No remote mutation has occurred.
 
 ## Done
 
 - Read `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, and the GitNexus
-  debugging workflow.
+  impact-analysis workflow.
+- Inspected the current branch, status, worktrees, remotes, refs, reflog,
+  committed history, staged and unstaged diffs, salvage refs, preserved lane
+  inputs, existing root journals, and the exact diffs for reviewed PR #824 and
+  merged PR #825. No tracked changes were present at resume time.
+- Attempted the required direct `git fetch origin main`; the managed shell
+  cannot resolve `github.com`. Imported the canonical clone's already-fetched
+  `origin/main` instead, verified it is exactly `d1e3e397`, and verified merge
+  parent `510e3e6c` contains the two generic monetary-target commits.
+- Located reviewed PR #824 at exact head `ed6dc3d8` in the preserved
+  `microcosm-be-participation` worktree and imported it as
+  `reviewed/pr-824`. Its two commits add a GRAPA validation declaration and a
+  generic execution blocker, but incorrectly say PolicyEngine supplies the
+  receipt/behavior flag; the resumed work must correct this to Microcosm-owned
+  measured/latent data consumed by PolicyEngine.
+- Located reviewed Chronicle PR #212 at exact head `0f75a2bb` in the preserved
+  `chronicle-be-participation` worktree. This supersedes the stale claim below:
+  the reviewed Chronicle work already supplies official GRAPA and regional
+  child-benefit administration facts and provenance, so those facts must be
+  consumed or mapped where defensible, not duplicated or reported absent.
 - Confirmed `be-contract-gates-diagnostic` forked at `e0c41b17`; the recovered
   WIP modifies the BE target contract, `country_spec.py`, and
   `ledger_targets.py`, while two autosalvage refs preserve earlier snapshots.
@@ -45,33 +63,35 @@ mutation has occurred.
   usable 2025 H5/component results. A comparable 2023-basis current result is
   therefore unavailable; the scorecard handoff will report the existing 2025
   aggregates and the period mismatch without running a simulation.
-- Audited the final local Chronicle Belgium lane at `9abf478f`. Exact public
-  source packages exist for Statbel population/fiscal income, SPF PIT, ONSS,
-  ONEM, SFPD legal-pension caseload, and Flemish Opgroeien component caseloads.
-  No Chronicle facts exist there for GRAPA, pension expenditure, Walloon,
-  Brussels, or German-speaking Community child-benefit caseload/expenditure, or
-  NBB/ECB HFCS wealth targets.
-- Confirmed the current PolicyEngine Belgium pilot exposes only worker-slice PIT
-  and employee-contribution outputs. It cannot consume unemployment, pension,
-  GRAPA, or regional child receipt/take-up flags; those require narrow
-  Microcosm data contracts and PolicyEngine follow-up, never synthetic Axiom
-  behavior concepts.
+- The earlier `9abf478f` Chronicle audit and its absence claims are historical,
+  not current: reviewed PR #212 adds later facts. Its exact diff is being
+  inventoried directly before target selection.
+- Confirmed the architectural boundary for this continuation: Chronicle owns
+  publisher facts/provenance; Microcosm owns population construction,
+  calibration/validation selection, measured or latent flag inputs, and their
+  population; PolicyEngine consumes those inputs and owns take-up assignment,
+  labor response, and Axiom orchestration. Axiom may receive only exact
+  public-document concepts, never synthetic take-up concepts.
 
 ## Next
 
-- Add a schema-v2 resolution receipt that keeps calibration and validation
-  disjoint, carries relative tier policy without misusing absolute solver
-  tolerances, and feeds an identity-based coverage gate.
-- Add only the SFPD and Opgroeien public declarations supported by Chronicle,
-  with fail-closed Microcosm/PolicyEngine input-support metadata. Keep NBB,
-  JRC/EUROMOD, FPB, and Eurostat accounting comparisons validation-only.
-- Regenerate the reviewed BE loaded-spec golden only after the final semantic
-  diff is correct, retaining `metadata.nis_vintage` compatibility.
-- Draft precise follow-ups for missing GRAPA/regional/HFCS facts and the
-  PolicyEngine receipt-input surface rather than inventing facts or Axiom
-  mechanics.
-- Run focused and broader PR-CI checks, self-review, write `.lane-inputs/OUT.md`,
-  then attempt the requested push and draft PR without publishing artifacts.
+- Continue the existing PR #824 lineage from reviewed head `ed6dc3d8`, merge
+  authoritative main `d1e3e397`, and preserve this committed journal without
+  overwriting either the stopped lane or its salvage refs.
+- Inventory PR #212 facts exactly, then declare only exact facts with matching
+  period/geography/support; add typed child scheme-population mappings only
+  where publisher scope and Microcosm units make them defensible.
+- Incorporate #825 monetary primitives, keep calibration separate from
+  validation-only national accounts/EUROMOD/FPB/constructed comparisons, and
+  fail closed on absent prepared inputs or mappings.
+- Implement and test the narrow Microcosm-owned receipt/application/status/
+  choice data contract with no behavioral formulas, preserving
+  `metadata.nis_vintage` compatibility.
+- Regenerate reviewed goldens only after semantic review; run focused and
+  broader PR-CI tests, Ruff, CI-group verification, and `git diff --check`.
+- Update the existing draft PR only, write the final report to
+  `.lane-inputs/OUT.md`, verify commits and PR body, and do not merge, publish,
+  or run restricted builds.
 
 # ACS predictor release join
 
