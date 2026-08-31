@@ -22,6 +22,8 @@ Typed resources, by canonical filename:
 - ``geography_spine.json`` — :class:`GeographySpineManifest` (this module)
 - ``target_references.json`` — Ledger references, validated as
   :class:`~microcosm.build.ledger_targets.LedgerTargetReference` rows
+- ``population_inputs.json`` — :class:`~microcosm.build.population_inputs.PopulationInputProfile`
+- ``monetary_target_profile.json`` — :class:`~microcosm.build.monetary_profile.MonetaryTargetProfile`
 - ``gates.json`` — :class:`GatesManifest` (this module)
 - ``release_contract.json`` — :class:`ReleaseContractManifest` (this module)
 
@@ -47,7 +49,9 @@ from microcosm.build.ledger_targets import (
     period_type_hint,
     period_values_semantically_equal,
 )
+from microcosm.build.monetary_profile import MonetaryTargetProfile
 from microcosm.build.plan import DonorSpec, Stage, StagePlan
+from microcosm.build.population_inputs import PopulationInputProfile
 from microcosm.build.source_manifest import (
     SourceManifest,
     SupportSpineManifest,
@@ -1474,6 +1478,12 @@ class ResolvedCountrySpec:
         target_profile: The validated value-free target declaration carried by
             ``target_references.json``. Tier tolerances and target roles remain
             metadata until a separate runtime integration consumes them.
+        population_input_profile: The typed, value-free inventory of
+            Microcosm-owned population inputs and scheme mappings, when
+            declared.
+        monetary_target_profile: The typed, value-free inventory of monetary
+            target references, exact bases, and activation prerequisites, when
+            declared.
         gates: The gate selection, when declared.
         release_contract: The release contract, when declared.
         take_up_contract: The constants-era take-up compatibility view. For a
@@ -1495,6 +1505,8 @@ class ResolvedCountrySpec:
     geography_spine: GeographySpineManifest | None
     target_references: tuple[LedgerTargetReference, ...]
     target_profile: Mapping[str, Any]
+    population_input_profile: PopulationInputProfile | None
+    monetary_target_profile: MonetaryTargetProfile | None
     local_target_references: tuple[LedgerTargetReference, ...]
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
@@ -2125,6 +2137,22 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         if "target_references.json" in payloads
         else MappingProxyType({})
     )
+    population_input_profile = (
+        PopulationInputProfile.from_mapping(
+            payloads["population_inputs.json"],
+            country=declared_country,
+        )
+        if "population_inputs.json" in payloads
+        else None
+    )
+    monetary_target_profile = (
+        MonetaryTargetProfile.from_mapping(
+            payloads["monetary_target_profile.json"],
+            country=declared_country,
+        )
+        if "monetary_target_profile.json" in payloads
+        else None
+    )
     local_target_references = (
         _validate_local_target_references(
             payloads["local_target_references.json"],
@@ -2161,6 +2189,8 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         geography_spine=geography_spine,
         target_references=target_references,
         target_profile=target_profile,
+        population_input_profile=population_input_profile,
+        monetary_target_profile=monetary_target_profile,
         local_target_references=local_target_references,
         gates=gates,
         release_contract=release_contract,
