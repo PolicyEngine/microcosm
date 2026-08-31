@@ -2,14 +2,15 @@
 
 ## State
 
-Active on 2026-08-31 on `be-benefit-participation-targets-resume` at
-`05936c40`. The complete Belgium value-free target/input contract, exact
+Complete on 2026-08-31 on `be-benefit-participation-targets-resume`; the
+remote-handoff checkpoint is `cc5466a2`. The complete Belgium value-free target/input contract, exact
 cross-links, runtime refusals, documentation, tests, and reviewed golden are
 committed and broadly verified. The only broad failures are two unrelated US
 parity regeneration cases reproduced unchanged on authoritative main. The
 normal fast-forward update of existing draft #824 was attempted, but GitHub
 DNS remains unavailable. The worktree contains only this journal update and
-preserved `.lane-inputs/`.
+preserved `.lane-inputs/`; the required final report is written to
+`.lane-inputs/OUT.md`.
 
 Reviewed Microcosm #824 head `ed6dc3d8` remains an ancestor, and authoritative
 main `d1e3e397` is merged at `03e4d494`, bringing in reviewed #825 head
@@ -61,6 +62,9 @@ required final report will be written there.
   `git push origin HEAD:be-benefit-participation-targets` all failed only on
   DNS resolution. No duplicate PR, force-push, readiness change, or merge was
   attempted.
+- Wrote the complete base/head, dependency, ownership/readiness, test, blocker,
+  and frozen-review report to `.lane-inputs/OUT.md` without staging lane
+  bookkeeping.
 
 - Re-read the complete Fable v3 review and official benefit-participation law
   audit. Confirmed that every receipt/status flag is Microcosm-populated,
@@ -129,8 +133,6 @@ required final report will be written there.
 
 ## Next
 
-- Commit this remote-handoff checkpoint and write the complete final report to
-  `.lane-inputs/OUT.md`, leaving lane bookkeeping untracked.
 - When DNS is restored, fetch live upstream, verify #824 remains draft on
   `be-benefit-participation-targets`, and retry the same normal fast-forward
   push. Preserve its existing body; never open a duplicate, mark ready, merge,
