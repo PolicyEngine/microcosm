@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "country": "be",
+  "profile_id": "belgium_official_monetary_targets",
+  "activation": "explicit_only",
+  "description": "Value-free Belgium monetary inventory using the generic exact-basis primitives merged in Microcosm PR #825. Parsing never resolves a value or activates a target. PIT remains blocked on an exact same-period policy output; ONSS and NBB are held out for validation. Monthly GRAPA and pension flows are outside the current annual-flow/closing-stock basis, and no HFCS row is declared without a reviewed official Chronicle fact.",
+  "targets": [
+    {
+      "reference": {
+        "name": "spf_finances_pit_total_2023",
+        "ledger_source_record_id": "spf_finances.pit.tax_year2023.tax_before_withholding.country.country_total.tax_before_withholding",
+        "ledger_selector": {
+          "source_name": "spf_finances_pit",
+          "source_measure_id": "tax_before_withholding",
+          "period_type": "tax_year",
+          "period_value": 2023,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "entity_name": "person",
+          "record_set_id": "spf_finances.pit.tax_year2023.tax_before_withholding.country",
+          "layout_groupby_value_id": "country_total",
+          "dimensions": []
+        },
+        "entity": "person",
+        "measure": "belgium_pit_tax_before_withholding_prepared_amount",
+        "period": 2023,
+        "family": "income_tax",
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "notes": "Exact assessed PIT fact for tax and income year 2023. The present SILC input represents 2022 income, so binding also requires a same-period Microcosm population and an exact PolicyEngine/Axiom output aggregation.",
+        "metadata": {
+          "monetary_target_role": "calibration",
+          "activation_status": "requires_policy_output",
+          "measure_kind": "prepared_column"
+        }
+      },
+      "basis": {
+        "currency": "EUR",
+        "unit": "base_currency",
+        "period": "2023",
+        "temporal_basis": "annual_flow",
+        "sector": "resident_personal_income_taxpayers",
+        "perimeter": "federal_and_local_personal_income_tax_before_withholding",
+        "valuation": "nominal_assessed_euros"
+      },
+      "readiness": "requires_policy_output",
+      "source_url": "https://statbel.fgov.be/en/themes/households/taxable-income",
+      "notes": "Calibration candidate only after the exact 2023 policy-output and population-period bridge are prepared and receipted."
+    },
+    {
+      "reference": {
+        "name": "onss_worker_personal_contributions_2024_validation",
+        "ledger_source_record_id": "onss.contributions.cy2024.worker_personal_contributions.country.country_total.worker_article_17_uncapped_component_contribution",
+        "ledger_selector": {
+          "source_name": "onss_contributions",
+          "source_measure_id": "worker_article_17_uncapped_component_contribution",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "entity_name": "person",
+          "record_set_id": "onss.contributions.cy2024.worker_personal_contributions.country",
+          "layout_groupby_value_id": "country_total",
+          "dimensions": []
+        },
+        "entity": "person",
+        "measure": "onss_worker_personal_contributions_validation_amount",
+        "period": 2024,
+        "family": "social_security",
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "notes": "Exact official ONSS amount retained only as a comparator. Chronicle explicitly marks its relation to the current Axiom Article-17 component approximate, so it cannot calibrate that output.",
+        "metadata": {
+          "monetary_target_role": "validation",
+          "activation_status": "historical_validation_only",
+          "measure_kind": "prepared_column"
+        }
+      },
+      "basis": {
+        "currency": "EUR",
+        "unit": "base_currency",
+        "period": "2024",
+        "temporal_basis": "annual_flow",
+        "sector": "worker_persons_in_onss_reporting_scope",
+        "perimeter": "worker_borne_personal_social_security_contributions",
+        "valuation": "nominal_declared_euros"
+      },
+      "readiness": "historical_validation_only",
+      "source_url": "https://www.onss.be/stats/cotisations-declarees",
+      "notes": "Validation-only until an exact source-to-model concept, worker universe, and output aggregation are reviewed."
+    },
+    {
+      "reference": {
+        "name": "nbb_household_disposable_income_2024_validation",
+        "ledger_source_record_id": "nbb.national_accounts.cy2024.household_disposable_income.country.country_total.household_disposable_income",
+        "ledger_selector": {
+          "source_name": "nbb_national_accounts",
+          "source_measure_id": "household_disposable_income",
+          "period_type": "calendar_year",
+          "period_value": 2024,
+          "geography_level": "country",
+          "geography_id": "BE",
+          "geography_vintage": "current",
+          "entity_name": "household",
+          "record_set_id": "nbb.national_accounts.cy2024.household_disposable_income.country",
+          "layout_groupby_value_id": "country_total",
+          "dimensions": []
+        },
+        "entity": "household",
+        "measure": "nbb_s14_gross_disposable_income_validation_amount",
+        "period": 2024,
+        "family": "national_accounts",
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "notes": "Official NBB S.14 gross disposable-income national-account total. It is a validation comparator, not a microdata calibration objective.",
+        "metadata": {
+          "monetary_target_role": "validation",
+          "activation_status": "historical_validation_only",
+          "measure_kind": "prepared_column"
+        }
+      },
+      "basis": {
+        "currency": "EUR",
+        "unit": "base_currency",
+        "period": "2024",
+        "temporal_basis": "annual_flow",
+        "sector": "S14_households",
+        "perimeter": "gross_disposable_income_national_accounts",
+        "valuation": "current_price_nominal_euros"
+      },
+      "readiness": "historical_validation_only",
+      "source_url": "https://dataexplorer.nbb.be/vis?df%5Bag%5D=BE2&df%5Bds%5D=disseminate&df%5Bid%5D=DF_REGHHINC_B&lc=en",
+      "notes": "Held out from calibration; any comparison must prepare and receipt a matching S.14 aggregation."
+    }
+  ]
+}

@@ -35,7 +35,12 @@ EXECUTION_GUARDED_STATUS_KEYS = frozenset(
         "axiom_legal_output_status",
         "behavioral_takeup_flag_status",
         "geography_alignment_status",
+        "geography_bridge_status",
         "microcosm_population_input_status",
+        "population_completeness_readiness",
+        "population_input_readiness",
+        "population_mapping_readiness",
+        "population_period_readiness",
         "policyengine_behavior_input_status",
         "policyengine_input_support_status",
         "support_status",
@@ -436,6 +441,12 @@ def _require_executable_reference(reference: LedgerTargetReference) -> None:
     multi-cell table through ``identity`` would either depend on accidental
     singleton input or become ambiguous as soon as the next cell arrived.
     """
+
+    if reference.metadata.get("target_role") == "validation":
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} is validation-only and "
+            "cannot enter a calibration TargetRegistry."
+        )
 
     activation_status = reference.metadata.get("activation_status", "")
     if activation_status and activation_status != "active":

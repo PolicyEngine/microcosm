@@ -19,6 +19,13 @@ These hashes identify what was reviewed; later commits must not be described as
 reviewed under these coordinates. The Belgium work must incorporate #825 from
 the authoritative merge commit while preserving #824's history.
 
+The authoritative Microcosm `uv.lock` remains unchanged from the #825 merge.
+It resolves `policyengine-core==3.31.0`, `policyengine-us==1.819.0`, and
+`policyengine-uk==2.92.1`. It does not pin `policyengine-be`, Chronicle, an
+Axiom engine checkout, or a RuleSpec-BE revision. Those executable dependencies
+are therefore absent, not implicitly satisfied; Belgium activation remains
+blocked until immutable engine and legal-module coordinates are reviewed.
+
 ## Target matrix
 
 | Surface | Exact publisher period and scope | Disposition | Fail-closed condition |
@@ -34,11 +41,11 @@ the authoritative merge commit while preserving #824's history.
 | Opgroeien child benefit | Rights month 2025-12, provisional; persons receiving the basic amount in the `BE-GROEIPAKKET-SCHEME` administrative scope. | Validation-only and execution-blocked. | Chronicle #212 supplies the fact. The scheme scope is not BE2 residence; require an exact Microcosm scheme-membership/receipt mapping and supported child-person population. |
 | Iriscare child benefit | Legal period 2025-12, provisional; entitled-child persons and distinct payment-recipient persons in `BE-IRISCARE-CHILD-BENEFIT-SCHEME`. | Validation-only and execution-blocked. | Chronicle #212 supplies both facts. The administrative scope includes records outside BE1; require separate typed inputs and never relabel it as Brussels residence. |
 | Ostbelgien child benefit | December 2025; paid-child persons and distinct payment-recipient persons in the `BE-DG` child-benefit statistical scope. | Validation-only and execution-blocked. | Chronicle #212 supplies both facts. `BE-DG` here is a scheme population, not a NUTS geography; require separate exact mappings and inputs. |
-| Walloon child benefit | December 2023; French-language Walloon scheme scope, with child persons and households in four publisher-defined household/social-supplement partitions. | Validation-only and execution-blocked. | Chronicle #212 supplies every partition. Preserve the person/household distinction and the four rows; do not construct an all-scope total or equate the scheme to Walloon residence. |
+| Walloon child benefit | December 2023; French-language Walloon scheme scope, with child persons and households in four publisher-defined household/social-supplement partitions. | Four child-person partitions are validation-only and execution-blocked; publisher household rows are not mapped. | Chronicle #212 supplies both units. Preserve the person/household distinction; retain only the four defensible child-person links, omit household rows until their Microcosm unit is proved equivalent, and do not construct an all-scope total or equate the scheme to Walloon residence. |
 | NBB national accounts | NBB calendar year 2024; Belgium S.14 household-sector gross disposable income in current-price EUR. | Validation-only. | Keep outside the calibration objective. Comparison requires an explicit model aggregation and unit/period receipt; national accounts are not a population-construction target. |
-| EUROMOD | JRC Belgium country-report comparators for calendar years 2021-2023, including 2022 distribution statistics; country-level person or government comparator entities as published. | Validation-only. | Preserve external, SILC, and EUROMOD series identities. None may enter solver targets or be treated as an administrative observation. |
-| FPB | Belgium publisher observations for 2022-2025 and FPB-authored projections for 2026-2031 from the June 2026 outlook. | Validation-only. | Preserve each publisher cell's observation/projection assertion. Chronicle stores the projection as a publisher fact; Microcosm must not create or relabel a projection. |
-| Constructed comparisons | No independent publisher period or scope; each comparison inherits explicitly pinned operands and construction metadata. | Validation-only. | Construct in Microcosm validation receipts, never Chronicle and never the calibration objective. Refuse operands with mismatched period, geography, entity, unit, or universe unless a reviewed bridge is named. |
+| EUROMOD | JRC Belgium country-report comparators for calendar years 2021-2023, including 2022 distribution statistics; country-level person or government comparator entities as published. | Validation catalog only; not declared as a calibration target reference. | Preserve external, SILC, and EUROMOD series identities. None may enter solver targets or be treated as an administrative observation. |
+| FPB | Belgium publisher observations for 2022-2025 and FPB-authored projections for 2026-2031 from the June 2026 outlook. | Validation catalog only; not declared as a calibration target reference. | Preserve each publisher cell's observation/projection assertion. Chronicle stores the projection as a publisher fact; Microcosm must not create or relabel a projection. |
+| Constructed comparisons | No independent publisher period or scope; each comparison inherits explicitly pinned operands and construction metadata. | Validation construction only; absent from the target profile. | Construct in Microcosm validation receipts, never Chronicle and never the calibration objective. Refuse operands with mismatched period, geography, entity, unit, or universe unless a reviewed bridge is named. |
 | HFCS wealth | No reviewed NBB/ECB HFCS fact is present in the pinned Chronicle dependency; period, wave, wealth concept, universe, and support are therefore deliberately unset. | Blocked. | Do not add a target until an official aggregate package pins the survey wave/reference period, Belgium geography, household universe, weight/statistic, unit/price basis, and usable Microcosm support. |
 
 No regional child-benefit rows may be combined into a national total: their
@@ -68,6 +75,10 @@ rows. When complete latent imputation is required, the declaration remains
 `complete_imputation_required_missing` until that imputation is implemented and
 receipted. PolicyEngine consumes only the resulting Microcosm column and owns
 any non-legal behavior mechanics; this readiness gate supplies no formula.
+Setting a readiness string is not itself a receipt. Any future activation path
+must call `validate_population_input_frame`, bind its row/value identity receipt,
+and verify `n_unknown == 0`. No receipt-binding activation path exists in this
+change, so every linked Belgium row remains explicitly non-active.
 
 ## Follow-up issue drafts
 

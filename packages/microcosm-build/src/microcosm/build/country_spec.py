@@ -924,8 +924,9 @@ def _validate_target_profile(
     declaration fields needed to make a future target surface auditable
     without carrying target values: named criticality/tolerance tiers, named
     basis periods, an exact-period posture, and explicit geography vintages on
-    every subnational selector. This validates schema policy only; it does not
-    apply tier tolerances or ``target_role`` to runtime calibration or gates.
+    every subnational selector. Tier tolerances remain declaration metadata for
+    a separate gate integration. The shared target compiler does enforce
+    ``target_role='validation'`` as an exclusion from calibration.
     """
 
     profile = raw.get("target_profile", {})
@@ -1037,7 +1038,7 @@ def _validate_target_profile(
             "target_references.json: target_profile.basis_periods must be a "
             "non-empty object."
         )
-    normalized_periods: dict[str, tuple[object, str]] = {}
+    normalized_periods: dict[str, tuple[object, str, str]] = {}
     for raw_basis_id, raw_basis in basis_periods.items():
         basis_id = _require_non_empty_string(
             raw_basis_id,
@@ -1090,10 +1091,15 @@ def _validate_target_profile(
             field_name="fact_period_type",
             context=f"basis period {basis_id!r}",
         )
-        if raw_basis.get("mismatch_policy") != "requires_source_projection":
+        mismatch_policy = raw_basis.get("mismatch_policy")
+        if mismatch_policy not in {
+            "requires_source_projection",
+            "exact_observation_only",
+        }:
             raise ValueError(
                 f"target_references.json: basis period {basis_id!r} must set "
-                "mismatch_policy='requires_source_projection'."
+                "mismatch_policy to 'requires_source_projection' or "
+                "'exact_observation_only'."
             )
         survey_year = raw_basis.get("survey_year")
         income_offset = raw_basis.get("income_reference_offset_years")
@@ -1122,7 +1128,11 @@ def _validate_target_profile(
                     f"{period!r} does not equal survey_year {survey_year!r} plus "
                     f"income_reference_offset_years {income_offset!r}."
                 )
-        normalized_periods[basis_id] = (period, fact_period_type)
+        normalized_periods[basis_id] = (
+            period,
+            fact_period_type,
+            str(mismatch_policy),
+        )
 
     geography_vintage_aliases = _typed_geography_vintage_aliases(
         resolved_spec,
@@ -1175,7 +1185,7 @@ def _validate_target_profile(
                 f"target_references.json: {context} names unknown basis_period "
                 f"{basis_id!r}."
             )
-        basis_period, fact_period_type = normalized_periods[basis_id]
+        basis_period, fact_period_type, mismatch_policy = normalized_periods[basis_id]
         if not period_values_semantically_equal(
             reference.period, basis_period, declared_type=fact_period_type
         ):
@@ -1204,21 +1214,47 @@ def _validate_target_profile(
                 f"{selector_period_type!r} does not match basis period "
                 f"{basis_id!r} fact_period_type {fact_period_type!r}."
             )
+        selector_period = reference.ledger_selector.get("period_value")
+        if not period_values_semantically_equal(
+            selector_period,
+            reference.period,
+            declared_type=fact_period_type,
+        ):
+            raise ValueError(
+                f"target_references.json: {context} selector period "
+                f"{selector_period!r} does not match its declared period "
+                f"{reference.period!r}."
+            )
         if reference.period_match_policy != "exact":
             raise ValueError(
                 f"target_references.json: {context} must set "
                 "period_match_policy='exact'; stale observations require an "
                 "explicit Chronicle source_projection."
             )
-        if reference.assertion_policy != "allow_source_projection":
+        expected_assertion_policy = (
+            "allow_source_projection"
+            if mismatch_policy == "requires_source_projection"
+            else "observed_only"
+        )
+        if reference.assertion_policy != expected_assertion_policy:
             raise ValueError(
                 f"target_references.json: {context} must set "
-                "assertion_policy='allow_source_projection' so an explicitly "
-                "projected fact can satisfy the declared basis period."
+                f"assertion_policy={expected_assertion_policy!r} to agree with "
+                f"basis period {basis_id!r} mismatch_policy={mismatch_policy!r}."
             )
 
         geography_level = str(reference.ledger_selector.get("geography_level", ""))
-        if geography_level and geography_level not in {"country", "national"}:
+        if geography_level == "statistical_scope":
+            scope_id = str(reference.ledger_selector.get("geography_id", ""))
+            scope_vintage = str(
+                reference.ledger_selector.get("geography_vintage", "")
+            )
+            if not scope_id or not scope_vintage:
+                raise ValueError(
+                    f"target_references.json: statistical-scope {context} must "
+                    "pin geography_id and geography_vintage."
+                )
+        elif geography_level and geography_level not in {"country", "national"}:
             selector_vintage = str(
                 reference.ledger_selector.get("geography_vintage", "")
             )
@@ -1236,12 +1272,24 @@ def _validate_target_profile(
                     "geography layer-vintage registry does not declare it."
                 )
             if selector_vintage not in accepted_typed_aliases:
-                raise ValueError(
-                    f"target_references.json: {context} geography vintage "
-                    f"{selector_vintage!r} is not an exact typed authority alias "
-                    f"for layer {geography_level!r}; expected one of "
-                    f"{sorted(accepted_typed_aliases)!r}."
+                model_vintage = reference.metadata.get(
+                    "model_geography_vintage", ""
                 )
+                explicit_missing_bridge = (
+                    model_vintage in accepted_typed_aliases
+                    and reference.metadata.get("geography_bridge_status")
+                    == "required_missing"
+                    and bool(reference.metadata.get("activation_status"))
+                    and reference.metadata["activation_status"] != "active"
+                )
+                if not explicit_missing_bridge:
+                    raise ValueError(
+                        f"target_references.json: {context} geography vintage "
+                        f"{selector_vintage!r} is not an exact typed authority "
+                        f"alias for layer {geography_level!r}; expected one of "
+                        f"{sorted(accepted_typed_aliases)!r}, or an explicit "
+                        "non-active required_missing bridge to one of them."
+                    )
             if geography_spine is not None and (
                 geography_level == geography_spine.geography_spine.geography_level
             ):
@@ -1333,6 +1381,180 @@ def _validate_local_target_references(
                 "contract_target_id must match the name prefix."
             )
     return references
+
+
+def _validate_population_target_links(
+    references: tuple[LedgerTargetReference, ...],
+    profile: PopulationInputProfile | None,
+    *,
+    country: str,
+) -> None:
+    """Bind target references to exact, typed population-input mappings.
+
+    The population profile is value-free, but its identities are executable
+    authority: a target cannot silently change source record, statistical
+    scope, entity, period, or input column while retaining a mapping id.  The
+    Belgium package requires a complete bijection between its declared scheme
+    mappings and mapped target rows; other countries may adopt the profile
+    before declaring Ledger targets.
+    """
+
+    mapped_reference_rows = tuple(
+        reference
+        for reference in references
+        if reference.metadata.get("scheme_population_mapping_id")
+    )
+    mapped_references = {
+        reference.name: reference for reference in mapped_reference_rows
+    }
+    if profile is None:
+        if mapped_references:
+            raise ValueError(
+                "target_references.json: scheme-population mapping ids require "
+                "a declared population_inputs.json profile."
+            )
+        return
+
+    reference_by_name = {reference.name: reference for reference in references}
+    mapping_ids = {mapping.mapping_id for mapping in profile.mappings}
+    linked_names_by_mapping_id: dict[str, list[str]] = {}
+    for reference in mapped_reference_rows:
+        mapping_id = reference.metadata["scheme_population_mapping_id"]
+        if mapping_id not in mapping_ids:
+            raise ValueError(
+                f"target_references.json: target {reference.name!r} names "
+                f"unknown scheme-population mapping {mapping_id!r}."
+            )
+        linked_names_by_mapping_id.setdefault(mapping_id, []).append(reference.name)
+
+    duplicate_links = {
+        mapping_id: names
+        for mapping_id, names in linked_names_by_mapping_id.items()
+        if len(names) != 1
+    }
+    if duplicate_links:
+        raise ValueError(
+            "target_references.json: scheme-population mappings require one "
+            f"exact target link each; duplicate links {duplicate_links!r}."
+        )
+
+    for mapping in profile.mappings:
+        reference = reference_by_name.get(mapping.target_reference)
+        if reference is None:
+            if country == "be":
+                raise ValueError(
+                    "population_inputs.json: Belgium scheme-population mapping "
+                    f"{mapping.mapping_id!r} names unknown target reference "
+                    f"{mapping.target_reference!r}."
+                )
+            continue
+        context = f"scheme-population mapping {mapping.mapping_id!r}"
+        linked_names = linked_names_by_mapping_id.get(mapping.mapping_id, [])
+        if linked_names != [mapping.target_reference]:
+            raise ValueError(
+                f"target_references.json: {context} must link only its declared "
+                f"target {mapping.target_reference!r}, got {linked_names!r}."
+            )
+        input_contract = profile.input(mapping.input_id)
+        expected_metadata = {
+            "scheme_population_mapping_id": mapping.mapping_id,
+            "population_input_id": mapping.input_id,
+            "input_owner": "Microcosm",
+            "input_consumer": "PolicyEngine",
+            "mechanics_owner": "PolicyEngine",
+            "axiom_behavior_ownership": "none",
+            "population_input_readiness": mapping.input_readiness,
+            "population_mapping_readiness": mapping.mapping_readiness,
+            "population_period_readiness": mapping.period_readiness,
+            "population_completeness_readiness": mapping.completeness_readiness,
+        }
+        metadata_mismatches = {
+            key: (expected, reference.metadata.get(key))
+            for key, expected in expected_metadata.items()
+            if reference.metadata.get(key) != expected
+        }
+        if metadata_mismatches:
+            raise ValueError(
+                f"target_references.json: {context} metadata mismatch "
+                f"{metadata_mismatches!r}."
+            )
+        if reference.ledger_source_record_id != mapping.chronicle_source_record_id:
+            raise ValueError(
+                f"target_references.json: {context} source record id does not "
+                "match its target reference."
+            )
+        if (
+            reference.entity != mapping.microcosm_entity
+            or reference.measure != input_contract.column
+            or reference.filter is not None
+        ):
+            raise ValueError(
+                f"target_references.json: {context} must use its exact "
+                "Microcosm entity and boolean input column without a proxy filter."
+            )
+
+        selector = reference.ledger_selector
+        expected_selector = {
+            "entity_name": mapping.chronicle_entity,
+            "geography_level": mapping.chronicle_geography_level,
+            "geography_id": mapping.chronicle_geography_id,
+            "geography_vintage": mapping.chronicle_geography_vintage,
+            "period_type": mapping.chronicle_period_type,
+        }
+        selector_mismatches = {
+            key: (expected, selector.get(key))
+            for key, expected in expected_selector.items()
+            if selector.get(key) != expected
+        }
+        if selector_mismatches:
+            raise ValueError(
+                f"target_references.json: {context} Chronicle selector mismatch "
+                f"{selector_mismatches!r}."
+            )
+        if not period_values_semantically_equal(
+            selector.get("period_value"),
+            mapping.chronicle_period,
+            declared_type=mapping.chronicle_period_type,
+        ):
+            raise ValueError(
+                f"target_references.json: {context} selector period does not "
+                "match its Chronicle mapping period."
+            )
+        if not period_values_semantically_equal(
+            reference.period,
+            mapping.chronicle_period,
+            declared_type=mapping.chronicle_period_type,
+        ):
+            raise ValueError(
+                f"target_references.json: {context} Chronicle period does not "
+                "match its target reference."
+            )
+        if (
+            reference.value_operation != "identity"
+            or reference.assertion_policy != "observed_only"
+            or reference.period_match_policy != "exact"
+        ):
+            raise ValueError(
+                f"target_references.json: {context} requires identity, "
+                "observed_only, exact-period resolution."
+            )
+        if mapping.blockers and reference.metadata.get("activation_status") == "active":
+            raise ValueError(
+                f"target_references.json: {context} cannot be active while its "
+                f"population mapping is blocked by {mapping.blockers!r}."
+            )
+
+    if country == "be":
+        linked_mapping_ids = {
+            reference.metadata["scheme_population_mapping_id"]
+            for reference in mapped_references.values()
+        }
+        unlinked = sorted(mapping_ids - linked_mapping_ids)
+        if unlinked:
+            raise ValueError(
+                "population_inputs.json: Belgium mapping(s) have no exact target "
+                f"reference link: {unlinked!r}."
+            )
 
 
 def _local_area_rosters(
@@ -1476,8 +1698,9 @@ class ResolvedCountrySpec:
         geography_spine: The geography-spine manifest, when declared.
         target_references: Ledger target references, when declared.
         target_profile: The validated value-free target declaration carried by
-            ``target_references.json``. Tier tolerances and target roles remain
-            metadata until a separate runtime integration consumes them.
+            ``target_references.json``. Tier tolerances remain metadata until a
+            separate gate integration consumes them; validation roles are
+            already excluded from calibration compilation.
         population_input_profile: The typed, value-free inventory of
             Microcosm-owned population inputs and scheme mappings, when
             declared.
@@ -2152,6 +2375,11 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         )
         if "monetary_target_profile.json" in payloads
         else None
+    )
+    _validate_population_target_links(
+        target_references,
+        population_input_profile,
+        country=declared_country,
     )
     local_target_references = (
         _validate_local_target_references(

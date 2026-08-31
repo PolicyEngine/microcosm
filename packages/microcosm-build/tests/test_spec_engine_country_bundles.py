@@ -45,7 +45,7 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
         ),
         (
             "be",
-            "7062e38f4d623553fb0604380a8dac0edacb6261c155b6e31fc38ef7c0f1c57c",
+            "935f8dedcd2d1b99abe57c1b5d990bc345f4cffbc7ab0cc8791733bde6721d14",
             {
                 "household.household_id",
                 "person.person_id",
@@ -192,6 +192,8 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
         "gates.json",
         "geography_spine.json",
+        "monetary_target_profile.json",
+        "population_inputs.json",
         "release_contract.json",
         "source_stages.json",
         "target_references.json",

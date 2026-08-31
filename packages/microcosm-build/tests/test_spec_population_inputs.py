@@ -188,6 +188,15 @@ def test_behavioral_or_eligibility_variable_synthesis_is_refused(column):
         PopulationInputProfile.from_mapping(payload, country="xx")
 
 
+def test_behavioral_input_id_is_refused_before_it_can_be_linked():
+    payload = copy.deepcopy(_payload())
+    payload["inputs"][0]["input_id"] = "takes_up_grant_if_eligible"
+    payload["mappings"][0]["input_id"] = "takes_up_grant_if_eligible"
+
+    with pytest.raises(ValueError, match="input_id.*looks behavioral"):
+        PopulationInputProfile.from_mapping(payload, country="xx")
+
+
 def test_statistical_scope_cannot_masquerade_as_nuts_geography():
     payload = copy.deepcopy(_payload())
     mapping = payload["mappings"][0]

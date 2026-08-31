@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
-from microcosm.build.ledger_targets import LedgerTargetReference
+from microcosm.build.ledger_targets import (
+    LedgerTargetReference,
+    period_values_semantically_equal,
+)
 from microcosm.build.monetary_targets import MonetaryBasis
 
 READINESS_STATES = frozenset(
@@ -21,6 +24,9 @@ READINESS_STATES = frozenset(
         "requires_coverage_bridge",
         "historical_validation_only",
     }
+)
+_FORBIDDEN_CARRIED_VALUE_KEYS = frozenset(
+    {"value", "values", "observed", "observed_value"}
 )
 
 
@@ -92,6 +98,16 @@ def _closed_keys(raw: Any, keys: set[str], context: str) -> None:
         raise ValueError(f"{context}: expected exactly {sorted(keys)}")
 
 
+def _carried_value_keys(value: Any) -> set[str]:
+    if isinstance(value, Mapping):
+        return (set(value) & _FORBIDDEN_CARRIED_VALUE_KEYS) | {
+            key for child in value.values() for key in _carried_value_keys(child)
+        }
+    if isinstance(value, (list, tuple)):
+        return {key for child in value for key in _carried_value_keys(child)}
+    return set()
+
+
 def _contract(raw: Any, context: str) -> MonetaryTargetContract:
     _closed_keys(
         raw, {"reference", "basis", "readiness", "source_url", "notes"}, context
@@ -108,6 +124,12 @@ def _contract(raw: Any, context: str) -> MonetaryTargetContract:
         raw["basis"], Mapping
     ):
         raise ValueError(f"{context}: reference and basis must be mappings")
+    carried_values = _carried_value_keys(raw["reference"])
+    if carried_values:
+        raise ValueError(
+            f"{context}: monetary references must be value-free; forbidden "
+            f"carried value keys {sorted(carried_values)!r}"
+        )
     try:
         reference = LedgerTargetReference(**raw["reference"])
         basis = MonetaryBasis(**raw["basis"])
@@ -133,6 +155,19 @@ def _contract(raw: Any, context: str) -> MonetaryTargetContract:
         raise ValueError(f"{context}: no implicit monetary period uprating")
     if isinstance(reference.period, bool) or str(reference.period) != basis.period[:4]:
         raise ValueError(f"{context}: model year must match the accounting basis")
+    selector = reference.ledger_selector
+    if selector:
+        selector_type = selector.get("period_type")
+        if not isinstance(selector_type, str) or not selector_type:
+            raise ValueError(f"{context}: selector must declare period_type")
+        if not period_values_semantically_equal(
+            selector.get("period_value"),
+            reference.period,
+            declared_type=selector_type,
+        ):
+            raise ValueError(
+                f"{context}: selector period must match the model year and basis"
+            )
     role = "validation" if readiness == "historical_validation_only" else "calibration"
     metadata = reference.metadata
     if (

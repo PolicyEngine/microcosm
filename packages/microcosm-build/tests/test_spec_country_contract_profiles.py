@@ -200,3 +200,33 @@ def test_declared_profiles_fail_on_country_mismatch_or_malformed_content(
 
     with pytest.raises(ValueError):
         load_country_spec(package)
+
+
+@pytest.mark.parametrize("container", ["ledger_selector", "metadata"])
+def test_monetary_profile_refuses_nested_carried_values(
+    tmp_path: Path, container: str
+) -> None:
+    resources = copy.deepcopy(_profile_resources())
+    reference = resources["monetary_target_profile.json"]["targets"][0][
+        "reference"
+    ]
+    reference.setdefault(container, {})["observed_value"] = 42
+    package = _write_package(tmp_path, resources)
+
+    with pytest.raises(ValueError, match="must be value-free"):
+        load_country_spec(package)
+
+
+def test_monetary_profile_refuses_selector_period_drift(tmp_path: Path) -> None:
+    resources = copy.deepcopy(_profile_resources())
+    reference = resources["monetary_target_profile.json"]["targets"][0][
+        "reference"
+    ]
+    reference["ledger_selector"] = {
+        "period_type": "calendar_year",
+        "period_value": 2023,
+    }
+    package = _write_package(tmp_path, resources)
+
+    with pytest.raises(ValueError, match="selector period must match"):
+        load_country_spec(package)

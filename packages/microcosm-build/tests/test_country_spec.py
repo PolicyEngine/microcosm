@@ -183,6 +183,7 @@ def _schema2_target_resource() -> dict[str, object]:
                     "source_name": "official_population",
                     "source_measure_id": "people",
                     "period_type": "calendar_year",
+                    "period_value": 2023,
                     "geography_level": "country",
                 },
                 "entity": "person",
@@ -491,6 +492,8 @@ class TestBelgianPackage:
             "source_stages.json",
             "geography_spine.json",
             "target_references.json",
+            "population_inputs.json",
+            "monetary_target_profile.json",
             "gates.json",
             "release_contract.json",
         }
@@ -524,17 +527,25 @@ class TestBelgianPackage:
 
     def test_targets_arrive_by_reference_with_no_values(self, spec) -> None:
         names = {reference.name for reference in spec.target_references}
-        assert {
-            "statbel_population_by_age_sex_region",
-            "statbel_fiscal_income_by_commune",
-            "spf_finances_pit_total",
-            "onss_employee_contribution_total",
-            "onem_unemployment_caseload",
+        assert names == {
+            "statbel_population_by_age_sex_region_2025",
+            "statbel_fiscal_income_by_commune_2023",
+            "statbel_zero_income_tax_returns_2023_validation",
+            "onem_complete_unemployment_monthly_average_2024",
+            "sfpd_legal_pension_all_schemes_january_2025_blocked",
             "sfpd_grapa_regular_payment_beneficiaries_2025_01",
-            "nbb_household_disposable_income",
-        } <= names
+            "opgroeien_groeipakket_basic_amount_children_2025_12",
+            "iriscare_entitled_children_2025_12",
+            "iriscare_payment_recipients_2025_12",
+            "ostbelgien_paid_children_2025_12",
+            "ostbelgien_payment_recipients_2025_12",
+            "walloon_single_parent_with_supplement_children_2023_12",
+            "walloon_single_parent_without_supplement_children_2023_12",
+            "walloon_other_household_with_supplement_children_2023_12",
+            "walloon_other_household_without_supplement_children_2023_12",
+        }
         by_name = {reference.name: reference for reference in spec.target_references}
-        commune = by_name["statbel_fiscal_income_by_commune"]
+        commune = by_name["statbel_fiscal_income_by_commune_2023"]
         assert commune.metadata["nis_vintage"] == "2025"
         assert commune.metadata["geography_vintage"] == "nis_2025"
         assert commune.ledger_selector["geography_vintage"] == "nis_2025"
@@ -542,64 +553,63 @@ class TestBelgianPackage:
         assert {
             by_name[name].metadata["activation_status"]
             for name in {
-                "statbel_population_by_age_sex_region",
-                "statbel_fiscal_income_by_commune",
+                "statbel_population_by_age_sex_region_2025",
+                "statbel_fiscal_income_by_commune_2023",
             }
-        } == {"requires_harvested_cell_references"}
+        } == {
+            "requires_harvested_cells_and_geography_period_bridge",
+            "requires_harvested_cells_and_income_period_bridge",
+        }
 
-        payload = json.loads(
-            (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
-                encoding="utf-8"
+        for resource_name, collection_name in (
+            ("target_references.json", "target_references"),
+            ("monetary_target_profile.json", "targets"),
+        ):
+            payload = json.loads(
+                (COUNTRY_PACKAGE_ROOT / f"be/{resource_name}").read_text(
+                    encoding="utf-8"
+                )
             )
-        )
-        assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
-            _nested_mapping_keys(payload["target_references"])
-        )
+            assert FORBIDDEN_TARGET_VALUE_KEYS.isdisjoint(
+                _nested_mapping_keys(payload[collection_name])
+            )
 
     def test_target_selectors_declare_the_intended_chronicle_vocabulary(
         self, spec
     ) -> None:
         references = {reference.name: reference for reference in spec.target_references}
         expected = {
-            "statbel_population_by_age_sex_region": (
+            "statbel_population_by_age_sex_region_2025": (
                 "statbel_population_structure",
                 "people",
                 "calendar_year",
-                2023,
+                2025,
                 "nuts1",
-                "nuts1_2025",
+                "NUTS_2024",
             ),
-            "statbel_fiscal_income_by_commune": (
+            "statbel_fiscal_income_by_commune_2023": (
                 "statbel_fiscal_income",
                 "taxable_income",
                 "tax_year",
-                2022,
+                2023,
                 "commune",
                 "nis_2025",
             ),
-            "spf_finances_pit_total": (
-                "spf_finances_pit",
-                "tax_before_withholding",
+            "statbel_zero_income_tax_returns_2023_validation": (
+                "statbel_fiscal_income_distribution",
+                "declarations",
                 "tax_year",
-                2022,
+                2023,
                 "country",
-                None,
+                "current",
             ),
-            "onss_employee_contribution_total": (
-                "onss_contributions",
-                "worker_article_17_uncapped_component_contribution",
-                "calendar_year",
-                2022,
-                "country",
-                None,
-            ),
-            "onem_unemployment_caseload": (
+            "onem_complete_unemployment_monthly_average_2024": (
                 "onem_rva_unemployment",
                 "receives_unemployment_benefit",
                 "calendar_year",
-                2022,
+                2024,
                 "country",
-                None,
+                "current",
             ),
             "sfpd_grapa_regular_payment_beneficiaries_2025_01": (
                 "sfpd_grapa",
@@ -607,15 +617,7 @@ class TestBelgianPackage:
                 "month",
                 "2025-01",
                 "country",
-                None,
-            ),
-            "nbb_household_disposable_income": (
-                "nbb_national_accounts",
-                "household_disposable_income",
-                "calendar_year",
-                2022,
-                "country",
-                None,
+                "current",
             ),
         }
 
@@ -633,7 +635,7 @@ class TestBelgianPackage:
             assert reference.ledger_selector["period_type"] == period_type
             assert reference.period == period
             assert reference.period_match_policy == "exact"
-            assert reference.assertion_policy == "allow_source_projection"
+            assert reference.assertion_policy == "observed_only"
             assert reference.ledger_selector["geography_level"] == geography_level
             assert (
                 reference.ledger_selector.get("geography_vintage") == geography_vintage
@@ -668,71 +670,219 @@ class TestBelgianPackage:
         assert grapa.measure == "belgium_grapa_regular_payment_recipient_indicator"
         assert grapa.metadata["target_role"] == "validation"
         assert grapa.metadata["criticality_tier"] == "validation_only"
-        assert grapa.metadata["support_status"] == "absent"
+        assert grapa.metadata["input_owner"] == "Microcosm"
+        assert grapa.metadata["input_consumer"] == "PolicyEngine"
+        assert grapa.metadata["mechanics_owner"] == "PolicyEngine"
         assert grapa.metadata["axiom_behavior_ownership"] == "none"
         assert (
             grapa.metadata["anti_proxy_rule"]
-            == "do_not_derive_receipt_or_takeup_from_positive_amount"
+            == "do_not_derive_receipt_from_positive_amount_or_entitlement"
         )
         assert grapa.metadata["activation_status"] != "active"
         assert grapa.entity == "person"
-        assert "not_behavioral_takeup" in grapa.metadata["measure_semantics"]
-        assert grapa.metadata["behavior_owner"] == "PolicyEngine"
-        assert grapa.metadata["behavioral_takeup_flag_status"] == "absent"
-        assert grapa.metadata["microcosm_population_input_status"] == "absent"
-        assert grapa.metadata["policyengine_behavior_input_status"] == "absent"
+        assert grapa.metadata["population_input_readiness"] == "required_missing"
+        assert grapa.metadata["population_mapping_readiness"] == "ready"
+        assert (
+            grapa.metadata["population_completeness_readiness"]
+            == "complete_imputation_required_missing"
+        )
+        assert "consume Microcosm's distinct measured or latent receipt flag" in (
+            grapa.notes
+        )
 
-        unemployment = references["onem_unemployment_caseload"]
+        unemployment = references["onem_complete_unemployment_monthly_average_2024"]
         assert unemployment.metadata["activation_status"] != "active"
-        assert unemployment.metadata["support_status"] == "absent"
-        assert unemployment.metadata["behavior_owner"] == "PolicyEngine"
+        assert unemployment.metadata["input_owner"] == "Microcosm"
+        assert unemployment.metadata["input_consumer"] == "PolicyEngine"
+        assert unemployment.metadata["mechanics_owner"] == "PolicyEngine"
         assert unemployment.metadata["axiom_behavior_ownership"] == "none"
-        assert unemployment.metadata["behavioral_takeup_flag_status"] == "absent"
         assert unemployment.metadata["microcosm_population_input_status"] == "absent"
-        assert unemployment.metadata["policyengine_behavior_input_status"] == "absent"
+        assert unemployment.metadata["policyengine_input_support_status"] == "absent"
         assert (
             unemployment.metadata["anti_proxy_rule"]
-            == "do_not_derive_receipt_or_takeup_from_positive_amount"
+            == "do_not_derive_receipt_from_positive_amount_or_entitlement"
         )
-        assert (
-            unemployment.metadata["measure_semantics"]
-            == "recipient_caseload_not_behavioral_takeup"
-        )
+        assert "Microcosm-populated unemployment receipt flag" in unemployment.notes
+        assert "PolicyEngine input variable that consumes it" in unemployment.notes
         assert all(
             reference.metadata.get("activation_status") != "active"
             for reference in spec.target_references
             if reference.family == "caseloads"
         )
 
-    def test_child_benefit_references_wait_for_typed_scheme_population_mapping(
+    def test_scheme_population_references_are_exact_typed_and_fail_closed(
         self, spec
     ) -> None:
-        child_references = [
-            reference
-            for reference in spec.target_references
-            if reference.measure is not None and "child_benefit" in reference.measure
-        ]
-        child_publishers = {
-            "opgroeien_groeipakket_dashboard",
-            "iriscare_child_benefit_dashboard",
-        }
+        profile = spec.population_input_profile
+        assert profile is not None
+        assert len(profile.inputs) == len(profile.mappings) == 10
+        inputs = {row.input_id: row for row in profile.inputs}
+        references = {row.name: row for row in spec.target_references}
 
-        assert child_references == []
-        assert all(
-            reference.ledger_selector["source_name"] not in child_publishers
-            for reference in spec.target_references
-        )
-        description = json.loads(
-            (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
-                encoding="utf-8"
+        expected_links = {
+            (
+                "grapa_regular_payment_population_2025_01",
+                "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+                "sfpd_grapa.month2025_01.regular_payment_beneficiaries.all.beneficiaries",
+                "grapa_beneficiary",
+                "BE",
+                "current",
+                "belgium_grapa_regular_payment_recipient_indicator",
+            ),
+            (
+                "groeipakket_basic_amount_child_population_2025_12",
+                "opgroeien_groeipakket_basic_amount_children_2025_12",
+                "opgroeien.groeipakket.month2025_12.basic_amount.children.basic_amount_children.children",
+                "child_benefit_recipient",
+                "BE-GROEIPAKKET-SCHEME",
+                "GROEIPAKKET_ADMINISTRATIVE_SCOPE_2025",
+                "belgium_groeipakket_basic_amount_child_indicator",
+            ),
+            (
+                "iriscare_entitled_child_population_2025_12",
+                "iriscare_entitled_children_2025_12",
+                "iriscare.child_benefit.month2025_12.entitled_children.entitled_children.children",
+                "child_benefit_entitled_child",
+                "BE-IRISCARE-CHILD-BENEFIT-SCHEME",
+                "IRISCARE_CHILD_BENEFIT_ADMIN_SCOPE_2025",
+                "belgium_iriscare_child_benefit_entitled_child_indicator",
+            ),
+            (
+                "iriscare_payment_recipient_population_2025_12",
+                "iriscare_payment_recipients_2025_12",
+                "iriscare.child_benefit.month2025_12.payment_recipients.payment_recipients.payment_recipients",
+                "child_benefit_payment_recipient",
+                "BE-IRISCARE-CHILD-BENEFIT-SCHEME",
+                "IRISCARE_CHILD_BENEFIT_ADMIN_SCOPE_2025",
+                "belgium_iriscare_child_benefit_payment_recipient_indicator",
+            ),
+            (
+                "ostbelgien_paid_child_population_2025_12",
+                "ostbelgien_paid_children_2025_12",
+                "ostbelgien.child_benefit.month2025_12.paid_children.paid_children.children",
+                "child_benefit_paid_child",
+                "BE-DG",
+                "child_benefit_scope_2025",
+                "belgium_ostbelgien_child_benefit_paid_child_indicator",
+            ),
+            (
+                "ostbelgien_payment_recipient_population_2025_12",
+                "ostbelgien_payment_recipients_2025_12",
+                "ostbelgien.child_benefit.month2025_12.payment_recipients.payment_recipients.payment_recipients",
+                "child_benefit_payment_recipient",
+                "BE-DG",
+                "child_benefit_scope_2025",
+                "belgium_ostbelgien_child_benefit_payment_recipient_indicator",
+            ),
+            (
+                "walloon_single_parent_with_supplement_children_2023_12",
+                "walloon_single_parent_with_supplement_children_2023_12",
+                "parlement_wallonie.child_benefit.month2023_12.children.single_parent_with_social_supplement.children",
+                "child_benefit_recipient_child",
+                "BE-WALLOON-FRENCH",
+                "child_benefit_scope_2023",
+                "belgium_walloon_single_parent_with_supplement_recipient_child_indicator",
+            ),
+            (
+                "walloon_single_parent_without_supplement_children_2023_12",
+                "walloon_single_parent_without_supplement_children_2023_12",
+                "parlement_wallonie.child_benefit.month2023_12.children.single_parent_without_social_supplement.children",
+                "child_benefit_recipient_child",
+                "BE-WALLOON-FRENCH",
+                "child_benefit_scope_2023",
+                "belgium_walloon_single_parent_without_supplement_recipient_child_indicator",
+            ),
+            (
+                "walloon_other_household_with_supplement_children_2023_12",
+                "walloon_other_household_with_supplement_children_2023_12",
+                "parlement_wallonie.child_benefit.month2023_12.children.other_household_with_social_supplement.children",
+                "child_benefit_recipient_child",
+                "BE-WALLOON-FRENCH",
+                "child_benefit_scope_2023",
+                "belgium_walloon_other_household_with_supplement_recipient_child_indicator",
+            ),
+            (
+                "walloon_other_household_without_supplement_children_2023_12",
+                "walloon_other_household_without_supplement_children_2023_12",
+                "parlement_wallonie.child_benefit.month2023_12.children.other_household_without_social_supplement.children",
+                "child_benefit_recipient_child",
+                "BE-WALLOON-FRENCH",
+                "child_benefit_scope_2023",
+                "belgium_walloon_other_household_without_supplement_recipient_child_indicator",
+            ),
+        }
+        actual_links = {
+            (
+                row.mapping_id,
+                row.target_reference,
+                row.chronicle_source_record_id,
+                row.chronicle_entity_role,
+                row.chronicle_geography_id,
+                row.chronicle_geography_vintage,
+                inputs[row.input_id].column,
             )
-        )["description"]
-        assert "typed target geography" in description
-        assert "publisher-defined statistical scope" in description
-        assert "scheme-to-population mapping" in description
-        assert "no child-benefit calibration or validation reference is active" in (
-            description
+            for row in profile.mappings
+        }
+        assert actual_links == expected_links
+
+        assert all(row.entity == "person" and row.nullable for row in profile.inputs)
+        assert all(row.owner == "Microcosm" for row in profile.inputs)
+        assert all(row.consumer == "PolicyEngine" for row in profile.inputs)
+        assert all(row.mechanics_owner == "PolicyEngine" for row in profile.inputs)
+        assert all(row.axiom_role == "none" for row in profile.inputs)
+        assert all(row.input_readiness == "required_missing" for row in profile.mappings)
+        assert all(
+            row.period_readiness == "exact_alignment_missing"
+            for row in profile.mappings
         )
+        assert all(
+            row.completeness_readiness == "complete_imputation_required_missing"
+            for row in profile.mappings
+        )
+        assert {row.mapping_readiness for row in profile.mappings} == {
+            "ready",
+            "required_missing",
+        }
+        assert sum(row.mapping_readiness == "ready" for row in profile.mappings) == 1
+
+        for mapping in profile.mappings:
+            reference = references[mapping.target_reference]
+            input_contract = inputs[mapping.input_id]
+            assert reference.entity == mapping.microcosm_entity == "person"
+            assert reference.measure == input_contract.column
+            assert reference.filter is None
+            assert reference.ledger_source_record_id == (
+                mapping.chronicle_source_record_id
+            )
+            assert reference.period == mapping.chronicle_period
+            assert reference.ledger_selector["period_value"] == (
+                mapping.chronicle_period
+            )
+            assert reference.ledger_selector["geography_id"] == (
+                mapping.chronicle_geography_id
+            )
+            assert reference.metadata["activation_status"] != "active"
+
+        child_mappings = profile.mappings[1:]
+        assert all(row.mapping_readiness == "required_missing" for row in child_mappings)
+        assert all(row.chronicle_geography_level == "statistical_scope" for row in child_mappings)
+        assert all(
+            references[row.target_reference].ledger_selector["entity_name"] == "person"
+            for row in child_mappings
+        )
+        assert all(
+            references[row.target_reference].ledger_selector["source_measure_id"]
+            not in {"households", "families"}
+            for row in child_mappings
+        )
+        walloon_ids = {
+            row.chronicle_source_record_id
+            for row in child_mappings
+            if row.chronicle_geography_id == "BE-WALLOON-FRENCH"
+        }
+        assert len(walloon_ids) == 4
+        assert all(".month2023_12.children." in value for value in walloon_ids)
+        assert all("children_by_household_group" not in value for value in walloon_ids)
 
     def test_target_profile_declares_tiers_and_income_basis(self, spec) -> None:
         profile = spec.target_profile
@@ -740,21 +890,18 @@ class TestBelgianPackage:
         assert tuple(profile["required_families"]) == (
             "demography",
             "fiscal_income",
-            "income_tax",
-            "social_security",
             "caseloads",
         )
         tiers = profile["criticality_tiers"]
-        assert tiers["core_fiscal_release"]["relative_tolerance"] == 0.05
-        assert tiers["caseload_release"]["relative_tolerance"] == 0.15
+        assert tiers["demography_candidate"]["relative_tolerance"] == 0.02
+        assert tiers["commune_diagnostic"]["relative_tolerance"] == 0.1
+        assert tiers["caseload_candidate"]["relative_tolerance"] == 0.15
         assert tiers["validation_only"]["relative_tolerance"] is None
 
-        income_basis = profile["basis_periods"]["assessment_income_year_2022"]
-        assert income_basis["period"] == 2022
+        income_basis = profile["basis_periods"]["statbel_fiscal_income_2023"]
+        assert income_basis["period"] == 2023
         assert income_basis["fact_period_type"] == "tax_year"
-        assert income_basis["survey_year"] == 2023
-        assert income_basis["income_reference_offset_years"] == -1
-        assert income_basis["mismatch_policy"] == "requires_source_projection"
+        assert income_basis["mismatch_policy"] == "exact_observation_only"
 
         grapa_basis = profile["basis_periods"]["grapa_regular_payment_snapshot_2025_01"]
         assert grapa_basis["period"] == "2025-01"
@@ -762,39 +909,75 @@ class TestBelgianPackage:
         assert grapa_basis["fact_period_type"] == "month"
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert (
-            references["nbb_household_disposable_income"].metadata["target_role"]
-            == "validation"
-        )
         assert {
             reference.family
             for reference in references.values()
             if reference.metadata["target_role"] == "calibration"
-        } >= set(profile["required_families"])
+        } == set(profile["required_families"])
 
-    def test_target_profile_tiers_and_roles_are_declaration_only(self, spec) -> None:
+        monetary = spec.monetary_target_profile
+        assert monetary is not None
+        monetary_by_name = {
+            row.reference.name: row for row in monetary.targets
+        }
+        assert set(monetary_by_name) == {
+            "spf_finances_pit_total_2023",
+            "onss_worker_personal_contributions_2024_validation",
+            "nbb_household_disposable_income_2024_validation",
+        }
+        pit = monetary_by_name["spf_finances_pit_total_2023"]
+        assert pit.reference.family == "income_tax"
+        assert pit.reference.metadata["monetary_target_role"] == "calibration"
+        assert pit.readiness == "requires_policy_output"
+        for name in (
+            "onss_worker_personal_contributions_2024_validation",
+            "nbb_household_disposable_income_2024_validation",
+        ):
+            assert monetary_by_name[name].reference.metadata["monetary_target_role"] == (
+                "validation"
+            )
+            assert monetary_by_name[name].readiness == "historical_validation_only"
+
+        coverage = next(
+            gate for gate in spec.gates.gates if gate.id == "target_profile_coverage"
+        )
+        assert set(coverage.parameters["required_families"]) == {
+            *profile["required_families"],
+            "income_tax",
+        }
+        assert "social_security" not in coverage.parameters["required_families"]
+
+    def test_target_profile_tiers_are_declarations_and_validation_is_excluded(
+        self, spec
+    ) -> None:
         assert all(reference.tolerance is None for reference in spec.target_references)
         description = json.loads(
             (COUNTRY_PACKAGE_ROOT / "be/target_references.json").read_text(
                 encoding="utf-8"
             )
         )["description"]
-        assert "validated declaration metadata only" in description
-        assert "does not yet wire them into runtime calibration" in description
-        assert "current Chronicle Belgian catalog does not satisfy" in description
-        assert "#264" in description
-        assert "Declaration-only intended Belgian gate posture" in spec.gates.policy
+        assert "Values remain in Chronicle" in description
+        assert "Unknown receipt or status remains null, never false" in description
+        assert "PolicyEngine consumes Microcosm-populated flags" in description
+        assert "PolicyEngine" in description and "does not supply the flags" in description
+        assert "Axiom receives no synthetic behavior concept" in description
+        assert "Target-profile tier tolerances remain declarations" in (
+            spec.gates.policy
+        )
+        assert "target_role=validation is already an enforced exclusion" in (
+            spec.gates.policy
+        )
         assert "not implemented here" in spec.gates.policy
 
     @pytest.mark.parametrize(
         ("reference_name", "aliases"),
         [
             (
-                "statbel_population_by_age_sex_region",
+                "statbel_population_by_age_sex_region_2025",
                 ("be_nuts1_2025", "nuts1_2025", "2025_nuts1"),
             ),
             (
-                "statbel_fiscal_income_by_commune",
+                "statbel_fiscal_income_by_commune_2023",
                 ("be_nis_2025", "nis_2025", "2025_nis"),
             ),
         ],
@@ -825,8 +1008,7 @@ class TestBelgianPackage:
     @pytest.mark.parametrize(
         ("reference_name", "invalid_vintage"),
         [
-            ("statbel_population_by_age_sex_region", "NUTS_2024"),
-            ("statbel_fiscal_income_by_commune", "nis_2024"),
+            ("statbel_fiscal_income_by_commune_2023", "nis_2024"),
         ],
     )
     def test_subnational_targets_refuse_vintages_outside_typed_registry(
@@ -846,6 +1028,25 @@ class TestBelgianPackage:
         with pytest.raises(ValueError, match="not an exact typed authority alias"):
             load_country_spec(package_dir)
 
+    @pytest.mark.parametrize("missing_field", ["geography_bridge_status", "activation_status"])
+    def test_population_source_vintage_requires_an_explicit_missing_bridge(
+        self, tmp_path, missing_field
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        target_path = package_dir / "target_references.json"
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
+        reference = next(
+            row
+            for row in payload["target_references"]
+            if row["name"] == "statbel_population_by_age_sex_region_2025"
+        )
+        reference["metadata"].pop(missing_field)
+        target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="explicit non-active required_missing bridge"):
+            load_country_spec(package_dir)
+
     def test_subnational_target_requires_a_typed_geography_layer(
         self, tmp_path
     ) -> None:
@@ -861,34 +1062,47 @@ class TestBelgianPackage:
             load_country_spec(package_dir)
 
     @pytest.mark.parametrize(
-        "reference_name",
+        ("reference_name", "message"),
         [
-            "statbel_population_by_age_sex_region",
-            "statbel_fiscal_income_by_commune",
-            "onem_unemployment_caseload",
-            "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+            (
+                "statbel_population_by_age_sex_region_2025",
+                "non-executable placeholder",
+            ),
+            (
+                "statbel_fiscal_income_by_commune_2023",
+                "non-executable placeholder",
+            ),
+            (
+                "onem_complete_unemployment_monthly_average_2024",
+                "non-executable placeholder",
+            ),
+            (
+                "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+                "validation-only",
+            ),
         ],
     )
     def test_nonactive_be_target_references_cannot_compile(
-        self, spec, reference_name
+        self, spec, reference_name, message
     ) -> None:
         reference = next(
             row for row in spec.target_references if row.name == reference_name
         )
 
-        with pytest.raises(ValueError, match="non-executable placeholder"):
+        with pytest.raises(ValueError, match=message):
             compile_ledger_target_references([], [reference], country="be")
 
     @pytest.mark.parametrize(
         ("reference_name", "blocker"),
         [
             (
-                "onem_unemployment_caseload",
+                "onem_complete_unemployment_monthly_average_2024",
                 "microcosm_population_input_status='absent'",
             ),
             (
                 "sfpd_grapa_regular_payment_beneficiaries_2025_01",
-                "policyengine_behavior_input_status='absent'",
+                "population_completeness_readiness="
+                "'complete_imputation_required_missing'",
             ),
         ],
     )
@@ -900,7 +1114,11 @@ class TestBelgianPackage:
         )
         active_reference = replace(
             reference,
-            metadata={**reference.metadata, "activation_status": "active"},
+            metadata={
+                **reference.metadata,
+                "activation_status": "active",
+                "target_role": "calibration",
+            },
         )
 
         with pytest.raises(ValueError, match=blocker):
@@ -938,11 +1156,112 @@ class TestBelgianPackage:
                 "activation_status": "active",
                 "publication_status": "provisional",
                 "support_status": "ready",
+                "target_role": "calibration",
             },
         )
 
         with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
             compile_ledger_target_references([], [active_reference], country="be")
+
+    def test_validation_only_reference_never_enters_calibration(self, spec) -> None:
+        reference = next(
+            row
+            for row in spec.target_references
+            if row.name == "statbel_zero_income_tax_returns_2023_validation"
+        )
+        active_reference = replace(
+            reference,
+            metadata={**reference.metadata, "activation_status": "active"},
+        )
+
+        with pytest.raises(ValueError, match="validation-only"):
+            compile_ledger_target_references([], [active_reference], country="be")
+
+    @pytest.mark.parametrize(
+        ("mutation", "message"),
+        [
+            ("metadata_owner", "metadata mismatch"),
+            ("source_record", "source record id"),
+            ("selector_period", "selector period"),
+            ("selector_scope", "Chronicle selector mismatch"),
+            ("active_blocked", "cannot be active while"),
+        ],
+    )
+    def test_scheme_population_cross_links_fail_closed(
+        self, tmp_path, mutation, message
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        target_path = package_dir / "target_references.json"
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
+        reference = next(
+            row
+            for row in payload["target_references"]
+            if row["name"] == "sfpd_grapa_regular_payment_beneficiaries_2025_01"
+        )
+        if mutation == "metadata_owner":
+            reference["metadata"]["input_owner"] = "PolicyEngine"
+        elif mutation == "source_record":
+            reference["ledger_source_record_id"] += ".wrong"
+        elif mutation == "selector_period":
+            reference["ledger_selector"]["period_value"] = "2025-02"
+        elif mutation == "selector_scope":
+            reference["ledger_selector"]["geography_id"] = "BE2"
+        else:
+            reference["metadata"]["activation_status"] = "active"
+        target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match=message):
+            load_country_spec(package_dir)
+
+    def test_unmapped_target_selector_period_cannot_drift_from_basis(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        target_path = package_dir / "target_references.json"
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
+        reference = next(
+            row
+            for row in payload["target_references"]
+            if row["name"] == "onem_complete_unemployment_monthly_average_2024"
+        )
+        reference["ledger_selector"]["period_value"] = 2023
+        target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="selector period 2023"):
+            load_country_spec(package_dir)
+
+    def test_scheme_population_mapping_cannot_link_two_targets(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        target_path = package_dir / "target_references.json"
+        payload = json.loads(target_path.read_text(encoding="utf-8"))
+        duplicate = next(
+            row
+            for row in payload["target_references"]
+            if row["name"] == "sfpd_grapa_regular_payment_beneficiaries_2025_01"
+        ).copy()
+        duplicate = json.loads(json.dumps(duplicate))
+        duplicate["name"] = "duplicate_grapa_validation"
+        payload["target_references"].append(duplicate)
+        target_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="duplicate links"):
+            load_country_spec(package_dir)
+
+    def test_belgium_population_mapping_cannot_be_orphaned(self, tmp_path) -> None:
+        package_dir = tmp_path / "be"
+        shutil.copytree(COUNTRY_PACKAGE_ROOT / "be", package_dir)
+        profile_path = package_dir / "population_inputs.json"
+        payload = json.loads(profile_path.read_text(encoding="utf-8"))
+        payload["mappings"][0]["target_reference"] = "missing_grapa_target"
+        profile_path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="names unknown target reference"):
+            load_country_spec(package_dir)
 
     def test_gates_select_no_incumbent_comparison(self, spec) -> None:
         selected = {gate.gate for gate in spec.gates.gates}
@@ -1875,6 +2194,7 @@ class TestRefusals:
         reference = files["target_references.json"]["target_references"][0]
         reference["period"] = reference_period
         reference["ledger_selector"]["period_type"] = "academic_year"
+        reference["ledger_selector"]["period_value"] = reference_period
         basis = files["target_references.json"]["target_profile"]["basis_periods"][
             "population_2023"
         ]
@@ -2298,6 +2618,7 @@ def test_schema2_period_contract_preserves_valid_aliases_and_opaque_labels(
     reference = files["target_references.json"]["target_references"][0]
     reference["period"] = reference_period
     reference["ledger_selector"]["period_type"] = period_type
+    reference["ledger_selector"]["period_value"] = reference_period
     basis = files["target_references.json"]["target_profile"]["basis_periods"][
         "population_2023"
     ]
@@ -2324,7 +2645,7 @@ def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
     raw_reference = next(
         row
         for row in payload["target_references"]
-        if row["name"] == "statbel_fiscal_income_by_commune"
+        if row["name"] == "statbel_fiscal_income_by_commune_2023"
     )
     raw_reference["metadata"]["activation_status"] = "active"
     raw_reference["ledger_selector"]["geography_id"] = "21004"
@@ -2338,15 +2659,15 @@ def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
     reference = next(
         row
         for row in loaded.target_references
-        if row.name == "statbel_fiscal_income_by_commune"
+        if row.name == "statbel_fiscal_income_by_commune_2023"
     )
     fact = {
         "aggregate_fact_key": fact_key,
         "lineage": {"source_record_id": record_id},
         "value": 10.0,  # Synthetic resolver probe, not a Belgian source value.
-        "period": {"type": "tax_year", "value": 2022},
+        "period": {"type": "tax_year", "value": 2023},
         "geography": {"level": "commune", "id": "21004"},
-        "entity": {"name": "household"},
+        "entity": {"name": "person"},
         "observed_measure": {
             "source_name": "statbel_fiscal_income",
             "source_measure_id": "taxable_income",

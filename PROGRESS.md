@@ -2,25 +2,43 @@
 
 ## State
 
-Resumed on 2026-08-31 on `be-benefit-participation-targets-resume`; the
-committed checkpoint is `3c84c88b`. The preserved worktree has edits to `be/country_package.json`,
-`be/target_references.json`, and `country_spec.py`, plus untracked
-`be/monetary_target_profile.json`, `be/population_inputs.json`, and
-`.lane-inputs/`; the salvage product blobs were verified byte-for-byte against
-those files without staging or rewriting the lane inputs. Direct live fetch is
-DNS-blocked; the canonical local clone independently confirms `origin/main` at
-`d1e3e397` and existing draft #824's branch/head at
-`be-benefit-participation-targets`/`ed6dc3d8`.
+Active on 2026-08-31 on `be-benefit-participation-targets-resume` at committed
+checkpoint `5032a77d`. The complete Belgium value-free target/input contract,
+exact cross-links, runtime refusals, documentation, tests, and reviewed golden
+are implemented in the worktree and await the next coherent commit. Focused
+semantic tests pass; the broader focused set reached only two expected stale
+bundle assertions, which are corrected and whose complete file now passes.
 
-Previously active on 2026-08-30 on this branch. Reviewed
-Microcosm PR #824 head `ed6dc3d8` (reviewed base `a18c87ee`) remains an
-ancestor, and authoritative main `d1e3e397` is merged at `03e4d494`, bringing
-in reviewed PR #825 head `510e3e6c` and its generic monetary primitives.
-Untracked `.lane-inputs/` handoff material remains intact. Exact Chronicle PR
-#212 base `10597ae6` and head `0f75a2bb` were audited directly in the preserved
-local worktree. No remote mutation has occurred.
+Reviewed Microcosm #824 head `ed6dc3d8` remains an ancestor, and authoritative
+main `d1e3e397` is merged at `03e4d494`, bringing in reviewed #825 head
+`510e3e6c`. Exact Chronicle #212 base/head `10597ae6`/`0f75a2bb` are pinned in
+the contract. Direct GitHub fetch remains DNS-blocked, so no remote mutation
+has occurred. Preserved `.lane-inputs/` remains intact and untracked; only the
+required final report will be written there.
 
 ## Done
+
+- Finished the 15-row Belgium target surface, ten exact nullable person-input
+  contracts, ten one-to-one Chronicle scheme-population links, and a separate
+  three-row monetary inventory. GRAPA has an exact unit/scope mapping but is
+  still missing its input, period alignment, and completeness receipt; all
+  nine child mappings additionally keep scheme construction `required_missing`.
+- Corrected every ownership inversion: Microcosm owns and populates measured or
+  latent flags, PolicyEngine consumes them and owns non-legal mechanics, and
+  Axiom receives no synthetic behavior concept. Pension and ONEM now carry the
+  same explicit consumer/support direction.
+- Enforced unknown-as-null, complete-imputation readiness, exact selector/basis
+  periods, exact scheme source/scope/entity links, one-to-one mapping identity,
+  explicit missing geography bridges, recursive value-free monetary profiles,
+  and refusal of behavioral names in both input IDs and columns.
+- Enforced validation-only exclusion from calibration compilation. PIT remains
+  a blocked calibration candidate; ONSS and NBB are validation-only; EUROMOD,
+  FPB, constructed comparisons, monthly monetary snapshots, and unreviewed
+  HFCS wealth remain outside the calibration surface.
+- Regenerated the Belgium country golden only after semantic review and updated
+  the bundle spec identity to `935f8dedcd2d1b99abe57c1b5d990bc345f4cffbc7ab0cc8791733bde6721d14`.
+- All 548 focused country, gate, Ledger, monetary, profile, population-input,
+  and bundle cases pass. Focused Ruff and `git diff --check` pass.
 
 - Re-read the complete Fable v3 review and official benefit-participation law
   audit. Confirmed that every receipt/status flag is Microcosm-populated,
@@ -89,24 +107,15 @@ local worktree. No remote mutation has occurred.
 
 ## Next
 
-- Land and integrate the closed Microcosm-owned receipt/application/status/
-  choice input schema, exact scheme-population mapping schema, row-aligned
-  readiness receipt, and Belgium declarations. Link each defensible person
-  mapping to an exact Chronicle record and preserve unsupported household
-  mappings as blockers.
-- Correct #824's target periods, assertion policies, source IDs, and ownership
-  wording. Keep target roles separate, keep every absent input/period/unit/
-  geography bridge non-executable, and preserve `metadata.nis_vintage="2025"`.
-- Add a Belgium value-free monetary inventory using #825's primitives for only
-  exact supported monetary facts; explicitly hold national accounts out for
-  validation and leave monthly GRAPA and unreviewed HFCS outside unsupported
-  accounting bases.
-- Add the reviewed target/ownership matrix and precise follow-up issue drafts.
-- Regenerate reviewed goldens only after semantic review; run focused and
-  broader PR-CI tests, Ruff, CI-group verification, and `git diff --check`.
-- Update existing draft PR #824 only, write the final report to
-  `.lane-inputs/OUT.md`, verify commits and PR body, and do not merge, publish,
-  or run restricted builds.
+- Commit the complete Belgium semantic/golden step, then run the full build
+  shard and repository Ruff, CI-group, lock, and diff checks.
+- Perform the final adversarial diff/search audit, commit the resulting
+  verification checkpoint, and confirm exact base/head and dependency pins.
+- Attempt a normal fast-forward push to existing draft #824's branch only.
+  Preserve its body if GitHub remains unavailable; never open a duplicate,
+  mark ready, merge, publish, or run a restricted build.
+- Write the complete final report to `.lane-inputs/OUT.md` and leave lane
+  bookkeeping untracked.
 
 # ACS predictor release join
 

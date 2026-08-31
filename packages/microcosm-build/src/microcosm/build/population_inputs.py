@@ -213,16 +213,17 @@ class PopulationInputContract:
                 "this contract cannot invent an Axiom input or formula."
             )
         _text(self.description, field=f"population input {self.input_id!r} description")
-        normalized_column = self.column.casefold()
-        forbidden = [
-            token for token in _BEHAVIORAL_NAME_TOKENS if token in normalized_column
-        ]
-        if forbidden:
-            raise ValueError(
-                f"population input {self.input_id!r} column {self.column!r} looks "
-                f"behavioral ({forbidden}); declare only receipt, application, "
-                "legal-status, or choice data."
-            )
+        for field, value in (("input_id", self.input_id), ("column", self.column)):
+            normalized = value.casefold()
+            forbidden = [
+                token for token in _BEHAVIORAL_NAME_TOKENS if token in normalized
+            ]
+            if forbidden:
+                raise ValueError(
+                    f"population input {self.input_id!r} {field} {value!r} looks "
+                    f"behavioral ({forbidden}); declare only receipt, application, "
+                    "legal-status, or choice data."
+                )
 
     @classmethod
     def from_mapping(cls, raw: object) -> PopulationInputContract:

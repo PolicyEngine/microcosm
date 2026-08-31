@@ -43,6 +43,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "monetary_target_profile.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "population_inputs.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "release_contract.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
