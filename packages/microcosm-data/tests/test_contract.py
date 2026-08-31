@@ -137,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12c8a7fd526932decf19954881f43a123451f0454ac2603ff5ab08b0d246e37a"
+    "12aab28f1e8e49347887c53fe1fabd228a5eda045964d65224390e0ce8b118d5"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2a7cb1441d9c9bab3afde33ad1a2957484c7bde46f93c65386b98dd7a665b812"
+    "efdb12a1f97421197871aefbb7de4be90e5d9a4f0461e6c6e72e5dcc8cf65089"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "65a2c85db2abd8edd935fda79e5c5ef8e15f89ba59ec4e2763d485c5170fd550"
+    "96186a467471393be608dc638f8288db9ebfdcf2f54a1afbaf8f070db6716746"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -242,6 +242,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "nonnegative_columns",
         "terminal",
         "nonnegative_columns",
+    ),
+    "uk_uc_capital_coherence": (
+        "column_implication",
+        "terminal",
+        "column_implication",
     ),
     "uk_support": ("support", "terminal", "support"),
     "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
@@ -925,6 +930,26 @@ def _terminal_gate_details(name: str) -> dict:
             "invalid_counts": {},
             "invalid_examples": {},
             "allowed_values": {"brma": ["CENTRAL_LONDON"]},
+        }
+    if name == "column_implication":
+        # Mirrors _evaluate_column_implication's composite detail block.
+        return {
+            "numeric_column": (
+                "person.universal_credit_reported aggregated to benunit"
+            ),
+            "boolean_column": "benunit.would_claim_uc",
+            "threshold": 0.0,
+            "rows_checked": 1,
+            "implicated_rows": 1,
+            "violation_count": 0,
+            "nonfinite_count": 0,
+            "capital_column": "benunit.uc_reported_capital",
+            "carrier_column": "benunit.frs_benunit_capital",
+            "sentinel": -1.0,
+            "below_floor_count": 0,
+            "sentinel_mismatch_count": 0,
+            "same_source_mismatch_count": 0,
+            "nonfinite_capital_count": 0,
         }
     raise AssertionError(f"No terminal fixture details for {name!r}")
 

@@ -265,6 +265,39 @@ class TestUKSurfaceAdapter:
         assert any("same sentinel" in failure for failure in failing.failures)
         assert any("must equal" in failure for failure in failing.failures)
 
+    def test_uc_column_implication_binding_is_not_vacuous_at_amount_thresholds(
+        self,
+    ) -> None:
+        # Adversarial-review finding 2: the configured threshold filters the
+        # person-level amounts; the aggregated 0/1 indicator must always be
+        # compared at 0. With the two conflated, any threshold >= 1 could
+        # never flag a violation. This pins the de-conflation: a reporter
+        # above a nonzero amount threshold with would_claim_uc=False must
+        # still fail the gate.
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_uc_capital_coherence"
+        )
+        parameters = {**dict(entry.parameters), "threshold": 100.0}
+        frame.table("person")["universal_credit_reported"] = 500.0
+        frame.table("benunit")["would_claim_uc"] = False
+
+        failing = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), parameters
+        )
+        assert not failing.passed
+        assert any("must imply" in failure for failure in failing.failures)
+        assert failing.details["amount_threshold"] == 100.0
+        assert failing.details["threshold"] == 0.0
+
     def test_nonnegative_binding_requires_scheduled_stage_columns(self) -> None:
         # frs_employment declares sic_industry_division nonnegative; a build
         # that scheduled the stage but lost the column must fail — the

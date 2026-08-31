@@ -315,7 +315,17 @@ def _evaluate_nonnegative_columns(
 def _evaluate_column_implication(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    """Bind a person signal to a benunit flag and its same-source carrier."""
+    """Bind a person signal to a benunit flag and its same-source carrier.
+
+    The capital checks (sentinel floor, sentinel parity, same-source
+    equality, nonfinite) are deliberately re-derived at the terminal frame
+    even though ``cohere_uc_capital`` establishes them at stage time: they
+    guard the pipeline BETWEEN that stage and the terminal boundary — CGT
+    cloning and donor stacking, salary sacrifice, student loans, age tail,
+    and assembly — any of which could rebuild an entity table and corrupt
+    one column without the other. Against the producer itself they cannot
+    fail; that is not their job (adversarial-review finding 3).
+    """
 
     frame = context.frame
     assert frame is not None  # GateBinding enforces frame evidence first.
@@ -341,15 +351,23 @@ def _evaluate_column_implication(
     if target[target_id_column].duplicated().any():
         raise ValueError(f"{target_entity}.{target_id_column} must be unique.")
 
+    if threshold < 0:
+        raise ValueError(
+            f"column_implication amount threshold must be nonnegative, got {threshold!r}."
+        )
     numeric = pd.to_numeric(source[numeric_column], errors="coerce")
     positive_ids = set(source.loc[numeric > threshold, source_group_column].tolist())
     aggregated = target[target_id_column].isin(positive_ids).to_numpy(dtype=np.int8)
+    # The configured threshold applies to the person-level amounts above; the
+    # aggregated evidence is a 0/1 indicator, so the primitive's threshold is
+    # pinned at 0.0 regardless — reusing the amount threshold there would make
+    # any configuration >= 1 vacuously green (adversarial-review finding 2).
     result = column_implication_gate(
         aggregated,
         target[boolean_column],
         numeric_column=f"{source_entity}.{numeric_column} aggregated to {target_entity}",
         boolean_column=f"{target_entity}.{boolean_column}",
-        threshold=threshold,
+        threshold=0.0,
     )
 
     capital_column = str(parameters["capital_column"])
@@ -402,6 +420,7 @@ def _evaluate_column_implication(
         failures=tuple(failures),
         details={
             **dict(result.details),
+            "amount_threshold": threshold,
             "capital_column": f"{target_entity}.{capital_column}",
             "carrier_column": f"{target_entity}.{carrier_column}",
             "sentinel": sentinel,

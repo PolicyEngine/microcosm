@@ -1,4 +1,16 @@
-"""Late UK Universal Credit capital and take-up coherence stage."""
+"""Late UK Universal Credit capital and take-up coherence stage.
+
+Ordering and determinism contract (adversarial-review finding 4): this stage
+runs after the last ``universal_credit_reported`` writer and BEFORE
+``cgt_incidence_clone``, so the redraw sees only pre-clone benunit ids and
+un-split design/prior-mass weights; clone twins then copy the already-drawn
+values byte-for-byte, which is why clone re-keying cannot desynchronize them.
+The redraw is deterministic in the twin-build sense used across the spine:
+identical frame plus the declared seed reproduces identical draws (uniforms
+are identity-keyed by ``benunit_id``; the donor CDF sorts by (capital,
+benunit_id) with a stable sort). A different vintage or upstream frame
+legitimately produces different draws, as with every seeded stage.
+"""
 
 from __future__ import annotations
 
