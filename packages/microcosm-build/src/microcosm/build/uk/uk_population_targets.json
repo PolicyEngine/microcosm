@@ -910,7 +910,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 25,
+    "contract_target_count": 33,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1259,6 +1259,41 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
+    "activation_added_rows": 8,
+    "activation_additions": [
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_a",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_b",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_c",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_d",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_e",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_f",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_g",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      },
+      {
+        "target_id": "voa.council_tax_stock.by_area.band_h",
+        "basis": "microcosm#147 I5; pinned wave-3 VOA LA council-tax stock"
+      }
+    ],
     "scope_target_ids": [
       "hmrc.self_employment_income.amount",
       "hmrc.self_employment_income.count",
@@ -1284,7 +1319,15 @@
       "ons.tenure.owned_mortgage",
       "ons.tenure.private_rent",
       "ons.tenure.social_rent",
-      "ons.rent.private_rent"
+      "ons.rent.private_rent",
+      "voa.council_tax_stock.by_area.band_a",
+      "voa.council_tax_stock.by_area.band_b",
+      "voa.council_tax_stock.by_area.band_c",
+      "voa.council_tax_stock.by_area.band_d",
+      "voa.council_tax_stock.by_area.band_e",
+      "voa.council_tax_stock.by_area.band_f",
+      "voa.council_tax_stock.by_area.band_g",
+      "voa.council_tax_stock.by_area.band_h"
     ]
   },
   "targets": [
@@ -11640,6 +11683,198 @@
         "record_set_spec_id": "uk.local_geography.private_rent.average_by_area.v1"
       },
       "selector_note": "Private rent is a price-level target; non-English and masked rows are signed deferrals in the local reference compiler."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_a",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "A"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_a",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "A"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_a", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_a",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_b",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "B"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_b",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "B"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_b", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_b",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_c",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "C"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_c",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "C"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_c", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_c",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_d",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "D"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_d",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "D"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_d", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_d",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_e",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "E"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_e",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "E"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_e", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_e",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_f",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "F"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_f",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "F"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_f", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_f",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_g",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "G"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_g",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "G"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_g", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_g",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
+    },
+    {
+      "target_id": "voa.council_tax_stock.by_area.band_h",
+      "family": "council_tax_stock",
+      "geography_levels": ["local_authority"],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "H"}]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "council_tax/band_h",
+          "value_variable": "household_count",
+          "filters": [{"variable": "council_tax_band", "equals": "H"}]
+        },
+        "axiom": {"metric_name": "council_tax/band_h", "status": "pending", "value_rule": "uk.household.count"}
+      },
+      "ledger_selector": {
+        "source_name": "voa",
+        "source_measure_id": "band_h",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.by_local_authority.v1"
+      },
+      "selector_note": "VOA counts dwellings; absent cells are signed deferrals and binding is fenced by voa_dwellings_vs_household_frame."
     }
   ]
 }

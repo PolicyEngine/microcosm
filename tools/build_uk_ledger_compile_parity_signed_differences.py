@@ -93,11 +93,24 @@ _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
     "Government and StatsWales private-rent statistics."
 )
 
-_COUNCIL_TAX_FIXTURE_ONLY_RATIONALE = (
-    "Ruled signed exclusion: the local contract declares no council-tax "
-    "targets and Microcosm has no council-tax local metric computations. The "
-    "wave-3 VOA/MHCLG/Scottish Government/Welsh Government facts are scoped "
-    "as follow-up work, including the contract targets and metric bindings."
+_COUNCIL_TAX_BAND_DRIFT_RATIONALE = (
+    "Pinned-source snapshot class: Microcosm and the archived incumbent both "
+    "name the VOA 2025 stock publication, but 1,175 of the 2,541 comparable "
+    "band cells differ between the pinned Ledger release and the archived "
+    "committed CSV (delta -380 to +210 dwellings); the other 1,366 cells are "
+    "exact. Microcosm holds the pinned feed at identity."
+)
+
+_COUNCIL_TAX_BAND_FIXTURE_ONLY_RATIONALE = (
+    "Signed coverage gap: Scotland and Northern Ireland are absent from the "
+    "pinned local-authority band feed, City of London band A is suppressed, "
+    "and two Welsh band H rows are absent."
+)
+
+_COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE = (
+    "Signed source deferral: the pinned feed carries no comparable 2025 "
+    "full-roster local-authority council-tax net series. The incumbent fixture "
+    "row remains non-binding until Chronicle supplies the publisher facts."
 )
 
 _DEVOLVED_RENT_METRICS = frozenset(
@@ -109,8 +122,9 @@ _DEVOLVED_RENT_METRICS = frozenset(
     }
 )
 
-_COUNCIL_TAX_METRICS = frozenset(
-    {"housing/council_tax_net"} | {f"voa/council_tax/{band}" for band in "ABCDEFGH"}
+_COUNCIL_TAX_BAND_METRICS = frozenset(
+    {f"voa/council_tax/{band}" for band in "ABCDEFGH"}
+    | {f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"}
 )
 
 _UC_METRICS = frozenset(
@@ -361,8 +375,12 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
         kind = str(row.get("kind", ""))
         if metric in _DEVOLVED_RENT_METRICS:
             row["reason"] = _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE
-        elif metric in _COUNCIL_TAX_METRICS:
-            row["reason"] = _COUNCIL_TAX_FIXTURE_ONLY_RATIONALE
+        elif kind == "calibration_drift" and metric in _COUNCIL_TAX_BAND_METRICS:
+            row["reason"] = _COUNCIL_TAX_BAND_DRIFT_RATIONALE
+        elif kind == "fixture_only" and metric in _COUNCIL_TAX_BAND_METRICS:
+            row["reason"] = _COUNCIL_TAX_BAND_FIXTURE_ONLY_RATIONALE
+        elif metric == "housing/council_tax_net":
+            row["reason"] = _COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE
         elif kind == "calibration_drift" and metric in _LOCAL_DRIFT_RATIONALES:
             row["reason"] = _LOCAL_DRIFT_RATIONALES[metric]
         elif kind == "fixture_only" and metric in _LOCAL_FIXTURE_ONLY_RATIONALES:

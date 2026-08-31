@@ -42,7 +42,15 @@
       "tenure/private_rent",
       "tenure/social_rent",
       "rent/private_rent",
-      "households"
+      "households",
+      "council_tax/band_a",
+      "council_tax/band_b",
+      "council_tax/band_c",
+      "council_tax/band_d",
+      "council_tax/band_e",
+      "council_tax/band_f",
+      "council_tax/band_g",
+      "council_tax/band_h"
     ]
   },
   "area_types": [
@@ -98,9 +106,40 @@
       "fence_id": "population_universe_private_households",
       "fenced_fact_count": null,
       "rule": "The FRS covers private households, while ONS mid-year population estimates cover the total usual-resident population including communal establishments (care homes, student halls, barracks, prisons). Binding age-structure targets must declare the universe treatment (communal-establishment adjustment or documented acceptance) per area type."
+    },
+    {
+      "authority": "uk-data targets/sources/la_council_tax.py lineage doctrine and datasets/local_areas/local_authorities/loss.py; uk-data#371; microcosm#147 adjudication A3.",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "voa_dwellings_vs_household_frame",
+      "fenced_fact_count": null,
+      "rule": "VOA council-tax stock counts chargeable dwellings, including empty properties, second homes, and other dwellings that need not correspond one-for-one with occupied private households in the FRS frame. Binding the band-count family requires an explicit adjudication accepting the household proxy or a source-faithful dwelling representation."
     }
   ],
   "census_kind": "uk_local_target_census",
+  "doctrine": {
+    "acceptance_criteria_to_mechanism": {
+      "binding_requires_review": "require_adjudicated_uk_local_binding refuses a family whose declared fences lack an in-force local_binding_adjudications row.",
+      "every_target_accounted": "The local target compiler requires a compiled reference or an AreaSignedDeferral for every metric-by-area cell; unsigned and stale deferrals raise.",
+      "intentional_zeros_preserved": "Finite zero facts compile unchanged and are distinguished from missing or unreachable nonzero targets.",
+      "missing_cells_masked_deliberately": "AreaSignedDeferral is the deliberate compile-time mask; the solve accepts only finite rows.",
+      "no_silent_target_fabrication": "The compiler reads only the sha-pinned Ledger feed, and the devolved_housing population-share allocation is a reviewed non-port."
+    },
+    "masked_missing": {
+      "incumbent_comparison": "This supersedes uk-data's per-cell NaN mask with a stronger, reviewable compile-time accounting contract.",
+      "rule": "A missing local target is represented at compile time by an AreaSignedDeferral carrying a signed reason and explicit area ids. Unsigned absence raises, and a deferral becomes stale and raises as soon as the pinned feed can compile that cell.",
+      "solve_semantics": "The solve surface remains dense and finite by design; local_rowwise.py refuses non-finite targets rather than treating NaN as an implicit loss mask."
+    },
+    "never_fabricate": {
+      "cautionary_example": "uk-data datasets/local_areas/constituencies/devolved_housing.py allocated hardcoded Wales and Scotland rent totals across constituencies in proportion to age-target population. Those anchors are deliberately not ported.",
+      "replacement": "Record signed absence, a reviewed exclusion, or a declared cross-grain bridge backed by a pinned crosswalk; never mint cells.",
+      "rule": "Never create a local target by allocating a national or country total across areas by population share or another smooth proxy."
+    },
+    "zero_targets": {
+      "enforcement": "Zero is preserved as a finite target; only an unreachable nonzero target is refused by the matrix builder.",
+      "rule": "A published zero-valued local target is legal and intentional.",
+      "test": "test_matrix_builder_fails_closed_on_unreachable_nonzero_targets"
+    }
+  },
   "families": [
     {
       "adjudications": [
@@ -171,6 +210,16 @@
       "family": "private_rent",
       "sources": [
         "ons_pipr_private_rents"
+      ]
+    },
+    {
+      "adjudications": [
+        "voa_dwellings_vs_household_frame"
+      ],
+      "description": "Chargeable dwelling stock by council-tax band A-H at local-authority grain, represented on the household frame.",
+      "family": "council_tax",
+      "sources": [
+        "voa_council_tax_stock_la"
       ]
     }
   ],
@@ -245,6 +294,70 @@
       ],
       "family": "age_structure",
       "name": "age/70_80",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_a",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_b",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_c",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_d",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_e",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_f",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_g",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "council_tax",
+      "name": "council_tax/band_h",
       "status": "bound_in_code"
     },
     {
@@ -587,14 +700,35 @@
         "source_commit": "33ca98a",
         "source_repo": "PolicyEngine/chronicle"
       },
-      "notes": "PIPR publishes average rent price levels, not additive rent totals. The staged feed's LA rows are signed deferred for the 2025 local target compile because every matching England/Wales LA fact is period 2026-06 and the remaining crosswalk areas lack LA-grain facts.",
+      "notes": "PIPR publishes average rent price levels, not additive rent totals. All 361 local-authority cells remain signed deferred for the 2025 compile: 314 are after-period, four English cells have no matching LA id, 32 Scottish cells are represented only at BRMA grain without a signed translation, and 11 Northern Ireland cells are absent.",
       "product": "Price Index of Private Rents (PIPR), UK: monthly price statistics \u2014 rent indices, annual change, and price levels.",
       "publisher": "Office for National Statistics",
-      "signed_rationale": "The pinned Ledger fact feed carries PIPR LA facts at 2026-06 for 314 crosswalk England/Wales local authorities, which are after the 2025 target period; four English crosswalk local authorities are absent, Scotland is BRMA statistical_scope grain, and Northern Ireland has no LA rows.",
+      "signed_rationale": "The pinned Ledger fact feed carries one PIPR period, 2026-06, with 348 facts: 314 crosswalk England/Wales LA rows, two English LA ids outside the crosswalk, 18 Scottish BRMA rows, nine region rows, and five country rows. None is at or before the 2025 target period; four English crosswalk authorities are absent, Scotland has no LA rows, and Northern Ireland has no rows at any grain.",
       "signed_reason_id": "private_rent_pipr_partial_coverage_2025",
       "source_id": "ons_pipr_private_rents",
       "status": "signed_deferred",
       "url": "https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "la"
+      ],
+      "latest_vintage": "2025",
+      "ledger_fact_pin": {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "build": "build-bundle --suite uk -> build-consumer-artifact",
+        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "source_commit": "33ca98a",
+        "source_repo": "PolicyEngine/chronicle"
+      },
+      "notes": "The pinned feed record-set spec uk.local_geography.council_tax_stock.by_local_authority.v1 supplies 2,541 active band cells: bands B-G cover all 318 England/Wales crosswalk authorities, band A covers 317 because E09000001 is suppressed, and band H covers 316 because W06000019 and W06000024 are absent. Scotland's 32 authorities have no VOA band-count rows and Northern Ireland's 11 LGDs use domestic rates; all 347 absent cells are signed deferrals. The feed has no comparable 2025 LA net series across the roster, so council_tax/net is not declared.",
+      "product": "Council Tax stock of properties, 2025: local-authority counts by valuation band.",
+      "publisher": "Valuation Office Agency",
+      "source_id": "voa_council_tax_stock_la",
+      "status": "pinned_in_ledger_facts",
+      "url": "https://www.gov.uk/government/statistics/council-tax-stock-of-properties-2025",
       "verified_on": "2026-07-22"
     }
   ],

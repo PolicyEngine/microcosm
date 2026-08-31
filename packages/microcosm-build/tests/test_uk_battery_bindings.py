@@ -953,14 +953,14 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 17_077
-        assert result.details["reference_targets"] == 19_642
-        # 1,554 signed area deferrals from the membership file plus the 1,011
+        assert result.details["candidate_targets"] == 19_618
+        assert result.details["reference_targets"] == 22_530
+        # 1,901 signed area deferrals from the membership file plus the 1,011
         # ladder-derived households@area rows: census_households binds from the
         # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
         # in-code default surface excludes it by rule rather than by absence.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_554 + 1_011
+        assert len(exclusions) == 1_901 + 1_011
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

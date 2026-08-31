@@ -164,6 +164,16 @@ def _area_signed_deferrals(
     scottish_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "S"
     )
+    council_tax_ni_area_ids = ni_local_authorities
+    council_tax_scotland_area_ids = scottish_local_authorities
+    council_tax_city_band_a_area_ids = tuple(
+        area_id for area_id in ("E09000001",) if area_id in local_authority_ids
+    )
+    council_tax_wales_band_h_area_ids = tuple(
+        area_id
+        for area_id in ("W06000019", "W06000024")
+        if area_id in local_authority_ids
+    )
     pipr_lad_absent_area_ids = tuple(
         area_id
         for area_id in ("E06000053", "E08000016", "E08000019", "E09000001")
@@ -261,32 +271,80 @@ def _area_signed_deferrals(
             rationale="ONS equivalised-income facts in the pinned feed are MSOA-grain mean-valued targets, with no local-authority rows; local-authority aggregation is deferred pending the signed mean-aggregation design.",
             area_ids=local_authority_ids,
         )
+    for band in "abcdefgh":
+        target_id = f"voa.council_tax_stock.by_area.band_{band}"
+        add(
+            target_id=target_id,
+            geography_level="local_authority",
+            reason_id="council_tax_voa_scotland_absent",
+            rationale=(
+                "The pinned 2025 VOA local-authority council-tax stock feed "
+                "contains no Scottish band-count rows; all 32 Scottish "
+                "crosswalk authorities are absent for bands A-H. Scottish "
+                "Band D equivalents and rates are different measures and "
+                "cannot fill these cells."
+            ),
+            area_ids=council_tax_scotland_area_ids,
+        )
+        add(
+            target_id=target_id,
+            geography_level="local_authority",
+            reason_id="council_tax_ni_domestic_rates",
+            rationale=(
+                "Northern Ireland uses domestic rates rather than council "
+                "tax; the pinned feed has no council-tax band-count rows for "
+                "the 11 Northern Ireland local-government districts."
+            ),
+            area_ids=council_tax_ni_area_ids,
+        )
+    add(
+        target_id="voa.council_tax_stock.by_area.band_a",
+        geography_level="local_authority",
+        reason_id="council_tax_city_of_london_band_a_suppressed",
+        rationale=(
+            "The pinned 2025 VOA local-authority record set publishes bands "
+            "B-H and all-properties for E09000001 but suppresses its Band A "
+            "cell; 317/318 England/Wales Band A cells compile."
+        ),
+        area_ids=council_tax_city_band_a_area_ids,
+    )
+    add(
+        target_id="voa.council_tax_stock.by_area.band_h",
+        geography_level="local_authority",
+        reason_id="council_tax_wales_band_h_absent",
+        rationale=(
+            "The pinned 2025 VOA local-authority record set publishes no "
+            "Band H cell for W06000019 or W06000024; 316/318 England/Wales "
+            "Band H cells compile."
+        ),
+        area_ids=council_tax_wales_band_h_area_ids,
+    )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_after_target_period",
-        rationale="ONS PIPR private-rent LA facts in the pinned feed are period 2026-06 for 314 crosswalk England/Wales local authorities, so none are at or before the 2025 target period compiled in this run.",
+        rationale="The pinned feed contains one PIPR period, 2026-06: 348 facts total, including 316 LA ids. Of those, 314 overlap the 2025 crosswalk (292 England and all 22 Wales); E08000038 and E08000039 are outside it. No PIPR fact is at or before the 2025 target period, so all 314 matching cells remain deferred.",
         area_ids=pipr_after_target_period_area_ids,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_english_lad_absent",
-        rationale="ONS PIPR private-rent LA facts in the pinned feed omit four English crosswalk local authorities: E06000053, E08000016, E08000019, and E09000001.",
+        rationale="The pinned feed's sole PIPR period (2026-06) carries 294 English LA ids, of which 292 overlap the crosswalk and two (E08000038, E08000039) do not. It omits four English crosswalk authorities: E06000053, E08000016, E08000019, and E09000001.",
         area_ids=pipr_lad_absent_area_ids,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_scotland_brma_grain",
-        rationale="ONS PIPR private-rent facts for Scotland in the pinned feed are published at BRMA statistical_scope grain, not local-authority grain.",
+        rationale="The pinned feed's sole PIPR period (2026-06) carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
         area_ids=scottish_local_authorities,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_ni_absent",
-        rationale="ONS PIPR private-rent facts in the pinned feed include no Northern Ireland local-authority rows.",
+        rationale="The pinned feed's 348 PIPR facts at 2026-06 contain zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
         area_ids=ni_local_authorities,
     )
     return deferrals

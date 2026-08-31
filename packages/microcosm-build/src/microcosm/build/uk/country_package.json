@@ -248,6 +248,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "uk_data_target_parity.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_validation_levels.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "uk_population_targets.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

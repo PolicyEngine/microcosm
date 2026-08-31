@@ -11,6 +11,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UK_CROSS_GRAIN_BRIDGES,
     UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
     UK_CROSS_GRAIN_RULE,
+    align_uk_local_registry_parity_fixture,
     apply_uk_cross_grain_reconciliation,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
@@ -21,6 +22,24 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 FIXTURE_FEED_ROWS = (
     Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
 )
+
+
+def test_local_parity_fixture_aligns_legacy_council_tax_band_names():
+    fixture = {
+        "rows": [
+            {
+                "name": "voa/council_tax/A@E06000001",
+                "metric": "voa/council_tax/A",
+                "geography_id": "E06000001",
+            }
+        ]
+    }
+
+    aligned = align_uk_local_registry_parity_fixture(fixture)
+
+    assert aligned["rows"][0]["name"] == (
+        "voa.council_tax_stock.by_area.band_a@E06000001"
+    )
 
 
 class StubUKAdapter:
@@ -41,9 +60,7 @@ class StubUKAdapter:
                 "capital_gains": np.array([0.0, 0.0, 0.0, 5_000.0, 0.0, 0.0, 20_000.0]),
                 "person_household_id": person_household,
                 "uc_is_child_limit_affected": child_flags,
-                "is_child": np.array(
-                    [True, True, True, True, False, True, True]
-                ),
+                "is_child": np.array([True, True, True, True, False, True, True]),
                 "pip": np.array([0.0, 0.0, 0.0, 100.0, 100.0, 0.0, 0.0]),
             },
             "household": {
@@ -423,9 +440,7 @@ def test_uc_composition_materializes_at_benunit_grain():
                 measure="dwp/uc/claimants_with_1_children",
                 value=1.0,
                 source="test",
-                metadata={
-                    "contract_target_id": "dwp.uc.households_children_1"
-                },
+                metadata={"contract_target_id": "dwp.uc.households_children_1"},
             ),
             TargetSpec(
                 name="dwp.uc.households_single_no_children",
@@ -433,9 +448,7 @@ def test_uc_composition_materializes_at_benunit_grain():
                 measure="dwp/uc/claimants_single_no_children",
                 value=1.0,
                 source="test",
-                metadata={
-                    "contract_target_id": "dwp.uc.households_single_no_children"
-                },
+                metadata={"contract_target_id": "dwp.uc.households_single_no_children"},
             ),
         ],
         country="uk",
@@ -445,9 +458,12 @@ def test_uc_composition_materializes_at_benunit_grain():
     result = materialize_uk_ledger_targets(adapter, registry, period=2025)
 
     assert result.skipped == ()
-    assert adapter.tables["benunit"][
-        "dwp/uc/claimants_with_1_children"
-    ].tolist() == [1.0, 0.0, 0.0, 0.0]
+    assert adapter.tables["benunit"]["dwp/uc/claimants_with_1_children"].tolist() == [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
     # The non-UC single sharing household 0 with the claimant fails its own
     # filters. The childless UC single in household 1 counts even though the
     # other benunit in that dwelling contains a child.
@@ -523,9 +539,7 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
         "ons.household_composition.lone_parent_non_dependent_children_households",
         "ons.household_composition.multi_family_households",
     )
-    assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == (
-        "dwp.uc.households",
-    )
+    assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == ("dwp.uc.households",)
 
 
 def test_committed_contract_detects_exact_uc_payment_partition():
@@ -561,13 +575,44 @@ def test_committed_contract_detects_exact_uc_payment_partition():
         ]
     )
 
-    reconciled, receipt = apply_uk_cross_grain_reconciliation(
-        surface, payment_ids
-    )
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(surface, payment_ids)
 
     assert len(receipt["groups"]) == 1
     assert receipt["groups"][0]["bridge_id"] is None
     assert reconciled.loc[4:, "value"].tolist() == [60.0, 40.0]
+
+
+def test_council_tax_stock_country_control_rescales_la_band_counts():
+    surface = pd.DataFrame(
+        [
+            {
+                "grain": "country",
+                "geography_id": "S92000003",
+                "target_id": "scotgov.council_tax_stock.band_a",
+                "value": 100.0,
+            },
+            {
+                "grain": "la",
+                "geography_id": "S12000005",
+                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "value": 30.0,
+            },
+            {
+                "grain": "la",
+                "geography_id": "S12000006",
+                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "value": 20.0,
+            },
+        ]
+    )
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface, ("scotgov.council_tax_stock.band_a",)
+    )
+
+    assert receipt["groups"][0]["bridge_id"] is None
+    assert receipt["groups"][0]["winning_grain"] == "country"
+    assert reconciled.loc[1:, "value"].tolist() == [60.0, 40.0]
 
 
 def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
@@ -661,13 +706,11 @@ def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
             },
         ]
     )
-    reconciled, _ = apply_uk_cross_grain_reconciliation(
-        surface, ("dwp.uc.households",)
-    )
+    reconciled, _ = apply_uk_cross_grain_reconciliation(surface, ("dwp.uc.households",))
     local = reconciled.loc[reconciled["grain"] == "constituency"]
-    targets = local.rename(
-        columns={"geography_id": "code", "value": "uc_households"}
-    )[["code", "uc_households"]]
+    targets = local.rename(columns={"geography_id": "code", "value": "uc_households"})[
+        ["code", "uc_households"]
+    ]
     metrics = pd.DataFrame(
         {"uc_households": [1.0, 1.0]},
         index=pd.Index([1, 2], name="household_id"),

@@ -37,6 +37,7 @@ class FakeUKSimulation:
                 "RENT_FROM_COUNCIL",
             ],
             "benunit_rent": [0.0, 10.0, 20.0],
+            "council_tax_band": ["A", "H", "D"],
         }
 
     def calculate(self, variable, **_kwargs):
@@ -86,6 +87,17 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
+    assert names[-9:] == (
+        "households",
+        "council_tax/band_a",
+        "council_tax/band_b",
+        "council_tax/band_c",
+        "council_tax/band_d",
+        "council_tax/band_e",
+        "council_tax/band_f",
+        "council_tax/band_g",
+        "council_tax/band_h",
+    )
 
 
 def test_metric_names_can_come_from_ledger_target_profile() -> None:
@@ -195,6 +207,9 @@ def test_compute_la_household_metrics() -> None:
     assert metrics["tenure/private_rent"].tolist() == [0.0, 1.0, 0.0]
     assert metrics["tenure/social_rent"].tolist() == [0.0, 0.0, 1.0]
     assert metrics["rent/private_rent"].tolist() == [0.0, 10.0, 0.0]
+    assert metrics["council_tax/band_a"].tolist() == [1.0, 0.0, 0.0]
+    assert metrics["council_tax/band_d"].tolist() == [0.0, 0.0, 1.0]
+    assert metrics["council_tax/band_h"].tolist() == [0.0, 1.0, 0.0]
 
 
 def test_compute_household_metrics_validates_area_type() -> None:

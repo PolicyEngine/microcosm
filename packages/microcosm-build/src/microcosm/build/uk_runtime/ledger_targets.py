@@ -46,6 +46,9 @@ class UKLedgerTargetCompilation:
 LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE = "local_registry_parity_fixture_2025.json"
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
 UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
+_UK_LOCAL_FIXTURE_METRIC_ALIASES = {
+    f"voa/council_tax/{band}": f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"
+}
 
 
 def _uk_cross_grain_leg_of_area(area_code: str) -> str:
@@ -128,7 +131,8 @@ def align_uk_local_registry_parity_fixture(
         metric = str(
             updated.get("metric") or str(updated.get("name", "")).split("@")[0]
         )
-        target_id = metric_target_ids.get(metric)
+        contract_metric = _UK_LOCAL_FIXTURE_METRIC_ALIASES.get(metric, metric)
+        target_id = metric_target_ids.get(contract_metric)
         if target_id is not None:
             geography_id = str(
                 updated.get("geography_id")
@@ -667,7 +671,10 @@ def _validate_uk_cross_grain_declarations() -> None:
             if target_id not in contract:
                 unknown.append(target_id)
         lower_target_id = bridge.lower_side.removeprefix("contract:")
-        if bridge.lower_side.startswith("contract:") and lower_target_id not in contract:
+        if (
+            bridge.lower_side.startswith("contract:")
+            and lower_target_id not in contract
+        ):
             unknown.append(lower_target_id)
         for side in (*bridge.higher_target_ids, bridge.lower_side):
             canonical = side.removeprefix("contract:")
