@@ -2,19 +2,28 @@
 
 ## State
 
-In progress on 2026-08-29. Repository and lane instructions are loaded, the
-requested branch is confirmed at `e0c41b17`, and the auto-salvage ref
-`c3180e39` is intact. Its contract work is present as working-tree changes and
-is being reviewed before it is folded into properly messaged commits. Discovery
-is under way for the country-agnostic gate battery, Armenia diagnostic
-precedent, and local Belgian build lineage.
+Resumed on 2026-08-30 at `250e68cb` on
+`be-contract-gates-diagnostic`. The three-file dirty calibration-contract patch
+and all `.lane-inputs/` handoff material remain intact. The locally refreshed
+`origin/main` is `ac4a12a0` (fetched 2026-08-30 19:51 ET), 25 commits beyond the
+branch fork, and already contains the initial Belgian target contract from
+PR #819. Reconciliation is in progress before any implementation is retained or
+rewritten. A new fetch currently fails because the managed shell cannot resolve
+GitHub; no remote mutation has occurred.
 
 ## Done
 
-- Read `AGENTS.md`, `CLAUDE.md`, and the GitNexus exploration skill.
-- Confirmed `be-contract-gates-diagnostic` is based on `origin/main` at
-  `e0c41b17` and the recovered WIP modifies the BE target contract,
-  `country_spec.py`, and `ledger_targets.py`; no salvage content was discarded.
+- Read `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, and the GitNexus
+  debugging workflow.
+- Confirmed `be-contract-gates-diagnostic` forked at `e0c41b17`; the recovered
+  WIP modifies the BE target contract, `country_spec.py`, and
+  `ledger_targets.py`, while two autosalvage refs preserve earlier snapshots.
+- Inspected committed and uncommitted diffs, the lane prompt/logs, the empty
+  required output file, and the supplied aggregate-only current-model
+  provenance JSON. No salvage content was discarded or regenerated.
+- Confirmed local `origin/main` is `ac4a12a0` and includes PR #819's Belgian
+  contract plus later exact-period and geography-vintage tests that must be
+  reconciled rather than duplicated.
 - Confirmed that GitNexus repository resources and query tools are unavailable
   in this session, so call-flow discovery is proceeding directly from source and
   tests.
@@ -28,12 +37,15 @@ precedent, and local Belgian build lineage.
 
 ## Next
 
-- Finalize the exact consumer profile schema, selector names, diagnostic input
-  shape, and BE gate registry.
-- Implement and commit the contract, gate, and diagnostic changes as coherent
-  tested steps.
-- Produce bounded current-model aggregate evidence (or an evidence-backed
-  impossibility finding), then write `.lane-inputs/OUT.md`.
+- Reconcile the dirty patch onto `origin/main` while retaining only additions
+  not already reviewed in PR #819.
+- Fix and test the `metadata.nis_vintage` compatibility decision and regenerate
+  the reviewed BE loaded-spec golden only after its semantic diff is correct.
+- Expand the value-free public target surface only where repository facts and
+  model measures provide evidence; isolate unsupported items in precise
+  follow-up issues/contracts rather than inventing values or mechanics.
+- Run focused and broader PR-CI checks, self-review, write `.lane-inputs/OUT.md`,
+  then attempt the requested push and draft PR without publishing artifacts.
 
 # ACS predictor release join
 
