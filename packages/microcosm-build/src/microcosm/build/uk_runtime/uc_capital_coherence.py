@@ -118,10 +118,14 @@ def cohere_uc_capital(frame: Frame) -> UKUCCapitalCoherenceResult:
     capital = pd.to_numeric(
         benunit[UC_CAPITAL_REDRAW_OUTPUT], errors="coerce"
     ).to_numpy(dtype=float, na_value=np.nan, copy=True)
-    if not np.isfinite(capital).all() or (capital < UC_CAPITAL_UNAVAILABLE).any():
+    valid_domain = np.isfinite(capital) & (
+        np.isclose(capital, UC_CAPITAL_UNAVAILABLE) | (capital >= 0.0)
+    )
+    if not valid_domain.all():
         raise ValueError(
-            "frs_benunit_capital must be finite and no lower than the named "
-            "unavailable sentinel."
+            "frs_benunit_capital values must be exactly the named unavailable "
+            "sentinel or nonnegative; the open interval between them has no "
+            "meaning under the -1 contract."
         )
 
     channel = benunit[support_channel_column("benunit")].astype(str)
@@ -195,7 +199,8 @@ def _redraw_spi_reporter_capital(
     )
     child_band = _dependent_children_band(benunit["dependent_children"])
     couple = _boolean_values(benunit["is_married"])
-    available = capital > UC_CAPITAL_UNAVAILABLE
+    # Domain-validated upstream: every non-sentinel value is >= 0.
+    available = capital >= 0.0
     donor = base & reporter & available & (weights > 0.0)
     target_ids = benunit["benunit_id"].to_numpy()
     draws = stable_identity_uniforms(

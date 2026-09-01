@@ -130,8 +130,10 @@ class TestCommittedRegister:
                 }
             },
             "magnitude_provenance": (
-                "I1 pre-change receipts .codex-work/828_before_ab.json and "
-                ".codex-work/828_before_c.json; 2,245 SPI-channel false "
+                "I1 pre-change receipts, committed as "
+                "experiments/828-uc-capital-receipts.md (Part B; raw JSON "
+                "licensed-side in data/ukds/acceptance/828-uc-capital/); "
+                "2,245 SPI-channel false "
                 "reporters divided by 61,211 benunits, rounded up at 1e-4 grain."
             ),
         }

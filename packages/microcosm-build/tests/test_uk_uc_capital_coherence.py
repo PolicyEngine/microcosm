@@ -206,6 +206,16 @@ def test_redraw_is_stable_under_input_row_permutation() -> None:
     pd.testing.assert_series_equal(expected, actual)
 
 
+def test_stage_refuses_the_undefined_negative_interval() -> None:
+    # Round-2 residual (a), stage-time arm: the -1 contract has exactly two
+    # regions. A carrier value of -0.5 (finite, above the old bare floor,
+    # not the sentinel) must refuse at the stage boundary, not flow on.
+    frame = _frame()
+    frame.table("benunit")["frs_benunit_capital"] = -0.5
+    with pytest.raises(ValueError, match="sentinel or nonnegative"):
+        cohere_uc_capital(frame)
+
+
 def test_children_band_caps_at_three_plus_and_boolean_helper_is_strict() -> None:
     np.testing.assert_array_equal(
         _dependent_children_band(pd.Series([0, 1, 2, 3, 8])),

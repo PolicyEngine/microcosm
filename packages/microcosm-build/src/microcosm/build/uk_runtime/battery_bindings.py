@@ -386,7 +386,16 @@ def _evaluate_column_implication(
         dtype=float
     )
     nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
-    below_floor = np.isfinite(capital) & (capital < sentinel)
+    # The -1 contract reserves exactly one negative: a value is either the
+    # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
+    # open interval between them — the one region the contract does not
+    # define (adversarial-review verification residual 1).
+    out_of_domain = np.isfinite(capital) & ~(
+        np.isclose(capital, sentinel) | (capital >= 0.0)
+    )
+    carrier_out_of_domain = np.isfinite(carrier) & ~(
+        np.isclose(carrier, sentinel) | (carrier >= 0.0)
+    )
     sentinel_mismatch = np.isclose(capital, sentinel) != np.isclose(carrier, sentinel)
     same_source_mismatch = (
         np.isfinite(capital) & np.isfinite(carrier) & (capital != carrier)
@@ -398,10 +407,17 @@ def _evaluate_column_implication(
             f"{target_entity}.{capital_column}/{carrier_column}: "
             f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
         )
-    if below_floor.any():
+    if out_of_domain.any():
         failures.append(
-            f"{target_entity}.{capital_column}: {int(below_floor.sum())} value(s) "
-            f"below the declared sentinel floor {sentinel:g}."
+            f"{target_entity}.{capital_column}: {int(out_of_domain.sum())} "
+            f"value(s) outside the declared domain (exactly the {sentinel:g} "
+            "sentinel or >= 0)."
+        )
+    if carrier_out_of_domain.any():
+        failures.append(
+            f"{target_entity}.{carrier_column}: "
+            f"{int(carrier_out_of_domain.sum())} value(s) outside the declared "
+            f"domain (exactly the {sentinel:g} sentinel or >= 0)."
         )
     if sentinel_mismatch.any():
         failures.append(
@@ -424,7 +440,8 @@ def _evaluate_column_implication(
             "capital_column": f"{target_entity}.{capital_column}",
             "carrier_column": f"{target_entity}.{carrier_column}",
             "sentinel": sentinel,
-            "below_floor_count": int(below_floor.sum()),
+            "capital_domain_violation_count": int(out_of_domain.sum()),
+            "carrier_domain_violation_count": int(carrier_out_of_domain.sum()),
             "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
             "same_source_mismatch_count": int(same_source_mismatch.sum()),
             "nonfinite_capital_count": int(nonfinite.sum()),
