@@ -729,11 +729,46 @@ class ContentStore:
                     if not destination.exists():
                         raise
                     _verified_meta(destination, expected_kind=kind)
+                else:
+                    self._replace_write_only_collision(staging, destination)
             _fsync_directory(destination.parent)
             return destination
         finally:
             if staging.exists():
                 shutil.rmtree(staging)
+
+    def _replace_write_only_collision(self, staging: Path, destination: Path) -> None:
+        """Publish ``staging`` over a non-empty directory without reading it.
+
+        POSIX cannot replace a non-empty directory directly.  Move the complete
+        incumbent aside, publish the already-fsynced staging directory, and
+        roll the incumbent back if publication raises.  Readers may observe a
+        brief miss between the two renames, but can never observe a partial
+        object, and a handled interruption leaves the complete incumbent in
+        place.
+        """
+
+        displaced = self.tmp / f"{uuid.uuid4().hex}-incumbent"
+        try:
+            os.replace(destination, displaced)
+        except FileNotFoundError:
+            # A concurrent writer removed the object after the collision.  The
+            # normal atomic publication path is valid again.
+            os.replace(staging, destination)
+            return
+        try:
+            os.replace(staging, destination)
+        except BaseException:
+            try:
+                os.replace(displaced, destination)
+            except OSError as rollback_error:
+                raise RuntimeError(
+                    f"Could not restore displaced store object {destination}."
+                ) from rollback_error
+            raise
+        finally:
+            if displaced.exists():
+                shutil.rmtree(displaced)
 
     def put_column(
         self,
@@ -770,7 +805,7 @@ class ContentStore:
             ids = pd.Index(entity_ids)
         if len(ids) != len(series):
             raise ValueError("entity_ids must have one value per stored column row.")
-        bound_node_key = key if node_key is None else node_key
+        bound_node_key = node_key
 
         def build(root: Path) -> Mapping[str, object]:
             value_spec = _write_series(root, series.reset_index(drop=True))

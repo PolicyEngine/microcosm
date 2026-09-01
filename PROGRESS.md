@@ -29,6 +29,7 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Completed per-node manifest identities for columns, structural Frames, typed weights, and opaque artifacts; attached transient populations and mass ledgers without changing portable manifest identity.
 - Replaced the package's runtime placeholders with the implemented public APIs and failures; 37 focused executor/manifest/population tests pass together.
 - Made `resume="forbid"` serialize every result through atomic staging without reading or validating an incumbent object, including collision/interruption coverage.
+- Made write-only collisions replace even a corrupt incumbent through a rollback-capable directory swap, so a successful `forbid` rerun leaves inspectable recomputed bytes.
 - Allowed dense floating columns to be created under a row mask with exact-dtype NaNs outside ownership; dense bool/integer columns remain correctly unrepresentable there.
 - Added id-only projections for owned output entities, executor-applied FILTER masks, per-store codec availability, authoritative capabilities in receipt highlights, and safe omission of ambiguous inherited group weights.
 - Preserved the original acceptance decision-record mapping as a compatibility form of immutable `Decision`, without allowing it into node identities, and rejected embedded NULs in hash domains.

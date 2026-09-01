@@ -173,6 +173,7 @@ def test_corrupt_payload_is_fatal_not_a_miss(tmp_path: Path) -> None:
         pd.Series([1.0, 2.0], dtype="float64"),
         declared_dtype="float64",
     )
+    assert store.metadata(key)["node_key"] is None
     payload = store.object_path(key) / "values.npy"
     damaged = bytearray(payload.read_bytes())
     damaged[-1] ^= 0x01
@@ -230,12 +231,12 @@ def test_write_only_collision_serializes_without_reading_incumbent(
         write_only.setattr(store_module.os, "replace", track_replace)
         write_only.setattr(store_module, "_verified_meta", reject_verification)
         assert store.put_bytes(
-            key, b"stable", verify_existing=False
+            key, b"recomputed", verify_existing=False
         ) == store.object_path(key)
 
-    assert len(replacements) == 1
+    assert len(replacements) == 3
     assert list(store.tmp.iterdir()) == []
-    assert store.load_bytes(key) == b"stable"
+    assert store.load_bytes(key) == b"recomputed"
 
 
 def test_interrupted_write_only_collision_preserves_complete_incumbent(
@@ -253,6 +254,32 @@ def test_interrupted_write_only_collision_preserves_complete_incumbent(
         with pytest.raises(OSError, match="collision interruption"):
             store.put_bytes(key, b"recomputed", verify_existing=False)
 
+    assert list(store.tmp.iterdir()) == []
+    assert store.load_bytes(key) == b"incumbent"
+
+
+def test_interrupted_write_only_swap_rolls_back_complete_incumbent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("5")
+    store.put_bytes(key, b"incumbent")
+    real_replace = store_module.os.replace
+    calls = 0
+
+    def crash_after_displacement(source: Path, destination: Path) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("simulated publication interruption")
+        real_replace(source, destination)
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(store_module.os, "replace", crash_after_displacement)
+        with pytest.raises(OSError, match="publication interruption"):
+            store.put_bytes(key, b"recomputed", verify_existing=False)
+
+    assert calls == 4
     assert list(store.tmp.iterdir()) == []
     assert store.load_bytes(key) == b"incumbent"
 
