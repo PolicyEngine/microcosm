@@ -283,6 +283,12 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
         raise PopulationError(
             "CREATE has no incumbent Population; use Population.from_frame()."
         )
+    if node.weights is not None and node.structural is StructuralDelta.NONE:
+        raise PopulationError(
+            f"Node {node.id!r} declares a weight transition without a structural "
+            "population version."
+        )
+    _assert_no_ordinary_structural_outputs(population, node)
     expected_columns = {(owned.entity, owned.column) for owned in node.outputs}
     if set(result.columns) != expected_columns:
         raise PopulationError(
@@ -299,13 +305,19 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
         frame, owners = _patch_structural(population, node, result)
 
     if node.weights is not None:
+        _assert_carried_weights(
+            population.frame,
+            frame,
+            node,
+            transitioning=node.weights.entity,
+        )
         frame = _apply_weight_transition(population, frame, node, result)
     elif result.weights is not None:
         raise PopulationError(
             f"Node {node.id!r} returned weights without declaring a transition."
         )
     else:
-        _assert_no_undeclared_kind_change(population.frame, frame, node)
+        _assert_carried_weights(population.frame, frame, node)
 
     ledger = population.mass_ledger
     if node.structural is not StructuralDelta.NONE or node.weights is not None:
@@ -527,13 +539,71 @@ def _replace_weights(frame: Frame, entity: str, replacement: Weights) -> Frame:
     )
 
 
-def _assert_no_undeclared_kind_change(before: Frame, after: Frame, node: Node) -> None:
-    for entity in set(before.weighted_entities) & set(after.weighted_entities):
-        old = before.weights_for(entity).kind
-        new = after.weights_for(entity).kind
-        if old is not new:
+def _assert_no_ordinary_structural_outputs(population: Population, node: Node) -> None:
+    if node.structural is not StructuralDelta.NONE:
+        return
+    schema = population.frame.schema
+    structural = {
+        (entity, schema.entity_id_column(entity)) for entity in schema.entities
+    }
+    structural.update(
+        (schema.person_entity, schema.membership_column(group))
+        for group in schema.group_entities
+    )
+    for owned in node.outputs:
+        if (owned.entity, owned.column) in structural:
+            raise PopulationError(
+                f"Node {node.id!r} cannot own structural column "
+                f"{owned.entity}.{owned.column}."
+            )
+
+
+def _assert_carried_weights(
+    before: Frame,
+    after: Frame,
+    node: Node,
+    *,
+    transitioning: str | None = None,
+) -> None:
+    """Protect explicit weight topology and retained values outside a transition."""
+
+    excluded = set() if transitioning is None else {transitioning}
+    before_entities = set(before.weighted_entities) - excluded
+    after_entities = set(after.weighted_entities) - excluded
+    if before_entities != after_entities:
+        raise PopulationError(
+            f"Node {node.id!r} changed explicit weighted entities without a "
+            f"WeightTransition: {sorted(before_entities)} -> {sorted(after_entities)}."
+        )
+    for entity in sorted(before_entities):
+        old = before.weights_for(entity)
+        new = after.weights_for(entity)
+        if old.kind is not new.kind:
             raise PopulationError(
                 f"Node {node.id!r} changed weight kind for {entity!r} without "
+                "declaring a WeightTransition."
+            )
+        id_column = before.schema.entity_id_column(entity)
+        before_ids = pd.Index(before.table(entity)[id_column])
+        after_ids = pd.Index(after.table(entity)[id_column])
+        retained = (
+            after_ids if node.structural is StructuralDelta.FILTER else before_ids
+        )
+        before_positions = before_ids.get_indexer(retained)
+        after_positions = after_ids.get_indexer(retained)
+        if (before_positions < 0).any() or (after_positions < 0).any():
+            raise PopulationError(
+                f"Node {node.id!r} could not align carried weights for {entity!r}."
+            )
+        before_values = np.ascontiguousarray(old.values[before_positions])
+        after_values = np.ascontiguousarray(new.values[after_positions])
+        if (
+            before_values.dtype != after_values.dtype
+            or before_values.shape != after_values.shape
+            or before_values.tobytes() != after_values.tobytes()
+        ):
+            raise PopulationError(
+                f"Node {node.id!r} changed carried weights for {entity!r} without "
                 "declaring a WeightTransition."
             )
 

@@ -24,6 +24,8 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Bound structural node keys to every completed member of their base version, preventing a cached structural Frame from carrying stale ordinary or weight-only patches.
 - Bound every declared source consumer, not just CREATE nodes, to the verified source content key.
 - Required FILTER, EXPAND, and REWEIGHT to carry incumbent rows' physical column storage unchanged after aligning by entity id.
+- Gave typed-weight artifacts their own hash domain, protected retained explicit-weight topology and bytes across structural nodes, and rejected weight transitions that do not create a structural version.
+- Reserved entity ids and person-membership columns to structural nodes so implicit context coordinates cannot change outside node-key dependencies.
 - Integrated canonical-order execution, declared-slice read-only contexts, mutation hashing, strict result validation, cache reuse/preflight, deterministic RNGs, source verification, artifact writes, and abort-on-rejection behavior.
 - Enforced exact CREATE data declarations and normalized malformed result containers into node rejections.
 - Completed per-node manifest identities for columns, structural Frames, typed weights, and opaque artifacts; attached transient populations and mass ledgers without changing portable manifest identity.

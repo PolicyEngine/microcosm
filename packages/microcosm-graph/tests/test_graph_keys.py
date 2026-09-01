@@ -23,6 +23,7 @@ from microcosm.graph.keys import (
     node_key,
     seed,
     source_content_key,
+    weights_key,
 )
 
 SOURCE = SourceRef("survey", "csv-tables")
@@ -129,7 +130,11 @@ def test_artifact_domains_and_seed_are_exact() -> None:
         "artifact", canonical_json((key, "person", "age"))
     )
     assert frame_key(key) == sha256_domain("frame", canonical_json((key,)))
+    assert weights_key(key, "person") == sha256_domain(
+        "weights", canonical_json((key, "person"))
+    )
     assert artifact_key(key, "person", "age") != frame_key(key)
+    assert weights_key(key, "person") != artifact_key(key, "person", "__weights__")
     expected_seed = int.from_bytes(
         hashlib.sha256(b"seed\0" + key.encode()).digest()[:8], "little"
     )

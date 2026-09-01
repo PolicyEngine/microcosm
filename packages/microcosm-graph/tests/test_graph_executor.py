@@ -765,3 +765,132 @@ def test_structural_reweight_uses_explicit_kind_and_mass_receipt(
     assert manifest.nodes["pool"].frame_key is not None
     assert manifest.nodes["pool"].weight_key is not None
     assert manifest.mass_ledger("pool")[-1].after_total == 8.0
+
+
+@pytest.mark.parametrize("column", ["person_id", "person_household_id"])
+def test_ordinary_nodes_cannot_own_implicit_structural_columns(
+    tmp_path: Path, column: str
+) -> None:
+    source = _source_path(tmp_path / column)
+    node = Node(
+        "rewrite_structure",
+        "rewrite.structure@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", column, "int64"),),
+        population="survey",
+    )
+    kernel = _Kernel(
+        node.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        lambda context: KernelResult(
+            columns={
+                ("person", column): pd.Series(
+                    context.tables["person"]["person_id"].to_numpy(copy=True),
+                    index=context.tables["person"]["person_id"],
+                    dtype="int64",
+                )
+            }
+        ),
+    )
+
+    with pytest.raises(NodeRejected, match="structural column"):
+        _run(
+            Graph("toy", (SOURCE,), (CREATE, node)),
+            source,
+            ContentStore(tmp_path / f"{column}-store"),
+            _registry(extra=kernel),
+        )
+    assert kernel.calls == 0
+
+
+def test_weight_artifact_cannot_collide_with_a_data_column(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def create_with_weight_named_column(context: KernelContext) -> KernelResult:
+        frame = _source_frame(context.sources["survey"])
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables["household"]["__weights__"] = np.array([10.0, 20.0])
+        return KernelResult(
+            frame=Frame(
+                tables,
+                frame.schema,
+                {
+                    entity: frame.weights_for(entity)
+                    for entity in frame.weighted_entities
+                },
+                frame.strata,
+            )
+        )
+
+    def reweight(context: KernelContext) -> KernelResult:
+        before = context.weights["household"].values
+        after = before * 2
+        return KernelResult(
+            weights=Weights(after, WeightKind.IMPORTANCE),
+            receipt={
+                "mass": {
+                    "policy": "free",
+                    "before": 4.0,
+                    "after": 8.0,
+                    "stratum_before": {"a": 2.0, "b": 2.0},
+                    "stratum_after": {"a": 4.0, "b": 4.0},
+                }
+            },
+        )
+
+    create = Node(
+        "survey",
+        "source.weights@1",
+        sources=("survey",),
+        structural=StructuralDelta.CREATE,
+        outputs=(*CREATE.outputs, Owned("household", "__weights__", "float64")),
+    )
+    pool = Node(
+        "pool",
+        "reweight.weights@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="survey",
+        inputs=(Slice("household", ("size",)),),
+        weights=WeightTransition("household", "importance", mass="free"),
+        mass="free",
+    )
+    graph = Graph("toy", (SOURCE,), (create, pool))
+
+    def registry() -> KernelRegistry:
+        result = _registry()
+        result.register(
+            _Kernel(
+                create.kernel,
+                Capabilities(
+                    Determinism.DETERMINISTIC,
+                    structural=StructuralDelta.CREATE,
+                ),
+                create_with_weight_named_column,
+            )
+        )
+        result.register(
+            _Kernel(
+                pool.kernel,
+                Capabilities(
+                    Determinism.DETERMINISTIC,
+                    structural=StructuralDelta.REWEIGHT,
+                ),
+                reweight,
+            )
+        )
+        return result
+
+    store = ContentStore(tmp_path / "store")
+    cold = _run(graph, source, store, registry())
+    warm = _run(graph, source, store, registry())
+
+    for manifest in (cold, warm):
+        np.testing.assert_array_equal(
+            manifest.population("pool").weights_for("household").values,
+            np.array([2.0, 4.0]),
+        )
+        receipt = manifest.nodes["pool"]
+        assert receipt.weight_key != receipt.artifacts[("household", "__weights__")]
+    assert all(item.hit for item in warm.nodes.values())

@@ -15,6 +15,7 @@ __all__ = [
     "node_key",
     "seed",
     "source_content_key",
+    "weights_key",
 ]
 
 
@@ -75,6 +76,12 @@ def frame_key(node_key: str) -> str:
     """Derive the structural frame artifact identity from its node."""
 
     return _hash_parts("frame", node_key)
+
+
+def weights_key(node_key: str, entity: str) -> str:
+    """Derive a typed-weight artifact identity outside the column namespace."""
+
+    return _hash_parts("weights", node_key, entity)
 
 
 def _required_key(keys: Mapping[str, str], node_id: str, consumer: str) -> str:

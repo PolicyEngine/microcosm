@@ -28,7 +28,14 @@ from .decl import (
 )
 from .errors import NodeRejectedError
 from .kernel import Capabilities, KernelContext, KernelRegistry, KernelResult
-from .keys import artifact_key, frame_key, node_key, seed, source_content_key
+from .keys import (
+    artifact_key,
+    frame_key,
+    node_key,
+    seed,
+    source_content_key,
+    weights_key,
+)
 from .manifest import Decision, NodeReceipt, RunManifest
 from .population import Population, patch
 from .store import (
@@ -548,6 +555,32 @@ def _create_population(node: Node, frame: Frame) -> Population:
     return Population.from_frame(frame, node.id)
 
 
+def _validate_population_declaration(node: Node, population: Population | None) -> None:
+    """Reject declarations that cross implicit population boundaries."""
+
+    if node.weights is not None and node.structural is StructuralDelta.NONE:
+        raise NodeRejected(
+            f"Node {node.id!r} declares a weight transition without creating a "
+            "structural population version."
+        )
+    if population is None or node.structural is not StructuralDelta.NONE:
+        return
+    schema = population.frame.schema
+    structural = {
+        (entity, schema.entity_id_column(entity)) for entity in schema.entities
+    }
+    structural.update(
+        (schema.person_entity, schema.membership_column(group))
+        for group in schema.group_entities
+    )
+    for owned in node.outputs:
+        if (owned.entity, owned.column) in structural:
+            raise NodeRejected(
+                f"Node {node.id!r} cannot own structural column "
+                f"{owned.entity}.{owned.column}; use a structural node."
+            )
+
+
 def _apply_result(
     node: Node,
     result: KernelResult,
@@ -664,9 +697,9 @@ def _write_node(
             dtype="float64",
             name="weights",
         )
-        weights_key = artifact_key(key, entity, "__weights__")
+        stored_weights_key = weights_key(key, entity)
         store.put_column(
-            weights_key,
+            stored_weights_key,
             weights_series,
             declared_dtype="float64",
             entity_ids=weights_series.index,
@@ -676,7 +709,7 @@ def _write_node(
         weight_entry = {
             "entity": entity,
             "kind": result.weights.kind.value,
-            "key": weights_key,
+            "key": stored_weights_key,
         }
 
     opaque_entries: list[dict[str, str]] = []
@@ -1042,6 +1075,7 @@ def run_graph(
         else:
             assert node.base is not None
             incumbent = populations[node.base]
+        _validate_population_declaration(node, incumbent)
 
         hit = False
         result: KernelResult | None = None

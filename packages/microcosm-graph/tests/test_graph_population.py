@@ -246,7 +246,10 @@ def test_weight_transition_is_immediate_explicit_and_records_mass() -> None:
     node = Node(
         "importance",
         "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition("household", "importance", mass="free"),
+        mass="free",
     )
     result = KernelResult(
         weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE),
@@ -274,7 +277,10 @@ def test_weight_transition_rejects_skips_and_inherited_weights() -> None:
     skip = Node(
         "skip",
         "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition("household", "calibrated", mass="free"),
+        mass="free",
     )
     with pytest.raises(PopulationError, match="must be immediate"):
         patch(
@@ -285,10 +291,27 @@ def test_weight_transition_rejects_skips_and_inherited_weights() -> None:
             ),
         )
 
+    ordinary = Node(
+        "ordinary_weights",
+        "test@1",
+        weights=WeightTransition("household", "importance", mass="free"),
+    )
+    with pytest.raises(PopulationError, match="without a structural"):
+        patch(
+            population,
+            ordinary,
+            KernelResult(
+                weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE)
+            ),
+        )
+
     inherited = Node(
         "person_importance",
         "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition("person", "importance", mass="free"),
+        mass="free",
     )
     with pytest.raises(PopulationError, match="inherited weights"):
         patch(
@@ -305,6 +328,8 @@ def test_conserve_checks_each_stratum_not_only_total() -> None:
     node = Node(
         "importance",
         "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition("household", "importance", mass="conserve"),
     )
     result = KernelResult(
@@ -319,7 +344,10 @@ def test_declared_mass_validates_the_kernel_receipt() -> None:
     node = Node(
         "importance",
         "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition("household", "importance", mass="declared"),
+        mass="declared",
     )
     result = KernelResult(
         weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE),
@@ -439,6 +467,40 @@ def test_structural_nodes_cannot_rewrite_carried_cell_storage() -> None:
     )
     with pytest.raises(PopulationError, match="changed carried storage"):
         patch(population, reweight_node, KernelResult(frame=changed_reweight))
+
+
+def test_structural_nodes_cannot_smuggle_explicit_or_rewritten_weights() -> None:
+    population = _population()
+    frame = population.frame
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    expand = Node(
+        "expand",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        mass="free",
+    )
+
+    added_explicit = Frame(
+        tables,
+        frame.schema,
+        {
+            "household": frame.weights_for("household"),
+            "person": Weights(np.ones(frame.n("person")), WeightKind.DESIGN),
+        },
+        frame.strata,
+    )
+    with pytest.raises(PopulationError, match="explicit weighted entities"):
+        patch(population, expand, KernelResult(frame=added_explicit))
+
+    rewritten = Frame(
+        tables,
+        frame.schema,
+        {"household": Weights(np.array([9.0, 8.0, 7.0]), WeightKind.DESIGN)},
+        frame.strata,
+    )
+    with pytest.raises(PopulationError, match="changed carried weights"):
+        patch(population, expand, KernelResult(frame=rewritten))
 
 
 def test_reweight_can_synthesize_frame_but_must_not_change_ids() -> None:
