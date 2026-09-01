@@ -83,7 +83,7 @@ its owner.
 | F2 | **Tier is derived.** A release node whose ancestry contains a failed gate cannot be certified; it is evidence-tier by construction. The certified loader rejects any manifest whose ancestry carries a failed gate or an evidence-tier node. | F1 (critical), #506 | María |
 | F3 | **The one-field flip is impossible.** Mutating `tier` or `schema_version` in a serialized release manifest is detected, because both are derived from content-addressed ancestry and the manifest is keyed by its content. The review's reproduction is the regression test. | F1 (critical) | María |
 | F4 | **Five outcomes, no accidental pass.** Gate outcomes are exactly `pass`, `fail`, `evidence_absent`, `not_applicable`, `unreached`. A kernel exception inside a gate becomes `fail` with the exception as evidence. | F7 | María |
-| F5 | **Human decisions are inputs.** A publication decision is a signed record with an owner, consumed by the release node as an input; a release without the required decision inputs is `unreached`, never certified. | F7 | María |
+| F5 | **Human decisions gate publication without entering keys.** A publication decision is a signed record with an owner, carried in the run manifest. The release node's owned `tier` derives from gate ancestry alone (so A7 holds: a decision changes no key); the executor reports the release's outcome as `unreached` when a required decision is absent, and the certified loader refuses such a manifest. A release is never certified by default. | F7 | María |
 
 ## G. Legibility and country neutrality
 
@@ -151,8 +151,24 @@ so the payoff is measured rather than asserted:
 `packages/microcosm-graph/src/microcosm/graph/decl.py` and `kernel.py`
 define the contract both sides build against. Their canonical hash is
 recorded in `docs/graph-interface.lock` at the start of parallel work.
-Changing either file requires both owners' sign-off on the pull request and
+Changing either file requires the owner's sign-off on the pull request and
 re-recording the lock. Everything else moves freely.
+
+Amendments so far (each re-locked):
+
+1. **Structural kernels return data; the executor does the structural
+   work.** Only `CREATE` returns `KernelResult.frame`. `FILTER` returns the
+   surviving-row mask as `KernelResult.keep`; `REWEIGHT` and declared weight
+   transitions return `KernelResult.weights`. No other kernel holds a
+   population (B2). Raised by the acceptance lane; adopted 2026-09-01.
+2. **Kernel roles.** `Capabilities.role` is `compute`, `gate`, or
+   `release`. A gate's receipt carries `outcome` from `GATE_OUTCOMES` (now
+   an interface constant) and `evidence`; a release owns a `tier` derived
+   from the gate verdicts in its ancestry.
+3. **Shared exception types** in `errors.py`: `NodeRejected`,
+   `StoreCorrupt`, `StoreUnavailable`, `StoreMiss`.
+4. **Decisions and keys** (F5, above): decisions live in the manifest, not
+   in any key.
 
 ## Ownership
 

@@ -35,6 +35,7 @@ from types import MappingProxyType
 __all__ = [
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
+    "GATE_OUTCOMES",
     "MASS_POLICIES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
@@ -72,6 +73,10 @@ WEIGHT_KINDS = ("design", "importance", "calibrated")
 
 #: Mass policies a weight transition or structural node may declare.
 MASS_POLICIES = frozenset({"conserve", "free", "declared"})
+
+#: The closed set of gate outcomes (charter F4). ``unreached`` is also the
+#: outcome of a release whose required human decisions are absent.
+GATE_OUTCOMES = ("pass", "fail", "evidence_absent", "not_applicable", "unreached")
 
 
 class GraphError(ValueError):
