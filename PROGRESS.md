@@ -2,7 +2,7 @@
 
 ## State
 
-Identity, storage, codecs, and immutable population transitions are implemented.
+The runtime, store, immutable population transitions, manifest, and public API are implemented; final verification remains.
 
 ## Done
 
@@ -23,8 +23,11 @@ Identity, storage, codecs, and immutable population transitions are implemented.
 - Bound structural node keys to every completed member of their base version, preventing a cached structural Frame from carrying stale ordinary or weight-only patches.
 - Bound every declared source consumer, not just CREATE nodes, to the verified source content key.
 - Required FILTER, EXPAND, and REWEIGHT to carry incumbent rows' physical column storage unchanged after aligning by entity id.
+- Integrated canonical-order execution, declared-slice read-only contexts, mutation hashing, strict result validation, cache reuse/preflight, deterministic RNGs, source verification, artifact writes, and abort-on-rejection behavior.
+- Enforced exact CREATE data declarations and normalized malformed result containers into node rejections.
+- Completed per-node manifest identities for columns, structural Frames, typed weights, and opaque artifacts; attached transient populations and mass ledgers without changing portable manifest identity.
+- Replaced the package's runtime placeholders with the implemented public APIs and failures; 37 focused executor/manifest/population tests pass together.
 
 ## Next
 
-- Integrate the executor and run the full charter-oriented unit suite.
-- Replace the public API placeholders and run repository verification.
+- Tighten write-only `forbid` collision behavior, then run the full charter-oriented suite and repository verification.

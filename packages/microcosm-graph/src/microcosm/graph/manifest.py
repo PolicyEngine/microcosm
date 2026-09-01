@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Self
 from .canonical import canonical_json, sha256_domain
 from .decl import StructuralDelta
 from .kernel import Capabilities, Determinism, Numeric, SeedSource
+from .population import MassRecord
 
 if TYPE_CHECKING:
     from microcosm.frame import Frame
@@ -85,6 +86,9 @@ class NodeReceipt:
     receipt: Mapping[str, object] = field(default_factory=dict)
     artifacts: Mapping[tuple[str, str], str] = field(default_factory=dict)
     wall_time: float = 0.0
+    frame_key: str | None = None
+    weight_key: str | None = None
+    opaque_artifacts: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, str):
@@ -118,6 +122,20 @@ class NodeReceipt:
                 raise TypeError("NodeReceipt.artifacts values must be strings")
             artifacts[coordinate] = key
         object.__setattr__(self, "artifacts", MappingProxyType(artifacts))
+
+        for name in ("frame_key", "weight_key"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"NodeReceipt.{name} must be a string or None")
+
+        opaque_artifacts: dict[str, str] = {}
+        for name, key in self.opaque_artifacts.items():
+            if not isinstance(name, str):
+                raise TypeError("NodeReceipt.opaque_artifacts keys must be strings")
+            if not isinstance(key, str):
+                raise TypeError("NodeReceipt.opaque_artifacts values must be strings")
+            opaque_artifacts[name] = key
+        object.__setattr__(self, "opaque_artifacts", MappingProxyType(opaque_artifacts))
 
         wall_time = float(self.wall_time)
         if not math.isfinite(wall_time) or wall_time < 0:
@@ -173,6 +191,9 @@ class NodeReceipt:
                 {"entity": entity, "column": column, "key": key}
                 for (entity, column), key in sorted(self.artifacts.items())
             ),
+            "frame_key": self.frame_key,
+            "weight_key": self.weight_key,
+            "opaque_artifacts": self.opaque_artifacts,
             "wall_time": self.wall_time,
         }
 
@@ -193,6 +214,9 @@ class RunManifest:
     finished_at: str = ""
     host: str = ""
     populations: Mapping[str, Frame] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    mass_ledgers: Mapping[str, tuple[MassRecord, ...]] = field(
         default_factory=dict, repr=False, compare=False
     )
 
@@ -219,6 +243,17 @@ class RunManifest:
         object.__setattr__(
             self, "populations", MappingProxyType(dict(self.populations))
         )
+        mass_ledgers: dict[str, tuple[MassRecord, ...]] = {}
+        for version_id, records in self.mass_ledgers.items():
+            if not isinstance(version_id, str):
+                raise TypeError("RunManifest.mass_ledgers keys must be strings")
+            frozen_records = tuple(records)
+            if not all(isinstance(record, MassRecord) for record in frozen_records):
+                raise TypeError(
+                    "RunManifest.mass_ledgers values must contain MassRecord values"
+                )
+            mass_ledgers[version_id] = frozen_records
+        object.__setattr__(self, "mass_ledgers", MappingProxyType(mass_ledgers))
 
     @property
     def content_addressed(self) -> Mapping[str, object]:
@@ -267,6 +302,16 @@ class RunManifest:
         except KeyError as error:
             raise KeyError(
                 f"Population {version_id!r} is not attached to this manifest."
+            ) from error
+
+    def mass_ledger(self, version_id: str) -> tuple[MassRecord, ...]:
+        """Return the transient mass audit trail for one attached version."""
+
+        try:
+            return self.mass_ledgers[version_id]
+        except KeyError as error:
+            raise KeyError(
+                f"Mass ledger {version_id!r} is not attached to this manifest."
             ) from error
 
     def __getitem__(self, node_id: str) -> NodeReceipt:
@@ -382,6 +427,9 @@ def _node_receipt_from_payload(value: object) -> NodeReceipt:
     wall_time = value.get("wall_time")
     receipt = value.get("receipt")
     artifacts_raw = value.get("artifacts")
+    frame_key = value.get("frame_key")
+    weight_key = value.get("weight_key")
+    opaque_artifacts = value.get("opaque_artifacts", {})
     if not isinstance(hit, bool):
         raise ValueError("node receipt hit must be a bool")
     if not isinstance(seed_value, int) or isinstance(seed_value, bool):
@@ -392,6 +440,17 @@ def _node_receipt_from_payload(value: object) -> NodeReceipt:
         raise ValueError("node receipt receipt must be an object")
     if not isinstance(artifacts_raw, list):
         raise ValueError("node receipt artifacts must be an array")
+    if frame_key is not None and not isinstance(frame_key, str):
+        raise ValueError("node receipt frame_key must be a string or null")
+    if weight_key is not None and not isinstance(weight_key, str):
+        raise ValueError("node receipt weight_key must be a string or null")
+    if not isinstance(opaque_artifacts, Mapping):
+        raise ValueError("node receipt opaque_artifacts must be an object")
+    if not all(
+        isinstance(name, str) and isinstance(key, str)
+        for name, key in opaque_artifacts.items()
+    ):
+        raise ValueError("node receipt opaque_artifacts must map strings to strings")
     artifacts: dict[tuple[str, str], str] = {}
     for item in artifacts_raw:
         if not isinstance(item, Mapping):
@@ -413,4 +472,7 @@ def _node_receipt_from_payload(value: object) -> NodeReceipt:
         receipt=receipt,
         artifacts=artifacts,
         wall_time=float(wall_time),
+        frame_key=frame_key,
+        weight_key=weight_key,
+        opaque_artifacts=opaque_artifacts,
     )

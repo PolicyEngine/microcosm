@@ -7,9 +7,11 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
+import microcosm.graph as graph_api
 from microcosm.graph.decl import StructuralDelta
 from microcosm.graph.kernel import Capabilities, Determinism, SeedSource
 from microcosm.graph.manifest import Decision, NodeReceipt, RunManifest
+from microcosm.graph.population import MassRecord
 
 
 def _capabilities() -> Capabilities:
@@ -32,6 +34,9 @@ def _receipt(key: str, *, hit: bool = False, wall_time: float = 0.2) -> NodeRece
         receipt={"rows": 3, "labels": ["a", "b"]},
         artifacts={("person", "x"): "d" * 64},
         wall_time=wall_time,
+        frame_key="e" * 64,
+        weight_key="f" * 64,
+        opaque_artifacts={"diagnostics": "1" * 64},
     )
 
 
@@ -134,7 +139,66 @@ def test_receipts_and_nested_payloads_are_immutable() -> None:
         receipt.artifacts[("person", "y")] = "e" * 64  # type: ignore[index]
     with pytest.raises(TypeError):
         receipt.receipt["rows"] = 4  # type: ignore[index]
+    with pytest.raises(TypeError):
+        receipt.opaque_artifacts["extra"] = "2" * 64  # type: ignore[index]
     assert receipt.node_key == receipt.key
     assert receipt.store_hit == receipt.hit
     assert receipt.implementation_hash == receipt.kernel_impl_hash
     assert receipt.artifact_keys == receipt.artifacts
+
+
+def test_optional_artifact_identities_round_trip_and_allow_legacy_absence() -> None:
+    manifest = RunManifest("toy", {"a": _receipt("a" * 64)})
+    restored = RunManifest.from_json(manifest.to_json())
+    receipt = restored.nodes["a"]
+    assert receipt.frame_key == "e" * 64
+    assert receipt.weight_key == "f" * 64
+    assert receipt.opaque_artifacts == {"diagnostics": "1" * 64}
+
+    legacy_payload = json.loads(manifest.to_json())
+    del legacy_payload["nodes"]["a"]["frame_key"]
+    del legacy_payload["nodes"]["a"]["weight_key"]
+    del legacy_payload["nodes"]["a"]["opaque_artifacts"]
+    legacy = RunManifest.from_json(json.dumps(legacy_payload))
+    assert legacy.nodes["a"].frame_key is None
+    assert legacy.nodes["a"].weight_key is None
+    assert legacy.nodes["a"].opaque_artifacts == {}
+
+
+def test_transient_mass_ledgers_are_immutable_and_not_portable_identity() -> None:
+    record = MassRecord(
+        node_id="calibrate",
+        operation="REWEIGHT",
+        policy="preserve_total",
+        before_total=3.0,
+        after_total=3.0,
+        before_by_stratum=(("all", 3.0),),
+        after_by_stratum=(("all", 3.0),),
+        entity="household",
+    )
+    manifest = RunManifest(
+        "toy",
+        {"a": _receipt("a" * 64)},
+        mass_ledgers={"calibrated": (record,)},
+    )
+    without_ledger = RunManifest("toy", manifest.nodes)
+    assert manifest.key == without_ledger.key
+    assert manifest.to_json() == without_ledger.to_json()
+    assert manifest.mass_ledger("calibrated") == (record,)
+    with pytest.raises(TypeError):
+        manifest.mass_ledgers["other"] = ()  # type: ignore[index]
+    restored = RunManifest.from_json(manifest.to_json())
+    with pytest.raises(KeyError, match="not attached"):
+        restored.mass_ledger("calibrated")
+
+
+def test_package_exports_runtime_implementations_and_failures() -> None:
+    assert graph_api.ContentStore.__module__.endswith(".store")
+    assert graph_api.RunManifest is RunManifest
+    assert graph_api.NodeReceipt is NodeReceipt
+    assert graph_api.Decision is Decision
+    assert graph_api.run_graph.__module__.endswith(".executor")
+    assert graph_api.describe.__module__.endswith(".view")
+    assert graph_api.StoreCorrupt.__module__.endswith(".store")
+    assert graph_api.StoreUnavailable.__module__.endswith(".store")
+    assert graph_api.NodeRejected.__module__.endswith(".executor")
