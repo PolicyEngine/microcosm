@@ -2,10 +2,10 @@
 
 ## State
 
-In progress on branch `node-graph/kernels`, based exactly on
-`origin/node-graph` at `517891f4`. The writable checkout is isolated under the
-task output directory because the requested worktree path is outside this
-session's writable filesystem boundary.
+Protocol/API audit complete; implementation is next. The branch remains based
+exactly on `origin/node-graph` at `517891f4`. The writable checkout is isolated
+under the task output directory because the requested worktree path is outside
+this session's writable filesystem boundary.
 
 ## Done
 
@@ -15,11 +15,28 @@ session's writable filesystem boundary.
 - Read the GitNexus exploration workflow. No GitNexus repository server is
   configured in this session, so source and tests will provide the execution
   flow evidence directly.
+- Read `docs/graph-acceptance.md`, the frozen `kernel.py` and `decl.py`, the QRF
+  public fit/draw and weighted-bootstrap paths, calibration target/result/SE
+  paths, and the rules-engine protocol/PolicyEngine-US adapter.
+- Redirected uv's cache into the writable sandbox. The full US sync could not
+  download one uncached wheel because DNS/network access is disabled, so
+  baseline verification uses the already-synced source worktree environment
+  with this checkout's source paths. The frozen graph baseline passes (16
+  tests).
+- Identified four base/interface constraints without editing frozen or
+  unowned files:
+  - `Node` forbids reading and owning one column even under disjoint masks, so
+    the QRF wrapper needs a distinct donor-target input alias.
+  - The public QRF has no `min_samples_leaf` option; wrap-only behavior can
+    accept only its effective default, `1`, and must reject other values.
+  - `Kernel.capabilities` is instance-level, so PARAM- and EXECUTOR-seeded QRF
+    modes require separately configured kernel instances with the same ref.
+  - The current CI classifier places the mandated frame `test_kernels.py` in
+    `shared-spec` as `[defaulted]`; repairing that requires an out-of-scope
+    `tools/ci_test_groups.py` edit.
 
 ## Next
 
-- Read the frozen graph protocol, acceptance properties, and all three wrapped
-  public APIs in full.
 - Implement and parity-test `fit.qrf@1`, `calibrate.adam@1`, and
   `simulate.rules@1` without changing `packages/microcosm-graph/`.
 - Add only the required workspace dependencies, regenerate `uv.lock`, run the
