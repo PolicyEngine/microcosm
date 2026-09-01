@@ -14,6 +14,7 @@ artifact bytes.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
@@ -275,25 +276,29 @@ def test_a7_provenance_is_separate_from_reuse(tmp_path: Path) -> None:
 
 
 def test_the_acceptance_suite_only_touches_the_public_api() -> None:
-    """The suite is black-box: no acceptance file imports a private module.
+    """The suite is black-box: no acceptance file imports a shard submodule.
 
     Charter process rule 3 — the lane that writes a property's test is not the
     lane that makes it pass — only holds if the tests cannot see the
-    implementation. This guard is green from the first commit and stays green.
+    implementation. The check is over imports rather than text, so it cannot
+    be tripped by a file that merely names a module in prose. Green from the
+    first commit, and it stays green.
     """
-    forbidden = (
-        "microcosm.graph.executor",
-        "microcosm.graph.store",
-        "microcosm.graph.keys",
-        "microcosm.graph.canonical",
-        "microcosm.graph.manifest",
-        "microcosm.graph.population",
-        "microcosm.graph.view",
-    )
     here = Path(__file__).parent
     files = sorted(here.glob("test_acceptance_*.py")) + [here / "_toy.py"]
-    assert len(files) >= 10
+    assert len(files) >= 10, "an acceptance file went missing"
     for path in files:
-        text = path.read_text()
-        for module in forbidden:
-            assert module not in text, f"{path.name} reaches into {module}"
+        tree = ast.parse(path.read_text(), filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported |= {alias.name for alias in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        private = {
+            name
+            for name in imported
+            if name.startswith("microcosm.graph.")
+            or name.startswith("microcosm.frame.")
+        }
+        assert not private, f"{path.name} imports {sorted(private)}"
