@@ -30,9 +30,7 @@ ENGINE_ONLY = (
 # Shared-engine behavioral contracts that deliberately do not carry a country
 # prefix or the spec-engine ``test_spec_*`` prefix. Listing them makes their
 # shared-lane placement reviewed rather than a silent classifier default.
-EXPLICIT_SHARED_SPEC = (
-    "packages/microcosm-build/tests/test_cross_grain.py",
-)
+EXPLICIT_SHARED_SPEC = ("packages/microcosm-build/tests/test_cross_grain.py",)
 
 PROCESSES = {
     "trade": ("main",),
@@ -111,10 +109,14 @@ def is_frame(path: str) -> bool:
 
 
 def is_calibrate_data_fit(path: str) -> bool:
+    # The engine-free operator shards. microcosm-graph joins them: its suite
+    # never needs a country engine, so it runs in the fast tier and in the
+    # engine tier's other-shards process rather than defaulting to shared-spec.
     return package(path) in {
         "microcosm-calibrate",
         "microcosm-data",
         "microcosm-fit",
+        "microcosm-graph",
     }
 
 
@@ -142,7 +144,9 @@ def fast_group(path: str) -> str:
         return "engine-only"
     if is_build(path) and name.startswith("test_us_trade_"):
         return "trade"
-    if is_build(path) and (name == "test_us_stacked_spine.py" or name.startswith("test_uk_")):
+    if is_build(path) and (
+        name == "test_us_stacked_spine.py" or name.startswith("test_uk_")
+    ):
         return "spine-uk"
     if path == "packages/microcosm-frame/tests/test_policyengine_uk_adapter.py":
         return "spine-uk"

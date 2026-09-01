@@ -1,0 +1,176 @@
+# Node graph: acceptance charter
+
+The `microcosm-graph` shard replaces stages, families, batches, banks, and
+whole-run authority receipts with one object: a content-addressed DAG of
+cell-ownership nodes. This document is the definition of done. Every
+property below is an executable test in
+`packages/microcosm-graph/tests/test_acceptance_*.py`, committed **red**
+(`pytest.mark.xfail(strict=True)`) before the implementation exists, and
+flipped to green by the pull request that implements it. The shard is done
+when the acceptance suite carries zero `xfail` markers. Nothing else counts.
+
+Three process rules keep the suite honest:
+
+1. **Strict xfail.** A property that starts passing before its
+   implementation PR fails CI, so a test can never be green by accident.
+2. **Monotone burndown.** `tools/graph_acceptance_burndown.py --verify`
+   fails if the number of `xfail` markers in the suite is higher than on
+   `origin/node-graph`. Nobody re-reds a property.
+3. **Implementer ≠ author.** The lane that writes a property's test is a
+   different lane from the one that makes it pass, and implementation
+   pull requests never edit the suite. Ownership is in the last section.
+
+Properties are named by group letter and number. Each carries the review
+finding it closes (numbers refer to the 2026-09-01 architecture review) and
+its owner.
+
+## A. Identity and reuse
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| A1 | **Determinism.** Two runs of the same graph over the same source bytes with the same kernels produce identical node keys and byte-identical artifacts, across process restarts and a reloaded store. Keys never depend on paths, hostnames, or clocks. | F2 | María writes, Max's session implements |
+| A2 | **Memoization.** The second run of an unchanged graph executes zero kernels; the run manifest records a store hit for every node. | F2 | same |
+| A3 | **Descendant-exact invalidation.** Changing one node's normative parameter re-executes exactly that node and its transitive descendants. Every ancestor and every sibling is a store hit. The test asserts the exact set of misses. | F2 (over-invalidation: 21 stores, 117 files on a `reason` edit) | same |
+| A4 | **Inert-field invariance.** Changing a non-normative field (`description`, `citation`, a label) changes no node key. The schema marks every field normative or descriptive; the canonicalizer hashes only the normative projection. | F2, leg 2 §3.1 | same |
+| A5 | **Code identity.** Changing a kernel's implementation hash (its source, or a pinned behavior-bearing dependency version) invalidates exactly the nodes bound to that kernel and their descendants. | F2 (leg 6: stacked checkpoint omits code) | same |
+| A6 | **Input content identity.** Changing the bytes of a source input under the same name invalidates exactly its consumers. Renaming a source file without changing bytes invalidates nothing. | F2 | same |
+| A7 | **Provenance is separate from reuse.** Adding a human decision, a release label, or run-request metadata to the run manifest changes no node key. | leg 3 identity triad; `docs/spec-engine.md:157-223` | same |
+
+## B. Ownership and mutation
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| B1 | **Ownership is total and exclusive.** Every non-source column has exactly one owning node. The compiler rejects a graph with two owners, and a graph that consumes a column nobody owns. | F5, leg 2 §3.3 | María / Max's session |
+| B2 | **Executor enforces ownership.** A kernel that returns cells outside its declared owned positions is rejected; nothing it wrote reaches the population. Enforcement lives in the executor, and a kernel has no handle to the population. | F5, WIC incident | same |
+| B3 | **Storage-preserving patch.** Patching owned positions preserves the incumbent column's dtype (nullable `boolean` stays nullable `boolean`; float bits including negative zero survive) and leaves every non-owned position byte-identical. This is the WIC guard, made structural. | leg 2 §3.3 | same |
+| B4 | **Inputs are immutable.** A kernel receives read-only views; an in-place write raises inside the kernel and the node fails. | leg 1 finding 5 | same |
+| B5 | **Null means absence.** A node declares each owned cell as *produced* or *absent*. A kernel writing a non-null value into an absent-declared cell is rejected. | `DESIGN.md:128-134` | same |
+
+## C. Seeds and factorization
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| C1 | **Order invariance.** Permuting the declaration order of nodes, or the scheduler's packing of independent nodes into batches, changes no node key and no output byte. | F5 (`0347a009`) | María / Max's session |
+| C2 | **Removal invariance.** Removing a node that nothing depends on, or adding a new leaf node, changes no other node's key or output. This is the `0347a009` replay: five targets removed, zero survivors re-modeled. | F5 | same |
+| C3 | **Declared predecessors only.** A chained target's predictors are exactly its declared predecessors. The executor hands a kernel only its declared slices, so an undeclared read is impossible rather than merely detected. | F5, leg 3 §legibility | same |
+| C4 | **Seed from identity.** A node's RNG seed is a pure function of its node key. Two nodes with identical declarations, inputs, and kernels in different graphs draw identical values. No positional RNG consumption exists anywhere in the shard (static check). | F4, `docs/spec-engine.md:254-282` | same |
+
+## D. Weights and mass
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| D1 | **Weight transitions are typed nodes.** `design → importance → calibrated` are the only legal transitions; the executor rejects a regression and rejects a transition declared on inherited (non-explicit) weights. | F9 (leg 1 finding 1) | María / Max's session |
+| D2 | **Mass ledger.** Every population-changing node (select, concat, clone, reweight) emits a mass record with before/after totals and per-stratum mass. Under `conserve`, a stratum losing mass fails the node. `select` cannot drop mass silently. | F9 | same |
+| D3 | **Cap anchored to design.** A calibration node's `max_weight_ratio` is asserted against the declared anchor across composed stages; a selection-then-refit chain that ships a record above `R × design` fails. | F9 (#493) | same |
+| D4 | **Filters are binary.** A target filter containing NaN or a non-binary value is rejected at compile. | F9 | same |
+| D5 | **Uncertainty travels.** A target's declared standard error reaches the calibration kernel's inputs; a kernel that ignores a declared `se` must say so in its capability record. | scoreboard row 5 (leg 1 finding 7) | same |
+
+## E. Store and resume
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| E1 | **Content validation on load.** A stored artifact whose bytes were altered is rejected on load with `StoreCorrupt`; it is never used. | F3 | María / Max's session |
+| E2 | **Verifier unavailability is fatal.** If the codec or dependency needed to load an artifact is unavailable, the executor raises `StoreUnavailable` and does not recompute. The 8/31 `ImportError` replay: the run stops before any kernel runs. | F3 | same |
+| E3 | **Resume policy is real.** `require` refuses to execute any node without a store hit; `forbid` never reads the store; `auto` memoizes. All three are tested against the same graph. | F3 (`docs/spec-engine.md:454-460`) | same |
+| E4 | **Atomic writes.** An interruption during an artifact write leaves no partial artifact visible; the next run treats the node as a miss. | leg 5 finding 8 | same |
+| E5 | **Manifest completeness.** The run manifest lists every node key, hit or miss, kernel receipt, and seed; two runs of the same graph produce manifests that differ only in run-level fields. | F7 | same |
+
+## F. Gates and release
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| F1 | **A gate is a node.** Its verdict is an artifact keyed like any other; identical inputs hit the store; changed inputs re-evaluate. | F7, #611 | María |
+| F2 | **Tier is derived.** A release node whose ancestry contains a failed gate cannot be certified; it is evidence-tier by construction. The certified loader rejects any manifest whose ancestry carries a failed gate or an evidence-tier node. | F1 (critical), #506 | María |
+| F3 | **The one-field flip is impossible.** Mutating `tier` or `schema_version` in a serialized release manifest is detected, because both are derived from content-addressed ancestry and the manifest is keyed by its content. The review's reproduction is the regression test. | F1 (critical) | María |
+| F4 | **Five outcomes, no accidental pass.** Gate outcomes are exactly `pass`, `fail`, `evidence_absent`, `not_applicable`, `unreached`. A kernel exception inside a gate becomes `fail` with the exception as evidence. | F7 | María |
+| F5 | **Human decisions are inputs.** A publication decision is a signed record with an owner, consumed by the release node as an input; a release without the required decision inputs is `unreached`, never certified. | F7 | María |
+
+## G. Legibility and country neutrality
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| G1 | **One-screen view.** `describe(node)` renders predecessors, parameters, seed derivation, owned cells, and kernel identity from the graph alone, under 40 lines, with no other file consulted. | F14 | Max's session |
+| G2 | **The executor knows no country.** `microcosm-graph` imports no country package and contains no country string (static AST check). A UK graph and a US graph run through the same executor. | leg 5 finding 7 | Max's session |
+| G3 | **Toy country in CI.** A synthetic country graph runs source → two chained QRF targets → calibrate → simulate (stub engine) → gate → release end-to-end in under 60 seconds on the fast lane, with zero restricted data. This is #378 step 2. | #378 | Max's session |
+
+## V. Visuals (human review surface)
+
+Every run of the executor can render itself. These are the artifacts María
+reviews; they are generated from the run manifest and the graph, never
+hand-drawn, so they stay true as the code moves.
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| V1 | **Graph explorer.** `microcosm-graph explain <manifest>` renders one HTML page: the DAG with node keys, owned cells per node, store hit/miss per node, seed derivation, kernel identity, and the one-screen `describe()` for any node on click. Works on the toy country in CI and on a real run. | F14, G1 | Max's session builds; María reviews |
+| V2 | **Acceptance burndown.** The same page (or its sibling) shows every property in this charter with its state (red/green), the PR that flipped it, and the four incident replays with their current verdicts. Published as an artifact on every PR into `node-graph`. | process | same |
+| V3 | **Calibration view.** For a calibrate node: the target table with declared `se`, the weight-ratio distribution against the design anchor, and the mass ledger before/after, rendered from the node's artifacts. This is the existing calibration dashboard rehomed onto graph artifacts. | D3, D5 | same |
+| V4 | **Incident replays, animated.** The four replays rendered as before/after diffs of node keys and cells, so a reader can see a removal changing zero survivor keys, or a dtype breach stopping at the node boundary. | narrative | same |
+
+## H. Parity (migration acceptance)
+
+| Id | Property | Closes | Owner |
+|---|---|---|---|
+| H1 | **Kernel parity.** Each wrapped legacy kernel (QRF fit and draw via `microcosm-fit`, calibrate via `microcosm-calibrate`, simulate via a `RulesEngine`) produces byte-identical output to the direct call on a pinned fixture and seed. | #378 step 3 | Max's session |
+| H2 | **UK spine parity.** The UK 26-stage spine expressed as a graph reproduces the current spine's `uk_frame_content_identity` on the fixture. Stage order is derived from declared `consumes`; the hand-maintained `_STAGE_NAMES` tuple is deleted. | F12, F8 | María |
+| H3 | **US post-transfer parity.** The stacked spine's derive → seed → simulate subgraph reproduces a pinned fixture output. | #378 step 3 | Max's session, later |
+
+## The four incident replays
+
+The candidate-26 incident is the acceptance fixture for the properties that
+matter most. Each replay is a named test that reconstructs the incident's
+shape on synthetic data:
+
+1. **WIC dtype breach → B3.** A kernel returns a dense `bool` over a
+   nullable `boolean` incumbent. The executor rejects the node.
+2. **`0347a009` repack → C1 + C2.** Five leaf nodes are removed; every
+   surviving node's key and output are unchanged.
+3. **Engine-less environment → E2.** The codec for the engine manifest is
+   unavailable; the run stops before recomputing anything.
+4. **Evidence flip → F3.** The serialized release manifest's tier field is
+   edited; the certified loader refuses it.
+
+## Measured payoffs, once green
+
+The suite proves properties. These are the numbers to publish alongside it,
+so the payoff is measured rather than asserted:
+
+- **Refit share on an unrelated edit.** On the US graph, an edit to a
+  gap-fill `reason` string: store misses = 0. (Today: 21 stores, up to 117
+  files.)
+- **Verifier line count.** Lines of after-the-fact verification code
+  deleted from `stacked_spine.py` as each invariant becomes structural.
+  (Baseline: 9,546 of 13,931.)
+- **Legibility.** Lines a reader must open to answer "what predicts
+  `charitable_non_cash_donations`": today 424 across three files; target
+  one `describe()` screen.
+- **Cold-cache cutover cost.** Wall clock of the first full US run through
+  the executor, receipted, so the number stops being an estimate.
+
+## Interface freeze
+
+`packages/microcosm-graph/src/microcosm/graph/decl.py` and `kernel.py`
+define the contract both sides build against. Their canonical hash is
+recorded in `docs/graph-interface.lock` at the start of parallel work.
+Changing either file requires both owners' sign-off on the pull request and
+re-recording the lock. Everything else moves freely.
+
+## Ownership
+
+Max's ruling (2026-09-01): the agents build all of it. The "implementer ≠
+author" rule is kept by lane, not by person: the acceptance suite is
+written by one sol lane from this charter against the frozen interfaces,
+and implementation lanes never edit the suite; a suite change is its own
+pull request reviewed by the Fable main.
+
+- **Max's session (Fable main; sol lanes for every bounded leg):** the
+  shard core, the legacy-kernel wrappers, the toy country, the acceptance
+  suite (as its own lane), the visuals, and both country migrations.
+- **María:** human review of the visual and interactive artifacts (group
+  V), starting with the calibration view (V3), plus UK domain review of H2
+  when it lands.
+- **Max:** the rulings in the review's "Decisions that are yours" as they
+  come due, and the `node-graph → main` merge.
+
+Branch: `node-graph`, off `origin/main` at `4c6cc58c`. Work lands as pull
+requests into `node-graph`; `node-graph` merges to `main` when the suite has
+zero `xfail` markers and H1–H2 are green.

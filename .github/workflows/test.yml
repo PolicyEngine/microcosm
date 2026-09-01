@@ -96,6 +96,7 @@ jobs:
                       "packages/microcosm-calibrate/tests/**",
                       "packages/microcosm-data/tests/**",
                       "packages/microcosm-fit/tests/**",
+                      "packages/microcosm-graph/tests/**",
                       "specs/**",
                       ".github/workflows/**",
                       "tools/**",

@@ -1,0 +1,1 @@
+Add the `microcosm-graph` shard: a content-addressed DAG of cell-ownership nodes with frozen declaration and kernel interfaces, and the acceptance charter (`docs/graph-acceptance.md`) that defines when it is done.
