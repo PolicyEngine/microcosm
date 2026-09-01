@@ -622,11 +622,11 @@ def _local_contract_covers(target_id: str, levels: tuple[str, ...]) -> tuple[str
     return tuple(sorted(covers))
 
 
-def _incumbent_path(entry_id: str) -> str:
+def _incumbent_path(inventory_id: str) -> str:
     prefix = f"{_INVENTORY_PACKAGE}."
-    if not entry_id.startswith(prefix):
-        raise ValueError(f"invalid incumbent inventory id {entry_id!r}.")
-    return entry_id.removeprefix(prefix).replace(".", "/") + ".py"
+    if not inventory_id.startswith(prefix):
+        raise ValueError(f"invalid incumbent inventory id {inventory_id!r}.")
+    return inventory_id.removeprefix(prefix).replace(".", "/") + ".py"
 
 
 def _local_contract_rows() -> list[dict[str, Any]]:
@@ -699,7 +699,10 @@ def _validate_rows(rows: list[dict[str, Any]]) -> None:
         if (
             not isinstance(covers, (list, tuple))
             or not covers
-            or any(not isinstance(entry_id, str) or not entry_id for entry_id in covers)
+            or any(
+                not isinstance(inventory_id, str) or not inventory_id
+                for inventory_id in covers
+            )
         ):
             raise ValueError(
                 f"parity concern {row['concern_id']!r} requires at least one "
@@ -749,27 +752,37 @@ def _load_uk_data_target_inventory(
     entries = inventory.get("entries")
     if not isinstance(entries, list):
         raise ValueError("UK data-target inventory requires an entries list.")
-    entry_ids = [str(entry.get("entry_id", "")) for entry in entries]
-    if any(not entry_id for entry_id in entry_ids):
-        raise ValueError("UK data-target inventory entries require entry_id.")
+    inventory_ids = [str(entry.get("inventory_id", "")) for entry in entries]
+    if any(not inventory_id for inventory_id in inventory_ids):
+        raise ValueError("UK data-target inventory entries require inventory_id.")
     duplicates = sorted(
-        {entry_id for entry_id in entry_ids if entry_ids.count(entry_id) > 1}
+        {
+            inventory_id
+            for inventory_id in inventory_ids
+            if inventory_ids.count(inventory_id) > 1
+        }
     )
     if duplicates:
         raise ValueError(
             f"duplicate UK data-target inventory entry id(s): {duplicates}."
         )
-    if entry_ids != sorted(entry_ids):
-        raise ValueError("UK data-target inventory entries must be sorted by entry_id.")
+    if inventory_ids != sorted(inventory_ids):
+        raise ValueError(
+            "UK data-target inventory entries must be sorted by inventory_id."
+        )
     return inventory
 
 
 def _assert_inventory_bijection(
     rows: list[dict[str, Any]], inventory: dict[str, Any]
 ) -> None:
-    entries = {str(entry["entry_id"]): entry for entry in inventory.get("entries", ())}
+    entries = {
+        str(entry["inventory_id"]): entry for entry in inventory.get("entries", ())
+    }
     inventory_ids = set(entries)
-    covered_ids = {str(entry_id) for row in rows for entry_id in row.get("covers", ())}
+    covered_ids = {
+        str(inventory_id) for row in rows for inventory_id in row.get("covers", ())
+    }
     unknown = sorted(covered_ids - inventory_ids)
     if unknown:
         raise ValueError(
@@ -785,9 +798,9 @@ def _assert_inventory_bijection(
             f"{unknown_exemptions}."
         )
     invalid_exemptions = sorted(
-        entry_id
-        for entry_id in UK_DATA_TARGET_INVENTORY_HELPER_EXEMPTIONS
-        if entries[entry_id].get("kind") != "helper"
+        inventory_id
+        for inventory_id in UK_DATA_TARGET_INVENTORY_HELPER_EXEMPTIONS
+        if entries[inventory_id].get("kind") != "helper"
     )
     if invalid_exemptions:
         raise ValueError(

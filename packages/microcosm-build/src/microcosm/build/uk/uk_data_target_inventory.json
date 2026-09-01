@@ -1,301 +1,301 @@
 {
   "entries": [
     {
-      "entry_id": "policyengine_uk_data.datasets.imputations.consumption",
+      "inventory_id": "policyengine_uk_data.datasets.imputations.consumption",
       "kind": "dataset_anchor",
       "path": "policyengine_uk_data/datasets/imputations/consumption.py",
       "sha256": "b360956025171ba548ba4e3ddd71720d6605ffd55bc024ea51f6e921b3437d1a"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.imputations.services.services",
+      "inventory_id": "policyengine_uk_data.datasets.imputations.services.services",
       "kind": "dataset_anchor",
       "path": "policyengine_uk_data/datasets/imputations/services/services.py",
       "sha256": "ed4c99fc01a0333eada51efb117f0c1ef5669a140485f5bcf0816356d6bdce85"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.imputations.vat",
+      "inventory_id": "policyengine_uk_data.datasets.imputations.vat",
       "kind": "dataset_anchor",
       "path": "policyengine_uk_data/datasets/imputations/vat.py",
       "sha256": "348ec7bdbb106969a2b0f92415c548da4e38bec862dc9e14d6543bff004dd402"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.local_areas.constituencies.devolved_housing",
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.devolved_housing",
       "kind": "local_target_producer",
       "path": "policyengine_uk_data/datasets/local_areas/constituencies/devolved_housing.py",
       "sha256": "87e214fd5c2dffd5373e3d7a23994f47359d0b2a2d09920632d854fc45aeaa23"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.loss",
       "kind": "local_matrix",
       "path": "policyengine_uk_data/datasets/local_areas/constituencies/loss.py",
       "sha256": "b4802cfb053f4245a9dc833561e8dac29aaf6d7740bbd6715c1b4b1f01baa26c"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
       "kind": "local_target_producer",
       "path": "policyengine_uk_data/datasets/local_areas/constituencies/targets/create_employment_incomes.py",
       "sha256": "02ea84487adba1bfc9ee79b36c733c21cbc1a70196f7c3f3d80fb0075553e696"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
       "kind": "local_target_producer",
       "path": "policyengine_uk_data/datasets/local_areas/constituencies/targets/create_total_incomes.py",
       "sha256": "929a4b43bcc2646fa99ae088734ea5dff85a2c6febfe7be9cd9f4400ee32a978"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
       "kind": "local_target_producer",
       "path": "policyengine_uk_data/datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py",
       "sha256": "e773db129073f651cf6d78559071f85f6aa803607ca4af801e034f20e12b8038"
     },
     {
-      "entry_id": "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
       "kind": "local_matrix",
       "path": "policyengine_uk_data/datasets/local_areas/local_authorities/loss.py",
       "sha256": "3eb10e5f139ed76c34c401db2f348d1334bdb7ac0a19d62dfac8ef1515799293"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.__init__",
+      "inventory_id": "policyengine_uk_data.targets.sources.__init__",
       "kind": "helper",
       "path": "policyengine_uk_data/targets/sources/__init__.py",
       "sha256": "dd828956842c4e51e38274f3f0642afedab33f2ae1affc332a085f89df7de0db"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources._common",
+      "inventory_id": "policyengine_uk_data.targets.sources._common",
       "kind": "helper",
       "path": "policyengine_uk_data/targets/sources/_common.py",
       "sha256": "b1347f9a0022eab1c0ab092d2e64e77d5d3101be493f1094efc1fdd07516cd19"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources._land",
+      "inventory_id": "policyengine_uk_data.targets.sources._land",
       "kind": "helper",
       "path": "policyengine_uk_data/targets/sources/_land.py",
       "sha256": "ce80dc27b570e70ae9d3ba98bb75f714fbc3aebcd78f1f7329b0d8ef955b7907"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.dwp",
+      "inventory_id": "policyengine_uk_data.targets.sources.dwp",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/dwp.py",
       "sha256": "3e9c445d2358795e0b946a00726e1fb34f7bbf95789ce9125c3c84c9038025ea"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.hmrc_cgt",
+      "inventory_id": "policyengine_uk_data.targets.sources.hmrc_cgt",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/hmrc_cgt.py",
       "sha256": "f208e0844bf184c9c7e1195eb2b2d723ba8b3a9ae44887fc20335e92f95ac954"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.hmrc_salary_sacrifice",
+      "inventory_id": "policyengine_uk_data.targets.sources.hmrc_salary_sacrifice",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/hmrc_salary_sacrifice.py",
       "sha256": "08c0f9e7e9a44c183b5c15424e56a0070461506585e6c294e9fbc937dc2a70d4"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.hmrc_spi",
+      "inventory_id": "policyengine_uk_data.targets.sources.hmrc_spi",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/hmrc_spi.py",
       "sha256": "59d6d80154e32d676bc7ff5e5c4c0c1e6077b2a92a7bffc1d792333958361a18"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.housing",
+      "inventory_id": "policyengine_uk_data.targets.sources.housing",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/housing.py",
       "sha256": "6d161f15ad96f7438660cb91ad7f6c50f2d7826f377715f0faa8c8c1e304c633"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.la_council_tax",
+      "inventory_id": "policyengine_uk_data.targets.sources.la_council_tax",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/la_council_tax.py",
       "sha256": "a86017d6821e97fbdf662edec5cff0c852fad3b223fef5e3a4146a0ad8fdfcce"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.local_age",
+      "inventory_id": "policyengine_uk_data.targets.sources.local_age",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/local_age.py",
       "sha256": "d5ddf569ba60836f03267580ef34158a1a09c0ecf5a1c317592923928d4a45e6"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.local_income",
+      "inventory_id": "policyengine_uk_data.targets.sources.local_income",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/local_income.py",
       "sha256": "4c3b03abe744b3f072b32938fe867902067a08c7ad0cf00b575dcd989d494883"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.local_la_extras",
+      "inventory_id": "policyengine_uk_data.targets.sources.local_la_extras",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/local_la_extras.py",
       "sha256": "ac8a3c48ac275858910afc72e9b60ad4b20bcd5e8a3e0ffb97eaec17beda22cd"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.local_uc",
+      "inventory_id": "policyengine_uk_data.targets.sources.local_uc",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/local_uc.py",
       "sha256": "712656e9068b3c28676262efa1f9a2e108b38ec218004433a393942b62f6205d"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.mhclg_regional_land",
+      "inventory_id": "policyengine_uk_data.targets.sources.mhclg_regional_land",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/mhclg_regional_land.py",
       "sha256": "877cfaee51f6f54d3d3583c8b1f6301bc992e532362e725235ac5496c0c30c3d"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.nts_vehicles",
+      "inventory_id": "policyengine_uk_data.targets.sources.nts_vehicles",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/nts_vehicles.py",
       "sha256": "fc9ef3f64cc77161b461f9846ce9dc374cdd13eb1486108043e3c4ebbd207b07"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.obr",
+      "inventory_id": "policyengine_uk_data.targets.sources.obr",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/obr.py",
       "sha256": "1f606a4a2748a72100d21b97cbc57006ce9b5eb87c3fe3534b182370c198255e"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.ons_demographics",
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_demographics",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_demographics.py",
       "sha256": "8078d8adbcf4f24f893914d543d6d829bf640660997d876e79e5b081a342bc2c"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.ons_households",
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_households",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_households.py",
       "sha256": "cec986deea14bf9c099c16f48190b1bbf81287bf69abafe7f8d1492f42560890"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.ons_land_values",
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_land_values",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_land_values.py",
       "sha256": "cd557c50feabbc6b5e07ee9dd9dd74770e3d2c1fdadb0692d1a47ccb6db79bde"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.ons_public_sector_employment",
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_public_sector_employment",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_public_sector_employment.py",
       "sha256": "9cebf0565130c89e7cd539024888888b75abe3059d7904b4911522cad8eb2a4c"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.ons_savings",
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_savings",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_savings.py",
       "sha256": "b7e7e8812a791ced747de1e1056f6825518fceb41710296fa7f65cb82e24a51f"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.ons_tenure",
+      "inventory_id": "policyengine_uk_data.targets.sources.ons_tenure",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/ons_tenure.py",
       "sha256": "6e4630dd2ce310dc38d79f457e1182abd895556bc7e693b963e01f150d4fa6db"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.scottish_government",
+      "inventory_id": "policyengine_uk_data.targets.sources.scottish_government",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/scottish_government.py",
       "sha256": "c3dc59bba2fb629a4b457b933f25f6671b984be69485c6dcab1b96a3a99e3208"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.slc",
+      "inventory_id": "policyengine_uk_data.targets.sources.slc",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/slc.py",
       "sha256": "d0058d8da406ede8f51be9f8002d0a425f43490991d6710bc8cc54259d3c67ac"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.slc_repayments",
+      "inventory_id": "policyengine_uk_data.targets.sources.slc_repayments",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/slc_repayments.py",
       "sha256": "e8f11b2e308a46c64a4dae47a8e91bbd39b4589438bd8ea1d25cf5aacb252a9c"
     },
     {
-      "entry_id": "policyengine_uk_data.targets.sources.voa_council_tax",
+      "inventory_id": "policyengine_uk_data.targets.sources.voa_council_tax",
       "kind": "target_source",
       "path": "policyengine_uk_data/targets/sources/voa_council_tax.py",
       "sha256": "565a273c9f3cd2c92cf63aa2015c1061e878d57002de146468a3832e31e92227"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.microsimulation.test_reform_impacts",
+      "inventory_id": "policyengine_uk_data.tests.microsimulation.test_reform_impacts",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/microsimulation/test_reform_impacts.py",
       "sha256": "939b7a534b030a5dd96f202f060ffc0348a5b05d5867f96e81efad580377c8ed"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_aggregates",
+      "inventory_id": "policyengine_uk_data.tests.test_aggregates",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_aggregates.py",
       "sha256": "fd996624f54cb701cb44276f48e8da1a749e867c54c6412b7e12e64c5b2cfbf6"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_bus_fare_distribution",
+      "inventory_id": "policyengine_uk_data.tests.test_bus_fare_distribution",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_bus_fare_distribution.py",
       "sha256": "621c1099c716b5b1838c438be594685d89c84ada359ffb816dc9cad88a0d8053"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_la_council_tax_targets",
+      "inventory_id": "policyengine_uk_data.tests.test_la_council_tax_targets",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_la_council_tax_targets.py",
       "sha256": "15e1c0687f459e8eae36f4d78f5868e443a613e0a0b9e81c07e723aec810c50d"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_la_loss_council_tax",
+      "inventory_id": "policyengine_uk_data.tests.test_la_loss_council_tax",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_la_loss_council_tax.py",
       "sha256": "e1032781a700b1527513eda708ef1f80b652bedcc2134d3c3397c21c2aac6e62"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_la_loss_missing_sources",
+      "inventory_id": "policyengine_uk_data.tests.test_la_loss_missing_sources",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_la_loss_missing_sources.py",
       "sha256": "6f43da21e8ff9110049c9aa462e563c8d023ac193a8a82f9b156c31355268460"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_obr_nic_signal",
+      "inventory_id": "policyengine_uk_data.tests.test_obr_nic_signal",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_obr_nic_signal.py",
       "sha256": "f25c97dabf52577a3c4a4786e346fb49ac89151453e4cd68cf6f3b660da4abc6"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_population",
+      "inventory_id": "policyengine_uk_data.tests.test_population",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_population.py",
       "sha256": "4674f37fbfc896054592c5599352ead04582d707c09fb7abcbe99c13c99285fa"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_population_fidelity",
+      "inventory_id": "policyengine_uk_data.tests.test_population_fidelity",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_population_fidelity.py",
       "sha256": "57a64a9226c3661223f4be506563843dcbee6c4c656162416a5a5244211a1946"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_public_sector_employment_target",
+      "inventory_id": "policyengine_uk_data.tests.test_public_sector_employment_target",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_public_sector_employment_target.py",
       "sha256": "585b19ff8c64ea277663fbf2310b408f5db4bbea4e20ad1d373364299cc487f7"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_publish_local_h5s",
+      "inventory_id": "policyengine_uk_data.tests.test_publish_local_h5s",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_publish_local_h5s.py",
       "sha256": "06b3d5c7f3e19cf1e39c8f42d20692fa1b79c78135d3d0fb571cde3837e3fc73"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_regional_land_value_targets",
+      "inventory_id": "policyengine_uk_data.tests.test_regional_land_value_targets",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_regional_land_value_targets.py",
       "sha256": "cd9f9c14a578104ddead181b07fd22f588dd9ef654932d3ce53290b234d921ef"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_target_db",
+      "inventory_id": "policyengine_uk_data.tests.test_target_db",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_target_db.py",
       "sha256": "b314e40a83f7d11d5788c07e3389508d5c893b27ec2842f86e151e9bfeae75cc"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_target_registry",
+      "inventory_id": "policyengine_uk_data.tests.test_target_registry",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_target_registry.py",
       "sha256": "a241bd044492102f219d8ba5e50d613ca5c1bd885a3b95391664cbac7744df7f"
     },
     {
-      "entry_id": "policyengine_uk_data.tests.test_vehicle_ownership",
+      "inventory_id": "policyengine_uk_data.tests.test_vehicle_ownership",
       "kind": "credibility_gate",
       "path": "policyengine_uk_data/tests/test_vehicle_ownership.py",
       "sha256": "5bb6d3142b6c25288383e3260a962a94aeac96433f6c4be49d9f6a85bf276182"

@@ -84,17 +84,17 @@ def test_concern_covering_unknown_inventory_id_fails() -> None:
 def test_inventory_entry_with_no_concern_fails() -> None:
     rows = copy.deepcopy(build_uk_data_target_parity()["concerns"])
     inventory = data_target_parity._load_uk_data_target_inventory()
-    covered = {entry_id for row in rows for entry_id in row["covers"]}
+    covered = {inventory_id for row in rows for inventory_id in row["covers"]}
     victim = next(
-        entry["entry_id"]
+        entry["inventory_id"]
         for entry in inventory["entries"]
-        if entry["entry_id"] in covered
-        and entry["entry_id"]
+        if entry["inventory_id"] in covered
+        and entry["inventory_id"]
         not in data_target_parity.UK_DATA_TARGET_INVENTORY_HELPER_EXEMPTIONS
     )
     for row in rows:
         row["covers"] = tuple(
-            entry_id for entry_id in row["covers"] if entry_id != victim
+            inventory_id for inventory_id in row["covers"] if inventory_id != victim
         )
 
     with pytest.raises(ValueError, match=victim):

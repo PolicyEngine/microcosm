@@ -67,7 +67,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _entry_id(path: Path) -> str:
+def _inventory_id(path: Path) -> str:
     return str(path.with_suffix("")).replace("/", ".")
 
 
@@ -83,7 +83,7 @@ def _entry(tree: Path, relative: Path, *, kind: str) -> dict[str, str]:
             f"cannot statically parse uk-data module {relative}."
         ) from error
     return {
-        "entry_id": _entry_id(relative),
+        "inventory_id": _inventory_id(relative),
         "path": relative.as_posix(),
         "sha256": hashlib.sha256(source).hexdigest(),
         "kind": kind,
@@ -116,7 +116,7 @@ def build_inventory(tree: Path, *, commit: str) -> dict[str, object]:
     entries = [
         _entry(tree, relative, kind=kind) for relative, kind in relative_kinds.items()
     ]
-    entries.sort(key=lambda row: row["entry_id"])
+    entries.sort(key=lambda row: row["inventory_id"])
     return {
         "schema_version": 1,
         "incumbent_commit": str(commit),
