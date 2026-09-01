@@ -149,7 +149,7 @@ def node_key(
             ),
         }
 
-    if node.structural is StructuralDelta.CREATE:
+    if node.sources:
         resolved_sources = {
             name: source_keys[name]
             for name in sorted(node.sources)

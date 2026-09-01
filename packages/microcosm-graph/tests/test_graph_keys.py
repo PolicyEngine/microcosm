@@ -231,3 +231,24 @@ def test_structural_key_binds_every_patch_in_its_base_version() -> None:
         {},
     )
     assert baseline != changed_patch
+
+
+def test_non_create_source_consumers_bind_their_declared_source_bytes() -> None:
+    consumer = replace(_ordinary("consumer", ("age",), "value"), sources=("survey",))
+    graph = Graph("toy", (SOURCE,), (CREATE, consumer))
+    compiled = compile_graph(graph)
+    baseline = node_key(
+        compiled,
+        "consumer",
+        {"survey": "a" * 64},
+        "b" * 64,
+        {"survey": "c" * 64},
+    )
+    changed = node_key(
+        compiled,
+        "consumer",
+        {"survey": "a" * 64},
+        "b" * 64,
+        {"survey": "d" * 64},
+    )
+    assert baseline != changed
