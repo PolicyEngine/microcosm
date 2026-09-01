@@ -299,19 +299,18 @@ def reconcile_cross_grain_surface(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "contains a non-finite leg total."
                 )
-            if (raw_values > 0.0).any() and (raw_values < 0.0).any():
-                raise ValueError(
-                    f"cross-grain inconsistency {group.inconsistency_id!r} "
-                    "cannot reconcile a mixed-sign lower leg for parent "
-                    f"geography {control['parent_geography_id']!r}; the "
-                    "members would cancel and rescale by an arbitrary factor."
-                )
+            # Offsetting members are legitimate for a net-valued concept, so
+            # only the conditioning matters: a leg that cancels to nothing
+            # against a nonzero control would rescale by an arbitrary factor.
             if abs(raw_sum) < _MIN_LEG_SUM_RTOL * abs(parent_value):
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     f"cannot scale a vanishing lower-leg total {raw_sum!r} to "
                     f"control {parent_value!r}."
                 )
+            # Live only when the control is itself zero (the floor above is
+            # vacuous there): a zero-summing leg against a zero control is a
+            # no-op, where `parent_value / raw_sum` would be 0/0.
             factor = 1.0 if raw_sum == 0.0 else parent_value / raw_sum
             if not np.isfinite(factor):
                 raise ValueError(
@@ -515,24 +514,28 @@ def _canonical_signature_value(value: Any) -> Any:
     frozen = _freeze(value)
     if frozen is None or frozen == () or frozen == "":
         return _UNSPECIFIED
+    if isinstance(value, (list, tuple, set, frozenset)):
+        # Order-insensitive at this level only: a signature field holding a
+        # sequence is a conjunction (the filter list), so its members are the
+        # same measurement however the contract orders them.  Ordering *inside*
+        # a member stays significant — a `between` payload's bounds are data,
+        # not a conjunction — so `_freeze` below is order-preserving.
+        return tuple(sorted(frozen, key=_sort_key))
     return frozen
+
+
+def _sort_key(member: Any) -> str:
+    return json.dumps(_json_safe(member), sort_keys=True, separators=(",", ":"))
 
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
         return tuple(sorted((str(key), _freeze(member)) for key, member in value.items()))
-    if isinstance(value, (list, tuple, set, frozenset)):
-        members = [_freeze(member) for member in value]
-        # Order-insensitive: a conjunction of filter conditions is the same
-        # measurement however the contract happens to order it.
-        return tuple(
-            sorted(
-                members,
-                key=lambda member: json.dumps(
-                    _json_safe(member), sort_keys=True, separators=(",", ":")
-                ),
-            )
-        )
+    if isinstance(value, (set, frozenset)):
+        # A set has no order to preserve; sort for a deterministic signature.
+        return tuple(sorted((_freeze(member) for member in value), key=_sort_key))
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(member) for member in value)
     if isinstance(value, np.generic):
         value = value.item()
     if isinstance(value, bool):

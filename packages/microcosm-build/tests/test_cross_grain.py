@@ -446,24 +446,6 @@ def test_contract_entry_without_measurement_block_is_refused():
         )
 
 
-def test_mixed_sign_lower_leg_is_refused():
-    surface = pd.DataFrame(
-        [
-            ("country", "E", "national", 100.0),
-            ("constituency", "E1", "local", 1e-12),
-            ("constituency", "E2", "local", -1e-12),
-        ],
-        columns=["grain", "geography_id", "target_id", "value"],
-    )
-    with pytest.raises(ValueError, match="mixed-sign lower leg"):
-        apply_cross_grain_reconciliation(
-            surface,
-            ("national",),
-            {"national": _signature(), "local": _signature()},
-            _rule(),
-        )
-
-
 def test_vanishing_lower_leg_total_is_refused():
     surface = pd.DataFrame(
         [
@@ -479,3 +461,108 @@ def test_vanishing_lower_leg_total_is_refused():
             {"national": _signature(), "local": _signature()},
             _rule(),
         )
+
+
+def test_offsetting_members_reconcile_when_the_leg_total_is_well_conditioned():
+    """A net-valued concept may legitimately hold offsetting members.
+
+    Conditioning is the only hazard, and the relative floor is that test, so a
+    leg summing cleanly to its control must reconcile rather than be refused
+    for containing both signs.
+    """
+
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("constituency", "E1", "local", 200.0),
+            ("constituency", "E2", "local", -100.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": _signature(), "local": _signature()},
+        _rule(),
+    )
+
+    assert receipt["groups"][0]["legs"][0]["declared_factor"] == pytest.approx(1.0)
+    assert reconciled.loc[1:, "value"].tolist() == [200.0, -100.0]
+
+
+def test_cancelling_leg_is_still_refused_by_the_conditioning_floor():
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("constituency", "E1", "local", 1e-3),
+            ("constituency", "E2", "local", -1e-3),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="vanishing lower-leg total"):
+        apply_cross_grain_reconciliation(
+            surface,
+            ("national",),
+            {"national": _signature(), "local": _signature()},
+            _rule(),
+        )
+
+
+def test_zero_control_over_a_zero_summing_leg_is_a_no_op():
+    """The zero branch is live: it is the 0/0 case, not a dead special case."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 0.0),
+            ("constituency", "E1", "local", 5.0),
+            ("constituency", "E2", "local", -5.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": _signature(), "local": _signature()},
+        _rule(),
+    )
+
+    assert receipt["groups"][0]["legs"][0]["declared_factor"] == pytest.approx(1.0)
+    assert reconciled.loc[1:, "value"].tolist() == [5.0, -5.0]
+
+
+def test_ordered_payload_inside_a_filter_does_not_false_collide():
+    """`between [0, 100]` and `between [100, 0]` are different measurements.
+
+    Order-insensitivity is justified at the conjunction level the filter list
+    occupies; applying it inside a condition would merge two distinct
+    measurements into one group and rescale onto the wrong control.
+    """
+
+    def _between(lower: float, upper: float) -> dict[str, object]:
+        return {
+            "measurement": {
+                "concept": "households",
+                "entity": "household",
+                "filters": [{"op": "between", "value": [lower, upper]}],
+            }
+        }
+
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 100.0),
+            ("constituency", "E1", "local", 25.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    _, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": _between(0.0, 100.0), "local": _between(100.0, 0.0)},
+        _rule(),
+    )
+
+    assert receipt["groups"] == []
+    assert receipt["absence"]
