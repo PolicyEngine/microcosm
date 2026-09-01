@@ -2,7 +2,7 @@
 
 ## State
 
-The runtime, store, immutable population transitions, manifest, and public API are implemented against the amended frozen interfaces; repository-level verification and publication remain.
+The runtime is complete and all in-scope owned verification is green at `a1ed55d4`. Publication is blocked because this sandbox cannot resolve `github.com`; repository-wide inherited formatting and test-group classification debt is recorded below.
 
 ## Done
 
@@ -36,8 +36,13 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Allowed dense floating columns to be created under a row mask with exact-dtype NaNs outside ownership; dense bool/integer columns remain correctly unrepresentable there.
 - Added id-only projections for owned output entities, executor-applied FILTER masks, per-store codec availability, authoritative capabilities in receipt highlights, and safe omission of ambiguous inherited group weights.
 - Preserved the original acceptance decision-record mapping as a compatibility form of immutable `Decision`, without allowing it into node identities, and rejected embedded NULs in hash domains.
-- The local shard suite now passes all 84 tests; compatible black-box acceptance probes for A3/A5/A7, B1/B2, D1/D2/D5, E2/E5, and G1 also pass un-xfailed.
+- The local shard suite passes all 91 tests. The independent A–E/G acceptance worktree passes 29 of 32 tests with xfails disabled, including A1–A7, B1–B5, C1–C4, D1–D3/D5, E2/E4/E5, and G1.
+- Confirmed the three remaining acceptance failures are outside the owned runtime: D4 requires compile-time dtype resolution in frozen `decl.py`; E1 looks for a key-bearing filename although the mandated layout uses a key-bearing directory; E3 raises `FileExistsError` in `_toy.copy_source` before its second runtime call.
+- Confirmed every owned Python file is Ruff-formatted and lint-clean, and repository-wide `ruff check .` passes. Repository-wide `ruff format --check .` reports 122 pre-existing unowned files.
+- Ran `tools/ci_test_groups.py --verify`: `verification=ok`; no graph test is defaulted, while 48 inherited build/frame tests are still listed under `[defaulted]`.
+- Reconfirmed frozen `decl.py` and `kernel.py` match their amended lock hashes and have no diff from `origin/node-graph`.
+- Attempted to push `node-graph/core`; Git failed with `Could not resolve host: github.com`, so a draft PR could not be created from this environment.
 
 ## Next
 
-- Run the full charter-oriented suite and repository verification, then publish the branch and draft PR.
+- From a network-enabled checkout, push `node-graph/core` and create the draft PR with base `node-graph`; then address the documented upstream D4/interface and acceptance-fixture issues in their owning lanes.
