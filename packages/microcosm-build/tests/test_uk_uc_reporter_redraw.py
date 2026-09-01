@@ -486,3 +486,30 @@ def test_positive_draw_on_a_child_claimant_refuses_at_the_landing() -> None:
         uc_child=uc_child,
     )
     assert person[UC_REPORTER_REDRAW_OUTPUT].tolist() == [500.0, 0.0]
+
+
+def test_child_only_benunits_are_screened_out_of_the_drawn_domain() -> None:
+    """uc_maximum_amount is mechanical, so the screen needs the member check.
+
+    The engine computes a positive pre-take-up award for a QYP-only unit even
+    though it cannot claim; without this restriction such units enter the
+    drawn domain and positive draws land on child claimants.
+    """
+
+    from microcosm.build.uk_runtime.uc_reporter_redraw import _has_adult_member
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_benunit_id": [10, 10, 20, 30],
+            "age": [40.0, 12.0, 17.0, 70.0],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": [10, 20, 30]})
+    uc_child = np.array([False, True, True, False])
+
+    assert _has_adult_member(person, benunit, uc_child=uc_child).tolist() == [
+        True,
+        False,
+        True,
+    ]

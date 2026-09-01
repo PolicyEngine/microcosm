@@ -207,6 +207,13 @@ def redraw_spi_reported_uc(
         expected=len(person),
         label="UC child flag",
     )
+    # The engine's uc_maximum_amount is mechanical: it computes a positive
+    # award for a benefit unit whose only member is a 16-19 qualifying young
+    # person, though such a unit cannot claim. The screen therefore also
+    # requires a non-child member, or child-only units enter the drawn
+    # domain and positive draws land on child claimants (the landing's
+    # fail-closed check).
+    screen &= _has_adult_member(person, benunit, uc_child=uc_child)
     claimant_rows = _claimant_rows(person, uc_child=uc_child)
     predictors = _benefit_unit_predictors(
         person,
@@ -360,6 +367,24 @@ def _strict_materialized_bool(values: Any, *, expected: int, label: str) -> np.n
     if len(series) != expected:
         raise ValueError(f"{label} must align to the person table.")
     return _boolean_values(series)
+
+
+def _has_adult_member(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    *,
+    uc_child: np.ndarray,
+) -> np.ndarray:
+    """Benefit units carrying at least one non-child member, benunit-aligned."""
+
+    adult_by_benunit = (
+        pd.Series(~uc_child, index=person.index)
+        .groupby(person["person_benunit_id"], sort=False)
+        .any()
+    )
+    return (
+        benunit["benunit_id"].map(adult_by_benunit).fillna(False).to_numpy(dtype=bool)
+    )
 
 
 def _claimant_rows(person: pd.DataFrame, *, uc_child: np.ndarray) -> np.ndarray:
