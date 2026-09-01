@@ -2,9 +2,9 @@
 
 ## State
 
-All three legacy kernels are implemented and focused parity-tested. Their
-required graph workspace dependencies are declared and the lock is regenerated;
-the complete verification matrix is now in progress. The branch
+All three legacy kernels are implemented, parity-tested, dependency-complete,
+and verified at the source and clean-wheel boundaries. The evidence report,
+push, and draft pull request are the remaining handoff steps. The branch
 remains based exactly on `origin/node-graph` at `517891f4`. The writable
 checkout is isolated under the task output directory because the requested
 worktree path is outside this session's writable filesystem boundary.
@@ -81,12 +81,34 @@ worktree path is outside this session's writable filesystem boundary.
   skipped`). In an isolated cached environment with `policyengine-us==1.819.0`,
   the registered 20-household `requires_us` test passes (`1 passed, 1
   deselected`); the engine-free environment reports `1 passed, 1 skipped`.
+- Final source verification is green: all 620 collected tests across fit,
+  calibrate, and frame pass or make their registered engine skips; the frozen
+  graph baseline is `16 passed`; `ruff check .`, focused format checks,
+  `git diff --check`, and offline `uv lock --check` all pass.
+- Built current fit, calibrate, and frame wheels (plus graph to exercise the
+  dependency boundary) into a temporary directory with `uv build --wheel`.
+  Each touched wheel records `microcosm-graph<0.2,>=0.1`; a clean offline Python
+  3.14 environment installed all four local wheels and 21 third-party packages,
+  `uv pip check` passed, and isolated imports resolved every kernel from that
+  environment's `site-packages`. Build isolation alone could not fetch its
+  uncached `packaging==26.3` requirement with DNS disabled, so the successful
+  build used uv's already-cached Hatchling environment via
+  `--no-build-isolation`.
+- `tools/ci_test_groups.py --verify` reports `tracked_test_files=326` and
+  `verification=ok`. Fit and calibrate route to `rest` and
+  `us-am:other-shards`; frame routes to `rest` and `shared-spec`. As identified
+  during the initial audit, frame is also reported under `[defaulted]` solely
+  because the mandated `packages/microcosm-frame/tests/test_kernels.py` name has
+  no classifier rule; fixing that would edit unowned `tools/ci_test_groups.py`.
+- `git diff --stat origin/node-graph -- packages/microcosm-graph` is empty.
+  Repository-wide `ruff format --check .` still reports the same 122
+  pre-existing base-branch files outside this lane; all six owned Python files
+  report already formatted. They were not reformatted across the ownership
+  boundary.
 
 ## Next
 
-- Run the complete requested verification, build and inspect the three wheels,
-  push the branch, open the draft PR, and write the evidence report to
-  `out.md`.
+- Write the evidence report to `out.md`, push the branch, and open the draft PR.
 
 ---
 
