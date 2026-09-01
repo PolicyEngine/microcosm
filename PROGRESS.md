@@ -2,10 +2,11 @@
 
 ## State
 
-`fit.qrf@1` is implemented and parity-tested; calibration is the next coherent
-step. The branch remains based exactly on `origin/node-graph` at `517891f4`.
-The writable checkout is isolated under the task output directory because the
-requested worktree path is outside this session's writable filesystem boundary.
+`fit.qrf@1` and `calibrate.adam@1` are implemented and parity-tested; rules
+simulation is the next coherent step. The branch remains based exactly on
+`origin/node-graph` at `517891f4`. The writable checkout is isolated under the
+task output directory because the requested worktree path is outside this
+session's writable filesystem boundary.
 
 ## Done
 
@@ -45,11 +46,20 @@ requested worktree path is outside this session's writable filesystem boundary.
   `KernelContext.rng`, and recorded the effective seed in the receipt.
 - Passed all 100 `microcosm-fit` tests in the delegated run; independently
   passed the 7 focused parity/contract tests and focused Ruff checks.
+- Added `CalibrateAdamKernel`, which reshapes the declared entity into a
+  row-order-preserving minimal `Frame`, calls public `calibrate(...,
+  method="adam")`, and returns its typed calibrated `Weights`.
+- Proved the calibrated weight array is byte-identical to the direct public
+  call on importance weights. The receipt preserves each five-item target
+  tuple—including integer/float/`None` standard errors—unchanged and carries
+  the existing JSON-stable diagnostics payload; capabilities honestly declare
+  `consumes_se=False`.
+- Passed the 5 focused calibration kernel tests and focused Ruff checks.
 
 ## Next
 
-- Implement and parity-test `calibrate.adam@1` and `simulate.rules@1` without
-  changing `packages/microcosm-graph/`.
+- Implement and parity-test `simulate.rules@1` without changing
+  `packages/microcosm-graph/`.
 - Add only the required workspace dependencies, regenerate `uv.lock`, run the
   complete requested verification, build the three wheels, push the branch,
   open the draft PR, and write the evidence report to `out.md`.
