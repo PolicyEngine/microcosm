@@ -2,7 +2,7 @@
 
 ## State
 
-Identity, provenance, the validated content store, and source codecs are implemented.
+Identity, storage, codecs, and immutable population transitions are implemented.
 
 ## Done
 
@@ -18,8 +18,10 @@ Identity, provenance, the validated content store, and source codecs are impleme
 - Implemented atomic content-addressed columns, complete Frame versions, JSON receipts, and opaque bytes with load-time payload verification.
 - Preserved dense/nullable dtypes, null bitmaps, UTF-8 strings without object arrays, and signed zero; equivalent frames serialize byte-for-byte across stores.
 - Implemented `frame-store` and both supported `csv-tables` fixture layouts; 10 focused store/codec tests pass.
+- Implemented storage-preserving masked patches, total ownership lineage, ABSENT enforcement, and exact dense/nullable dtype checks.
+- Implemented structural id constraints, explicit immediate weight-kind transitions, per-stratum conservation, and the graph mass ledger; 14 focused population tests pass.
 
 ## Next
 
-- Commit the completed population patch/weight/mass semantics.
 - Integrate the executor and run the full charter-oriented unit suite.
+- Replace the public API placeholders and run repository verification.
