@@ -165,8 +165,9 @@ Amendments so far (each re-locked):
    `release`. A gate's receipt carries `outcome` from `GATE_OUTCOMES` (now
    an interface constant) and `evidence`; a release owns a `tier` derived
    from the gate verdicts in its ancestry.
-3. **Shared exception types** in `errors.py`: `NodeRejected`,
-   `StoreCorrupt`, `StoreUnavailable`, `StoreMiss`.
+3. **Shared exception types** in `errors.py`, with the repository's
+   `Error` suffix: `NodeRejectedError`, `StoreCorruptError`,
+   `StoreUnavailableError`, `StoreMissError`.
 4. **Decisions and keys** (F5, above): decisions live in the manifest, not
    in any key.
 

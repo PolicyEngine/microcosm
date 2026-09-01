@@ -32,10 +32,10 @@ from .decl import (
 )
 from .errors import (
     GraphRuntimeError,
-    NodeRejected,
-    StoreCorrupt,
-    StoreMiss,
-    StoreUnavailable,
+    NodeRejectedError,
+    StoreCorruptError,
+    StoreMissError,
+    StoreUnavailableError,
 )
 from .kernel import (
     Capabilities,
@@ -72,7 +72,7 @@ __all__ = [
     "KernelResult",
     "KernelRole",
     "Node",
-    "NodeRejected",
+    "NodeRejectedError",
     "Numeric",
     "Owned",
     "Ownership",
@@ -81,9 +81,9 @@ __all__ = [
     "SeedSource",
     "Slice",
     "SourceRef",
-    "StoreCorrupt",
-    "StoreMiss",
-    "StoreUnavailable",
+    "StoreCorruptError",
+    "StoreMissError",
+    "StoreUnavailableError",
     "StructuralDelta",
     "WeightTransition",
     "compile_graph",
