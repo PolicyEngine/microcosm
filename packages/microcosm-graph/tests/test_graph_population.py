@@ -25,6 +25,7 @@ from microcosm.graph.population import (
     patch,
     storage_equal,
     token_for_dtype,
+    weight_cap_receipt,
 )
 
 
@@ -501,6 +502,104 @@ def test_structural_nodes_cannot_smuggle_explicit_or_rewritten_weights() -> None
     )
     with pytest.raises(PopulationError, match="changed carried weights"):
         patch(population, expand, KernelResult(frame=rewritten))
+
+
+def test_calibration_cap_stays_anchored_to_original_design_after_filter() -> None:
+    population = _population()
+    importance_node = Node(
+        "pool",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        weights=WeightTransition("household", "importance", mass="free"),
+        mass="free",
+    )
+    importance = patch(
+        population,
+        importance_node,
+        KernelResult(weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE)),
+    )
+    filtered_frame = importance.frame.select(
+        np.array([True, True, True, False], dtype=np.bool_)
+    )
+    filter_node = Node(
+        "adults",
+        "test@1",
+        structural=StructuralDelta.FILTER,
+        base="pool",
+        mass="free",
+    )
+    filtered = patch(importance, filter_node, KernelResult(frame=filtered_frame))
+
+    np.testing.assert_array_equal(
+        filtered.frame.table("household")["household_id"], np.array([10, 20])
+    )
+    np.testing.assert_array_equal(
+        filtered.design_weights["household"], np.array([1.0, 2.0])
+    )
+    assert not filtered.design_weights["household"].flags.writeable
+
+    calibrated_node = Node(
+        "calibrated",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="adults",
+        params={"max_weight_ratio": 2.0, "weight_anchor": "design"},
+        weights=WeightTransition("household", "calibrated", mass="free"),
+        mass="free",
+    )
+    within = patch(
+        filtered,
+        calibrated_node,
+        KernelResult(
+            weights=Weights(np.array([1.5, 3.0]), WeightKind.CALIBRATED),
+            receipt={"weight_anchor": "incoming"},
+        ),
+    )
+    assert weight_cap_receipt(within, calibrated_node) == {
+        "weight_anchor": "design",
+        "max_weight_ratio": 2.0,
+        "realized_max_weight_ratio": 1.5,
+    }
+
+    with pytest.raises(PopulationError, match="calibrated.*original design"):
+        patch(
+            filtered,
+            calibrated_node,
+            KernelResult(weights=Weights(np.array([3.0, 6.0]), WeightKind.CALIBRATED)),
+        )
+
+
+def test_design_cap_fails_closed_when_source_has_no_design_lineage() -> None:
+    frame = _frame()
+    importance_frame = Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        frame.schema,
+        {
+            "household": Weights(
+                frame.weights_for("household").values, WeightKind.IMPORTANCE
+            )
+        },
+        frame.strata,
+    )
+    population = Population.from_frame(importance_frame, "importance_source")
+    node = Node(
+        "calibrated",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="importance_source",
+        params={"max_weight_ratio": 2.0, "weight_anchor": "design"},
+        weights=WeightTransition("household", "calibrated", mass="free"),
+        mass="free",
+    )
+    with pytest.raises(PopulationError, match="no original design-weight anchor"):
+        patch(
+            population,
+            node,
+            KernelResult(
+                weights=Weights(np.array([1.0, 2.0, 3.0]), WeightKind.CALIBRATED)
+            ),
+        )
 
 
 def test_reweight_can_synthesize_frame_but_must_not_change_ids() -> None:

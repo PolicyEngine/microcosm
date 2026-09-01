@@ -21,6 +21,7 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Implemented `frame-store` and both supported `csv-tables` fixture layouts; 10 focused store/codec tests pass.
 - Implemented storage-preserving masked patches, total ownership lineage, ABSENT enforcement, and exact dense/nullable dtype checks.
 - Implemented structural id constraints, explicit immediate weight-kind transitions, per-stratum conservation, and the graph mass ledger; 14 focused population tests pass.
+- Carried immutable original-design weight anchors by entity id across filters and reweights, enforced calibrated `max_weight_ratio` against that anchor, and authored the cap receipt from verified runtime state.
 - Bound structural node keys to every completed member of their base version, preventing a cached structural Frame from carrying stale ordinary or weight-only patches.
 - Bound every declared source consumer, not just CREATE nodes, to the verified source content key.
 - Required FILTER, EXPAND, and REWEIGHT to carry incumbent rows' physical column storage unchanged after aligning by entity id.

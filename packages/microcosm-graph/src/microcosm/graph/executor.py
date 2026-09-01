@@ -37,7 +37,7 @@ from .keys import (
     weights_key,
 )
 from .manifest import Decision, NodeReceipt, RunManifest
-from .population import Population, patch
+from .population import Population, patch, weight_cap_receipt
 from .store import (
     ContentStore,
     ResumePolicy,
@@ -1123,6 +1123,7 @@ def run_graph(
         )
         normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
         updated = _apply_result(node, result, incumbent)
+        normalized_receipt.update(weight_cap_receipt(updated, node))
         if node.structural is StructuralDelta.NONE:
             populations[compiled.versions[node_id]] = updated
         else:

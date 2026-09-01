@@ -38,6 +38,7 @@ __all__ = [
     "population_from_frame",
     "storage_equal",
     "token_for_dtype",
+    "weight_cap_receipt",
 ]
 
 _MASS_RTOL = 1e-9
@@ -147,6 +148,9 @@ class Population:
     owners: Mapping[tuple[str, str], str]
     weight_kind: Mapping[str, WeightKind]
     mass_ledger: tuple[MassRecord, ...] = field(default_factory=tuple)
+    design_weights: Mapping[str, np.ndarray] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.frame, Frame):
@@ -185,6 +189,27 @@ class Population:
         object.__setattr__(self, "owners", MappingProxyType(copied_owners))
         object.__setattr__(self, "weight_kind", MappingProxyType(copied_kinds))
         object.__setattr__(self, "mass_ledger", tuple(self.mass_ledger))
+        frozen_design: dict[str, np.ndarray] = {}
+        for entity, raw_values in self.design_weights.items():
+            if entity not in self.frame.entities:
+                raise PopulationError(
+                    f"Design-weight anchor names unknown entity {entity!r}."
+                )
+            values = np.asarray(raw_values, dtype=np.float64)
+            expected_length = self.frame.n(entity)
+            if values.shape != (expected_length,):
+                raise PopulationError(
+                    f"Design-weight anchor for {entity!r} has shape {values.shape}; "
+                    f"expected ({expected_length},)."
+                )
+            if not np.isfinite(values).all() or (values < 0).any():
+                raise PopulationError(
+                    f"Design-weight anchor for {entity!r} must be finite and "
+                    "non-negative."
+                )
+            # A bytes-backed array cannot be made writable again by a caller.
+            frozen_design[entity] = np.frombuffer(values.tobytes(), dtype=np.float64)
+        object.__setattr__(self, "design_weights", MappingProxyType(frozen_design))
 
     @classmethod
     def from_frame(
@@ -194,6 +219,7 @@ class Population:
         owners: Mapping[tuple[str, str], str] | None = None,
         *,
         mass_ledger: tuple[MassRecord, ...] = (),
+        design_weights: Mapping[str, np.ndarray] | None = None,
     ) -> Population:
         """Create a version, assigning every loaded column to ``version`` by default."""
 
@@ -209,7 +235,20 @@ class Population:
         kinds = {
             entity: frame.weights_for(entity).kind for entity in frame.weighted_entities
         }
-        return cls(frame, version, resolved_owners, kinds, mass_ledger)
+        if design_weights is None:
+            design_weights = {
+                entity: frame.weights_for(entity).values
+                for entity in frame.weighted_entities
+                if frame.weights_for(entity).kind is WeightKind.DESIGN
+            }
+        return cls(
+            frame,
+            version,
+            resolved_owners,
+            kinds,
+            mass_ledger,
+            design_weights,
+        )
 
 
 def population_from_frame(
@@ -218,6 +257,7 @@ def population_from_frame(
     owners: Mapping[tuple[str, str], str] | None = None,
     *,
     mass_ledger: tuple[MassRecord, ...] = (),
+    design_weights: Mapping[str, np.ndarray] | None = None,
 ) -> Population:
     """Functional spelling of :meth:`Population.from_frame`."""
 
@@ -226,6 +266,7 @@ def population_from_frame(
         version,
         owners,
         mass_ledger=mass_ledger,
+        design_weights=design_weights,
     )
 
 
@@ -319,6 +360,9 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
     else:
         _assert_carried_weights(population.frame, frame, node)
 
+    design_weights = _carry_design_weights(population, frame, node)
+    _assert_design_weight_cap(frame, design_weights, node)
+
     ledger = population.mass_ledger
     if node.structural is not StructuralDelta.NONE or node.weights is not None:
         policy = _mass_policy(node)
@@ -330,6 +374,7 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
         node.id if node.structural is not StructuralDelta.NONE else population.version,
         owners,
         mass_ledger=ledger,
+        design_weights=design_weights,
     )
 
 
@@ -606,6 +651,130 @@ def _assert_carried_weights(
                 f"Node {node.id!r} changed carried weights for {entity!r} without "
                 "declaring a WeightTransition."
             )
+
+
+def _carry_design_weights(
+    population: Population, frame: Frame, node: Node
+) -> dict[str, np.ndarray]:
+    """Align original design weights to the new version by stable entity id."""
+
+    carried: dict[str, np.ndarray] = {}
+    for entity, old_anchor in population.design_weights.items():
+        id_column = frame.schema.entity_id_column(entity)
+        before_ids = pd.Index(population.frame.table(entity)[id_column])
+        after_ids = pd.Index(frame.table(entity)[id_column])
+        before_positions = before_ids.get_indexer(after_ids)
+        values = np.empty(len(after_ids), dtype=np.float64)
+        retained = before_positions >= 0
+        values[retained] = old_anchor[before_positions[retained]]
+        if not retained.all():
+            if node.structural is not StructuralDelta.EXPAND:
+                raise PopulationError(
+                    f"Node {node.id!r} introduced {entity!r} ids outside EXPAND."
+                )
+            try:
+                current = frame.weights_for(entity)
+            except ValueError as error:
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} has no design anchor for new "
+                    f"{entity!r} ids."
+                ) from error
+            if current.kind is not WeightKind.DESIGN:
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} cannot anchor new {entity!r} ids "
+                    f"from {current.kind.value!r} weights; explicit design weights "
+                    "are required."
+                )
+            values[~retained] = current.values[~retained]
+        carried[entity] = values
+    return carried
+
+
+def _design_cap(node: Node) -> tuple[str, float] | None:
+    transition = node.weights
+    if transition is None or transition.to_kind != WeightKind.CALIBRATED.value:
+        return None
+    raw_cap = node.params.get("max_weight_ratio")
+    if raw_cap is None:
+        return None
+    if (
+        isinstance(raw_cap, bool)
+        or not isinstance(raw_cap, int | float)
+        or not np.isfinite(float(raw_cap))
+        or float(raw_cap) <= 0
+    ):
+        raise PopulationError(
+            f"Node {node.id!r} max_weight_ratio must be finite and positive."
+        )
+    if node.params.get("weight_anchor") != WeightKind.DESIGN.value:
+        raise PopulationError(
+            f"Node {node.id!r} max_weight_ratio must declare weight_anchor='design'."
+        )
+    return transition.entity, float(raw_cap)
+
+
+def _weight_ratios(values: np.ndarray, design: np.ndarray) -> np.ndarray:
+    ratios = np.empty(len(values), dtype=np.float64)
+    positive_anchor = design > 0
+    ratios[positive_anchor] = values[positive_anchor] / design[positive_anchor]
+    zero_values = values[~positive_anchor] == 0
+    ratios[~positive_anchor] = np.where(zero_values, 0.0, np.inf)
+    return ratios
+
+
+def _assert_design_weight_cap(
+    frame: Frame,
+    design_weights: Mapping[str, np.ndarray],
+    node: Node,
+) -> None:
+    cap_spec = _design_cap(node)
+    if cap_spec is None:
+        return
+    entity, cap = cap_spec
+    try:
+        design = design_weights[entity]
+    except KeyError as error:
+        raise PopulationError(
+            f"Node {node.id!r} has no original design-weight anchor for {entity!r}."
+        ) from error
+    current = frame.weights_for(entity).values
+    limits = design * cap
+    positive_limits = limits > 0
+    limits[positive_limits] = np.nextafter(limits[positive_limits], np.inf)
+    violations = current > limits
+    if violations.any():
+        position = int(np.flatnonzero(violations)[0])
+        id_column = frame.schema.entity_id_column(entity)
+        entity_id = frame.table(entity)[id_column].iloc[position]
+        raise PopulationError(
+            f"Node {node.id!r} calibrated weight for {entity}.{entity_id!r} is "
+            f"{current[position]!r}, above {cap!r} * original design weight "
+            f"{design[position]!r}."
+        )
+
+
+def weight_cap_receipt(population: Population, node: Node) -> Mapping[str, object]:
+    """Return executor-authored receipt fields for a validated design cap."""
+
+    cap_spec = _design_cap(node)
+    if cap_spec is None:
+        return MappingProxyType({})
+    entity, cap = cap_spec
+    try:
+        design = population.design_weights[entity]
+    except KeyError as error:  # defended by patch(), useful for direct callers
+        raise PopulationError(
+            f"Node {node.id!r} has no original design-weight anchor for {entity!r}."
+        ) from error
+    current = population.frame.weights_for(entity).values
+    realized = float(_weight_ratios(current, design).max())
+    return MappingProxyType(
+        {
+            "weight_anchor": WeightKind.DESIGN.value,
+            "max_weight_ratio": cap,
+            "realized_max_weight_ratio": realized,
+        }
+    )
 
 
 def _mass_policy(node: Node) -> str:
