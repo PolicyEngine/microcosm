@@ -87,8 +87,10 @@ def metric_names(
         names.extend(CONSTITUENCY_UC_CHILDREN_METRICS)
     else:
         names.extend(LA_EXTRA_METRICS)
-    # Appended last deliberately: adding a metric must never renumber the
-    # incumbent within-area metric indices for positional consumers.
+    # This list is append-only: adding a metric must never renumber the
+    # metric indices already in the surface, because consumers address them
+    # positionally. "households" was appended under that rule and keeps its
+    # index; later families land after it rather than displacing it.
     names.append("households")
     if area_type == "la":
         names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
