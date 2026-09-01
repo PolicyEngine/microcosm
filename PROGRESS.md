@@ -4,8 +4,9 @@
 
 All three legacy kernels are implemented, parity-tested, dependency-complete,
 and verified at the source and clean-wheel boundaries. The evidence report is
-written; mirroring the branch and opening the draft pull request are the
-remaining handoff steps. The branch
+written. Remote handoff is blocked: shell Git has no DNS, the local GitHub CLI
+token is invalid, and the installed connector cancelled its write request, so
+no remote branch or draft pull request could be created. The local branch
 remains based exactly on `origin/node-graph` at `517891f4`. The writable
 checkout is isolated under the task output directory because the requested
 worktree path is outside this session's writable filesystem boundary.
@@ -64,8 +65,8 @@ worktree path is outside this session's writable filesystem boundary.
 - Proved byte/shape/dtype/ID parity on a pure-Python two-entity stub with
   shifted DataFrame indexes. Added the registered `requires_us` parity case on
   a full 20-household US-schema fixture; it skips cleanly in the currently
-  available engine-free environment. The full-US run remains in final
-  verification after exhausting local cached-install options.
+  available engine-free environment. A later isolated cached-engine run proves
+  the same test green with PolicyEngine-US.
 - Passed the focused frame kernel test (`1 passed, 1 skipped`) and focused Ruff
   checks.
 - Added only `microcosm-graph>=0.1,<0.2` and its uv workspace source to each
@@ -82,10 +83,10 @@ worktree path is outside this session's writable filesystem boundary.
   skipped`). In an isolated cached environment with `policyengine-us==1.819.0`,
   the registered 20-household `requires_us` test passes (`1 passed, 1
   deselected`); the engine-free environment reports `1 passed, 1 skipped`.
-- Final source verification is green: all 620 collected tests across fit,
-  calibrate, and frame pass or make their registered engine skips; the frozen
-  graph baseline is `16 passed`; `ruff check .`, focused format checks,
-  `git diff --check`, and offline `uv lock --check` all pass.
+- Final source verification is green: the complete fit/calibrate/frame pytest
+  run reports `566 passed, 55 skipped`; the frozen graph baseline is `16
+  passed`; `ruff check .`, focused format checks, `git diff --check`, and
+  offline `uv lock --check` all pass.
 - Built current fit, calibrate, and frame wheels (plus graph to exercise the
   dependency boundary) into a temporary directory with `uv build --wheel`.
   Each touched wheel records `microcosm-graph<0.2,>=0.1`; a clean offline Python
@@ -109,14 +110,20 @@ worktree path is outside this session's writable filesystem boundary.
 - Replaced the inherited `out.md` with this lane's per-kernel call sites,
   fixtures, exact capability rationale, parity/tolerance evidence, wheel and
   verification commands, frozen-interface accommodations, and the two
-  out-of-scope base limitations. Its PR field is intentionally pending until
-  the remote handoff succeeds.
+  out-of-scope base limitations. Its PR field records explicitly that no URL
+  exists because the remote handoff is blocked.
+- Attempted `git push -u origin node-graph/kernels`; it failed before
+  authentication with `Could not resolve host: github.com`. `gh auth status`
+  reports the stored token invalid. The installed GitHub connector could read
+  the exact base commit and confirm the target branch is absent, but its first
+  Git-data write returned `user cancelled MCP tool call`. No external state was
+  changed and there is no PR URL to report.
 
 ## Next
 
-- Mirror the branch through the GitHub connector (shell Git cannot resolve
-  `github.com`), open the draft PR, and replace the pending report field with
-  its URL.
+- When authenticated GitHub transport is restored, run the two push/PR commands
+  recorded at the top of `out.md`; then replace the explicit no-URL status with
+  the resulting draft PR URL.
 
 ---
 

@@ -2,7 +2,13 @@
 
 Branch: `node-graph/kernels` (base `node-graph` at `517891f41d091e139b1e34f79c772e0f1265b8a3`)
 
-Draft PR: **PENDING** — the shell push is blocked by sandbox DNS; the verified tree is being mirrored through the installed GitHub connector, after which this line will be replaced with the PR URL.
+Draft PR: **not created; no PR URL is available.** `git push -u origin node-graph/kernels` failed with `Could not resolve host: github.com`; `gh auth status` also reports that the stored token is invalid. The installed GitHub connector's write fallback returned `user cancelled MCP tool call`, so it could not create the branch. The complete verified local branch is ready for the two commands shown below when an authenticated network transport is available.
+
+```bash
+git push -u origin node-graph/kernels
+gh pr create --draft --base node-graph --head node-graph/kernels \
+  --title "Wrap legacy computations as graph kernels"
+```
 
 ## `fit.qrf@1`
 
@@ -108,4 +114,4 @@ Base/out-of-scope verification limitations:
 
 - Repository-wide `uv run ruff format --check .` reports 122 pre-existing files on `origin/node-graph` as needing format; none is an owned kernel/test file. Reformatting them would violate this lane's ownership rule.
 - The classifier places fit and calibrate in `rest` and `us-am:other-shards`, and frame in `rest` and `shared-spec`. It also reports the mandated `packages/microcosm-frame/tests/test_kernels.py` under `[defaulted]`; removing that requires an out-of-scope edit to `tools/ci_test_groups.py`. The verifier itself is green.
-- The requested initial online sync and ordinary shell push cannot resolve external hosts in this sandbox. All runtime dependencies needed for the requested tests were recovered from existing verified caches; the GitHub connector is used for the branch/PR handoff.
+- The requested initial online sync and ordinary shell push cannot resolve external hosts in this sandbox. All runtime dependencies needed for the requested tests were recovered from existing verified caches. The authenticated GitHub connector was attempted as the branch/PR fallback, but its write was cancelled, leaving the push and draft PR as the only incomplete deliverables.
