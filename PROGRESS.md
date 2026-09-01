@@ -1,4 +1,34 @@
-# ACS predictor release join
+# Lane C — legacy kernels behind the graph protocol
+
+## State
+
+In progress on branch `node-graph/kernels`, based exactly on
+`origin/node-graph` at `517891f4`. The writable checkout is isolated under the
+task output directory because the requested worktree path is outside this
+session's writable filesystem boundary.
+
+## Done
+
+- Confirmed the local source checkout and its `origin/node-graph` reference
+  resolve to the same commit.
+- Created the requested `node-graph/kernels` branch in the isolated checkout.
+- Read the GitNexus exploration workflow. No GitNexus repository server is
+  configured in this session, so source and tests will provide the execution
+  flow evidence directly.
+
+## Next
+
+- Read the frozen graph protocol, acceptance properties, and all three wrapped
+  public APIs in full.
+- Implement and parity-test `fit.qrf@1`, `calibrate.adam@1`, and
+  `simulate.rules@1` without changing `packages/microcosm-graph/`.
+- Add only the required workspace dependencies, regenerate `uv.lock`, run the
+  complete requested verification, build the three wheels, push the branch,
+  open the draft PR, and write the evidence report to `out.md`.
+
+---
+
+# Historical progress: ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
 > `acs-predictor-release-join` lane as of 2026-08-27. The branch has since
