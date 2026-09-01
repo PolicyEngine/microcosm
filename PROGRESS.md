@@ -2,10 +2,10 @@
 
 ## State
 
-Protocol/API audit complete; implementation is next. The branch remains based
-exactly on `origin/node-graph` at `517891f4`. The writable checkout is isolated
-under the task output directory because the requested worktree path is outside
-this session's writable filesystem boundary.
+`fit.qrf@1` is implemented and parity-tested; calibration is the next coherent
+step. The branch remains based exactly on `origin/node-graph` at `517891f4`.
+The writable checkout is isolated under the task output directory because the
+requested worktree path is outside this session's writable filesystem boundary.
 
 ## Done
 
@@ -34,11 +34,22 @@ this session's writable filesystem boundary.
   - The current CI classifier places the mandated frame `test_kernels.py` in
     `shared-spec` as `[defaulted]`; repairing that requires an out-of-scope
     `tools/ci_test_groups.py` edit.
+- Added `QRFKernel` with separately configured PARAM- and EXECUTOR-seeded
+  instances, exact donor weight subsetting, a pre-draw trusted-only pickle
+  artifact, recipient-ID-indexed float64 outputs, and a fit summary receipt.
+- Added small donor/recipient CSV fixtures and pinned float-hex expected draws
+  produced by the public `microcosm.fit.fit(...).predict(...)` path at seed
+  `947`. The kernel, direct call, pinned bytes, and reloaded trusted model all
+  agree byte for byte.
+- Proved the executor-seeded mode consumes exactly one integer from
+  `KernelContext.rng`, and recorded the effective seed in the receipt.
+- Passed all 100 `microcosm-fit` tests in the delegated run; independently
+  passed the 7 focused parity/contract tests and focused Ruff checks.
 
 ## Next
 
-- Implement and parity-test `fit.qrf@1`, `calibrate.adam@1`, and
-  `simulate.rules@1` without changing `packages/microcosm-graph/`.
+- Implement and parity-test `calibrate.adam@1` and `simulate.rules@1` without
+  changing `packages/microcosm-graph/`.
 - Add only the required workspace dependencies, regenerate `uv.lock`, run the
   complete requested verification, build the three wheels, push the branch,
   open the draft PR, and write the evidence report to `out.md`.
