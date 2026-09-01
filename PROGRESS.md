@@ -2,11 +2,11 @@
 
 ## State
 
-`fit.qrf@1` and `calibrate.adam@1` are implemented and parity-tested; rules
-simulation is the next coherent step. The branch remains based exactly on
-`origin/node-graph` at `517891f4`. The writable checkout is isolated under the
-task output directory because the requested worktree path is outside this
-session's writable filesystem boundary.
+All three legacy kernels are implemented and focused parity-tested. Dependency
+metadata and the regenerated lock are the next coherent step. The branch
+remains based exactly on `origin/node-graph` at `517891f4`. The writable
+checkout is isolated under the task output directory because the requested
+worktree path is outside this session's writable filesystem boundary.
 
 ## Done
 
@@ -55,11 +55,20 @@ session's writable filesystem boundary.
   the existing JSON-stable diagnostics payload; capabilities honestly declare
   `consumes_se=False`.
 - Passed the 5 focused calibration kernel tests and focused Ruff checks.
+- Added `SimulateRulesKernel`, bound to a serializable engine reference and a
+  `RulesEngine` instance. It rebuilds the engine's complete schema, calls
+  `materialize` once, and returns each array without casting as a Series
+  indexed by the owning entity's ID column.
+- Proved byte/shape/dtype/ID parity on a pure-Python two-entity stub with
+  shifted DataFrame indexes. Added the registered `requires_us` parity case on
+  a full 20-household US-schema fixture; it skips cleanly in the currently
+  available engine-free environment. The full-US run remains in final
+  verification after exhausting local cached-install options.
+- Passed the focused frame kernel test (`1 passed, 1 skipped`) and focused Ruff
+  checks.
 
 ## Next
 
-- Implement and parity-test `simulate.rules@1` without changing
-  `packages/microcosm-graph/`.
 - Add only the required workspace dependencies, regenerate `uv.lock`, run the
   complete requested verification, build the three wheels, push the branch,
   open the draft PR, and write the evidence report to `out.md`.
