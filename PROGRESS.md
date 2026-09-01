@@ -2,8 +2,9 @@
 
 ## State
 
-All three legacy kernels are implemented and focused parity-tested. Dependency
-metadata and the regenerated lock are the next coherent step. The branch
+All three legacy kernels are implemented and focused parity-tested. Their
+required graph workspace dependencies are declared and the lock is regenerated;
+the complete verification matrix is now in progress. The branch
 remains based exactly on `origin/node-graph` at `517891f4`. The writable
 checkout is isolated under the task output directory because the requested
 worktree path is outside this session's writable filesystem boundary.
@@ -66,12 +67,15 @@ worktree path is outside this session's writable filesystem boundary.
   verification after exhausting local cached-install options.
 - Passed the focused frame kernel test (`1 passed, 1 skipped`) and focused Ruff
   checks.
+- Added only `microcosm-graph>=0.1,<0.2` and its uv workspace source to each
+  touched shard. Regenerated `uv.lock` offline from the existing package cache;
+  its six-line diff records exactly those three workspace dependency edges.
 
 ## Next
 
-- Add only the required workspace dependencies, regenerate `uv.lock`, run the
-  complete requested verification, build the three wheels, push the branch,
-  open the draft PR, and write the evidence report to `out.md`.
+- Run the complete requested verification, build and inspect the three wheels,
+  push the branch, open the draft PR, and write the evidence report to
+  `out.md`.
 
 ---
 
