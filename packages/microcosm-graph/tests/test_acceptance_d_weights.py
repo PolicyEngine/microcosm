@@ -40,7 +40,6 @@ if "_toy" not in sys.modules:
 toy = sys.modules["_toy"]
 
 
-@pytest.mark.xfail(strict=True, reason="charter D1: pending")
 def test_d1_weight_transitions_are_typed_nodes(tmp_path: Path) -> None:
     """``design -> importance -> calibrated`` and nothing else.
 
@@ -88,7 +87,6 @@ def test_d1_weight_transitions_are_typed_nodes(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.xfail(strict=True, reason="charter D2: pending")
 def test_d2_mass_ledger(tmp_path: Path) -> None:
     """Population-changing nodes record mass, and ``conserve`` means conserve.
 
@@ -127,7 +125,6 @@ def test_d2_mass_ledger(tmp_path: Path) -> None:
         toy.run_toy(conserving, tmp_path / "conserve")
 
 
-@pytest.mark.xfail(strict=True, reason="charter D3: pending")
 def test_d3_cap_anchored_to_design(tmp_path: Path) -> None:
     """``max_weight_ratio`` is asserted against design across composed stages.
 
@@ -165,7 +162,6 @@ def test_d3_cap_anchored_to_design(tmp_path: Path) -> None:
         toy.run_toy(over, tmp_path / "over")
 
 
-@pytest.mark.xfail(strict=True, reason="charter D4: pending")
 def test_d4_filters_are_binary(tmp_path: Path) -> None:
     """A row mask is boolean and complete: not a float, not a column with nulls.
 
@@ -191,7 +187,6 @@ def test_d4_filters_are_binary(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.xfail(strict=True, reason="charter D5: pending")
 def test_d5_uncertainty_travels(tmp_path: Path) -> None:
     """A declared standard error reaches the kernel, or the kernel says it does
     not.

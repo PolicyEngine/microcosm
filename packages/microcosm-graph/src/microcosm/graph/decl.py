@@ -20,6 +20,10 @@ The population model behind the declarations:
   cells it declares. Its predecessors are exactly the owners of the columns
   it reads. Chained imputation is expressed by listing an earlier target's
   column as an input; there is no other ordering mechanism.
+- Every column's dtype is declared by its owner, so a row mask's dtype is
+  known at compile time: a mask that is not ``bool`` or ``boolean`` is a
+  compile error (charter D4). Nulls inside a nullable mask are a run-time
+  rejection by the executor.
 
 This file is a frozen interface (see ``docs/graph-acceptance.md``).
 """
@@ -36,6 +40,7 @@ __all__ = [
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
     "GATE_OUTCOMES",
+    "MASK_DTYPES",
     "MASS_POLICIES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
@@ -64,6 +69,9 @@ DESCRIPTIVE_FIELDS = frozenset({"description", "citation"})
 DTYPES = frozenset(
     {"bool", "boolean", "int32", "int64", "Int64", "float32", "float64", "string"}
 )
+
+#: The dtypes a row mask may have.
+MASK_DTYPES = frozenset({"bool", "boolean"})
 
 #: Row scope meaning "every row of the entity".
 ROWS_ALL = "all"
@@ -403,8 +411,9 @@ def compile_graph(graph: Graph) -> CompiledGraph:
     Raises:
         GraphError: A cell with two owners or none (ownership is total and
             exclusive), an unknown source or population, a structural node
-            whose base is not structural, a cycle, or a graph with several
-            structural nodes and a node that omits ``population``.
+            whose base is not structural, a row mask whose declared dtype is
+            not boolean, a cycle, or a graph with several structural nodes
+            and a node that omits ``population``.
     """
 
     by_id = {node.id: node for node in graph.nodes}
@@ -443,6 +452,7 @@ def compile_graph(graph: Graph) -> CompiledGraph:
         versions[node.id] = version
 
     owners: dict[tuple[str, str, str], str] = {}
+    dtypes: dict[tuple[str, str, str], str] = {}
     for node in graph.nodes:
         for owned in node.outputs:
             key = (versions[node.id], owned.entity, owned.column)
@@ -452,26 +462,38 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     f"by both {owners[key]!r} and {node.id!r}."
                 )
             owners[key] = node.id
+            dtypes[key] = owned.dtype
 
-    def defined(version: str, entity: str, column: str) -> bool:
-        """Whether a column exists in ``version``, walking base chains."""
+    def declared_dtype(version: str, entity: str, column: str) -> str | None:
+        """The owner-declared dtype of a column as visible in ``version``."""
         while True:
-            if (version, entity, column) in owners:
-                return True
+            dtype = dtypes.get((version, entity, column))
+            if dtype is not None:
+                return dtype
             holder = by_id[version]
             if holder.structural is StructuralDelta.CREATE:
-                return False
+                return None
             version = holder.base  # type: ignore[assignment]
 
     def reader_of(node_id: str, version: str, entity: str, column: str) -> str:
         """The node whose artifact a reader in ``version`` receives."""
-        if not defined(version, entity, column):
+        if declared_dtype(version, entity, column) is None:
             raise GraphError(
                 f"Node {node_id!r} reads {entity}.{column}, which no node owns in "
                 f"version {version!r} or its bases."
             )
         owner = owners.get((version, entity, column))
         return owner if owner is not None else version
+
+    def check_mask(node_id: str, version: str, entity: str, mask: str) -> None:
+        if mask == ROWS_ALL:
+            return
+        dtype = declared_dtype(version, entity, mask)
+        if dtype is not None and dtype not in MASK_DTYPES:
+            raise GraphError(
+                f"Node {node_id!r}: row mask {entity}.{mask} is declared "
+                f"{dtype!r}; a row mask must be one of {sorted(MASK_DTYPES)}."
+            )
 
     members: dict[str, set[str]] = {}
     for node_id, version in versions.items():
@@ -492,6 +514,7 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     predecessors[node.id].add(
                         reader_of(node.id, base, s.entity, column)
                     )
+                check_mask(node.id, base, s.entity, s.rows)
             continue
         version = versions[node.id]
         predecessors[node.id].add(version)
@@ -501,6 +524,9 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                 if source == node.id:
                     raise GraphError(f"Node {node.id!r} depends on itself.")
                 predecessors[node.id].add(source)
+            check_mask(node.id, version, s.entity, s.rows)
+        for o in node.outputs:
+            check_mask(node.id, version, o.entity, o.rows)
 
     depth: dict[str, int] = {}
 

@@ -58,7 +58,6 @@ toy = sys.modules["_toy"]
 REMOVED = ("a", "b", "c", "d", "e")
 
 
-@pytest.mark.xfail(strict=True, reason="charter B3: pending")
 def test_replay_wic_dtype_breach_stops_at_the_node_boundary(tmp_path: Path) -> None:
     """A dense ``bool`` over a nullable ``boolean`` incumbent is rejected here.
 
@@ -93,7 +92,6 @@ def test_replay_wic_dtype_breach_stops_at_the_node_boundary(tmp_path: Path) -> N
     assert toy.calls_by_ref(registry)["bad.dense_bool@1"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="charter C2: pending")
 def test_replay_0347a009_repack_moves_no_survivor(tmp_path: Path) -> None:
     """Five targets removed, zero survivors re-modelled.
 
@@ -125,7 +123,6 @@ def test_replay_0347a009_repack_moves_no_survivor(tmp_path: Path) -> None:
     assert toy.total_calls(registry) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="charter E2: pending")
 def test_replay_engine_less_environment_stops_before_any_kernel(
     tmp_path: Path,
 ) -> None:

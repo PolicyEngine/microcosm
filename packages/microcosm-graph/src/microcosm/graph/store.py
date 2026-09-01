@@ -250,7 +250,8 @@ def _verified_meta(path: Path, *, expected_kind: str | None = None) -> dict[str,
             raise StoreCorrupt(f"Stored payload {name!r} cannot be read.") from error
         if actual_size != expected_size or actual_hash != expected_hash:
             raise StoreCorrupt(
-                f"Stored payload {name!r} failed its size/SHA-256 check."
+                f"Stored object {path.name}: payload {name!r} failed its "
+                "size/SHA-256 check."
             )
         expected_names.add(name)
 

@@ -47,7 +47,6 @@ def _tier(run) -> str:
     return str(run.store.load_column(key).iloc[0])
 
 
-@pytest.mark.xfail(strict=True, reason="charter F1: pending")
 def test_f1_a_gate_is_a_node(tmp_path: Path) -> None:
     """A verdict is an artifact keyed like any other: it hits, and it moves."""
     first = toy.run_toy(toy.full_graph(), tmp_path / "run")

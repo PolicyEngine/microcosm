@@ -50,7 +50,9 @@ UK_SPINE_PARITY = PARITY / "uk_spine"
 US_POST_TRANSFER_PARITY = PARITY / "us_post_transfer"
 
 #: The wrapped kernels H1 covers, in the order the charter names them.
-WRAPPED_KERNELS = ("fit.qrf", "draw.qrf", "calibrate", "simulate")
+#: The three wrapped kernels the kernel lane shipped: ``fit.qrf@1`` fits on
+#: donors and draws on recipients in one node, so there is no separate draw.
+WRAPPED_KERNELS = ("fit.qrf", "calibrate", "simulate")
 
 
 def _require(path: Path, produced_by: str) -> Path:

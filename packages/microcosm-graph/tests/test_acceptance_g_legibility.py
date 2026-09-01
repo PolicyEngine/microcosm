@@ -19,8 +19,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
-
 from microcosm.graph import ContentStore, Graph, compile_graph, describe
 
 if "_toy" not in sys.modules:
@@ -64,7 +62,6 @@ def _imported_roots(tree: ast.Module) -> set[str]:
     return roots
 
 
-@pytest.mark.xfail(strict=True, reason="charter G1: pending")
 def test_g1_one_screen_view() -> None:
     """``describe`` answers the whole question from the graph alone.
 
@@ -96,7 +93,6 @@ def test_g1_one_screen_view() -> None:
     assert len(chained.splitlines()) < 40
 
 
-@pytest.mark.xfail(strict=True, reason="charter G2: pending")
 def test_g2_the_executor_knows_no_country(tmp_path: Path) -> None:
     """The shard names no country, and one executor runs two of them."""
     for path in toy.graph_source_files():
@@ -131,7 +127,6 @@ def test_g2_the_executor_knows_no_country(tmp_path: Path) -> None:
     assert toy.total_calls(registry) == len(first.compiled.order)
 
 
-@pytest.mark.xfail(strict=True, reason="charter G3: pending")
 def test_g3_toy_country_in_ci(tmp_path: Path) -> None:
     """Source, two chained targets, calibrate, simulate, gate, release.
 

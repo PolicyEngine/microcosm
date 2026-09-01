@@ -22,8 +22,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from microcosm.graph import ContentStore, Graph, SourceRef
 
 if "_toy" not in sys.modules:
@@ -83,7 +81,6 @@ def _digest(run) -> dict[str, str]:
     return digest
 
 
-@pytest.mark.xfail(strict=True, reason="charter A1: pending")
 def test_a1_determinism_across_processes_and_a_reloaded_store(tmp_path: Path) -> None:
     """Same graph, same source bytes, same kernels: same keys, same bytes.
 
@@ -112,7 +109,6 @@ def test_a1_determinism_across_processes_and_a_reloaded_store(tmp_path: Path) ->
     assert reloaded.all_bytes() == first.all_bytes()
 
 
-@pytest.mark.xfail(strict=True, reason="charter A2: pending")
 def test_a2_memoization_executes_zero_kernels(tmp_path: Path) -> None:
     """The second run of an unchanged graph runs nothing and hits everywhere."""
     first = toy.run_toy(toy.small_graph(), tmp_path / "run")
@@ -131,7 +127,6 @@ def test_a2_memoization_executes_zero_kernels(tmp_path: Path) -> None:
     assert all(second.manifest.nodes[node].hit for node in second.compiled.order)
 
 
-@pytest.mark.xfail(strict=True, reason="charter A3: pending")
 def test_a3_descendant_exact_invalidation(tmp_path: Path) -> None:
     """One normative parameter moves exactly that node and its descendants.
 
@@ -160,7 +155,6 @@ def test_a3_descendant_exact_invalidation(tmp_path: Path) -> None:
     assert toy.total_calls(registry) == len(expected)
 
 
-@pytest.mark.xfail(strict=True, reason="charter A4: pending")
 def test_a4_inert_field_invariance(tmp_path: Path) -> None:
     """Descriptive fields change no node key: not on a node, not on a source,
     not on the graph's country label."""
@@ -195,7 +189,6 @@ def test_a4_inert_field_invariance(tmp_path: Path) -> None:
     assert toy.total_calls(registry) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="charter A5: pending")
 def test_a5_code_identity_invalidates_only_that_kernels_nodes(
     tmp_path: Path,
 ) -> None:
@@ -218,7 +211,6 @@ def test_a5_code_identity_invalidates_only_that_kernels_nodes(
     assert second.hits() == set(second.compiled.order) - expected
 
 
-@pytest.mark.xfail(strict=True, reason="charter A6: pending")
 def test_a6_input_content_identity(tmp_path: Path) -> None:
     """Source bytes decide reuse; the source's path and file name do not."""
     original = toy.copy_source(tmp_path / "original")
@@ -253,7 +245,6 @@ def test_a6_input_content_identity(tmp_path: Path) -> None:
     assert third.keys()["survey"] != first.keys()["survey"]
 
 
-@pytest.mark.xfail(strict=True, reason="charter A7: pending")
 def test_a7_provenance_is_separate_from_reuse(tmp_path: Path) -> None:
     """A signed human decision lands in the manifest and in no node key."""
     first = toy.run_toy(toy.small_graph(), tmp_path / "run")

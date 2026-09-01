@@ -48,12 +48,21 @@ def _file_holding(root: Path, key: str) -> Path:
     the bytes E1 then alters. If the runtime lane names artifacts some other
     way, this assertion is where that shows up.
     """
-    matches = [path for path in root.rglob("*") if path.is_file() and key in path.name]
-    assert matches, f"no stored file carries the artifact key {key}"
-    return matches[0]
+    # The store files each artifact under a directory named by its key
+    # (``objects/<key[:2]>/<key>/``); the bytes to alter are the largest
+    # file inside it, which is the value payload.
+    holders = [path for path in root.rglob("*") if key in path.name]
+    assert holders, f"no stored path carries the artifact key {key}"
+    files = [
+        path
+        for holder in holders
+        for path in ([holder] if holder.is_file() else holder.rglob("*"))
+        if path.is_file()
+    ]
+    assert files, f"the store holds nothing under the artifact key {key}"
+    return max(files, key=lambda path: path.stat().st_size)
 
 
-@pytest.mark.xfail(strict=True, reason="charter E1: pending")
 def test_e1_content_validation_on_load(tmp_path: Path) -> None:
     """Altered artifact bytes are refused on load and never used."""
     first = toy.run_toy(toy.small_graph(), tmp_path / "run")
@@ -76,7 +85,6 @@ def test_e1_content_validation_on_load(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.xfail(strict=True, reason="charter E2: pending")
 def test_e2_verifier_unavailability_is_fatal(tmp_path: Path) -> None:
     """A missing codec stops the run before any kernel executes.
 
@@ -96,7 +104,6 @@ def test_e2_verifier_unavailability_is_fatal(tmp_path: Path) -> None:
     assert toy.total_calls(registry) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="charter E3: pending")
 def test_e3_resume_policy_is_real(tmp_path: Path) -> None:
     """``require``, ``forbid``, and ``auto`` behave differently on one graph."""
     from microcosm.graph import StoreMissError
@@ -105,7 +112,7 @@ def test_e3_resume_policy_is_real(tmp_path: Path) -> None:
     with pytest.raises(StoreMissError):
         toy.run_toy(
             toy.small_graph(),
-            tmp_path / "run",
+            tmp_path / "cold",
             registry=cold,
             resume="require",
         )
@@ -150,7 +157,6 @@ def test_e3_resume_policy_is_real(tmp_path: Path) -> None:
     assert toy.total_calls(automatic) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="charter E4: pending")
 def test_e4_atomic_writes(tmp_path: Path) -> None:
     """An interrupted run leaves no partial artifact, and the node stays a miss.
 
@@ -203,7 +209,6 @@ def test_e4_atomic_writes(tmp_path: Path) -> None:
     assert toy.calls_by_ref(registry)["count.calls@1"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="charter E5: pending")
 def test_e5_manifest_completeness(tmp_path: Path) -> None:
     """Every node, hit or miss, with its key, seed, receipt, and artifacts.
 

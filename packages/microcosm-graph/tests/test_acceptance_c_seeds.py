@@ -20,8 +20,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
 from microcosm.graph import ContentStore, Graph, compile_graph
 
 if "_toy" not in sys.modules:
@@ -43,7 +41,6 @@ def _dotted(node: ast.expr) -> str:
     return ""
 
 
-@pytest.mark.xfail(strict=True, reason="charter C1: pending")
 def test_c1_order_invariance(tmp_path: Path) -> None:
     """Declaration order carries no meaning: no key, no seed, no byte moves.
 
@@ -70,7 +67,6 @@ def test_c1_order_invariance(tmp_path: Path) -> None:
     assert toy.total_calls(registry) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="charter C2: pending")
 def test_c2_removal_invariance(tmp_path: Path) -> None:
     """Removing a leaf, or adding one, moves no other node's key or output.
 
@@ -114,7 +110,6 @@ def test_c2_removal_invariance(tmp_path: Path) -> None:
         assert grown.all_bytes()[node_id] == full.all_bytes()[node_id]
 
 
-@pytest.mark.xfail(strict=True, reason="charter C3: pending")
 def test_c3_declared_predecessors_only(tmp_path: Path) -> None:
     """A kernel is handed its declared slices and nothing else.
 
@@ -135,7 +130,6 @@ def test_c3_declared_predecessors_only(tmp_path: Path) -> None:
     assert run.compiled.predecessors["target_b"] == ("survey", "target_a")
 
 
-@pytest.mark.xfail(strict=True, reason="charter C4: pending")
 def test_c4_seed_from_identity(tmp_path: Path) -> None:
     """A node's seed is a pure function of its key, in any graph.
 

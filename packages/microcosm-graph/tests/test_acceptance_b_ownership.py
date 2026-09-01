@@ -74,7 +74,6 @@ def _owners_along_base_chain(
         seen = node.base
 
 
-@pytest.mark.xfail(strict=True, reason="charter B1: pending")
 def test_b1_ownership_is_total_and_exclusive_in_the_population(
     tmp_path: Path,
 ) -> None:
@@ -97,7 +96,6 @@ def test_b1_ownership_is_total_and_exclusive_in_the_population(
                 assert (entity, column) in run.manifest.nodes[owners[0]].artifacts
 
 
-@pytest.mark.xfail(strict=True, reason="charter B2: pending")
 def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
     """Cells outside the declared owned positions are rejected, and a kernel
     never holds the population that would let it write them itself."""
@@ -139,7 +137,6 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
     assert person.loc[~adult, "reach"].isna().all()
 
 
-@pytest.mark.xfail(strict=True, reason="charter B3: pending")
 def test_b3_storage_preserving_patch(tmp_path: Path) -> None:
     """A masked patch keeps the incumbent dtype and every non-owned bit.
 
@@ -183,7 +180,6 @@ def test_b3_storage_preserving_patch(tmp_path: Path) -> None:
     assert np.array_equal(np.signbit(kept_after), np.signbit(kept_before))
 
 
-@pytest.mark.xfail(strict=True, reason="charter B4: pending")
 def test_b4_inputs_are_immutable(tmp_path: Path) -> None:
     """An in-place write into a projected view raises, and the node fails.
 
@@ -216,7 +212,6 @@ def test_b4_inputs_are_immutable(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="charter B5: pending")
 def test_b5_null_means_absence(tmp_path: Path) -> None:
     """An ABSENT cell is null everywhere, and writing a value into one fails."""
     honest = toy.small_graph(
