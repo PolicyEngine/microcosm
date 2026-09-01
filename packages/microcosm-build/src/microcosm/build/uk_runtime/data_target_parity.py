@@ -329,7 +329,7 @@ _CONCERNS: tuple[dict[str, Any], ...] = (
         "status": "reviewed_exclusion",
         "classification": "untargeted_both_sides",
         "reason": "Education spending was imputed but its aggregate test was commented out; corrected post-ebf733c DfE entitlement data from uk-data#474 remains input-side.",
-        "evidence": "uk-data datasets/imputations/frs_only.py and policyengine_uk_data/tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
+        "evidence": "uk-data datasets/imputations/frs_only.py and uk-data tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
         "fence": _fence(
             "uk-data imputed DfE education spending without an active calibration target.",
             "Retain the imputed input while avoiding an unsupported aggregate claim.",

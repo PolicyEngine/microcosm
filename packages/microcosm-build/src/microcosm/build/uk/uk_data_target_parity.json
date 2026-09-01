@@ -159,7 +159,7 @@
     {
       "classification": "untargeted_both_sides",
       "concern_id": "dataset_anchor_dfe_education_spending",
-      "evidence": "uk-data datasets/imputations/frs_only.py and policyengine_uk_data/tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
+      "evidence": "uk-data datasets/imputations/frs_only.py and uk-data tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
       "fence": {
         "origin": "uk-data imputed DfE education spending without an active calibration target.",
         "purpose": "Retain the imputed input while avoiding an unsupported aggregate claim.",
