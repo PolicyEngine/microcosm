@@ -2,17 +2,18 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. The baseline and frozen interfaces are not yet inspected.
+Active on `node-graph-release` in the required local clone. Baseline is green with the expected eight acceptance `xfail` markers; contract inspection is next.
 
 ## Done
 
 - Cloned the local `node-graph` worktree without network access.
 - Created the `node-graph-release` branch.
 - Preserved the integrated branch's historical progress ledger below.
+- Reused the existing offline environment inside the sandbox and confirmed the package baseline passes.
+- Recorded the starting burndown: 30 green properties, 7 red properties, and 8 markers (`F3` has two cases).
 
 ## Next
 
-- Install the workspace environment and run the baseline checks.
 - Read the acceptance contract and frozen interfaces in the required order.
 - Implement and verify gate/release semantics, manifest persistence, and H1 parity fixtures in coherent commits.
 
