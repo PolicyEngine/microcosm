@@ -203,3 +203,31 @@ def test_carried_columns_resolve_to_the_structural_version() -> None:
         {},
     )
     assert baseline == changed_unreachable_base
+
+
+def test_structural_key_binds_every_patch_in_its_base_version() -> None:
+    patched = replace(_ordinary("patched", ("age",), "patched"), population="survey")
+    subset = Node(
+        "adults",
+        "toy.filter@1",
+        structural=StructuralDelta.FILTER,
+        base="survey",
+        inputs=(Slice("person", ("keep",)),),
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, patched, subset))
+    compiled = compile_graph(graph)
+    baseline = node_key(
+        compiled,
+        "adults",
+        {"survey": "a" * 64, "patched": "b" * 64},
+        "c" * 64,
+        {},
+    )
+    changed_patch = node_key(
+        compiled,
+        "adults",
+        {"survey": "a" * 64, "patched": "d" * 64},
+        "c" * 64,
+        {},
+    )
+    assert baseline != changed_patch

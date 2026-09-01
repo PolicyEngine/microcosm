@@ -136,7 +136,17 @@ def node_key(
     else:
         assert node.base is not None
         population_input = {
-            "base": frame_key(_required_key(input_keys, node.base, node_id))
+            "base": frame_key(_required_key(input_keys, node.base, node_id)),
+            # A structural transform receives the fully patched base version,
+            # not merely the original structural Frame.  compile_graph makes
+            # every ordinary member of that version a predecessor; binding
+            # their keys prevents an old FILTER/EXPAND/REWEIGHT frame from
+            # surviving a changed base patch (including a weight-only node).
+            "members": tuple(
+                (predecessor, _required_key(input_keys, predecessor, node_id))
+                for predecessor in compiled.predecessors[node_id]
+                if predecessor != node.base
+            ),
         }
 
     if node.structural is StructuralDelta.CREATE:

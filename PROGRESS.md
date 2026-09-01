@@ -20,6 +20,7 @@ Identity, storage, codecs, and immutable population transitions are implemented.
 - Implemented `frame-store` and both supported `csv-tables` fixture layouts; 10 focused store/codec tests pass.
 - Implemented storage-preserving masked patches, total ownership lineage, ABSENT enforcement, and exact dense/nullable dtype checks.
 - Implemented structural id constraints, explicit immediate weight-kind transitions, per-stratum conservation, and the graph mass ledger; 14 focused population tests pass.
+- Bound structural node keys to every completed member of their base version, preventing a cached structural Frame from carrying stale ordinary or weight-only patches.
 
 ## Next
 
