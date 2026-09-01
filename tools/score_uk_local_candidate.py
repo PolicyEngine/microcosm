@@ -19,14 +19,15 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     TargetRegistry,
+    relative_error_loss,
 )
 
 UK_LOCAL_ACTIVE_REFERENCE_COUNT = 17_077
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
-UK_LOCAL_SCORE_LOSS_CAP = 10.0
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
 UK_LOCAL_INCUMBENT_HOLDOUT_BASIS = "none_available_incumbent_not_resolved"
@@ -137,12 +138,45 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
         raise ValueError(
             "candidate rotated holdout must report one loss per declared fold."
         )
+    folds: list[float] = []
+    for value in fold_losses:
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            or float(value) < 0.0
+        ):
+            raise ValueError(
+                "candidate rotated holdout has a non-finite or negative fold loss."
+            )
+        folds.append(float(value))
+    # The summary is derived from these folds by `summarize_rotations`, so it
+    # must still close over them.  Without this, a headline number lifted
+    # from somewhere else — a fitted loss, say — passes every other check
+    # with plausible folds sitting beside it, which is the substitution the
+    # required-holdout refusal exists to catch.
+    if not math.isclose(
+        losses["mean_holdout_loss"],
+        math.fsum(folds) / n_folds,
+        rel_tol=1e-9,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            "candidate rotated holdout mean does not close over its fold losses."
+        )
+    if not math.isclose(
+        losses["worst_holdout_loss"],
+        max(folds),
+        rel_tol=1e-9,
+        abs_tol=1e-12,
+    ):
+        raise ValueError("candidate rotated holdout worst loss is not its worst fold.")
     return {
         "basis": f"{method}:n_folds={n_folds}:seed={seed}",
         "method": method,
         "n_folds": n_folds,
         "seed": seed,
-        "fold_losses": [float(value) for value in fold_losses],
+        "fold_losses": folds,
         **losses,
     }
 
@@ -234,6 +268,13 @@ def _incumbent_estimates(
 
 
 def _relative_error(estimate: float, target: float) -> float:
+    """Signed, uncapped per-row miss on the target-defined scale.
+
+    Used for the per-target drift rows and the head-to-head comparison only.
+    Aggregate losses go through :func:`relative_error_loss` so the scorer
+    never carries a second copy of the objective.
+    """
+
     return (estimate - target) / max(abs(target), 1.0)
 
 
@@ -275,16 +316,21 @@ def score_uk_local_candidate(
 
     families: dict[str, dict[str, int]] = {}
     drift: list[dict[str, object]] = []
-    candidate_losses: list[float] = []
-    incumbent_losses: list[float] = []
+    targets = np.array([spec.value for spec in target_registry.specs], dtype=np.float64)
+    candidate_estimates = np.array(
+        [candidate[spec.to_target().row_name] for spec in target_registry.specs],
+        dtype=np.float64,
+    )
+    incumbent_estimates = np.array(
+        [incumbent[spec.to_target().row_name] for spec in target_registry.specs],
+        dtype=np.float64,
+    )
     candidate_wins = 0
     incumbent_wins = 0
     for spec in target_registry.specs:
         name = spec.to_target().row_name
         candidate_error = _relative_error(candidate[name], spec.value)
         incumbent_error = _relative_error(incumbent[name], spec.value)
-        candidate_losses.append(min(abs(candidate_error), UK_LOCAL_SCORE_LOSS_CAP))
-        incumbent_losses.append(min(abs(incumbent_error), UK_LOCAL_SCORE_LOSS_CAP))
         bucket = families.setdefault(
             spec.family,
             {"candidate_target_wins": 0, "incumbent_target_wins": 0, "ties": 0},
@@ -309,8 +355,20 @@ def score_uk_local_candidate(
                 "winner": winner,
             }
         )
-    candidate_loss = float(np.mean(candidate_losses))
-    incumbent_loss = float(np.mean(incumbent_losses))
+    # Both aggregates, and the holdout the candidate driver measured, go
+    # through the one canonical objective at the one declared doctrine cap,
+    # so the numbers in this receipt are on a single scale and stay there
+    # when microcosm#762 adjudicates the cap.
+    candidate_loss = relative_error_loss(
+        candidate_estimates,
+        targets,
+        target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
+    )
+    incumbent_loss = relative_error_loss(
+        incumbent_estimates,
+        targets,
+        target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
+    )
     return {
         "candidate_fitted_surface_loss": candidate_loss,
         "candidate_holdout_loss": holdout["mean_holdout_loss"],
@@ -322,8 +380,11 @@ def score_uk_local_candidate(
         "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
         "candidate_holdout": holdout,
         "loss": {
-            "objective": "relative_error_loss",
-            "target_loss_cap": UK_LOCAL_SCORE_LOSS_CAP,
+            # Names the function that actually produced every loss above,
+            # including the candidate's holdout, at its declared cap.
+            "objective": "microcosm.calibrate.relative_error_loss",
+            "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
+            "target_loss_cap_source": "UK_LOCAL_TARGET_LOSS_CAP",
             # The head-to-head counters below compare both sides on the
             # surface the candidate was fitted to; only the candidate has a
             # held-out measurement, and it is reported beside them, never as

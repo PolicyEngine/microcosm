@@ -5,10 +5,13 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.build.holdout import summarize_rotations
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
+from microcosm.calibrate import TargetRegistry, TargetSpec, relative_error_loss
 
 
 def _load_scorer():
@@ -56,8 +59,10 @@ def _case():
                 "method": "rotated_folds",
                 "n_folds": 5,
                 "seed": 20260529,
+                # Summary closes over the folds, as summarize_rotations
+                # produces it: mean 0.4, worst 0.6.
                 "mean_holdout_loss": 0.4,
-                "worst_holdout_loss": 0.9,
+                "worst_holdout_loss": 0.6,
                 "fold_losses": [0.2, 0.3, 0.4, 0.5, 0.6],
             }
         },
@@ -96,12 +101,23 @@ def test_local_scorer_reports_per_family_wins_and_the_measured_holdout() -> None
 
     assert result["holdout_basis"] == "rotated_folds:n_folds=5:seed=20260529"
     assert result["candidate_holdout_loss"] == pytest.approx(0.4)
-    assert result["candidate_holdout"]["worst_holdout_loss"] == pytest.approx(0.9)
+    assert result["candidate_holdout"]["worst_holdout_loss"] == pytest.approx(0.6)
     # The incumbent is never re-solved, so it has no holdout to compare, and
     # the head-to-head counters must say which surface they ran on.
     assert result["incumbent_holdout_loss"] is None
     assert result["incumbent_holdout_basis"] == "none_available_incumbent_not_resolved"
     assert result["loss"]["head_to_head_surface"] == "candidate_fitted_surface"
+    # Both aggregates come from the canonical objective at the doctrine cap,
+    # so the holdout beside them is on the same scale.
+    assert result["loss"]["objective"] == "microcosm.calibrate.relative_error_loss"
+    assert result["loss"]["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP
+    assert result["candidate_fitted_surface_loss"] == pytest.approx(
+        relative_error_loss(
+            np.array([10.0, 110.0]),
+            np.array([10.0, 100.0]),
+            target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
+        )
+    )
     assert result["candidate_target_wins"] == 1
     assert result["incumbent_target_wins"] == 0
     assert result["target_wins_by_family"] == {
@@ -245,3 +261,81 @@ def test_local_scorer_refuses_a_holdout_with_missing_fold_losses() -> None:
             target_registry=registry,
             expected_reference_count=2,
         )
+
+
+def test_local_scorer_refuses_a_headline_that_is_not_its_folds() -> None:
+    """The substitution the required-holdout refusal exists to catch."""
+
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    # A fitted-looking number swapped in, with the real folds left beside it.
+    candidate["uk_diagnostics"]["rotated_holdout"]["mean_holdout_loss"] = 0.02
+
+    with pytest.raises(ValueError, match="does not close over its fold losses"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_local_scorer_refuses_a_worst_loss_that_is_not_its_worst_fold() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"]["worst_holdout_loss"] = 0.61
+
+    with pytest.raises(ValueError, match="is not its worst fold"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+@pytest.mark.parametrize("bad", [float("nan"), -0.1])
+def test_local_scorer_refuses_invalid_fold_losses(bad: float) -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"]["fold_losses"] = [
+        bad,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+    ]
+
+    with pytest.raises(ValueError, match="non-finite or negative fold loss"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_local_scorer_accepts_a_summary_its_folds_actually_produce() -> None:
+    """`summarize_rotations` output must pass the closure check unchanged."""
+
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    folds = [0.11, 0.27, 0.4, 0.52, 0.63]
+    summary = summarize_rotations(folds)
+    holdout = candidate["uk_diagnostics"]["rotated_holdout"]
+    holdout["fold_losses"] = list(summary.fold_losses)
+    holdout["mean_holdout_loss"] = summary.mean_holdout_loss
+    holdout["worst_holdout_loss"] = summary.worst_holdout_loss
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["candidate_holdout_loss"] == pytest.approx(summary.mean_holdout_loss)
