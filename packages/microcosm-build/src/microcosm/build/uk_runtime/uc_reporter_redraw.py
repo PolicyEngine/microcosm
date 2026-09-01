@@ -276,6 +276,7 @@ def redraw_spi_reported_uc(
         spi=spi,
         claimant_rows=claimant_rows,
         draws=draws,
+        uc_child=uc_child,
     )
     reported_after = _benefit_unit_reporter_amounts(person, benunit)
     if np.any(reported_after[spi & ~screen] != 0.0):
@@ -373,7 +374,13 @@ def _claimant_rows(person: pd.DataFrame, *, uc_child: np.ndarray) -> np.ndarray:
         if not len(candidates):
             candidates = rows[adult[rows]]
         if not len(candidates):
-            raise ValueError("Every benefit unit must contain an adult claimant candidate.")
+            # A 16-19 qualifying young person heading their own benefit unit
+            # is its only member: the engine's UC child flag covers them, so
+            # no ~uc_child candidate exists. The unit's eldest member is its
+            # de-facto head; the fail-closed check moves to the landing,
+            # where a POSITIVE draw on a child claimant refuses (the award
+            # screen keeps such units out of the drawn domain).
+            candidates = rows
         order = np.lexsort((person_id[candidates], -age[candidates]))
         claimant[candidates[order[0]]] = True
     return claimant
@@ -510,6 +517,7 @@ def _land_spi_draws(
     spi: np.ndarray,
     claimant_rows: np.ndarray,
     draws: np.ndarray,
+    uc_child: np.ndarray,
 ) -> None:
     spi_ids = set(benunit.loc[spi, "benunit_id"])
     spi_people = person["person_benunit_id"].isin(spi_ids).to_numpy(dtype=bool)
@@ -519,9 +527,18 @@ def _land_spi_draws(
         draw_by_benunit
     )
     claimant_spi = claimant_rows & spi_people
-    person.loc[claimant_spi, UC_REPORTER_REDRAW_OUTPUT] = claimant_draws.loc[
-        claimant_spi[claimant_rows]
-    ].to_numpy(dtype=float)
+    landed = claimant_draws.loc[claimant_spi[claimant_rows]].to_numpy(dtype=float)
+    child_claimants = uc_child[claimant_spi]
+    if bool((child_claimants & (landed > 0.0)).any()):
+        # The fail-closed half of the child-only-benunit fallback above: the
+        # award screen keeps qualifying-young-person-only units out of the
+        # drawn domain, so a positive amount landing on a child claimant is
+        # the corruption the old total guard feared — refused exactly here.
+        raise ValueError(
+            "A positive UC reporter draw landed on a child claimant; "
+            "the award screen must exclude child-only benefit units."
+        )
+    person.loc[claimant_spi, UC_REPORTER_REDRAW_OUTPUT] = landed
 
 
 def _reporter_transition_receipt(

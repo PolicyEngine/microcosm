@@ -418,3 +418,71 @@ def test_transform_records_checkpoint_metadata() -> None:
     evidence = transform.checkpoint_metadata()["evidence"]
     assert evidence["stage"] == "uc_reporter_redraw"
     assert evidence["seed"] == UC_REPORTER_REDRAW_SEED
+
+
+def test_child_only_benunit_gets_its_eldest_member_as_claimant() -> None:
+    """A qualifying-young-person-only benefit unit must not crash the stage.
+
+    A 16-19 QYP heading their own unit is its only member, so no ~uc_child
+    candidate exists; the unit's eldest member is its de-facto head. The
+    licensed spine carries hundreds of such units, so the old total guard
+    failed every full build.
+    """
+
+    from microcosm.build.uk_runtime.uc_reporter_redraw import _claimant_rows
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3],
+            "person_benunit_id": [10, 10, 20],
+            "age": [40.0, 12.0, 17.0],
+        }
+    )
+    uc_child = np.array([False, True, True])
+
+    claimant = _claimant_rows(person, uc_child=uc_child)
+
+    assert claimant.tolist() == [True, False, True]
+
+
+def test_positive_draw_on_a_child_claimant_refuses_at_the_landing() -> None:
+    """The fail-closed half of the child-only fallback lives at the landing."""
+
+    from microcosm.build.uk_runtime.uc_reporter_redraw import (
+        _claimant_rows,
+        _land_spi_draws,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2],
+            "person_benunit_id": [10, 20],
+            "age": [40.0, 17.0],
+            UC_REPORTER_REDRAW_OUTPUT: [0.0, 0.0],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": [10, 20]})
+    uc_child = np.array([False, True])
+    claimant = _claimant_rows(person, uc_child=uc_child)
+    spi = np.array([True, True])
+
+    with pytest.raises(ValueError, match="child claimant"):
+        _land_spi_draws(
+            person,
+            benunit,
+            spi=spi,
+            claimant_rows=claimant,
+            draws=np.array([500.0, 500.0]),
+            uc_child=uc_child,
+        )
+
+    zero_for_child = np.array([500.0, 0.0])
+    _land_spi_draws(
+        person,
+        benunit,
+        spi=spi,
+        claimant_rows=claimant,
+        draws=zero_for_child,
+        uc_child=uc_child,
+    )
+    assert person[UC_REPORTER_REDRAW_OUTPUT].tolist() == [500.0, 0.0]
