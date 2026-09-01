@@ -37,6 +37,7 @@ POLICYENGINE_BINDING_KEYS = frozenset(
         "value_variable",
     }
 )
+UK_PACKAGE_ROOT = Path("packages/microcosm-build/src/microcosm/build/uk")
 
 
 def main() -> None:
@@ -77,12 +78,24 @@ def main() -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--contract", type=Path, required=True)
-    parser.add_argument("--ledger-facts", type=Path, required=True)
-    parser.add_argument("--crosswalk", type=Path, required=True)
+    parser.add_argument(
+        "--contract", type=Path, default=UK_PACKAGE_ROOT / "uk_population_targets.json"
+    )
+    parser.add_argument(
+        "--ledger-facts", type=Path, default=Path(".codex-work/consumer_facts_uk.jsonl")
+    )
+    parser.add_argument(
+        "--crosswalk", type=Path, default=UK_PACKAGE_ROOT / "local_area_crosswalk.json"
+    )
     parser.add_argument("--period", type=int, default=2025)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--membership-report", type=Path, required=True)
+    parser.add_argument(
+        "--output", type=Path, default=UK_PACKAGE_ROOT / "local_target_references.json"
+    )
+    parser.add_argument(
+        "--membership-report",
+        type=Path,
+        default=UK_PACKAGE_ROOT / "local_target_reference_membership.json",
+    )
     return parser
 
 
@@ -164,31 +177,32 @@ def _area_signed_deferrals(
     scottish_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "S"
     )
+    if len(scottish_local_authorities) != 32:
+        raise ValueError(
+            "Scottish council-tax deferral mask expected 32 crosswalk local "
+            f"authorities; measured {len(scottish_local_authorities)}."
+        )
+    if len(ni_local_authorities) != 11:
+        raise ValueError(
+            "Northern Ireland council-tax deferral mask expected 11 crosswalk "
+            f"local authorities; measured {len(ni_local_authorities)}."
+        )
     council_tax_ni_area_ids = ni_local_authorities
     council_tax_scotland_area_ids = scottish_local_authorities
-    council_tax_city_band_a_area_ids = tuple(
-        area_id for area_id in ("E09000001",) if area_id in local_authority_ids
-    )
-    council_tax_wales_band_h_area_ids = tuple(
-        area_id
-        for area_id in ("W06000019", "W06000024")
-        if area_id in local_authority_ids
-    )
-    pipr_lad_absent_area_ids = tuple(
-        area_id
-        for area_id in ("E06000053", "E08000016", "E08000019", "E09000001")
-        if area_id in local_authority_ids
+    council_tax_city_band_a_area_ids = ("E09000001",)
+    council_tax_wales_band_h_area_ids = ("W06000019", "W06000024")
+    pipr_lad_absent_area_ids = (
+        "E06000053",
+        "E08000016",
+        "E08000019",
+        "E09000001",
     )
     pipr_after_target_period_area_ids = tuple(
         area_id
         for area_id in local_authority_ids
         if area_id[:1] in {"E", "W"} and area_id not in pipr_lad_absent_area_ids
     )
-    spi_la_measure_gap_area_ids = tuple(
-        area_id
-        for area_id in ("E06000027", "E06000053")
-        if area_id in local_authority_ids
-    )
+    spi_la_measure_gap_area_ids = ("E06000027", "E06000053")
     deferrals: list[AreaSignedDeferral] = []
 
     def add(
@@ -198,17 +212,35 @@ def _area_signed_deferrals(
         reason_id: str,
         rationale: str,
         area_ids: tuple[str, ...],
+        allow_empty: bool = False,
     ) -> None:
-        if target_id in target_ids and area_ids:
-            deferrals.append(
-                AreaSignedDeferral(
-                    target_id=target_id,
-                    geography_level=geography_level,
-                    reason_id=reason_id,
-                    rationale=rationale,
-                    area_ids=area_ids,
-                )
+        if target_id not in target_ids:
+            raise ValueError(
+                f"signed deferral target_id {target_id!r} is absent from the "
+                "local contract."
             )
+        roster = set(areas.get(geography_level, ()))
+        matched_area_ids = tuple(area_id for area_id in area_ids if area_id in roster)
+        if not matched_area_ids:
+            if allow_empty:
+                return
+            unmatched_area_ids = sorted(
+                area_id for area_id in area_ids if area_id not in roster
+            )
+            raise ValueError(
+                f"signed deferral {reason_id!r} declared area ids match no "
+                f"{geography_level} crosswalk area; unmatched area id(s): "
+                f"{unmatched_area_ids}."
+            )
+        deferrals.append(
+            AreaSignedDeferral(
+                target_id=target_id,
+                geography_level=geography_level,
+                reason_id=reason_id,
+                rationale=rationale,
+                area_ids=matched_area_ids,
+            )
+        )
 
     add(
         target_id="dwp.uc.households_by_area",
@@ -255,9 +287,7 @@ def _area_signed_deferrals(
         geography_level="constituency",
         reason_id="spi_pcon_self_employment_mean_absent",
         rationale="HMRC SPI constituency facts in the pinned feed publish self_employment_income_count for 650/650 constituencies but self_employment_income_mean for 649/650; E14001416 has the count fact but no mean fact, so count_x_mean cannot form the amount.",
-        area_ids=tuple(
-            area_id for area_id in ("E14001416",) if area_id in constituency_ids
-        ),
+        area_ids=("E14001416",),
     )
     for target_id in (
         "ons.equiv_net_income_bhc",

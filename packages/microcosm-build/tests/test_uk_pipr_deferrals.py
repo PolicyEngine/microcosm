@@ -1,7 +1,21 @@
 from __future__ import annotations
 
+import copy
 import json
 from importlib import resources as importlib_resources
+
+import pytest
+
+from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
+from tools.generate_uk_local_target_references import _area_signed_deferrals
+
+
+def _crosswalk() -> dict:
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_area_crosswalk.json")
+        .read_text()
+    )
 
 
 def _membership() -> dict:
@@ -61,3 +75,15 @@ def test_pipr_four_signed_reasons_pin_feed_and_crosswalk_measurements() -> None:
     assert (
         "zero Northern Ireland rows" in rows["private_rent_pipr_ni_absent"]["rationale"]
     )
+
+
+def test_deferral_for_unknown_contract_target_refuses() -> None:
+    contract = copy.deepcopy(load_uk_population_contract())
+    contract["targets"] = [
+        target
+        for target in contract["targets"]
+        if target["target_id"] != "ons.rent.private_rent"
+    ]
+
+    with pytest.raises(ValueError, match="ons.rent.private_rent.*absent"):
+        _area_signed_deferrals(contract, _crosswalk())

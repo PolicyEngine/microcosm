@@ -1,7 +1,21 @@
 from __future__ import annotations
 
+import copy
 import json
 from importlib import resources as importlib_resources
+
+import pytest
+
+from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
+from tools.generate_uk_local_target_references import _area_signed_deferrals
+
+
+def _crosswalk() -> dict:
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_area_crosswalk.json")
+        .read_text()
+    )
 
 
 def _membership() -> dict:
@@ -67,3 +81,33 @@ def test_council_tax_activation_adds_2541_references() -> None:
         ]["candidates"]
         active += sum(row["status"] == "active" for row in candidates)
     assert active == 2_541
+
+
+def test_declared_deferral_roster_matching_no_crosswalk_area_refuses() -> None:
+    crosswalk = copy.deepcopy(_crosswalk())
+    area_ids = crosswalk["levels"]["local_authority"]["area_ids"]
+    area_ids.remove("E09000001")
+
+    with pytest.raises(ValueError, match="unmatched area id.*E09000001"):
+        _area_signed_deferrals(load_uk_population_contract(), crosswalk)
+
+
+@pytest.mark.parametrize(
+    ("prefix", "expected", "name"),
+    [
+        ("S", 32, "Scottish"),
+        ("N", 11, "Northern Ireland"),
+    ],
+)
+def test_council_tax_country_masks_refuse_roster_count_drift(
+    prefix: str, expected: int, name: str
+) -> None:
+    crosswalk = copy.deepcopy(_crosswalk())
+    area_ids = crosswalk["levels"]["local_authority"]["area_ids"]
+    area_ids.remove(next(area_id for area_id in area_ids if area_id.startswith(prefix)))
+
+    with pytest.raises(
+        ValueError,
+        match=rf"{name}.*expected {expected}.*measured {expected - 1}",
+    ):
+        _area_signed_deferrals(load_uk_population_contract(), crosswalk)

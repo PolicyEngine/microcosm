@@ -190,7 +190,7 @@ def test_author_area_target_references_refuses_signed_area_outside_roster() -> N
         )
 
 
-def test_generate_uk_local_target_references_cli_writes_resources(
+def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
     tmp_path: Path,
 ) -> None:
     repo = Path(__file__).resolve().parents[3]
@@ -211,13 +211,20 @@ def test_generate_uk_local_target_references_cli_writes_resources(
         + "\n",
         encoding="utf-8",
     )
+    # The council-tax country masks refuse a local-authority roster that does
+    # not carry the declared 32 Scottish and 11 Northern Irish authorities
+    # (covered by test_council_tax_country_masks_refuse_roster_count_drift).
+    # This test is about the *contract* refusal, so give it a roster those
+    # masks accept and let the missing target id be what fails.
     crosswalk_path.write_text(
         json.dumps(
             {
                 "levels": {
-                    "constituency": {
-                        "area_ids": ["A1"],
-                    }
+                    "constituency": {"area_ids": ["A1"]},
+                    "local_authority": {
+                        "area_ids": [f"S{index:08d}" for index in range(32)]
+                        + [f"N{index:08d}" for index in range(11)]
+                    },
                 }
             }
         ),
@@ -245,18 +252,11 @@ def test_generate_uk_local_target_references_cli_writes_resources(
         check=False,
     )
 
-    assert result.returncode == 0, result.stderr
-    resource = json.loads(output_path.read_text(encoding="utf-8"))
-    membership = json.loads(membership_path.read_text(encoding="utf-8"))
-    assert resource["allowed_value_operations"] == [
-        "identity",
-        "sum",
-        "calendar_year_average",
-        "latest_plateau",
-        "count_x_mean",
-    ]
-    assert [row["name"] for row in resource["target_references"]] == ["ons.age.0_10@A1"]
-    assert membership["status_counts"] == {"active": 1}
+    assert result.returncode != 0
+    assert "dwp.uc.households_by_area" in result.stderr
+    assert "absent from the local contract" in result.stderr
+    assert not output_path.exists()
+    assert not membership_path.exists()
 
 
 def _candidate(report: dict, target_id: str, area_id: str) -> dict:

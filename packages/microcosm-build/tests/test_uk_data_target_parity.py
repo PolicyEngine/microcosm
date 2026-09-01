@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import copy
+
+import pytest
+
+from microcosm.build.uk_runtime import data_target_parity
 from microcosm.build.uk_runtime.data_target_parity import (
     PORTED_PARITY_STATUSES,
     VALID_PARITY_STATUSES,
@@ -19,6 +24,7 @@ def test_every_parity_row_is_complete() -> None:
         assert row["status"] in VALID_PARITY_STATUSES
         assert row["classification"]
         assert row["evidence"]
+        assert row["covers"]
         if row["status"] not in PORTED_PARITY_STATUSES:
             assert row["reason"]
             assert set(row["fence"]) == {"origin", "purpose", "verdict_basis"}
@@ -57,3 +63,45 @@ def test_post_ebf733c_additions_are_named() -> None:
     )
     assert "uk-data#458" in dwp["evidence"]
     assert "uk-data#474" in education["reason"]
+
+
+def test_inventory_and_concern_coverage_form_a_bijection() -> None:
+    rows = build_uk_data_target_parity()["concerns"]
+    inventory = data_target_parity._load_uk_data_target_inventory()
+
+    data_target_parity._assert_inventory_bijection(rows, inventory)
+
+
+def test_concern_covering_unknown_inventory_id_fails() -> None:
+    rows = copy.deepcopy(build_uk_data_target_parity()["concerns"])
+    rows[0]["covers"] = (*rows[0]["covers"], "unknown.inventory.entry")
+    inventory = data_target_parity._load_uk_data_target_inventory()
+
+    with pytest.raises(ValueError, match="unknown.inventory.entry"):
+        data_target_parity._assert_inventory_bijection(rows, inventory)
+
+
+def test_inventory_entry_with_no_concern_fails() -> None:
+    rows = copy.deepcopy(build_uk_data_target_parity()["concerns"])
+    inventory = data_target_parity._load_uk_data_target_inventory()
+    covered = {entry_id for row in rows for entry_id in row["covers"]}
+    victim = next(
+        entry["entry_id"]
+        for entry in inventory["entries"]
+        if entry["entry_id"] in covered
+        and entry["entry_id"]
+        not in data_target_parity.UK_DATA_TARGET_INVENTORY_HELPER_EXEMPTIONS
+    )
+    for row in rows:
+        row["covers"] = tuple(
+            entry_id for entry_id in row["covers"] if entry_id != victim
+        )
+
+    with pytest.raises(ValueError, match=victim):
+        data_target_parity._assert_inventory_bijection(rows, inventory)
+
+
+def test_evidence_never_cites_untracked_codex_work() -> None:
+    rows = build_uk_data_target_parity()["concerns"]
+
+    assert all(".codex-work" not in row["evidence"] for row in rows)

@@ -1019,6 +1019,13 @@ class TestUsSources:
             # imported by package code or live gate/build paths.
             "packages/microcosm-build/src/microcosm/build/uk/"
             "local_registry_parity_fixture_2025.json",
+            # The late target-parity inventory is a sha-locked static extract
+            # of the archived module surface. Its companion parity register
+            # cites those entry ids; neither artifact imports package code.
+            "packages/microcosm-build/src/microcosm/build/uk/"
+            "uk_data_target_inventory.json",
+            "packages/microcosm-build/src/microcosm/build/uk/"
+            "uk_data_target_parity.json",
             "tools/extract_uk_local_registry_fixture.py",
             "UK_COVERAGE_PROGRESS.md",
         }
