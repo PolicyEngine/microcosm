@@ -84,9 +84,9 @@ def test_replay_wic_dtype_breach_stops_at_the_node_boundary(tmp_path: Path) -> N
     )
 
     registry = toy.toy_registry()
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="receives_x"):
+    with pytest.raises(NodeRejectedError, match="receives_x"):
         toy.run_toy(graph, tmp_path / "breach", registry=registry)
 
     assert toy.calls_by_ref(registry)["count.calls@1"] == 0
@@ -132,14 +132,14 @@ def test_replay_engine_less_environment_stops_before_any_kernel(
     """An unavailable verifier is not a stale checkpoint and not a rebuild.
 
     The counting kernels prove the distinction is real: the run raises
-    ``StoreUnavailable`` and executes nothing. The incident's four wasted
+    ``StoreUnavailableError`` and executes nothing. The incident's four wasted
     minutes came from ``except Exception`` collapsing ``ImportError`` into
     "rebuild"; the executor cannot make that mistake if it never starts.
     """
     registry = toy.toy_registry()
-    from microcosm.graph import StoreUnavailable
+    from microcosm.graph import StoreUnavailableError
 
-    with pytest.raises(StoreUnavailable, match="csv-tables"):
+    with pytest.raises(StoreUnavailableError, match="csv-tables"):
         toy.run_toy(
             toy.full_graph(),
             tmp_path / "run",
@@ -172,11 +172,11 @@ def test_replay_evidence_flip_is_refused_by_the_loader(tmp_path: Path) -> None:
     document["schema_version"] = 1
     path.write_text(json.dumps(document))
 
-    from microcosm.graph import NodeRejected, StoreCorrupt
+    from microcosm.graph import NodeRejectedError, StoreCorruptError
 
-    with pytest.raises(StoreCorrupt, match=red.manifest.key):
+    with pytest.raises(StoreCorruptError, match=red.manifest.key):
         RunManifest.load(path, store=red.store)
-    with pytest.raises((StoreCorrupt, NodeRejected)):
+    with pytest.raises((StoreCorruptError, NodeRejectedError)):
         RunManifest.load_certified(path, store=red.store)
 
 

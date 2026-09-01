@@ -17,10 +17,12 @@ under "API assumptions" so the runtime lane can meet them:
 
 1. Only a ``CREATE`` kernel returns ``KernelResult.frame``; it is the one
    kernel that builds a population rather than reading one. A ``FILTER``
-   kernel returns the surviving-person mask as
-   ``columns[(person_entity, ROWS_ALL)]`` and a ``REWEIGHT`` kernel returns
-   ``KernelResult.weights``; the executor applies both to the base version.
-   No other kernel ever holds a population (charter B2).
+   kernel returns the surviving-person mask as ``KernelResult.keep`` and a
+   ``REWEIGHT`` kernel returns ``KernelResult.weights``; the executor
+   applies both to the base version. No other kernel ever holds a
+   population (charter B2). Gate and release kernels say so through
+   ``Capabilities.role``. (Both were adopted into the frozen interface on
+   2026-09-01; see the charter's "Interface freeze" amendments.)
 2. ``KernelContext.tables`` carries an id-only view of every entity the node
    *owns*, on top of the declared input slices, so a kernel can index the
    cells it is responsible for. The person view carries its membership
@@ -49,7 +51,6 @@ import pandas as pd
 
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
-    ROWS_ALL,
     Capabilities,
     CompiledGraph,
     ContentStore,
@@ -59,6 +60,7 @@ from microcosm.graph import (
     KernelContext,
     KernelRegistry,
     KernelResult,
+    KernelRole,
     Node,
     Numeric,
     Owned,
@@ -407,11 +409,7 @@ class SelectRows(ToyKernel):
         )
         weights = context.weights["household"].values
         return KernelResult(
-            columns={
-                ("person", ROWS_ALL): pd.Series(
-                    mask, index=_owned_ids(context, "person"), dtype="bool"
-                )
-            },
+            keep=pd.Series(mask, index=_owned_ids(context, "person"), dtype="bool"),
             receipt={
                 "kept": int(mask.sum()),
                 "mass": _mass_record(
@@ -649,8 +647,16 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
             ),
         ),
         CalibrateToy("calibrate.blind@1", _REWEIGHT),
-        GateThreshold("gate.threshold@1", _DETERMINISTIC),
-        ReleaseTier("release.tier@1", _DETERMINISTIC),
+        GateThreshold(
+            "gate.threshold@1",
+            Capabilities(determinism=Determinism.DETERMINISTIC, role=KernelRole.GATE),
+        ),
+        ReleaseTier(
+            "release.tier@1",
+            Capabilities(
+                determinism=Determinism.DETERMINISTIC, role=KernelRole.RELEASE
+            ),
+        ),
         CountsAndSucceeds("count.calls@1", _DETERMINISTIC),
         WritesOutsideOwnership("bad.outside@1", _DETERMINISTIC),
         ReturnsDenseBool("bad.dense_bool@1", _DETERMINISTIC),

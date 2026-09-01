@@ -8,8 +8,8 @@ adapter raised ``ImportError``, the builder printed "Ignored stacked checkpoint
 discovery manifest", and a cold rebuild began. Nothing was written down.
 
 These five properties make each of those a distinct, named, testable outcome:
-``StoreCorrupt`` for altered bytes, ``StoreUnavailable`` for a verifier that is
-not installed, ``StoreMiss`` under ``resume="require"``, no partial artifact
+``StoreCorruptError`` for altered bytes, ``StoreUnavailableError`` for a verifier that is
+not installed, ``StoreMissError`` under ``resume="require"``, no partial artifact
 after an interruption, and a manifest that lists every node either way.
 """
 
@@ -65,9 +65,9 @@ def test_e1_content_validation_on_load(tmp_path: Path) -> None:
     data[len(data) // 2] ^= 0xFF
     path.write_bytes(bytes(data))
 
-    from microcosm.graph import StoreCorrupt
+    from microcosm.graph import StoreCorruptError
 
-    with pytest.raises(StoreCorrupt, match=key):
+    with pytest.raises(StoreCorruptError, match=key):
         toy.run_toy(
             toy.small_graph(),
             tmp_path / "run",
@@ -84,9 +84,9 @@ def test_e2_verifier_unavailability_is_fatal(tmp_path: Path) -> None:
     That is not a stale checkpoint and must not become a cold rebuild.
     """
     registry = toy.toy_registry()
-    from microcosm.graph import StoreUnavailable
+    from microcosm.graph import StoreUnavailableError
 
-    with pytest.raises(StoreUnavailable, match="csv-tables"):
+    with pytest.raises(StoreUnavailableError, match="csv-tables"):
         toy.run_toy(
             toy.small_graph(),
             tmp_path / "run",
@@ -99,10 +99,10 @@ def test_e2_verifier_unavailability_is_fatal(tmp_path: Path) -> None:
 @pytest.mark.xfail(strict=True, reason="charter E3: pending")
 def test_e3_resume_policy_is_real(tmp_path: Path) -> None:
     """``require``, ``forbid``, and ``auto`` behave differently on one graph."""
-    from microcosm.graph import StoreMiss
+    from microcosm.graph import StoreMissError
 
     cold = toy.toy_registry()
-    with pytest.raises(StoreMiss):
+    with pytest.raises(StoreMissError):
         toy.run_toy(
             toy.small_graph(),
             tmp_path / "run",
@@ -175,9 +175,9 @@ def test_e4_atomic_writes(tmp_path: Path) -> None:
         params={"target": "never_written"},
         population="survey",
     )
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="explodes"):
+    with pytest.raises(NodeRejectedError, match="explodes"):
         toy.run_toy(
             toy.small_graph(nodes=(*prefix.nodes, explodes)),
             tmp_path / "run",

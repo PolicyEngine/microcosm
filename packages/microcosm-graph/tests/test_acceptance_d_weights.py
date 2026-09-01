@@ -59,7 +59,7 @@ def test_d1_weight_transitions_are_typed_nodes(tmp_path: Path) -> None:
         "calibrated": WeightKind.CALIBRATED,
     }
 
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
     backwards = toy.small_graph(
         nodes=(
@@ -69,7 +69,7 @@ def test_d1_weight_transitions_are_typed_nodes(tmp_path: Path) -> None:
             toy.reweight_node("regress", base="calibrated", to_kind="importance"),
         )
     )
-    with pytest.raises(NodeRejected, match="regress"):
+    with pytest.raises(NodeRejectedError, match="regress"):
         toy.run_toy(backwards, tmp_path / "backwards")
 
     inherited = Node(
@@ -82,7 +82,7 @@ def test_d1_weight_transitions_are_typed_nodes(tmp_path: Path) -> None:
         weights=WeightTransition("person", "importance", mass="free"),
         mass="free",
     )
-    with pytest.raises(NodeRejected, match="person_reweight"):
+    with pytest.raises(NodeRejectedError, match="person_reweight"):
         toy.run_toy(
             toy.small_graph(nodes=(toy.CREATE, inherited)), tmp_path / "inherited"
         )
@@ -118,12 +118,12 @@ def test_d2_mass_ledger(tmp_path: Path) -> None:
         for label in toy.STRATA
     )
 
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
     conserving = toy.small_graph(
         nodes=(toy.CREATE, toy.POOL, toy.select_node(base="pool", policy="conserve"))
     )
-    with pytest.raises(NodeRejected, match="adults"):
+    with pytest.raises(NodeRejectedError, match="adults"):
         toy.run_toy(conserving, tmp_path / "conserve")
 
 
@@ -159,9 +159,9 @@ def test_d3_cap_anchored_to_design(tmp_path: Path) -> None:
             ),
         )
     )
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="calibrated"):
+    with pytest.raises(NodeRejectedError, match="calibrated"):
         toy.run_toy(over, tmp_path / "over")
 
 
@@ -183,9 +183,9 @@ def test_d4_filters_are_binary(tmp_path: Path) -> None:
     nullable_mask = toy.patch_node(
         "null_mask", "flag", "float64", 1.0, population="survey", mask="receives_x"
     )
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="null_mask"):
+    with pytest.raises(NodeRejectedError, match="null_mask"):
         toy.run_toy(
             toy.small_graph(nodes=(toy.CREATE, nullable_mask)), tmp_path / "nulls"
         )

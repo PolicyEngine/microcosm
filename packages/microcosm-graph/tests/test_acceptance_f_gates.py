@@ -88,9 +88,9 @@ def test_f2_tier_is_derived(tmp_path: Path) -> None:
 
     path = tmp_path / "red" / "manifest.json"
     red.manifest.save(path)
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="evidence"):
+    with pytest.raises(NodeRejectedError, match="evidence"):
         RunManifest.load_certified(path, store=red.store)
 
     green = toy.run_toy(toy.full_graph(), tmp_path / "green")
@@ -120,14 +120,14 @@ def test_f3_the_one_field_flip_is_impossible(tmp_path: Path) -> None:
     document["tier"] = "certified"
     path.write_text(json.dumps(document))
 
-    from microcosm.graph import StoreCorrupt
+    from microcosm.graph import StoreCorruptError
 
-    with pytest.raises(StoreCorrupt, match=red.manifest.key):
+    with pytest.raises(StoreCorruptError, match=red.manifest.key):
         RunManifest.load(path, store=red.store)
 
     document["schema_version"] = 1
     path.write_text(json.dumps(document))
-    with pytest.raises(StoreCorrupt):
+    with pytest.raises(StoreCorruptError):
         RunManifest.load(path, store=red.store)
 
 
@@ -187,7 +187,15 @@ def test_f5_human_decisions_are_inputs(tmp_path: Path) -> None:
     graph = toy.full_graph(requires_decisions=("publish",))
     missing = toy.run_toy(graph, tmp_path / "missing")
     assert missing.manifest.nodes["release"].receipt["outcome"] == "unreached"
-    assert _tier(missing) != "certified"
+    # The owned tier derives from gate ancestry alone (charter A7: a decision
+    # changes no key, so it cannot change an artifact). Publishability is a
+    # manifest-level fact, and the certified loader is where it bites.
+    missing_path = tmp_path / "missing" / "manifest.json"
+    missing.manifest.save(missing_path)
+    from microcosm.graph import NodeRejectedError
+
+    with pytest.raises(NodeRejectedError, match="unreached"):
+        RunManifest.load_certified(missing_path, store=missing.store)
 
     signed = toy.run_toy(graph, tmp_path / "signed", decisions=(toy.PUBLISH_DECISION,))
     assert signed.manifest.nodes["release"].receipt["outcome"] == "pass"

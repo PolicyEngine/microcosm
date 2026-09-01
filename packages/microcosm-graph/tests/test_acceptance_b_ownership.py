@@ -125,9 +125,9 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
             ),
         )
     )
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="overreach"):
+    with pytest.raises(NodeRejectedError, match="overreach"):
         toy.run_toy(graph, tmp_path / "bad")
 
     honest = toy.replace_node(
@@ -199,9 +199,9 @@ def test_b4_inputs_are_immutable(tmp_path: Path) -> None:
         population="survey",
     )
     sources = toy.toy_sources(tmp_path)
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="vandal"):
+    with pytest.raises(NodeRejectedError, match="vandal"):
         toy.run_toy(
             toy.small_graph(nodes=(toy.CREATE, vandal)),
             tmp_path / "bad",
@@ -233,7 +233,7 @@ def test_b5_null_means_absence(tmp_path: Path) -> None:
             toy.absent_node("no_data", "unobserved", kernel="bad.absent@1"),
         )
     )
-    from microcosm.graph import NodeRejected
+    from microcosm.graph import NodeRejectedError
 
-    with pytest.raises(NodeRejected, match="no_data"):
+    with pytest.raises(NodeRejectedError, match="no_data"):
         toy.run_toy(liar, tmp_path / "liar")
