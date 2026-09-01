@@ -3,11 +3,11 @@
   "description": "Reviewed adjudications of the UK local binding fences (uk_local_target_census.json binding_fences). Binding a target family whose fence has no in-force entry here fails in the rowwise doctrine solve before any solve runs. Keys are fence ids; the reason states the ruling (accept the stated basis, or replace it with the named alternative) and cites the evidence.",
   "exclusions": {
     "census_disclosure_control_noise": {
-      "reason": "Accept the stated basis: constituency household counts bind to the published disclosure-controlled census values as-is — ONS/NRS cell-key perturbation and NISRA flexible-table-builder noise is documented, the counts are target values, never exact controls; the measured cross-grain deltas at review (constituency sums vs national totals: E&W +105, Scotland -554, NI +3) are accepted; constituency is the winning grain for the rowwise arm, whose targets are the sha-pinned OA ladder's occupied-household counts summed at constituency grain (ladder_targets.constituency_household_targets, provenance recorded per build) with no cross-grain reconciliation. Evidence: uk_local_target_census.json#/binding_fences/census_disclosure_control_noise.",
+      "reason": "Accept the stated basis: constituency household counts bind to the published disclosure-controlled census values as-is — ONS/NRS cell-key perturbation and NISRA flexible-table-builder noise is documented, and the measured cross-grain deltas at review (constituency sums vs national totals: E&W +105, Scotland -554, NI +3) are accepted. When a national same-concept control is bound in the same solve, the standing cross-grain rule rescales the constituency values to it before calibration; country is the winning grain. The rule and bridges are declared in microcosm.build.uk_runtime.ledger_targets and implemented by microcosm.build.cross_grain; rationale and evidence are recorded in docs/uk-local-cross-grain-reconciliation-802.md. Fence evidence: uk_local_target_census.json#/binding_fences/census_disclosure_control_noise.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#760",
-      "approved_on": "2026-08-27",
-      "expires_on": "2026-11-27"
+      "adjudication": "microcosm#802",
+      "approved_on": "2026-08-31",
+      "expires_on": "2026-11-30"
     }
   }
 }

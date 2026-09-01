@@ -285,9 +285,16 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
         "census_disclosure_control_noise"
     ]
     assert seed["approved_by"] == "juaristi22"
-    assert seed["approved_on"] == "2026-08-27"
-    assert seed["expires_on"] == "2026-11-27"
+    assert seed["adjudication"] == "microcosm#802"
+    assert seed["approved_on"] == "2026-08-31"
+    assert seed["expires_on"] == "2026-11-30"
     assert adjudications["dormant"] == []
+    cross_grain = manifest["cross_grain"]
+    assert cross_grain["bound_national_targets"] == []
+    assert cross_grain["bound_higher_targets"] == []
+    assert cross_grain["inconsistencies_in_force"] == []
+    assert cross_grain["groups"] == []
+    assert cross_grain["absence"]
     assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert manifest["gate"]["passed"] is True
     assert manifest["gate"]["phase"] == "post_calibration"
@@ -430,6 +437,12 @@ def test_candidate_dry_run_plans_without_solve_or_write(
         in adjudications["stood_on"]["census_households/constituency"]
     )
     assert adjudications["dormant"] == []
+    cross_grain = plan["cross_grain"]
+    assert cross_grain["bound_national_targets"] == []
+    assert cross_grain["bound_higher_targets"] == []
+    assert cross_grain["inconsistencies_in_force"] == []
+    assert cross_grain["groups"] == []
+    assert cross_grain["absence"]
     assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert plan["shapes"]["person"][0] == 8
     assert plan["shapes"]["benunit"][0] == 8

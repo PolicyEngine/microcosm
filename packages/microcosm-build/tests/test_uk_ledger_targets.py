@@ -3,10 +3,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime.ledger_targets import (
+    UK_CROSS_GRAIN_BRIDGES,
+    UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
+    UK_CROSS_GRAIN_RULE,
+    apply_uk_cross_grain_reconciliation,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
@@ -489,3 +494,199 @@ def test_household_condition_still_reduces_group_entities():
     )
 
     assert list(single) == [True, False]
+
+
+def test_uk_cross_grain_rule_constants_are_review_pinned():
+    assert UK_CROSS_GRAIN_GRAIN_PRECEDENCE == (
+        "country",
+        "constituency",
+        "la",
+    )
+    assert UK_CROSS_GRAIN_RULE.grain_precedence == (
+        "country",
+        "constituency",
+        "la",
+    )
+    assert [bridge.bridge_id for bridge in UK_CROSS_GRAIN_BRIDGES] == [
+        "national_household_composition_partition_vs_census_households",
+        "national_uc_caseload_vs_uc_households_by_area",
+    ]
+    assert UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids == (
+        "ons.household_composition.lone_households_under_65",
+        "ons.household_composition.lone_households_over_65",
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.couple_no_children_households",
+        "ons.household_composition.couple_under_3_children_households",
+        "ons.household_composition.couple_3_plus_children_households",
+        "ons.household_composition.couple_non_dependent_children_only_households",
+        "ons.household_composition.lone_parent_dependent_children_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
+        "ons.household_composition.multi_family_households",
+    )
+    assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == (
+        "dwp.uc.households",
+    )
+
+
+def test_committed_contract_detects_exact_uc_payment_partition():
+    payment_ids = (
+        "dwp.uc.payment_distribution_single",
+        "dwp.uc.payment_distribution_lone_parent",
+        "dwp.uc.payment_distribution_couple_no_children",
+        "dwp.uc.payment_distribution_couple_with_children",
+    )
+    surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": target_id,
+                    "value": 25.0,
+                }
+                for target_id in payment_ids
+            ],
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "dwp.uc.households_by_area",
+                "value": 30.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "dwp.uc.households_by_area",
+                "value": 20.0,
+            },
+        ]
+    )
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface, payment_ids
+    )
+
+    assert len(receipt["groups"]) == 1
+    assert receipt["groups"][0]["bridge_id"] is None
+    assert reconciled.loc[4:, "value"].tolist() == [60.0, 40.0]
+
+
+def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
+    household_bridge, uc_bridge = UK_CROSS_GRAIN_BRIDGES
+    household_surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": target_id,
+                    "value": 10.0,
+                }
+                for target_id in household_bridge.higher_target_ids
+            ],
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "external:census_households/households",
+                "value": 40.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "external:census_households/households",
+                "value": 10.0,
+            },
+        ]
+    )
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        household_surface, household_bridge.higher_target_ids
+    )
+    assert receipt["groups"][0]["bridge_id"] == household_bridge.bridge_id
+    assert reconciled.loc[10:, "value"].tolist() == [80.0, 20.0]
+
+    uc_surface = pd.DataFrame(
+        [
+            {
+                "grain": "country",
+                "geography_id": "K02000001",
+                "target_id": "dwp.uc.households",
+                "value": 90.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "dwp.uc.households_by_area",
+                "value": 30.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "dwp.uc.households_by_area",
+                "value": 15.0,
+            },
+        ]
+    )
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        uc_surface, uc_bridge.higher_target_ids
+    )
+    assert receipt["groups"][0]["bridge_id"] == uc_bridge.bridge_id
+    assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
+
+
+def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
+    surface = pd.DataFrame(
+        [
+            {
+                "grain": "country",
+                "geography_id": "E92000001",
+                "target_id": "dwp.uc.households",
+                "value": 60.0,
+            },
+            {
+                "grain": "country",
+                "geography_id": "S92000003",
+                "target_id": "dwp.uc.households",
+                "value": 40.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "dwp.uc.households_by_area",
+                "value": 30.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "dwp.uc.households_by_area",
+                "value": 10.0,
+            },
+        ]
+    )
+    reconciled, _ = apply_uk_cross_grain_reconciliation(
+        surface, ("dwp.uc.households",)
+    )
+    local = reconciled.loc[reconciled["grain"] == "constituency"]
+    targets = local.rename(
+        columns={"geography_id": "code", "value": "uc_households"}
+    )[["code", "uc_households"]]
+    metrics = pd.DataFrame(
+        {"uc_households": [1.0, 1.0]},
+        index=pd.Index([1, 2], name="household_id"),
+    )
+    assigned = pd.Series(
+        ["E14000001", "S14000001"],
+        index=metrics.index,
+    )
+
+    from microcosm.build.uk_runtime.local_rowwise import (
+        _require_uniform_target_surface,
+        build_uk_rowwise_local_matrix,
+    )
+
+    problem = build_uk_rowwise_local_matrix(
+        metrics,
+        assigned,
+        targets,
+        area_type="constituency",
+    )
+    _require_uniform_target_surface(problem)
+    assert problem.targets.tolist() == [60.0, 40.0]

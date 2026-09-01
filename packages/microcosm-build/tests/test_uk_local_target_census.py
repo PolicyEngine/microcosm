@@ -154,6 +154,16 @@ def test_fences_declare_enforcement_and_gate_reviewed_families() -> None:
     assert census["scope"], "census must declare its metric-surface scope"
 
 
+def test_census_disclosure_fence_names_country_as_winning_grain() -> None:
+    census = build_uk_local_target_census()
+    fences = {row["fence_id"]: row for row in census["binding_fences"]}
+    rule = fences["census_disclosure_control_noise"]["rule"]
+    assert "standing cross-grain rule" in rule
+    assert "uk_runtime.ledger_targets" in rule
+    assert "country wins" in rule
+    assert "national same-concept control" in rule
+
+
 def test_unclassified_metric_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     from microcosm.build.uk_runtime import local_target_census as module
 
