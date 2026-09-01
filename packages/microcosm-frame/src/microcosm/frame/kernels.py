@@ -11,8 +11,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+import microcosm.frame.bundle as frame_bundle_module
+import microcosm.frame.rules as frame_rules_module
+import microcosm.frame.schema as frame_schema_module
 from microcosm.frame.bundle import Frame
 from microcosm.frame.rules import RulesEngine
+from microcosm.frame.schema import EntitySchema
 from microcosm.graph import (
     ROWS_ALL,
     Capabilities,
@@ -84,8 +88,47 @@ class SimulateRulesKernel(KernelBase):
         return source_hash(
             type(self),
             type(self._engine),
+            frame_bundle_module,
+            frame_rules_module,
+            frame_schema_module,
             dependencies=self.capabilities.dependencies,
         )
+
+    @staticmethod
+    def _tables(
+        context: KernelContext, schema: EntitySchema
+    ) -> dict[str, pd.DataFrame]:
+        """Recover ID-only group tables omitted from the declared data slices.
+
+        Kernel contexts expose structural person memberships alongside declared
+        true-input columns.  A group with no true inputs may consequently have
+        no slice of its own; Frame's partition invariant lets the adapter recover
+        that group's sorted ID-only table exactly from the person memberships.
+        """
+
+        person_entity = schema.person_entity
+        try:
+            person = context.tables[person_entity]
+        except KeyError as error:
+            raise ValueError(
+                "simulate.rules requires the engine's person table so group "
+                "structure can be reconstructed."
+            ) from error
+
+        tables = {person_entity: person}
+        for group in schema.group_entities:
+            if group in context.tables:
+                tables[group] = context.tables[group]
+                continue
+            membership = schema.membership_column(group)
+            if membership not in person.columns:
+                raise ValueError(
+                    f"simulate.rules cannot reconstruct entity {group!r}: person "
+                    f"table is missing structural membership {membership!r}."
+                )
+            ids = np.unique(person[membership].to_numpy(copy=False))
+            tables[group] = pd.DataFrame({schema.id_column(group): ids})
+        return tables
 
     def run(self, context: KernelContext) -> KernelResult:
         """Call ``RulesEngine.materialize`` and index its arrays by entity id."""
@@ -93,15 +136,7 @@ class SimulateRulesKernel(KernelBase):
         engine_ref, variables, period = self._validated_params(context)
         schema = self._engine.entity_schema()
 
-        missing_tables = [
-            entity for entity in schema.entities if entity not in context.tables
-        ]
-        if missing_tables:
-            raise ValueError(
-                "simulate.rules requires every engine entity table; missing "
-                f"{missing_tables}."
-            )
-        tables = {entity: context.tables[entity] for entity in schema.entities}
+        tables = self._tables(context, schema)
         frame = Frame(
             tables=tables,
             schema=schema,

@@ -70,6 +70,17 @@ worktree path is outside this session's writable filesystem boundary.
 - Added only `microcosm-graph>=0.1,<0.2` and its uv workspace source to each
   touched shard. Regenerated `uv.lock` offline from the existing package cache;
   its six-line diff records exactly those three workspace dependency edges.
+- Hardened the wrappers after independent protocol review: calibration now
+  rejects inert extra parameters, validates optional standard errors while
+  preserving their original values/types (including `None`), and hashes all
+  local solver/target/Frame sources that can affect output. Simulation likewise
+  hashes its Frame/protocol support and reconstructs omitted ID-only group
+  tables from the structural person memberships, so its tests now pass a
+  context projected to declared true-input slices rather than a full Frame.
+- Re-ran the focused calibration/frame suite after the hardening (`8 passed, 1
+  skipped`). In an isolated cached environment with `policyengine-us==1.819.0`,
+  the registered 20-household `requires_us` test passes (`1 passed, 1
+  deselected`); the engine-free environment reports `1 passed, 1 skipped`.
 
 ## Next
 

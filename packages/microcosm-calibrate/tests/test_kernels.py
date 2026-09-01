@@ -133,6 +133,25 @@ def test_calibrate_adam_has_byte_parity_with_the_public_call() -> None:
     pd.testing.assert_frame_equal(context.tables["household"], visible_before)
 
 
+def test_calibrate_adam_preserves_none_standard_error_unchanged() -> None:
+    frame = _fixture_frame()
+    node = _node()
+    params = dict(node.params)
+    params["targets"] = (TARGET_PARAMS[0], (*TARGET_PARAMS[1][:-1], None))
+    node = Node(
+        id=node.id,
+        kernel=node.kernel,
+        inputs=node.inputs,
+        params=params,
+        weights=node.weights,
+    )
+
+    result = CALIBRATE_ADAM.run(_context(frame, node))
+
+    assert result.receipt["declared_targets"] == params["targets"]
+    assert result.receipt["declared_targets"][1][4] is None
+
+
 def test_calibrate_adam_declares_its_honest_capabilities() -> None:
     kernel = CalibrateAdamKernel()
 
@@ -169,3 +188,30 @@ def test_calibrate_adam_requires_mass_to_match_the_transition() -> None:
 
     with pytest.raises(ValueError, match="mass parameter must match"):
         CALIBRATE_ADAM.run(context)
+
+
+def test_calibrate_adam_rejects_unknown_params_and_invalid_standard_errors() -> None:
+    frame = _fixture_frame()
+    node = _node()
+    unknown_params = {**node.params, "unused": 1}
+    unknown_node = Node(
+        id=node.id,
+        kernel=node.kernel,
+        inputs=node.inputs,
+        params=unknown_params,
+        weights=node.weights,
+    )
+    with pytest.raises(ValueError, match="unknown parameter"):
+        CALIBRATE_ADAM.run(_context(frame, unknown_node))
+
+    invalid_params = dict(node.params)
+    invalid_params["targets"] = ((*TARGET_PARAMS[0][:-1], 0.0), TARGET_PARAMS[1])
+    invalid_node = Node(
+        id=node.id,
+        kernel=node.kernel,
+        inputs=node.inputs,
+        params=invalid_params,
+        weights=node.weights,
+    )
+    with pytest.raises(ValueError, match="standard error must be positive"):
+        CALIBRATE_ADAM.run(_context(frame, invalid_node))

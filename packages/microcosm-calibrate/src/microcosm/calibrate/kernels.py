@@ -16,6 +16,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+import microcosm.calibrate.diagnostics as diagnostics_module
+import microcosm.calibrate.matrix as matrix_module
+import microcosm.calibrate.solve as solve_module
+import microcosm.calibrate.target as target_module
+import microcosm.frame.bundle as frame_bundle_module
+import microcosm.frame.schema as frame_schema_module
+import microcosm.frame.weights as frame_weights_module
 from microcosm.calibrate import Target, TargetSet, calibrate, diagnostics_payload
 from microcosm.frame import EntitySchema, Frame
 from microcosm.graph import (
@@ -31,6 +38,9 @@ from microcosm.graph import (
 )
 
 __all__ = ["CALIBRATE_ADAM", "CalibrateAdamKernel"]
+
+
+_PARAMS = frozenset({"epochs", "learning_rate", "mass", "max_weight_ratio", "targets"})
 
 
 def _dummy_group_columns(entity: str, columns: pd.Index) -> tuple[str, str, str]:
@@ -87,7 +97,7 @@ def _declared_targets(
                 f"calibrate.adam@1 target {index} must be a five-item tuple "
                 "(name, measure_column, filter_column, value, se)."
             )
-        name, measure_column, filter_column, value, _se = raw_target
+        name, measure_column, filter_column, value, se = raw_target
         if not isinstance(name, str) or not isinstance(measure_column, str):
             raise TypeError(
                 f"calibrate.adam@1 target {index} name and measure column "
@@ -100,6 +110,17 @@ def _declared_targets(
             )
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise TypeError(f"calibrate.adam@1 target {index} value must be numeric.")
+        if se is not None:
+            if isinstance(se, bool) or not isinstance(se, int | float):
+                raise TypeError(
+                    f"calibrate.adam@1 target {index} standard error must be "
+                    "numeric or None."
+                )
+            if not np.isfinite(se) or se <= 0:
+                raise ValueError(
+                    f"calibrate.adam@1 target {index} standard error must be "
+                    "positive and finite."
+                )
         targets.append(
             Target(
                 name=name,
@@ -146,11 +167,24 @@ class CalibrateAdamKernel(KernelBase):
             type(self),
             calibrate,
             diagnostics_payload,
+            solve_module,
+            diagnostics_module,
+            matrix_module,
+            target_module,
+            frame_bundle_module,
+            frame_schema_module,
+            frame_weights_module,
             dependencies=self.capabilities.dependencies,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
         """Calibrate the node's declared entity and return its typed weights."""
+
+        unknown = sorted(set(context.params) - _PARAMS)
+        if unknown:
+            raise ValueError(
+                f"calibrate.adam@1 received unknown parameter(s): {unknown}."
+            )
 
         transition = context.node.weights
         if transition is None or transition.to_kind != "calibrated":

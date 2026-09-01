@@ -9,6 +9,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.frame.bundle as frame_bundle_module
+import microcosm.frame.rules as frame_rules_module
+import microcosm.frame.schema as frame_schema_module
 from microcosm.frame import (
     US_SCHEMA,
     EntitySchema,
@@ -130,9 +133,34 @@ def _context(
     *,
     weighted_entities: tuple[str, ...],
 ) -> KernelContext:
+    declared: dict[str, list[str]] = {}
+    for input_slice in node.inputs:
+        columns = declared.setdefault(input_slice.entity, [])
+        columns.extend(
+            column for column in input_slice.columns if column not in columns
+        )
+    structural = {
+        frame.schema.person_entity: (
+            frame.schema.person_id_column,
+            *(
+                frame.schema.membership_column(group)
+                for group in frame.schema.group_entities
+            ),
+        ),
+        **{
+            group: (frame.schema.id_column(group),)
+            for group in frame.schema.group_entities
+        },
+    }
+    tables = {
+        entity: frame.table(entity).loc[
+            :, tuple(dict.fromkeys((*structural[entity], *columns)))
+        ]
+        for entity, columns in declared.items()
+    }
     return KernelContext(
         node=node,
-        tables={entity: frame.table(entity) for entity in frame.entities},
+        tables=tables,
         weights={entity: frame.resolve_weights(entity) for entity in weighted_entities},
         strata=frame.strata,
         params=node.params,
@@ -184,9 +212,9 @@ def test_stub_rules_kernel_has_byte_parity_shape_ids_and_capabilities() -> None:
         },
     )
 
-    result = kernel.run(
-        _context(frame, node, weighted_entities=("person", "household"))
-    )
+    context = _context(frame, node, weighted_entities=("person", "household"))
+    assert set(context.tables) == {"person", "household"}
+    result = kernel.run(context)
 
     assert engine.materialize_calls == 1
     assert set(result.columns) == {
@@ -203,7 +231,11 @@ def test_stub_rules_kernel_has_byte_parity_shape_ids_and_capabilities() -> None:
     assert kernel.capabilities.consumes_se is False
     assert kernel.capabilities.dependencies == ()
     assert kernel.implementation_hash() == source_hash(
-        SimulateRulesKernel, _StubRulesEngine
+        SimulateRulesKernel,
+        _StubRulesEngine,
+        frame_bundle_module,
+        frame_rules_module,
+        frame_schema_module,
     )
     assert result.receipt == {
         "engine_ref": "stub",
@@ -289,9 +321,9 @@ def test_policyengine_us_twenty_household_kernel_matches_direct_materialize() ->
         },
     )
 
-    result = kernel.run(
-        _context(frame, node, weighted_entities=("person", "household"))
-    )
+    context = _context(frame, node, weighted_entities=("person", "household"))
+    assert set(context.tables) == {"person", "household"}
+    result = kernel.run(context)
 
     _assert_byte_parity(frame, engine, expected, result.columns, variables)
     assert kernel.capabilities.dependencies == ("policyengine-us",)
