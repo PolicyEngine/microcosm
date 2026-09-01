@@ -2,7 +2,7 @@
 
 ## State
 
-The frozen contract is verified and the identity/provenance/view layer is implemented.
+Identity, provenance, the validated content store, and source codecs are implemented.
 
 ## Done
 
@@ -15,8 +15,11 @@ The frozen contract is verified and the identity/provenance/view layer is implem
 - Implemented strict canonical JSON, domain-separated source/node/artifact/frame identities, and seed derivation.
 - Implemented frozen decisions, complete per-node receipts, stable manifest content identity, JSON verification/round-trip, and attached final-population lookup.
 - Implemented the one-screen node description with runtime receipt highlights; 19 focused tests pass and the touched layer is ruff-clean.
+- Implemented atomic content-addressed columns, complete Frame versions, JSON receipts, and opaque bytes with load-time payload verification.
+- Preserved dense/nullable dtypes, null bitmaps, UTF-8 strings without object arrays, and signed zero; equivalent frames serialize byte-for-byte across stores.
+- Implemented `frame-store` and both supported `csv-tables` fixture layouts; 10 focused store/codec tests pass.
 
 ## Next
 
-- Implement the store/codecs and population semantics.
+- Commit the completed population patch/weight/mass semantics.
 - Integrate the executor and run the full charter-oriented unit suite.
