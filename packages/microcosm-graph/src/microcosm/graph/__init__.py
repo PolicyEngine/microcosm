@@ -1,9 +1,7 @@
 """microcosm-graph: a content-addressed DAG of cell-ownership nodes.
 
-Public API. ``decl`` and ``kernel`` are the frozen interfaces; the executor,
-store, manifest, and view are implemented against them and land through
-``docs/graph-acceptance.md``. Until each lands, its name here raises
-``NotImplementedError`` so the red acceptance suite imports cleanly.
+Public API. ``decl`` and ``kernel`` are the frozen interfaces; the runtime
+modules implement execution, storage, provenance, and inspection against them.
 """
 
 from __future__ import annotations
@@ -61,6 +59,7 @@ __all__ = [
     "Capabilities",
     "CompiledGraph",
     "ContentStore",
+    "Decision",
     "Determinism",
     "Graph",
     "GraphError",
@@ -71,23 +70,37 @@ __all__ = [
     "KernelRegistry",
     "KernelResult",
     "KernelRole",
+    "MassRecord",
     "Node",
+    "NodeReceipt",
+    "NodeRejected",
     "NodeRejectedError",
     "Numeric",
     "Owned",
     "Ownership",
     "Param",
+    "Population",
+    "PopulationError",
+    "ResumePolicy",
     "RunManifest",
+    "SOURCE_CODECS",
     "SeedSource",
     "Slice",
+    "SourceCodec",
+    "SourceCodecRegistry",
     "SourceRef",
     "StoreCorruptError",
     "StoreMissError",
     "StoreUnavailableError",
+    "StoreCorrupt",
+    "StoreError",
+    "StoreMiss",
+    "StoreUnavailable",
     "StructuralDelta",
     "WeightTransition",
     "compile_graph",
     "describe",
+    "load_source",
     "run_graph",
     "source_hash",
 ]
@@ -109,31 +122,21 @@ def _check_frame_version() -> None:
 
 _check_frame_version()
 
-_PENDING = (
-    "microcosm-graph: {name} is not implemented yet; see "
-    "docs/graph-acceptance.md for the property that lands it."
+from .codecs import (  # noqa: E402 - check dependency series before runtime import
+    SOURCE_CODECS,
+    SourceCodec,
+    SourceCodecRegistry,
+    load_source,
 )
-
-
-class ContentStore:
-    """Pending: content-addressed artifact store (charter group E)."""
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        raise NotImplementedError(_PENDING.format(name="ContentStore"))
-
-
-class RunManifest:
-    """Pending: run provenance record (charter E5, A7)."""
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        raise NotImplementedError(_PENDING.format(name="RunManifest"))
-
-
-def run_graph(*args: object, **kwargs: object) -> RunManifest:
-    """Pending: the executor (charter groups A–E)."""
-    raise NotImplementedError(_PENDING.format(name="run_graph"))
-
-
-def describe(*args: object, **kwargs: object) -> str:
-    """Pending: the one-screen node view (charter G1)."""
-    raise NotImplementedError(_PENDING.format(name="describe"))
+from .executor import NodeRejected, run_graph  # noqa: E402
+from .manifest import Decision, NodeReceipt, RunManifest  # noqa: E402
+from .population import MassRecord, Population, PopulationError  # noqa: E402
+from .store import (  # noqa: E402
+    ContentStore,
+    ResumePolicy,
+    StoreCorrupt,
+    StoreError,
+    StoreMiss,
+    StoreUnavailable,
+)
+from .view import describe  # noqa: E402
