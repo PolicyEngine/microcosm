@@ -954,13 +954,13 @@ class TestUKCountryPackage:
             "local_target_reference_membership.json",
         )
 
-    def test_uk_source_manifest_loads_twenty_seven_stages(self) -> None:
+    def test_uk_source_manifest_loads_twenty_eight_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 24 spine stages (age_tail is the newest, #747) plus the two
-        # certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 27
+        # 26 spine stages (uc_capital_coherence is the newest, #828) plus the
+        # two certified-pair stages the June path still uses.
+        assert len(spec.sources.stages) == 28
 
 
 class TestExistingPackagesGeneralize:
@@ -1293,6 +1293,7 @@ class TestUKGatesManifest:
             "uk_weight_ratio",
             "uk_weights_audit",
             "uk_nonnegative_columns",
+            "uk_uc_capital_coherence",
             "uk_support",
             "uk_aggregate_admin",
             "uk_export_surface",

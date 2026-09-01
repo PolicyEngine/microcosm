@@ -204,7 +204,7 @@ stages:
     person_table: adult union child
     household_sort: set_index('household_id').sort_index() before positional household reads
   - kind: map_columns
-    scope: direct raw-to-column E2 mappings only
+    scope: 'direct raw-to-column E2 mappings only; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)'
   - kind: map_coded_amounts
     scope: region, tenure, accommodation, council tax band, benefit-code amount mappings
   - kind: annualize_periodic_amounts
@@ -275,6 +275,7 @@ stages:
   - esa_income_reported
   - bsp_reported
   - benunit_id
+  - frs_benunit_capital
   - is_married
   - dependent_children
   - household_id
@@ -1924,6 +1925,42 @@ stages:
   - hmrc_spi_unemployment_benefit_income
   - hmrc_spi_incapacity_benefit_income
   notes: Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.
+- stage: uc_capital_coherence
+  survey: Family Resources Survey 2024-25
+  source: Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: aggregate_person_to_benunit
+    method: any_positive
+    consumed_only: true
+    aggregates:
+      universal_credit_reported_anchor: universal_credit_reported
+  - kind: redraw_spi_reporter_capital
+    output: frs_benunit_capital
+    rows: spi_channel_post_fill_reporters
+    donor_rows: base_frs_reporters_with_available_capital
+    dependent_children_bands:
+    - '0'
+    - '1'
+    - '2'
+    - 3+
+    couple_status: is_married
+    weight_mapping: household_to_benunit
+    draw: weighted_empirical
+    identity: benunit_id
+    seed: 0
+    salt: frs_benunit_capital
+  - kind: derive
+    derived:
+      uc_reported_capital: frs_benunit_capital
+      would_claim_uc: would_claim_uc OR universal_credit_reported_anchor
+  outputs:
+  - uc_reported_capital
+  rewrites:
+  - frs_benunit_capital
+  - would_claim_uc
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by couple-status cells, then applies the monotone reported-UC OR refresh.
 - stage: cgt_incidence_clone
   survey: Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465

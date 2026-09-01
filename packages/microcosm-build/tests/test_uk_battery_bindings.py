@@ -84,9 +84,17 @@ def _tables(*, n: int = 4, weights=None):
             "person_household_id": household_ids,
             "person_benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "employment_income": np.arange(1, n + 1, dtype=float),
+            "universal_credit_reported": np.asarray([10.0, 0.0] * n)[:n],
         }
     )
-    benunit = pd.DataFrame({"benunit_id": np.arange(201, 201 + n, dtype=np.int64)})
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
+            "would_claim_uc": np.asarray([True, False] * n)[:n],
+            "frs_benunit_capital": np.arange(n, dtype=float),
+            "uc_reported_capital": np.arange(n, dtype=float),
+        }
+    )
     household = pd.DataFrame(
         {
             "household_id": household_ids,
@@ -227,6 +235,104 @@ class TestUKSurfaceAdapter:
             household=household,
             time_period="2023",
         )
+
+    def test_uc_column_implication_binding_aggregates_and_checks_carrier(self) -> None:
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_uc_capital_coherence"
+        )
+
+        passing = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+        assert passing.passed
+
+        frame.table("benunit").loc[0, "would_claim_uc"] = False
+        frame.table("benunit").loc[1, "uc_reported_capital"] = -1.0
+        failing = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+        assert not failing.passed
+        assert any("must imply" in failure for failure in failing.failures)
+        assert any("same sentinel" in failure for failure in failing.failures)
+        assert any("must equal" in failure for failure in failing.failures)
+
+    def test_uc_column_implication_binding_is_not_vacuous_at_amount_thresholds(
+        self,
+    ) -> None:
+        # Adversarial-review finding 2: the configured threshold filters the
+        # person-level amounts; the aggregated 0/1 indicator must always be
+        # compared at 0. With the two conflated, any threshold >= 1 could
+        # never flag a violation. This pins the de-conflation: a reporter
+        # above a nonzero amount threshold with would_claim_uc=False must
+        # still fail the gate.
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_uc_capital_coherence"
+        )
+        parameters = {**dict(entry.parameters), "threshold": 100.0}
+        frame.table("person")["universal_credit_reported"] = 500.0
+        frame.table("benunit")["would_claim_uc"] = False
+
+        failing = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), parameters
+        )
+        assert not failing.passed
+        assert any("must imply" in failure for failure in failing.failures)
+        assert failing.details["amount_threshold"] == 100.0
+        assert failing.details["threshold"] == 0.0
+
+    def test_uc_column_implication_binding_refuses_the_undefined_interval(
+        self,
+    ) -> None:
+        # Adversarial-review round-2 residual (a): the -1 contract defines
+        # exactly two regions — the sentinel and nonnegative amounts. A
+        # corrupted -0.5 previously cleared every capital check: above the
+        # bare floor, not isclose to the sentinel on either side, finite,
+        # and equal to a carrier carrying the same corruption. The domain
+        # predicate must refuse it, on both columns.
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_uc_capital_coherence"
+        )
+        frame.table("benunit")["uc_reported_capital"] = -0.5
+        frame.table("benunit")["frs_benunit_capital"] = -0.5
+
+        failing = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+        assert not failing.passed
+        assert any("outside the declared domain" in f for f in failing.failures)
+        assert failing.details["capital_domain_violation_count"] > 0
+        assert failing.details["carrier_domain_violation_count"] > 0
+        # The corruption must NOT be reported as a sentinel or equality
+        # mismatch — those checks legitimately pass on it, which is exactly
+        # why the domain check exists.
+        assert failing.details["same_source_mismatch_count"] == 0
 
     def test_nonnegative_binding_requires_scheduled_stage_columns(self) -> None:
         # frs_employment declares sic_industry_division nonnegative; a build
@@ -457,7 +563,7 @@ class TestBatteryRegressions:
         # student-loan enum gate; their evaluators have direct tests. The BRMA
         # enum gate is no longer among them: it moved to the spine battery's
         # assembled boundary, where its column is first written.
-        assert len(passed) == 15
+        assert len(passed) == 16
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]

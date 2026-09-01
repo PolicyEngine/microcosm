@@ -46,6 +46,9 @@ E7_STAGE_NAMES = [
     "spi_support_channel",
     "hmrc_spi_income_spine",
 ]
+UC_COHERENCE_STAGE_NAMES = [
+    "uc_capital_coherence",
+]
 E8_STAGE_NAMES = [
     "cgt_incidence_clone",
     "cgt_band_donors",
@@ -67,6 +70,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
+    *UC_COHERENCE_STAGE_NAMES,
     *E8_STAGE_NAMES,
     *POST_E8_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
@@ -78,6 +82,7 @@ UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES = [
     *E4_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
+    *UC_COHERENCE_STAGE_NAMES,
     *E8_STAGE_NAMES,
     *POST_E8_STAGE_NAMES,
 ]
@@ -147,7 +152,7 @@ class TestUKSourceStagesManifest:
 
         assert (
             names[names.index("etb_services") + 1 : names.index("cgt_incidence_clone")]
-            == E7_STAGE_NAMES
+            == [*E7_STAGE_NAMES, *UC_COHERENCE_STAGE_NAMES]
         )
 
     def test_e8_block_is_contiguous_and_the_certified_pair_stays_last(self) -> None:
@@ -281,6 +286,7 @@ class TestUKSourceStagesManifest:
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
                     "hmrc_spi_income_spine": _identity,
+                    "uc_capital_coherence": _identity,
                     "cgt_incidence_clone": _identity,
                     "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
@@ -625,6 +631,11 @@ class TestE3ManifestLockstep:
             "classify_hmrc_income_facts_with_reviewed_fences",
             "gate_distributional_effective_mass",
         ]
+        assert [op.kind for op in stages["uc_capital_coherence"].operations] == [
+            "aggregate_person_to_benunit",
+            "redraw_spi_reporter_capital",
+            "derive",
+        ]
         assert [op.kind for op in stages["cgt_incidence_clone"].operations] == [
             "clone_records",
             "draw_capital_gains_prior_from_banded_quantiles",
@@ -827,6 +838,9 @@ class TestE3ManifestLockstep:
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
+        assert (
+            stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
+        )
 
     def test_e8_declared_seed_lockstep(self) -> None:
         stages = load_country_spec("uk").sources.stage_map()
