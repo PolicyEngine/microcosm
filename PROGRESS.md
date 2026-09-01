@@ -3,8 +3,9 @@
 ## State
 
 All three legacy kernels are implemented, parity-tested, dependency-complete,
-and verified at the source and clean-wheel boundaries. The evidence report,
-push, and draft pull request are the remaining handoff steps. The branch
+and verified at the source and clean-wheel boundaries. The evidence report is
+written; mirroring the branch and opening the draft pull request are the
+remaining handoff steps. The branch
 remains based exactly on `origin/node-graph` at `517891f4`. The writable
 checkout is isolated under the task output directory because the requested
 worktree path is outside this session's writable filesystem boundary.
@@ -105,10 +106,17 @@ worktree path is outside this session's writable filesystem boundary.
   pre-existing base-branch files outside this lane; all six owned Python files
   report already formatted. They were not reformatted across the ownership
   boundary.
+- Replaced the inherited `out.md` with this lane's per-kernel call sites,
+  fixtures, exact capability rationale, parity/tolerance evidence, wheel and
+  verification commands, frozen-interface accommodations, and the two
+  out-of-scope base limitations. Its PR field is intentionally pending until
+  the remote handoff succeeds.
 
 ## Next
 
-- Write the evidence report to `out.md`, push the branch, and open the draft PR.
+- Mirror the branch through the GitHub connector (shell Git cannot resolve
+  `github.com`), open the draft PR, and replace the pending report field with
+  its URL.
 
 ---
 

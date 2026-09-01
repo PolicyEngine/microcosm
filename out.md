@@ -1,119 +1,111 @@
-# Armenia country package final report (#814)
+# Lane C — legacy kernels behind the graph protocol
 
-Date: 2026-08-28
+Branch: `node-graph/kernels` (base `node-graph` at `517891f41d091e139b1e34f79c772e0f1265b8a3`)
 
-Branch: `armenia-country-package-814`
+Draft PR: **PENDING** — the shell push is blocked by sandbox DNS; the verified tree is being mirrored through the installed GitHub connector, after which this line will be replaced with the PR URL.
 
-## Outcome
+## `fit.qrf@1`
 
-The Armenia package is complete as a schema-valid, spec-only, engine-free
-greenfield contract. It is not represented as an executable build: the exact
-`populace-us` artifact, Armenian facts, generated cell bindings, community
-distribution, gate policy, and shared runtime kernels remain explicit
-prerequisites.
+Direct computation wrapped:
 
-The closed `am/` inventory mirrors Belgium's six typed resources and five
-generation-zero JSON projections. It declares:
+- Public constructor/fit: `packages/microcosm-fit/src/microcosm/fit/__init__.py:101` (`fit`), called by the adapter at `packages/microcosm-fit/src/microcosm/fit/kernels.py:166`.
+- Public first-draw path: `packages/microcosm-fit/src/microcosm/fit/qrf.py:1499` (`FittedRegimeGatedQRF.predict`), called at `packages/microcosm-fit/src/microcosm/fit/kernels.py:178`.
 
-- a two-stage load of a to-be-authenticated public `populace-us` artifact and
-  target-derived marz assignment; every record remains a US donor support
-  record and is never described as Armenian microdata;
-- a 2022-census-vintage community spine constrained to the assigned marz, with
-  10 marzes plus Yerevan and 71 consolidated communities documented but no
-  invented code roster;
-- eight Ledger-only, count/indicator calibration authoring contracts spanning
-  demography, household structure, consumption, labour, earnings, pensions,
-  and family benefits;
-- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
-  cell-pinned Ledger references and direct/pre-built candidate bindings before
-  runtime activation;
-- wage/payment, raw-income diagnostic, and national-accounts facts outside the
-  solver manifest until their validation role or AMD-compatible pre-built bridge
-  is enforceable;
-- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
-  support, weight-audit, ESS, and ratio gate declarations, plus active
-  release-blocking reference-coverage/support/output checks; and
-- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
-  dissemination stated and exact ArmStat/donor licence text left as a mandatory
-  verification item.
+The kernel subsets the declared entity into donor and recipient rows, passes the donor subset of `context.weights[entity].values` to the public DataFrame fit API, then returns the public prediction indexed by recipient entity IDs. It serializes the fitted object immediately before the first draw as `artifacts["model"]`; the docstring explicitly warns that pickle is executable and must only be loaded from a trusted, content-verified store. The receipt carries row counts, seed and provenance, input/resolved weight kinds, donor weight mass, detected regime, fit options, and donor target summary statistics.
 
-`HARVEST.md` has exactly one solver worklist row per live target-reference key,
-plus separate deferred validation/amount, geography, source-authentication, and
-external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
-permanent survey tax-benefit holdouts, the amount/currency boundary,
-`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
+Parity fixture and expected-output production:
 
-Package identity after review:
+- `packages/microcosm-fit/tests/fixtures/graph_parity/qrf_donors.csv`: 40 donor rows with two predictors, observed target, IDs, and nonuniform weights.
+- `packages/microcosm-fit/tests/fixtures/graph_parity/qrf_recipients.csv`: 12 recipient rows with separate IDs and deliberately large irrelevant recipient weights, proving only donor weights enter the fit.
+- `packages/microcosm-fit/tests/fixtures/graph_parity/qrf_expected_hex.csv`: each expected float64 draw encoded with `float.hex()`.
+- The expected values were produced from `microcosm.fit.fit(..., seed=947)` followed by the fitted object's first `predict(...)`, with `POPULACE_FIT_N_JOBS=1` and `POPULACE_FIT_PREDICT_WORKERS=1`. The test independently reruns that public path. Kernel output bytes, direct-call bytes, decoded pinned hex bytes, the pre-draw pickle bytes, and the trusted reloaded model's first draw all match exactly.
 
-- CountrySpec fingerprint:
-  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
-- Typed spec SHA-256:
-  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
+Capability record (`packages/microcosm-fit/src/microcosm/fit/kernels.py:112`):
+
+- `determinism=SEEDED`: bootstrap, forest, and row draws all depend on the resolved seed.
+- `numeric=TOLERANCE_BOUND`: the forest stack includes compiled NumPy/scikit-learn/quantile-forest behavior, so the kernel does not claim cross-platform bitwise stability. H1 parity itself uses no nonzero tolerance (`rtol=0`, `atol=0` in effect through `tobytes()` equality) and is byte-exact in the locked environment.
+- `seed_source=PARAM` for `QRF_PARAM_KERNEL` and `EXECUTOR` for `QRF_EXECUTOR_KERNEL`: a literal seed exactly reproduces the legacy call; the executor variant forbids a literal and consumes exactly one integer from `context.rng`.
+- `structural=NONE`, `consumes_se=False`: the kernel only owns recipient cells and has no calibration uncertainty input.
+- `dependencies=("numpy", "pandas", "scikit-learn", "quantile-forest")`: these distributions govern fitting, bootstrap, and draw behavior and enter the implementation hash.
+
+Frozen-interface accommodations:
+
+- `Node` forbids a node from reading and owning the same column even under complementary row masks. Legal graph declarations therefore use a donor input alias (`donor_target`, e.g. `observed_y`) that the wrapper privately renames to the owned target before the public call. A same-name fallback remains for direct protocol contexts.
+- The public QRF constructor does not expose `min_samples_leaf`; the wrapper accepts only its existing effective value `1` and rejects any other value rather than reimplementing the model.
+- `Capabilities` is instance-level and context-free. PARAM and EXECUTOR modes are therefore separate configured objects sharing `fit.qrf@1`; a single frozen `KernelRegistry` cannot register both objects simultaneously. A registry must choose the legacy-parity or executor-seeded binding for a run.
+
+## `calibrate.adam@1`
+
+Direct computation wrapped:
+
+- Public solver: `packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:1331` (`calibrate`), called by the adapter at `packages/microcosm-calibrate/src/microcosm/calibrate/kernels.py:219` with `method="adam"` and `seed=0`.
+
+The kernel rebuilds the minimal valid `Frame` around the declared calibrated entity without changing its row or weight order, compiles each five-item declaration into the public `Target`/`TargetSet`, and returns `result.frame.weights_for(entity)` from the public result. The node must declare `WeightTransition(entity, "calibrated")`, and the solver `mass` option must agree with the transition. The receipt carries the five-item target tuples unchanged and the public diagnostics payload.
+
+Parity fixture and expected-output production:
+
+- `packages/microcosm-calibrate/tests/test_kernels.py:38` builds six synthetic household records with float64 income/filter measures and nonuniform importance weights, plus the minimal person linkage needed for a direct `Frame` call.
+- `TARGET_PARAMS` at line 25 carries float, integer, and separately tested `None` standard errors. Solver options are pinned at line 29 (`max_weight_ratio=2.0`, `epochs=24`, `learning_rate=0.03`, `mass="conserve"`).
+- Expected weights are produced at test time by the public `calibrate(...)` call at lines 86–111 on the same values, targets, options, order, and seed. `Weights.values.tobytes()` is identical, and the wrapper receipt's diagnostics equal `diagnostics_payload(direct)`.
+
+Capability record (`packages/microcosm-calibrate/src/microcosm/calibrate/kernels.py:154`):
+
+- `determinism=DETERMINISTIC`, `numeric=BITWISE`, `seed_source=NONE`: the wrapper fixes the legacy Adam seed to zero and returns the direct call's array without recomputation or casting.
+- `structural=NONE`: it changes weights, not rows.
+- `consumes_se=False`: today's public `calibrate()` has no `se` argument and drops target uncertainty. Declared positive finite `se` values (or `None`) are nevertheless validated and preserved byte/type-for-type in `receipt["declared_targets"]`, satisfying D5 honestly.
+- `dependencies=("numpy", "pandas", "scipy", "torch")`: these libraries implement frame/matrix construction and optimization. The implementation hash additionally covers local target, matrix, solver, diagnostics, Frame schema, bundle, and weight sources.
+
+No tolerance was needed: returned weights are byte-identical to the direct call.
+
+## `simulate.rules@1`
+
+Direct computation wrapped:
+
+- Protocol call: `packages/microcosm-frame/src/microcosm/frame/rules.py:80` (`RulesEngine.materialize`), invoked once by the adapter at `packages/microcosm-frame/src/microcosm/frame/kernels.py:173`.
+- Real US implementation: `packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py:728` (`PolicyEngineUSEngine.materialize`).
+
+The kernel binds a `RulesEngine` instance to a serializable `engine_ref`, reconstructs a complete Frame from structural IDs/memberships plus declared true-input slices, and calls `materialize` once for the requested period and variables. ID-only group tables absent from the context are recovered exactly from person memberships; no engine input or formula is fabricated. Each returned array keeps its dtype and byte order and is indexed by the owning entity's IDs. The receipt records engine reference, period, variables, and per-output row counts.
+
+Parity fixtures and expected-output production:
+
+- Pure-Python fixture (`packages/microcosm-frame/tests/test_kernels.py:103`): four persons and two households with shifted pandas indexes, nonuniform household weights, two true inputs, and outputs on different entities. The expected arrays come from a separate stub engine's direct `materialize(frame, variables, 2025)` call. Bytes, dtype, shape, IDs, and one-call behavior match.
+- Real-US fixture (`packages/microcosm-frame/tests/test_kernels.py:251`): 20 one-person households spanning two states and a range of employment income. The registered `@pytest.mark.requires_us` case at line 296 computes `employment_income` and `household_net_income` for 2024 directly and through the kernel. With cached `policyengine-us==1.819.0` / `policyengine-core==3.31.0`, every returned byte, dtype, shape, and entity ID matches; the test passes. Without the engine it cleanly reports one registered skip.
+
+Capability record (`packages/microcosm-frame/src/microcosm/frame/kernels.py:76`):
+
+- `determinism=DETERMINISTIC`, `numeric=BITWISE`, `seed_source=NONE`: the wrapper returns the bound engine's arrays without numerical transformation and uses no RNG.
+- `structural=NONE`, `consumes_se=False`: it owns columns on existing rows and has no calibration targets.
+- `dependencies` is supplied by the binding. The pure-Python stub uses `()`. The production US binding uses `("policyengine-us",)`, so the installed engine version enters the implementation hash; the adapter module and local Frame/schema/rules sources are hashed as well.
+
+No tolerance was needed: both stub and real-engine parity checks compare exact bytes.
 
 ## Verification
 
-All commands ran offline. The package-wide command used the exact lock-required
-`policyengine-us==1.819.0` already present in the local uv cache, so the two
-engine-only test files ran inside the same aggregate rather than failing for a
-missing optional dependency.
+Green checks:
 
-Exact requested package-wide command:
+- `uv lock --check --offline`: `Resolved 125 packages`; the regenerated lock differs only by the three requested graph dependency edges.
+- Full source suite: `uv run pytest packages/microcosm-fit packages/microcosm-calibrate packages/microcosm-frame -q` completed successfully. A single-quiet rerun reported `566 passed, 55 skipped, 3 warnings`; the registered engine-free kernel case is `1 passed, 1 skipped`.
+- Real engine: an isolated environment resolved the cached `policyengine-us==1.819.0`, and `python -m pytest packages/microcosm-frame/tests/test_kernels.py -m requires_us` reported `1 passed, 1 deselected`.
+- Frozen graph baseline: `16 passed`.
+- `uv run ruff check .`: clean. The six owned Python files also pass `ruff format --check` (`6 files already formatted`).
+- `git diff --check`: clean.
+- `uv run python tools/ci_test_groups.py --verify`: `tracked_test_files=326`, `verification=ok`.
+- `git diff --stat origin/node-graph -- packages/microcosm-graph`: empty.
 
-```sh
-UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+Wheel boundary command (run once per `microcosm-fit`, `microcosm-calibrate`, and `microcosm-frame`, plus `microcosm-graph` to supply the clean install):
+
+```bash
+UV_CACHE_DIR=/private/tmp/microcosm-kernels-uv-cache-clone \
+  uv build --wheel --offline --no-progress --no-build-isolation \
+  --python /private/tmp/microcosm-kernels-uv-cache-clone/builds-v0/.tmpoJ8xk2/bin/python \
+  --out-dir /private/tmp/microcosm-wheel-check.cvle94/wheels \
+  packages/<shard>
 ```
 
-Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
-seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
-and PolicyEngine-US runtime warnings; none is Armenia-specific.
+The three touched wheels each contain `Requires-Dist: microcosm-graph<0.2,>=0.1`. Installing all four local wheels together into a fresh Python 3.14 environment resolved and installed 25 packages; `uv pip check` returned `All installed packages are compatible`. Isolated `-I` imports resolved all three kernel modules from that environment's `site-packages`, not the source checkout. Build isolation could not fetch the uncached `packaging==26.3` artifact because network/DNS is disabled, so the successful offline builds used uv's existing complete Hatchling build environment with `--no-build-isolation`.
 
-Additional checks:
+Base/out-of-scope verification limitations:
 
-- Focused package/golden/compiler suite:
-  `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
-  — **101 passed** in 29.82 seconds.
-- Authoritative `shared-spec` CI group:
-  `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
-  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
-- `ruff check .` — **passed**.
-- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
-  files tracked.
-- `git diff --check` — **passed**.
-
-## Deviations from Belgium and why
-
-1. Armenia consumes a pre-built public US donor pool instead of native,
-   restricted SILC. No `support_spine.json` is present because the current
-   vocabulary describes raw ASEC pool construction, not an existing artifact.
-2. Armenia is engine-free. No target, gate, or release file requires
-   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
-   through the Axiom adapter.
-3. Marz is target-assigned before community cloning. The clone factor is the
-   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
-   wait for the 71-to-11 roster and within-marz support evidence.
-4. There is no incumbent, so parity/export/target-surface gates are absent.
-   National accounts back a deferred macro-realism band; CEQ and World Bank
-   estimates remain documentation-only band candidates until harvested.
-5. The live solver manifest contains eight count/indicator series contracts,
-   not guessed scalar cells or AMD amount targets. Those series will expand to
-   the reviewed cell-level profile after Chronicle harvest; the eventual
-   10–16-margin selection is not fabricated in this package.
-
-## Top five maintainer questions
-
-1. Which immutable `populace-us` revision/file, hash, licence, and column
-   inventory certify the donor input?
-2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
-   the 2024 profile, and what generated cell-reference/binding artifact owns
-   their fanout?
-3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
-   donor consumption bands and any future amount rows conceptually comparable?
-4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
-   weight-ratio thresholds—and which shared evaluators—activate the deferred
-   gate declarations?
-5. What is the authoritative 2022 marz/community roster and assignment table,
-   and when will the shared geography/source-coverage runtimes land under
-   `populace#263/#265`?
-
-No network fetch, push, PR, artifact build, release, or publication was
-performed. The repository-root `PROGRESS.md` was not touched.
+- Repository-wide `uv run ruff format --check .` reports 122 pre-existing files on `origin/node-graph` as needing format; none is an owned kernel/test file. Reformatting them would violate this lane's ownership rule.
+- The classifier places fit and calibrate in `rest` and `us-am:other-shards`, and frame in `rest` and `shared-spec`. It also reports the mandated `packages/microcosm-frame/tests/test_kernels.py` under `[defaulted]`; removing that requires an out-of-scope edit to `tools/ci_test_groups.py`. The verifier itself is green.
+- The requested initial online sync and ordinary shell push cannot resolve external hosts in this sandbox. All runtime dependencies needed for the requested tests were recovered from existing verified caches; the GitHub connector is used for the branch/PR handoff.
