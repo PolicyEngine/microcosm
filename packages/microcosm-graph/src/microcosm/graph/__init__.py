@@ -13,6 +13,7 @@ from importlib import metadata as _metadata
 from .decl import (
     DESCRIPTIVE_FIELDS,
     DTYPES,
+    GATE_OUTCOMES,
     MASS_POLICIES,
     ROWS_ALL,
     WEIGHT_KINDS,
@@ -29,6 +30,13 @@ from .decl import (
     WeightTransition,
     compile_graph,
 )
+from .errors import (
+    GraphRuntimeError,
+    NodeRejectedError,
+    StoreCorruptError,
+    StoreMissError,
+    StoreUnavailableError,
+)
 from .kernel import (
     Capabilities,
     Determinism,
@@ -37,6 +45,7 @@ from .kernel import (
     KernelContext,
     KernelRegistry,
     KernelResult,
+    KernelRole,
     Numeric,
     SeedSource,
     source_hash,
@@ -45,6 +54,7 @@ from .kernel import (
 __all__ = [
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
+    "GATE_OUTCOMES",
     "MASS_POLICIES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
@@ -54,12 +64,15 @@ __all__ = [
     "Determinism",
     "Graph",
     "GraphError",
+    "GraphRuntimeError",
     "Kernel",
     "KernelBase",
     "KernelContext",
     "KernelRegistry",
     "KernelResult",
+    "KernelRole",
     "Node",
+    "NodeRejectedError",
     "Numeric",
     "Owned",
     "Ownership",
@@ -68,6 +81,9 @@ __all__ = [
     "SeedSource",
     "Slice",
     "SourceRef",
+    "StoreCorruptError",
+    "StoreMissError",
+    "StoreUnavailableError",
     "StructuralDelta",
     "WeightTransition",
     "compile_graph",
