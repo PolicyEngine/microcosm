@@ -552,6 +552,7 @@ def _write_node(
     population: Population,
     receipt: Mapping[str, object],
     opaque_artifacts: Mapping[str, bytes],
+    verify_existing: bool,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
     columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
     if node.structural is StructuralDelta.NONE:
@@ -574,6 +575,7 @@ def _write_node(
             declared_dtype=token,
             entity_ids=series.index,
             node_key=key,
+            verify_existing=verify_existing,
         )
         column_entries.append({"entity": entity, "column": column, "key": output_key})
         manifest_artifacts[(entity, column)] = output_key
@@ -581,7 +583,12 @@ def _write_node(
     stored_frame_key: str | None = None
     if node.structural is not StructuralDelta.NONE:
         stored_frame_key = frame_key(key)
-        store.put_frame(stored_frame_key, population.frame, node_key=key)
+        store.put_frame(
+            stored_frame_key,
+            population.frame,
+            node_key=key,
+            verify_existing=verify_existing,
+        )
 
     weight_entry: dict[str, str] | None = None
     if result.weights is not None:
@@ -602,6 +609,7 @@ def _write_node(
             declared_dtype="float64",
             entity_ids=weights_series.index,
             node_key=key,
+            verify_existing=verify_existing,
         )
         weight_entry = {
             "entity": entity,
@@ -612,7 +620,12 @@ def _write_node(
     opaque_entries: list[dict[str, str]] = []
     for name, payload in sorted(opaque_artifacts.items()):
         output_key = _opaque_artifact_key(key, name)
-        store.put_bytes(output_key, payload, node_key=key)
+        store.put_bytes(
+            output_key,
+            payload,
+            node_key=key,
+            verify_existing=verify_existing,
+        )
         opaque_entries.append({"name": name, "key": output_key})
 
     record: dict[str, object] = {
@@ -628,7 +641,12 @@ def _write_node(
         "weight": weight_entry,
         "opaque": opaque_entries,
     }
-    store.put_json(_cache_record_key(key), record, node_key=key)
+    store.put_json(
+        _cache_record_key(key),
+        record,
+        node_key=key,
+        verify_existing=verify_existing,
+    )
     return manifest_artifacts, record
 
 
@@ -987,6 +1005,7 @@ def run_graph(
                 population=updated,
                 receipt=normalized_receipt,
                 opaque_artifacts=opaque,
+                verify_existing=resume != "forbid",
             )
 
         assert record is not None

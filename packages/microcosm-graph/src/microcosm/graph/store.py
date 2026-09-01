@@ -687,10 +687,12 @@ class ContentStore:
         key: str,
         kind: str,
         build: Callable[[Path], Mapping[str, object]],
+        *,
+        verify_existing: bool = True,
     ) -> Path:
         key = _require_key(key)
         destination = self.object_path(key)
-        if destination.exists():
+        if verify_existing and destination.exists():
             _verified_meta(destination, expected_kind=kind)
             return destination
         staging = self.tmp / uuid.uuid4().hex
@@ -714,12 +716,12 @@ class ContentStore:
             try:
                 os.replace(staging, destination)
             except OSError as error:
-                if (
-                    error.errno not in {errno.EEXIST, errno.ENOTEMPTY}
-                    or not destination.exists()
-                ):
+                if error.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
                     raise
-                _verified_meta(destination, expected_kind=kind)
+                if verify_existing:
+                    if not destination.exists():
+                        raise
+                    _verified_meta(destination, expected_kind=kind)
             _fsync_directory(destination.parent)
             return destination
         finally:
@@ -734,6 +736,7 @@ class ContentStore:
         declared_dtype: str,
         entity_ids: pd.Index | pd.Series | np.ndarray | None = None,
         node_key: str | None = None,
+        verify_existing: bool = True,
     ) -> Path:
         """Atomically store one declared graph column.
 
@@ -779,7 +782,7 @@ class ContentStore:
                 "ids": ids_spec,
             }
 
-        return self._put(key, "column", build)
+        return self._put(key, "column", build, verify_existing=verify_existing)
 
     write_column = put_column
 
@@ -835,7 +838,14 @@ class ContentStore:
 
     read_column = load_column
 
-    def put_frame(self, key: str, frame: Frame, *, node_key: str | None = None) -> Path:
+    def put_frame(
+        self,
+        key: str,
+        frame: Frame,
+        *,
+        node_key: str | None = None,
+        verify_existing: bool = True,
+    ) -> Path:
         """Atomically persist a complete Frame population version."""
 
         if not isinstance(frame, Frame):
@@ -847,7 +857,7 @@ class ContentStore:
             _write_frame(root, frame)
             return {"frame_format": _FRAME_FORMAT, "node_key": bound_node_key}
 
-        return self._put(key, "frame", build)
+        return self._put(key, "frame", build, verify_existing=verify_existing)
 
     write_frame = put_frame
 
@@ -876,6 +886,7 @@ class ContentStore:
         payload: bytes,
         *,
         node_key: str | None = None,
+        verify_existing: bool = True,
     ) -> Path:
         """Store one opaque, content-validated byte artifact."""
 
@@ -886,7 +897,7 @@ class ContentStore:
             _write_bytes(root / "payload.bin", payload)
             return {"node_key": key if node_key is None else node_key}
 
-        return self._put(key, "bytes", build)
+        return self._put(key, "bytes", build, verify_existing=verify_existing)
 
     def load_bytes(self, key: str) -> bytes:
         """Load one opaque byte artifact."""
@@ -905,6 +916,7 @@ class ContentStore:
         *,
         kind: str = "json",
         node_key: str | None = None,
+        verify_existing: bool = True,
     ) -> Path:
         """Store a canonical JSON object, useful for node receipts/indexes."""
 
@@ -916,7 +928,7 @@ class ContentStore:
             _write_json(root / "payload.json", normalized)
             return {"node_key": key if node_key is None else node_key}
 
-        return self._put(key, kind, build)
+        return self._put(key, kind, build, verify_existing=verify_existing)
 
     def load_json(self, key: str, *, kind: str = "json") -> dict[str, object]:
         """Load a canonical JSON object."""

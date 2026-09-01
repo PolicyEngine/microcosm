@@ -352,7 +352,7 @@ def test_inert_fields_order_and_leaf_removal_do_not_move_survivors(
 
 
 def test_resume_policies_preflight_and_forbid_reads_no_cached_results(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = _source_path(tmp_path / "source")
     store = ContentStore(tmp_path / "store")
@@ -375,9 +375,18 @@ def test_resume_policies_preflight_and_forbid_reads_no_cached_results(
     assert sum(_calls(missing_registry).values()) == 0
 
     forbid_registry = _registry()
-    forbidden = _run(_graph(), source, store, forbid_registry, resume="forbid")
+    with monkeypatch.context() as write_only:
+
+        def reject_cache_read(*args: object, **kwargs: object) -> None:
+            raise AssertionError("resume='forbid' read an existing store object")
+
+        write_only.setattr("microcosm.graph.store._verified_meta", reject_cache_read)
+        forbidden = _run(_graph(), source, store, forbid_registry, resume="forbid")
     assert all(not item.hit for item in forbidden.nodes.values())
     assert sum(_calls(forbid_registry).values()) == len(forbidden.nodes)
+
+    warm_again = _run(_graph(), source, store, _registry())
+    assert all(item.hit for item in warm_again.nodes.values())
 
 
 def _bad_node(kernel: str, *, dtype: str = "float64", absent: bool = False) -> Node:

@@ -210,6 +210,53 @@ def test_interrupted_atomic_write_leaves_no_visible_object(
     assert list(store.tmp.iterdir()) == []
 
 
+def test_write_only_collision_serializes_without_reading_incumbent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("7")
+    store.put_bytes(key, b"stable")
+    real_replace = store_module.os.replace
+    replacements: list[tuple[Path, Path]] = []
+
+    def track_replace(source: Path, destination: Path) -> None:
+        replacements.append((source, destination))
+        real_replace(source, destination)
+
+    def reject_verification(*args: object, **kwargs: object) -> None:
+        raise AssertionError("write-only collision verified the incumbent")
+
+    with monkeypatch.context() as write_only:
+        write_only.setattr(store_module.os, "replace", track_replace)
+        write_only.setattr(store_module, "_verified_meta", reject_verification)
+        assert store.put_bytes(
+            key, b"stable", verify_existing=False
+        ) == store.object_path(key)
+
+    assert len(replacements) == 1
+    assert list(store.tmp.iterdir()) == []
+    assert store.load_bytes(key) == b"stable"
+
+
+def test_interrupted_write_only_collision_preserves_complete_incumbent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("6")
+    store.put_bytes(key, b"incumbent")
+
+    def crash(_source: Path, _destination: Path) -> None:
+        raise OSError("simulated collision interruption")
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(store_module.os, "replace", crash)
+        with pytest.raises(OSError, match="collision interruption"):
+            store.put_bytes(key, b"recomputed", verify_existing=False)
+
+    assert list(store.tmp.iterdir()) == []
+    assert store.load_bytes(key) == b"incumbent"
+
+
 def test_json_receipt_and_opaque_bytes_are_content_validated(tmp_path: Path) -> None:
     store = ContentStore(tmp_path / "store")
     store.put_json(_key("d"), {"node": "n", "ok": True}, kind="node-receipt")
