@@ -99,6 +99,9 @@ from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.uc_reporter_redraw import (
+    UKUCReporterRedrawStageTransform,
+)
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
@@ -131,6 +134,7 @@ _STAGE_NAMES = (
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
     "hmrc_spi_income_spine",
+    "uc_reporter_redraw",
     "uc_capital_coherence",
     "cgt_incidence_clone",
     "cgt_band_donors",
@@ -1022,6 +1026,11 @@ def main(argv: list[str] | None = None) -> int:
             sample_fraction=args.sample_fraction,
         )
         implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+        if "uc_reporter_redraw" in stage_names:
+            implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(
+                stage=stages_by_name["uc_reporter_redraw"],
+                engine=engine,
+            )
         if "uc_capital_coherence" in stage_names:
             implementations["uc_capital_coherence"] = (
                 UKUCCapitalCoherenceStageTransform(
