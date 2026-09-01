@@ -216,6 +216,16 @@ def test_stage_refuses_the_undefined_negative_interval() -> None:
         cohere_uc_capital(frame)
 
 
+def test_stage_refuses_near_sentinel_values_exactly() -> None:
+    # #833: np.isclose admitted ~[-1.00001, -0.99999] as "exactly the
+    # sentinel", silently reclassifying a corrupted value as a declared
+    # absence. Sentinel equality is exact; the near-sentinel sliver refuses.
+    frame = _frame()
+    frame.table("benunit")["frs_benunit_capital"] = -1.000005
+    with pytest.raises(ValueError, match="sentinel or nonnegative"):
+        cohere_uc_capital(frame)
+
+
 def test_children_band_caps_at_three_plus_and_boolean_helper_is_strict() -> None:
     np.testing.assert_array_equal(
         _dependent_children_band(pd.Series([0, 1, 2, 3, 8])),

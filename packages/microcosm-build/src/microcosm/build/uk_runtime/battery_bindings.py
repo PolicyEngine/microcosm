@@ -389,14 +389,17 @@ def _evaluate_column_implication(
     # The -1 contract reserves exactly one negative: a value is either the
     # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
     # open interval between them — the one region the contract does not
-    # define (adversarial-review verification residual 1).
+    # define (adversarial-review verification residual 1). Sentinel equality
+    # is exact (#833): every producer writes the -1.0 literal or a
+    # nonnegative amount, and a tolerance band would silently reclassify a
+    # corrupted near-sentinel value as a declared absence.
     out_of_domain = np.isfinite(capital) & ~(
-        np.isclose(capital, sentinel) | (capital >= 0.0)
+        (capital == sentinel) | (capital >= 0.0)
     )
     carrier_out_of_domain = np.isfinite(carrier) & ~(
-        np.isclose(carrier, sentinel) | (carrier >= 0.0)
+        (carrier == sentinel) | (carrier >= 0.0)
     )
-    sentinel_mismatch = np.isclose(capital, sentinel) != np.isclose(carrier, sentinel)
+    sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
     same_source_mismatch = (
         np.isfinite(capital) & np.isfinite(carrier) & (capital != carrier)
     )

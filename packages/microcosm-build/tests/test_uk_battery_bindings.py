@@ -334,6 +334,38 @@ class TestUKSurfaceAdapter:
         # why the domain check exists.
         assert failing.details["same_source_mismatch_count"] == 0
 
+    def test_uc_column_implication_binding_refuses_near_sentinel_values(
+        self,
+    ) -> None:
+        # #833: the isclose band around -1 admitted the top sliver of the
+        # undefined interval and read it as a declared absence. Sentinel
+        # equality is exact; a corrupted -1.000005 on both columns must be a
+        # domain violation, not a tolerated sentinel.
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_uc_capital_coherence"
+        )
+        frame.table("benunit")["uc_reported_capital"] = -1.000005
+        frame.table("benunit")["frs_benunit_capital"] = -1.000005
+
+        failing = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+        assert not failing.passed
+        assert any("outside the declared domain" in f for f in failing.failures)
+        assert failing.details["capital_domain_violation_count"] > 0
+        assert failing.details["carrier_domain_violation_count"] > 0
+        assert failing.details["sentinel_mismatch_count"] == 0
+        assert failing.details["same_source_mismatch_count"] == 0
+
     def test_nonnegative_binding_requires_scheduled_stage_columns(self) -> None:
         # frs_employment declares sic_industry_division nonnegative; a build
         # that scheduled the stage but lost the column must fail — the
