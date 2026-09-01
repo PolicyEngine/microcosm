@@ -2408,6 +2408,71 @@
    "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
+   "stage": "uc_reporter_redraw",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
+   "grain": "benunit",
+   "artifacts": [],
+   "operations": [
+    {
+     "kind": "derive",
+     "derived": {
+      "uc_reported_capital": "frs_benunit_capital",
+      "positive_pre_takeup_uc_award": "max(0, uc_maximum_amount - uc_income_reduction) > 0"
+     }
+    },
+    {
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "uc_maximum_amount",
+      "uc_income_reduction",
+      "is_child_or_qualifying_young_person_for_universal_credit"
+     ],
+     "consumed_only": true
+    },
+    {
+     "kind": "aggregate_person_to_benunit",
+     "method": "sum",
+     "consumed_only": true,
+     "aggregates": {
+      "uc_child_count": "is_child_or_qualifying_young_person_for_universal_credit",
+      "universal_credit_reported_amount": "universal_credit_reported"
+     }
+    },
+    {
+     "kind": "redraw_spi_reported_uc",
+     "output": "universal_credit_reported",
+     "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
+     "rows": "spi_channel_screened",
+     "screen": "positive_pre_takeup_uc_award",
+     "predictors": [
+      "is_married",
+      "uc_child_band",
+      "benunit_employment_income",
+      "benunit_self_employment_income",
+      "claimant_earnings",
+      "partner_earnings",
+      "benunit_investment_income",
+      "claimant_age",
+      "region"
+     ],
+     "categorical_predictors": [
+      "region"
+     ],
+     "target": "universal_credit_reported_amount",
+     "weight_mapping": "household_to_benunit",
+     "fit": "regime_gated_qrf",
+     "landing": "eldest_working_age_adult_lowest_person_id",
+     "seed": 44
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "universal_credit_reported"
+   ],
+   "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to positive pre-take-up awards using FRS-carried capital and materializes the UC child flag; engine-known values are consumed only. A benefit-unit RegimeGatedQRF redraws the SPI reporter state and amount, landing each positive amount on one deterministic adult claimant while base-FRS rows remain byte-unchanged."
+  },
+  {
    "stage": "uc_capital_coherence",
    "survey": "Family Resources Survey 2024-25",
    "source": "Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.",

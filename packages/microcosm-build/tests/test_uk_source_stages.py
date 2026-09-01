@@ -48,6 +48,9 @@ E7_STAGE_NAMES = [
     "spi_support_channel",
     "hmrc_spi_income_spine",
 ]
+UC_REPORTER_REDRAW_STAGE_NAMES = [
+    "uc_reporter_redraw",
+]
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
@@ -72,6 +75,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
+    *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *E8_STAGE_NAMES,
     *POST_E8_STAGE_NAMES,
@@ -155,9 +159,14 @@ class TestUKSourceStagesManifest:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert names[
-            names.index("etb_services") + 1 : names.index("cgt_incidence_clone")
-        ] == [*E7_STAGE_NAMES, *UC_COHERENCE_STAGE_NAMES]
+        assert (
+            names[names.index("etb_services") + 1 : names.index("cgt_incidence_clone")]
+            == [
+                *E7_STAGE_NAMES,
+                *UC_REPORTER_REDRAW_STAGE_NAMES,
+                *UC_COHERENCE_STAGE_NAMES,
+            ]
+        )
 
     def test_e8_block_is_contiguous_and_the_certified_pair_stays_last(self) -> None:
         # Two invariants, and only two: the E8 stages stay contiguous, and the
@@ -289,6 +298,7 @@ class TestUKSourceStagesManifest:
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
                     "hmrc_spi_income_spine": _identity,
+                    "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
                     "cgt_incidence_clone": _identity,
                     "cgt_band_donors": _identity,
@@ -634,6 +644,12 @@ class TestE3ManifestLockstep:
             "classify_hmrc_income_facts_with_reviewed_fences",
             "gate_distributional_effective_mass",
         ]
+        assert [op.kind for op in stages["uc_reporter_redraw"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "aggregate_person_to_benunit",
+            "redraw_spi_reported_uc",
+        ]
         assert [op.kind for op in stages["uc_capital_coherence"].operations] == [
             "aggregate_person_to_benunit",
             "redraw_spi_reporter_capital",
@@ -687,6 +703,11 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_PREDICTORS,
             UK_LCFS_HAS_FUEL_PREDICTORS,
         )
+        from microcosm.build.uk_runtime.uc_reporter_redraw import (
+            UC_REPORTER_AGGREGATES,
+            UC_REPORTER_PREDICTORS,
+            UC_REPORTER_SCREEN_VARIABLES,
+        )
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_ENGINE_PREDICTORS,
             UK_WAS_WEALTH_PREDICTORS,
@@ -709,6 +730,16 @@ class TestE3ManifestLockstep:
         assert (
             stages["frs_take_up"].operations[0].parameters["aggregates"]
             == UK_TAKE_UP_ANCHOR_AGGREGATES
+        )
+        reporter = stages["uc_reporter_redraw"]
+        assert (
+            tuple(reporter.operations[1].parameters["predictors"])
+            == UC_REPORTER_SCREEN_VARIABLES
+        )
+        assert reporter.operations[2].parameters["aggregates"] == UC_REPORTER_AGGREGATES
+        assert (
+            tuple(reporter.operations[3].parameters["predictors"])
+            == UC_REPORTER_PREDICTORS
         )
         assert (
             tuple(stages["frs_brma"].operations[0].parameters["predictors"])
@@ -841,7 +872,10 @@ class TestE3ManifestLockstep:
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
-        assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
+        assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
+        assert (
+            stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
+        )
 
     def test_e8_declared_seed_lockstep(self) -> None:
         stages = load_country_spec("uk").sources.stage_map()

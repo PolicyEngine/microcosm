@@ -126,15 +126,42 @@ class TestCommittedRegister:
                 "would_claim_uc": {
                     "incumbent_share": 0.550692,
                     "direction": "candidate_above",
-                    "max_abs_delta": 0.0367,
+                    "max_abs_delta": 0.0553,
                 }
             },
             "magnitude_provenance": (
-                "I1 pre-change receipts, committed as "
-                "experiments/828-uc-capital-receipts.md (Part B; raw JSON "
-                "licensed-side in data/ukds/acceptance/828-uc-capital/); "
-                "2,245 SPI-channel false "
-                "reporters divided by 61,211 benunits, rounded up at 1e-4 grain."
+                "I1 screen-sizing bound from "
+                "experiments/832-uc-reporter-receipts.md Part A: 33,794 "
+                "stage-7 true flags plus at most 3,299 screened-SPI "
+                "drawn-reporter flips among 61,211 benunits implies share "
+                "<= 0.605986; max_abs_delta is rounded up at 1e-4 grain. "
+                "The model-expected share is about 0.573; I5 re-derives the actual."
+            ),
+        }
+
+        reporter = register.matching(
+            surface="nonzero_shares",
+            column="universal_credit_reported",
+            expectation="column_differs",
+            entity="person",
+        )
+        assert reporter is not None
+        assert reporter.id == "uc-reporter-benefit-unit-redraw-incidence"
+        assert reporter.quantitative == {
+            "shares": {
+                "universal_credit_reported": {
+                    "incumbent_share": 0.057359,
+                    "direction": "candidate_below",
+                    "max_abs_delta": 0.0184,
+                }
+            },
+            "magnitude_provenance": (
+                "I1 dry-run bound from "
+                "experiments/832-uc-reporter-receipts.md Part C: 4,428 "
+                "unchanged base-channel reporter persons plus between zero "
+                "and 3,299 one-person SPI reporter landings among 113,649 "
+                "people implies share in [0.038962, 0.067990]. The "
+                "model-expected share is about 0.050; I5 re-derives the actual."
             ),
         }
 
