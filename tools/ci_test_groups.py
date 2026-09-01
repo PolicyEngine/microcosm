@@ -162,6 +162,9 @@ def engine_group(path: str) -> str:
     if is_frame(path) and (
         name.startswith("test_policyengine_us_")
         or name == "test_rules_engine_contract.py"
+        # The graph kernel wrapping RulesEngine carries a requires_us parity
+        # test against PolicyEngine-US, so it belongs with the US adapter tests.
+        or name == "test_kernels.py"
     ):
         return "us-qs"
     if is_calibrate_data_fit(path):
