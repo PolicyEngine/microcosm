@@ -111,6 +111,11 @@ def test_owned_ids_follows_a_nullable_boolean_mask() -> None:
     population = _population()
     owned = Owned("person", "amount", "float64", rows="owned")
     assert owned_ids(population, owned).tolist() == [2, 4]
+    with pytest.raises(PopulationError, match="contains nulls"):
+        owned_ids(
+            population,
+            Owned("person", "amount", "float64", rows="nullable"),
+        )
 
 
 def test_masked_patch_preserves_nonowned_float_bits_including_negative_zero() -> None:
