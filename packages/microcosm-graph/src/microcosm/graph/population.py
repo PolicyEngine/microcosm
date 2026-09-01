@@ -431,6 +431,32 @@ def _patch_structural(
             old_ids, new_ids
         ):
             raise PopulationError(f"REWEIGHT node {node.id!r} changed {entity!r} ids.")
+
+        if node.structural is StructuralDelta.FILTER:
+            retained_ids = new_ids
+        else:
+            # EXPAND must carry every incumbent row forward; REWEIGHT has the
+            # same rows.  New EXPAND rows are structural output and therefore
+            # have no incumbent storage to protect.
+            retained_ids = old_ids
+        before_index = pd.Index(old_ids)
+        after_index = pd.Index(new_ids)
+        before_positions = before_index.get_indexer(retained_ids)
+        after_positions = after_index.get_indexer(retained_ids)
+        if (before_positions < 0).any() or (after_positions < 0).any():
+            raise PopulationError(
+                f"Structural node {node.id!r} could not align retained {entity!r} ids."
+            )
+        for column in before_table:
+            incumbent = (
+                before_table[column].iloc[before_positions].reset_index(drop=True)
+            )
+            carried = after_table[column].iloc[after_positions].reset_index(drop=True)
+            if not storage_equal(incumbent, carried):
+                raise PopulationError(
+                    f"Structural node {node.id!r} changed carried storage in "
+                    f"{entity}.{column}."
+                )
     owners = {
         (entity, str(column)): node.id
         for entity in frame.entities

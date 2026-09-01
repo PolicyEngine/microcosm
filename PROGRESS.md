@@ -22,6 +22,7 @@ Identity, storage, codecs, and immutable population transitions are implemented.
 - Implemented structural id constraints, explicit immediate weight-kind transitions, per-stratum conservation, and the graph mass ledger; 14 focused population tests pass.
 - Bound structural node keys to every completed member of their base version, preventing a cached structural Frame from carrying stale ordinary or weight-only patches.
 - Bound every declared source consumer, not just CREATE nodes, to the verified source content key.
+- Required FILTER, EXPAND, and REWEIGHT to carry incumbent rows' physical column storage unchanged after aligning by entity id.
 
 ## Next
 

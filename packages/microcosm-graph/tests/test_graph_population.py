@@ -52,6 +52,22 @@ def _population() -> Population:
     return Population.from_frame(_frame(), "source")
 
 
+def _replace_person_table(
+    frame: Frame, person: pd.DataFrame, strata: pd.Series
+) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables[frame.schema.person_entity] = person
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    return Frame(
+        tables,
+        frame.schema,
+        weights,
+        strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
 def _mass_receipt(
     *,
     policy: str,
@@ -339,6 +355,66 @@ def test_expand_must_retain_every_original_id() -> None:
     )
     with pytest.raises(PopulationError, match="dropped original"):
         patch(population, node, KernelResult(frame=filtered))
+
+
+def test_structural_nodes_cannot_rewrite_carried_cell_storage() -> None:
+    population = _population()
+
+    filtered = population.frame.select(
+        np.array([True, True, True, False], dtype=np.bool_)
+    )
+    filtered_person = filtered.table("person").copy()
+    filtered_person.loc[0, "amount"] = 99.0
+    changed_filter = _replace_person_table(
+        filtered, filtered_person, filtered.strata.copy()
+    )
+    filter_node = Node(
+        "filter",
+        "test@1",
+        structural=StructuralDelta.FILTER,
+        base="source",
+        mass="free",
+    )
+    with pytest.raises(PopulationError, match="changed carried storage"):
+        patch(population, filter_node, KernelResult(frame=changed_filter))
+
+    before_person = population.frame.table("person")
+    added = before_person.iloc[[0]].copy()
+    added["person_id"] = np.asarray([5], dtype=np.int64)
+    expanded_person = pd.concat([before_person, added], ignore_index=True)
+    expanded_person.loc[0, "amount"] = 99.0
+    expanded = _replace_person_table(
+        population.frame,
+        expanded_person,
+        pd.concat(
+            [population.frame.strata, pd.Series(["a"], name="stratum")],
+            ignore_index=True,
+        ),
+    )
+    expand_node = Node(
+        "expand",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        mass="free",
+    )
+    with pytest.raises(PopulationError, match="changed carried storage"):
+        patch(population, expand_node, KernelResult(frame=expanded))
+
+    changed_person = before_person.copy()
+    changed_person.loc[0, "amount"] = 99.0
+    changed_reweight = _replace_person_table(
+        population.frame, changed_person, population.frame.strata.copy()
+    )
+    reweight_node = Node(
+        "reweight",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        mass="free",
+    )
+    with pytest.raises(PopulationError, match="changed carried storage"):
+        patch(population, reweight_node, KernelResult(frame=changed_reweight))
 
 
 def test_reweight_can_synthesize_frame_but_must_not_change_ids() -> None:
