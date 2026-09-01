@@ -798,6 +798,7 @@ version = "0.1.0"
 source = { editable = "packages/microcosm-calibrate" }
 dependencies = [
     { name = "microcosm-frame" },
+    { name = "microcosm-graph" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "scipy" },
@@ -812,6 +813,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
+    { name = "microcosm-graph", editable = "packages/microcosm-graph" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
     { name = "scipy", specifier = ">=1.13" },
@@ -863,6 +865,7 @@ version = "0.1.0"
 source = { editable = "packages/microcosm-fit" }
 dependencies = [
     { name = "microcosm-frame" },
+    { name = "microcosm-graph" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "quantile-forest" },
@@ -877,6 +880,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
+    { name = "microcosm-graph", editable = "packages/microcosm-graph" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
     { name = "quantile-forest", specifier = ">=1.4.2" },
@@ -891,6 +895,7 @@ name = "microcosm-frame"
 version = "0.1.0"
 source = { editable = "packages/microcosm-frame" }
 dependencies = [
+    { name = "microcosm-graph" },
     { name = "numpy" },
     { name = "pandas" },
 ]
@@ -919,6 +924,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "microcosm-graph", editable = "packages/microcosm-graph" },
     { name = "microunit", marker = "extra == 'policyengine'", specifier = ">=0.1.0" },
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=2" },
