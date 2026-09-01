@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     TargetRegistry,
+    default_target_loss_scales,
     relative_error_loss,
 )
 
@@ -123,6 +124,29 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
         or not isinstance(seed, int)
     ):
         raise ValueError("candidate rotated holdout declares no usable basis.")
+    # The holdout is a number recorded upstream, under whatever cap that run
+    # used; the fitted-surface aggregates are computed here under the current
+    # doctrine cap.  Requiring the recorded cap to match makes the agreement
+    # an enforced invariant instead of a convention that quietly lapses the
+    # first time microcosm#762 moves the constant — at which point the
+    # candidate needs re-measuring, not re-reporting.
+    declared_cap = holdout.get("target_loss_cap")
+    if (
+        not isinstance(declared_cap, (int, float))
+        or isinstance(declared_cap, bool)
+        or not math.isfinite(float(declared_cap))
+    ):
+        raise ValueError(
+            "candidate rotated holdout must declare the target_loss_cap it was "
+            "measured under."
+        )
+    if float(declared_cap) != float(UK_LOCAL_TARGET_LOSS_CAP):
+        raise ValueError(
+            "candidate rotated holdout was measured at target_loss_cap "
+            f"{float(declared_cap)!r}, but this scorer reports its aggregates "
+            f"at {float(UK_LOCAL_TARGET_LOSS_CAP)!r}; re-measure the candidate "
+            "rather than reporting the two on different scales."
+        )
     losses: dict[str, float] = {}
     for key in ("mean_holdout_loss", "worst_holdout_loss"):
         raw = holdout.get(key)
@@ -174,6 +198,7 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
     return {
         "basis": f"{method}:n_folds={n_folds}:seed={seed}",
         "method": method,
+        "target_loss_cap": float(declared_cap),
         "n_folds": n_folds,
         "seed": seed,
         "fold_losses": folds,
@@ -267,15 +292,17 @@ def _incumbent_estimates(
     return estimates
 
 
-def _relative_error(estimate: float, target: float) -> float:
-    """Signed, uncapped per-row miss on the target-defined scale.
+def _relative_errors(estimates: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    """Signed, uncapped per-row misses on the canonical row scale.
 
-    Used for the per-target drift rows and the head-to-head comparison only.
-    Aggregate losses go through :func:`relative_error_loss` so the scorer
-    never carries a second copy of the objective.
+    A different quantity from the aggregate objective — signed and uncapped,
+    for the drift rows and the head-to-head counters — but deliberately not a
+    different *scale*: the denominator is imported from
+    :func:`default_target_loss_scales` rather than restated, so these rows
+    cannot drift away from the aggregates printed beside them.
     """
 
-    return (estimate - target) / max(abs(target), 1.0)
+    return (estimates - targets) / default_target_loss_scales(targets)
 
 
 def score_uk_local_candidate(
@@ -325,12 +352,14 @@ def score_uk_local_candidate(
         [incumbent[spec.to_target().row_name] for spec in target_registry.specs],
         dtype=np.float64,
     )
+    candidate_errors = _relative_errors(candidate_estimates, targets)
+    incumbent_errors = _relative_errors(incumbent_estimates, targets)
     candidate_wins = 0
     incumbent_wins = 0
-    for spec in target_registry.specs:
+    for index, spec in enumerate(target_registry.specs):
         name = spec.to_target().row_name
-        candidate_error = _relative_error(candidate[name], spec.value)
-        incumbent_error = _relative_error(incumbent[name], spec.value)
+        candidate_error = float(candidate_errors[index])
+        incumbent_error = float(incumbent_errors[index])
         bucket = families.setdefault(
             spec.family,
             {"candidate_target_wins": 0, "incumbent_target_wins": 0, "ties": 0},

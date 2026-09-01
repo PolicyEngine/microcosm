@@ -1010,6 +1010,10 @@ def rotated_uk_local_holdout(
     return {
         "report_only": True,
         "method": "rotated_folds",
+        # Declared so a consumer can check that a recorded holdout was
+        # measured under the same cap it is being reported beside, rather
+        # than assuming it across the module boundary.
+        "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
         "n_folds": summary.n_folds,
         "seed": UK_LOCAL_HOLDOUT_SEED,
         "solve_seed": solve_seed,

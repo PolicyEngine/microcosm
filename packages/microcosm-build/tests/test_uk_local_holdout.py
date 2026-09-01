@@ -5,6 +5,7 @@ import pandas as pd
 
 from microcosm.build.holdout import rotated_folds
 from microcosm.build.uk_runtime import (
+    UK_LOCAL_TARGET_LOSS_CAP,
     build_uk_rowwise_local_matrix,
     rotated_uk_local_holdout,
     uk_national_frame,
@@ -60,3 +61,6 @@ def test_rotated_local_holdout_runs_fixed_five_fold_actual_solves() -> None:
     assert payload["fold_losses"] == [0.5] * 5
     assert payload["mean_holdout_loss"] == 0.5
     assert payload["worst_holdout_loss"] == 0.5
+    # The cap the folds were actually measured under travels with them, so a
+    # consumer can enforce the scale agreement instead of assuming it.
+    assert payload["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP

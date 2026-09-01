@@ -11,7 +11,12 @@ import pytest
 
 from microcosm.build.holdout import summarize_rotations
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
-from microcosm.calibrate import TargetRegistry, TargetSpec, relative_error_loss
+from microcosm.calibrate import (
+    TargetRegistry,
+    TargetSpec,
+    default_target_loss_scales,
+    relative_error_loss,
+)
 
 
 def _load_scorer():
@@ -59,6 +64,7 @@ def _case():
                 "method": "rotated_folds",
                 "n_folds": 5,
                 "seed": 20260529,
+                "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
                 # Summary closes over the folds, as summarize_rotations
                 # produces it: mean 0.4, worst 0.6.
                 "mean_holdout_loss": 0.4,
@@ -261,6 +267,66 @@ def test_local_scorer_refuses_a_holdout_with_missing_fold_losses() -> None:
             target_registry=registry,
             expected_reference_count=2,
         )
+
+
+def test_local_scorer_refuses_a_holdout_measured_at_another_cap() -> None:
+    """The scale agreement across the module boundary is enforced, not assumed.
+
+    When microcosm#762 moves the doctrine cap, the fitted-surface aggregates
+    move with it but a recorded holdout does not, so a stale rotation must be
+    refused rather than reported beside them.
+    """
+
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"]["target_loss_cap"] = (
+        UK_LOCAL_TARGET_LOSS_CAP + 5.0
+    )
+
+    with pytest.raises(ValueError, match="re-measure the candidate"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_local_scorer_refuses_a_holdout_that_declares_no_cap() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    del candidate["uk_diagnostics"]["rotated_holdout"]["target_loss_cap"]
+
+    with pytest.raises(ValueError, match="must declare the target_loss_cap"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_local_scorer_drift_rows_use_the_canonical_row_scale() -> None:
+    """Drift rows and aggregates share one scale, imported not restated."""
+
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    targets = np.array([10.0, 100.0])
+    expected = (np.array([10.0, 110.0]) - targets) / default_target_loss_scales(targets)
+    assert [row["candidate_relative_error"] for row in result["target_drift"]] == [
+        pytest.approx(value) for value in expected
+    ]
 
 
 def test_local_scorer_refuses_a_headline_that_is_not_its_folds() -> None:
