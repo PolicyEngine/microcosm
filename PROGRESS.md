@@ -29,6 +29,8 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Replaced the package's runtime placeholders with the implemented public APIs and failures; 37 focused executor/manifest/population tests pass together.
 - Made `resume="forbid"` serialize every result through atomic staging without reading or validating an incumbent object, including collision/interruption coverage.
 - Allowed dense floating columns to be created under a row mask with exact-dtype NaNs outside ownership; dense bool/integer columns remain correctly unrepresentable there.
+- Added id-only projections for owned output entities, a FILTER-mask adapter around the frozen no-base-Frame context, per-store codec availability, authoritative capabilities in receipt highlights, and safe omission of ambiguous inherited group weights.
+- The local shard suite now passes all 83 tests; compatible black-box acceptance probes for A3/A5, B1/B2, D1/D2/D5, E2/E5, and G1 also pass un-xfailed.
 
 ## Next
 

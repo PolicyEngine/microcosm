@@ -266,6 +266,9 @@ def test_determinism_across_stores_and_zero_kernel_memoization(
     assert first.key == second.key
     assert first.nodes["survey"].frame_key is not None
     assert first.nodes["a"].frame_key is None
+    assert first.nodes["a"].receipt["capabilities"]["determinism"] == (  # type: ignore[index]
+        "deterministic"
+    )
     diagnostic_key = first.nodes["a"].opaque_artifacts["diagnostic"]
     assert first_store.load_bytes(diagnostic_key) == b"add-kernel"
     for node_id in first.nodes:
@@ -532,6 +535,87 @@ def test_context_contains_only_declared_entity_slices(tmp_path: Path) -> None:
     )
 
 
+def test_output_entity_receives_only_its_structural_id_view(tmp_path: Path) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def cross_entity(context: KernelContext) -> KernelResult:
+        assert set(context.tables) == {"person", "household"}
+        assert set(context.tables["person"]) == {
+            "person_id",
+            "person_household_id",
+            "age",
+        }
+        assert set(context.tables["household"]) == {"household_id"}
+        ids = context.tables["household"]["household_id"]
+        return KernelResult(
+            columns={
+                ("household", "score"): pd.Series(
+                    np.zeros(len(ids)), index=ids, dtype="float64"
+                )
+            }
+        )
+
+    node = Node(
+        "cross",
+        "cross@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "score", "float64"),),
+        population="survey",
+    )
+    registry = _registry(
+        extra=_Kernel(
+            node.kernel, Capabilities(Determinism.DETERMINISTIC), cross_entity
+        )
+    )
+    _run(
+        Graph("toy", (SOURCE,), (CREATE, node)),
+        source,
+        ContentStore(tmp_path / "store"),
+        registry,
+    )
+
+
+def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def select_rows(context: KernelContext) -> KernelResult:
+        table = context.tables["person"]
+        return KernelResult(
+            columns={
+                ("person", "all"): pd.Series(
+                    table["selected"].to_numpy(dtype=np.bool_),
+                    index=table["person_id"],
+                    dtype="bool",
+                )
+            }
+        )
+
+    node = Node(
+        "selected",
+        "filter@1",
+        structural=StructuralDelta.FILTER,
+        base="survey",
+        inputs=(Slice("person", ("selected",)),),
+        mass="free",
+    )
+    kernel = _Kernel(
+        node.kernel,
+        Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER),
+        select_rows,
+    )
+    manifest = _run(
+        Graph("toy", (SOURCE,), (CREATE, node)),
+        source,
+        ContentStore(tmp_path / "store"),
+        _registry(extra=kernel),
+    )
+    assert manifest.population("selected").table("person")["person_id"].tolist() == [
+        1,
+        3,
+    ]
+    assert manifest.mass_ledger("selected")[-1].operation == "filter"
+
+
 def test_create_rejects_undeclared_frame_columns(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 
@@ -615,6 +699,16 @@ def test_corrupt_cache_and_unavailable_codec_abort_before_recompute(
             missing_registry,
         )
     assert sum(_calls(missing_registry).values()) == 0
+
+    isolated_registry = _registry()
+    with pytest.raises(StoreUnavailable, match="csv-tables"):
+        _run(
+            _graph(),
+            source,
+            ContentStore(tmp_path / "isolated", codecs={}),
+            isolated_registry,
+        )
+    assert sum(_calls(isolated_registry).values()) == 0
 
 
 def test_structural_reweight_uses_explicit_kind_and_mass_receipt(

@@ -17,7 +17,7 @@ import pandas as pd
 from microcosm.frame import Frame, WeightKind, Weights
 
 from .canonical import canonical_json, sha256_domain
-from .codecs import SOURCE_CODECS
+from .codecs import SOURCE_CODECS, SourceCodecRegistry
 from .decl import (
     ROWS_ALL,
     CompiledGraph,
@@ -280,9 +280,11 @@ def _project_context(
 
     tables: dict[str, pd.DataFrame] = {}
     entity_masks: dict[str, np.ndarray] = {}
-    for entity in sorted(slices):
+    projected_entities = set(slices)
+    projected_entities.update(owned.entity for owned in node.outputs)
+    for entity in sorted(projected_entities):
         table = frame.table(entity)
-        entity_slices = slices[entity]
+        entity_slices = slices.get(entity, [])
         row_specs = {slice_.rows for slice_ in entity_slices}
         if len(row_specs) > 1:
             raise NodeRejected(
@@ -304,7 +306,16 @@ def _project_context(
     input_entities = {slice_.entity for slice_ in node.inputs}
     weights: dict[str, Weights] = {}
     for entity in sorted(input_entities):
-        effective = frame.resolve_weights(entity)
+        try:
+            effective = frame.resolve_weights(entity)
+        except ValueError:
+            if entity in frame.weighted_entities:
+                raise
+            # Some coarser groups contain members whose inherited person
+            # weights differ, so Frame deliberately refuses to invent one
+            # group weight.  The frozen context has no "needs weights" bit;
+            # omit that ambiguous inherited entry while retaining its table.
+            continue
         values = effective.values[entity_masks[entity]]
         weights[entity] = Weights(values=values, kind=effective.kind)
 
@@ -359,6 +370,32 @@ def _validate_series(
             f"Node {node.id!r} wrote a value into ABSENT-owned "
             f"{owned.entity}.{owned.column}."
         )
+
+
+def _validate_filter_mask(node: Node, series: object, population: Population) -> None:
+    if not isinstance(series, pd.Series):
+        raise NodeRejected(f"FILTER node {node.id!r} mask is not a pandas Series.")
+    if series.index.has_duplicates:
+        raise NodeRejected(f"FILTER node {node.id!r} mask repeats person ids.")
+    frame = population.frame
+    person_entity = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person_entity)
+    expected = pd.Index(
+        frame.table(person_entity)[id_column].to_numpy(copy=True), name=id_column
+    )
+    actual = pd.Index(series.index)
+    if len(actual) != len(expected) or set(actual.tolist()) != set(expected.tolist()):
+        raise NodeRejected(
+            f"FILTER node {node.id!r} mask ids do not equal the base person ids."
+        )
+    if not (
+        series.dtype == np.dtype(np.bool_) or isinstance(series.dtype, pd.BooleanDtype)
+    ):
+        raise NodeRejected(
+            f"FILTER node {node.id!r} mask has dtype {series.dtype!s}, not bool."
+        )
+    if series.isna().any():
+        raise NodeRejected(f"FILTER node {node.id!r} mask contains nulls.")
 
 
 def _validate_create(node: Node, frame: Frame) -> None:
@@ -440,12 +477,25 @@ def _validate_result(
         raise NodeRejected(
             f"Node {node.id!r} result.columns keys must be (entity, column) strings."
         )
+    projected_filter = (
+        node.structural is StructuralDelta.FILTER and result.frame is None
+    )
     if node.structural is StructuralDelta.NONE:
         if got != set(expected):
             raise NodeRejected(
                 f"Node {node.id!r} returned output keys {sorted(got)!r}, not exactly "
                 f"its owned keys {sorted(expected)!r}."
             )
+    elif projected_filter:
+        if population is None:  # pragma: no cover - compiler gives FILTER a base
+            raise NodeRejected(f"FILTER node {node.id!r} has no base population.")
+        coordinate = (population.frame.schema.person_entity, ROWS_ALL)
+        if got != {coordinate}:
+            raise NodeRejected(
+                f"FILTER node {node.id!r} must return only its person mask as "
+                f"{coordinate!r}."
+            )
+        _validate_filter_mask(node, result.columns[coordinate], population)
     elif got:
         # Structural output lives in the returned Frame.  Accepting a second
         # column channel would make the authoritative value ambiguous.
@@ -459,7 +509,6 @@ def _validate_result(
         node.structural
         in {
             StructuralDelta.CREATE,
-            StructuralDelta.FILTER,
             StructuralDelta.EXPAND,
         }
         and result.frame is None
@@ -511,6 +560,24 @@ def _apply_result(
         assert result.frame is not None
         return _create_population(node, result.frame)
     assert population is not None
+    if node.structural is StructuralDelta.FILTER and result.frame is None:
+        person_entity = population.frame.schema.person_entity
+        id_column = population.frame.schema.entity_id_column(person_entity)
+        ids = pd.Index(
+            population.frame.table(person_entity)[id_column].to_numpy(copy=True),
+            name=id_column,
+        )
+        mask = (
+            result.columns[(person_entity, ROWS_ALL)]
+            .reindex(ids)
+            .to_numpy(dtype=np.bool_, copy=True)
+        )
+        result = KernelResult(
+            frame=population.frame.select(mask),
+            weights=result.weights,
+            artifacts=result.artifacts,
+            receipt=result.receipt,
+        )
     # The frozen context has no base-Frame field.  A pure REWEIGHT kernel can
     # therefore return only its typed replacement weights; the executor binds
     # those weights to the incumbent structural frame here.
@@ -826,7 +893,9 @@ def _load_cached_result(
 
 
 def _source_paths_and_keys(
-    compiled: CompiledGraph, sources: Mapping[str, Path]
+    compiled: CompiledGraph,
+    sources: Mapping[str, Path],
+    store: ContentStore,
 ) -> tuple[dict[str, Path], dict[str, str]]:
     declared = {source.name: source for source in compiled.graph.sources}
     used = {name for node in compiled.graph.nodes for name in node.sources}
@@ -842,7 +911,18 @@ def _source_paths_and_keys(
         path = Path(sources[name]).resolve(strict=True)
         # Codec availability is verified before any kernel can execute.  The
         # CREATE kernel remains the declared computation that invokes it.
-        SOURCE_CODECS.get(declared[name].codec)
+        codec = declared[name].codec
+        configured = store.codecs
+        if configured is None:
+            SOURCE_CODECS.get(codec)
+        elif isinstance(configured, SourceCodecRegistry):
+            configured.get(codec)
+        elif isinstance(configured, Mapping):
+            loader = configured.get(codec)
+            if not callable(loader):
+                raise StoreUnavailable(f"Source codec {codec!r} is not installed.")
+        else:  # defended by ContentStore.__init__
+            raise StoreUnavailable("ContentStore has an invalid codec registry.")
         resolved[name] = path
         identities[name] = source_content_key(name, path)
     return resolved, identities
@@ -917,7 +997,7 @@ def run_graph(
         raise TypeError("decisions must contain Decision records.")
 
     started_at = _now()
-    source_paths, source_keys = _source_paths_and_keys(compiled, sources)
+    source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations)
@@ -988,6 +1068,7 @@ def run_graph(
         normalized_receipt, opaque = _validate_result(
             node, kernel.capabilities, result, incumbent
         )
+        normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
         updated = _apply_result(node, result, incumbent)
         if node.structural is StructuralDelta.NONE:
             populations[compiled.versions[node_id]] = updated

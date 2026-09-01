@@ -653,10 +653,15 @@ def _serialized_series_hash(root: Path, spec: Mapping[str, object]) -> str:
 class ContentStore:
     """A filesystem content store rooted at ``root``."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, codecs: object | None = None) -> None:
         self.root = Path(root)
         self.objects = self.root / "objects"
         self.tmp = self.root / "tmp"
+        if codecs is not None and not (
+            isinstance(codecs, Mapping) or callable(getattr(codecs, "get", None))
+        ):
+            raise TypeError("codecs must be a mapping, codec registry, or None.")
+        self.codecs = codecs
         self.objects.mkdir(parents=True, exist_ok=True)
         self.tmp.mkdir(parents=True, exist_ok=True)
 
