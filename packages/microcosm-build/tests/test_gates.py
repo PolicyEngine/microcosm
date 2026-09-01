@@ -17,6 +17,7 @@ from microcosm.build import (
     TargetCoverageRequirement,
     TargetFitRequirement,
     aggregate_admin_gate,
+    area_support_gate,
     column_implication_gate,
     default_valued_columns_gate,
     enum_domain_gate,
@@ -493,6 +494,72 @@ class TestSupportGate:
         result = support_gate({"stcg": np.asarray([1.0])}, {})
         assert not result.passed
         assert "no donor range declared" in result.failures[0]
+
+
+class TestAreaSupportGate:
+    @staticmethod
+    def _support(**overrides) -> pd.DataFrame:
+        rows = {
+            "geography_level": ["constituency", "local_authority"],
+            "area_code": ["C1", "L1"],
+            "nonzero_households": [60, 70],
+            "nonzero_source_households": [55, 65],
+            "effective_sample_size": [52.0, 63.0],
+        }
+        rows.update(overrides)
+        return pd.DataFrame(rows)
+
+    def test_passes_both_declared_grains(self) -> None:
+        result = area_support_gate(
+            self._support(),
+            area_roster={"constituency": ["C1"], "local_authority": ["L1"]},
+            geography_levels=("constituency", "local_authority"),
+            minimum_rows=50,
+            minimum_effective_sample_size=50.0,
+            minimum_distinct_sources=50,
+        )
+
+        assert result.passed
+        assert result.details["areas_checked"] == 2
+        assert result.details["by_geography_level"]["constituency"] == {
+            "areas_checked": 1,
+            "minimum_rows": 60,
+            "minimum_effective_sample_size": 52.0,
+            "minimum_distinct_sources": 55,
+        }
+
+    def test_names_every_floor_breach(self) -> None:
+        result = area_support_gate(
+            self._support(
+                nonzero_households=[49, 70],
+                nonzero_source_households=[48, 65],
+                effective_sample_size=[47.5, 63.0],
+            ),
+            area_roster={"constituency": ["C1"], "local_authority": ["L1"]},
+            geography_levels=("constituency", "local_authority"),
+            minimum_rows=50,
+            minimum_effective_sample_size=50.0,
+            minimum_distinct_sources=50,
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "constituency/C1: rows 49 < 50, ESS 47.5 < 50, distinct sources 48 < 50",
+        )
+
+    def test_roster_omission_refuses_instead_of_shrinking_the_surface(self) -> None:
+        with pytest.raises(ValueError, match="exactly cover"):
+            area_support_gate(
+                self._support().iloc[:1],
+                area_roster={
+                    "constituency": ["C1"],
+                    "local_authority": ["L1"],
+                },
+                geography_levels=("constituency", "local_authority"),
+                minimum_rows=50,
+                minimum_effective_sample_size=50.0,
+                minimum_distinct_sources=50,
+            )
 
 
 class TestAggregateAdminGate:

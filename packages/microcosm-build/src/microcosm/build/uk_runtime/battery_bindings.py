@@ -48,15 +48,18 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_gate,
     column_implication_gate,
     enum_domain_gate,
     ledger_compile_parity_gate,
     nonnegative_columns_gate,
+    per_family_fit_gate,
     support_gate,
     target_surface_gate,
     weights_audit_gate,
 )
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
+from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -772,6 +775,90 @@ def _evaluate_weight_ratio(
     return uk_weight_ratio_gate(weights, **dict(parameters))
 
 
+def _evaluate_geography_ladder(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    household = _uk_gate_surface(context.frame).household
+    weights = _household_weights(household)
+    return uk_geography_ladder_gate(household, weights, **dict(parameters))
+
+
+def _local_area_roster(
+    resource: str, levels: tuple[str, ...]
+) -> dict[str, tuple[str, ...]]:
+    payload = json.loads(files("microcosm.build.uk").joinpath(resource).read_text())
+    declared = payload.get("levels")
+    if not isinstance(declared, Mapping):
+        raise ValueError(f"{resource} must expose a levels object.")
+    roster: dict[str, tuple[str, ...]] = {}
+    for level in levels:
+        row = declared.get(level)
+        if not isinstance(row, Mapping):
+            raise ValueError(f"{resource} must expose level {level!r}.")
+        area_ids = row.get("area_ids")
+        if not isinstance(area_ids, (list, tuple)):
+            raise ValueError(f"{resource} level {level!r} must expose area_ids.")
+        roster[level] = tuple(str(area_id) for area_id in area_ids)
+    return roster
+
+
+def _evaluate_area_support(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    kwargs = dict(parameters)
+    resource = str(kwargs.pop("crosswalk_resource"))
+    levels = tuple(str(level) for level in kwargs["geography_levels"])
+    return area_support_gate(
+        context.artifacts["uk_area_support_summary"],
+        area_roster=_local_area_roster(resource, levels),
+        **kwargs,
+    )
+
+
+def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:
+    if hasattr(evidence, "to_dict"):
+        rows = evidence.to_dict(orient="records")
+    elif isinstance(evidence, (list, tuple)):
+        rows = evidence
+    else:
+        raise TypeError(
+            "local_target_diagnostics must be a DataFrame or a sequence of rows."
+        )
+    items: list[tuple[str, float]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            raise TypeError(f"local target diagnostic row {index} must be a mapping.")
+        family = str(row.get("family", "")).strip()
+        area_code = str(row.get("area_code", "")).strip()
+        metric = str(row.get("metric", "")).strip()
+        if not family or not area_code or not metric:
+            raise ValueError(
+                f"local target diagnostic row {index} must name family, "
+                "area_code, and metric."
+            )
+        error = float(row["relative_error"])
+        if not np.isfinite(error):
+            raise ValueError(
+                f"local target diagnostic {family}/{area_code}/{metric} has "
+                "a non-finite relative_error."
+            )
+        items.append((f"{family}/{area_code}/{metric}", error))
+    if not items:
+        raise ValueError("local_target_diagnostics must not be empty.")
+    return tuple(items)
+
+
+def _evaluate_per_family_fit(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    items = _local_target_error_items(context.artifacts["local_target_diagnostics"])
+    return per_family_fit_gate(
+        (name for name, _ in items),
+        (error for _, error in items),
+        **dict(parameters),
+    )
+
+
 def _evaluate_weights_audit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -1000,8 +1087,22 @@ def _local_metric_by_target_id() -> dict[str, str]:
 def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    kwargs = dict(parameters)
+    if kwargs.pop("surface", None) == "local_candidate":
+        errors = dict(
+            _local_target_error_items(context.artifacts["local_target_diagnostics"])
+        )
+        return uk_target_fit_gate(errors, **kwargs)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(parity.target_relative_errors, **dict(parameters))
+    return uk_target_fit_gate(parity.target_relative_errors, **kwargs)
+
+
+def _target_fit_required_artifacts(
+    parameters: Mapping[str, Any],
+) -> frozenset[str]:
+    if parameters.get("surface") == "local_candidate":
+        return frozenset({"local_target_diagnostics"})
+    return frozenset({"parity_evidence"})
 
 
 def _evaluate_input_mass_parity(
@@ -1347,6 +1448,41 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_weight_ratio,
         parameter_keys=frozenset({"maximum_max_to_median_ratio"}),
     ),
+    "spine_agreement": UKGateBinding(
+        name="spine_agreement",
+        evaluator=_evaluate_geography_ladder,
+        legacy_name="uk_geography_ladder",
+    ),
+    "area_support": UKGateBinding(
+        name="area_support",
+        evaluator=_evaluate_area_support,
+        parameter_keys=frozenset(
+            {
+                "crosswalk_resource",
+                "geography_levels",
+                "minimum_rows",
+                "minimum_effective_sample_size",
+                "minimum_distinct_sources",
+            }
+        ),
+        artifact_keys=frozenset({"uk_area_support_summary"}),
+        needs_frame=False,
+    ),
+    "per_family_fit": UKGateBinding(
+        name="per_family_fit",
+        evaluator=_evaluate_per_family_fit,
+        parameter_keys=frozenset(
+            {
+                "within",
+                "min_family_share",
+                "hard_within",
+                "min_hard_family_share",
+                "min_family_size",
+            }
+        ),
+        artifact_keys=frozenset({"local_target_diagnostics"}),
+        needs_frame=False,
+    ),
     "export_surface": UKGateBinding(
         name="export_surface",
         evaluator=_evaluate_export_surface,
@@ -1373,8 +1509,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "target_fit": UKGateBinding(
         name="target_fit",
         evaluator=_evaluate_target_fit,
-        parameter_keys=frozenset({"max_abs_relative_error", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        parameter_keys=frozenset(
+            {"max_abs_relative_error", "reviewed_exclusions", "surface"}
+        ),
+        artifact_selector=_target_fit_required_artifacts,
         needs_frame=False,
     ),
     "input_mass_parity": UKGateBinding(

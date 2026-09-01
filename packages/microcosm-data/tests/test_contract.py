@@ -137,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12aab28f1e8e49347887c53fe1fabd228a5eda045964d65224390e0ce8b118d5"
+    "bcbcfd552424313b0843bc68ad64afea04c3b4146b01458cc9fdaf54b85aea82"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "efdb12a1f97421197871aefbb7de4be90e5d9a4f0461e6c6e72e5dcc8cf65089"
+    "76c861d48d48d73fd8f18f3d5cddac2855294c2839105ca2b6ac9a8a9d4b5f2f"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "96186a467471393be608dc638f8288db9ebfdcf2f54a1afbaf8f070db6716746"
+    "dfbad2aa2930ef7e615742bd43bccd6cadaeb77ceb46f9161bb81b715dda20aa"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -271,6 +271,16 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         "qrf_tail_concentration",
     ),
+    "uk_local_geography_ladder_post_calibration": (
+        "spine_agreement",
+        "terminal",
+        None,
+    ),
+    "uk_local_area_support": ("area_support", "terminal", None),
+    "uk_local_target_fit": ("target_fit", "terminal", None),
+    "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
+    "uk_local_weight_ratio": ("weight_ratio", "terminal", None),
+    "uk_local_weight_ess": ("weight_ess", "terminal", None),
 }
 
 
@@ -1202,6 +1212,11 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif entry_id.startswith("uk_local_"):
+            # Local candidate gates are explicitly excluded from national
+            # certification; this full-report fixture needs only their
+            # authenticated envelope, not candidate-only evidence details.
+            details = {}
         elif gate == "stage_health":
             details = {
                 "stage": stage_health_stages[entry_id],
@@ -1212,7 +1227,17 @@ def _gate_battery_payload(
         gates[entry_id] = {
             "gate": gate,
             "phase": phase,
-            "criticality": "release_blocking",
+            "criticality": (
+                "diagnostic"
+                if entry_id
+                in {
+                    "uk_local_target_fit",
+                    "uk_local_per_family_fit",
+                    "uk_local_weight_ratio",
+                    "uk_local_weight_ess",
+                }
+                else "release_blocking"
+            ),
             "status": "passed",
             "failures": [],
             "details": details,
@@ -2225,9 +2250,7 @@ def test_uk_national_release_requires_signed_evidence_files(tmp_path: Path) -> N
     directory = _write_uk_national_release_dir(tmp_path)
     (directory / "terminal_gates.json").unlink()
 
-    with pytest.raises(
-        ReleaseContractError, match="missing 'terminal_gates.json'"
-    ):
+    with pytest.raises(ReleaseContractError, match="missing 'terminal_gates.json'"):
         validate_release_dir(directory)
 
 
@@ -2257,9 +2280,7 @@ def test_uk_national_release_refuses_unbindable_score_digest(
     )
     release_path.write_text(json.dumps(release))
 
-    with pytest.raises(
-        ReleaseContractError, match=r"score_receipt\.sha256 is not a"
-    ):
+    with pytest.raises(ReleaseContractError, match=r"score_receipt\.sha256 is not a"):
         validate_release_dir(directory)
 
 
@@ -4294,6 +4315,36 @@ def test_exact_k_uk_gate_battery_recomputes_shippability(tmp_path: Path) -> None
     assert "release-blocking with status 'failed'" in failures
 
 
+def test_exact_k_uk_gate_battery_status_checks_cover_diagnostic_entries(
+    tmp_path: Path,
+) -> None:
+    # The diagnostic label exempts an entry from the shippability recompute
+    # and nothing else: a diagnostic gate that compared nothing, or that
+    # carries a status outside the taxonomy, is still refused.
+    for status, expected in (
+        ("not_applicable", "claims not_applicable"),
+        ("unreached", "is unreached"),
+        ("error", "outside the taxonomy"),
+    ):
+        directory, payload = _write_battery_release(tmp_path / status)
+        payload["gates"]["uk_local_target_fit"]["status"] = status
+        _rewrite_battery_report(directory, payload)
+
+        assert expected in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_relabelled_diagnostic_criticality(
+    tmp_path: Path,
+) -> None:
+    # Criticality is pinned per entry, so a blocking gate cannot be relabelled
+    # diagnostic to dodge the recompute, nor the reverse.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["gates"]["uk_local_area_support"]["criticality"] = "diagnostic"
+    _rewrite_battery_report(directory, payload)
+
+    assert "criticality must be 'release_blocking'" in _battery_failures(directory)
+
+
 def test_exact_k_uk_gate_battery_rejects_passed_entry_with_failures(
     tmp_path: Path,
 ) -> None:
@@ -5233,6 +5284,9 @@ def _green_uk_certification(
             "declared_entry_count": len(contract._UK_GATE_BATTERY_ENTRY_IDS),
             "declared_phases": list(contract._UK_GATE_BATTERY_PHASES),
             "shared_gate_ids": sorted(contract._UK_CERTIFICATION_SHARED_GATE_IDS),
+            "certification_excluded_gate_ids": sorted(
+                contract._UK_CERTIFICATION_EXCLUDED_GATE_IDS
+            ),
         },
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
         "diagnostics_sha256": diagnostics_sha256,

@@ -47,6 +47,7 @@ from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
     UK_SPINE_GATE_SCOPE,
@@ -71,6 +72,7 @@ __all__ = [
 UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 UK_RELEASE_CUT_POSTURE = "release_cut"
+UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE)
 
 #: Each certification part's declared scope, phases, and manifest policy
 #: suffix. The suffixes are load-bearing: they are what the producers bake
@@ -137,7 +139,12 @@ def uk_release_cut_scope_exclusions() -> dict[str, str]:
             exclusions[entry.id] = (
                 "calibration-seam gate; owned by the seam's scoped battery."
             )
-        else:  # pragma: no cover - the three-way partition is import-enforced
+        elif entry.id in UK_CERTIFICATION_EXCLUDED_GATE_IDS:
+            exclusions[entry.id] = (
+                "local-candidate gate; excluded from national certification "
+                "until microcosm#146."
+            )
+        else:  # pragma: no cover - closed-world classification is import-enforced
             raise RuntimeError(
                 f"UK gate {entry.id!r} belongs to no declared battery scope."
             )
@@ -388,6 +395,7 @@ def compose_uk_release_certification(
         {name: (payload, raw) for name, (payload, raw) in parts_raw.items()},
         declared_ids=declared_ids,
         declared_phases=declared_phases,
+        certification_excluded_ids=UK_CERTIFICATION_EXCLUDED_GATE_IDS,
     )
     _verify_identity_join(
         spine_report_bytes=parts_raw["spine"][1],
@@ -425,6 +433,9 @@ def compose_uk_release_certification(
             "declared_entry_count": len(declared_ids),
             "declared_phases": list(declared_phases),
             "shared_gate_ids": sorted(UK_SHARED_GATE_IDS),
+            "certification_excluded_gate_ids": sorted(
+                UK_CERTIFICATION_EXCLUDED_GATE_IDS
+            ),
         },
         "doctrine": {
             "payload": dict(run_config.get("doctrine", {})),
@@ -585,6 +596,7 @@ def _verify_union(
     *,
     declared_ids: set[str],
     declared_phases: tuple[str, ...],
+    certification_excluded_ids: frozenset[str] = frozenset(),
 ) -> None:
     seen: dict[str, list[str]] = {}
     phases_covered: set[str] = set()
@@ -593,7 +605,19 @@ def _verify_union(
             seen.setdefault(gate_id, []).append(part_name)
         phases_covered.update(str(phase) for phase in payload["phases"])
     union = set(seen)
-    gap = sorted(declared_ids - union)
+    undeclared_exclusions = sorted(certification_excluded_ids - declared_ids)
+    if undeclared_exclusions:
+        raise UKReleaseCertificationError(
+            "certification exclusions name undeclared gate ids: "
+            f"{undeclared_exclusions}."
+        )
+    evaluated_exclusions = sorted(certification_excluded_ids & union)
+    if evaluated_exclusions:
+        raise UKReleaseCertificationError(
+            "certification-excluded gate ids were evaluated by national parts: "
+            f"{evaluated_exclusions}."
+        )
+    gap = sorted(declared_ids - union - set(certification_excluded_ids))
     if gap:
         raise UKReleaseCertificationError(
             f"certification gap: declared gate ids evaluated by no part: {gap}."

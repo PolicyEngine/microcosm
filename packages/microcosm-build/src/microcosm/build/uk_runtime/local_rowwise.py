@@ -30,9 +30,11 @@ import numpy as np
 import pandas as pd
 from scipy import sparse as sp
 
+from microcosm.build.holdout import rotated_folds, summarize_rotations
 from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_SOLVE_DOCTRINE,
+    UK_LOCAL_TARGET_LOSS_CAP,
 )
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
@@ -48,6 +50,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 from microcosm.calibrate.solve import (
     CONSERVE_MASS,
     FREE_MASS,
+    CalibrationResult,
     calibrate,
     default_target_loss_scales,
     relative_error_loss,
@@ -65,9 +68,13 @@ __all__ = [
     "uk_area_support_summary",
     "uk_ladder_area_support_summary",
     "rowwise_calibration_mass_reason",
+    "rotated_uk_local_holdout",
     "rowwise_area_support_summary",
     "solve_uk_rowwise_weights_under_doctrine",
 ]
+
+UK_LOCAL_HOLDOUT_FOLDS = 5
+UK_LOCAL_HOLDOUT_SEED = 20260529
 
 UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE = "local_binding_adjudications.json"
 
@@ -113,6 +120,7 @@ class UKRowwiseDoctrineSolve:
     """
 
     frame: Frame
+    calibration_result: CalibrationResult
     weights: np.ndarray
     initial_weights: np.ndarray
     diagnostics: pd.DataFrame
@@ -430,9 +438,7 @@ def require_adjudicated_uk_local_binding(
     """Require in-force review records before binding fenced UK local families."""
 
     census_payload = (
-        local_target_census.load_uk_local_target_census()
-        if census is None
-        else census
+        local_target_census.load_uk_local_target_census() if census is None else census
     )
     family_rows = _uk_local_census_family_rows(census_payload)
     declared, parsed = _normalise_uk_local_bound_families(
@@ -580,8 +586,7 @@ def _normalise_uk_local_bound_families(
     duplicates = sorted({name for name in declared if declared.count(name) > 1})
     if duplicates:
         raise ValueError(
-            "UK local binding declarations: duplicate bound family(ies) "
-            f"{duplicates}."
+            f"UK local binding declarations: duplicate bound family(ies) {duplicates}."
         )
 
     parsed: dict[str, tuple[str, str]] = {}
@@ -922,6 +927,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         )
     return UKRowwiseDoctrineSolve(
         frame=finished,
+        calibration_result=result,
         weights=np.asarray(result.weights, dtype=np.float64),
         initial_weights=np.asarray(result.initial_weights, dtype=np.float64),
         diagnostics=diagnostics,
@@ -931,6 +937,110 @@ def solve_uk_rowwise_weights_under_doctrine(
         n_nonzero=int(result.n_nonzero),
         past_cap_census=census,
         binding_adjudications=binding_adjudications,
+    )
+
+
+def rotated_uk_local_holdout(
+    frame: Frame,
+    problem: UKRowwiseLocalMatrix,
+    *,
+    epochs: int = 512,
+    learning_rate: float = 0.15,
+    conserve_mass: bool = False,
+    target_records: int | None = None,
+    l0_lambda: float = 0.0,
+    budget_iters: int = 10,
+    solve_seed: int = 0,
+) -> dict[str, object]:
+    """Run the fixed five-fold target rotation through actual local solves."""
+
+    folds = rotated_folds(
+        len(problem.targets),
+        n_folds=UK_LOCAL_HOLDOUT_FOLDS,
+        seed=UK_LOCAL_HOLDOUT_SEED,
+    )
+    all_indices = np.arange(len(problem.targets), dtype=np.int64)
+    fold_rows: list[dict[str, object]] = []
+    for fold_index, holdout_indices in enumerate(folds):
+        train_indices = np.setdiff1d(
+            all_indices,
+            holdout_indices,
+            assume_unique=True,
+        )
+        train_problem = _subset_rowwise_problem(problem, train_indices)
+        train_families = sorted(
+            {
+                f"{local_target_census.family_for_metric(str(row.metric))}/"
+                f"{row.area_type}"
+                for row in train_problem.target_frame.itertuples(index=False)
+            }
+        )
+        train_solve = solve_uk_rowwise_weights_under_doctrine(
+            frame,
+            train_problem,
+            bound_families=train_families,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            conserve_mass=conserve_mass,
+            target_records=target_records,
+            l0_lambda=l0_lambda,
+            budget_iters=budget_iters,
+            seed=solve_seed,
+        )
+        held_targets = problem.targets[holdout_indices]
+        held_estimates = np.asarray(
+            problem.matrix[holdout_indices] @ train_solve.weights,
+            dtype=np.float64,
+        ).reshape(-1)
+        loss = relative_error_loss(
+            held_estimates,
+            held_targets,
+            target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
+        )
+        fold_rows.append(
+            {
+                "fold": fold_index,
+                "n_train_targets": int(len(train_indices)),
+                "n_holdout_targets": int(len(holdout_indices)),
+                "holdout_target_indices": holdout_indices.tolist(),
+                "holdout_loss": loss,
+            }
+        )
+    summary = summarize_rotations(row["holdout_loss"] for row in fold_rows)
+    return {
+        "report_only": True,
+        "method": "rotated_folds",
+        # Declared so a consumer can check that a recorded holdout was
+        # measured under the same cap it is being reported beside, rather
+        # than assuming it across the module boundary.
+        "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
+        "n_folds": summary.n_folds,
+        "seed": UK_LOCAL_HOLDOUT_SEED,
+        "solve_seed": solve_seed,
+        "mean_holdout_loss": summary.mean_holdout_loss,
+        "worst_holdout_loss": summary.worst_holdout_loss,
+        "fold_losses": list(summary.fold_losses),
+        "folds": fold_rows,
+    }
+
+
+def _subset_rowwise_problem(
+    problem: UKRowwiseLocalMatrix,
+    indices: np.ndarray,
+) -> UKRowwiseLocalMatrix:
+    if indices.ndim != 1 or not len(indices):
+        raise ValueError("a rotated local training surface must be non-empty.")
+    target_frame = problem.target_frame.iloc[indices].reset_index(drop=True).copy()
+    target_frame["target_index"] = np.arange(len(target_frame), dtype=np.int64)
+    return UKRowwiseLocalMatrix(
+        matrix=problem.matrix[indices].tocsr(),
+        targets=np.asarray(problem.targets[indices], dtype=np.float64),
+        target_frame=target_frame,
+        area_codes=problem.area_codes,
+        metric_names=problem.metric_names,
+        household_ids=problem.household_ids,
+        assigned_areas=problem.assigned_areas,
+        metric_values=problem.metric_values,
     )
 
 
@@ -1074,7 +1184,9 @@ def uk_ladder_area_support_summary(
             "'household_id' explicitly for row-grain sources)."
         )
     if weight_column not in household.columns:
-        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+        raise ValueError(
+            f"household table must contain weight column {weight_column!r}."
+        )
 
     summaries: dict[str, pd.DataFrame] = {}
     for area_type, assigned_column, ladder_codes in (

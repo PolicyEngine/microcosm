@@ -1305,10 +1305,27 @@ class TestUKGatesManifest:
             "uk_target_fit",
             "uk_input_mass_parity",
             "uk_qrf_tail_concentration",
+            "uk_local_geography_ladder_post_calibration",
+            "uk_local_area_support",
+            "uk_local_target_fit",
+            "uk_local_per_family_fit",
+            "uk_local_weight_ratio",
+            "uk_local_weight_ess",
         ]
-        # Legacy behaviour: every evaluated failure raises, so every
-        # declared entry blocks release.
-        assert all(g.criticality == "release_blocking" for g in manifest.gates)
+        diagnostic = {
+            "uk_local_target_fit",
+            "uk_local_per_family_fit",
+            "uk_local_weight_ratio",
+            "uk_local_weight_ess",
+        }
+        assert {
+            gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
+        } == diagnostic
+        assert all(
+            gate.criticality == "release_blocking"
+            for gate in manifest.gates
+            if gate.id not in diagnostic
+        )
 
     def test_ledger_compile_parity_gates_pin_their_fixture_periods(
         self, manifest

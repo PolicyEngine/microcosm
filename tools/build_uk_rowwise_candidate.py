@@ -34,6 +34,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gate_battery import (
+    BlockingMode,
+    EvidenceContext,
+    GateBatteryBlockedError,
+    GateBatteryRun,
+)
 from microcosm.build.gates import GateResult
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
@@ -52,6 +58,7 @@ from microcosm.build.logbook_adoption import (
     write_error_receipt,
 )
 from microcosm.build.uk_runtime import (
+    UK_GATE_REGISTRY,
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
@@ -66,21 +73,34 @@ from microcosm.build.uk_runtime import (
     ladder_target_provenance,
     load_uk_national_frame,
     load_uk_oa_ladder,
+    local_target_census,
     require_adjudicated_uk_local_binding,
-    rowwise_area_support_summary,
+    rotated_uk_local_holdout,
     solve_uk_rowwise_weights_under_doctrine,
-    uk_geography_ladder_gate,
     uk_household_weight_kind,
+    uk_ladder_area_support_summary,
     uk_time_period,
+    write_uk_calibration_diagnostics,
     write_uk_rowwise_dataset,
 )
+from microcosm.build.uk_runtime.calibration_run import (
+    UK_LOCAL_GATE_SCOPE,
+    finalize_uk_scoped_gate_report,
+    uk_local_gate_scope_exclusions,
+    uk_scoped_gate_manifest,
+)
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import MassChangeRecord
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
 BOUND_NATIONAL_TARGETS: tuple[str, ...] = ()
 CANDIDATE_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise_candidate.h5"
+LOCAL_GATE_REPORT_FILENAME_TEMPLATE = (
+    "populace_uk_{source_year}_rowwise_candidate.local_gates.json"
+)
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 SOLVE_DIAGNOSTICS_FILENAME = "solve_diagnostics.csv"
+CALIBRATION_DIAGNOSTICS_FILENAME = "calibration_diagnostics.json"
 AREA_SUPPORT_FILENAME = "area_support_summary.csv"
 PAST_CAP_FILENAME = "past_cap_census.json"
 
@@ -89,6 +109,7 @@ _TARGET_RECORDS: int | None = None
 _L0_LAMBDA = 0.0
 _BUDGET_ITERS = 10
 _UK_CANDIDATE_PIPELINE = "uk-local-candidate"
+_LOCAL_GATE_POLICY_SUFFIX = "local_candidate"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PAST_CAP_COUNT_KEYS = (
     "n_targets",
@@ -441,30 +462,46 @@ def _run_candidate(
                 "calibrated frame's latest mass record is not the calibration "
                 f"record: {calibration_record.reason!r}."
             )
-        candidate_gate = uk_geography_ladder_gate(
+        support = _candidate_area_support(
             solve.frame.table("household"),
-            np.asarray(solve.weights, dtype=np.float64),
+            ladder,
+            weights=solve.weights,
         )
-        if not candidate_gate.passed:
-            refusal_path = (
-                out_dir / "logbook-receipts" / state.build_id / "candidate-refusal.json"
+        _validate_support_summary(support)
+        local_diagnostics = _local_gate_diagnostics(solve.diagnostics)
+        target_registry, target_geography_levels = _local_diagnostics_registry(
+            solve,
+            problem,
+        )
+        try:
+            gate_report, candidate_gate = _run_local_gate_battery(
+                frame=solve.frame,
+                support=support,
+                diagnostics=local_diagnostics,
+                report_path=output_paths["local_gates"],
+                release_id=state.build_id,
             )
-            atomic_write_json(
-                refusal_path,
-                {"gate": _gate_payload(candidate_gate, phase="post_calibration")},
+        except GateBatteryBlockedError:
+            _apply_gate_verdicts(
+                state,
+                json.loads(output_paths["local_gates"].read_text(encoding="utf-8")),
+                output_paths["local_gates"],
             )
-            state.gate_verdicts["uk_geography_ladder_post_calibration"] = {
-                "verdict": "failed",
-                "receipt": (
-                    f"{local_artifact_reference(refusal_path, repository_hint=_REPOSITORY)}"
-                    "#/gate"
-                ),
-            }
-            raise ValueError(
-                "UK geography ladder gate failed on calibrated candidate weights: "
-                + "; ".join(candidate_gate.failures)
-            )
+            raise
+        _apply_gate_verdicts(state, gate_report, output_paths["local_gates"])
         append_phase(state, "candidate_gated")
+
+        rotated_holdout = rotated_uk_local_holdout(
+            clone.frame,
+            problem,
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            conserve_mass=_CONSERVE_MASS,
+            target_records=_TARGET_RECORDS,
+            l0_lambda=_L0_LAMBDA,
+            budget_iters=_BUDGET_ITERS,
+            solve_seed=args.seed,
+        )
 
         candidate = dataclasses.replace(
             clone,
@@ -472,12 +509,6 @@ def _run_candidate(
             gate=candidate_gate,
             output_path=None,
         )
-        support = rowwise_area_support_summary(
-            problem,
-            solve.weights,
-            source_household_ids=household["source_household_id"].tolist(),
-        )
-        _validate_support_summary(support)
         _assert_artifacts_unchanged(
             input_h5=input_h5,
             input_artifact=input_artifact,
@@ -491,6 +522,10 @@ def _run_candidate(
             clone=clone,
             problem=problem,
             solve=solve,
+            local_diagnostics=local_diagnostics,
+            target_registry=target_registry,
+            target_geography_levels=target_geography_levels,
+            rotated_holdout=rotated_holdout,
             support=support,
             calibration_record=calibration_record,
             source_year=source_year,
@@ -501,24 +536,6 @@ def _run_candidate(
             cross_grain=cross_grain,
         )
         append_phase(state, "published")
-        manifest_path = output_paths["manifest"]
-        state.gate_verdicts = {
-            "uk_geography_ladder_post_calibration": {
-                "verdict": "passed",
-                "receipt": f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}#/gate",
-            },
-            "uk_target_fit": {
-                "verdict": "passed",
-                "receipt": (
-                    f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}"
-                    "#/solve/max_abs_relative_error"
-                ),
-            },
-            "uk_area_support": {
-                "verdict": "passed",
-                "receipt": f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}#/support",
-            },
-        }
         state.artifact_location = local_artifact_reference(
             output_paths["dataset"],
             repository_hint=_REPOSITORY,
@@ -640,6 +657,172 @@ def _build_bound_problem(
     }
 
 
+def _candidate_area_support(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    *,
+    weights: np.ndarray,
+) -> pd.DataFrame:
+    weighted_household = household.copy()
+    weighted_household["household_weight"] = np.asarray(weights, dtype=np.float64)
+    summaries = uk_ladder_area_support_summary(weighted_household, ladder)
+    return pd.concat(
+        (
+            summaries["constituency"].assign(geography_level="constituency"),
+            summaries["la"].assign(geography_level="local_authority"),
+        ),
+        ignore_index=True,
+    )[
+        [
+            "geography_level",
+            "area_code",
+            "assigned_households",
+            "nonzero_households",
+            "nonzero_source_households",
+            "weight_sum",
+            "max_weight",
+            "effective_sample_size",
+        ]
+    ]
+
+
+def _local_gate_diagnostics(diagnostics: pd.DataFrame) -> pd.DataFrame:
+    family_by_area_type: dict[str, str] = {}
+    for bound_family in BOUND_TARGET_FAMILIES:
+        family, separator, area_type = bound_family.partition("/")
+        if not family or not separator or not area_type:
+            raise ValueError(
+                f"bound target family {bound_family!r} must be family/area_type."
+            )
+        if area_type in family_by_area_type:
+            raise ValueError(
+                f"multiple bound target families claim area type {area_type!r}."
+            )
+        family_by_area_type[area_type] = family
+    result = diagnostics.copy()
+    result["family"] = result["area_type"].map(family_by_area_type)
+    if result["family"].isna().any():
+        unknown = sorted(result.loc[result["family"].isna(), "area_type"].unique())
+        raise ValueError(
+            f"local diagnostics contain unclassified area type(s): {unknown}."
+        )
+    return result
+
+
+def _local_diagnostics_registry(
+    solve: UKRowwiseDoctrineSolve,
+    problem: UKRowwiseLocalMatrix,
+) -> tuple[TargetRegistry, dict[str, str]]:
+    targets = tuple(solve.calibration_result.problem.targets)
+    if len(targets) != len(problem.target_frame):
+        raise RuntimeError("local diagnostics registry is not aligned to the solve.")
+    specs: list[TargetSpec] = []
+    geography: dict[str, str] = {}
+    for target, row in zip(
+        targets,
+        problem.target_frame.itertuples(index=False),
+        strict=True,
+    ):
+        metric = str(row.metric)
+        spec = TargetSpec(
+            name=str(target.name),
+            entity=str(target.entity),
+            value=float(target.value),
+            measure=f"rowwise_metric:{metric}",
+            filter=f"rowwise_area:{row.area_code}",
+            period=target.period,
+            source=str(target.source),
+            family=local_target_census.family_for_metric(metric),
+            metadata={key: str(value) for key, value in target.metadata.items()},
+        )
+        specs.append(spec)
+        geography[spec.to_target().row_name] = str(row.area_type)
+    return TargetRegistry(specs, country="uk"), geography
+
+
+def _run_local_gate_battery(
+    *,
+    frame: Any,
+    support: pd.DataFrame,
+    diagnostics: pd.DataFrame,
+    report_path: Path,
+    release_id: str,
+) -> tuple[dict[str, object], GateResult]:
+    manifest = uk_scoped_gate_manifest(
+        UK_LOCAL_GATE_SCOPE,
+        phases=("terminal",),
+        policy_suffix=_LOCAL_GATE_POLICY_SUFFIX,
+    )
+    battery = GateBatteryRun(
+        manifest,
+        release_id=release_id,
+        report_path=report_path,
+        release_candidate=False,
+        registry=UK_GATE_REGISTRY,
+    )
+    phase = battery.run_phase(
+        "terminal",
+        EvidenceContext(
+            frame=frame,
+            artifacts={
+                "uk_area_support_summary": support,
+                "local_target_diagnostics": diagnostics,
+            },
+        ),
+    )
+    try:
+        battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    except GateBatteryBlockedError:
+        payload = battery.report_payload()
+        finalize_uk_scoped_gate_report(
+            payload,
+            posture="local_candidate",
+            scope_exclusions=uk_local_gate_scope_exclusions(),
+            aggregate_admin_measurement=None,
+        )
+        atomic_write_json(report_path, payload)
+        raise
+    payload = battery.report_payload()
+    finalize_uk_scoped_gate_report(
+        payload,
+        posture="local_candidate",
+        scope_exclusions=uk_local_gate_scope_exclusions(),
+        aggregate_admin_measurement=None,
+    )
+    atomic_write_json(report_path, payload)
+    ladder = next(
+        outcome
+        for outcome in phase.outcomes
+        if outcome.entry.id == "uk_local_geography_ladder_post_calibration"
+    )
+    if ladder.result is None or not ladder.result.passed:
+        raise RuntimeError(
+            "a non-passing local geography-ladder result escaped battery enforcement."
+        )
+    return payload, ladder.result
+
+
+def _apply_gate_verdicts(
+    state: AttemptState,
+    report: Mapping[str, object],
+    report_path: Path,
+) -> None:
+    gates = report.get("gates")
+    if not isinstance(gates, Mapping) or set(gates) != set(UK_LOCAL_GATE_SCOPE):
+        raise RuntimeError("local gate report does not cover the declared scope.")
+    receipt = local_artifact_reference(report_path, repository_hint=_REPOSITORY)
+    state.gate_verdicts = {
+        gate_id: {
+            "verdict": str(payload["status"]),
+            "receipt": f"{receipt}#/gates/{gate_id}",
+        }
+        for gate_id, payload in gates.items()
+        if isinstance(payload, Mapping)
+    }
+    if set(state.gate_verdicts) != set(UK_LOCAL_GATE_SCOPE):
+        raise RuntimeError("local gate verdicts are malformed.")
+
+
 def _dry_run_plan(
     args: argparse.Namespace,
     *,
@@ -684,6 +867,10 @@ def _write_output_bundle(
     clone: UKLadderRowwiseDatasetResult,
     problem: UKRowwiseLocalMatrix,
     solve: UKRowwiseDoctrineSolve,
+    local_diagnostics: pd.DataFrame,
+    target_registry: TargetRegistry,
+    target_geography_levels: Mapping[str, str],
+    rotated_holdout: Mapping[str, object],
     support: pd.DataFrame,
     calibration_record: MassChangeRecord,
     source_year: int,
@@ -711,9 +898,25 @@ def _write_output_bundle(
             flush=True,
         )
         write_uk_rowwise_dataset(candidate, staged["dataset"])
-        solve.diagnostics.to_csv(staged["diagnostics"], index=False)
+        local_diagnostics.to_csv(staged["diagnostics"], index=False)
         support.to_csv(staged["support"], index=False)
         staged["past_cap"].write_text(_json_text(dict(solve.past_cap_census or {})))
+        write_uk_calibration_diagnostics(
+            solve.calibration_result,
+            staged["calibration_diagnostics"],
+            solve.frame,
+            target_geography_levels=target_geography_levels,
+            target_registry=target_registry,
+            local_area_support=support,
+            rotated_holdout=rotated_holdout,
+            build={
+                "build_kind": "uk_rowwise_calibrated_candidate",
+                "candidate_scope": "adjudicated_partial",
+            },
+        )
+        calibration_diagnostics = json.loads(
+            staged["calibration_diagnostics"].read_text(encoding="utf-8")
+        )
 
         outputs = {
             "dataset": _artifact_info(
@@ -732,6 +935,11 @@ def _write_output_bundle(
                 staged["past_cap"],
                 reported_path=output_paths["past_cap"],
             ),
+            "calibration_diagnostics": _artifact_info(
+                staged["calibration_diagnostics"],
+                reported_path=output_paths["calibration_diagnostics"],
+            ),
+            "local_gate_report": _artifact_info(output_paths["local_gates"]),
         }
         manifest = _manifest(
             args,
@@ -746,6 +954,7 @@ def _write_output_bundle(
             ladder_artifact=ladder_artifact,
             target_provenance=target_provenance,
             cross_grain=cross_grain,
+            calibration_diagnostics=calibration_diagnostics,
             outputs=outputs,
         )
         staged["manifest"].write_text(_json_text(manifest))
@@ -769,6 +978,7 @@ def _manifest(
     ladder_artifact: Mapping[str, Any],
     target_provenance: Mapping[str, Any],
     cross_grain: Mapping[str, Any],
+    calibration_diagnostics: Mapping[str, Any],
     outputs: Mapping[str, Any],
 ) -> dict[str, Any]:
     abs_errors = solve.diagnostics["abs_relative_error"].to_numpy(dtype=np.float64)
@@ -828,6 +1038,19 @@ def _manifest(
             "median_abs_relative_error": float(np.median(abs_errors)),
             "n_nonzero": int(solve.n_nonzero),
             "past_cap": {key: int(past_cap[key]) for key in _PAST_CAP_COUNT_KEYS},
+        },
+        "diagnostics": {
+            "schema_version": calibration_diagnostics["schema_version"],
+            "target_registry": calibration_diagnostics["target_registry"],
+            "weakest_families": calibration_diagnostics["uk_diagnostics"][
+                "weakest_families"
+            ],
+            "weakest_areas_by_fit": calibration_diagnostics["uk_diagnostics"][
+                "weakest_areas_by_fit"
+            ],
+            "rotated_holdout": calibration_diagnostics["uk_diagnostics"][
+                "rotated_holdout"
+            ],
         },
         "support": {
             "min_assigned_households": int(support["assigned_households"].min()),
@@ -909,8 +1132,11 @@ def _validate_solve_result(
 
 def _validate_support_summary(support: pd.DataFrame) -> None:
     required = {
+        "geography_level",
+        "area_code",
         "assigned_households",
         "nonzero_households",
+        "nonzero_source_households",
         "effective_sample_size",
     }
     missing = sorted(required - set(support.columns))
@@ -918,7 +1144,8 @@ def _validate_support_summary(support: pd.DataFrame) -> None:
         raise RuntimeError(
             f"area support summary is empty or missing required columns: {missing}."
         )
-    values = support[list(required)].to_numpy(dtype=np.float64)
+    numeric = sorted(required - {"geography_level", "area_code"})
+    values = support[numeric].to_numpy(dtype=np.float64)
     if not np.isfinite(values).all() or (values < 0).any():
         raise RuntimeError("area support summary contains invalid values.")
 
@@ -939,13 +1166,16 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
 
 
 def _output_paths(out_dir: Path, *, source_year: int) -> dict[str, Path]:
+    dataset = out_dir / CANDIDATE_FILENAME_TEMPLATE.format(source_year=source_year)
     return {
-        "dataset": out_dir
-        / CANDIDATE_FILENAME_TEMPLATE.format(source_year=source_year),
+        "dataset": dataset,
         "manifest": out_dir / MANIFEST_FILENAME,
         "diagnostics": out_dir / SOLVE_DIAGNOSTICS_FILENAME,
         "support": out_dir / AREA_SUPPORT_FILENAME,
         "past_cap": out_dir / PAST_CAP_FILENAME,
+        "calibration_diagnostics": out_dir / CALIBRATION_DIAGNOSTICS_FILENAME,
+        "local_gates": out_dir
+        / LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(source_year=source_year),
     }
 
 
@@ -984,6 +1214,7 @@ def _publish_staged_files(
         "diagnostics",
         "support",
         "past_cap",
+        "calibration_diagnostics",
         "manifest",
     )
     published: list[Path] = []

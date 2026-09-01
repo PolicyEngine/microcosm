@@ -224,10 +224,10 @@ stretches on declaration alone:
 
 | | BE | UK |
 | --- | --- | --- |
-| phases | `terminal` | `preflight`, `terminal` |
-| entries | 9 | 13 |
+| phases | `terminal` | `preflight`, `assembled`, `transferred`, `terminal` |
+| entries | 9 | 43 (37 national-build entries plus 6 local-candidate entries) |
 | incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export/target parity against the pinned enhanced-FRS incumbent |
-| criticality mix | 8 blocking + 1 diagnostic | all blocking |
+| criticality mix | 8 blocking + 1 diagnostic | 39 blocking + 4 local diagnostics |
 
 The differences are entirely in the two country inputs — the spec file
 and the registry — which is the point. The UK national build is the
@@ -235,6 +235,14 @@ executor's production consumer: it constructs one `GateBatteryRun` per
 build and runs both phases under `BLOCKS_ARTIFACT` (preflight before the
 frame loads, terminal immediately before the staging writer), while BE
 remains spec-only.
+
+UK evaluates the declaration through four producer scopes: spine,
+calibration seam, national release cut, and local candidate. The first three
+compose the national release certification. The six local-candidate entries
+are explicitly classified as excluded from that certification until the
+local publication work in #146; they are evaluated in their own signed
+`local_candidate` report rather than silently disappearing from union
+accounting.
 
 ## The reference rule
 

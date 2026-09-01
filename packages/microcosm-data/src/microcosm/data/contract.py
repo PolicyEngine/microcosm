@@ -375,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12aab28f1e8e49347887c53fe1fabd228a5eda045964d65224390e0ce8b118d5"
+    "bcbcfd552424313b0843bc68ad64afea04c3b4146b01458cc9fdaf54b85aea82"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "efdb12a1f97421197871aefbb7de4be90e5d9a4f0461e6c6e72e5dcc8cf65089"
+    "76c861d48d48d73fd8f18f3d5cddac2855294c2839105ca2b6ac9a8a9d4b5f2f"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "96186a467471393be608dc638f8288db9ebfdcf2f54a1afbaf8f070db6716746"
+    "dfbad2aa2930ef7e615742bd43bccd6cadaeb77ceb46f9161bb81b715dda20aa"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -407,9 +407,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_qrf_tail_concentration": "qrf_tail_concentration",
 }
 #: Spec entry id -> (gate, phase), mirrored per entry so a report cannot
-#: relabel an entry's identity. Every entry in this vintage is
-#: release_blocking with no declared excuse, so criticality and
-#: not_applicable are enforced globally rather than per entry.
+#: relabel an entry's identity.
 _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_release_input_coverage_manifest_current": (
         "release_input_coverage",
@@ -476,8 +474,25 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_target_fit": ("target_fit", "terminal"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
     "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
+    "uk_local_geography_ladder_post_calibration": (
+        "spine_agreement",
+        "terminal",
+    ),
+    "uk_local_area_support": ("area_support", "terminal"),
+    "uk_local_target_fit": ("target_fit", "terminal"),
+    "uk_local_per_family_fit": ("per_family_fit", "terminal"),
+    "uk_local_weight_ratio": ("weight_ratio", "terminal"),
+    "uk_local_weight_ess": ("weight_ess", "terminal"),
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
+_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
+    {
+        "uk_local_target_fit",
+        "uk_local_per_family_fit",
+        "uk_local_weight_ratio",
+        "uk_local_weight_ess",
+    }
+)
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
@@ -557,6 +572,16 @@ _UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_enhanced_frs.json"
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
+_UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
+    {
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_area_support",
+        "uk_local_target_fit",
+        "uk_local_per_family_fit",
+        "uk_local_weight_ratio",
+        "uk_local_weight_ess",
+    }
+)
 _UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
     "spine": ("assembled", "transferred"),
     "calibration_seam": ("terminal",),
@@ -2562,15 +2587,29 @@ def _check_uk_gate_battery_report(
                     f"{owner}.phase must be {pinned_phase!r} per the committed "
                     f"spec, got {outcome.get('phase')!r}."
                 )
+        # Criticality is pinned per entry against the committed spec, so a
+        # relabel in either direction is a failure and cannot dodge the
+        # shippability recompute below.  `unreached`, `not_applicable` and
+        # any status outside the taxonomy are already refused above for every
+        # entry, diagnostic ones included; what the diagnostic label buys is
+        # only that `failed`/`evidence_absent` do not block, which is the
+        # declared posture for the four local fit gates until microcosm#762
+        # arms them.
+        expected_criticality = (
+            "diagnostic"
+            if entry_id in _UK_GATE_BATTERY_DIAGNOSTIC_IDS
+            else "release_blocking"
+        )
         criticality = outcome.get("criticality")
-        if criticality != "release_blocking":
-            # Every entry in this vintage blocks; a relabel to diagnostic
-            # would dodge the shippability recompute below.
+        if criticality != expected_criticality:
             failures.append(
-                f"{owner}.criticality must be 'release_blocking' per the "
+                f"{owner}.criticality must be {expected_criticality!r} per the "
                 f"committed spec, got {criticality!r}."
             )
-        elif status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES:
+        elif (
+            criticality == "release_blocking"
+            and status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES
+        ):
             # Shippability is recomputed here, per entry, instead of
             # trusting the report's own shippable flag.
             failures.append(
@@ -2947,9 +2986,12 @@ def _check_uk_release_certification(
     for scope in _UK_CERTIFICATION_PART_SCOPES.values():
         for gate_id in scope:
             union[gate_id] = union.get(gate_id, 0) + 1
-    if set(union) != _UK_GATE_BATTERY_ENTRY_IDS:
+    if set(union) | set(_UK_CERTIFICATION_EXCLUDED_GATE_IDS) != (
+        _UK_GATE_BATTERY_ENTRY_IDS
+    ):
         failures.append(
-            f"{file} mirrored part scopes do not union to the declared gate-entry set."
+            f"{file} mirrored part scopes plus certification exclusions do not "
+            "cover the declared gate-entry set."
         )
     overlap = sorted(
         gate_id
@@ -2991,6 +3033,13 @@ def _check_uk_release_certification(
             failures.append(
                 f"{file} spec.shared_gate_ids must be "
                 f"{sorted(_UK_CERTIFICATION_SHARED_GATE_IDS)}."
+            )
+        if list(spec.get("certification_excluded_gate_ids", ())) != sorted(
+            _UK_CERTIFICATION_EXCLUDED_GATE_IDS
+        ):
+            failures.append(
+                f"{file} spec.certification_excluded_gate_ids must be "
+                f"{sorted(_UK_CERTIFICATION_EXCLUDED_GATE_IDS)}."
             )
 
     if (
