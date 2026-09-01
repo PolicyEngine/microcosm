@@ -27,7 +27,10 @@ from microcosm.calibrate import (
 UK_LOCAL_ACTIVE_REFERENCE_COUNT = 17_077
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 UK_LOCAL_SCORE_LOSS_CAP = 10.0
-UK_LOCAL_SCORE_HOLDOUT_BASIS = "none_declared"
+#: The incumbent is scored from published weights, never re-solved, so no
+#: incumbent holdout exists to place beside the candidate's rotation.
+UK_LOCAL_INCUMBENT_HOLDOUT_BASIS = "none_available_incumbent_not_resolved"
+_HOUSEHOLD_ID_COLUMN = "household_id"
 
 
 def _sha256_file(path: str | Path) -> str:
@@ -88,15 +91,120 @@ def _candidate_estimates(
     return estimates
 
 
+def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
+    """Read the candidate's measured rotated holdout out of its diagnostics.
+
+    The candidate driver runs the rotation and publishes it in the same
+    schema-v6 payload this scorer already reads, so a receipt that reported
+    ``none_declared`` beside it would be understating what was measured.  The
+    block is required: a candidate whose diagnostics carry no rotation is
+    refused rather than scored on its fitted surface alone.
+    """
+
+    uk_diagnostics = diagnostics.get("uk_diagnostics")
+    if not isinstance(uk_diagnostics, Mapping):
+        raise ValueError("candidate diagnostics must carry a uk_diagnostics block.")
+    holdout = uk_diagnostics.get("rotated_holdout")
+    if not isinstance(holdout, Mapping):
+        raise ValueError(
+            "candidate diagnostics must carry uk_diagnostics.rotated_holdout; "
+            "scoring a candidate with no measured holdout is refused."
+        )
+    method = str(holdout.get("method") or "")
+    n_folds = holdout.get("n_folds")
+    seed = holdout.get("seed")
+    if (
+        not method
+        or isinstance(n_folds, bool)
+        or not isinstance(n_folds, int)
+        or n_folds < 2
+        or isinstance(seed, bool)
+        or not isinstance(seed, int)
+    ):
+        raise ValueError("candidate rotated holdout declares no usable basis.")
+    losses: dict[str, float] = {}
+    for key in ("mean_holdout_loss", "worst_holdout_loss"):
+        raw = holdout.get(key)
+        if (
+            not isinstance(raw, (int, float))
+            or isinstance(raw, bool)
+            or not math.isfinite(float(raw))
+        ):
+            raise ValueError(f"candidate rotated holdout has an invalid {key}.")
+        losses[key] = float(raw)
+    fold_losses = holdout.get("fold_losses")
+    if not isinstance(fold_losses, list) or len(fold_losses) != n_folds:
+        raise ValueError(
+            "candidate rotated holdout must report one loss per declared fold."
+        )
+    return {
+        "basis": f"{method}:n_folds={n_folds}:seed={seed}",
+        "method": method,
+        "n_folds": n_folds,
+        "seed": seed,
+        "fold_losses": [float(value) for value in fold_losses],
+        **losses,
+    }
+
+
+def _align_on_household_id(
+    incumbent_weights: pd.DataFrame,
+    incumbent_metrics: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Join the two incumbent tables on ``household_id``.
+
+    A row-count check passes for any permutation of the right size, so pairing
+    these tables by position scores the incumbent from mismatched households
+    and reports it as a win or a loss rather than as an error
+    (``uk-data#468``).  The join is the check: it must be total and unique on
+    both sides, and both tables are returned on one household order.
+    """
+
+    aligned: list[pd.DataFrame] = []
+    for label, frame in (
+        ("incumbent wide weights", incumbent_weights),
+        ("incumbent household metrics", incumbent_metrics),
+    ):
+        if _HOUSEHOLD_ID_COLUMN not in frame.columns:
+            raise ValueError(
+                f"{label} must carry a {_HOUSEHOLD_ID_COLUMN!r} column; "
+                "positional pairing is not a join."
+            )
+        keys = frame[_HOUSEHOLD_ID_COLUMN]
+        if keys.isna().any():
+            raise ValueError(f"{label} has missing {_HOUSEHOLD_ID_COLUMN} values.")
+        indexed = frame.set_index(_HOUSEHOLD_ID_COLUMN)
+        if not indexed.index.is_unique:
+            duplicates = sorted(
+                {str(key) for key in indexed.index[indexed.index.duplicated()]}
+            )
+            raise ValueError(
+                f"{label} repeats {_HOUSEHOLD_ID_COLUMN!r} value(s): {duplicates[:10]}."
+            )
+        aligned.append(indexed)
+
+    weights, metrics = aligned
+    if set(weights.index) != set(metrics.index):
+        missing = sorted({str(key) for key in set(weights.index) - set(metrics.index)})
+        extra = sorted({str(key) for key in set(metrics.index) - set(weights.index)})
+        raise ValueError(
+            "incumbent weights and household metrics must cover the same "
+            f"households; missing_from_metrics={missing[:10]}, "
+            f"missing_from_weights={extra[:10]}."
+        )
+    order = weights.index
+    return weights, metrics.reindex(order)
+
+
 def _incumbent_estimates(
     registry: TargetRegistry,
     incumbent_weights: pd.DataFrame,
     incumbent_metrics: pd.DataFrame,
 ) -> dict[str, float]:
-    if len(incumbent_weights) != len(incumbent_metrics):
-        raise ValueError(
-            "incumbent weights and household metrics must have the same row count."
-        )
+    incumbent_weights, incumbent_metrics = _align_on_household_id(
+        incumbent_weights,
+        incumbent_metrics,
+    )
     estimates: dict[str, float] = {}
     for spec in registry.specs:
         area = str(spec.metadata.get("ledger_geography_id") or "")
@@ -157,6 +265,7 @@ def score_uk_local_candidate(
             f"UK local scoring requires target period {target_period}; "
             f"mismatches={wrong_period[:10]}."
         )
+    holdout = _candidate_holdout(candidate_diagnostics)
     candidate = _candidate_estimates(candidate_diagnostics, target_registry)
     incumbent = _incumbent_estimates(
         target_registry,
@@ -203,19 +312,23 @@ def score_uk_local_candidate(
     candidate_loss = float(np.mean(candidate_losses))
     incumbent_loss = float(np.mean(incumbent_losses))
     return {
-        "candidate_train_loss": candidate_loss,
-        "candidate_holdout_loss": None,
-        "candidate_full_loss": candidate_loss,
-        "incumbent_train_loss": incumbent_loss,
+        "candidate_fitted_surface_loss": candidate_loss,
+        "candidate_holdout_loss": holdout["mean_holdout_loss"],
+        "incumbent_fitted_surface_loss": incumbent_loss,
         "incumbent_holdout_loss": None,
-        "incumbent_full_loss": incumbent_loss,
         "candidate_target_wins": candidate_wins,
         "incumbent_target_wins": incumbent_wins,
-        "holdout_basis": UK_LOCAL_SCORE_HOLDOUT_BASIS,
+        "holdout_basis": holdout["basis"],
+        "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
+        "candidate_holdout": holdout,
         "loss": {
             "objective": "relative_error_loss",
             "target_loss_cap": UK_LOCAL_SCORE_LOSS_CAP,
-            "train_equals_full": True,
+            # The head-to-head counters below compare both sides on the
+            # surface the candidate was fitted to; only the candidate has a
+            # held-out measurement, and it is reported beside them, never as
+            # part of them.
+            "head_to_head_surface": "candidate_fitted_surface",
         },
         "register": {
             "country": target_registry.country,

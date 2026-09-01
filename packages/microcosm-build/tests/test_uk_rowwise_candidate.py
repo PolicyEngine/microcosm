@@ -402,7 +402,8 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert calibration_diagnostics["schema_version"] == 6
     uk_diagnostics = calibration_diagnostics["uk_diagnostics"]
     assert len(uk_diagnostics["weakest_families"]) == 1
-    assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_15"]) == 4
+    assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_by_fit"]) == 4
+    assert uk_diagnostics["weakest_areas_by_fit"]["n_areas_scored"] == 4
     assert {
         row["country"] for row in uk_diagnostics["weakest_areas_by_fit"]["countries"]
     } == {

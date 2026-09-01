@@ -155,7 +155,7 @@ def uk_weakest_areas_by_fit(
     area_support: pd.DataFrame,
     *,
     limit: int = _AREA_FIT_LIMIT,
-) -> dict[str, list[dict[str, object]]]:
+) -> dict[str, object]:
     """Return bottom-by-fit local areas plus country-level fit rollups."""
 
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
@@ -260,7 +260,15 @@ def uk_weakest_areas_by_fit(
                 }
             )
     countries.sort(key=lambda row: (str(row["country"]), str(row["geography_level"])))
-    return {"bottom_15": area_rows[:limit], "countries": countries}
+    # Keyed by role, not by a count: the limit is a parameter, so a fixed
+    # "bottom_15" name would disagree with the list whenever a caller passes
+    # anything else, or whenever fewer areas were scored than the limit.
+    return {
+        "limit": limit,
+        "n_areas_scored": len(area_rows),
+        "bottom_by_fit": area_rows[:limit],
+        "countries": countries,
+    }
 
 
 def _country_for_area(area_code: str) -> str:

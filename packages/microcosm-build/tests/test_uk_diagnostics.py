@@ -103,12 +103,16 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert families[0]["loss_contribution"] == pytest.approx(0.29)
 
     areas = uk_weakest_areas_by_fit(rows, support)
-    assert set(areas) == {"bottom_15", "countries"}
-    assert [row["area_code"] for row in areas["bottom_15"]] == [
+    assert set(areas) == {"limit", "n_areas_scored", "bottom_by_fit", "countries"}
+    # The reported list is keyed by role and carries its own limit, so the key
+    # never asserts a count the list does not have.
+    assert areas["limit"] == 15
+    assert areas["n_areas_scored"] == 2
+    assert [row["area_code"] for row in areas["bottom_by_fit"]] == [
         "W07000041",
         "E09000001",
     ]
-    assert set(areas["bottom_15"][0]) == {
+    assert set(areas["bottom_by_fit"][0]) == {
         "geography_level",
         "area_code",
         "country",
@@ -130,6 +134,13 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert wales["geography_level"] == "constituency"
     assert wales["n_targets"] == 2
     assert wales["pass_rate"] == pytest.approx(0.5)
+
+    # A caller-supplied limit is reported alongside the list it produced,
+    # rather than being contradicted by a fixed key name.
+    trimmed = uk_weakest_areas_by_fit(rows, support, limit=1)
+    assert trimmed["limit"] == 1
+    assert trimmed["n_areas_scored"] == 2
+    assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
 
 
 def _diagnostics_case(*, with_skipped: bool = False):

@@ -4315,6 +4315,36 @@ def test_exact_k_uk_gate_battery_recomputes_shippability(tmp_path: Path) -> None
     assert "release-blocking with status 'failed'" in failures
 
 
+def test_exact_k_uk_gate_battery_status_checks_cover_diagnostic_entries(
+    tmp_path: Path,
+) -> None:
+    # The diagnostic label exempts an entry from the shippability recompute
+    # and nothing else: a diagnostic gate that compared nothing, or that
+    # carries a status outside the taxonomy, is still refused.
+    for status, expected in (
+        ("not_applicable", "claims not_applicable"),
+        ("unreached", "is unreached"),
+        ("error", "outside the taxonomy"),
+    ):
+        directory, payload = _write_battery_release(tmp_path / status)
+        payload["gates"]["uk_local_target_fit"]["status"] = status
+        _rewrite_battery_report(directory, payload)
+
+        assert expected in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_relabelled_diagnostic_criticality(
+    tmp_path: Path,
+) -> None:
+    # Criticality is pinned per entry, so a blocking gate cannot be relabelled
+    # diagnostic to dodge the recompute, nor the reverse.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["gates"]["uk_local_area_support"]["criticality"] = "diagnostic"
+    _rewrite_battery_report(directory, payload)
+
+    assert "criticality must be 'release_blocking'" in _battery_failures(directory)
+
+
 def test_exact_k_uk_gate_battery_rejects_passed_entry_with_failures(
     tmp_path: Path,
 ) -> None:

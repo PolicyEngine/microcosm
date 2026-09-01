@@ -2587,6 +2587,14 @@ def _check_uk_gate_battery_report(
                     f"{owner}.phase must be {pinned_phase!r} per the committed "
                     f"spec, got {outcome.get('phase')!r}."
                 )
+        # Criticality is pinned per entry against the committed spec, so a
+        # relabel in either direction is a failure and cannot dodge the
+        # shippability recompute below.  `unreached`, `not_applicable` and
+        # any status outside the taxonomy are already refused above for every
+        # entry, diagnostic ones included; what the diagnostic label buys is
+        # only that `failed`/`evidence_absent` do not block, which is the
+        # declared posture for the four local fit gates until microcosm#762
+        # arms them.
         expected_criticality = (
             "diagnostic"
             if entry_id in _UK_GATE_BATTERY_DIAGNOSTIC_IDS
