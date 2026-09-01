@@ -669,6 +669,8 @@ def _empty_column(length: int, token: str, owned_mask: np.ndarray) -> pd.Series:
     dtype = dtype_for_token(token)
     if token in {"boolean", "Int64", "string"}:
         return pd.Series(pd.array([pd.NA] * length, dtype=dtype))
+    if token in {"float32", "float64"}:
+        return pd.Series(np.full(length, np.nan, dtype=dtype))
     if not owned_mask.all():
         raise PopulationError(
             f"A new masked {token!r} column cannot be null outside its owned rows; "

@@ -217,6 +217,30 @@ def test_new_masked_dense_column_is_rejected_as_unrepresentable() -> None:
         patch(population, node, result)
 
 
+def test_new_masked_float_column_uses_nan_for_unowned_rows() -> None:
+    population = _population()
+    node = Node(
+        "new_float",
+        "test@1",
+        inputs=(Slice("person", ("owned",)),),
+        outputs=(Owned("person", "dense_float", "float64", rows="owned"),),
+    )
+    result = KernelResult(
+        columns={
+            ("person", "dense_float"): pd.Series(
+                [7.0, 8.0], index=[2, 4], dtype="float64"
+            )
+        }
+    )
+
+    updated = patch(population, node, result)
+
+    values = updated.frame.table("person")["dense_float"]
+    assert values.dtype == np.dtype("float64")
+    assert values.iloc[[1, 3]].tolist() == [7.0, 8.0]
+    assert values.iloc[[0, 2]].isna().all()
+
+
 def test_weight_transition_is_immediate_explicit_and_records_mass() -> None:
     population = _population()
     node = Node(
