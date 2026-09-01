@@ -2,7 +2,7 @@
 
 ## State
 
-Repository prepared on `node-graph/core`; the frozen contract and baseline are verified.
+The frozen contract is verified and the identity/provenance/view layer is implemented.
 
 ## Done
 
@@ -12,9 +12,11 @@ Repository prepared on `node-graph/core`; the frozen contract and baseline are v
 - Confirmed the locked SHA-256 digests for `decl.py` and `kernel.py` match `docs/graph-interface.lock`.
 - Ran the untouched shard baseline: 16 interface tests pass.
 - Reused the source worktree's synced environment read-only because this lane sandbox denies uv's global cache; all imports are forced to this clone.
+- Implemented strict canonical JSON, domain-separated source/node/artifact/frame identities, and seed derivation.
+- Implemented frozen decisions, complete per-node receipts, stable manifest content identity, JSON verification/round-trip, and attached final-population lookup.
+- Implemented the one-screen node description with runtime receipt highlights; 19 focused tests pass and the touched layer is ruff-clean.
 
 ## Next
 
-- Implement canonicalization, key derivation, manifests, and the one-screen view with focused unit tests.
 - Implement the store/codecs and population semantics.
 - Integrate the executor and run the full charter-oriented unit suite.
