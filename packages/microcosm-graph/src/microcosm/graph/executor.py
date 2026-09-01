@@ -26,6 +26,7 @@ from .decl import (
     Ownership,
     StructuralDelta,
 )
+from .errors import NodeRejectedError
 from .kernel import Capabilities, KernelContext, KernelRegistry, KernelResult
 from .keys import artifact_key, frame_key, node_key, seed, source_content_key
 from .manifest import Decision, NodeReceipt, RunManifest
@@ -38,11 +39,11 @@ from .store import (
     StoreUnavailable,
 )
 
-__all__ = ["NodeRejected", "run_graph"]
+__all__ = ["NodeRejected", "NodeRejectedError", "run_graph"]
 
-
-class NodeRejected(RuntimeError):  # noqa: N818 - acceptance contract spelling
-    """A kernel result violated its node declaration or execution boundary."""
+# Compatibility spelling from the initial interface.  Every rejection is an
+# instance of the amended shared runtime exception.
+NodeRejected = NodeRejectedError
 
 
 def _now() -> str:
@@ -63,6 +64,7 @@ def _capabilities_payload(capabilities: Capabilities) -> dict[str, object]:
         "numeric": capabilities.numeric.value,
         "seed_source": capabilities.seed_source.value,
         "structural": capabilities.structural.value,
+        "role": capabilities.role.value,
         "consumes_se": capabilities.consumes_se,
         "dependencies": list(capabilities.dependencies),
     }
@@ -303,9 +305,8 @@ def _project_context(
         entity_masks[entity] = mask
         tables[entity] = _freeze_frame(table.loc[mask, columns])
 
-    input_entities = {slice_.entity for slice_ in node.inputs}
     weights: dict[str, Weights] = {}
-    for entity in sorted(input_entities):
+    for entity in sorted(projected_entities):
         try:
             effective = frame.resolve_weights(entity)
         except ValueError:
@@ -477,34 +478,30 @@ def _validate_result(
         raise NodeRejected(
             f"Node {node.id!r} result.columns keys must be (entity, column) strings."
         )
-    projected_filter = (
-        node.structural is StructuralDelta.FILTER and result.frame is None
-    )
     if node.structural is StructuralDelta.NONE:
         if got != set(expected):
             raise NodeRejected(
                 f"Node {node.id!r} returned output keys {sorted(got)!r}, not exactly "
                 f"its owned keys {sorted(expected)!r}."
             )
-    elif projected_filter:
-        if population is None:  # pragma: no cover - compiler gives FILTER a base
-            raise NodeRejected(f"FILTER node {node.id!r} has no base population.")
-        coordinate = (population.frame.schema.person_entity, ROWS_ALL)
-        if got != {coordinate}:
-            raise NodeRejected(
-                f"FILTER node {node.id!r} must return only its person mask as "
-                f"{coordinate!r}."
-            )
-        _validate_filter_mask(node, result.columns[coordinate], population)
     elif got:
-        # Structural output lives in the returned Frame.  Accepting a second
-        # column channel would make the authoritative value ambiguous.
         raise NodeRejected(
-            f"Structural node {node.id!r} returned column outputs as well as a Frame."
+            f"Structural node {node.id!r} returned column outputs; structural "
+            "results use frame, keep, or weights."
         )
 
-    if node.structural is StructuralDelta.NONE and result.frame is not None:
-        raise NodeRejected(f"Non-structural node {node.id!r} returned a Frame.")
+    if node.structural is StructuralDelta.FILTER:
+        if population is None:  # pragma: no cover - compiler gives FILTER a base
+            raise NodeRejected(f"FILTER node {node.id!r} has no base population.")
+        _validate_filter_mask(node, result.keep, population)
+    elif result.keep is not None:
+        raise NodeRejected(f"Non-FILTER node {node.id!r} returned a keep mask.")
+
+    if (
+        node.structural not in {StructuralDelta.CREATE, StructuralDelta.EXPAND}
+        and result.frame is not None
+    ):
+        raise NodeRejected(f"Node {node.id!r} returned a Frame outside CREATE/EXPAND.")
     if (
         node.structural
         in {
@@ -560,7 +557,7 @@ def _apply_result(
         assert result.frame is not None
         return _create_population(node, result.frame)
     assert population is not None
-    if node.structural is StructuralDelta.FILTER and result.frame is None:
+    if node.structural is StructuralDelta.FILTER:
         person_entity = population.frame.schema.person_entity
         id_column = population.frame.schema.entity_id_column(person_entity)
         ids = pd.Index(
@@ -568,9 +565,7 @@ def _apply_result(
             name=id_column,
         )
         mask = (
-            result.columns[(person_entity, ROWS_ALL)]
-            .reindex(ids)
-            .to_numpy(dtype=np.bool_, copy=True)
+            result.keep.reindex(ids).to_numpy(dtype=np.bool_, copy=True)  # type: ignore[union-attr]
         )
         result = KernelResult(
             frame=population.frame.select(mask),
@@ -870,20 +865,37 @@ def _load_cached_result(
     if not isinstance(raw_receipt, dict):
         raise StoreCorrupt(f"Cached node {node.id!r} receipt is malformed.")
 
-    # Reapply REWEIGHT to the current base so graph mass checks and ledgers are
-    # reconstructed on a hit.  The stored final frame was loaded above solely
-    # for content validation.
+    # Reapply FILTER/REWEIGHT to the current base so graph mass checks and
+    # ledgers are reconstructed on a hit.  Their stored final frame was loaded
+    # above solely for content validation.
     result_frame = loaded_frame
+    loaded_keep: pd.Series | None = None
+    if (
+        node.structural is StructuralDelta.FILTER
+        and loaded_frame is not None
+        and population is not None
+    ):
+        person_entity = population.frame.schema.person_entity
+        id_column = population.frame.schema.entity_id_column(person_entity)
+        base_ids = population.frame.table(person_entity)[id_column]
+        kept_ids = set(loaded_frame.table(person_entity)[id_column].tolist())
+        loaded_keep = pd.Series(
+            base_ids.isin(kept_ids).to_numpy(dtype=np.bool_),
+            index=pd.Index(base_ids.to_numpy(copy=True), name=id_column),
+            dtype="bool",
+        )
+        result_frame = None
     if (
         node.structural is StructuralDelta.REWEIGHT
         and loaded_weights is not None
         and population is not None
     ):
-        result_frame = population.frame
+        result_frame = None
     return (
         KernelResult(
             columns=MappingProxyType(result_columns),
             frame=result_frame,
+            keep=loaded_keep,
             weights=loaded_weights,
             artifacts=MappingProxyType(opaque),
             receipt=MappingProxyType(raw_receipt),
@@ -993,8 +1005,15 @@ def run_graph(
 
     if resume not in ("auto", "require", "forbid"):
         raise ValueError("resume must be 'auto', 'require', or 'forbid'.")
-    if any(not isinstance(decision, Decision) for decision in decisions):
-        raise TypeError("decisions must contain Decision records.")
+    normalized_decisions: list[Decision] = []
+    for decision in decisions:
+        if isinstance(decision, Decision):
+            normalized_decisions.append(decision)
+        elif isinstance(decision, Mapping):
+            normalized_decisions.append(Decision.from_mapping(decision))
+        else:
+            raise TypeError("decisions must contain Decision records or mappings.")
+    decisions = tuple(normalized_decisions)
 
     started_at = _now()
     source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)

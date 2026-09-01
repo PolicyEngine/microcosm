@@ -40,6 +40,8 @@ def test_domain_hash_prefixes_the_domain_and_nul() -> None:
         sha256_domain("node", payload) == hashlib.sha256(b"node\0payload").hexdigest()
     )
     assert sha256_domain("node", payload) != sha256_domain("frame", payload)
+    with pytest.raises(ValueError, match="must not contain NUL"):
+        sha256_domain("node\0nested", payload)
 
 
 def test_normative_strips_only_declaration_descriptive_fields() -> None:

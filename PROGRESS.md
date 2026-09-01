@@ -2,7 +2,7 @@
 
 ## State
 
-The runtime, store, immutable population transitions, manifest, and public API are implemented; final verification remains.
+The runtime, store, immutable population transitions, manifest, and public API are implemented against the amended frozen interfaces; repository-level verification and publication remain.
 
 ## Done
 
@@ -10,6 +10,7 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Confirmed the implementation branch starts at `517891f41d091e139b1e34f79c772e0f1265b8a3`.
 - Read the acceptance charter, shard README, frozen declarations and kernel interface, interface tests, `Frame` primitives, and repository identity/serialization prior art in the prescribed order.
 - Confirmed the locked SHA-256 digests for `decl.py` and `kernel.py` match `docs/graph-interface.lock`.
+- Rebased onto amended `origin/node-graph` commit `bb0d48d2`, adopted `KernelResult.keep`, `KernelRole`, and the shared Error-suffixed runtime exceptions, and reconfirmed the amended frozen hashes (`729e1487...` and `e650589c...`).
 - Ran the untouched shard baseline: 16 interface tests pass.
 - Reused the source worktree's synced environment read-only because this lane sandbox denies uv's global cache; all imports are forced to this clone.
 - Implemented strict canonical JSON, domain-separated source/node/artifact/frame identities, and seed derivation.
@@ -29,8 +30,9 @@ The runtime, store, immutable population transitions, manifest, and public API a
 - Replaced the package's runtime placeholders with the implemented public APIs and failures; 37 focused executor/manifest/population tests pass together.
 - Made `resume="forbid"` serialize every result through atomic staging without reading or validating an incumbent object, including collision/interruption coverage.
 - Allowed dense floating columns to be created under a row mask with exact-dtype NaNs outside ownership; dense bool/integer columns remain correctly unrepresentable there.
-- Added id-only projections for owned output entities, a FILTER-mask adapter around the frozen no-base-Frame context, per-store codec availability, authoritative capabilities in receipt highlights, and safe omission of ambiguous inherited group weights.
-- The local shard suite now passes all 83 tests; compatible black-box acceptance probes for A3/A5, B1/B2, D1/D2/D5, E2/E5, and G1 also pass un-xfailed.
+- Added id-only projections for owned output entities, executor-applied FILTER masks, per-store codec availability, authoritative capabilities in receipt highlights, and safe omission of ambiguous inherited group weights.
+- Preserved the original acceptance decision-record mapping as a compatibility form of immutable `Decision`, without allowing it into node identities, and rejected embedded NULs in hash domains.
+- The local shard suite now passes all 84 tests; compatible black-box acceptance probes for A3/A5/A7, B1/B2, D1/D2/D5, E2/E5, and G1 also pass un-xfailed.
 
 ## Next
 

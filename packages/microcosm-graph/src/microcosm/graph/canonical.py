@@ -63,6 +63,8 @@ def sha256_domain(domain: str, payload: bytes) -> str:
 
     if not isinstance(domain, str):
         raise TypeError("hash domain must be a string")
+    if "\0" in domain:
+        raise ValueError("hash domain must not contain NUL")
     if not isinstance(payload, bytes):
         raise TypeError("hash payload must be bytes")
     return hashlib.sha256(domain.encode("utf-8") + b"\0" + payload).hexdigest()

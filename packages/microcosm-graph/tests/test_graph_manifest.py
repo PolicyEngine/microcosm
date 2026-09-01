@@ -9,7 +9,7 @@ import pytest
 
 import microcosm.graph as graph_api
 from microcosm.graph.decl import StructuralDelta
-from microcosm.graph.kernel import Capabilities, Determinism, SeedSource
+from microcosm.graph.kernel import Capabilities, Determinism, KernelRole, SeedSource
 from microcosm.graph.manifest import Decision, NodeReceipt, RunManifest
 from microcosm.graph.population import MassRecord
 
@@ -19,6 +19,7 @@ def _capabilities() -> Capabilities:
         determinism=Determinism.SEEDED,
         seed_source=SeedSource.EXECUTOR,
         structural=StructuralDelta.NONE,
+        role=KernelRole.GATE,
         dependencies=("numpy",),
     )
 
@@ -101,6 +102,24 @@ def test_decisions_change_manifest_identity_but_not_node_identity() -> None:
     )
     assert bare.nodes["a"].key == decided.nodes["a"].key
     assert bare.key != decided.key
+
+
+def test_original_signed_decision_records_remain_mapping_compatible() -> None:
+    record = {
+        "name": "publish",
+        "owner": "maria",
+        "signature": "toy-signature-0001",
+    }
+    manifest = RunManifest(
+        "toy",
+        {"a": _receipt("a" * 64)},
+        decisions=(record,),  # type: ignore[arg-type]
+    )
+
+    assert [dict(decision) for decision in manifest.decisions] == [record]
+    restored = RunManifest.from_json(manifest.to_json())
+    assert [dict(decision) for decision in restored.decisions] == [record]
+    assert restored.key == manifest.key
 
 
 def test_decision_and_node_mapping_order_are_not_identity() -> None:
@@ -199,6 +218,9 @@ def test_package_exports_runtime_implementations_and_failures() -> None:
     assert graph_api.Decision is Decision
     assert graph_api.run_graph.__module__.endswith(".executor")
     assert graph_api.describe.__module__.endswith(".view")
-    assert graph_api.StoreCorrupt.__module__.endswith(".store")
-    assert graph_api.StoreUnavailable.__module__.endswith(".store")
-    assert graph_api.NodeRejected.__module__.endswith(".executor")
+    assert graph_api.StoreCorruptError.__module__.endswith(".errors")
+    assert graph_api.StoreUnavailableError.__module__.endswith(".errors")
+    assert graph_api.NodeRejectedError.__module__.endswith(".errors")
+    assert graph_api.StoreCorrupt is graph_api.StoreCorruptError
+    assert graph_api.StoreUnavailable is graph_api.StoreUnavailableError
+    assert graph_api.NodeRejected is graph_api.NodeRejectedError

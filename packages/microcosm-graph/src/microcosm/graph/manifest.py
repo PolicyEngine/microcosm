@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Self
 
 from .canonical import canonical_json, sha256_domain
 from .decl import StructuralDelta
-from .kernel import Capabilities, Determinism, Numeric, SeedSource
+from .kernel import Capabilities, Determinism, KernelRole, Numeric, SeedSource
 from .population import MassRecord
 
 if TYPE_CHECKING:
@@ -51,26 +51,76 @@ def _enum_value(value: object) -> object:
 
 
 @dataclass(frozen=True)
-class Decision:
+class Decision(Mapping[str, str]):
     """A signed human decision carried as provenance, never as a node input."""
 
     owner: str
     kind: str
     text: str
     signed_at: str
+    _record: Mapping[str, str] | None = field(
+        default=None, repr=False, compare=False, kw_only=True
+    )
 
     def __post_init__(self) -> None:
         for name in ("owner", "kind", "text", "signed_at"):
             if not isinstance(getattr(self, name), str):
                 raise TypeError(f"Decision.{name} must be a string")
+        if self._record is not None:
+            if not all(
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in self._record.items()
+            ):
+                raise TypeError("Decision records must map strings to strings")
+            object.__setattr__(self, "_record", MappingProxyType(dict(self._record)))
 
     def _payload(self) -> dict[str, str]:
+        if self._record is not None:
+            return dict(self._record)
         return {
             "owner": self.owner,
             "kind": self.kind,
             "text": self.text,
             "signed_at": self.signed_at,
         }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> Self:
+        """Normalize the current or original acceptance decision record."""
+
+        if set(value) == {"owner", "kind", "text", "signed_at"}:
+            return cls(
+                owner=_string_field(value, "owner"),
+                kind=_string_field(value, "kind"),
+                text=_string_field(value, "text"),
+                signed_at=_string_field(value, "signed_at"),
+            )
+        if set(value) == {"name", "owner", "signature"}:
+            record = {
+                "name": _string_field(value, "name"),
+                "owner": _string_field(value, "owner"),
+                "signature": _string_field(value, "signature"),
+            }
+            return cls(
+                owner=record["owner"],
+                kind=record["name"],
+                text=record["signature"],
+                signed_at="",
+                _record=record,
+            )
+        raise TypeError(
+            "Decision mappings require owner/kind/text/signed_at or "
+            "name/owner/signature fields"
+        )
+
+    def __getitem__(self, key: str) -> str:
+        return self._payload()[key]
+
+    def __iter__(self):
+        return iter(self._payload())
+
+    def __len__(self) -> int:
+        return len(self._payload())
 
 
 @dataclass(frozen=True)
@@ -183,6 +233,7 @@ class NodeReceipt:
                 "numeric": _enum_value(capabilities.numeric),
                 "seed_source": _enum_value(capabilities.seed_source),
                 "structural": _enum_value(capabilities.structural),
+                "role": _enum_value(capabilities.role),
                 "consumes_se": capabilities.consumes_se,
                 "dependencies": capabilities.dependencies,
             },
@@ -232,9 +283,14 @@ class RunManifest:
             nodes[node_id] = receipt
         object.__setattr__(self, "nodes", MappingProxyType(nodes))
 
-        decisions = tuple(self.decisions)
-        if not all(isinstance(decision, Decision) for decision in decisions):
-            raise TypeError("RunManifest.decisions must contain Decision values")
+        decisions = tuple(
+            decision
+            if isinstance(decision, Decision)
+            else Decision.from_mapping(decision)
+            if isinstance(decision, Mapping)
+            else _invalid_decision(decision)
+            for decision in self.decisions
+        )
         object.__setattr__(self, "decisions", decisions)
 
         for name in ("started_at", "finished_at", "host"):
@@ -390,11 +446,16 @@ def _string_field(payload: Mapping[str, object], name: str) -> str:
 def _decision_from_payload(value: object) -> Decision:
     if not isinstance(value, Mapping):
         raise ValueError("manifest decisions must contain objects")
-    return Decision(
-        owner=_string_field(value, "owner"),
-        kind=_string_field(value, "kind"),
-        text=_string_field(value, "text"),
-        signed_at=_string_field(value, "signed_at"),
+    try:
+        return Decision.from_mapping(value)
+    except TypeError as error:
+        raise ValueError(str(error)) from error
+
+
+def _invalid_decision(value: object) -> Decision:
+    raise TypeError(
+        "RunManifest.decisions must contain Decision values or decision mappings; "
+        f"got {type(value).__name__}"
     )
 
 
@@ -414,6 +475,7 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         numeric=Numeric(_string_field(value, "numeric")),
         seed_source=SeedSource(_string_field(value, "seed_source")),
         structural=StructuralDelta(_string_field(value, "structural")),
+        role=KernelRole(str(value.get("role", KernelRole.COMPUTE.value))),
         consumes_se=consumes_se,
         dependencies=tuple(dependencies),
     )

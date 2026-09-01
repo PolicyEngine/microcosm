@@ -40,13 +40,23 @@ from microcosm.frame import (
     nullable_boolean_values_and_mask,
 )
 
+from .errors import (
+    GraphRuntimeError,
+    StoreCorruptError,
+    StoreMissError,
+    StoreUnavailableError,
+)
+
 __all__ = [
     "ContentStore",
     "ResumePolicy",
     "StoreCorrupt",
+    "StoreCorruptError",
     "StoreError",
     "StoreMiss",
+    "StoreMissError",
     "StoreUnavailable",
+    "StoreUnavailableError",
 ]
 
 type ResumePolicy = Literal["auto", "require", "forbid"]
@@ -76,20 +86,12 @@ _DECLARED_DTYPES = frozenset(
 )
 
 
-class StoreError(RuntimeError):
-    """Base class for content-store failures."""
-
-
-class StoreMiss(StoreError):  # noqa: N818 - frozen public contract
-    """The requested content key has no visible object."""
-
-
-class StoreCorrupt(StoreError):  # noqa: N818 - frozen public contract
-    """A visible object fails its metadata or payload integrity contract."""
-
-
-class StoreUnavailable(StoreError):  # noqa: N818 - frozen public contract
-    """The codec or dependency required to load an object is unavailable."""
+# Pre-amendment aliases remain importable for callers that adopted the shard
+# before the shared Error-suffixed exception contract landed.
+StoreError = GraphRuntimeError
+StoreMiss = StoreMissError
+StoreCorrupt = StoreCorruptError
+StoreUnavailable = StoreUnavailableError
 
 
 def _canonical_json(value: object) -> bytes:

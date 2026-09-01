@@ -150,10 +150,8 @@ def _draw(context: KernelContext) -> KernelResult:
 
 def _registry(
     *,
-    implementations: Mapping[str, str] | None = None,
     extra: _Kernel | None = None,
 ) -> KernelRegistry:
-    implementations = dict(implementations or {})
     deterministic = Capabilities(Determinism.DETERMINISTIC)
     registry = KernelRegistry()
     kernels = (
@@ -167,7 +165,6 @@ def _registry(
         _Kernel("leaf@1", deterministic, _draw),
     )
     for kernel in kernels:
-        kernel.implementation = implementations.get(kernel.ref, "base")
         registry.register(kernel)
     if extra is not None:
         registry.register(extra)
@@ -234,7 +231,7 @@ def _run(
     registry: KernelRegistry,
     *,
     resume: str = "auto",
-    decisions: tuple[Decision, ...] = (),
+    decisions: tuple[Decision | Mapping[str, object], ...] = (),
 ):
     return run_graph(
         compile_graph(graph),
@@ -242,7 +239,7 @@ def _run(
         store=store,
         kernels=registry,
         resume=resume,  # type: ignore[arg-type]
-        decisions=decisions,
+        decisions=decisions,  # type: ignore[arg-type]
     )
 
 
@@ -287,7 +284,9 @@ def test_determinism_across_stores_and_zero_kernel_memoization(
     assert warm.population("survey").table("person")["b"].tolist() == [60, 120, 180]
 
 
-def test_exact_param_kernel_source_and_decision_invalidation(tmp_path: Path) -> None:
+def test_exact_param_kernel_source_and_decision_invalidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     source = _source_path(tmp_path / "source")
 
     param_store = ContentStore(tmp_path / "param")
@@ -301,12 +300,13 @@ def test_exact_param_kernel_source_and_decision_invalidation(tmp_path: Path) -> 
 
     code_store = ContentStore(tmp_path / "code")
     code_baseline = _run(_graph(), source, code_store, _registry())
-    changed_code = _run(
-        _graph(),
-        source,
-        code_store,
-        _registry(implementations={"a@1": "changed"}),
+    changed_registry = _registry()
+    monkeypatch.setattr(
+        changed_registry.get("a@1"),
+        "implementation_hash",
+        lambda: "changed",
     )
+    changed_code = _run(_graph(), source, code_store, changed_registry)
     assert {node for node, item in changed_code.nodes.items() if not item.hit} == {
         "a",
         "b",
@@ -320,13 +320,18 @@ def test_exact_param_kernel_source_and_decision_invalidation(tmp_path: Path) -> 
     assert all(not item.hit for item in changed_source.nodes.values())
     assert source_baseline.nodes["survey"].key != changed_source.nodes["survey"].key
 
-    decision = Decision("reviewer", "publish", "approved", "2026-09-01")
+    decision = {
+        "name": "publish",
+        "owner": "reviewer",
+        "signature": "toy-signature-0001",
+    }
     decided = _run(_graph(), source, source_store, _registry(), decisions=(decision,))
     assert all(item.hit for item in decided.nodes.values())
     assert {node: item.key for node, item in decided.nodes.items()} == {
         node: item.key for node, item in changed_source.nodes.items()
     }
     assert decided.key != changed_source.key
+    assert [dict(record) for record in decided.decisions] == [decision]
 
 
 def test_inert_fields_order_and_leaf_removal_do_not_move_survivors(
@@ -540,6 +545,7 @@ def test_output_entity_receives_only_its_structural_id_view(tmp_path: Path) -> N
 
     def cross_entity(context: KernelContext) -> KernelResult:
         assert set(context.tables) == {"person", "household"}
+        assert set(context.weights) == {"person", "household"}
         assert set(context.tables["person"]) == {
             "person_id",
             "person_household_id",
@@ -581,13 +587,11 @@ def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None
     def select_rows(context: KernelContext) -> KernelResult:
         table = context.tables["person"]
         return KernelResult(
-            columns={
-                ("person", "all"): pd.Series(
-                    table["selected"].to_numpy(dtype=np.bool_),
-                    index=table["person_id"],
-                    dtype="bool",
-                )
-            }
+            keep=pd.Series(
+                table["selected"].to_numpy(dtype=np.bool_),
+                index=table["person_id"],
+                dtype="bool",
+            )
         )
 
     node = Node(
