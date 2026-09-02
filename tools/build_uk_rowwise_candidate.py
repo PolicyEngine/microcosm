@@ -123,7 +123,7 @@ BOUND_TARGET_FAMILIES = ("census_households/constituency",)
 BOUND_NATIONAL_TARGETS: tuple[str, ...] = ()
 CANDIDATE_FILENAME_TEMPLATE = "microcosm_uk_{calibration_year}_local.h5"
 LOCAL_GATE_REPORT_FILENAME_TEMPLATE = (
-    "populace_uk_{source_year}_rowwise_candidate.local_gates.json"
+    "microcosm_uk_{calibration_year}_local.local_gates.json"
 )
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 SOLVE_DIAGNOSTICS_FILENAME = "solve_diagnostics.csv"
@@ -2395,7 +2395,7 @@ def _output_paths(
         "past_cap": out_dir / PAST_CAP_FILENAME,
         "calibration_diagnostics": out_dir / CALIBRATION_DIAGNOSTICS_FILENAME,
         "local_gates": out_dir
-        / LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(source_year=source_year),
+        / LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(calibration_year=calibration_year),
         "local_registry": out_dir / LOCAL_REGISTRY_FILENAME,
     }
 

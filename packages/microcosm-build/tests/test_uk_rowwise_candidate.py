@@ -344,7 +344,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         builder.PAST_CAP_FILENAME,
         builder.CALIBRATION_DIAGNOSTICS_FILENAME,
         builder.LOCAL_REGISTRY_FILENAME,
-        builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(source_year=2023),
+        builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(calibration_year=2025),
     }
     assert candidate_h5.exists()
     assert expected_sidecars <= {path.name for path in output_dir.iterdir()}
@@ -1248,7 +1248,7 @@ def test_candidate_refusal_records_receipt_and_reraises(
     row = rows[0]
     assert row.disposition == "failed"
     gate_report_path = output_dir / builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(
-        source_year=2023
+        calibration_year=2025
     )
     assert gate_report_path.exists()
     assert row.gate_verdicts["uk_local_geography_ladder_post_calibration"] == {

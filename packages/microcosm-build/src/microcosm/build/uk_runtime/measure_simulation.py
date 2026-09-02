@@ -120,9 +120,7 @@ class UKMeasureResolver:
         self._receipt = {
             "mode": mode,
             "source_path": str(source_path),
-            "policyengine_uk_version": str(
-                getattr(policyengine_uk, "__version__", "unknown")
-            ),
+            "policyengine_uk_version": _policyengine_uk_version(policyengine_uk),
         }
         self.contract_targets = _uk_contract_targets()
 
@@ -311,6 +309,22 @@ def apply_uk_calibration_measure_exclusions(
 
 def _values(raw: Any) -> np.ndarray:
     return np.asarray(raw.values if hasattr(raw, "values") else raw)
+
+
+def _policyengine_uk_version(module: Any) -> str:
+    """The engine version: the module's own ``__version__`` when it declares
+    one (test doubles do), else the installed distribution metadata (the real
+    module exposes none), else ``unknown``."""
+
+    declared = getattr(module, "__version__", None)
+    if declared:
+        return str(declared)
+    try:
+        from importlib.metadata import version
+
+        return str(version("policyengine-uk"))
+    except Exception:  # pragma: no cover - metadata absent in odd envs
+        return "unknown"
 
 
 def _policyengine_uk_module() -> Any:
