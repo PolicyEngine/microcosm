@@ -1,3 +1,29 @@
+# H2 UK SPI fixture composition
+
+## State
+
+In progress on 2026-09-02 on branch `h2-fixture-spi-composition`, based on
+`origin/fix-spi-support-channel-mass-836`. The pre-existing `node-graph`
+worktree remains untouched.
+
+## Done
+
+- Created a dedicated worktree and confirmed the requested base ref is
+  available locally.
+- Read the repository operating rules and the GitNexus exploration and impact
+  workflows.
+
+## Next
+
+- Trace the fixture generator and SPI support-channel allocation path.
+- Regenerate a small deterministic fixture whose support-channel expansion
+  conserves household mass while changing weighted person mass.
+- Add a fixture-property regression test and capture the deliberate
+  `mass="conserve"` H2 failure.
+- Run all requested verification and write `out.md`.
+
+---
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
