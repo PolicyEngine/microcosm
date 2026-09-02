@@ -30,6 +30,7 @@ from microcosm.graph.kernel import (
     KernelContext,
     KernelRegistry,
     KernelResult,
+    KernelRole,
 )
 from microcosm.graph.manifest import Decision
 from microcosm.graph.store import (
@@ -241,6 +242,91 @@ def _run(
         resume=resume,  # type: ignore[arg-type]
         decisions=decisions,  # type: ignore[arg-type]
     )
+
+
+def _release_graph(
+    *, gate_outcome: str, tier_answer: str, requires: tuple[str, ...] = ()
+) -> Graph:
+    gate = Node(
+        "gate",
+        "gate@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "gate_verdict", "string"),),
+        params={"outcome": gate_outcome},
+        population="survey",
+    )
+    bridge = Node(
+        "bridge",
+        "bridge@1",
+        inputs=(Slice("household", ("gate_verdict",)),),
+        outputs=(Owned("household", "gate_copy", "string"),),
+        population="survey",
+    )
+    release = Node(
+        "release",
+        "release@1",
+        inputs=(Slice("household", ("gate_copy",)),),
+        outputs=(Owned("household", "tier", "string"),),
+        params={"answer": tier_answer, "requires_decisions": requires},
+        population="survey",
+    )
+    return Graph("toy", (SOURCE,), (CREATE, gate, bridge, release))
+
+
+def _release_registry() -> KernelRegistry:
+    def gate(context: KernelContext) -> KernelResult:
+        ids = context.tables["household"]["household_id"]
+        outcome = str(context.params["outcome"])
+        return KernelResult(
+            columns={
+                ("household", "gate_verdict"): pd.Series(
+                    outcome, index=ids, dtype="string"
+                )
+            },
+            receipt={"outcome": outcome, "evidence": {"fixture": True}},
+        )
+
+    def bridge(context: KernelContext) -> KernelResult:
+        table = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "gate_copy"): pd.Series(
+                    table["gate_verdict"].array.copy(),
+                    index=table["household_id"],
+                    dtype="string",
+                )
+            }
+        )
+
+    def release(context: KernelContext) -> KernelResult:
+        ids = context.tables["household"]["household_id"]
+        answer = str(context.params["answer"])
+        return KernelResult(
+            columns={
+                ("household", "tier"): pd.Series(answer, index=ids, dtype="string")
+            },
+            receipt={"tier": answer, "outcome": "kernel-answer"},
+        )
+
+    registry = _registry()
+    registry.register(
+        _Kernel(
+            "gate@1",
+            Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
+            gate,
+        )
+    )
+    registry.register(
+        _Kernel("bridge@1", Capabilities(Determinism.DETERMINISTIC), bridge)
+    )
+    registry.register(
+        _Kernel(
+            "release@1",
+            Capabilities(Determinism.DETERMINISTIC, role=KernelRole.RELEASE),
+            release,
+        )
+    )
+    return registry
 
 
 def test_determinism_across_stores_and_zero_kernel_memoization(
@@ -894,3 +980,127 @@ def test_weight_artifact_cannot_collide_with_a_data_column(
         receipt = manifest.nodes["pool"]
         assert receipt.weight_key != receipt.artifacts[("household", "__weights__")]
     assert all(item.hit for item in warm.nodes.values())
+
+
+@pytest.mark.parametrize(
+    ("gate_outcome", "tier"),
+    [
+        ("pass", "certified"),
+        ("not_applicable", "certified"),
+        ("fail", "evidence"),
+        ("evidence_absent", "evidence"),
+        ("unreached", "evidence"),
+    ],
+)
+def test_release_tier_uses_transitive_gate_ancestry(
+    tmp_path: Path, gate_outcome: str, tier: str
+) -> None:
+    source = _source_path(tmp_path / "source")
+    manifest = _run(
+        _release_graph(gate_outcome=gate_outcome, tier_answer=tier),
+        source,
+        ContentStore(tmp_path / "store"),
+        _release_registry(),
+    )
+
+    receipt = manifest.nodes["release"].receipt
+    assert receipt["tier"] == tier
+    assert receipt["outcome"] == ("pass" if tier == "certified" else "fail")
+    assert receipt["gate_ancestry"] == ("gate",)
+
+
+def test_release_rejects_a_kernel_tier_that_disagrees_with_ancestry(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    with pytest.raises(NodeRejected, match="gate ancestry derives 'certified'"):
+        _run(
+            _release_graph(gate_outcome="pass", tier_answer="evidence"),
+            source,
+            ContentStore(tmp_path / "store"),
+            _release_registry(),
+        )
+
+
+def test_release_decision_changes_only_the_manifest_outcome(tmp_path: Path) -> None:
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _release_graph(
+        gate_outcome="pass", tier_answer="certified", requires=("publish",)
+    )
+    missing = _run(graph, source, store, _release_registry())
+    signed = _run(
+        graph,
+        source,
+        store,
+        _release_registry(),
+        decisions=({"name": "publish", "owner": "reviewer", "signature": "signed"},),
+    )
+
+    assert missing.nodes["release"].receipt["outcome"] == "unreached"
+    assert signed.nodes["release"].receipt["outcome"] == "pass"
+    assert signed.nodes["release"].hit
+    assert signed.nodes["release"].key == missing.nodes["release"].key
+    assert signed.nodes["release"].artifacts == missing.nodes["release"].artifacts
+    assert signed.nodes["release"].receipt["tier"] == "certified"
+
+
+def test_gate_outcome_is_closed_and_gate_exceptions_become_failures(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    invalid_graph = _release_graph(gate_outcome="maybe", tier_answer="evidence")
+    with pytest.raises(NodeRejected, match="expected one of"):
+        _run(
+            invalid_graph,
+            source,
+            ContentStore(tmp_path / "invalid"),
+            _release_registry(),
+        )
+
+    gate = Node(
+        "gate",
+        "gate.raise@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("household", "gate_verdict", "string"),),
+        population="survey",
+    )
+
+    def explode(context: KernelContext) -> KernelResult:
+        raise LookupError("gate evidence unavailable")
+
+    registry = _registry(
+        extra=_Kernel(
+            gate.kernel,
+            Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
+            explode,
+        )
+    )
+    store = ContentStore(tmp_path / "exploding")
+    failed = _run(Graph("toy", (SOURCE,), (CREATE, gate)), source, store, registry)
+    receipt = failed.nodes["gate"].receipt
+    assert receipt["outcome"] == "fail"
+    assert receipt["evidence"] == {
+        "exception_type": "LookupError",
+        "message": "gate evidence unavailable",
+    }
+    verdict = store.load_column(
+        failed.nodes["gate"].artifacts[("household", "gate_verdict")]
+    )
+    assert verdict.tolist() == ["fail", "fail"]
+
+    compute = replace(gate, id="compute", kernel="compute.raise@1")
+    compute_registry = _registry(
+        extra=_Kernel(
+            compute.kernel,
+            Capabilities(Determinism.DETERMINISTIC),
+            explode,
+        )
+    )
+    with pytest.raises(NodeRejected, match="gate evidence unavailable"):
+        _run(
+            Graph("toy", (SOURCE,), (CREATE, compute)),
+            source,
+            ContentStore(tmp_path / "compute"),
+            compute_registry,
+        )

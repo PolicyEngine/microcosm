@@ -19,6 +19,7 @@ from microcosm.frame import Frame, WeightKind, Weights
 from .canonical import canonical_json, sha256_domain
 from .codecs import SOURCE_CODECS, SourceCodecRegistry
 from .decl import (
+    GATE_OUTCOMES,
     ROWS_ALL,
     CompiledGraph,
     Node,
@@ -27,7 +28,13 @@ from .decl import (
     StructuralDelta,
 )
 from .errors import NodeRejectedError
-from .kernel import Capabilities, KernelContext, KernelRegistry, KernelResult
+from .kernel import (
+    Capabilities,
+    KernelContext,
+    KernelRegistry,
+    KernelResult,
+    KernelRole,
+)
 from .keys import (
     artifact_key,
     frame_key,
@@ -51,6 +58,8 @@ __all__ = ["NodeRejected", "NodeRejectedError", "run_graph"]
 # Compatibility spelling from the initial interface.  Every rejection is an
 # instance of the amended shared runtime exception.
 NodeRejected = NodeRejectedError
+
+_CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
 
 def _now() -> str:
@@ -89,6 +98,121 @@ def _normal_json_mapping(value: Mapping[str, object], label: str) -> dict[str, o
     if not isinstance(restored, dict):  # pragma: no cover - Mapping encodes as object
         raise NodeRejected(f"{label} must encode as an object.")
     return restored
+
+
+def _failed_gate_result(
+    node: Node,
+    population: Population | None,
+    error: Exception,
+) -> KernelResult:
+    """Turn a gate evaluation exception into an owned, evidenced failure."""
+
+    if node.structural is not StructuralDelta.NONE or population is None:
+        raise NodeRejected(
+            f"Gate node {node.id!r} cannot recover an exception without an "
+            "ordinary population-bound verdict column."
+        ) from error
+    columns: dict[tuple[str, str], pd.Series] = {}
+    for owned in node.outputs:
+        if owned.dtype != "string":
+            raise NodeRejected(
+                f"Gate node {node.id!r} output {owned.entity}.{owned.column} "
+                "must declare dtype 'string' to record a failed verdict."
+            ) from error
+        ids = _owned_ids(population.frame, owned, node_id=node.id)
+        columns[(owned.entity, owned.column)] = pd.Series(
+            "fail",
+            index=ids,
+            name=owned.column,
+            dtype="string",
+        )
+    return KernelResult(
+        columns=MappingProxyType(columns),
+        receipt={
+            "outcome": "fail",
+            "evidence": {
+                "exception_type": type(error).__name__,
+                "message": str(error),
+            },
+        },
+    )
+
+
+def _transitive_ancestors(compiled: CompiledGraph, node_id: str) -> tuple[str, ...]:
+    """Return every predecessor of ``node_id`` in canonical node order."""
+
+    pending = list(compiled.predecessors[node_id])
+    ancestors: set[str] = set()
+    while pending:
+        predecessor = pending.pop()
+        if predecessor in ancestors:
+            continue
+        ancestors.add(predecessor)
+        pending.extend(compiled.predecessors[predecessor])
+    return tuple(candidate for candidate in compiled.order if candidate in ancestors)
+
+
+def _release_tier(
+    compiled: CompiledGraph,
+    node_id: str,
+    receipts: Mapping[str, NodeReceipt],
+) -> tuple[str, tuple[str, ...]]:
+    """Derive a release tier solely from gate receipts in its ancestry."""
+
+    gate_ids = tuple(
+        ancestor
+        for ancestor in _transitive_ancestors(compiled, node_id)
+        if receipts[ancestor].capabilities.role is KernelRole.GATE
+    )
+    certified = all(
+        receipts[gate_id].receipt.get("outcome") in _CERTIFYING_GATE_OUTCOMES
+        for gate_id in gate_ids
+    )
+    return ("certified" if certified else "evidence"), gate_ids
+
+
+def _validate_release_tier(node: Node, result: KernelResult, derived: str) -> None:
+    """Require a release kernel's owned tier answer to equal the derivation."""
+
+    tier_outputs = [owned for owned in node.outputs if owned.column == "tier"]
+    if len(tier_outputs) != 1 or tier_outputs[0].dtype != "string":
+        raise NodeRejected(
+            f"Release node {node.id!r} must own exactly one string tier column."
+        )
+    owned = tier_outputs[0]
+    series = result.columns[(owned.entity, owned.column)]
+    answers = set(series.dropna().astype(str))
+    if series.isna().any() or answers != {derived}:
+        raise NodeRejected(
+            f"Release node {node.id!r} returned tier {sorted(answers)!r}, "
+            f"but gate ancestry derives {derived!r}."
+        )
+
+
+def _decision_names(decisions: tuple[Decision, ...]) -> frozenset[str]:
+    names: set[str] = set()
+    for decision in decisions:
+        payload = dict(decision)
+        names.add(payload.get("name", decision.kind))
+    return frozenset(names)
+
+
+def _release_outcome(node: Node, tier: str, decisions: tuple[Decision, ...]) -> str:
+    required = node.params.get("requires_decisions", ())
+    if not isinstance(required, tuple) or any(
+        not isinstance(name, str) or not name for name in required
+    ):
+        raise NodeRejected(
+            f"Release node {node.id!r} params['requires_decisions'] must be a "
+            "tuple of non-empty decision names."
+        )
+    if len(set(required)) != len(required):
+        raise NodeRejected(
+            f"Release node {node.id!r} repeats a required decision name."
+        )
+    if not set(required) <= _decision_names(decisions):
+        return "unreached"
+    return "pass" if tier == "certified" else "fail"
 
 
 def _dtype_matches(series: pd.Series, token: str) -> bool:
@@ -545,7 +669,15 @@ def _validate_result(
         if not isinstance(payload, bytes):
             raise NodeRejected(f"Node {node.id!r} artifact {name!r} is not bytes.")
         artifacts[name] = payload
-    return _normal_json_mapping(result.receipt, f"Node {node.id!r} receipt"), artifacts
+    receipt = _normal_json_mapping(result.receipt, f"Node {node.id!r} receipt")
+    if kernel_capabilities.role is KernelRole.GATE:
+        outcome = receipt.get("outcome")
+        if outcome not in GATE_OUTCOMES:
+            raise NodeRejected(
+                f"Gate node {node.id!r} returned outcome {outcome!r}; expected "
+                f"one of {GATE_OUTCOMES!r}."
+            )
+    return receipt, artifacts
 
 
 def _create_population(node: Node, frame: Frame) -> Population:
@@ -1102,12 +1234,15 @@ def run_graph(
             before = _context_digest(context)
             try:
                 result = kernel.run(context)
-            except StoreUnavailable:
-                raise
             except Exception as error:
-                raise NodeRejected(
-                    f"Node {node.id!r} kernel {node.kernel!r} failed: {error}"
-                ) from error
+                if kernel.capabilities.role is KernelRole.GATE:
+                    result = _failed_gate_result(node, incumbent, error)
+                elif isinstance(error, StoreUnavailable):
+                    raise
+                else:
+                    raise NodeRejected(
+                        f"Node {node.id!r} kernel {node.kernel!r} failed: {error}"
+                    ) from error
             after = _context_digest(context)
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
@@ -1121,9 +1256,23 @@ def run_graph(
         normalized_receipt, opaque = _validate_result(
             node, kernel.capabilities, result, incumbent
         )
+        if kernel.capabilities.role is KernelRole.RELEASE:
+            derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)
+            _validate_release_tier(node, result, derived_tier)
+            normalized_receipt["tier"] = derived_tier
+            normalized_receipt["outcome"] = (
+                "pass" if derived_tier == "certified" else "fail"
+            )
+            normalized_receipt["gate_ancestry"] = list(gate_ids)
         normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
         updated = _apply_result(node, result, incumbent)
         normalized_receipt.update(weight_cap_receipt(updated, node))
+        cache_receipt = normalized_receipt
+        run_receipt = dict(cache_receipt)
+        if kernel.capabilities.role is KernelRole.RELEASE:
+            run_receipt["outcome"] = _release_outcome(
+                node, str(cache_receipt["tier"]), decisions
+            )
         if node.structural is StructuralDelta.NONE:
             populations[compiled.versions[node_id]] = updated
         else:
@@ -1138,7 +1287,7 @@ def run_graph(
                 capabilities=kernel.capabilities,
                 result=result,
                 population=updated,
-                receipt=normalized_receipt,
+                receipt=cache_receipt,
                 opaque_artifacts=opaque,
                 verify_existing=resume != "forbid",
             )
@@ -1170,7 +1319,7 @@ def run_graph(
             kernel_ref=node.kernel,
             kernel_impl_hash=implementation,
             capabilities=kernel.capabilities,
-            receipt=normalized_receipt,
+            receipt=run_receipt,
             artifacts=MappingProxyType(dict(manifest_artifacts)),
             wall_time=time.perf_counter() - node_started,
             frame_key=receipt_frame_key,
