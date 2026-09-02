@@ -243,8 +243,10 @@ _SCRIPT = r"""
   if (nodes.length) selectNode(nodes[0].dataset.nodeDetail);
 
   document.querySelectorAll('.replay').forEach((replay) => {
-    const buttons = Array.from(replay.querySelectorAll('[data-stage]'));
-    const stages = Array.from(replay.querySelectorAll('.replay-stage'));
+    const buttons = Array.from(replay.querySelectorAll(
+      '.replay-controls button[data-stage]'
+    ));
+    const stages = Array.from(replay.querySelectorAll('.replay-stage[data-stage]'));
     buttons.forEach((button) => button.addEventListener('click', () => {
       const selected = button.dataset.stage;
       buttons.forEach((candidate) => candidate.setAttribute(

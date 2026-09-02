@@ -123,12 +123,20 @@ def _replay_wic(toy: ModuleType, root: Path) -> dict[str, object]:
     compiled = compile_graph(graph)
     registry = toy.toy_registry()
     rejected = False
+    rejection = ""
     try:
         toy.run_toy(graph, root, registry=registry)
-    except NodeRejectedError:
+    except NodeRejectedError as error:
         rejected = True
+        rejection = str(error)
     calls = toy.calls_by_ref(registry)
-    passed = rejected and calls["bad.dense_bool@1"] == 1 and calls["count.calls@1"] == 0
+    passed = (
+        rejected
+        and "receives_x" in rejection
+        and "wic_recode" in toy.descendants(compiled, "pool")
+        and calls["bad.dense_bool@1"] == 1
+        and calls["count.calls@1"] == 0
+    )
     observed = (
         "The executor rejected wic_recode; its reader remained unreached."
         if passed
@@ -242,12 +250,19 @@ def _replay_engine_less(toy: ModuleType, root: Path, baseline) -> dict[str, obje
     registry = toy.toy_registry()
     store = ContentStore(root / "store", codecs={})
     stopped = False
+    failure = ""
     try:
         toy.run_toy(toy.full_graph(), root, registry=registry, store=store)
-    except StoreUnavailableError:
+    except StoreUnavailableError as error:
         stopped = True
+        failure = str(error)
     store_files = tuple(path for path in store.root.rglob("*") if path.is_file())
-    passed = stopped and toy.total_calls(registry) == 0 and not store_files
+    passed = (
+        stopped
+        and "csv-tables" in failure
+        and toy.total_calls(registry) == 0
+        and not store_files
+    )
     observed = (
         "The missing csv-tables verifier stopped the run before any kernel executed."
         if passed
@@ -301,8 +316,8 @@ def _replay_evidence_flip(toy: ModuleType, root: Path) -> dict[str, object]:
     refused_certified = False
     try:
         RunManifest.load(path, store=red.store)
-    except StoreCorruptError:
-        refused_load = True
+    except StoreCorruptError as error:
+        refused_load = red.manifest.key in str(error)
     try:
         RunManifest.load_certified(path, store=red.store)
     except (StoreCorruptError, NodeRejectedError):
@@ -312,6 +327,7 @@ def _replay_evidence_flip(toy: ModuleType, root: Path) -> dict[str, object]:
     )
     passed = (
         red.manifest.tier == "evidence"
+        and bool(red.manifest.known_failures)
         and refused_load
         and refused_certified
         and original_node_keys == altered_node_keys

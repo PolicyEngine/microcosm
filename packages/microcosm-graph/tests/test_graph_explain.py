@@ -303,3 +303,63 @@ def test_demo_runs_live_replays_and_is_byte_identical(tmp_path: Path) -> None:
     assert (tmp_path / "demo" / "manifest.json").is_file()
     assert (tmp_path / "demo" / "graph.json").is_file()
     assert (tmp_path / "demo" / "store").is_dir()
+
+    toy_module = tool._load_toy()
+    baseline = toy_module.run_toy(
+        toy_module.full_graph(), tmp_path / "live-replays" / "baseline"
+    )
+    replays = tool._run_replays(
+        toy_module, tmp_path / "live-replays" / "incidents", baseline
+    )
+    replay_by_id = {replay["id"]: replay for replay in replays}
+
+    expected_boundaries = {
+        "wic-dtype-breach": (("wic_recode",), ("wic_recode",)),
+        "0347a009-repack": (
+            ("leaf_a", "leaf_b", "leaf_c", "leaf_d", "leaf_e"),
+            (),
+        ),
+        "engine-less-environment": ((), ()),
+        "evidence-flip": ((), ()),
+    }
+    assert set(replay_by_id) == set(expected_boundaries)
+    for identifier, (changed_nodes, moved_keys) in expected_boundaries.items():
+        replay = replay_by_id[identifier]
+        assert replay["verdict"] == "pass"
+        assert replay["changed_nodes"] == changed_nodes
+        assert replay["moved_keys"] == moved_keys
+        assert tuple(stage["label"] for stage in replay["stages"]) == (
+            "Before",
+            "Change",
+            "After",
+        )
+
+    wic_after = replay_by_id["wic-dtype-breach"]["stages"][2]["snapshot"]
+    wic_states = {node["id"]: node["state"] for node in wic_after["nodes"]}
+    assert wic_states["wic_recode"] == "rejected"
+    assert wic_states["consumes_the_recode"] == "not-executed"
+
+    removed = set(expected_boundaries["0347a009-repack"][0])
+    repack_stages = replay_by_id["0347a009-repack"]["stages"]
+    repack_change = {
+        node["id"]: node["state"] for node in repack_stages[1]["snapshot"]["nodes"]
+    }
+    assert {
+        node_id for node_id, state in repack_change.items() if state == "removed"
+    } == removed
+    assert removed.isdisjoint(
+        node["id"] for node in repack_stages[2]["snapshot"]["nodes"]
+    )
+
+    engine_after = replay_by_id["engine-less-environment"]["stages"][2]["snapshot"]
+    assert {node["state"] for node in engine_after["nodes"]} == {"not-executed"}
+
+    evidence_stages = replay_by_id["evidence-flip"]["stages"]
+    evidence_change = {
+        node["id"]: node["state"] for node in evidence_stages[1]["snapshot"]["nodes"]
+    }
+    evidence_after = {
+        node["id"]: node["state"] for node in evidence_stages[2]["snapshot"]["nodes"]
+    }
+    assert evidence_change["release"] == "changed"
+    assert evidence_after["release"] == "refused"
