@@ -21,11 +21,13 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
 __all__ = [
     "ALLOWED_SOURCE_OPERATION_KINDS",
+    "CHRONICLE_ACCESS_BY_ARTIFACT_KIND",
     "CHRONICLE_ACCESS_CLASSES",
     "FORBIDDEN_EXECUTABLE_LOADER_KEYS",
     "FORBIDDEN_EXECUTABLE_OPERATION_KINDS",
@@ -45,6 +47,7 @@ __all__ = [
     "SupportSpineSourceSpec",
     "SupportSpineSpec",
     "audit_microdata_pins",
+    "load_country_microdata_pin_allowlist",
     "load_microdata_pin_allowlist",
     "load_source_manifest",
     "load_support_spine_manifest",
@@ -228,6 +231,21 @@ MICRODATA_ARTIFACT_KINDS = frozenset(
 # bytes stay in the licensed environment the build already operates.
 CHRONICLE_ACCESS_CLASSES = frozenset({"public", "licensed", "restricted"})
 
+# Microcosm's artifact kinds already state redistributability, so the Chronicle
+# access class a root registers under is derived from its kind rather than
+# chosen per entry. ``private_microdata`` maps to ``restricted`` — the
+# conservative side, no bytes in any Chronicle store — because a caller-supplied
+# local input is by definition not something Chronicle may redistribute.
+# ``versioned_derived_microdata`` has no mapping: a Microcosm-derived HDF5 is
+# not a publisher release, so such a root is allowlisted rather than registered
+# until a publisher artifact exists behind it.
+CHRONICLE_ACCESS_BY_ARTIFACT_KIND = {
+    "licensed_microdata": "licensed",
+    "private_microdata": "restricted",
+    "public_microdata": "public",
+    "restricted_microdata": "restricted",
+}
+
 MICRODATA_PIN_ALLOWLIST_FILENAME = "microdata_pins_pending.json"
 
 _CHRONICLE_ARTIFACT_REQUIRED_KEYS = frozenset(
@@ -237,6 +255,7 @@ _CHRONICLE_ARTIFACT_OPTIONAL_KEYS = frozenset({"filename"})
 _MICRODATA_PIN_PENDING_KEYS = frozenset({"issue", "locator", "reason", "stage"})
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _CHRONICLE_SLUG = re.compile(r"[a-z0-9]+(?:[_-][a-z0-9]+)*")
+_FOUR_DIGIT_YEAR = re.compile(r"(?<![0-9])[0-9]{4}(?![0-9])")
 
 
 @dataclass(frozen=True)
@@ -621,6 +640,14 @@ class SourceManifest:
             raise ValueError(f"duplicate source stage spec(s): {duplicates}.")
         _reject_executable_parameter_keys(raw, context=f"{country} source manifest")
         _reject_incumbent_dependencies(raw, context=f"{country} source manifest")
+        _assert_one_registration_per_file(
+            [
+                _microdata_artifact_entry(artifact, stage=stage.stage)
+                for stage in stages
+                for artifact in stage.artifacts
+                if artifact.get("kind") in MICRODATA_ARTIFACT_KINDS
+            ]
+        )
         return cls(country=country, version=version, policy=policy, stages=stages)
 
     def stage_map(self) -> Mapping[str, SourceStageSpec]:
@@ -804,6 +831,7 @@ def microdata_artifact_entries(
             if artifact.get("kind") not in MICRODATA_ARTIFACT_KINDS:
                 continue
             entries.append(_microdata_artifact_entry(artifact, stage=stage))
+    _assert_one_registration_per_file(entries)
     return tuple(entries)
 
 
@@ -908,6 +936,27 @@ def load_microdata_pin_allowlist(resource: Any) -> MicrodataPinAllowlist:
     if not isinstance(raw, Mapping):
         raise ValueError("microdata pin allowlist root must be a JSON object.")
     return MicrodataPinAllowlist.from_mapping(raw)
+
+
+def load_country_microdata_pin_allowlist(country: str) -> MicrodataPinAllowlist:
+    """Load a country's pending allowlist, or the empty one when it has none.
+
+    A country with no allowlist file has nothing pending: every microdata root
+    it declares is pinned, and its ratchet baseline is zero.
+    """
+
+    resource = files(f"microcosm.build.{country}").joinpath(
+        MICRODATA_PIN_ALLOWLIST_FILENAME
+    )
+    if not resource.is_file():
+        return EMPTY_MICRODATA_PIN_ALLOWLIST
+    allowlist = load_microdata_pin_allowlist(resource)
+    if allowlist.country != country:
+        raise ValueError(
+            f"{country} {MICRODATA_PIN_ALLOWLIST_FILENAME} declares country "
+            f"{allowlist.country!r}."
+        )
+    return allowlist
 
 
 def load_source_manifest(resource: Any) -> SourceManifest:
@@ -1017,6 +1066,26 @@ def _microdata_artifact_entry(
                 f"{reference.filename!r} does not equal the artifact filename "
                 f"{filename!r}."
             )
+        expected_access = CHRONICLE_ACCESS_BY_ARTIFACT_KIND.get(kind)
+        if expected_access is None:
+            raise ValueError(
+                f"{context} kind {kind!r} has no Chronicle access class; a "
+                "Microcosm-derived artifact is not a publisher release and "
+                "belongs in the pending allowlist, not in a registration."
+            )
+        if reference.access != expected_access:
+            raise ValueError(
+                f"{context} kind {kind!r} registers under Chronicle access "
+                f"{expected_access!r}, but the reference declares "
+                f"{reference.access!r}."
+            )
+        declared_years = _declared_vintage_years(artifact)
+        if declared_years and reference.year not in declared_years:
+            raise ValueError(
+                f"{context} chronicle_artifact year {reference.year} is not one "
+                f"of the years this entry declares ({sorted(declared_years)}); "
+                "a registration names the vintage the stage reads."
+            )
     return MicrodataArtifactEntry(
         stage=stage,
         locator=locator,
@@ -1024,6 +1093,54 @@ def _microdata_artifact_entry(
         artifact=artifact,
         chronicle_artifact=reference,
     )
+
+
+def _assert_one_registration_per_file(
+    entries: Sequence[MicrodataArtifactEntry],
+) -> None:
+    """Refuse two registrations for one file.
+
+    Several stages read the same bytes — the FRS ``adult`` tab feeds five UK
+    stages, and the SIPP public-use file feeds four US stages. Identity is a
+    property of the bytes, so entries sharing a SHA-256 must resolve to the same
+    Chronicle registration; otherwise one file would enter a build graph as two
+    differently named roots.
+    """
+
+    by_sha: dict[str, tuple[MicrodataArtifactEntry, ChronicleArtifactReference]] = {}
+    for entry in entries:
+        reference = entry.chronicle_artifact
+        if reference is None or entry.sha256 is None:
+            continue
+        first = by_sha.setdefault(entry.sha256, (entry, reference))
+        if first[1] != reference:
+            raise ValueError(
+                f"stage {entry.stage!r} artifact {entry.locator!r} and stage "
+                f"{first[0].stage!r} artifact {first[0].locator!r} share "
+                f"SHA-256 {entry.sha256} but declare different Chronicle "
+                "registrations; one file has one registration."
+            )
+
+
+def _declared_vintage_years(artifact: Mapping[str, Any]) -> frozenset[int]:
+    """Years this artifact entry itself declares, for registration agreement.
+
+    ``tax_year_start`` is exact when present, so it is the only admissible
+    year. Otherwise every four-digit year written into ``vintage`` is
+    admissible: a vintage such as ``"2023 ASEC / 2022 income reference year"``
+    legitimately names both the survey year the file is published under and the
+    income year it measures, and the registration may name either. An entry
+    that declares neither constrains nothing here — its year is still fixed by
+    the same-file agreement check across the manifest.
+    """
+
+    tax_year_start = artifact.get("tax_year_start")
+    if isinstance(tax_year_start, int) and not isinstance(tax_year_start, bool):
+        return frozenset({tax_year_start})
+    vintage = artifact.get("vintage")
+    if not isinstance(vintage, str):
+        return frozenset()
+    return frozenset(int(match) for match in _FOUR_DIGIT_YEAR.findall(vintage))
 
 
 def _read_manifest_text(resource: Any) -> str:
