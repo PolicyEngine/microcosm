@@ -144,8 +144,12 @@ def _direct_table(case: Path):
     return pd.read_csv(case / "direct.csv", float_precision="round_trip")
 
 
+@pytest.mark.requires_uk
 def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     """The UK spine as a graph reproduces ``uk_frame_content_identity``.
+
+    The spine's stages read the UK engine's parameters, so this runs in the
+    engine tier (``requires_uk``) and skips in the engine-free fast lane.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/uk_spine/`` with
     ``uk_spine.json`` and ``uk_frame_content_identity.txt``. Stage order comes
