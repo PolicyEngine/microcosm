@@ -145,7 +145,7 @@ def _direct_table(case: Path):
 
 
 @pytest.mark.xfail(strict=True, reason="charter H2: awaiting fixture from UK lane")
-def test_h2_uk_spine_parity() -> None:
+def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     """The UK spine as a graph reproduces ``uk_frame_content_identity``.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/uk_spine/`` with
@@ -158,11 +158,16 @@ def test_h2_uk_spine_parity() -> None:
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
     expected = (UK_SPINE_PARITY / "uk_frame_content_identity.txt").read_text().strip()
 
-    from microcosm.graph import ContentStore, Graph, compile_graph, run_graph
+    from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+    from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
+    from microcosm.graph import ContentStore, compile_graph, graph_from_json, run_graph
 
-    declaration = json.loads((UK_SPINE_PARITY / "uk_spine.json").read_text())
-    compiled = compile_graph(Graph(**declaration))
-    assert len(compiled.order) >= 26
+    # The graph the UK lane ships is also pinned as JSON beside the fixture, so
+    # a silent change to the declaration shows up as a fixture diff.
+    graph = uk_spine_graph()
+    assert graph_from_json((UK_SPINE_PARITY / "uk_spine.json").read_text()) == graph
+    compiled = compile_graph(graph)
+    assert len(compiled.order) >= 27, "a CREATE node plus the 26 spine stages"
     assert all(
         set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
         for index, node_id in enumerate(compiled.order)
@@ -170,13 +175,19 @@ def test_h2_uk_spine_parity() -> None:
 
     manifest = run_graph(
         compiled,
-        sources={"frs": UK_SPINE_PARITY},
-        store=ContentStore(UK_SPINE_PARITY / "_store"),
-        kernels=toy.toy_registry(),
+        sources={"frs": UK_SPINE_PARITY / "sources"},
+        store=ContentStore(tmp_path / "store"),
+        kernels=uk_registry(),
         resume="forbid",
         decisions=(),
     )
-    assert manifest.nodes[compiled.order[-1]].receipt["content_identity"] == expected
+    final_version = compiled.versions[compiled.order[-1]]
+    assert uk_frame_content_identity(manifest.population(final_version)) == expected
+
+    # Charter F12: stage order is derived from declared inputs, so the
+    # hand-maintained tuple in the UK driver is gone.
+    driver = (Path(__file__).parents[3] / "tools" / "build_uk_frs_spine.py").read_text()
+    assert "_STAGE_NAMES" not in driver
 
 
 @pytest.mark.xfail(strict=True, reason="charter H3: awaiting fixture from US lane")
