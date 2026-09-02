@@ -21,10 +21,16 @@ or `_toy.py` edit is authorized.
   `git worktree add /private/tmp/microcosm-fix-851 -b fix-851 graph-amendments-impl`.
 - Recorded the prohibited files and the required sync, test, lint, interface,
   CI-inventory, acceptance-burndown, commit, and reporting constraints.
+- The default `uv sync` could not initialize the read-only global cache. A
+  first task-local-cache attempt then reached the expected no-network boundary
+  on an uncopied wheel. Seeded the writable task-local cache from read-only
+  local wheel/index metadata, cloned the already-complete environment into
+  this worktree, and reran the exact locked sync offline with the cached build
+  requirements exposed read-only. The sync completed and replaced all six
+  editable package bindings with `/private/tmp/microcosm-fix-851` paths.
 
 ## Next
 
-- Sync the task-local environment with both country extras.
 - Map each ruling to current production code and runtime unit coverage.
 - Implement findings 1, 2, 3, 4, 6, and 7 plus all follow-ups, committing each
   coherent finding separately and keeping this journal current.
