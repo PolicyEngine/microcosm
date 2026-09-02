@@ -28,10 +28,33 @@ or `_toy.py` edit is authorized.
   this worktree, and reran the exact locked sync offline with the cached build
   requirements exposed read-only. The sync completed and replaced all six
   editable package bindings with `/private/tmp/microcosm-fix-851` paths.
+- Mapped every ruling through the local diff, production callers, cache paths,
+  and allowed runtime tests. GitNexus tools are not exposed in this workspace,
+  so the PR-review impact pass used direct source and call-site inspection.
+- Confirmed finding 1 is the ID overlay after lineage IDs are installed, plus
+  the warm replay's non-exact incumbent check; memberships must remain legal.
+- Confirmed finding 2 belongs only in entrant bridge validation: the EXPAND
+  overlay is the structural owner of a partition value, while the existing
+  ordinary-node partition refusal remains intact.
+- Confirmed finding 3 requires the full eight-field `Capabilities` projection
+  in node keys, a stored-contract cache miss on disagreement, and no change to
+  the frozen implementation-hash formula. Reproduced the PARAM-to-EXECUTOR QRF
+  cache collision locally on the unmodified code.
+- Confirmed finding 4 is the missing implicit rewrite-output coordinate in
+  `_input_tolerances`; both explicit and implicit incumbents resolve to the
+  structural `input_version`.
+- Confirmed finding 6 is the absent `Owned.rows == ROWS_ALL` check on entrant
+  bridge claimants.
+- Confirmed finding 7's pre-shim behavior: `Frame.person` covered B5, B6 was
+  still xfailed when it first spelled `.household`, B7 inherited the shim, and
+  D6 reads receipts. A zero-copy manifest population view subclass preserves
+  the required `Frame` identity contract for H2 without mutating `__class__`.
+- Located the three follow-ups: QRF wording plus its source-hash pin, rejection
+  of an undeclared `mass.partition` receipt, and signed-zero normalization in
+  tolerance key data. The four allowed runtime test modules pass at baseline.
 
 ## Next
 
-- Map each ruling to current production code and runtime unit coverage.
 - Implement findings 1, 2, 3, 4, 6, and 7 plus all follow-ups, committing each
   coherent finding separately and keeping this journal current.
 - Run every requested verification command and copy its exact summary lines
