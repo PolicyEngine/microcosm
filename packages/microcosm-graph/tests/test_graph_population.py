@@ -719,6 +719,34 @@ def test_cached_entrant_strata_preserve_label_scalar(
         )
 
 
+def test_cached_entrant_strata_encode_bytes_labels() -> None:
+    population = _population()
+    node = _entrant_person_expand_node()
+    result = _entrant_person_expand_result(
+        pd.Series([b"new\x00stratum"], index=pd.Index([5], dtype="int64"), dtype=object)
+    )
+    expanded = patch(population, node, result)
+    assert result.expand is not None
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_strata_receipt(
+            population.frame, node, result.expand, result.strata
+        ),
+    }
+
+    assert receipt["entrant_strata"] == [[5, {"bytes_hex": "6e6577007374726174756d"}]]
+    cached = restore_cached_expand(
+        population,
+        node,
+        KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt=receipt,
+        ),
+    )
+    pd.testing.assert_series_equal(cached.frame.strata, expanded.frame.strata)
+
+
 @pytest.mark.parametrize(
     "strata",
     [

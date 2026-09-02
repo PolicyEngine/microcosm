@@ -6,7 +6,7 @@ The entrant-person strata implementation, cache attestation, mass receipt, and
 lineage presentation coverage are complete. The sanctioned tool flipped
 exactly B7 and both suite pins report zero red. A final review found and fixed
 receipt ID-width restoration; the required verification matrix is being rerun
-against that fix.
+against the final cache-label encoding.
 
 ## Done
 
@@ -46,11 +46,14 @@ against that fix.
 - Strengthened that attestation to canonical scalar equality, which also
   distinguishes `-0.0` from `0.0`; the signed-zero replay joins the tamper
   matrix and the affected suites now report `62 passed in 2.02s`.
+- Matched the content store's complete non-null object-scalar vocabulary by
+  encoding byte-valued labels as canonical `{"bytes_hex": ...}` receipt
+  values. Population replay coverage now reports `34 passed in 0.80s`.
 
 ## Next
 
-- Rerun the complete graph shard twice after the ID-width replay fix (standard
-  repository addopts, then the explicit count configuration).
+- Rerun the complete graph shard twice after the final label-codec fix
+  (standard repository addopts, then the explicit count configuration).
 - Run the cross-shard kernel/parity selection, lint, formatting, CI grouping,
   and final burndown verification.
 - Record exact summaries and the final branch SHA in `out.md`.

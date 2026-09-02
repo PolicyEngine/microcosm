@@ -379,21 +379,44 @@ def _lineage_json_scalar(
     return value
 
 
-def _stratum_json_scalar(value: object) -> str | int | float | bool:
-    """Detach one entrant stratum label into the receipt scalar vocabulary."""
+def _stratum_receipt_scalar(value: object) -> object:
+    """Encode one cache-safe entrant stratum label for a JSON receipt."""
 
     missing = pd.isna(value)
     if isinstance(missing, bool | np.bool_) and bool(missing):
         raise PopulationError("EXPAND entrant stratum labels cannot be null.")
     if isinstance(value, np.generic):
         value = value.item()
+    if isinstance(value, bytes):
+        return {"bytes_hex": value.hex()}
     if not isinstance(value, str | int | float | bool):
         raise PopulationError(
-            f"EXPAND entrant stratum label {value!r} is not a JSON scalar."
+            f"EXPAND entrant stratum label {value!r} is not a cache-safe scalar."
         )
     if isinstance(value, float) and not np.isfinite(value):
         raise PopulationError(f"EXPAND entrant stratum label {value!r} is not finite.")
     return value
+
+
+def _stratum_from_receipt_scalar(value: object) -> object:
+    """Decode one executor-authored entrant stratum label from a receipt."""
+
+    if isinstance(value, Mapping):
+        if set(value) != {"bytes_hex"} or not isinstance(value["bytes_hex"], str):
+            raise PopulationError("EXPAND entrant stratum receipt label is malformed.")
+        encoded = value["bytes_hex"]
+        try:
+            decoded = bytes.fromhex(encoded)
+        except ValueError as error:
+            raise PopulationError(
+                "EXPAND entrant stratum receipt bytes are malformed."
+            ) from error
+        if encoded != decoded.hex():
+            raise PopulationError(
+                "EXPAND entrant stratum receipt bytes are not canonical."
+            )
+        return decoded
+    return _stratum_receipt_scalar(value)
 
 
 def expand_lineage_receipt(
@@ -497,7 +520,7 @@ def _validated_entrant_strata(
         )
     aligned = raw.reindex(entrant_ids).copy()
     for value in aligned.array:
-        _stratum_json_scalar(value)
+        _stratum_receipt_scalar(value)
     return aligned
 
 
@@ -514,7 +537,7 @@ def entrant_strata_receipt(
     if aligned is None:
         return None
     return [
-        [_lineage_json_scalar(target), _stratum_json_scalar(label)]
+        [_lineage_json_scalar(target), _stratum_receipt_scalar(label)]
         for target, label in zip(aligned.index, aligned.array, strict=True)
     ]
 
@@ -551,7 +574,7 @@ def _cached_entrant_strata(
                 f"Cached EXPAND node {node.id!r} has malformed entrant strata."
             )
         targets.append(entry[0])
-        labels.append(_stratum_json_scalar(entry[1]))
+        labels.append(_stratum_from_receipt_scalar(entry[1]))
     try:
         target_index = pd.Index(
             pd.Series(targets, dtype=id_dtype).array, name=id_column
@@ -604,8 +627,8 @@ def _assert_cached_expand_strata(
             "and entrant-strata receipt."
         )
     for position in entrant_positions:
-        actual_label = _stratum_json_scalar(actual.iloc[position])
-        expected_label = _stratum_json_scalar(expected[position])
+        actual_label = _stratum_receipt_scalar(actual.iloc[position])
+        expected_label = _stratum_receipt_scalar(expected[position])
         if canonical_json(actual_label) != canonical_json(expected_label):
             raise PopulationError(
                 f"Cached EXPAND node {node.id!r} entrant stratum label "
