@@ -399,3 +399,74 @@ def test_spi_support_channel_declares_its_mass_change_and_cgt_clones_conserve() 
     assert graph.node("spi_support_channel").mass == "declared"
     assert graph.node("cgt_incidence_clone").mass == "conserve"
     assert graph.node("cgt_band_donors").mass == "free"
+
+
+@pytest.mark.requires_uk
+def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
+    tmp_path,
+) -> None:
+    """The driver's record projection must cover every declared output.
+
+    ``frs_spine`` declares the entity ids and memberships among its outputs,
+    but the executor carries those outside owned cells, so the root node
+    exposes no artifact for them.  The first full licensed run through the
+    graph completed every stage and then died here, on ``person_id``; this
+    test runs the projection on the hermetic H2 fixture so the class fails
+    in CI's engine lane instead.
+    """
+
+    import importlib.util
+    from pathlib import Path
+
+    from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
+    from microcosm.graph import ContentStore, run_graph
+
+    root = Path(__file__).resolve().parents[3]
+    fixture = root / "packages/microcosm-graph/tests/fixtures/parity/uk_spine"
+    if not fixture.exists():
+        pytest.skip("UK spine parity fixture is not present")
+    spec = importlib.util.spec_from_file_location(
+        "build_uk_frs_spine", root / "tools" / "build_uk_frs_spine.py"
+    )
+    driver = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(driver)
+
+    country = load_country_spec("uk")
+    stages = [
+        stage
+        for stage in country.sources.stages
+        if stage.stage not in UK_SPINE_EXCLUSIONS
+    ]
+    _, implementations = fixture_stage_plan_inputs(fixture / "sources")
+    graph = uk_spine_graph()
+    compiled = compile_graph(graph)
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        compiled,
+        sources={"frs": fixture / "sources"},
+        store=store,
+        kernels=uk_registry(dict(implementations)),
+        resume="forbid",
+        decisions=(),
+    )
+    final = manifest.population(compiled.versions[compiled.order[-1]])
+
+    records = driver._graph_stage_records(
+        manifest=manifest, store=store, stages=stages, frame=final
+    )
+
+    assert [record.stage for record in records] == [stage.stage for stage in stages]
+    by_stage = {record.stage: record for record in records}
+    for stage in stages:
+        assert set(by_stage[stage.stage].nonzero_share) == set(stage.outputs), (
+            stage.stage
+        )
+    root_shares = by_stage["frs_spine"].nonzero_share
+    for column in (
+        "person_id",
+        "person_benunit_id",
+        "person_household_id",
+        "benunit_id",
+        "household_id",
+    ):
+        assert root_shares[column] == 1.0
