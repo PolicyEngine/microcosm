@@ -111,7 +111,7 @@ hand-drawn, so they stay true as the code moves.
 | Id | Property | Closes | Owner |
 |---|---|---|---|
 | H1 | **Kernel parity.** Each wrapped legacy kernel (QRF fit and draw via `microcosm-fit`, calibrate via `microcosm-calibrate`, simulate via a `RulesEngine`) produces byte-identical output to the direct call on a pinned fixture and seed. | #378 step 3 | Max's session |
-| H2 | **UK spine parity.** The UK 26-stage spine expressed as a graph reproduces the current spine's `uk_frame_content_identity` on the fixture. The oracle identity is computed live in the same process, never pinned: it is machine-specific (2026-09-02: three different values on one Mac and the two CI runners with identical library versions). Stage order is derived from declared `consumes`; the hand-maintained `_STAGE_NAMES` tuple is deleted. | F12, F8 | María |
+| H2 | **UK spine parity.** The UK 26-stage spine expressed as a graph reproduces the current spine's `uk_frame_content_identity` on the fixture. Both sides run all 26 transforms from the fixture's raw tables in the test's own process, the graph through a CREATE kernel bound to the root transform, and nothing is pinned: the root transform's household weights differ by one ulp between machines (2026-09-02: two of 135 households on x86 versus this Mac), which the LCFS raking and every weight split then inherit. Stage order is derived from declared `consumes`; the hand-maintained `_STAGE_NAMES` tuple is deleted. | F12, F8 | María |
 | H3 | **US post-transfer parity.** The stacked spine's derive → seed → simulate subgraph reproduces a pinned fixture output. | #378 step 3 | Max's session, later |
 
 ## The four incident replays

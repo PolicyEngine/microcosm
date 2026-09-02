@@ -42,8 +42,9 @@ KERNEL_PARITY = PARITY / "kernels"
 
 #: H2: ``uk_spine.json`` — the 26-stage FRS spine expressed as a graph — plus
 #: ``sources/``, the data-only bundle both the graph and the legacy oracle
-#: rebuild their transforms from. The oracle's identity is machine-specific,
-#: so it is computed live in the test's own process, never pinned.
+#: rebuild their transforms from. The root transform's weights differ at the
+#: last bit between machines, so both sides recompute the root from the raw
+#: tables in the test's own process and nothing is pinned.
 UK_SPINE_PARITY = PARITY / "uk_spine"
 
 #: H3: ``us_post_transfer.json`` — the derive/seed/simulate subgraph of the
@@ -214,8 +215,9 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     engine tier (``requires_uk``) and skips in the engine-free fast lane.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/uk_spine/`` with
-    ``uk_spine.json`` and ``sources/``; the legacy oracle's identity is
-    computed live from those sources (it is machine-specific). Stage order comes
+    ``uk_spine.json`` and ``sources/``; both sides run the 26 transforms from
+    those sources in this process, root included, because the root weights
+    differ at the last bit between machines. Stage order comes
     from declared ``consumes``: the assertion below is that the compiled
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
     in ``tools/build_uk_frs_spine.py`` — the 26 names intersected with a
@@ -225,14 +227,18 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
 
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
     from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
     from microcosm.graph import ContentStore, compile_graph, graph_from_json, run_graph
     from tools.graph_uk_spine_fixture import legacy_oracle_frame
 
-    # The identity is a byte-exact fingerprint of every cell, and the spine's
-    # floating-point stages differ at the last bit between machines, so the
-    # oracle runs here, in the same process, on the same on-disk sources.
+    # The identity is a byte-exact fingerprint of every cell, and the FRS root
+    # transform's weights differ at the last bit between machines, so both
+    # sides derive the root from the same raw tables here, in this process:
+    # the oracle through the legacy StagePlan, the graph through a CREATE
+    # kernel bound to the same root transform class (its production path).
     oracle = legacy_oracle_frame(UK_SPINE_PARITY)
     expected = uk_frame_content_identity(oracle)
+    _, implementations = fixture_stage_plan_inputs(UK_SPINE_PARITY / "sources")
 
     # The graph the UK lane ships is also pinned as JSON beside the fixture, so
     # a silent change to the declaration shows up as a fixture diff.
@@ -249,7 +255,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
         compiled,
         sources={"frs": UK_SPINE_PARITY / "sources"},
         store=ContentStore(tmp_path / "store"),
-        kernels=uk_registry(),
+        kernels=uk_registry(dict(implementations)),
         resume="forbid",
         decisions=(),
     )

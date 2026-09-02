@@ -1120,14 +1120,15 @@ def _run_legacy_plan(
 def legacy_oracle_frame(fixture: Path) -> Frame:
     """The legacy oracle's final frame on the fixture, computed live.
 
-    Rebuilds the same 26 transforms the graph's unbound UK registry
-    reconstructs from ``fixture/sources``, runs them through the legacy
-    StagePlan in this process, and applies the one string normalization the
+    Rebuilds the same 26 transforms the graph's UK registry reconstructs from
+    ``fixture/sources``, runs them through the legacy StagePlan in this
+    process, root included, and applies the one string normalization the
     fixture documents. The content identity is a byte-exact fingerprint of
-    every cell, and floating-point stages differ at the last bit between
-    machines (2026-09-02: three distinct values on one Mac and the two CI
-    runners with identical library versions), so parity is asserted against
-    this live frame and never against a pinned string.
+    every cell, and the root transform's household weights differ by one ulp
+    between machines (2026-09-02: two of 135 fixture households on x86 versus
+    the Mac that wrote the capture), so parity is asserted against this live
+    frame, with the graph deriving its root the same way, never against a
+    pinned string or the captured root.
     """
 
     from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
@@ -1235,9 +1236,10 @@ def generate(output: Path) -> None:
     )
     (output / "PRODUCED_BY.txt").write_text(
         "tools/graph_uk_spine_fixture.py; current 26-transform legacy "
-        "StagePlan oracle with parsed private-source seams. The oracle "
-        "identity is computed live by legacy_oracle_identity(), never "
-        "pinned: it is machine-specific.\n",
+        "StagePlan oracle with parsed private-source seams. The acceptance "
+        "test runs both sides from frs_raw in-process (root weights differ "
+        "by one ulp between machines); the captured root tables serve the "
+        "unbound registry's data-only CREATE path.\n",
         encoding="utf-8",
     )
 
