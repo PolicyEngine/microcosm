@@ -27,15 +27,6 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request
 
-from microcosm.build.logbook_env import (
-    LEGACY_API_KEY_ENV,
-    LEGACY_EXPORT_KEY_ENV,
-    LOGBOOK_API_KEY_ENV,
-    LOGBOOK_EXPORT_KEY_ENV,
-    LOGBOOK_URL_ENV,
-    describe_logbook_env,
-    logbook_env,
-)
 from microcosm.build.logbook import (
     LOGBOOK_ROW_FIELDS,
     LogbookRow,
@@ -46,6 +37,15 @@ from microcosm.build.logbook import (
     order_rows_by_chain,
     render_markdown,
     urlopen,
+)
+from microcosm.build.logbook_env import (
+    LEGACY_API_KEY_ENV,
+    LEGACY_EXPORT_KEY_ENV,
+    LOGBOOK_API_KEY_ENV,
+    LOGBOOK_EXPORT_KEY_ENV,
+    LOGBOOK_URL_ENV,
+    describe_logbook_env,
+    logbook_env,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -305,11 +305,7 @@ def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
                 )
             break
     wrong_scope = sorted(
-        {
-            row.pipeline
-            for row in rows
-            if _chain_scope(row.pipeline) != scope
-        }
+        {row.pipeline for row in rows if _chain_scope(row.pipeline) != scope}
     )
     if wrong_scope:
         raise ValueError(

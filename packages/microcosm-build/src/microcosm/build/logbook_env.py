@@ -124,9 +124,7 @@ def describe_logbook_env(*names: str) -> str:
     """
     preferred = ", ".join(names)
     legacy = ", ".join(
-        legacy_name
-        for name in names
-        for legacy_name in LOGBOOK_ENV_LEGACY_NAMES[name]
+        legacy_name for name in names for legacy_name in LOGBOOK_ENV_LEGACY_NAMES[name]
     )
     return f"{preferred} (legacy {legacy} still honored)"
 

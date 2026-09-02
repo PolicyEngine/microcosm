@@ -49,10 +49,6 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
-from microcosm.build.logbook_env import (  # noqa: E402 - after the compat gate
-    logbook_env,
-    logbook_env_names,
-)
 from microcosm.build.chronicle_epoch import (  # noqa: E402 - after the compat gate
     ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
     ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS,
@@ -140,6 +136,10 @@ from microcosm.build.ledger_targets import (  # noqa: E402 - after the compat ga
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_fact,
+)
+from microcosm.build.logbook_env import (  # noqa: E402 - after the compat gate
+    logbook_env,
+    logbook_env_names,
 )
 from microcosm.build.monetary_profile import (  # noqa: E402 - after compat gate
     MonetaryTargetContract,
