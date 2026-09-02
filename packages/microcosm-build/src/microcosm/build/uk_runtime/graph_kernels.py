@@ -23,6 +23,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
@@ -859,15 +860,65 @@ class UKExpandStageKernel(KernelBase):
                 f"{after_weights.kind.value!r}, not declared "
                 f"{declared_kind.value!r}."
             )
+        receipt: dict[str, object] = {
+            "stage": self.stage,
+            "frame_mass_log_append": _mass_log_payload(before, after),
+        }
+        if context.node.mass == "declared":
+            receipt["mass"] = _declared_mass_receipt(
+                before, after, stage=self.stage, weight_entity=weight_entity
+            )
         return KernelResult(
             columns=MappingProxyType(columns),
             expand=MappingProxyType(expand),
             weights=after_weights,
-            receipt={
-                "stage": self.stage,
-                "frame_mass_log_append": _mass_log_payload(before, after),
-            },
+            receipt=receipt,
         )
+
+
+#: Relative tolerance for the weight-entity mass invariant a ``declared`` UK
+#: expansion must still hold; equals the executor's own ledger tolerance.
+_WEIGHT_ENTITY_MASS_RTOL = 1e-9
+
+
+def _declared_mass_receipt(
+    before: Frame,
+    after: Frame,
+    *,
+    stage: str,
+    weight_entity: str,
+) -> dict[str, object]:
+    """State the person-mass ledger of a ``declared`` expansion.
+
+    The executor's mass ledger is weighted person mass per stratum, which an
+    expansion that changes household composition cannot conserve even when it
+    conserves the mass of the entity it reweights.  A ``declared`` UK expansion
+    therefore states the person-mass ledger for the executor to verify and
+    asserts here the invariant that is actually its contract: the weight
+    entity's total mass is unchanged.
+    """
+
+    before_entity = float(before.weights_for(weight_entity).total)
+    after_entity = float(after.weights_for(weight_entity).total)
+    if not np.isclose(
+        after_entity, before_entity, rtol=_WEIGHT_ENTITY_MASS_RTOL, atol=0.0
+    ):
+        raise ValueError(
+            f"UK EXPAND stage {stage!r} declares its person-mass change but must "
+            f"conserve {weight_entity!r} mass: {before_entity!r} -> {after_entity!r}."
+        )
+    before_mass = before.stratum_mass()
+    after_mass = after.stratum_mass()
+    return {
+        "policy": "declared",
+        "before": float(before_mass.sum()),
+        "after": float(after_mass.sum()),
+        "stratum_before": {key: float(value) for key, value in before_mass.items()},
+        "stratum_after": {key: float(value) for key, value in after_mass.items()},
+        "weight_entity": weight_entity,
+        "weight_entity_mass_before": before_entity,
+        "weight_entity_mass_after": after_entity,
+    }
 
 
 def build_uk_registry(
