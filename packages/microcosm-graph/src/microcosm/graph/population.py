@@ -34,6 +34,7 @@ __all__ = [
     "dtype_for_token",
     "dtype_matches",
     "expand_lineage_receipt",
+    "mass_record_receipt",
     "owned_ids",
     "patch",
     "population_from_frame",
@@ -119,6 +120,14 @@ class MassRecord:
     before_by_stratum: tuple[tuple[object, float], ...]
     after_by_stratum: tuple[tuple[object, float], ...]
     entity: str | None = None
+    partition_entity: str | None = None
+    partition_column: str | None = None
+    before_by_partition_stratum: tuple[
+        tuple[object, tuple[tuple[object, float], ...]], ...
+    ] = ()
+    after_by_partition_stratum: tuple[
+        tuple[object, tuple[tuple[object, float], ...]], ...
+    ] = ()
 
     @property
     def before_strata(self) -> Mapping[object, float]:
@@ -127,6 +136,24 @@ class MassRecord:
     @property
     def after_strata(self) -> Mapping[object, float]:
         return MappingProxyType(dict(self.after_by_stratum))
+
+    @property
+    def before_partitions(self) -> Mapping[object, Mapping[object, float]]:
+        return MappingProxyType(
+            {
+                partition: MappingProxyType(dict(strata))
+                for partition, strata in self.before_by_partition_stratum
+            }
+        )
+
+    @property
+    def after_partitions(self) -> Mapping[object, Mapping[object, float]]:
+        return MappingProxyType(
+            {
+                partition: MappingProxyType(dict(strata))
+                for partition, strata in self.after_by_partition_stratum
+            }
+        )
 
     @property
     def old_total(self) -> float:
@@ -139,6 +166,66 @@ class MassRecord:
         """Compatibility spelling used by :mod:`microcosm.frame`."""
 
         return self.after_total
+
+
+def _receipt_key(value: object) -> str:
+    """Return the JSON-object-key spelling of a partition or stratum value."""
+
+    if isinstance(value, np.generic):
+        value = value.item()
+    return str(value)
+
+
+def _partition_receipt_mapping(
+    values: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+) -> dict[str, dict[str, float]]:
+    result: dict[str, dict[str, float]] = {}
+    for partition, strata in values:
+        partition_key = _receipt_key(partition)
+        if partition_key in result:
+            raise PopulationError(
+                f"Partition values collide as JSON key {partition_key!r}."
+            )
+        converted: dict[str, float] = {}
+        for stratum, mass in strata:
+            stratum_key = _receipt_key(stratum)
+            if stratum_key in converted:
+                raise PopulationError(
+                    f"Strata collide as JSON key {stratum_key!r} inside partition "
+                    f"{partition_key!r}."
+                )
+            converted[stratum_key] = float(mass)
+        result[partition_key] = converted
+    return result
+
+
+def mass_record_receipt(record: MassRecord) -> dict[str, object]:
+    """Return executor-authored public mass accounting for one ledger record."""
+
+    payload: dict[str, object] = {
+        "policy": record.policy,
+        "before": record.before_total,
+        "after": record.after_total,
+        "stratum_before": _receipt_mass_mapping(
+            dict(record.before_by_stratum), label=f"Node {record.node_id!r} mass"
+        ),
+        "stratum_after": _receipt_mass_mapping(
+            dict(record.after_by_stratum), label=f"Node {record.node_id!r} mass"
+        ),
+    }
+    if record.partition_entity is not None:
+        assert record.partition_column is not None
+        payload["partition"] = {
+            "entity": record.partition_entity,
+            "column": record.partition_column,
+            "stratum_before": _partition_receipt_mapping(
+                record.before_by_partition_stratum
+            ),
+            "stratum_after": _partition_receipt_mapping(
+                record.after_by_partition_stratum
+            ),
+        }
+    return payload
 
 
 @dataclass(frozen=True)
@@ -461,7 +548,11 @@ def _validate_expand_lineage(
 
 
 def restore_cached_expand(
-    population: Population, node: Node, result: KernelResult
+    population: Population,
+    node: Node,
+    result: KernelResult,
+    *,
+    mass_partition: tuple[str, str] | None = None,
 ) -> Population:
     """Restore a previously validated EXPAND frame against its keyed base.
 
@@ -529,7 +620,14 @@ def restore_cached_expand(
 
     ledger = (
         *population.mass_ledger,
-        _mass_record(population.frame, frame, node, result, _mass_policy(node)),
+        _mass_record(
+            population.frame,
+            frame,
+            node,
+            result,
+            _mass_policy(node),
+            mass_partition=mass_partition,
+        ),
     )
     owners = {
         (entity, str(column)): node.id
@@ -592,7 +690,13 @@ def storage_equal(
     return _storage_parts(left, selected) == _storage_parts(right, selected)
 
 
-def patch(population: Population, node: Node, result: KernelResult) -> Population:
+def patch(
+    population: Population,
+    node: Node,
+    result: KernelResult,
+    *,
+    mass_partition: tuple[str, str] | None = None,
+) -> Population:
     """Validate and apply one node result without mutating ``population``.
 
     ``EXPAND`` kernels return only the new-id to source-id mapping through
@@ -663,7 +767,14 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
     ledger = population.mass_ledger
     if node.structural is not StructuralDelta.NONE or node.weights is not None:
         policy = _mass_policy(node)
-        record = _mass_record(before, frame, node, result, policy)
+        record = _mass_record(
+            before,
+            frame,
+            node,
+            result,
+            policy,
+            mass_partition=mass_partition,
+        )
         ledger = (*ledger, record)
 
     return Population.from_frame(
@@ -1583,6 +1694,8 @@ def _mass_record(
     node: Node,
     result: KernelResult,
     policy: str,
+    *,
+    mass_partition: tuple[str, str] | None = None,
 ) -> MassRecord:
     if policy not in MASS_POLICIES:
         raise PopulationError(f"Node {node.id!r} has unknown mass policy {policy!r}.")
@@ -1592,7 +1705,18 @@ def _mass_record(
     after_pairs = tuple((key, float(value)) for key, value in after_mass.items())
     before_total = float(before_mass.sum())
     after_total = float(after_mass.sum())
+    before_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...] = ()
+    after_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...] = ()
+    if mass_partition is not None:
+        before_partition = _mass_by_partition(before, mass_partition, node.id)
+        after_partition = _mass_by_partition(after, mass_partition, node.id)
     if policy == "conserve":
+        if mass_partition is not None:
+            _assert_partition_mass_mapping(
+                before_partition,
+                after_partition,
+                label=f"Node {node.id!r} mass='conserve'",
+            )
         _assert_mass_mapping(
             dict(before_pairs),
             dict(after_pairs),
@@ -1609,6 +1733,9 @@ def _mass_record(
             before=dict(before_pairs),
             after=dict(after_pairs),
             node_id=node.id,
+            mass_partition=mass_partition,
+            before_partition=before_partition,
+            after_partition=after_partition,
         )
     elif policy == "declared":
         raise PopulationError(
@@ -1635,6 +1762,89 @@ def _mass_record(
             and "expand_weight_entity" in node.params
             else None
         ),
+        partition_entity=(None if mass_partition is None else mass_partition[0]),
+        partition_column=(None if mass_partition is None else mass_partition[1]),
+        before_by_partition_stratum=before_partition,
+        after_by_partition_stratum=after_partition,
+    )
+
+
+def _partition_values_on_person(
+    frame: Frame,
+    mass_partition: tuple[str, str],
+    node_id: str,
+) -> pd.Series:
+    entity, column = mass_partition
+    if entity not in frame.entities:
+        raise PopulationError(
+            f"Node {node_id!r} mass partition names unknown entity {entity!r}."
+        )
+    table = frame.table(entity)
+    if column not in table:
+        raise PopulationError(
+            f"Node {node_id!r} mass partition column {entity}.{column} is "
+            "missing at run time."
+        )
+    person = frame.schema.person_entity
+    if entity == person:
+        return table[column].reset_index(drop=True)
+    if entity not in frame.schema.group_entities:
+        raise PopulationError(
+            f"Node {node_id!r} cannot broadcast mass partition entity {entity!r} "
+            "to persons."
+        )
+    id_column = frame.schema.entity_id_column(entity)
+    membership = frame.schema.membership_column(entity)
+    positions = pd.Index(table[id_column]).get_indexer(
+        frame.table(person)[membership].to_numpy(copy=False)
+    )
+    if (positions < 0).any():  # defended by Frame linkage validation
+        raise PopulationError(
+            f"Node {node_id!r} cannot align mass partition {entity}.{column} "
+            "to person memberships."
+        )
+    return table[column].iloc[positions].reset_index(drop=True)
+
+
+def _mass_by_partition(
+    frame: Frame,
+    mass_partition: tuple[str, str],
+    node_id: str,
+) -> tuple[tuple[object, tuple[tuple[object, float], ...]], ...]:
+    partition = _partition_values_on_person(frame, mass_partition, node_id)
+    person = frame.schema.person_entity
+    weights = frame.resolve_weights(person).values
+    strata = frame.strata.reset_index(drop=True)
+    valid = partition.notna().to_numpy(dtype=np.bool_, copy=False)
+    if not valid.any():
+        return ()
+    grouped = (
+        pd.DataFrame(
+            {
+                "_partition": partition.loc[valid].reset_index(drop=True),
+                "_stratum": strata.loc[valid].reset_index(drop=True),
+                "_mass": weights[valid],
+            }
+        )
+        .groupby(["_partition", "_stratum"], observed=True, sort=False)["_mass"]
+        .sum()
+    )
+    nested: dict[object, dict[object, float]] = {}
+    for (partition_value, stratum), mass in grouped.items():
+        nested.setdefault(partition_value, {})[stratum] = float(mass)
+    return tuple(
+        (
+            partition_value,
+            tuple(
+                sorted(
+                    strata_mass.items(),
+                    key=lambda item: _receipt_key(item[0]),
+                )
+            ),
+        )
+        for partition_value, strata_mass in sorted(
+            nested.items(), key=lambda item: _receipt_key(item[0])
+        )
     )
 
 
@@ -1647,6 +1857,9 @@ def _validate_mass_receipt(
     before: Mapping[object, float],
     after: Mapping[object, float],
     node_id: str,
+    mass_partition: tuple[str, str] | None,
+    before_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    after_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
 ) -> None:
     if not isinstance(raw, Mapping):
         raise PopulationError(f"Node {node_id!r} receipt['mass'] must be a mapping.")
@@ -1663,6 +1876,87 @@ def _validate_mass_receipt(
     _assert_receipt_mapping(
         raw.get("stratum_after"), after, f"Node {node_id!r} mass.stratum_after"
     )
+    if mass_partition is not None and "partition" in raw:
+        _validate_partition_mass_receipt(
+            raw["partition"],
+            mass_partition=mass_partition,
+            before=before_partition,
+            after=after_partition,
+            node_id=node_id,
+        )
+
+
+def _validate_partition_mass_receipt(
+    raw: object,
+    *,
+    mass_partition: tuple[str, str],
+    before: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    after: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    node_id: str,
+) -> None:
+    if not isinstance(raw, Mapping) or set(raw) != {
+        "entity",
+        "column",
+        "stratum_before",
+        "stratum_after",
+    }:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition must contain entity, column, "
+            "stratum_before, and stratum_after."
+        )
+    entity, column = mass_partition
+    if raw.get("entity") != entity or raw.get("column") != column:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition names "
+            f"{raw.get('entity')}.{raw.get('column')}; expected {entity}.{column}."
+        )
+    _assert_partition_receipt_mapping(
+        raw.get("stratum_before"),
+        before,
+        label=f"Node {node_id!r} mass.partition.stratum_before",
+    )
+    _assert_partition_receipt_mapping(
+        raw.get("stratum_after"),
+        after,
+        label=f"Node {node_id!r} mass.partition.stratum_after",
+    )
+
+
+def _assert_partition_receipt_mapping(
+    observed: object,
+    expected: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    *,
+    label: str,
+) -> None:
+    if not isinstance(observed, Mapping):
+        raise PopulationError(f"{label} must be a mapping.")
+    converted = _partition_receipt_mapping(expected)
+    if set(observed) != set(converted):
+        raise PopulationError(
+            f"{label} changed partitions: expected {list(converted)}, "
+            f"got {list(observed)}."
+        )
+    for partition, strata in converted.items():
+        _assert_receipt_mapping(
+            observed[partition], strata, f"{label} partition {partition!r}"
+        )
+
+
+def _assert_partition_mass_mapping(
+    expected: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    observed: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    *,
+    label: str,
+) -> None:
+    before = {partition: dict(strata) for partition, strata in expected}
+    after = {partition: dict(strata) for partition, strata in observed}
+    partitions = sorted(set(before) | set(after), key=_receipt_key)
+    for partition in partitions:
+        _assert_mass_mapping(
+            before.get(partition, {}),
+            after.get(partition, {}),
+            label=f"{label} partition {_receipt_key(partition)!r}",
+        )
 
 
 def _assert_close(observed: object, expected: float, label: str) -> None:
@@ -1679,8 +1973,23 @@ def _assert_receipt_mapping(
 ) -> None:
     if not isinstance(observed, Mapping):
         raise PopulationError(f"{label} must be a mapping.")
-    converted = {key: float(value) for key, value in observed.items()}
-    _assert_mass_mapping(expected, converted, label=label)
+    expected_json = _receipt_mass_mapping(expected, label=label)
+    observed_json = _receipt_mass_mapping(observed, label=label)
+    _assert_mass_mapping(expected_json, observed_json, label=label)
+
+
+def _receipt_mass_mapping(
+    values: Mapping[object, object], *, label: str
+) -> dict[str, float]:
+    """Normalize a mass mapping to its stable JSON-object-key representation."""
+
+    result: dict[str, float] = {}
+    for raw_key, value in values.items():
+        key = _receipt_key(raw_key)
+        if key in result:
+            raise PopulationError(f"{label} has colliding JSON key {key!r}.")
+        result[key] = float(value)
+    return result
 
 
 def _assert_mass_mapping(

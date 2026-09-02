@@ -3,10 +3,10 @@
 ## State
 
 In progress on branch `impl-11-13` in the isolated worktree
-`/private/tmp/microcosm-impl-11-13`. Implementing charter B6 entrant lineage,
-C5 declared tolerance propagation, D6 partitioned mass conservation, and the
-fit.qrf tolerance measurement. No network, push, or frozen-interface edits are
-in scope.
+`/private/tmp/microcosm-impl-11-13`. Charter B6 entrant lineage, C5 declared
+tolerance propagation, and D6 partitioned mass conservation now pass their
+focused acceptance checks; fit.qrf tolerance measurement and full-lane
+verification remain. No network, push, or frozen-interface edits are in scope.
 
 ## Done
 
@@ -36,12 +36,21 @@ in scope.
   keys, and manifest save/load reconstructs the declared `Tolerance` without a
   schema bump. The C5 acceptance, manifest, view, and explain checks report
   `39 passed in 3.35s`.
+- Implemented D6 partitioned mass accounting: the ledger computes effective
+  person mass per partition and stratum (including group-to-person broadcast),
+  `conserve` rejects the first changed partition by value, executor-authored
+  receipts add the frozen nested partition shape, declared partition receipts
+  are checked, and cache replay uses stable JSON key spellings. Runtime checks
+  reject missing partition columns and ordinary nodes that try to rewrite the
+  structural partition. The broad population/executor/manifest/explain/D6
+  check reports `86 passed in 113.19s (0:01:53)`; the final focused D6 rerun
+  reports `1 passed in 2.41s`.
 
 ## Next
 
-- Implement and commit D6 partitioned mass accounting and receipts.
-- Measure fit.qrf H1 arm64/x86_64 drift, choose a documented tolerance margin,
-  run the full verification matrix, and write `out.md`.
+- Harden the independent-review B6 cache and C5 key-resolution edge cases.
+- Record the measured fit.qrf H1 arm64/x86_64 bound, run the full verification
+  matrix, and write `out.md`.
 
 # ACS predictor release join
 

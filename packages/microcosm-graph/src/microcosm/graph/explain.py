@@ -1005,13 +1005,16 @@ def _mass_payload(
 ) -> dict[str, object] | None:
     raw = receipt.receipt.get("mass")
     if isinstance(raw, Mapping):
-        return {
+        payload = {
             "before": raw.get("before"),
             "after": raw.get("after"),
             "stratum_before": raw.get("stratum_before", {}),
             "stratum_after": raw.get("stratum_after", {}),
             "policy": raw.get("policy", node.mass),
         }
+        if isinstance(raw.get("partition"), Mapping):
+            payload["partition"] = raw["partition"]
+        return payload
     for record in reversed(manifest.mass_ledgers.get(node.id, ())):
         if record.node_id == node.id:
             return {

@@ -48,6 +48,7 @@ from .manifest import Decision, NodeReceipt, RunManifest
 from .population import (
     Population,
     expand_lineage_receipt,
+    mass_record_receipt,
     patch,
     restore_cached_expand,
     weight_cap_receipt,
@@ -927,7 +928,20 @@ def _apply_result(
     population: Population | None,
     *,
     cache_hit: bool = False,
+    mass_partition: tuple[str, str] | None = None,
 ) -> Population:
+    if (
+        mass_partition is not None
+        and node.structural is StructuralDelta.NONE
+        and any(
+            (owned.entity, owned.column) == mass_partition for owned in node.outputs
+        )
+    ):
+        entity, column = mass_partition
+        raise NodeRejected(
+            f"Node {node.id!r} cannot own mass partition {entity}.{column}; "
+            "partition values are fixed by the structural population."
+        )
     if node.structural is StructuralDelta.CREATE:
         assert result.frame is not None
         return _create_population(node, result.frame)
@@ -938,7 +952,9 @@ def _apply_result(
         and result.frame is not None
     ):
         try:
-            return restore_cached_expand(population, node, result)
+            return restore_cached_expand(
+                population, node, result, mass_partition=mass_partition
+            )
         except (TypeError, ValueError) as error:
             raise NodeRejected(
                 f"Node {node.id!r} cached EXPAND rejected: {error}"
@@ -971,7 +987,7 @@ def _apply_result(
             receipt=result.receipt,
         )
     try:
-        return patch(population, node, result)
+        return patch(population, node, result, mass_partition=mass_partition)
     except NodeRejected:
         raise
     except (TypeError, ValueError) as error:
@@ -1514,7 +1530,24 @@ def run_graph(
             )
             normalized_receipt["gate_ancestry"] = list(gate_ids)
         normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
-        updated = _apply_result(node, result, incumbent, cache_hit=hit)
+        updated = _apply_result(
+            node,
+            result,
+            incumbent,
+            cache_hit=hit,
+            mass_partition=compiled.graph.mass_partition,
+        )
+        if compiled.graph.mass_partition is not None and node.structural not in {
+            StructuralDelta.NONE,
+            StructuralDelta.CREATE,
+        }:
+            existing_mass = normalized_receipt.get("mass", {})
+            if not isinstance(existing_mass, Mapping):  # defended by mass validation
+                raise NodeRejected(
+                    f"Node {node.id!r} receipt['mass'] is not a mapping."
+                )
+            authored_mass = mass_record_receipt(updated.mass_ledger[-1])
+            normalized_receipt["mass"] = {**existing_mass, **authored_mass}
         normalized_receipt.update(weight_cap_receipt(updated, node))
         cache_receipt = normalized_receipt
         run_receipt = dict(cache_receipt)
