@@ -2,13 +2,13 @@
 
 ## State
 
-In progress on 2026-09-02 in the isolated `/private/tmp/microcosm-fix-851`
-worktree on branch `fix-851`, based exactly on `graph-amendments-impl` at
-`6348ed7b`. The task is to implement every owner-ruled must-fix item and
-follow-up from the local PR #851 review, with one regression test and one
-commit per finding, then run the complete requested verification boundary.
-No network access, merge, push, frozen-interface edit, acceptance-test edit,
-or `_toy.py` edit is authorized.
+Implementation and verification complete on 2026-09-02 in the isolated
+`/private/tmp/microcosm-fix-851` worktree on branch `fix-851`, based exactly
+on `graph-amendments-impl` at `6348ed7b`. Every owner-ruled must-fix item and
+follow-up from the local PR #851 review has its runtime regression and coherent
+commit. The complete requested verification boundary is green. No network,
+merge, push, frozen-interface edit, acceptance-test edit, or `_toy.py` edit
+was performed.
 
 ## Done
 
@@ -92,11 +92,25 @@ or `_toy.py` edit is authorized.
   source-derived implementation hash to
   `9b412a44b3e9d2cfc44b6ed2635e46edefc09c942af10235c56b0839cac906fd`.
   A runtime unit test binds the one-ULP contract to that pin; H1 remains exact.
+- Complete verification boundary recorded exactly:
+  - graph shard: `233 passed in 120.87s (0:02:00)`
+  - graph shard count form: `233 passed in 102.06s (0:01:42)`
+  - kernel and country graph selection: `29 passed in 45.35s`
+  - H1-H3 byte-exact selection: `3 passed in 78.63s (0:01:18)`
+  - Ruff lint: `All checks passed!`
+  - touched-file format: `10 files already formatted`
+  - CI inventory: `tracked_test_files=353` and `verification=ok`
+  - acceptance burndown: `total         0`, `green     41`,
+    `red        0  none`, `missing    0  none`, and `verification=ok`
+- Confirmed the worktree remained clean after verification and the frozen
+  `decl.py`, `kernel.py`, `docs/graph-interface.lock`, acceptance tests,
+  and `_toy.py` are unchanged from `6348ed7b`.
 
 ## Next
 
-- Run every requested verification command and copy its exact summary lines
-  into `/private/tmp/microcosm-fix-851/out.md`.
+- Write and commit `out.md` with the verified implementation SHA, per-finding
+  file/line and regression evidence, and every exact verification summary.
+- Perform the final clean-worktree audit. Do not push.
 
 # ACS predictor release join
 
