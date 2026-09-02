@@ -2,7 +2,7 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. All in-scope runtime, persistence, serialization, and honest real-kernel fixture work is implemented with focused tests green. The sanctioned flip removed the four markers that strict-XPASS (F2, both F3 cases, and F5); F4 and the checked-in H1 consumer remain blocked by frozen-test contradictions. Post-flip verification and the final report are next.
+Handoff-ready on `node-graph-release` in the required local clone. All runtime, persistence, serialization, and honest real-kernel fixture work possible without contradicting the frozen interfaces or unowned fixtures is implemented and verified. The sanctioned flip removed the four markers that strict-XPASS (F2, both F3 cases, and F5). The final result is 175 passed and 4 xfailed: F4 and H1 require the separate owner-authorized fixture/interface corrections documented in `out.md`, while H2/H3 remain expected future work.
 
 ## Done
 
@@ -33,11 +33,14 @@ Active on `node-graph-release` in the required local clone. All in-scope runtime
 - Ran the sanctioned `tools/graph_acceptance_flip.py` once; it removed only the F2, F3, F5, and replay-F3 markers.
 - Hardened manifest loading after an adversarial audit: release tier is now rederived from the recorded role-gate ancestry instead of trusted from the release receipt, invalid gate receipts are refused, and a noncanonical content body becomes a key-bearing `StoreCorruptError`.
 - Added regressions for a failed-gate/certified-release contradiction, non-finite content-body data, and explicit rejected-node failure accounting; all 24 manifest tests and the focused F/replay acceptance files pass with only F4 xfailed.
+- Reran the sanctioned flip audit after the final runtime change; it reported `no strict xpass: nothing to flip`.
+- Passed the final graph suite (175 passed, 4 xfailed), acceptance burndown (green 33, red F4/H1/H2/H3, `verification=ok`), CI inventory (`verification=ok`), owned-file format check, repository Ruff, real-kernel regressions (15 passed, 1 skipped), frozen-interface diff, and `git diff --check`.
+- Wrote the per-file implementation record, exact gate/release/manifest rules, fixture regeneration command, verification receipts, and interface-change requests to `out.md`.
 
 ## Next
 
-- Run the post-flip package suite and acceptance/CI verifiers.
-- Write `out.md`, including the F4/H1 interface-change requests needed for a separate owner-authorized test correction.
+- Fable main: authorize the separate F4 toy-fixture and H1 consumer corrections recorded in `out.md`.
+- Decide whether calibration creates a structural `REWEIGHT` version or receives explicit nonstructural weight-transition version semantics; then enable the executor-level calibration leg of H1 and rerun the sanctioned flip tool.
 
 # ACS predictor release join
 
