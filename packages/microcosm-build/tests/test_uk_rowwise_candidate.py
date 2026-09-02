@@ -856,23 +856,44 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         for target_id in household_bridge.higher_target_ids
         if target_id not in reviewed_missing
     )
+    fanout_target_id = "dwp.uc.payment_distribution_single"
+    fanout_names = tuple(f"payment-band-{index}" for index in range(3))
     national_registry = TargetRegistry(
         [
-            TargetSpec(
-                name=target_id,
-                entity="household",
-                measure=f"national/composition_{index}",
-                value=33.0,
-                period=2025,
-                source="synthetic national fixture",
-                family="ons",
-                metadata={
-                    "contract_target_id": target_id,
-                    "ledger_geography_level": "country",
-                    "ledger_geography_id": "K02000001",
-                },
-            )
-            for index, target_id in enumerate(selected_composition)
+            *[
+                TargetSpec(
+                    name=target_id,
+                    entity="household",
+                    measure=f"national/composition_{index}",
+                    value=33.0,
+                    period=2025,
+                    source="synthetic national fixture",
+                    family="ons",
+                    metadata={
+                        "contract_target_id": target_id,
+                        "ledger_geography_level": "country",
+                        "ledger_geography_id": "K02000001",
+                    },
+                )
+                for index, target_id in enumerate(selected_composition)
+            ],
+            *[
+                TargetSpec(
+                    name=name,
+                    entity="household",
+                    measure=f"national/payment_band_{index}",
+                    value=33.0,
+                    period=2025,
+                    source="synthetic fan-out fixture",
+                    family="dwp_uc",
+                    metadata={
+                        "contract_target_id": fanout_target_id,
+                        "ledger_geography_level": "country",
+                        "ledger_geography_id": "K03000001",
+                    },
+                )
+                for index, name in enumerate(fanout_names)
+            ],
         ],
         country="uk",
     )
@@ -1034,6 +1055,16 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     dry_unbound = dry_plan["cross_grain"]["unbound_bridges"]
     assert [entry["bridge_id"] for entry in dry_unbound] == [household_bridge.bridge_id]
     assert dry_unbound[0]["missing"] == sorted(reviewed_missing)
+    dry_fanout = dry_plan["cross_grain"]["fanout_controls_summed"]
+    assert dry_fanout == [
+        {
+            "target_id": fanout_target_id,
+            "geography_id": "K03000001",
+            "cells": 3,
+            "cell_names": list(fanout_names),
+            "total": 99.0,
+        }
+    ]
     assert not dry_out.exists()
 
     f100_out = tmp_path / "joint-f100"
@@ -1060,12 +1091,14 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert f100["solve"]["n_targets_by_kind"] == {
         "local": 1,
         "ladder": 12,
-        "national": len(selected_composition),
+        "national": len(national_registry.specs),
     }
-    assert f100["solve"]["n_targets"] == 13 + len(selected_composition)
+    assert f100["solve"]["n_targets"] == 13 + len(national_registry.specs)
     assert f100["solve"]["measure_resolution"]["mode"] == "stub"
     assert f100["cross_grain"]["unbound_bridges"] == dry_unbound
     assert f100["solve"]["cross_grain"]["unbound_bridges"] == dry_unbound
+    assert f100["cross_grain"]["fanout_controls_summed"] == dry_fanout
+    assert f100["solve"]["cross_grain"]["fanout_controls_summed"] == dry_fanout
     assert f100["releasable"] is True
     assert _spool_rows(f100_out)[0].rung == "f100"
 

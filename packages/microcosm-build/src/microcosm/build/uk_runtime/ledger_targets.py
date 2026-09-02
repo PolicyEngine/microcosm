@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -751,6 +752,7 @@ def uk_local_target_surface(
     }
     output_rows: list[dict[str, Any]] = []
     reconciliation_rows: list[dict[str, Any]] = []
+    national_control_groups: dict[tuple[str, str], list[tuple[str, str, float]]] = {}
     for spec in local_registry.specs:
         geography_level, geography_id = _spec_geography(spec)
         contract_target_id = str(
@@ -795,19 +797,55 @@ def uk_local_target_surface(
                 }
             )
         elif geography_level in UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS:
-            reconciliation_rows.append(
-                {
-                    "grain": geography_level,
-                    "geography_id": geography_id,
-                    "target_id": contract_target_id,
-                    "value": float(spec.value),
-                    "_output_position": None,
-                }
-            )
+            value = float(spec.value)
+            if not np.isfinite(value):
+                raise ValueError(
+                    f"UK national target cell {spec.name!r} has non-finite "
+                    f"value {value!r}."
+                )
+            national_control_groups.setdefault(
+                (contract_target_id, geography_id), []
+            ).append((spec.name, geography_level, value))
         else:
             raise ValueError(
                 f"UK target {spec.name!r} names unsupported geography_level "
                 f"{geography_level!r}."
+            )
+
+    fanout_controls_summed: list[dict[str, Any]] = []
+    for (target_id, geography_id), cells in national_control_groups.items():
+        cell_names = sorted(name for name, _, _ in cells)
+        geography_levels = sorted({level for _, level, _ in cells})
+        if len(geography_levels) != 1:
+            raise ValueError(
+                f"UK national target {target_id!r} at {geography_id!r} has "
+                f"fan-out cells {cell_names} with mixed geography levels "
+                f"{geography_levels}."
+            )
+        total = math.fsum(value for _, _, value in cells)
+        if not math.isfinite(total):
+            raise ValueError(
+                f"UK national target {target_id!r} at {geography_id!r} has "
+                f"fan-out cells {cell_names} with a non-finite summed total."
+            )
+        reconciliation_rows.append(
+            {
+                "grain": geography_levels[0],
+                "geography_id": geography_id,
+                "target_id": target_id,
+                "value": total,
+                "_output_position": None,
+            }
+        )
+        if len(cells) > 1:
+            fanout_controls_summed.append(
+                {
+                    "target_id": target_id,
+                    "geography_id": geography_id,
+                    "cells": len(cells),
+                    "cell_names": cell_names,
+                    "total": total,
+                }
             )
 
     for area_type, targets in (
@@ -847,6 +885,7 @@ def uk_local_target_surface(
         bound_national_target_ids,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
     )
+    receipt["fanout_controls_summed"] = fanout_controls_summed
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
         output_position = reconciliation.iloc[position]["_output_position"]
         if pd.notna(output_position):

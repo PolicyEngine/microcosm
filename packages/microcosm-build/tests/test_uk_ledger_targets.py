@@ -181,6 +181,144 @@ def _minimal_target_surface_ladder() -> SimpleNamespace:
     )
 
 
+def _national_control_spec(
+    name: str,
+    *,
+    value: float,
+    target_id: str = "dwp.uc.payment_distribution_single",
+    geography_level: str = "country",
+    geography_id: str = "K03000001",
+) -> TargetSpec:
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=value,
+        measure=f"measure/{name}",
+        period=2025,
+        source="synthetic national control fixture",
+        family="national_control",
+        metadata={
+            "contract_target_id": target_id,
+            "ledger_geography_level": geography_level,
+            "ledger_geography_id": geography_id,
+        },
+    )
+
+
+def test_uk_local_target_surface_sums_fanout_national_control(monkeypatch) -> None:
+    from microcosm.build.uk_runtime import ledger_targets as module
+
+    specs = [
+        _national_control_spec(f"payment-band-{index}", value=value)
+        for index, value in enumerate((10.0, 20.0, 30.0))
+    ]
+    captured: dict[str, pd.DataFrame] = {}
+
+    def capture(frame, *_args, **_kwargs):
+        captured["frame"] = frame.copy(deep=True)
+        return frame.copy(deep=True), {"groups": []}
+
+    monkeypatch.setattr(module, "apply_uk_cross_grain_reconciliation", capture)
+
+    _, receipt = module.uk_local_target_surface(
+        TargetRegistry(specs, country="uk"),
+        _minimal_target_surface_ladder(),
+        bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+        period=2025,
+    )
+
+    controls = captured["frame"].loc[
+        captured["frame"]["target_id"] == "dwp.uc.payment_distribution_single"
+    ]
+    assert controls[["grain", "geography_id", "value"]].to_dict("records") == [
+        {"grain": "country", "geography_id": "K03000001", "value": 60.0}
+    ]
+    assert receipt["fanout_controls_summed"] == [
+        {
+            "target_id": "dwp.uc.payment_distribution_single",
+            "geography_id": "K03000001",
+            "cells": 3,
+            "cell_names": ["payment-band-0", "payment-band-1", "payment-band-2"],
+            "total": 60.0,
+        }
+    ]
+
+
+def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> None:
+    from microcosm.build.uk_runtime import ledger_targets as module
+
+    captured: dict[str, pd.DataFrame] = {}
+
+    def capture(frame, *_args, **_kwargs):
+        captured["frame"] = frame.copy(deep=True)
+        return frame.copy(deep=True), {"groups": []}
+
+    monkeypatch.setattr(module, "apply_uk_cross_grain_reconciliation", capture)
+    spec = _national_control_spec("only-cell", value=42.0)
+
+    _, receipt = module.uk_local_target_surface(
+        TargetRegistry([spec], country="uk"),
+        _minimal_target_surface_ladder(),
+        bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+        period=2025,
+    )
+
+    controls = captured["frame"].loc[
+        captured["frame"]["target_id"] == "dwp.uc.payment_distribution_single"
+    ]
+    assert controls[["grain", "geography_id", "value"]].to_dict("records") == [
+        {"grain": "country", "geography_id": "K03000001", "value": 42.0}
+    ]
+    assert receipt["fanout_controls_summed"] == []
+
+
+def test_uk_local_target_surface_refuses_named_nonfinite_national_cell() -> None:
+    specs = [
+        _national_control_spec("finite-cell", value=10.0),
+        _national_control_spec("bad-cell", value=20.0),
+    ]
+    object.__setattr__(specs[1], "value", float("nan"))
+
+    with pytest.raises(ValueError, match="bad-cell.*non-finite"):
+        uk_local_target_surface(
+            TargetRegistry(specs, country="uk"),
+            _minimal_target_surface_ladder(),
+            bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+            period=2025,
+        )
+
+
+def test_uk_local_target_surface_refuses_fanout_across_levels() -> None:
+    target_id = "voa.council_tax_stock.band_a"
+    specs = [
+        _national_control_spec(
+            "country-cell",
+            value=10.0,
+            target_id=target_id,
+            geography_level="country",
+            geography_id="K02000001",
+        ),
+        _national_control_spec(
+            "region-cell",
+            value=20.0,
+            target_id=target_id,
+            geography_level="region",
+            geography_id="K02000001",
+        ),
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="country-cell.*region-cell.*mixed geography levels",
+    ):
+        uk_local_target_surface(
+            TargetRegistry(specs, country="uk"),
+            _minimal_target_surface_ladder(),
+            bound_national_target_ids=(target_id,),
+            period=2025,
+        )
+
+
 @pytest.mark.parametrize(
     ("metadata", "message"),
     [
