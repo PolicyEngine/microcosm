@@ -94,6 +94,10 @@ _ROOT_CELLS = (
     *_cells("person", ("A_AGE",), "float64"),
     *_cells("person", ("A_SEX", "source_year"), "int64"),
     *_cells("person", ("measured",), "float64"),
+    # The unchanged stage validators inspect source and support provenance on
+    # every entity, so the CREATE node loads those columns; no kernel here reads
+    # them (test_us_spine_blindness lists this module as a declaration-only
+    # provenance owner for that reason).
     *_cells(
         "person",
         ("person_spine_source_id", "person_source_id"),
