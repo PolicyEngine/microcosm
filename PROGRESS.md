@@ -40,8 +40,8 @@ not modified and nothing was pushed.
 
 ## Next
 
-- No implementation work remains. Write `out.md`; the dispatcher owns the
-  push.
+- No work remains. The completed handoff is in `out.md`; the dispatcher owns
+  the push.
 
 ---
 
