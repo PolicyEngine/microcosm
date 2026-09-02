@@ -1467,3 +1467,140 @@ def test_candidate_publication_rolls_back_on_interrupt(
         builder._publish_staged_files(staged, output_paths)
 
     assert not output_dir.exists()
+
+
+def _failing_gate_evaluator(builder, name: str, message: str):
+    def evaluator(*_args, **_kwargs):
+        return builder.GateResult(
+            name=name, passed=False, failures=(message,), details={"minimum": 0}
+        )
+
+    return evaluator
+
+
+def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> list[str]:
+    return [
+        "--input-h5",
+        str(input_h5),
+        "--ladder",
+        str(ladder_path),
+        "--out",
+        str(output_dir),
+        "--n-clones",
+        "2",
+        "--seed",
+        "7",
+        "--epochs",
+        "2",
+        "--skip-holdout",
+    ]
+
+
+def test_candidate_diagnostic_gate_failure_is_reported_not_blocking(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(
+        input_h5, households_per_region=200, region_masses=(4.0, 10.0, 10.0, 9.0)
+    )
+    _write_ladder(ladder_path)
+    ladder = load_uk_oa_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    ratio = builder.UK_GATE_REGISTRY["weight_ratio"]
+    monkeypatch.setattr(
+        builder,
+        "UK_GATE_REGISTRY",
+        {
+            **builder.UK_GATE_REGISTRY,
+            "weight_ratio": replace(
+                ratio,
+                evaluator=_failing_gate_evaluator(
+                    builder, "weight_ratio", "ratio 104.6 > 100"
+                ),
+            ),
+        },
+    )
+
+    assert builder.main(_joint_f100_args(input_h5, ladder_path, output_dir)) == 0
+
+    capsys.readouterr()
+    manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["failing_gate_ids"] == ["uk_local_weight_ratio"]
+    assert manifest["blocked_at_f100"] is False
+    assert manifest["blocking_failures"] == []
+    assert manifest["diagnostic_failures"] == [
+        "[uk_local_weight_ratio] ratio 104.6 > 100"
+    ]
+    assert manifest["releasable"] is True
+    report = json.loads(
+        Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
+    )
+    assert report["gates"]["uk_local_weight_ratio"]["criticality"] == "diagnostic"
+    assert report["gates"]["uk_local_weight_ratio"]["status"] == "failed"
+    assert _spool_rows(output_dir)[0].disposition == "iterating"
+
+
+def test_candidate_block_partitions_failures_by_criticality(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(
+        input_h5, households_per_region=200, region_masses=(4.0, 10.0, 10.0, 9.0)
+    )
+    _write_ladder(ladder_path)
+    registry = builder.UK_GATE_REGISTRY
+    monkeypatch.setattr(
+        builder,
+        "UK_GATE_REGISTRY",
+        {
+            **registry,
+            "area_support": replace(
+                registry["area_support"],
+                evaluator=_failing_gate_evaluator(
+                    builder, "area_support", "ESS 42.3 < 50"
+                ),
+            ),
+            "weight_ratio": replace(
+                registry["weight_ratio"],
+                evaluator=_failing_gate_evaluator(
+                    builder, "weight_ratio", "ratio 578 > 100"
+                ),
+            ),
+        },
+    )
+
+    assert builder.main(_joint_f100_args(input_h5, ladder_path, output_dir)) == 1
+
+    captured = capsys.readouterr()
+    assert "artifact unreleasable" in captured.err
+    manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["failing_gate_ids"] == [
+        "uk_local_area_support",
+        "uk_local_weight_ratio",
+    ]
+    assert manifest["blocked_at_f100"] is True
+    assert manifest["blocking_failures"] == ["[uk_local_area_support] ESS 42.3 < 50"]
+    assert manifest["diagnostic_failures"] == [
+        "[uk_local_weight_ratio] ratio 578 > 100"
+    ]
+    assert manifest["releasable"] is False
+    assert _spool_rows(output_dir)[0].disposition == "failed"

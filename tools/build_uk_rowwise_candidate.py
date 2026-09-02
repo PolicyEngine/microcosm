@@ -964,7 +964,7 @@ def _run_candidate(
                     else ("uk_local_geography_ladder_post_calibration",)
                 ),
             )
-        except GateBatteryBlockedError as blocked_error:
+        except GateBatteryBlockedError:
             # Write-then-block, extended to the whole evidence bundle: a
             # release-blocking failure at f100 still writes the diagnostics,
             # manifest and artifact (marked unreleasable) so the block can be
@@ -980,12 +980,31 @@ def _run_candidate(
             if ladder_entry.get("status") != "passed":
                 raise
             candidate_gate = clone.gate
-            blocked_failures = [str(failure) for failure in blocked_error.failures]
+            blocked_failures, diagnostic_failures = _gate_failures_by_criticality(
+                gate_report
+            )
+            if not blocked_failures:
+                # The battery blocked, yet the persisted report names no
+                # failed release-blocking entry: the report and the error
+                # disagree, which is structural.
+                raise
+            unenforced_failures = []
         else:
             _apply_gate_verdicts(state, gate_report, output_paths["local_gates"])
+            # Nothing blocked. Release-blocking entries can still hold a
+            # failure here: below f100 only the ladder gate is enforced, and
+            # a dev build tolerates absent evidence. Those lines are reported
+            # as not enforced, never as a block.
+            unenforced_failures, diagnostic_failures = _gate_failures_by_criticality(
+                gate_report
+            )
             blocked_failures = []
         args._gate_report = gate_report
         args._blocked_failures = blocked_failures
+        args._diagnostic_failures = diagnostic_failures
+        args._unenforced_release_failures = (
+            [] if blocked_failures else unenforced_failures
+        )
         append_phase(
             state, "candidate_gated" if not blocked_failures else "candidate_blocked"
         )
@@ -1769,6 +1788,38 @@ def _run_local_gate_battery(
     return payload, ladder.result
 
 
+def _gate_failures_by_criticality(
+    gate_report: Mapping[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Split a persisted battery report's failure lines by criticality.
+
+    Returns ``(release_blocking, diagnostic)``, each entry-prefixed like
+    :class:`GateBatteryBlockedError`'s lines. Only ``failed`` and
+    ``evidence_absent`` entries are failures; ``not_applicable`` and
+    ``unreached`` entries are not.
+    """
+
+    blocking: list[str] = []
+    diagnostic: list[str] = []
+    gates = gate_report.get("gates", {})
+    if not isinstance(gates, Mapping):
+        return blocking, diagnostic
+    for gate_id, payload in gates.items():
+        if not isinstance(payload, Mapping):
+            continue
+        status = payload.get("status")
+        if status not in {"failed", "evidence_absent"}:
+            continue
+        lines = [f"[{gate_id}] {line}" for line in payload.get("failures") or ()]
+        if not lines:
+            lines = [f"[{gate_id}] {payload.get('reason') or status}"]
+        bucket = (
+            blocking if payload.get("criticality") == "release_blocking" else diagnostic
+        )
+        bucket.extend(lines)
+    return blocking, diagnostic
+
+
 def _apply_gate_verdicts(
     state: AttemptState,
     report: Mapping[str, object],
@@ -1988,9 +2039,18 @@ def _manifest(
     new_total = float(calibration_record.new_total)
     past_cap = dict(solve.past_cap_census or {})
     gate_rows = args._gate_report.get("gates", {})
-    all_gates_passed = bool(gate_rows) and all(
-        isinstance(payload, Mapping) and payload.get("status") == "passed"
-        for payload in gate_rows.values()
+    # ``releasable`` follows the battery's own doctrine: release-blocking
+    # entries decide, diagnostic entries (target_fit, weight_ratio, ...) are
+    # reported but never veto. ``failing_gate_ids`` still lists every
+    # non-passing entry of either criticality.
+    release_gate_rows = {
+        gate_id: payload
+        for gate_id, payload in gate_rows.items()
+        if isinstance(payload, Mapping)
+        and payload.get("criticality") == "release_blocking"
+    }
+    all_gates_passed = bool(release_gate_rows) and all(
+        payload.get("status") == "passed" for payload in release_gate_rows.values()
     )
     area_gate = gate_rows.get("uk_local_area_support", {})
     area_exclusion_details = (
@@ -2211,6 +2271,10 @@ def _manifest(
         "releasable": args.sample_fraction == 1.0 and all_gates_passed,
         "blocked_at_f100": bool(getattr(args, "_blocked_failures", [])),
         "blocking_failures": list(getattr(args, "_blocked_failures", [])),
+        "diagnostic_failures": list(getattr(args, "_diagnostic_failures", [])),
+        "release_gate_failures_not_enforced": list(
+            getattr(args, "_unenforced_release_failures", [])
+        ),
     }
 
 
