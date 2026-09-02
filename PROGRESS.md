@@ -14,13 +14,17 @@ in scope.
   `graph-amendments-11-13` at `6d0f0560`.
 - Recorded the frozen files, sanctioned acceptance flip, commit cadence, test
   commands, parity requirement, and required `out.md` evidence.
+- Read all three RED acceptance properties and their `_toy.py` kernels before
+  inspecting runtime code, then read interface amendments 11–13 and the full
+  acceptance-lane report with its fixed public receipt shapes.
+- Completed the locked all-package US/UK sync offline. The sandbox made the
+  default warm uv cache read-only, so it was cloned to
+  `/private/tmp/microcosm-impl-uv-cache` and used with `UV_OFFLINE=1`.
 
 ## Next
 
-- Read the three RED acceptance tests, `_toy.py`, interface amendments 11–13,
-  and the acceptance lane report before changing runtime code.
-- Sync the locked all-package US/UK environment, then implement and commit B6,
-  C5, and D6 as coherent steps.
+- Finish the read-only runtime flow audit, then implement and commit B6, C5,
+  and D6 as coherent steps.
 - Measure fit.qrf H1 arm64/x86_64 drift, choose a documented tolerance margin,
   run the full verification matrix, and write `out.md`.
 
