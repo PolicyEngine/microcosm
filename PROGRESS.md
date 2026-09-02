@@ -4,9 +4,8 @@
 
 The entrant-person strata implementation, cache attestation, mass receipt, and
 lineage presentation coverage are complete. The sanctioned tool flipped
-exactly B7 and both suite pins report zero red. A final review found and fixed
-receipt ID-width restoration; the required verification matrix is being rerun
-against the final cache-label encoding.
+exactly B7, both suite pins report zero red, and the complete required
+verification matrix passes. The implementation is ready for handoff.
 
 ## Done
 
@@ -49,11 +48,20 @@ against the final cache-label encoding.
 - Matched the content store's complete non-null object-scalar vocabulary by
   encoding byte-valued labels as canonical `{"bytes_hex": ...}` receipt
   values. Population replay coverage now reports `34 passed in 0.80s`.
+- Final graph suite with repository addopts:
+  `222 passed in 123.26s (0:02:03)`.
+- Final graph suite with explicit count addopts:
+  `222 passed in 129.23s (0:02:09)`.
+- Final fit/calibrate/frame/UK/US kernel selection:
+  `29 passed in 63.93s (0:01:03)`.
+- Final static gates: `All checks passed!`, `7 files already formatted`,
+  `tracked_test_files=353`, CI grouping `verification=ok`, and acceptance
+  burndown `total 0`, `red 0`, `missing 0`, `verification=ok`.
+- Confirmed the frozen `decl.py`, `kernel.py`, `graph-interface.lock`, and
+  `_toy.py` are byte-identical to merge commit `602c0f81`, the amendment-14
+  parent actually merged into this branch.
 
 ## Next
 
-- Rerun the complete graph shard twice after the final label-codec fix
-  (standard repository addopts, then the explicit count configuration).
-- Run the cross-shard kernel/parity selection, lint, formatting, CI grouping,
-  and final burndown verification.
-- Record exact summaries and the final branch SHA in `out.md`.
+- Write the final branch SHA, file/line handoff, receipt shape, and exact
+  verification summaries to the requested source-worktree `out.md`.
