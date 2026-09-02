@@ -21,9 +21,13 @@ Frozen (microcosm#639): nothing on disk or in artifacts renames. Diagnostic
 field names (`ledger_aggregate_fact_key`, `ledger_commit`), H5 attrs,
 `populace_*` ids, fact keys, goldens and fixtures stay at v1.
 
+**Acceptance widens; nothing narrows.** This is the rule the lane's own first
+pass broke and the second pass restored — see "The regression that mattered".
+
 ## State
 
-Implementation and tests landed; verification run recorded in `out.md`.
+Implementation and tests landed; verification run recorded in the PR body and
+in the lane's report. PR #849, open, do not merge.
 
 ## Done
 
@@ -34,10 +38,10 @@ Implementation and tests landed; verification run recorded in `out.md`.
   strings the spec names explicitly are pinned as literals.
 - `microcosm/build/chronicle_env.py` — the env dual-read window, one helper,
   one `DeprecationWarning` per process per legacy name.
-- `ledger_artifact.py` — manifest `schema_version` is a membership test over
-  both eras; a per-row `schema_version` is validated when present (Chronicle
-  rows have never carried one) and never demanded; `provenance()` records the
-  observed id, `schema_epoch`, and `fact_key_epochs`.
+- `ledger_artifact.py` — the manifest `schema_version` is a membership test
+  over both eras; per-row schema ids and fact keys are carried as published;
+  `provenance()` records the observed manifest id, `schema_epoch`,
+  `fact_key_epochs`, and `fact_schema_versions`.
 - `us_trade/import_entry_facts.py` — emission stays ledger-era (bytes are
   pinned; these rows are minted from Census/CBP bytes, so there is no source
   epoch to inherit), but the declared id is now an argument checked against
@@ -50,17 +54,45 @@ Implementation and tests landed; verification run recorded in `out.md`.
   `test_us_congressional_district_vintage.py`, and dual-era emission and
   acceptance in `test_us_trade_facts.py`.
 
+## The regression that mattered
+
+The lane's first pass added a per-row `schema_version` check to
+`_load_fact_rows` that rejected any id outside the two chronicle#143 names —
+validation `main` never performed, on a field `main` never read. Real feeds do
+not honor that set. The pinned US fiscal-refresh feed
+`consumer_facts_buildn_v9_4.jsonl`, which the release path loads through this
+loader, declares `arch.consumer_fact.v1` on 37,006 of its first 200,000 rows
+and `ledger.consumer_fact.v1` on 399. The check failed the build closed on its
+own pinned input, and **PR CI could not see it**: the feed is gated data
+outside PR CI. Reproduced directly, fixed, and pinned by a test.
+
+The same pass witnessed fact-key epochs from only the four fields targets
+resolve a fact by. Published rows carry eleven key-bearing paths; the pinned
+feed exercises all of them. A row straddling the cutover — ledger-era
+aggregate key, chronicle-era source-release key — was reported as pure
+ledger-era. The inventory is now complete and pinned to the captured feed
+fixture.
+
 ## Audit result
 
-An 8-surface / 42-agent adversarial audit of every site that compares,
-parses, or mints a Chronicle fact key or schema id found exactly three
-hard-coded epoch literals in non-test source — `ledger_artifact.py:35`/`:126`
-and `import_entry_facts.py:141`/`:142` — all handled here. `ledger_targets.py`
-carries keys opaquely and contains no epoch literal at all;
-`congressional_district_vintage.py` mints into Microcosm-owned namespaces that
-sit outside both eras; the UK runtime is clean; no golden embeds a Chronicle
-domain and no H5 attribute name embeds `ledger`. Every other candidate site
-was refuted on verification.
+Every site that compares, parses, or mints a Chronicle fact key or schema id
+was inventoried. After this branch, no non-test source file hard-codes a
+single epoch in a validator. `ledger_targets.py` carries keys opaquely and
+contains no epoch literal at all; `congressional_district_vintage.py` and
+`us_trade/import_entry_facts.py` mint into Microcosm-owned namespaces from
+digest payloads that contain no Chronicle key, so a source row's epoch cannot
+move a minted key; the UK runtime is clean; no golden embeds a Chronicle
+domain and no H5 attribute name embeds `ledger`. `require_pins` does not exist
+in this repo.
+
+## Open question for the Chronicle side
+
+The pinned feeds carry an `arch.*` key namespace alongside `ledger.*` — 37,006
+rows against 399 in `consumer_facts_buildn_v9_4.jsonl`, across all eleven
+families. Microcosm treats those keys opaquely, so nothing here depends on
+what `arch` is, and the epoch module reports it as outside both declared eras.
+Whether chronicle#143's cutover is meant to re-epoch `arch.*` rows too is a
+question for the Chronicle lane; this branch does not guess.
 
 ## Next
 
