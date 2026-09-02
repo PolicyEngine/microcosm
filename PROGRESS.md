@@ -1,3 +1,29 @@
+# Graph interface amendments 11–13 implementation
+
+## State
+
+In progress on branch `impl-11-13` in the isolated worktree
+`/private/tmp/microcosm-impl-11-13`. Implementing charter B6 entrant lineage,
+C5 declared tolerance propagation, D6 partitioned mass conservation, and the
+fit.qrf tolerance measurement. No network, push, or frozen-interface edits are
+in scope.
+
+## Done
+
+- Read the repository agent guide and created the mandated worktree from
+  `graph-amendments-11-13` at `6d0f0560`.
+- Recorded the frozen files, sanctioned acceptance flip, commit cadence, test
+  commands, parity requirement, and required `out.md` evidence.
+
+## Next
+
+- Read the three RED acceptance tests, `_toy.py`, interface amendments 11–13,
+  and the acceptance lane report before changing runtime code.
+- Sync the locked all-package US/UK environment, then implement and commit B6,
+  C5, and D6 as coherent steps.
+- Measure fit.qrf H1 arm64/x86_64 drift, choose a documented tolerance margin,
+  run the full verification matrix, and write `out.md`.
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
