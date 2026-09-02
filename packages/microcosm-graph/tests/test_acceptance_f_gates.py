@@ -76,7 +76,6 @@ def test_f1_a_gate_is_a_node(tmp_path: Path) -> None:
     assert _verdict(moved) == "fail"
 
 
-@pytest.mark.xfail(strict=True, reason="charter F2: pending")
 def test_f2_tier_is_derived(tmp_path: Path) -> None:
     """A failed gate in the ancestry makes a release evidence-tier by
     construction, and the certified loader will not load it."""
@@ -101,7 +100,6 @@ def test_f2_tier_is_derived(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="charter F3: pending")
 def test_f3_the_one_field_flip_is_impossible(tmp_path: Path) -> None:
     """Editing ``tier`` in a serialized manifest is detected on load.
 
@@ -176,7 +174,6 @@ def test_f4_five_outcomes_and_no_accidental_pass(tmp_path: Path) -> None:
     assert "exploded on purpose" in str(receipt["evidence"])
 
 
-@pytest.mark.xfail(strict=True, reason="charter F5: pending")
 def test_f5_human_decisions_are_inputs(tmp_path: Path) -> None:
     """A release without its required signed decision is ``unreached``.
 

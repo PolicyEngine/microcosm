@@ -2,7 +2,7 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. All in-scope runtime, persistence, serialization, and honest real-kernel fixture work is implemented with focused tests green. F2, both F3 cases, and F5 strict-XPASS; F4 and the checked-in H1 consumer remain blocked by frozen-test contradictions. Determinism and broad verification are next.
+Active on `node-graph-release` in the required local clone. All in-scope runtime, persistence, serialization, and honest real-kernel fixture work is implemented with focused tests green. The sanctioned flip removed the four markers that strict-XPASS (F2, both F3 cases, and F5); F4 and the checked-in H1 consumer remain blocked by frozen-test contradictions. Post-flip verification and the final report are next.
 
 ## Done
 
@@ -27,12 +27,15 @@ Active on `node-graph-release` in the required local clone. All in-scope runtime
 - Added `tools/graph_parity_fixtures.py` with an importable `ParityCsvSource`, `ParityRulesEngine`, real-kernel registry, canonical module hashing, and deterministic writers.
 - Generated and pinned `fit.qrf`, `calibrate`, and `simulate` graphs, inputs, direct outputs, implementation hashes, seeds, and dependency versions under the required fixture path.
 - Added a focused proxy test proving every generated graph round-trips, every pin matches its real bound kernel, and the three wrapper outputs match the direct-call bytes (calibration is checked at its weight result boundary).
+- Reran the fixture generator and confirmed it changes no tracked byte.
+- Passed the exact owned-file Ruff format check, repository-wide Ruff, all three real-kernel regression files (15 passed, 1 skipped), the CI test inventory verifier, and the pre-flip acceptance burndown verifier.
+- Confirmed `decl.py` and `kernel.py` have no diff from `origin/node-graph`.
+- Ran the sanctioned `tools/graph_acceptance_flip.py` once; it removed only the F2, F3, F5, and replay-F3 markers.
 
 ## Next
 
-- Resolve whether the unowned acceptance fixture may receive a separate corrective change; without that authority F4 and H1 cannot honestly turn green.
-- Commit the generated fixture layer, rerun the generator, and prove it changes no tracked byte.
-- Run broad verification and the sanctioned acceptance flip for only the properties that actually strict-XPASS.
+- Run the post-flip package suite and acceptance/CI verifiers.
+- Write `out.md`, including the F4/H1 interface-change requests needed for a separate owner-authorized test correction.
 
 # ACS predictor release join
 

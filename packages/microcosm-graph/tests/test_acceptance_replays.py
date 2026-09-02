@@ -147,7 +147,6 @@ def test_replay_engine_less_environment_stops_before_any_kernel(
     assert not any((tmp_path / "run" / "store").rglob("*.*"))
 
 
-@pytest.mark.xfail(strict=True, reason="charter F3: pending")
 def test_replay_evidence_flip_is_refused_by_the_loader(tmp_path: Path) -> None:
     """The one-field edit that made an evidence release load as certified.
 
