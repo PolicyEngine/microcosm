@@ -12,7 +12,7 @@ word ``xfail``: a decorator inside a docstring, a commented-out marker, or a
 marker on a helper would all fool a text search, and the number this prints is
 the number the charter is scored on.
 
-``--verify`` compares against ``origin/node-graph``, file by file, and exits 1
+``--verify`` compares against ``origin/main``, file by file, and exits 1
 if any file's count rose. A file that does not exist on the baseline is
 reported as new and constrains nothing; a file that does is a ratchet. It also
 refuses a marker that is not ``strict=True`` (a non-strict marker hides an
@@ -40,8 +40,8 @@ SUITE_GLOB = "packages/microcosm-graph/tests/test_acceptance_*.py"
 CHARTER = "docs/graph-acceptance.md"
 
 #: The branch the ratchet compares against, and how to fetch it if absent.
-BASELINE_REF = "origin/node-graph"
-BASELINE_REFSPEC = "+refs/heads/node-graph:refs/remotes/origin/node-graph"
+BASELINE_REF = "origin/main"
+BASELINE_REFSPEC = "+refs/heads/main:refs/remotes/origin/main"
 
 #: Charter ids this suite owns. Group V (the visuals) belongs to another lane
 #: and is not an ``xfail`` in this suite.

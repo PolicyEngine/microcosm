@@ -53,8 +53,21 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {"spi_support_channel", "cgt_incidence_clone", "cgt_band_donors"}
 )
 
+# The executor's mass ledger is weighted *person* mass per stratum
+# (``Frame.stratum_mass``: household weights broadcast through membership), so
+# ``conserve`` is satisfiable only by an expansion that keeps household
+# composition fixed.  CGT cloning does (a clone is its source household at
+# half weight).  The SPI support channel does not: it stacks synthetic
+# households whose person counts differ from the FRS households whose mass
+# they take over, so household mass is conserved exactly (the stage's
+# ``allocate_zero_weight_prior_mass`` declares ``conservation: exact_total``)
+# while person mass moves with the composition change.  On the FRS 2024-25
+# spine that is 68.25m -> 65.44m persons, which ``conserve`` rejects at the
+# node.  The node therefore *declares* its mass change: the kernel states the
+# person-mass ledger the executor verifies and asserts the household-mass
+# invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
-    "spi_support_channel": "conserve",
+    "spi_support_channel": "declared",
     "cgt_incidence_clone": "conserve",
     "cgt_band_donors": "free",
 }
@@ -167,6 +180,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "frs_hmrc_spine_leaves": frozenset({("person", "employee_pension_contributions")}),
     "spi_support_channel": None,
     "hmrc_spi_income_spine": None,
+    # Runs one temporary engine materialization over the whole frame for its
+    # award screen, so its input surface is genuinely open.
+    "uc_reporter_redraw": None,
     "uc_capital_coherence": frozenset(
         {
             ("person", "person_support_channel"),
@@ -510,6 +526,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_is_spi_synthetic", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),
     "uc_capital_coherence": (
         _Cell("benunit", "uc_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
