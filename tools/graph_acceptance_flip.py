@@ -77,14 +77,17 @@ def strict_xpasses() -> dict[Path, set[str]]:
 
 
 def flip(path: Path, names: set[str], *, dry_run: bool) -> list[str]:
-    """Remove the marker directly above each named test; return what changed."""
+    """Remove the marker in each named test's decorator block."""
     lines = path.read_text().splitlines(keepends=True)
     removed: list[str] = []
     output: list[str] = []
     index = 0
     while index < len(lines):
         line = lines[index]
-        following = lines[index + 1] if index + 1 < len(lines) else ""
+        function_index = index + 1
+        while function_index < len(lines) and lines[function_index].startswith("@"):
+            function_index += 1
+        following = lines[function_index] if function_index < len(lines) else ""
         match = re.match(r"^def (test_\w+)\(", following)
         if MARKER.match(line) and match and match.group(1) in names:
             removed.append(match.group(1))
