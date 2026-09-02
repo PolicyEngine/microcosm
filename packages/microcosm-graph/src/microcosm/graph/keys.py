@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .canonical import canonical_json, normative, sha256_domain
 from .decl import CompiledGraph, StructuralDelta
+from .kernel import Capabilities
 
 __all__ = [
     "artifact_key",
@@ -94,12 +95,43 @@ def _required_key(keys: Mapping[str, str], node_id: str, consumer: str) -> str:
         ) from error
 
 
+def _canonical_tolerance_float(value: int | float) -> float:
+    number = float(value)
+    return 0.0 if number == 0.0 else number
+
+
+def _capabilities_projection(capabilities: Capabilities) -> dict[str, object]:
+    """Return the complete canonical payload for a kernel contract."""
+
+    tolerance = capabilities.tolerance
+    return {
+        "determinism": capabilities.determinism.value,
+        "numeric": capabilities.numeric.value,
+        "seed_source": capabilities.seed_source.value,
+        "structural": capabilities.structural.value,
+        "role": capabilities.role.value,
+        "consumes_se": capabilities.consumes_se,
+        "dependencies": list(capabilities.dependencies),
+        "tolerance": (
+            None
+            if tolerance is None
+            else {
+                "rtol": _canonical_tolerance_float(tolerance.rtol),
+                "atol": _canonical_tolerance_float(tolerance.atol),
+                "ulps": tolerance.ulps,
+            }
+        ),
+    }
+
+
 def node_key(
     compiled: CompiledGraph,
     node_id: str,
     input_keys: Mapping[str, str],
     kernel_impl_hash: str,
     source_keys: Mapping[str, str],
+    *,
+    kernel_capabilities: Capabilities,
 ) -> str:
     """Derive a node key from its declaration and resolved input identities.
 
@@ -119,12 +151,19 @@ def node_key(
         input_version = node.base
 
     resolved: dict[tuple[str, str], str] = {}
+    rewritten = {
+        (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
+    }
     if input_version is not None:
         for slice_ in node.inputs:
             for column in slice_.columns:
                 coordinate = (slice_.entity, column)
-                producer = compiled.owners.get(
-                    (input_version, slice_.entity, column), input_version
+                producer = (
+                    input_version
+                    if coordinate in rewritten
+                    else compiled.owners.get(
+                        (input_version, slice_.entity, column), input_version
+                    )
                 )
                 producer_key = _required_key(input_keys, producer, node_id)
                 resolved[coordinate] = artifact_key(producer_key, slice_.entity, column)
@@ -174,6 +213,10 @@ def node_key(
     graph_facts = (
         {} if node.structural is StructuralDelta.NONE else compiled.graph.normative()
     )
+    # Capabilities are executable contract, independent of implementation
+    # bytes. Bind the complete declaration so a cache entry produced under one
+    # contract cannot satisfy another kernel with the same ref and code hash.
+    capabilities = _capabilities_projection(kernel_capabilities)
     return _hash_parts(
         "node",
         normative(node),
@@ -182,6 +225,7 @@ def node_key(
         kernel_impl_hash,
         resolved_sources,
         graph_facts,
+        capabilities,
     )
 
 

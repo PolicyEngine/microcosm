@@ -11,21 +11,51 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
+from microcosm.frame import Frame
+
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
-from .kernel import Capabilities, Determinism, KernelRole, Numeric, SeedSource
+from .kernel import (
+    Capabilities,
+    Determinism,
+    KernelRole,
+    Numeric,
+    SeedSource,
+    Tolerance,
+)
 from .population import MassRecord
 
 if TYPE_CHECKING:
-    from microcosm.frame import Frame
-
     from .store import ContentStore
 
-__all__ = ["Decision", "NodeReceipt", "RunManifest"]
+__all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
 _SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
+
+
+class PopulationView(Frame):
+    """Zero-copy manifest view with entity-name table access.
+
+    All attached populations use this type. Existing :class:`Frame` accessors
+    remain available, and a group entity can also be read by name (for example,
+    `view.household` is equivalent to `view.table("household")`). The source
+    Frame keeps its original type.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, frame: Frame) -> None:
+        if not isinstance(frame, Frame):
+            raise TypeError("PopulationView requires a Frame")
+        for slot in Frame.__slots__:
+            object.__setattr__(self, slot, getattr(frame, slot))
+
+    def __getattr__(self, name: str) -> object:
+        if name in self.entities:
+            return self.table(name)
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
 
 def _freeze_json(value: object) -> object:
@@ -53,6 +83,16 @@ def _freeze_json(value: object) -> object:
 
 def _enum_value(value: object) -> object:
     return value.value if isinstance(value, Enum) else value
+
+
+def _tolerance_payload(tolerance: Tolerance | None) -> dict[str, object] | None:
+    if tolerance is None:
+        return None
+    return {
+        "rtol": float(tolerance.rtol),
+        "atol": float(tolerance.atol),
+        "ulps": tolerance.ulps,
+    }
 
 
 @dataclass(frozen=True)
@@ -241,6 +281,7 @@ class NodeReceipt:
                 "role": _enum_value(capabilities.role),
                 "consumes_se": capabilities.consumes_se,
                 "dependencies": capabilities.dependencies,
+                "tolerance": _tolerance_payload(capabilities.tolerance),
             },
             "receipt": self.receipt,
             "artifacts": tuple(
@@ -301,8 +342,17 @@ class RunManifest:
         for name in ("started_at", "finished_at", "host"):
             if not isinstance(getattr(self, name), str):
                 raise TypeError(f"RunManifest.{name} must be a string")
+        populations: dict[str, PopulationView] = {}
+        for version_id, frame in self.populations.items():
+            if not isinstance(version_id, str):
+                raise TypeError("RunManifest.populations keys must be strings")
+            if not isinstance(frame, Frame):
+                raise TypeError("RunManifest.populations values must be Frame")
+            populations[version_id] = PopulationView(frame)
         object.__setattr__(
-            self, "populations", MappingProxyType(dict(self.populations))
+            self,
+            "populations",
+            MappingProxyType(populations),
         )
         mass_ledgers: dict[str, tuple[MassRecord, ...]] = {}
         for version_id, records in self.mass_ledgers.items():
@@ -416,7 +466,7 @@ class RunManifest:
     def receipt(self, node_id: str) -> NodeReceipt:
         return self.node(node_id)
 
-    def population(self, version_id: str) -> Frame:
+    def population(self, version_id: str) -> PopulationView:
         """Return an attached final population version.
 
         Population frames are deliberately not serialized in manifest JSON;
@@ -425,11 +475,14 @@ class RunManifest:
         """
 
         try:
-            return self.populations[version_id]
+            population = self.populations[version_id]
         except KeyError as error:
             raise KeyError(
                 f"Population {version_id!r} is not attached to this manifest."
             ) from error
+        if not isinstance(population, PopulationView):  # __post_init__ invariant
+            raise RuntimeError("attached population was not normalized")
+        return population
 
     def mass_ledger(self, version_id: str) -> tuple[MassRecord, ...]:
         """Return the transient mass audit trail for one attached version."""
@@ -687,6 +740,35 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         raise ValueError("capabilities.dependencies must be an array")
     if not all(isinstance(item, str) for item in dependencies):
         raise ValueError("capabilities.dependencies must contain strings")
+    raw_tolerance = value.get("tolerance")
+    if raw_tolerance is None:
+        tolerance = None
+    else:
+        if not isinstance(raw_tolerance, Mapping) or set(raw_tolerance) != {
+            "rtol",
+            "atol",
+            "ulps",
+        }:
+            raise ValueError(
+                "capabilities.tolerance must be null or an object containing "
+                "rtol, atol, and ulps"
+            )
+        rtol = raw_tolerance["rtol"]
+        atol = raw_tolerance["atol"]
+        ulps = raw_tolerance["ulps"]
+        if (
+            isinstance(rtol, bool)
+            or not isinstance(rtol, int | float)
+            or isinstance(atol, bool)
+            or not isinstance(atol, int | float)
+            or isinstance(ulps, bool)
+            or not isinstance(ulps, int)
+        ):
+            raise ValueError(
+                "capabilities.tolerance rtol/atol must be numeric and ulps "
+                "must be an integer"
+            )
+        tolerance = Tolerance(rtol=float(rtol), atol=float(atol), ulps=ulps)
     return Capabilities(
         determinism=Determinism(_string_field(value, "determinism")),
         numeric=Numeric(_string_field(value, "numeric")),
@@ -695,6 +777,7 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         role=KernelRole(str(value.get("role", KernelRole.COMPUTE.value))),
         consumes_se=consumes_se,
         dependencies=tuple(dependencies),
+        tolerance=tolerance,
     )
 
 

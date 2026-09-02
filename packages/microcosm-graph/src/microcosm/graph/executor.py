@@ -34,8 +34,10 @@ from .kernel import (
     KernelRegistry,
     KernelResult,
     KernelRole,
+    Tolerance,
 )
 from .keys import (
+    _capabilities_projection,
     artifact_key,
     frame_key,
     node_key,
@@ -46,7 +48,9 @@ from .keys import (
 from .manifest import Decision, NodeReceipt, RunManifest
 from .population import (
     Population,
+    entrant_strata_receipt,
     expand_lineage_receipt,
+    mass_record_receipt,
     patch,
     restore_cached_expand,
     weight_cap_receipt,
@@ -78,18 +82,6 @@ def _cache_record_key(key: str) -> str:
 
 def _opaque_artifact_key(key: str, name: str) -> str:
     return sha256_domain("node-artifact", canonical_json((key, name)))
-
-
-def _capabilities_payload(capabilities: Capabilities) -> dict[str, object]:
-    return {
-        "determinism": capabilities.determinism.value,
-        "numeric": capabilities.numeric.value,
-        "seed_source": capabilities.seed_source.value,
-        "structural": capabilities.structural.value,
-        "role": capabilities.role.value,
-        "consumes_se": capabilities.consumes_se,
-        "dependencies": list(capabilities.dependencies),
-    }
 
 
 def _normal_json_mapping(value: Mapping[str, object], label: str) -> dict[str, object]:
@@ -400,6 +392,7 @@ def _project_context(
     *,
     key: str,
     sources: Mapping[str, Path],
+    tolerances: Mapping[tuple[str, str], Tolerance | None],
 ) -> KernelContext:
     if population is None:
         return KernelContext(
@@ -410,6 +403,7 @@ def _project_context(
             params=node.params,
             rng=np.random.default_rng(seed(key)),
             sources=MappingProxyType({name: sources[name] for name in node.sources}),
+            tolerances=tolerances,
         )
 
     frame = population.frame
@@ -519,7 +513,46 @@ def _project_context(
         params=node.params,
         rng=np.random.default_rng(seed(key)),
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
+        tolerances=tolerances,
     )
+
+
+def _input_tolerances(
+    compiled: CompiledGraph,
+    node_id: str,
+    kernels: KernelRegistry,
+) -> Mapping[tuple[str, str], Tolerance | None]:
+    """Resolve explicit inputs and rewrite incumbents as compilation does."""
+
+    node = compiled.graph.node(node_id)
+    if node.structural is StructuralDelta.CREATE:
+        return MappingProxyType({})
+    input_version = (
+        compiled.versions[node_id]
+        if node.structural is StructuralDelta.NONE
+        else node.base
+    )
+    assert input_version is not None
+    rewritten = {
+        (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
+    }
+    coordinates = rewritten | {
+        (slice_.entity, column) for slice_ in node.inputs for column in slice_.columns
+    }
+    resolved: dict[tuple[str, str], Tolerance | None] = {}
+    for coordinate in sorted(coordinates):
+        entity, column = coordinate
+        owner_id = (
+            input_version
+            if coordinate in rewritten
+            else compiled.owners.get(
+                (input_version, entity, column),
+                input_version,
+            )
+        )
+        owner = compiled.graph.node(owner_id)
+        resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
+    return MappingProxyType(resolved)
 
 
 def _validate_series(
@@ -645,6 +678,15 @@ def _validate_result(
         raise NodeRejected(f"Node {node.id!r} result.artifacts is not a mapping.")
     if not isinstance(result.receipt, Mapping):
         raise NodeRejected(f"Node {node.id!r} result.receipt is not a mapping.")
+    if result.strata is not None and not isinstance(result.strata, pd.Series):
+        raise NodeRejected(f"Node {node.id!r} result.strata is not a Series.")
+    if result.strata is not None and (
+        cache_hit or node.structural is not StructuralDelta.EXPAND or not node.entrants
+    ):
+        raise NodeRejected(
+            f"Node {node.id!r} returned entrant strata outside a fresh "
+            "entrants=True EXPAND."
+        )
     if kernel_capabilities.structural is not node.structural:
         raise NodeRejected(
             f"Node {node.id!r} declares structural={node.structural.value!r}, but "
@@ -763,10 +805,18 @@ def _validate_result(
             assert result.expand is not None
             try:
                 receipt["expand"] = expand_lineage_receipt(result.expand)
+                assert population is not None
+                strata_receipt = entrant_strata_receipt(
+                    population.frame, node, result.expand, result.strata
+                )
             except (TypeError, ValueError) as error:
                 raise NodeRejected(
-                    f"EXPAND node {node.id!r} returned malformed lineage: {error}"
+                    f"EXPAND node {node.id!r} returned malformed lineage or "
+                    f"entrant strata: {error}"
                 ) from error
+            receipt.pop("entrant_strata", None)
+            if strata_receipt is not None:
+                receipt["entrant_strata"] = strata_receipt
     if kernel_capabilities.role is KernelRole.GATE:
         outcome = receipt.get("outcome")
         if outcome not in GATE_OUTCOMES:
@@ -775,6 +825,86 @@ def _validate_result(
                 f"one of {GATE_OUTCOMES!r}."
             )
     return receipt, artifacts
+
+
+def _validate_entrant_materialization_contract(
+    compiled: CompiledGraph,
+    node: Node,
+    population: Population | None,
+    receipt: Mapping[str, object],
+) -> None:
+    """Require every entrant's carried data cells to have downstream claims."""
+
+    if not node.entrants or population is None:
+        return
+    raw_expand = receipt.get("expand")
+    if not isinstance(raw_expand, Mapping):
+        return  # the ordinary EXPAND validation reports the malformed receipt
+    entrant_entities: set[str] = set()
+    for entity, entries in raw_expand.items():
+        if not isinstance(entity, str) or not isinstance(entries, list):
+            continue
+        if any(
+            isinstance(entry, list) and len(entry) == 2 and entry[1] is None
+            for entry in entries
+        ):
+            entrant_entities.add(entity)
+
+    frame = population.frame
+    for entity in sorted(entrant_entities):
+        if entity not in frame.entities:
+            continue  # lineage validation supplies the node-naming rejection
+        structural = set(_structural_columns(frame, entity))
+        if (
+            compiled.graph.mass_partition is not None
+            and compiled.graph.mass_partition[0] == entity
+        ):
+            structural.add(compiled.graph.mass_partition[1])
+        for column in frame.table(entity).columns:
+            column = str(column)
+            if column in structural:
+                continue
+            coordinate = (entity, column)
+            claimant_id = compiled.owners.get((node.id, entity, column))
+            if claimant_id is None:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {entity}.{column} "
+                    "has no materialized_expand_outputs ownership claim."
+                )
+            claimant = compiled.graph.node(claimant_id)
+            claimed = claimant.params.get("materialized_expand_outputs", ())
+            spelling = f"{entity}.{column}"
+            output = next(
+                (
+                    owned
+                    for owned in claimant.outputs
+                    if (owned.entity, owned.column) == coordinate
+                ),
+                None,
+            )
+            if (
+                not isinstance(claimed, tuple)
+                or spelling not in claimed
+                or output is None
+                or output.rewrite
+            ):
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is not "
+                    f"declared through node {claimant_id!r}'s "
+                    "materialized_expand_outputs."
+                )
+            if output.rows != ROWS_ALL:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is claimed "
+                    f"through masked rows {output.rows!r}; materialization bridge "
+                    "claims must use rows='all'."
+                )
+            carried_dtype = _dtype_token(frame.table(entity)[column])
+            if output.dtype != carried_dtype:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is claimed "
+                    f"as {output.dtype!r}; its carried dtype is {carried_dtype!r}."
+                )
 
 
 def _create_population(node: Node, frame: Frame) -> Population:
@@ -816,7 +946,20 @@ def _apply_result(
     population: Population | None,
     *,
     cache_hit: bool = False,
+    mass_partition: tuple[str, str] | None = None,
 ) -> Population:
+    if (
+        mass_partition is not None
+        and node.structural is StructuralDelta.NONE
+        and any(
+            (owned.entity, owned.column) == mass_partition for owned in node.outputs
+        )
+    ):
+        entity, column = mass_partition
+        raise NodeRejected(
+            f"Node {node.id!r} cannot own mass partition {entity}.{column}; "
+            "partition values are fixed by the structural population."
+        )
     if node.structural is StructuralDelta.CREATE:
         assert result.frame is not None
         return _create_population(node, result.frame)
@@ -827,7 +970,9 @@ def _apply_result(
         and result.frame is not None
     ):
         try:
-            return restore_cached_expand(population, node, result)
+            return restore_cached_expand(
+                population, node, result, mass_partition=mass_partition
+            )
         except (TypeError, ValueError) as error:
             raise NodeRejected(
                 f"Node {node.id!r} cached EXPAND rejected: {error}"
@@ -860,7 +1005,7 @@ def _apply_result(
             receipt=result.receipt,
         )
     try:
-        return patch(population, node, result)
+        return patch(population, node, result, mass_partition=mass_partition)
     except NodeRejected:
         raise
     except (TypeError, ValueError) as error:
@@ -979,7 +1124,7 @@ def _write_node(
         "node_key": key,
         "kernel_ref": node.kernel,
         "kernel_impl_hash": kernel_impl_hash,
-        "capabilities": _capabilities_payload(capabilities),
+        "capabilities": _capabilities_projection(capabilities),
         "receipt": dict(receipt),
         "columns": column_entries,
         "frame_key": stored_frame_key,
@@ -996,7 +1141,12 @@ def _write_node(
 
 
 def _require_record_shape(
-    raw: object, node: Node, *, key: str, kernel_impl_hash: str
+    raw: object,
+    node: Node,
+    *,
+    key: str,
+    kernel_impl_hash: str,
+    capabilities: Capabilities,
 ) -> dict[str, object]:
     if not isinstance(raw, dict):
         raise StoreCorrupt(f"Cached receipt for node {node.id!r} is not an object.")
@@ -1035,6 +1185,12 @@ def _require_record_shape(
             f"Cached receipt identity for node {node.id!r} is {actual!r}, "
             f"not {expected!r}."
         )
+    expected_capabilities = _capabilities_projection(capabilities)
+    if raw["capabilities"] != expected_capabilities:
+        raise StoreMiss(
+            f"Cached receipt capabilities for node {node.id!r} disagree with "
+            "the registered kernel contract."
+        )
     return raw
 
 
@@ -1053,9 +1209,16 @@ def _load_record(
     *,
     key: str,
     kernel_impl_hash: str,
+    capabilities: Capabilities,
 ) -> dict[str, object]:
     raw = store.load_json(_cache_record_key(key))
-    return _require_record_shape(raw, node, key=key, kernel_impl_hash=kernel_impl_hash)
+    return _require_record_shape(
+        raw,
+        node,
+        key=key,
+        kernel_impl_hash=kernel_impl_hash,
+        capabilities=capabilities,
+    )
 
 
 def _preflight_record(store: ContentStore, record: Mapping[str, object]) -> None:
@@ -1252,6 +1415,7 @@ def _all_node_keys(
             keys,
             implementation,
             source_keys,
+            kernel_capabilities=kernel.capabilities,
         )
     return keys, implementations
 
@@ -1261,6 +1425,7 @@ def _preflight_require(
     store: ContentStore,
     keys: Mapping[str, str],
     implementations: Mapping[str, str],
+    kernels: KernelRegistry,
 ) -> None:
     missing: list[str] = []
     for node_id in compiled.order:
@@ -1271,6 +1436,7 @@ def _preflight_require(
                 node,
                 key=keys[node_id],
                 kernel_impl_hash=implementations[node_id],
+                capabilities=kernels.get(node.kernel).capabilities,
             )
             _preflight_record(store, record)
         except StoreMiss:
@@ -1309,7 +1475,7 @@ def run_graph(
     source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     if resume == "require":
-        _preflight_require(compiled, store, keys, implementations)
+        _preflight_require(compiled, store, keys, implementations, kernels)
 
     populations: dict[str, Population] = {}
     receipts: dict[str, NodeReceipt] = {}
@@ -1345,6 +1511,7 @@ def run_graph(
                     node,
                     key=key,
                     kernel_impl_hash=implementation,
+                    capabilities=kernel.capabilities,
                 )
                 result, manifest_artifacts = _load_cached_result(
                     store, node, incumbent, record
@@ -1355,7 +1522,13 @@ def run_graph(
                     raise
 
         if result is None:
-            context = _project_context(node, incumbent, key=key, sources=source_paths)
+            context = _project_context(
+                node,
+                incumbent,
+                key=key,
+                sources=source_paths,
+                tolerances=_input_tolerances(compiled, node_id, kernels),
+            )
             before = _context_digest(context)
             try:
                 result = kernel.run(context)
@@ -1385,6 +1558,9 @@ def run_graph(
             incumbent,
             cache_hit=hit,
         )
+        _validate_entrant_materialization_contract(
+            compiled, node, incumbent, normalized_receipt
+        )
         if kernel.capabilities.role is KernelRole.RELEASE:
             derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)
             _validate_release_tier(node, result, derived_tier)
@@ -1393,8 +1569,37 @@ def run_graph(
                 "pass" if derived_tier == "certified" else "fail"
             )
             normalized_receipt["gate_ancestry"] = list(gate_ids)
-        normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
-        updated = _apply_result(node, result, incumbent, cache_hit=hit)
+        normalized_receipt["capabilities"] = _capabilities_projection(
+            kernel.capabilities
+        )
+        updated = _apply_result(
+            node,
+            result,
+            incumbent,
+            cache_hit=hit,
+            mass_partition=compiled.graph.mass_partition,
+        )
+        author_mass = compiled.graph.mass_partition is not None or (
+            node.structural is StructuralDelta.EXPAND
+            and node.entrants
+            and "entrant_strata" in normalized_receipt
+        )
+        if author_mass and node.structural not in {
+            StructuralDelta.NONE,
+            StructuralDelta.CREATE,
+        }:
+            existing_mass = normalized_receipt.get("mass", {})
+            if not isinstance(existing_mass, Mapping):  # defended by mass validation
+                raise NodeRejected(
+                    f"Node {node.id!r} receipt['mass'] is not a mapping."
+                )
+            try:
+                authored_mass = mass_record_receipt(updated.mass_ledger[-1])
+            except (TypeError, ValueError) as error:
+                raise NodeRejected(
+                    f"Node {node.id!r} mass receipt rejected: {error}"
+                ) from error
+            normalized_receipt["mass"] = {**existing_mass, **authored_mass}
         normalized_receipt.update(weight_cap_receipt(updated, node))
         cache_receipt = normalized_receipt
         run_receipt = dict(cache_receipt)

@@ -460,6 +460,7 @@ def _render_graph(
 
 def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
     capabilities = receipt.capabilities
+    tolerance = capabilities.tolerance
     return {
         "determinism": _value(capabilities.determinism),
         "numeric": _value(capabilities.numeric),
@@ -468,6 +469,15 @@ def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
         "role": _value(capabilities.role),
         "consumes_se": capabilities.consumes_se,
         "dependencies": capabilities.dependencies,
+        "tolerance": (
+            None
+            if tolerance is None
+            else {
+                "rtol": tolerance.rtol,
+                "atol": tolerance.atol,
+                "ulps": tolerance.ulps,
+            }
+        ),
     }
 
 
@@ -995,13 +1005,16 @@ def _mass_payload(
 ) -> dict[str, object] | None:
     raw = receipt.receipt.get("mass")
     if isinstance(raw, Mapping):
-        return {
+        payload = {
             "before": raw.get("before"),
             "after": raw.get("after"),
             "stratum_before": raw.get("stratum_before", {}),
             "stratum_after": raw.get("stratum_after", {}),
             "policy": raw.get("policy", node.mass),
         }
+        if isinstance(raw.get("partition"), Mapping):
+            payload["partition"] = raw["partition"]
+        return payload
     for record in reversed(manifest.mass_ledgers.get(node.id, ())):
         if record.node_id == node.id:
             return {

@@ -221,7 +221,6 @@ def test_d5_uncertainty_travels(tmp_path: Path) -> None:
     assert toy.calibrated_node(kernel="calibrate.blind@1").params["target_se"] == 2500.0
 
 
-@pytest.mark.xfail(strict=True, reason="charter D6: partitioned mass pending")
 def test_d6_mass_is_partitioned(tmp_path: Path) -> None:
     """Mass is conserved and receipted inside every partition value.
 

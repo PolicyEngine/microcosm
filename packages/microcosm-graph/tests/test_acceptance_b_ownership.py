@@ -244,7 +244,6 @@ def test_b5_null_means_absence(tmp_path: Path) -> None:
         toy.run_toy(liar, tmp_path / "liar")
 
 
-@pytest.mark.xfail(strict=True, reason="charter B6: entrant execution pending")
 def test_b6_entrants_are_declared(tmp_path: Path) -> None:
     """Null lineage is an explicit, complete, and receipted entrant contract.
 
@@ -311,7 +310,6 @@ def test_b6_entrants_are_declared(tmp_path: Path) -> None:
     assert "household_size" in str(error.value)
 
 
-@pytest.mark.xfail(strict=True, reason="charter B7: entrant person strata pending")
 def test_b7_entrant_persons_carry_their_stratum(tmp_path: Path) -> None:
     """An entrant person's stratum arrives through ``KernelResult.strata``.
 

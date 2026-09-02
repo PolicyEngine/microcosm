@@ -49,12 +49,12 @@ FIT_QRF_DEPENDENCIES = (
 )
 """Distributions whose versions form part of ``fit.qrf@1``'s identity."""
 
-#: How far ``fit.qrf@1`` numbers may move between machines. The forest stack
-#: promises no cross-platform bit stability (charter H1 records the claim as
-#: ``tolerance_bound``); this bound is provisional until measured on the H1
-#: fixture across arm64 and x86_64 (amendment 13 follow-up), and parity in
-#: the locked environment is still asserted byte for byte.
-FIT_QRF_TOLERANCE = Tolerance(rtol=1e-6)
+#: Provisional one-ULP acceptance budget, not an established cross-platform
+#: upper bound. On 2026-09-02, one 12-output positive-only H1 fixture was
+#: bit-identical between native arm64 and x86_64 under Rosetta. Broader
+#: native-x86, seed, regime, near-tie, and non-binary-exact coverage is required
+#: before treating this as a kernel-wide bound.
+FIT_QRF_TOLERANCE = Tolerance(ulps=1)
 
 
 QRF_EXECUTOR_SEED_HIGH = 2**31 - 1

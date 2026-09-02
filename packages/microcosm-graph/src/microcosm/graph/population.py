@@ -16,6 +16,7 @@ import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 
+from .canonical import canonical_json
 from .decl import (
     MASS_POLICIES,
     ROWS_ALL,
@@ -34,6 +35,8 @@ __all__ = [
     "dtype_for_token",
     "dtype_matches",
     "expand_lineage_receipt",
+    "entrant_strata_receipt",
+    "mass_record_receipt",
     "owned_ids",
     "patch",
     "population_from_frame",
@@ -119,6 +122,14 @@ class MassRecord:
     before_by_stratum: tuple[tuple[object, float], ...]
     after_by_stratum: tuple[tuple[object, float], ...]
     entity: str | None = None
+    partition_entity: str | None = None
+    partition_column: str | None = None
+    before_by_partition_stratum: tuple[
+        tuple[object, tuple[tuple[object, float], ...]], ...
+    ] = ()
+    after_by_partition_stratum: tuple[
+        tuple[object, tuple[tuple[object, float], ...]], ...
+    ] = ()
 
     @property
     def before_strata(self) -> Mapping[object, float]:
@@ -127,6 +138,24 @@ class MassRecord:
     @property
     def after_strata(self) -> Mapping[object, float]:
         return MappingProxyType(dict(self.after_by_stratum))
+
+    @property
+    def before_partitions(self) -> Mapping[object, Mapping[object, float]]:
+        return MappingProxyType(
+            {
+                partition: MappingProxyType(dict(strata))
+                for partition, strata in self.before_by_partition_stratum
+            }
+        )
+
+    @property
+    def after_partitions(self) -> Mapping[object, Mapping[object, float]]:
+        return MappingProxyType(
+            {
+                partition: MappingProxyType(dict(strata))
+                for partition, strata in self.after_by_partition_stratum
+            }
+        )
 
     @property
     def old_total(self) -> float:
@@ -139,6 +168,66 @@ class MassRecord:
         """Compatibility spelling used by :mod:`microcosm.frame`."""
 
         return self.after_total
+
+
+def _receipt_key(value: object) -> str:
+    """Return the JSON-object-key spelling of a partition or stratum value."""
+
+    if isinstance(value, np.generic):
+        value = value.item()
+    return str(value)
+
+
+def _partition_receipt_mapping(
+    values: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+) -> dict[str, dict[str, float]]:
+    result: dict[str, dict[str, float]] = {}
+    for partition, strata in values:
+        partition_key = _receipt_key(partition)
+        if partition_key in result:
+            raise PopulationError(
+                f"Partition values collide as JSON key {partition_key!r}."
+            )
+        converted: dict[str, float] = {}
+        for stratum, mass in strata:
+            stratum_key = _receipt_key(stratum)
+            if stratum_key in converted:
+                raise PopulationError(
+                    f"Strata collide as JSON key {stratum_key!r} inside partition "
+                    f"{partition_key!r}."
+                )
+            converted[stratum_key] = float(mass)
+        result[partition_key] = converted
+    return result
+
+
+def mass_record_receipt(record: MassRecord) -> dict[str, object]:
+    """Return executor-authored public mass accounting for one ledger record."""
+
+    payload: dict[str, object] = {
+        "policy": record.policy,
+        "before": record.before_total,
+        "after": record.after_total,
+        "stratum_before": _receipt_mass_mapping(
+            dict(record.before_by_stratum), label=f"Node {record.node_id!r} mass"
+        ),
+        "stratum_after": _receipt_mass_mapping(
+            dict(record.after_by_stratum), label=f"Node {record.node_id!r} mass"
+        ),
+    }
+    if record.partition_entity is not None:
+        assert record.partition_column is not None
+        payload["partition"] = {
+            "entity": record.partition_entity,
+            "column": record.partition_column,
+            "stratum_before": _partition_receipt_mapping(
+                record.before_by_partition_stratum
+            ),
+            "stratum_after": _partition_receipt_mapping(
+                record.after_by_partition_stratum
+            ),
+        }
+    return payload
 
 
 @dataclass(frozen=True)
@@ -272,9 +361,15 @@ def population_from_frame(
     )
 
 
-def _lineage_json_scalar(value: object) -> str | int | float | bool:
+def _lineage_json_scalar(
+    value: object, *, allow_null: bool = False
+) -> str | int | float | bool | None:
     """Detach one entity id into the scalar vocabulary accepted by receipts."""
 
+    if pd.isna(value):
+        if allow_null:
+            return None
+        raise PopulationError(f"EXPAND lineage id {value!r} is not a JSON scalar.")
     if isinstance(value, np.generic):
         value = value.item()
     if not isinstance(value, str | int | float | bool):
@@ -282,6 +377,46 @@ def _lineage_json_scalar(value: object) -> str | int | float | bool:
     if isinstance(value, float) and not np.isfinite(value):
         raise PopulationError(f"EXPAND lineage id {value!r} is not finite.")
     return value
+
+
+def _stratum_receipt_scalar(value: object) -> object:
+    """Encode one cache-safe entrant stratum label for a JSON receipt."""
+
+    missing = pd.isna(value)
+    if isinstance(missing, bool | np.bool_) and bool(missing):
+        raise PopulationError("EXPAND entrant stratum labels cannot be null.")
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bytes):
+        return {"bytes_hex": value.hex()}
+    if not isinstance(value, str | int | float | bool):
+        raise PopulationError(
+            f"EXPAND entrant stratum label {value!r} is not a cache-safe scalar."
+        )
+    if isinstance(value, float) and not np.isfinite(value):
+        raise PopulationError(f"EXPAND entrant stratum label {value!r} is not finite.")
+    return value
+
+
+def _stratum_from_receipt_scalar(value: object) -> object:
+    """Decode one executor-authored entrant stratum label from a receipt."""
+
+    if isinstance(value, Mapping):
+        if set(value) != {"bytes_hex"} or not isinstance(value["bytes_hex"], str):
+            raise PopulationError("EXPAND entrant stratum receipt label is malformed.")
+        encoded = value["bytes_hex"]
+        try:
+            decoded = bytes.fromhex(encoded)
+        except ValueError as error:
+            raise PopulationError(
+                "EXPAND entrant stratum receipt bytes are malformed."
+            ) from error
+        if encoded != decoded.hex():
+            raise PopulationError(
+                "EXPAND entrant stratum receipt bytes are not canonical."
+            )
+        return decoded
+    return _stratum_receipt_scalar(value)
 
 
 def expand_lineage_receipt(
@@ -301,12 +436,204 @@ def expand_lineage_receipt(
                 f"EXPAND lineage for {entity!r} is not a pandas Series."
             )
         payload[entity] = [
-            [_lineage_json_scalar(target), _lineage_json_scalar(source)]
+            [
+                _lineage_json_scalar(target),
+                _lineage_json_scalar(source, allow_null=True),
+            ]
             for target, source in zip(
                 lineage.index.tolist(), lineage.tolist(), strict=True
             )
         ]
     return payload
+
+
+def _entrant_person_ids(frame: Frame, lineage: Mapping[str, pd.Series]) -> pd.Index:
+    """Return null-lineage person targets in declared lineage order."""
+
+    person = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person)
+    person_lineage = lineage[person]
+    entrant_positions = np.flatnonzero(
+        person_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+    )
+    return pd.Index(person_lineage.index.take(entrant_positions), name=id_column)
+
+
+def _validated_entrant_strata(
+    frame: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+    raw: object,
+) -> pd.Series | None:
+    """Validate and align the iff contract for entrant-person strata."""
+
+    person = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person)
+    id_dtype = frame.table(person)[id_column].dtype
+    entrant_ids = _entrant_person_ids(frame, lineage)
+    if not len(entrant_ids):
+        if raw is not None:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} returned strata without entrant persons."
+            )
+        return None
+    if raw is None:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} omitted strata for entrant persons "
+            f"{entrant_ids[:5].tolist()}."
+        )
+    if not isinstance(raw, pd.Series):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata is not a Series."
+        )
+    labels_index = pd.Index(raw.index, name=id_column)
+    if labels_index.nlevels != 1 or labels_index.dtype != id_dtype:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata index must use "
+            f"{id_dtype!s} person ids."
+        )
+    if not labels_index.is_unique:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} repeats entrant strata person ids."
+        )
+    if labels_index.isna().any():
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata contains null person ids."
+        )
+    missing = entrant_ids[~entrant_ids.isin(labels_index)]
+    extra = labels_index[~labels_index.isin(entrant_ids)]
+    if len(missing) or len(extra):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata must name exactly the entrant "
+            f"persons; missing={missing[:5].tolist()}, extra={extra[:5].tolist()}."
+        )
+    if not (
+        pd.api.types.is_object_dtype(raw.dtype) or isinstance(raw.dtype, pd.StringDtype)
+    ):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata must use object or string "
+            f"labels, got {raw.dtype!s}."
+        )
+    if raw.isna().any():
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata contains missing labels."
+        )
+    aligned = raw.reindex(entrant_ids).copy()
+    for value in aligned.array:
+        _stratum_receipt_scalar(value)
+    return aligned
+
+
+def entrant_strata_receipt(
+    frame: Frame,
+    node: Node,
+    expand: Mapping[str, pd.Series],
+    strata: pd.Series | None,
+) -> list[list[object]] | None:
+    """Return executor-authored entrant-person strata in lineage order."""
+
+    lineage = _validate_expand_lineage(frame, node, expand)
+    aligned = _validated_entrant_strata(frame, node, lineage, strata)
+    if aligned is None:
+        return None
+    return [
+        [_lineage_json_scalar(target), _stratum_receipt_scalar(label)]
+        for target, label in zip(aligned.index, aligned.array, strict=True)
+    ]
+
+
+def _cached_entrant_strata(
+    frame: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+    receipt: Mapping[str, object],
+) -> pd.Series | None:
+    """Parse the executor-authored entrant-strata cache attestation."""
+
+    person = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person)
+    id_dtype = frame.table(person)[id_column].dtype
+    entrant_ids = _entrant_person_ids(frame, lineage)
+    if not len(entrant_ids):
+        if "entrant_strata" in receipt:
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} has entrant strata without "
+                "entrant persons."
+            )
+        return None
+    raw = receipt.get("entrant_strata")
+    if not isinstance(raw, list):
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} has no entrant-strata receipt."
+        )
+    targets: list[object] = []
+    labels: list[object] = []
+    for entry in raw:
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} has malformed entrant strata."
+            )
+        targets.append(entry[0])
+        labels.append(_stratum_from_receipt_scalar(entry[1]))
+    try:
+        target_index = pd.Index(
+            pd.Series(targets, dtype=id_dtype).array, name=id_column
+        )
+    except (TypeError, ValueError) as error:
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} entrant strata contain invalid "
+            f"{id_dtype!s} person ids."
+        ) from error
+    if not target_index.equals(entrant_ids):
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} entrant strata do not name its "
+            "entrant persons in lineage order."
+        )
+    return pd.Series(labels, index=entrant_ids, dtype=object)
+
+
+def _assert_cached_expand_strata(
+    before: Frame,
+    after: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+    receipt: Mapping[str, object],
+) -> None:
+    """Verify cached incumbent, copied, and entrant person strata by lineage."""
+
+    person = before.schema.person_entity
+    id_column = before.schema.entity_id_column(person)
+    before_ids = pd.Index(before.table(person)[id_column], name=id_column)
+    person_lineage = lineage[person]
+    expected_ids = before_ids.append(pd.Index(person_lineage.index, name=id_column))
+    after_ids = pd.Index(after.table(person)[id_column], name=id_column)
+    if not after_ids.equals(expected_ids):
+        raise PopulationError(f"Cached EXPAND node {node.id!r} reordered person ids.")
+    entrant_strata = _cached_entrant_strata(before, node, lineage, receipt)
+    expected = before.strata.astype(object).tolist()
+    entrant_positions: list[int] = []
+    for target, source in zip(person_lineage.index, person_lineage.array, strict=True):
+        if pd.isna(source):
+            assert entrant_strata is not None
+            entrant_positions.append(len(expected))
+            expected.append(entrant_strata.loc[target])
+            continue
+        source_position = before_ids.get_loc(source)
+        expected.append(before.strata.iloc[source_position])
+    actual = after.strata.astype(object).reset_index(drop=True)
+    if not actual.equals(pd.Series(expected, dtype=object)):
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} strata disagree with its lineage "
+            "and entrant-strata receipt."
+        )
+    for position in entrant_positions:
+        actual_label = _stratum_receipt_scalar(actual.iloc[position])
+        expected_label = _stratum_receipt_scalar(expected[position])
+        if canonical_json(actual_label) != canonical_json(expected_label):
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} entrant stratum label "
+                "disagrees with its receipt."
+            )
 
 
 def _expand_lineage_from_receipt(
@@ -340,11 +667,21 @@ def _expand_lineage_from_receipt(
             )
         id_column = frame.schema.entity_id_column(entity)
         dtype = frame.table(entity)[id_column].dtype
+        source_dtype: object = dtype
+        has_null_source = any(pd.isna(value) for value in sources)
+        if has_null_source and pd.api.types.is_bool_dtype(dtype):
+            source_dtype = pd.BooleanDtype()
+        elif has_null_source and pd.api.types.is_integer_dtype(dtype):
+            numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
+            prefix = "UInt" if np.issubdtype(numpy_dtype, np.unsignedinteger) else "Int"
+            source_dtype = pd.api.types.pandas_dtype(
+                f"{prefix}{numpy_dtype.itemsize * 8}"
+            )
         lineage[entity] = pd.Series(
             sources,
             index=pd.Index(pd.Series(targets, dtype=dtype).array, name=id_column),
             name=id_column,
-            dtype=dtype,
+            dtype=source_dtype,
         )
     return lineage
 
@@ -378,7 +715,17 @@ def _validate_expand_lineage(
         id_column = frame.schema.entity_id_column(entity)
         source_ids = pd.Index(frame.table(entity)[id_column], name=id_column)
         targets = pd.Index(lineage.index, name=id_column)
-        if targets.dtype != source_ids.dtype or lineage.dtype != source_ids.dtype:
+        source_is_null = lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+        nullable_sources = bool(source_is_null.any())
+        nullable_source_dtype = getattr(lineage.dtype, "numpy_dtype", None)
+        if targets.dtype != source_ids.dtype or (
+            lineage.dtype != source_ids.dtype
+            and not (
+                nullable_sources
+                and nullable_source_dtype is not None
+                and np.dtype(nullable_source_dtype) == np.dtype(source_ids.dtype)
+            )
+        ):
             raise PopulationError(
                 f"EXPAND node {node.id!r} lineage for {entity!r} must use "
                 f"{source_ids.dtype!s} ids for both targets and sources."
@@ -387,9 +734,15 @@ def _validate_expand_lineage(
             raise PopulationError(
                 f"EXPAND node {node.id!r} repeats new target {entity!r} ids."
             )
-        if targets.isna().any() or lineage.isna().any():
+        if targets.isna().any():
             raise PopulationError(
-                f"EXPAND node {node.id!r} lineage for {entity!r} contains null ids."
+                f"EXPAND node {node.id!r} lineage for {entity!r} contains null "
+                "target ids."
+            )
+        if nullable_sources and not node.entrants:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage for {entity!r} contains null "
+                "source ids without entrants=True."
             )
         collisions = targets.intersection(source_ids)
         if len(collisions):
@@ -397,31 +750,41 @@ def _validate_expand_lineage(
                 f"EXPAND node {node.id!r} lineage target {entity!r} ids collide "
                 f"with incumbents {collisions[:5].tolist()}."
             )
-        source_positions = source_ids.get_indexer(lineage.to_numpy(copy=False))
+        source_positions = np.full(len(lineage), -1, dtype=np.int64)
+        copied = ~source_is_null
+        source_positions[copied] = source_ids.get_indexer(
+            lineage.iloc[np.flatnonzero(copied)].to_numpy(copy=False)
+        )
         if (source_positions < 0).any():
-            bad = lineage.iloc[np.flatnonzero(source_positions < 0)[:5]].tolist()
-            raise PopulationError(
-                f"EXPAND node {node.id!r} lineage names unknown {entity!r} "
-                f"source ids {bad}."
-            )
+            unknown = copied & (source_positions < 0)
+            if unknown.any():
+                bad = lineage.iloc[np.flatnonzero(unknown)[:5]].tolist()
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} lineage names unknown {entity!r} "
+                    f"source ids {bad}."
+                )
         if after is not None:
             after_ids = pd.Index(after.table(entity)[id_column], name=id_column)
             if not source_ids.isin(after_ids).all():
                 raise PopulationError(
                     f"Cached EXPAND node {node.id!r} dropped incumbent {entity!r} ids."
                 )
-            additions = after_ids[~after_ids.isin(source_ids)]
-            if not additions.equals(targets):
+            expected_ids = source_ids.append(targets)
+            if not after_ids.equals(expected_ids):
                 raise PopulationError(
-                    f"Cached EXPAND node {node.id!r} frame additions for "
-                    f"{entity!r} disagree with its lineage receipt."
+                    f"Cached EXPAND node {node.id!r} final {entity!r} ids "
+                    "disagree with its lineage receipt."
                 )
         validated[entity] = lineage
     return validated
 
 
 def restore_cached_expand(
-    population: Population, node: Node, result: KernelResult
+    population: Population,
+    node: Node,
+    result: KernelResult,
+    *,
+    mass_partition: tuple[str, str] | None = None,
 ) -> Population:
     """Restore a previously validated EXPAND frame against its keyed base.
 
@@ -434,6 +797,11 @@ def restore_cached_expand(
 
     if node.structural is not StructuralDelta.EXPAND or result.frame is None:
         raise PopulationError("restore_cached_expand requires an EXPAND Frame.")
+    if result.strata is not None:
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} returned kernel strata instead of "
+            "its executor frame artifact."
+        )
     frame = result.frame
     if frame.schema != population.frame.schema:
         raise PopulationError(f"Cached EXPAND node {node.id!r} changed schema.")
@@ -443,6 +811,7 @@ def restore_cached_expand(
     lineage = _validate_expand_lineage(
         population.frame, node, receipt_lineage, after=frame
     )
+    _assert_cached_expand_strata(population.frame, frame, node, lineage, result.receipt)
     _assert_expand_weights(population, frame, node, result)
 
     design_weights: dict[str, np.ndarray] = {}
@@ -457,18 +826,46 @@ def restore_cached_expand(
         values[retained] = old_anchor[positions[retained]]
         if not retained.all():
             sources = lineage[entity].reindex(after_ids[~retained])
-            source_positions = before_ids.get_indexer(sources.to_numpy(copy=False))
+            source_is_null = sources.isna().to_numpy(dtype=np.bool_, copy=False)
+            introduced_positions = np.flatnonzero(~retained)
+            copied_positions = introduced_positions[~source_is_null]
+            source_positions = before_ids.get_indexer(
+                sources.iloc[np.flatnonzero(~source_is_null)].to_numpy(copy=False)
+            )
             if (source_positions < 0).any():  # defended by lineage validation
                 raise PopulationError(
                     f"Cached EXPAND node {node.id!r} has unknown design lineage "
                     f"for new {entity!r} ids."
                 )
-            values[~retained] = old_anchor[source_positions]
+            values[copied_positions] = old_anchor[source_positions]
+            entrant_positions = introduced_positions[source_is_null]
+            if len(entrant_positions):
+                try:
+                    current = frame.weights_for(entity)
+                except ValueError as error:
+                    raise PopulationError(
+                        f"Cached EXPAND node {node.id!r} has no design anchor for "
+                        f"entrant {entity!r} ids."
+                    ) from error
+                if current.kind is not WeightKind.DESIGN:
+                    raise PopulationError(
+                        f"Cached EXPAND node {node.id!r} cannot anchor entrant "
+                        f"{entity!r} ids from {current.kind.value!r} weights; "
+                        "explicit design weights are required."
+                    )
+                values[entrant_positions] = current.values[entrant_positions]
         design_weights[entity] = values
 
     ledger = (
         *population.mass_ledger,
-        _mass_record(population.frame, frame, node, result, _mass_policy(node)),
+        _mass_record(
+            population.frame,
+            frame,
+            node,
+            result,
+            _mass_policy(node),
+            mass_partition=mass_partition,
+        ),
     )
     owners = {
         (entity, str(column)): node.id
@@ -531,7 +928,13 @@ def storage_equal(
     return _storage_parts(left, selected) == _storage_parts(right, selected)
 
 
-def patch(population: Population, node: Node, result: KernelResult) -> Population:
+def patch(
+    population: Population,
+    node: Node,
+    result: KernelResult,
+    *,
+    mass_partition: tuple[str, str] | None = None,
+) -> Population:
     """Validate and apply one node result without mutating ``population``.
 
     ``EXPAND`` kernels return only the new-id to source-id mapping through
@@ -554,6 +957,10 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
     _assert_no_ordinary_structural_outputs(population, node)
     expected_columns = {(owned.entity, owned.column) for owned in node.outputs}
     lineage_expand = node.structural is StructuralDelta.EXPAND and result.frame is None
+    if result.strata is not None and not lineage_expand:
+        raise PopulationError(
+            f"Node {node.id!r} returned entrant strata outside a lineage EXPAND."
+        )
     if not lineage_expand and set(result.columns) != expected_columns:
         raise PopulationError(
             f"Node {node.id!r} returned columns {sorted(result.columns)}; "
@@ -602,7 +1009,14 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
     ledger = population.mass_ledger
     if node.structural is not StructuralDelta.NONE or node.weights is not None:
         policy = _mass_policy(node)
-        record = _mass_record(before, frame, node, result, policy)
+        record = _mass_record(
+            before,
+            frame,
+            node,
+            result,
+            policy,
+            mass_partition=mass_partition,
+        )
         ledger = (*ledger, record)
 
     return Population.from_frame(
@@ -658,6 +1072,8 @@ def _targets_by_source(lineage: pd.Series) -> dict[object, list[object]]:
 
     grouped: dict[object, list[object]] = {}
     for target, source in zip(lineage.index, lineage.array, strict=True):
+        if pd.isna(source):
+            continue
         grouped.setdefault(source, []).append(target)
     return grouped
 
@@ -680,8 +1096,10 @@ def _remap_expand_memberships(
     source_person = before.table(person)
     person_id = before.schema.entity_id_column(person)
     source_person_ids = pd.Index(source_person[person_id])
+    entrant_mask = person_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+    copied_indices = np.flatnonzero(~entrant_mask)
     source_positions = source_person_ids.get_indexer(
-        person_lineage.to_numpy(copy=False)
+        person_lineage.iloc[copied_indices].to_numpy(copy=False)
     )
     if (source_positions < 0).any():  # defended by lineage validation
         raise PopulationError(
@@ -708,16 +1126,24 @@ def _remap_expand_memberships(
                     )
 
         seen: dict[object, int] = {}
-        remapped: list[object] = []
-        for source_position, source_person_id in zip(
-            source_positions, person_lineage.array, strict=True
+        remapped = (
+            tables[person][membership]
+            .iloc[len(source_person) :]
+            .reset_index(drop=True)
+            .copy()
+        )
+        for addition_position, source_position, source_person_id in zip(
+            copied_indices,
+            source_positions,
+            person_lineage.iloc[copied_indices].array,
+            strict=True,
         ):
             # Select the membership Series directly.  Selecting a mixed-type
             # DataFrame row can coerce a large integer group id through float.
             source_group = source_person[membership].iloc[source_position]
             candidates = group_targets.get(source_group, [])
             if not candidates:
-                remapped.append(source_group)
+                remapped.iloc[addition_position] = source_group
                 continue
             ordinal = seen.get(source_person_id, 0)
             if ordinal >= len(candidates):
@@ -725,13 +1151,12 @@ def _remap_expand_memberships(
                     f"EXPAND node {node.id!r} cannot align {membership!r} for "
                     f"copied person {source_person_id!r}."
                 )
-            remapped.append(candidates[ordinal])
+            remapped.iloc[addition_position] = candidates[ordinal]
             seen[source_person_id] = ordinal + 1
 
         carried = source_person[membership].reset_index(drop=True)
-        additions = pd.Series(remapped, dtype=source_person[membership].dtype)
         tables[person][membership] = pd.concat(
-            [carried, additions], ignore_index=True
+            [carried, remapped], ignore_index=True
         ).array
 
 
@@ -746,10 +1171,16 @@ def _patch_expand(
             f"EXPAND node {node.id!r} cannot yet carry association link tables."
         )
     cells = _expand_cells(node)
-    for entity, _, _ in cells:
+    for entity, column, _ in cells:
         if entity not in before.entities:
             raise PopulationError(
                 f"EXPAND node {node.id!r} names unknown entity {entity!r}."
+            )
+        id_column = before.schema.entity_id_column(entity)
+        if column == id_column:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cannot overlay entity id column "
+                f"{entity}.{column}; lineage supplies final ids."
             )
 
     cell_coordinates = {(entity, column) for entity, column, _ in cells}
@@ -761,7 +1192,6 @@ def _patch_expand(
 
     lineage = _validate_expand_lineage(before, node, result.expand)
 
-    tables: dict[str, pd.DataFrame] = {}
     lineage_positions: dict[str, np.ndarray] = {}
     target_ids: dict[str, pd.Index] = {}
     for entity in before.entities:
@@ -772,29 +1202,40 @@ def _patch_expand(
             source_table[id_column].to_numpy(copy=True), name=id_column
         )
         new_targets = pd.Index(entity_lineage.index, name=id_column)
-        targets = source_ids.append(new_targets)
-        source_positions = source_ids.get_indexer(entity_lineage.to_numpy(copy=False))
-        positions = np.concatenate(
+        target_ids[entity] = source_ids.append(new_targets)
+        entrants = entity_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+        source_positions = np.full(len(entity_lineage), -1, dtype=np.int64)
+        copied = ~entrants
+        source_positions[copied] = source_ids.get_indexer(
+            entity_lineage.iloc[np.flatnonzero(copied)].to_numpy(copy=False)
+        )
+        lineage_positions[entity] = np.concatenate(
             [np.arange(len(source_ids), dtype=np.int64), source_positions]
         )
-        carried = source_table.iloc[positions].reset_index(drop=True)
-        replacement_ids = pd.Series(
-            targets.to_numpy(copy=True), dtype=source_table[id_column].dtype
-        )
-        if len(replacement_ids) != len(carried):
-            raise PopulationError(
-                f"EXPAND node {node.id!r} lineage index/value lengths disagree "
-                f"for {entity!r}."
-            )
-        carried[id_column] = replacement_ids.array
-        tables[entity] = carried
-        lineage_positions[entity] = positions
-        target_ids[entity] = targets
 
-    _remap_expand_memberships(before, tables, lineage, node)
+        if entrants.any():
+            carried = {
+                (entity, str(column))
+                for column in source_table.columns
+                if column != id_column
+            }
+            missing = sorted(carried - cell_coordinates)
+            if missing:
+                names = [
+                    f"{carried_entity}.{column}" for carried_entity, column in missing
+                ]
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} entrant rows do not materialize "
+                    f"carried columns {names}."
+                )
 
+    person = before.schema.person_entity
+    entrant_strata = _validated_entrant_strata(before, node, lineage, result.strata)
+
+    aligned_cells: dict[tuple[str, str], pd.Series] = {}
     for entity, column, dtype in cells:
-        incoming = result.columns[(entity, column)]
+        coordinate = (entity, column)
+        incoming = result.columns[coordinate]
         if not isinstance(incoming, pd.Series):
             raise PopulationError(
                 f"EXPAND node {node.id!r} cell {entity}.{column} is not a Series."
@@ -815,7 +1256,62 @@ def _patch_expand(
             dtype,
             label=f"EXPAND node {node.id!r} cell {entity}.{column}",
         )
+        source_table = before.table(entity)
+        if column in source_table:
+            carried_dtype = token_for_dtype(source_table[column].dtype)
+            if dtype != carried_dtype:
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} carried cell {entity}.{column} "
+                    f"declares {dtype!r}; its incumbent dtype is {carried_dtype!r}."
+                )
+            incumbent = aligned.iloc[: len(source_table)].reset_index(drop=True)
+            if not storage_equal(source_table[column], incumbent):
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} changed carried storage in "
+                    f"{entity}.{column} for incumbent rows."
+                )
+        aligned_cells[coordinate] = aligned
+
+    tables: dict[str, pd.DataFrame] = {}
+    for entity in before.entities:
+        id_column = before.schema.entity_id_column(entity)
+        source_table = before.table(entity)
+        positions = lineage_positions[entity]
+        addition_positions = positions[len(source_table) :]
+        if len(source_table):
+            additions = source_table.iloc[
+                np.maximum(addition_positions, 0)
+            ].reset_index(drop=True)
+        else:
+            additions = source_table.reindex(range(len(addition_positions))).copy()
+        carried = pd.concat(
+            [source_table.reset_index(drop=True), additions], ignore_index=True
+        )
+        replacement_ids = pd.Series(
+            target_ids[entity].to_numpy(copy=True),
+            dtype=source_table[id_column].dtype,
+        )
+        if len(replacement_ids) != len(carried):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage index/value lengths disagree "
+                f"for {entity!r}."
+            )
+        carried[id_column] = replacement_ids.array
+        tables[entity] = carried
+
+    _remap_expand_memberships(before, tables, lineage, node)
+
+    for (entity, column), aligned in aligned_cells.items():
         tables[entity][column] = aligned.array
+
+    for entity, expected_ids in target_ids.items():
+        id_column = before.schema.entity_id_column(entity)
+        final_ids = pd.Index(tables[entity][id_column], name=id_column)
+        if not final_ids.equals(expected_ids):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} final {entity!r} ids disagree with "
+                "its lineage targets after cell overlays."
+            )
 
     weight_entity = _expand_weight_entity(node)
     assert weight_entity is not None
@@ -832,16 +1328,39 @@ def _patch_expand(
             weights[entity] = result.weights
             continue
         old = before.weights_for(entity)
-        weights[entity] = Weights(old.values[lineage_positions[entity]], kind=old.kind)
+        positions = lineage_positions[entity]
+        if (positions < 0).any():
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cannot admit entrants on weighted "
+                f"entity {entity!r}; only {weight_entity!r} has materialized weights."
+            )
+        weights[entity] = Weights(old.values[positions], kind=old.kind)
 
-    person = before.schema.person_entity
     person_positions = lineage_positions[person]
-    strata = pd.Series(
-        before.strata.iloc[person_positions].array.copy(),
-        index=tables[person].index,
-        name=before.strata.name,
-        dtype=before.strata.dtype,
-    )
+    if entrant_strata is None:
+        strata = pd.Series(
+            before.strata.iloc[person_positions].array.copy(),
+            index=tables[person].index,
+            name=before.strata.name,
+            dtype=before.strata.dtype,
+        )
+    else:
+        additions: list[object] = []
+        entrant_values = iter(entrant_strata.array)
+        for source_position in person_positions[len(before.table(person)) :]:
+            additions.append(
+                next(entrant_values)
+                if source_position < 0
+                else before.strata.iloc[source_position]
+            )
+        strata = pd.concat(
+            [
+                before.strata.astype(object).reset_index(drop=True),
+                pd.Series(additions, dtype=object),
+            ],
+            ignore_index=True,
+        )
+        strata.name = before.strata.name
     frame = Frame(
         tables,
         before.schema,
@@ -1210,13 +1729,11 @@ def _carry_design_weights(
             introduced = before_positions < 0
             if introduced.any():
                 sources = lineage.reindex(after_ids[introduced])
-                if sources.isna().any():
-                    raise PopulationError(
-                        f"EXPAND node {node.id!r} has incomplete design lineage "
-                        f"for {entity!r}."
-                    )
-                before_positions[introduced] = before_ids.get_indexer(
-                    sources.to_numpy(copy=False)
+                source_is_null = sources.isna().to_numpy(dtype=np.bool_, copy=False)
+                introduced_positions = np.flatnonzero(introduced)
+                copied_positions = introduced_positions[~source_is_null]
+                before_positions[copied_positions] = before_ids.get_indexer(
+                    sources.iloc[np.flatnonzero(~source_is_null)].to_numpy(copy=False)
                 )
         values = np.empty(len(after_ids), dtype=np.float64)
         retained = before_positions >= 0
@@ -1455,6 +1972,8 @@ def _mass_record(
     node: Node,
     result: KernelResult,
     policy: str,
+    *,
+    mass_partition: tuple[str, str] | None = None,
 ) -> MassRecord:
     if policy not in MASS_POLICIES:
         raise PopulationError(f"Node {node.id!r} has unknown mass policy {policy!r}.")
@@ -1464,7 +1983,18 @@ def _mass_record(
     after_pairs = tuple((key, float(value)) for key, value in after_mass.items())
     before_total = float(before_mass.sum())
     after_total = float(after_mass.sum())
+    before_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...] = ()
+    after_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...] = ()
+    if mass_partition is not None:
+        before_partition = _mass_by_partition(before, mass_partition, node.id)
+        after_partition = _mass_by_partition(after, mass_partition, node.id)
     if policy == "conserve":
+        if mass_partition is not None:
+            _assert_partition_mass_mapping(
+                before_partition,
+                after_partition,
+                label=f"Node {node.id!r} mass='conserve'",
+            )
         _assert_mass_mapping(
             dict(before_pairs),
             dict(after_pairs),
@@ -1481,6 +2011,9 @@ def _mass_record(
             before=dict(before_pairs),
             after=dict(after_pairs),
             node_id=node.id,
+            mass_partition=mass_partition,
+            before_partition=before_partition,
+            after_partition=after_partition,
         )
     elif policy == "declared":
         raise PopulationError(
@@ -1507,6 +2040,89 @@ def _mass_record(
             and "expand_weight_entity" in node.params
             else None
         ),
+        partition_entity=(None if mass_partition is None else mass_partition[0]),
+        partition_column=(None if mass_partition is None else mass_partition[1]),
+        before_by_partition_stratum=before_partition,
+        after_by_partition_stratum=after_partition,
+    )
+
+
+def _partition_values_on_person(
+    frame: Frame,
+    mass_partition: tuple[str, str],
+    node_id: str,
+) -> pd.Series:
+    entity, column = mass_partition
+    if entity not in frame.entities:
+        raise PopulationError(
+            f"Node {node_id!r} mass partition names unknown entity {entity!r}."
+        )
+    table = frame.table(entity)
+    if column not in table:
+        raise PopulationError(
+            f"Node {node_id!r} mass partition column {entity}.{column} is "
+            "missing at run time."
+        )
+    person = frame.schema.person_entity
+    if entity == person:
+        return table[column].reset_index(drop=True)
+    if entity not in frame.schema.group_entities:
+        raise PopulationError(
+            f"Node {node_id!r} cannot broadcast mass partition entity {entity!r} "
+            "to persons."
+        )
+    id_column = frame.schema.entity_id_column(entity)
+    membership = frame.schema.membership_column(entity)
+    positions = pd.Index(table[id_column]).get_indexer(
+        frame.table(person)[membership].to_numpy(copy=False)
+    )
+    if (positions < 0).any():  # defended by Frame linkage validation
+        raise PopulationError(
+            f"Node {node_id!r} cannot align mass partition {entity}.{column} "
+            "to person memberships."
+        )
+    return table[column].iloc[positions].reset_index(drop=True)
+
+
+def _mass_by_partition(
+    frame: Frame,
+    mass_partition: tuple[str, str],
+    node_id: str,
+) -> tuple[tuple[object, tuple[tuple[object, float], ...]], ...]:
+    partition = _partition_values_on_person(frame, mass_partition, node_id)
+    person = frame.schema.person_entity
+    weights = frame.resolve_weights(person).values
+    strata = frame.strata.reset_index(drop=True)
+    valid = partition.notna().to_numpy(dtype=np.bool_, copy=False)
+    if not valid.any():
+        return ()
+    grouped = (
+        pd.DataFrame(
+            {
+                "_partition": partition.loc[valid].reset_index(drop=True),
+                "_stratum": strata.loc[valid].reset_index(drop=True),
+                "_mass": weights[valid],
+            }
+        )
+        .groupby(["_partition", "_stratum"], observed=True, sort=False)["_mass"]
+        .sum()
+    )
+    nested: dict[object, dict[object, float]] = {}
+    for (partition_value, stratum), mass in grouped.items():
+        nested.setdefault(partition_value, {})[stratum] = float(mass)
+    return tuple(
+        (
+            partition_value,
+            tuple(
+                sorted(
+                    strata_mass.items(),
+                    key=lambda item: _receipt_key(item[0]),
+                )
+            ),
+        )
+        for partition_value, strata_mass in sorted(
+            nested.items(), key=lambda item: _receipt_key(item[0])
+        )
     )
 
 
@@ -1519,6 +2135,9 @@ def _validate_mass_receipt(
     before: Mapping[object, float],
     after: Mapping[object, float],
     node_id: str,
+    mass_partition: tuple[str, str] | None,
+    before_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    after_partition: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
 ) -> None:
     if not isinstance(raw, Mapping):
         raise PopulationError(f"Node {node_id!r} receipt['mass'] must be a mapping.")
@@ -1535,6 +2154,92 @@ def _validate_mass_receipt(
     _assert_receipt_mapping(
         raw.get("stratum_after"), after, f"Node {node_id!r} mass.stratum_after"
     )
+    if mass_partition is None and "partition" in raw:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition is present but the graph "
+            "declares no mass partition."
+        )
+    if mass_partition is not None and "partition" in raw:
+        _validate_partition_mass_receipt(
+            raw["partition"],
+            mass_partition=mass_partition,
+            before=before_partition,
+            after=after_partition,
+            node_id=node_id,
+        )
+
+
+def _validate_partition_mass_receipt(
+    raw: object,
+    *,
+    mass_partition: tuple[str, str],
+    before: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    after: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    node_id: str,
+) -> None:
+    if not isinstance(raw, Mapping) or set(raw) != {
+        "entity",
+        "column",
+        "stratum_before",
+        "stratum_after",
+    }:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition must contain entity, column, "
+            "stratum_before, and stratum_after."
+        )
+    entity, column = mass_partition
+    if raw.get("entity") != entity or raw.get("column") != column:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition names "
+            f"{raw.get('entity')}.{raw.get('column')}; expected {entity}.{column}."
+        )
+    _assert_partition_receipt_mapping(
+        raw.get("stratum_before"),
+        before,
+        label=f"Node {node_id!r} mass.partition.stratum_before",
+    )
+    _assert_partition_receipt_mapping(
+        raw.get("stratum_after"),
+        after,
+        label=f"Node {node_id!r} mass.partition.stratum_after",
+    )
+
+
+def _assert_partition_receipt_mapping(
+    observed: object,
+    expected: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    *,
+    label: str,
+) -> None:
+    if not isinstance(observed, Mapping):
+        raise PopulationError(f"{label} must be a mapping.")
+    converted = _partition_receipt_mapping(expected)
+    if set(observed) != set(converted):
+        raise PopulationError(
+            f"{label} changed partitions: expected {list(converted)}, "
+            f"got {list(observed)}."
+        )
+    for partition, strata in converted.items():
+        _assert_receipt_mapping(
+            observed[partition], strata, f"{label} partition {partition!r}"
+        )
+
+
+def _assert_partition_mass_mapping(
+    expected: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    observed: tuple[tuple[object, tuple[tuple[object, float], ...]], ...],
+    *,
+    label: str,
+) -> None:
+    before = {partition: dict(strata) for partition, strata in expected}
+    after = {partition: dict(strata) for partition, strata in observed}
+    partitions = sorted(set(before) | set(after), key=_receipt_key)
+    for partition in partitions:
+        _assert_mass_mapping(
+            before.get(partition, {}),
+            after.get(partition, {}),
+            label=f"{label} partition {_receipt_key(partition)!r}",
+        )
 
 
 def _assert_close(observed: object, expected: float, label: str) -> None:
@@ -1551,8 +2256,23 @@ def _assert_receipt_mapping(
 ) -> None:
     if not isinstance(observed, Mapping):
         raise PopulationError(f"{label} must be a mapping.")
-    converted = {key: float(value) for key, value in observed.items()}
-    _assert_mass_mapping(expected, converted, label=label)
+    expected_json = _receipt_mass_mapping(expected, label=label)
+    observed_json = _receipt_mass_mapping(observed, label=label)
+    _assert_mass_mapping(expected_json, observed_json, label=label)
+
+
+def _receipt_mass_mapping(
+    values: Mapping[object, object], *, label: str
+) -> dict[str, float]:
+    """Normalize a mass mapping to its stable JSON-object-key representation."""
+
+    result: dict[str, float] = {}
+    for raw_key, value in values.items():
+        key = _receipt_key(raw_key)
+        if key in result:
+            raise PopulationError(f"{label} has colliding JSON key {key!r}.")
+        result[key] = float(value)
+    return result
 
 
 def _assert_mass_mapping(

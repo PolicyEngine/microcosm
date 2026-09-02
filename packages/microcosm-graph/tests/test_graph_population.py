@@ -21,6 +21,7 @@ from microcosm.graph.population import (
     PopulationError,
     dtype_for_token,
     dtype_matches,
+    entrant_strata_receipt,
     expand_lineage_receipt,
     owned_ids,
     patch,
@@ -393,6 +394,35 @@ def test_declared_mass_validates_the_kernel_receipt() -> None:
         patch(population, node, result)
 
 
+def test_mass_receipt_rejects_partition_when_graph_has_none() -> None:
+    population = _population()
+    node = Node(
+        "importance",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        weights=WeightTransition("household", "importance", mass="declared"),
+        mass="declared",
+    )
+    receipt = _mass_receipt(
+        policy="declared",
+        before=7.0,
+        after=14.0,
+        stratum_before={"a": 2.0, "b": 5.0},
+        stratum_after={"a": 4.0, "b": 10.0},
+    )
+    mass = receipt["mass"]
+    assert isinstance(mass, dict)
+    mass["partition"] = {}
+    result = KernelResult(
+        weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE),
+        receipt=receipt,
+    )
+
+    with pytest.raises(PopulationError, match="declares no mass partition"):
+        patch(population, node, result)
+
+
 def test_filter_requires_subset_ids_and_records_free_mass() -> None:
     population = _population()
     filtered = population.frame.select(
@@ -475,6 +505,84 @@ def _lineage_expand_result(*, bad_source: bool = False) -> KernelResult:
     )
 
 
+def _entrant_person_expand_node(*, membership_dtype: str = "int64") -> Node:
+    return Node(
+        "entrant_person",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (
+                ("person", "person_household_id", membership_dtype),
+                ("person", "keep", "bool"),
+                ("person", "owned", "boolean"),
+                ("person", "nullable", "boolean"),
+                ("person", "amount", "float64"),
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+
+
+def _entrant_person_expand_result(
+    strata: object, *, frame: Frame | None = None
+) -> KernelResult:
+    frame = _frame() if frame is None else frame
+    person = frame.table("person")
+    person_id_dtype = person["person_id"].dtype
+    household_id_dtype = frame.table("household")["household_id"].dtype
+    entrant_id = int(person["person_id"].max()) + 1
+    ids = pd.Index(
+        pd.Series([*person["person_id"], entrant_id], dtype=person_id_dtype).array,
+        name="person_id",
+    )
+    additions = {
+        "person_household_id": 10,
+        "keep": True,
+        "owned": False,
+        "nullable": pd.NA,
+        "amount": 3.0,
+    }
+    tokens = {
+        "person_household_id": token_for_dtype(person["person_household_id"].dtype),
+        "keep": "bool",
+        "owned": "boolean",
+        "nullable": "boolean",
+        "amount": "float64",
+    }
+    columns = {
+        ("person", column): pd.Series(
+            pd.array([*person[column], value], dtype=tokens[column]), index=ids
+        )
+        for column, value in additions.items()
+    }
+    return KernelResult(
+        expand={
+            "person": pd.Series(
+                pd.array(
+                    [pd.NA],
+                    dtype=f"Int{np.dtype(person_id_dtype).itemsize * 8}",
+                ),
+                index=pd.Index(
+                    pd.Series([entrant_id], dtype=person_id_dtype).array,
+                    name="person_id",
+                ),
+            ),
+            "household": pd.Series(
+                [],
+                index=pd.Index([], dtype=household_id_dtype, name="household_id"),
+                dtype=household_id_dtype,
+            ),
+        },
+        columns=columns,
+        weights=frame.weights_for("household"),
+        strata=strata,  # type: ignore[arg-type]
+    )
+
+
 def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> None:
     population = _population()
     node = _lineage_expand_node()
@@ -505,6 +613,265 @@ def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> 
         cached.design_weights["household"], expanded.design_weights["household"]
     )
     assert cached.mass_ledger == expanded.mass_ledger
+
+
+def test_cached_expand_requires_exact_lineage_id_sequence() -> None:
+    population = _population()
+    node = Node(
+        "cached_midpoint",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+    )
+    before = population.frame
+    person = before.table("person")
+    household = before.table("household")
+    added_person = person.iloc[[0]].copy()
+    added_person["person_id"] = np.array([5], dtype=np.int64)
+    added_person["person_household_id"] = np.array([15], dtype=np.int64)
+    final_person = pd.concat([person, added_person], ignore_index=True)
+    added_household = household.iloc[[0]].copy()
+    added_household["household_id"] = np.array([15], dtype=np.int64)
+    final_household = (
+        pd.concat([household, added_household], ignore_index=True)
+        .sort_values("household_id")
+        .reset_index(drop=True)
+    )
+    final_weights = Weights(
+        np.array([1.0, 1.0, 2.0, 3.0], dtype=np.float64), WeightKind.DESIGN
+    )
+    cached_frame = Frame(
+        {"person": final_person, "household": final_household},
+        before.schema,
+        {"household": final_weights},
+        pd.concat([before.strata, before.strata.iloc[[0]]], ignore_index=True),
+    )
+    lineage = {
+        "person": pd.Series([1], index=pd.Index([5], name="person_id"), dtype="int64"),
+        "household": pd.Series(
+            [10], index=pd.Index([15], name="household_id"), dtype="int64"
+        ),
+    }
+
+    with pytest.raises(PopulationError, match="final 'household' ids"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=cached_frame,
+                weights=final_weights,
+                receipt={"expand": expand_lineage_receipt(lineage)},
+            ),
+        )
+
+
+def test_entrant_person_strata_materialize_and_attest_cached_replay() -> None:
+    population = _population()
+    node = _entrant_person_expand_node()
+    result = _entrant_person_expand_result(
+        pd.Series(
+            ["new"],
+            index=pd.Index([5], dtype="int64", name="ignored"),
+            dtype=object,
+            name="ignored",
+        )
+    )
+
+    expanded = patch(population, node, result)
+
+    assert expanded.frame.table("person")["person_household_id"].tolist()[-1] == 10
+    assert expanded.frame.strata.tolist() == ["a", "a", "b", "b", "new"]
+    assert expanded.mass_ledger[-1].before_total == 7.0
+    assert expanded.mass_ledger[-1].after_total == 8.0
+    assert result.expand is not None
+    entrant_receipt = entrant_strata_receipt(
+        population.frame, node, result.expand, result.strata
+    )
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_receipt,
+    }
+    cached = restore_cached_expand(
+        population,
+        node,
+        KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt=receipt,
+        ),
+    )
+    pd.testing.assert_series_equal(cached.frame.strata, expanded.frame.strata)
+    assert cached.mass_ledger == expanded.mass_ledger
+
+    with pytest.raises(PopulationError, match="entrant-strata receipt"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=expanded.frame,
+                weights=result.weights,
+                receipt={"expand": expand_lineage_receipt(result.expand)},
+            ),
+        )
+
+
+def test_cached_entrant_strata_rehydrate_the_base_id_dtype() -> None:
+    source = _frame()
+    person = source.table("person").copy()
+    household = source.table("household").copy()
+    for column in ("person_id", "person_household_id"):
+        person[column] = person[column].astype("int32")
+    household["household_id"] = household["household_id"].astype("int32")
+    frame = Frame(
+        {"person": person, "household": household},
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata.copy(),
+    )
+    population = Population.from_frame(frame, "source")
+    node = _entrant_person_expand_node(membership_dtype="int32")
+    result = _entrant_person_expand_result(
+        pd.Series(["new"], index=pd.Index([5], dtype="int32"), dtype=object),
+        frame=frame,
+    )
+
+    expanded = patch(population, node, result)
+    assert result.expand is not None
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_strata_receipt(
+            frame, node, result.expand, result.strata
+        ),
+    }
+    cached = restore_cached_expand(
+        population,
+        node,
+        KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt=receipt,
+        ),
+    )
+
+    assert cached.frame.table("person")["person_id"].dtype == np.dtype("int32")
+    pd.testing.assert_series_equal(cached.frame.strata, expanded.frame.strata)
+
+
+@pytest.mark.parametrize(
+    ("receipt_label", "changed_label"),
+    [(1, True), (1, 1.0), (-0.0, 0.0)],
+    ids=["bool", "float", "signed-zero"],
+)
+def test_cached_entrant_strata_preserve_label_scalar(
+    receipt_label: object, changed_label: object
+) -> None:
+    population = _population()
+    node = _entrant_person_expand_node()
+    result = _entrant_person_expand_result(
+        pd.Series([receipt_label], index=pd.Index([5], dtype="int64"), dtype=object)
+    )
+    expanded = patch(population, node, result)
+    changed_strata = expanded.frame.strata.copy()
+    changed_strata.iloc[-1] = changed_label
+    changed_frame = _replace_person_table(
+        expanded.frame,
+        expanded.frame.table("person").copy(),
+        changed_strata,
+    )
+    assert result.expand is not None
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_strata_receipt(
+            population.frame, node, result.expand, result.strata
+        ),
+    }
+
+    with pytest.raises(PopulationError, match="label"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=changed_frame,
+                weights=result.weights,
+                receipt=receipt,
+            ),
+        )
+
+
+def test_cached_entrant_strata_encode_bytes_labels() -> None:
+    population = _population()
+    node = _entrant_person_expand_node()
+    result = _entrant_person_expand_result(
+        pd.Series([b"new\x00stratum"], index=pd.Index([5], dtype="int64"), dtype=object)
+    )
+    expanded = patch(population, node, result)
+    assert result.expand is not None
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_strata_receipt(
+            population.frame, node, result.expand, result.strata
+        ),
+    }
+
+    assert receipt["entrant_strata"] == [[5, {"bytes_hex": "6e6577007374726174756d"}]]
+    cached = restore_cached_expand(
+        population,
+        node,
+        KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt=receipt,
+        ),
+    )
+    pd.testing.assert_series_equal(cached.frame.strata, expanded.frame.strata)
+
+
+@pytest.mark.parametrize(
+    "strata",
+    [
+        None,
+        pd.Series(["new"], index=pd.Index([6], dtype="int64"), dtype=object),
+        pd.Series(["old", "new"], index=pd.Index([1, 5], dtype="int64"), dtype=object),
+        pd.Series(["new"], index=pd.Index([5], dtype="int32"), dtype=object),
+        pd.Series([pd.NA], index=pd.Index([5], dtype="int64"), dtype=object),
+        pd.Series([1], index=pd.Index([5], dtype="int64"), dtype="int64"),
+    ],
+    ids=[
+        "missing",
+        "unknown-id",
+        "incumbent-id",
+        "wrong-id-dtype",
+        "missing-label",
+        "wrong-label-dtype",
+    ],
+)
+def test_entrant_person_strata_reject_malformed_exact_set(strata: object) -> None:
+    with pytest.raises(PopulationError, match="strata"):
+        patch(
+            _population(),
+            _entrant_person_expand_node(),
+            _entrant_person_expand_result(strata),
+        )
+
+
+def test_strata_are_rejected_without_entrant_persons() -> None:
+    result = _lineage_expand_result()
+    with pytest.raises(PopulationError, match="without entrant persons"):
+        patch(
+            _population(),
+            _lineage_expand_node(),
+            KernelResult(
+                expand=result.expand,
+                weights=result.weights,
+                strata=pd.Series([], dtype=object),
+            ),
+        )
 
 
 def test_expand_lineage_rejects_an_unknown_source_id() -> None:
