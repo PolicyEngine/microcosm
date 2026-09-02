@@ -1,119 +1,211 @@
-# Armenia country package final report (#814)
+# PR #849 env-variable correction — final report
 
-Date: 2026-08-28
+## What this was
 
-Branch: `armenia-country-package-814`
+PR #849's review comment (Fable, main) caught that `POPULACE_LEDGER_URL` /
+`_KEY` / `_API_KEY` / `_EXPORT_KEY` are the **Logbook** store's credentials
+(Supabase `logbook` schema, `logbook_writer` / `logbook_exporter` roles —
+`packages/microcosm-build/src/microcosm/build/logbook.py`'s own docstring
+and `logbook/README.md`), not Chronicle fact-store variables. "Ledger"
+there is the generic build-ledger sense renamed to Logbook on 2026-08-08
+(microcosm#632) specifically to stop colliding with Chronicle. The PR as
+filed introduced `CHRONICLE_*` as the preferred spelling for these — the
+wrong referent, recreating the exact collision #632 fixed. This task
+renamed the preferred spelling to `LOGBOOK_*` everywhere and reframed the
+docs/changelog/PR body accordingly. The epoch half of the PR
+(`chronicle_epoch.py`, `ledger_artifact.py`, `import_entry_facts.py`,
+`ledger_targets.py`) was approved as-is and left untouched except for two
+stale module-path comments that had to follow the file rename.
 
-## Outcome
+## Branch state before starting
 
-The Armenia package is complete as a schema-valid, spec-only, engine-free
-greenfield contract. It is not represented as an executable build: the exact
-`populace-us` artifact, Armenian facts, generated cell bindings, community
-distribution, gate policy, and shared runtime kernels remain explicit
-prerequisites.
+`chronicle-dual-accept` had 2 local commits ahead of `origin/chronicle-dual-accept`
+(`d6cd24ca`, `1be2f18e`) that were unrelated follow-on work (journal exact-counts
+edit, provenance docstring edit) not present on the PR head. Per the assignment,
+the PR head (`origin/chronicle-dual-accept` = `4115573c`) is authoritative. Those
+two commits were preserved on a new branch,
+`backup/chronicle-dual-accept-pre-correction-1be2f18e`, before `chronicle-dual-accept`
+was hard-reset to `4115573c`. `origin/main` was already an ancestor, so no rebase
+was needed.
 
-The closed `am/` inventory mirrors Belgium's six typed resources and five
-generation-zero JSON projections. It declares:
+## New head SHA
 
-- a two-stage load of a to-be-authenticated public `populace-us` artifact and
-  target-derived marz assignment; every record remains a US donor support
-  record and is never described as Armenian microdata;
-- a 2022-census-vintage community spine constrained to the assigned marz, with
-  10 marzes plus Yerevan and 71 consolidated communities documented but no
-  invented code roster;
-- eight Ledger-only, count/indicator calibration authoring contracts spanning
-  demography, household structure, consumption, labour, earnings, pensions,
-  and family benefits;
-- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
-  cell-pinned Ledger references and direct/pre-built candidate bindings before
-  runtime activation;
-- wage/payment, raw-income diagnostic, and national-accounts facts outside the
-  solver manifest until their validation role or AMD-compatible pre-built bridge
-  is enforceable;
-- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
-  support, weight-audit, ESS, and ratio gate declarations, plus active
-  release-blocking reference-coverage/support/output checks; and
-- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
-  dissemination stated and exact ArmStat/donor licence text left as a mandatory
-  verification item.
+**`a5121a1e0c4da8d7767fe8322bc948a957c7c5e7`**, pushed as a fast-forward of
+`origin/chronicle-dual-accept` (no force needed — the branch was reset to the
+exact PR head before new commits were added).
 
-`HARVEST.md` has exactly one solver worklist row per live target-reference key,
-plus separate deferred validation/amount, geography, source-authentication, and
-external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
-permanent survey tax-benefit holdouts, the amount/currency boundary,
-`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
+Three new commits on top of `4115573c`:
 
-Package identity after review:
+1. `061544e1` — Rename the CHRONICLE_* env dual-read window to LOGBOOK_* (module
+   rename + all symbol renames + every caller)
+2. `ee73a624` — Reframe the env dual-read window as a Logbook cleanup, not
+   chronicle#143 (changelog, README, journal correction note)
+3. `a5121a1e` — Apply ruff import-sort and formatting to the renamed files
 
-- CountrySpec fingerprint:
-  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
-- Typed spec SHA-256:
-  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
+## Files changed (relative to 4115573c)
+
+```
+ PROGRESS-chronicle-dual-accept.md                                          |  29 +++++
+ changelog.d/chronicle-dual-accept.added.md                                 |   4 +-
+ logbook/README.md                                                          |   4 +-
+ packages/microcosm-build/src/microcosm/build/__init__.py                   |  10 +-
+ packages/microcosm-build/src/microcosm/build/logbook.py                    |  29 ++---
+ .../build/{chronicle_env.py => logbook_env.py}                             |  91 ++++++------
+ packages/microcosm-build/src/microcosm/build/uk_runtime/firm_generation.py |   2 +-
+ packages/microcosm-build/src/microcosm/build/us_runtime/source_coverage.py |   2 +-
+ .../tests/{test_chronicle_env.py => test_logbook_env.py}                   |  98 +++++++-------
+ tools/logbook.py                                                           |  35 ++---
+```
+
+Plus the PR body itself, edited via `gh pr edit 849` (four scoped changes: the
+`chronicle_env` → `logbook_env` framing paragraph, two audit-table rows naming
+`chronicle_env`/`CHRONICLE_*`, and the `test_chronicle_env.py` → `test_logbook_env.py`
+test-file mention — everything else verbatim, confirmed by diffing old vs. new body
+text before posting).
+
+### Rename map applied
+
+| Old | New |
+|---|---|
+| `chronicle_env.py` | `logbook_env.py` |
+| `chronicle_env()` | `logbook_env()` |
+| `chronicle_env_names()` | `logbook_env_names()` |
+| `describe_chronicle_env()` | `describe_logbook_env()` |
+| `reset_chronicle_env_deprecation_warnings()` | `reset_logbook_env_deprecation_warnings()` |
+| `CHRONICLE_URL_ENV = "CHRONICLE_URL"` | `LOGBOOK_URL_ENV = "LOGBOOK_URL"` |
+| `CHRONICLE_KEY_ENV = "CHRONICLE_KEY"` | `LOGBOOK_KEY_ENV = "LOGBOOK_KEY"` |
+| `CHRONICLE_API_KEY_ENV = "CHRONICLE_API_KEY"` | `LOGBOOK_API_KEY_ENV = "LOGBOOK_API_KEY"` |
+| `CHRONICLE_EXPORT_KEY_ENV = "CHRONICLE_EXPORT_KEY"` | `LOGBOOK_EXPORT_KEY_ENV = "LOGBOOK_EXPORT_KEY"` |
+| `CHRONICLE_ENV_LEGACY_NAMES` | `LOGBOOK_ENV_LEGACY_NAMES` |
+| `test_chronicle_env.py` | `test_logbook_env.py` |
+
+Unchanged (legacy names, same once-per-process `DeprecationWarning` behavior):
+`LEGACY_URL_ENV = "POPULACE_LEDGER_URL"`, `LEGACY_KEY_ENV = "POPULACE_LEDGER_KEY"`,
+`LEGACY_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"`,
+`LEGACY_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"`. Warning message now
+reads "...is the pre-rename name for LOGBOOK_...; the build ledger is now
+Logbook (microcosm#632)..." — no chronicle#143 reference.
+
+Untouched by design (per the reviewer's own note — these really do translate
+Chronicle ids / pin a Chronicle commit, so they correctly stay `CHRONICLE_*`):
+`CHRONICLE_ONS_TURNOVER_BANDS`, `CHRONICLE_ONS_EMPLOYMENT_BANDS`,
+`CHRONICLE_HMRC_BANDS` (`firm_generation.py`) and
+`CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT` (`source_coverage.py`). Only
+their comments' dotted-path references to the old `chronicle_env` module were
+updated to `logbook_env`, since that module no longer exists under the old name.
 
 ## Verification
 
-All commands ran offline. The package-wide command used the exact lock-required
-`policyengine-us==1.819.0` already present in the local uv cache, so the two
-engine-only test files ran inside the same aggregate rather than failing for a
-missing optional dependency.
-
-Exact requested package-wide command:
-
-```sh
-UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+### `uv sync --all-packages --extra us`
+```
+Resolved 125 packages in 15ms
+Checked 102 packages in 68ms
 ```
 
-Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
-seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
-and PolicyEngine-US runtime warnings; none is Armenia-specific.
+### Targeted tests (exact command from the assignment)
+```
+uv run pytest packages/microcosm-build/tests/test_logbook_env.py \
+  packages/microcosm-build/tests/test_chronicle_epoch.py \
+  packages/microcosm-build/tests/test_logbook.py \
+  packages/microcosm-build/tests/test_logbook_cli.py \
+  packages/microcosm-build/tests/test_logbook_backfill.py \
+  packages/microcosm-build/tests/test_logbook_adoption.py \
+  packages/microcosm-build/tests/test_logbook_archive.py \
+  packages/microcosm-build/tests/test_logbook_prediction_seed.py \
+  packages/microcosm-build/tests/test_logbook_chain_scopes_pg.py -q
+```
+(`test_logbook*.py` expanded explicitly; `test_logbook_cli.py` is the only
+other test file that imports `tools/logbook.py`, confirmed by grep.)
 
-Additional checks:
+```
+........................................................................ [ 46%]
+........................................................................ [ 92%]
+............                                                             [100%]
+96 passed
+```
 
-- Focused package/golden/compiler suite:
-  `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
-  — **101 passed** in 29.82 seconds.
-- Authoritative `shared-spec` CI group:
-  `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
-  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
-- `ruff check .` — **passed**.
-- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
-  files tracked.
-- `git diff --check` — **passed**.
+Three `DeprecationWarning`s fired during the run, confirming the renamed
+legacy fallback path and the new message text work end-to-end:
+```
+DeprecationWarning: POPULACE_LEDGER_URL is the pre-rename name for LOGBOOK_URL;
+the build ledger is now Logbook (microcosm#632). Set LOGBOOK_URL instead —
+POPULACE_LEDGER_URL stays honored only for the dual-read window.
+```
+(and the same for `POPULACE_LEDGER_KEY`/`LOGBOOK_KEY`,
+`POPULACE_LEDGER_API_KEY`/`LOGBOOK_API_KEY`,
+`POPULACE_LEDGER_EXPORT_KEY`/`LOGBOOK_EXPORT_KEY`.)
 
-## Deviations from Belgium and why
+### `uv run ruff check .`
+```
+All checks passed!
+```
+(Two `I001` unsorted-import errors were introduced by the rename in
+`build/__init__.py` and `tools/logbook.py`; fixed with `ruff check --fix`
+and `ruff format`, scoped to only the files this task touched, committed
+separately.)
 
-1. Armenia consumes a pre-built public US donor pool instead of native,
-   restricted SILC. No `support_spine.json` is present because the current
-   vocabulary describes raw ASEC pool construction, not an existing artifact.
-2. Armenia is engine-free. No target, gate, or release file requires
-   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
-   through the Axiom adapter.
-3. Marz is target-assigned before community cloning. The clone factor is the
-   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
-   wait for the 71-to-11 roster and within-marz support evidence.
-4. There is no incumbent, so parity/export/target-surface gates are absent.
-   National accounts back a deferred macro-realism band; CEQ and World Bank
-   estimates remain documentation-only band candidates until harvested.
-5. The live solver manifest contains eight count/indicator series contracts,
-   not guessed scalar cells or AMD amount targets. Those series will expand to
-   the reviewed cell-level profile after Chronicle harvest; the eventual
-   10–16-margin selection is not fabricated in this package.
+### `uv run ruff format --check .`
+116 files "would be reformatted" — all pre-existing and unrelated to this
+task (confirmed: the count was 118 before the ruff --fix/format pass above
+and dropped to exactly 116 after fixing the two files this task's edits
+affected; the remaining 116 are files this task never touched, e.g.
+`test_uk_firm_generation.py`, `tools/spec_engine_coverage.py`).
 
-## Top five maintainer questions
+### `tools/ci_test_groups.py --verify` (the lint lane's own check)
+```
+packages/microcosm-build/tests/test_logbook_env.py -> shared-spec
+...
+verification=ok
+```
 
-1. Which immutable `populace-us` revision/file, hash, licence, and column
-   inventory certify the donor input?
-2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
-   the 2024 profile, and what generated cell-reference/binding artifact owns
-   their fanout?
-3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
-   donor consumption bands and any future amount rows conceptually comparable?
-4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
-   weight-ratio thresholds—and which shared evaluators—activate the deferred
-   gate declarations?
-5. What is the authoritative 2022 marz/community roster and assignment table,
-   and when will the shared geography/source-coverage runtimes land under
-   `populace#263/#265`?
+### Full `microcosm-build` package suite
+`uv run pytest packages/microcosm-build -q` was launched as supplementary
+verification beyond the assignment's required command list. It was still
+running in the background when this report was written (long-running —
+includes engine-gated US/UK tests now that `--extra us` is synced). The
+required, scoped verification above is fully green; this run is extra
+thoroughness, not a gate for this deliverable.
 
-No network fetch, push, PR, artifact build, release, or publication was
-performed. The repository-root `PROGRESS.md` was not touched.
+### Grep sweep (exact command from the assignment)
+```
+grep -rn "CHRONICLE_URL\|CHRONICLE_KEY\|CHRONICLE_API_KEY\|CHRONICLE_EXPORT_KEY\|chronicle_env" \
+  --include=*.py --include=*.md .
+```
+Result — 5 lines, all in `PROGRESS-chronicle-dual-accept.md`, all intentional:
+
+```
+PROGRESS-chronicle-dual-accept.md:39:- `microcosm/build/chronicle_env.py` — the env dual-read window, one helper,
+PROGRESS-chronicle-dual-accept.md:51:- Tests: `test_chronicle_epoch.py`, `test_chronicle_env.py`, plus mixed-epoch
+PROGRESS-chronicle-dual-accept.md:115:as-is. The env half only: `chronicle_env.py` renamed to `logbook_env.py`,
+PROGRESS-chronicle-dual-accept.md:116:`CHRONICLE_*_ENV`/`chronicle_env`/`chronicle_env_names`/
+PROGRESS-chronicle-dual-accept.md:117:`describe_chronicle_env`/`reset_chronicle_env_deprecation_warnings` renamed
+```
+
+Lines 39/51 are in the journal's original "Done" section, which the
+assignment explicitly says not to rewrite ("append a dated correction note;
+do not rewrite history") — they're the historical record of what this
+branch originally built, before the correction. Lines 115-117 are inside
+the new "Correction (2026-09-02)" section this task appended, which by
+necessity names the old symbols it renamed away from. **Zero occurrences in
+any `.py` file** and **zero occurrences outside this one journal file's
+history/correction-note text** — i.e., nothing outside git history in any
+file that matters to running code, docs a reader would act on, or the PR
+body.
+
+## What was NOT touched
+
+- The epoch half (`chronicle_epoch.py`, `ledger_artifact.py`,
+  `import_entry_facts.py`, `ledger_targets.py`, CD-vintage tests, band/commit
+  aliases) — approved as-is by the review, left alone except for the two
+  module-path comment fixes noted above.
+- `CHRONICLE_*_BANDS` / `CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT` — real
+  Chronicle aliases, correctly still `CHRONICLE_*`.
+- No merge was performed. PR #849 remains open.
+
+## Backup branch
+
+`backup/chronicle-dual-accept-pre-correction-1be2f18e` preserves the two
+local-only commits that were on `chronicle-dual-accept` before this task
+reset it to the PR head, in case that follow-on work (exact whole-feed
+counts in the journal; per-row ids in the provenance docstring) is still
+wanted — it was not part of PR #849 and was not re-applied.
