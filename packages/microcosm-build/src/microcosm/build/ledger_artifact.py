@@ -134,9 +134,10 @@ class LedgerConsumerArtifact:
     def provenance(self) -> dict[str, Any]:
         """Chronicle-artifact identity block for build and release manifests.
 
-        Records the schema id as *observed*, plus the epoch it belongs to and
-        the epochs of the fact keys in the feed, so a manifest witnesses which
-        era of Chronicle actually resolved its targets.
+        Records the manifest schema id as *observed*, the epoch it belongs to,
+        the epochs of the fact keys in the feed, and the per-row schema ids the
+        rows themselves declare — so a manifest witnesses which era of
+        Chronicle, and which producers, actually resolved its targets.
         """
         payload: dict[str, Any] = {
             "path_name": self.path.name,
