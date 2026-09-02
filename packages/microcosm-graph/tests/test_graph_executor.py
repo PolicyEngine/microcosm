@@ -1621,12 +1621,17 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
 def test_fit_qrf_tolerance_source_hash_pin_is_current() -> None:
     import json
 
-    from microcosm.fit.kernels import QRF_PARAM_KERNEL
+    from microcosm.fit.kernels import QRFKernel, QRF_PARAM_KERNEL
     from tools.graph_parity_fixtures import FIXTURES
 
     pins = json.loads((FIXTURES / "fit.qrf" / "pins.json").read_text())
     assert QRF_PARAM_KERNEL.capabilities.tolerance == Tolerance(ulps=1)
     assert pins["implementation_hash"] == QRF_PARAM_KERNEL.implementation_hash()
+    changed_tolerance = QRFKernel(QRF_PARAM_KERNEL.capabilities.seed_source)
+    changed_tolerance.capabilities = replace(
+        changed_tolerance.capabilities, tolerance=Tolerance(ulps=2)
+    )
+    assert changed_tolerance.implementation_hash() == pins["implementation_hash"]
 
 
 def test_entrant_materialization_rejects_a_masked_claimant(

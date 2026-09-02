@@ -91,7 +91,8 @@ was performed.
   provisional-budget wording, and the canonical fixture generator repinned its
   source-derived implementation hash to
   `9b412a44b3e9d2cfc44b6ed2635e46edefc09c942af10235c56b0839cac906fd`.
-  A runtime unit test binds the one-ULP contract to that pin; H1 remains exact.
+  A runtime unit test binds the one-ULP contract to that pin and changes only
+  tolerance to prove it remains outside `implementation_hash`; H1 remains exact.
 - Complete verification boundary recorded exactly:
   - graph shard: `233 passed in 120.87s (0:02:00)`
   - graph shard count form: `233 passed in 102.06s (0:01:42)`
