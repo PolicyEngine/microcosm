@@ -1,0 +1,6 @@
+spm_unit_id,spm_unit_spine_source_id,spm_unit_source_id,spm_unit_support_channel,spm_unit_support_clone_index,takes_up_snap_if_eligible,takes_up_tanf_if_eligible,takes_up_housing_assistance_if_eligible
+83,83,83,asec,0,True,True,True
+84,83,84,acs,0,False,False,False
+183,83,83,asec,1,True,True,True
+184,83,84,acs,1,False,False,False
+283,83,83,asec,2,True,True,True
