@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, node-graph]
   pull_request:
-    branches: [main]
+    branches: [main, node-graph]
 
 jobs:
   changes:
@@ -96,6 +96,7 @@ jobs:
                       "packages/microcosm-calibrate/tests/**",
                       "packages/microcosm-data/tests/**",
                       "packages/microcosm-fit/tests/**",
+                      "packages/microcosm-graph/tests/**",
                       "specs/**",
                       ".github/workflows/**",
                       "tools/**",
@@ -162,6 +163,13 @@ jobs:
         # python3 (not bare `python`): guaranteed on the Ubuntu image, and this
         # step runs before any sync so it must hold with the stdlib alone.
         run: python3 tools/ci_test_groups.py --verify
+      - name: Verify the graph acceptance burndown is monotone
+        # The charter's second process rule, executable: the number of red
+        # properties in the microcosm-graph acceptance suite never rises
+        # against origin/node-graph. The tool fetches that ref itself when the
+        # CI checkout does not carry it, and warns rather than failing when the
+        # branch is gone, so this cannot break main after the shard merges.
+        run: uv run python tools/graph_acceptance_burndown.py --verify
       - name: Sync workspace
         run: uv sync --all-packages --locked
       - name: Lint

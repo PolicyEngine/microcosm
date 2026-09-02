@@ -1,0 +1,121 @@
+{
+  "dtypes": {
+    "family": {
+      "family_id": "int64",
+      "family_source_id": "int64",
+      "family_spine_source_id": "int64",
+      "family_support_channel": "string[python]",
+      "family_support_clone_index": "int64"
+    },
+    "household": {
+      "TYPEHUGQ": "int64",
+      "household_id": "int64",
+      "household_source_id": "int64",
+      "household_spine_source_id": "int64",
+      "household_support_channel": "string[python]",
+      "household_support_clone_index": "int64"
+    },
+    "marital_unit": {
+      "marital_unit_id": "int64",
+      "marital_unit_source_id": "int64",
+      "marital_unit_spine_source_id": "int64",
+      "marital_unit_support_channel": "string[python]",
+      "marital_unit_support_clone_index": "int64"
+    },
+    "person": {
+      "A_AGE": "float64",
+      "A_SEX": "int64",
+      "SEMP": "float64",
+      "__stratum__": "string[python]",
+      "age": "float64",
+      "business_is_sstb": "bool",
+      "estate_income_would_be_qualified": "bool",
+      "farm_operations_income_would_be_qualified": "bool",
+      "farm_rent_income_would_be_qualified": "bool",
+      "long_term_capital_gains_before_response": "float64",
+      "long_term_capital_gains_on_collectibles": "float64",
+      "measured": "float64",
+      "non_qualified_dividend_income": "float64",
+      "non_sch_d_capital_gains": "float64",
+      "partnership_s_corp_income_would_be_qualified": "bool",
+      "person_family_id": "int64",
+      "person_household_id": "int64",
+      "person_id": "int64",
+      "person_marital_unit_id": "int64",
+      "person_source_id": "int64",
+      "person_spine_source_id": "int64",
+      "person_spm_unit_id": "int64",
+      "person_support_channel": "string[python]",
+      "person_support_clone_index": "int64",
+      "person_tax_unit_id": "int64",
+      "qualified_bdc_income": "float64",
+      "qualified_reit_and_ptp_income": "float64",
+      "rental_income_would_be_qualified": "bool",
+      "schedule_d_capital_gain_distributions": "float64",
+      "self_employment_income_before_lsr": "float64",
+      "self_employment_income_would_be_qualified": "bool",
+      "short_term_capital_gains": "float64",
+      "source_year": "int64",
+      "sstb_self_employment_income_before_lsr": "float64",
+      "sstb_self_employment_income_would_be_qualified": "bool",
+      "sstb_unadjusted_basis_qualified_property": "float64",
+      "sstb_w2_wages_from_qualified_business": "float64",
+      "takes_up_basic_health_program_if_eligible": "bool",
+      "takes_up_chip_if_eligible": "bool",
+      "takes_up_early_head_start_if_eligible": "bool",
+      "takes_up_head_start_if_eligible": "bool",
+      "takes_up_medicaid_if_eligible": "bool",
+      "takes_up_medicare_if_eligible": "bool",
+      "takes_up_ssi_if_eligible": "bool",
+      "takes_up_wic_if_eligible": "bool",
+      "unadjusted_basis_qualified_property": "float64",
+      "w2_wages_from_qualified_business": "float64"
+    },
+    "spm_unit": {
+      "spm_unit_id": "int64",
+      "spm_unit_source_id": "int64",
+      "spm_unit_spine_source_id": "int64",
+      "spm_unit_support_channel": "string[python]",
+      "spm_unit_support_clone_index": "int64",
+      "takes_up_housing_assistance_if_eligible": "bool",
+      "takes_up_snap_if_eligible": "bool",
+      "takes_up_tanf_if_eligible": "bool"
+    },
+    "tax_unit": {
+      "puf_capital_gains_tail_donor_agi_band_index": "int64",
+      "puf_capital_gains_tail_donor_filing_status_code": "int64",
+      "puf_capital_gains_tail_donor_is_synthetic": "bool",
+      "puf_capital_gains_tail_donor_source_id": "int64",
+      "puf_capital_gains_tail_transfer_applied": "bool",
+      "puf_capital_gains_tail_transfer_weight": "float64",
+      "takes_up_aca_if_eligible": "bool",
+      "takes_up_ca_premium_subsidy_if_eligible": "bool",
+      "takes_up_co_premium_assistance_if_eligible": "bool",
+      "takes_up_dc_ptc": "bool",
+      "takes_up_nm_premium_assistance_if_eligible": "bool",
+      "tax_unit_id": "int64",
+      "tax_unit_source_id": "int64",
+      "tax_unit_spine_source_id": "int64",
+      "tax_unit_support_channel": "string[python]",
+      "tax_unit_support_clone_index": "int64",
+      "unrecaptured_section_1250_gain": "float64"
+    }
+  },
+  "schema": {
+    "group_entities": [
+      "household",
+      "tax_unit",
+      "spm_unit",
+      "family",
+      "marital_unit"
+    ],
+    "links": [],
+    "person_entity": "person"
+  },
+  "strata_column": "__stratum__",
+  "weights": {
+    "household": {
+      "kind": "importance"
+    }
+  }
+}

@@ -156,8 +156,7 @@ def _validate_basis(value: object) -> dict:
     temporal_basis = basis["temporal_basis"]
     if temporal_basis == "annual_flow":
         _require(
-            isinstance(period, str)
-            and re.fullmatch(r"[0-9]{4}", period) is not None,
+            isinstance(period, str) and re.fullmatch(r"[0-9]{4}", period) is not None,
             "invalid annual-flow period",
         )
         date(int(period), 1, 1)
