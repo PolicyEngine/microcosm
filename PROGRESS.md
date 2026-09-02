@@ -2,11 +2,11 @@
 
 ## State
 
-Implementation and verification are complete on branch `impl-11-13` in the
+Complete on branch `impl-11-13` in the
 isolated worktree `/private/tmp/microcosm-impl-11-13`. Charter B6 entrant
 lineage, C5 declared tolerance propagation, D6 partitioned mass conservation,
-and the measured fit.qrf tolerance are green. Final `out.md` authoring remains.
-No network, push, or frozen-interface edits are in scope.
+and the measured fit.qrf tolerance are green. The required final report is in
+`out.md`. No network, push, or frozen-interface edits occurred.
 
 ## Done
 
@@ -92,12 +92,14 @@ No network, push, or frozen-interface edits are in scope.
   `total 0`, `red 0`, `verification=ok`. The three frozen interface files are
   byte-unchanged from `graph-amendments-11-13`; only the fit.qrf implementation
   hash pin moved, so no demo structural pin needed regeneration.
+- Wrote `out.md` with the implementation SHA, per-amendment file/line handoff,
+  retained verification summaries, the arm64/x86 measurement table, the honest
+  207-versus-206 suite-count discrepancy, and the frozen-interface
+  person-entrant limitation.
 
 ## Next
 
-- Harden the independent-review B6 cache and C5 key-resolution edge cases.
-- Write and commit the required `out.md` final report, then confirm a clean
-  worktree and final branch SHA. Do not push.
+- Handoff complete. Do not push; the caller owns integration.
 
 # ACS predictor release join
 

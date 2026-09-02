@@ -259,7 +259,6 @@ the 29-pass line above.
 rejects a person entrant: frozen `KernelResult` has no field with which a
 kernel can supply that new person's mandatory non-null `Frame.strata` value.
 The frozen B6 acceptance fixture explicitly uses a household entrant for this
-reason. Group entrants, and copied entrant persons assigned to incumbent or
-entrant groups, are implemented and green. Supporting a genuinely new person
-requires a future interface amendment; neither frozen interface file was
-edited here.
+reason. Group entrants, and copied persons assigned to incumbent or entrant
+groups, are implemented and green. Supporting a genuinely new person requires
+a future interface amendment; neither frozen interface file was edited here.
