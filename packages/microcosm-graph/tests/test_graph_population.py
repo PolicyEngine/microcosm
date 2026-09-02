@@ -394,6 +394,35 @@ def test_declared_mass_validates_the_kernel_receipt() -> None:
         patch(population, node, result)
 
 
+def test_mass_receipt_rejects_partition_when_graph_has_none() -> None:
+    population = _population()
+    node = Node(
+        "importance",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        weights=WeightTransition("household", "importance", mass="declared"),
+        mass="declared",
+    )
+    receipt = _mass_receipt(
+        policy="declared",
+        before=7.0,
+        after=14.0,
+        stratum_before={"a": 2.0, "b": 5.0},
+        stratum_after={"a": 4.0, "b": 10.0},
+    )
+    mass = receipt["mass"]
+    assert isinstance(mass, dict)
+    mass["partition"] = {}
+    result = KernelResult(
+        weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE),
+        receipt=receipt,
+    )
+
+    with pytest.raises(PopulationError, match="declares no mass partition"):
+        patch(population, node, result)
+
+
 def test_filter_requires_subset_ids_and_records_free_mass() -> None:
     population = _population()
     filtered = population.frame.select(
@@ -584,6 +613,62 @@ def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> 
         cached.design_weights["household"], expanded.design_weights["household"]
     )
     assert cached.mass_ledger == expanded.mass_ledger
+
+
+def test_cached_expand_requires_exact_lineage_id_sequence() -> None:
+    population = _population()
+    node = Node(
+        "cached_midpoint",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+    )
+    before = population.frame
+    person = before.table("person")
+    household = before.table("household")
+    added_person = person.iloc[[0]].copy()
+    added_person["person_id"] = np.array([5], dtype=np.int64)
+    added_person["person_household_id"] = np.array([15], dtype=np.int64)
+    final_person = pd.concat([person, added_person], ignore_index=True)
+    added_household = household.iloc[[0]].copy()
+    added_household["household_id"] = np.array([15], dtype=np.int64)
+    final_household = (
+        pd.concat([household, added_household], ignore_index=True)
+        .sort_values("household_id")
+        .reset_index(drop=True)
+    )
+    final_weights = Weights(
+        np.array([1.0, 1.0, 2.0, 3.0], dtype=np.float64), WeightKind.DESIGN
+    )
+    cached_frame = Frame(
+        {"person": final_person, "household": final_household},
+        before.schema,
+        {"household": final_weights},
+        pd.concat([before.strata, before.strata.iloc[[0]]], ignore_index=True),
+    )
+    lineage = {
+        "person": pd.Series([1], index=pd.Index([5], name="person_id"), dtype="int64"),
+        "household": pd.Series(
+            [10], index=pd.Index([15], name="household_id"), dtype="int64"
+        ),
+    }
+
+    with pytest.raises(PopulationError, match="final 'household' ids"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=cached_frame,
+                weights=final_weights,
+                receipt={"expand": expand_lineage_receipt(lineage)},
+            ),
+        )
 
 
 def test_entrant_person_strata_materialize_and_attest_cached_replay() -> None:

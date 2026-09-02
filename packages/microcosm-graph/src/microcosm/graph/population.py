@@ -769,11 +769,11 @@ def _validate_expand_lineage(
                 raise PopulationError(
                     f"Cached EXPAND node {node.id!r} dropped incumbent {entity!r} ids."
                 )
-            additions = after_ids[~after_ids.isin(source_ids)]
-            if not additions.equals(targets):
+            expected_ids = source_ids.append(targets)
+            if not after_ids.equals(expected_ids):
                 raise PopulationError(
-                    f"Cached EXPAND node {node.id!r} frame additions for "
-                    f"{entity!r} disagree with its lineage receipt."
+                    f"Cached EXPAND node {node.id!r} final {entity!r} ids "
+                    "disagree with its lineage receipt."
                 )
         validated[entity] = lineage
     return validated
@@ -1171,10 +1171,16 @@ def _patch_expand(
             f"EXPAND node {node.id!r} cannot yet carry association link tables."
         )
     cells = _expand_cells(node)
-    for entity, _, _ in cells:
+    for entity, column, _ in cells:
         if entity not in before.entities:
             raise PopulationError(
                 f"EXPAND node {node.id!r} names unknown entity {entity!r}."
+            )
+        id_column = before.schema.entity_id_column(entity)
+        if column == id_column:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cannot overlay entity id column "
+                f"{entity}.{column}; lineage supplies final ids."
             )
 
     cell_coordinates = {(entity, column) for entity, column, _ in cells}
@@ -1297,6 +1303,15 @@ def _patch_expand(
 
     for (entity, column), aligned in aligned_cells.items():
         tables[entity][column] = aligned.array
+
+    for entity, expected_ids in target_ids.items():
+        id_column = before.schema.entity_id_column(entity)
+        final_ids = pd.Index(tables[entity][id_column], name=id_column)
+        if not final_ids.equals(expected_ids):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} final {entity!r} ids disagree with "
+                "its lineage targets after cell overlays."
+            )
 
     weight_entity = _expand_weight_entity(node)
     assert weight_entity is not None
@@ -2139,6 +2154,11 @@ def _validate_mass_receipt(
     _assert_receipt_mapping(
         raw.get("stratum_after"), after, f"Node {node_id!r} mass.stratum_after"
     )
+    if mass_partition is None and "partition" in raw:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition is present but the graph "
+            "declares no mass partition."
+        )
     if mass_partition is not None and "partition" in raw:
         _validate_partition_mass_receipt(
             raw["partition"],

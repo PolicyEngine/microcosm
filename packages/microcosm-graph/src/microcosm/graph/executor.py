@@ -37,6 +37,7 @@ from .kernel import (
     Tolerance,
 )
 from .keys import (
+    _capabilities_projection,
     artifact_key,
     frame_key,
     node_key,
@@ -81,28 +82,6 @@ def _cache_record_key(key: str) -> str:
 
 def _opaque_artifact_key(key: str, name: str) -> str:
     return sha256_domain("node-artifact", canonical_json((key, name)))
-
-
-def _capabilities_payload(capabilities: Capabilities) -> dict[str, object]:
-    tolerance = capabilities.tolerance
-    return {
-        "determinism": capabilities.determinism.value,
-        "numeric": capabilities.numeric.value,
-        "seed_source": capabilities.seed_source.value,
-        "structural": capabilities.structural.value,
-        "role": capabilities.role.value,
-        "consumes_se": capabilities.consumes_se,
-        "dependencies": list(capabilities.dependencies),
-        "tolerance": (
-            None
-            if tolerance is None
-            else {
-                "rtol": float(tolerance.rtol),
-                "atol": float(tolerance.atol),
-                "ulps": tolerance.ulps,
-            }
-        ),
-    }
 
 
 def _normal_json_mapping(value: Mapping[str, object], label: str) -> dict[str, object]:
@@ -543,7 +522,7 @@ def _input_tolerances(
     node_id: str,
     kernels: KernelRegistry,
 ) -> Mapping[tuple[str, str], Tolerance | None]:
-    """Resolve each declared input exactly like compilation and node keys do."""
+    """Resolve explicit inputs and rewrite incumbents as compilation does."""
 
     node = compiled.graph.node(node_id)
     if node.structural is StructuralDelta.CREATE:
@@ -557,19 +536,22 @@ def _input_tolerances(
     rewritten = {
         (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
     }
+    coordinates = rewritten | {
+        (slice_.entity, column) for slice_ in node.inputs for column in slice_.columns
+    }
     resolved: dict[tuple[str, str], Tolerance | None] = {}
-    for slice_ in node.inputs:
-        for column in slice_.columns:
-            coordinate = (slice_.entity, column)
-            owner_id = (
-                input_version
-                if coordinate in rewritten
-                else compiled.owners.get(
-                    (input_version, slice_.entity, column), input_version
-                )
+    for coordinate in sorted(coordinates):
+        entity, column = coordinate
+        owner_id = (
+            input_version
+            if coordinate in rewritten
+            else compiled.owners.get(
+                (input_version, entity, column),
+                input_version,
             )
-            owner = compiled.graph.node(owner_id)
-            resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
+        )
+        owner = compiled.graph.node(owner_id)
+        resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
     return MappingProxyType(resolved)
 
 
@@ -873,6 +855,11 @@ def _validate_entrant_materialization_contract(
         if entity not in frame.entities:
             continue  # lineage validation supplies the node-naming rejection
         structural = set(_structural_columns(frame, entity))
+        if (
+            compiled.graph.mass_partition is not None
+            and compiled.graph.mass_partition[0] == entity
+        ):
+            structural.add(compiled.graph.mass_partition[1])
         for column in frame.table(entity).columns:
             column = str(column)
             if column in structural:
@@ -905,6 +892,12 @@ def _validate_entrant_materialization_contract(
                     f"EXPAND node {node.id!r} entrant cell {spelling} is not "
                     f"declared through node {claimant_id!r}'s "
                     "materialized_expand_outputs."
+                )
+            if output.rows != ROWS_ALL:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is claimed "
+                    f"through masked rows {output.rows!r}; materialization bridge "
+                    "claims must use rows='all'."
                 )
             carried_dtype = _dtype_token(frame.table(entity)[column])
             if output.dtype != carried_dtype:
@@ -1131,7 +1124,7 @@ def _write_node(
         "node_key": key,
         "kernel_ref": node.kernel,
         "kernel_impl_hash": kernel_impl_hash,
-        "capabilities": _capabilities_payload(capabilities),
+        "capabilities": _capabilities_projection(capabilities),
         "receipt": dict(receipt),
         "columns": column_entries,
         "frame_key": stored_frame_key,
@@ -1148,7 +1141,12 @@ def _write_node(
 
 
 def _require_record_shape(
-    raw: object, node: Node, *, key: str, kernel_impl_hash: str
+    raw: object,
+    node: Node,
+    *,
+    key: str,
+    kernel_impl_hash: str,
+    capabilities: Capabilities,
 ) -> dict[str, object]:
     if not isinstance(raw, dict):
         raise StoreCorrupt(f"Cached receipt for node {node.id!r} is not an object.")
@@ -1187,6 +1185,12 @@ def _require_record_shape(
             f"Cached receipt identity for node {node.id!r} is {actual!r}, "
             f"not {expected!r}."
         )
+    expected_capabilities = _capabilities_projection(capabilities)
+    if raw["capabilities"] != expected_capabilities:
+        raise StoreMiss(
+            f"Cached receipt capabilities for node {node.id!r} disagree with "
+            "the registered kernel contract."
+        )
     return raw
 
 
@@ -1205,9 +1209,16 @@ def _load_record(
     *,
     key: str,
     kernel_impl_hash: str,
+    capabilities: Capabilities,
 ) -> dict[str, object]:
     raw = store.load_json(_cache_record_key(key))
-    return _require_record_shape(raw, node, key=key, kernel_impl_hash=kernel_impl_hash)
+    return _require_record_shape(
+        raw,
+        node,
+        key=key,
+        kernel_impl_hash=kernel_impl_hash,
+        capabilities=capabilities,
+    )
 
 
 def _preflight_record(store: ContentStore, record: Mapping[str, object]) -> None:
@@ -1404,7 +1415,7 @@ def _all_node_keys(
             keys,
             implementation,
             source_keys,
-            kernel_tolerance=kernel.capabilities.tolerance,
+            kernel_capabilities=kernel.capabilities,
         )
     return keys, implementations
 
@@ -1414,6 +1425,7 @@ def _preflight_require(
     store: ContentStore,
     keys: Mapping[str, str],
     implementations: Mapping[str, str],
+    kernels: KernelRegistry,
 ) -> None:
     missing: list[str] = []
     for node_id in compiled.order:
@@ -1424,6 +1436,7 @@ def _preflight_require(
                 node,
                 key=keys[node_id],
                 kernel_impl_hash=implementations[node_id],
+                capabilities=kernels.get(node.kernel).capabilities,
             )
             _preflight_record(store, record)
         except StoreMiss:
@@ -1462,7 +1475,7 @@ def run_graph(
     source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     if resume == "require":
-        _preflight_require(compiled, store, keys, implementations)
+        _preflight_require(compiled, store, keys, implementations, kernels)
 
     populations: dict[str, Population] = {}
     receipts: dict[str, NodeReceipt] = {}
@@ -1498,6 +1511,7 @@ def run_graph(
                     node,
                     key=key,
                     kernel_impl_hash=implementation,
+                    capabilities=kernel.capabilities,
                 )
                 result, manifest_artifacts = _load_cached_result(
                     store, node, incumbent, record
@@ -1555,7 +1569,9 @@ def run_graph(
                 "pass" if derived_tier == "certified" else "fail"
             )
             normalized_receipt["gate_ancestry"] = list(gate_ids)
-        normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
+        normalized_receipt["capabilities"] = _capabilities_projection(
+            kernel.capabilities
+        )
         updated = _apply_result(
             node,
             result,
