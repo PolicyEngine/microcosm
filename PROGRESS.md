@@ -12,12 +12,15 @@ worktree remains untouched.
   available locally.
 - Read the repository operating rules and the GitNexus exploration and impact
   workflows.
+- Traced the support-channel allocation: `_spi_donor()` feeds the later income
+  imputation, while the expansion samples and clones FRS households before
+  reallocating half of each region's household mass uniformly.
+- Made child presence independent of region (`household_id % 5` versus `% 4`)
+  and regenerated the fixture. The real support transform now changes weighted
+  person mass from 272.7 to 272.43 while household mass remains 226.8.
 
 ## Next
 
-- Trace the fixture generator and SPI support-channel allocation path.
-- Regenerate a small deterministic fixture whose support-channel expansion
-  conserves household mass while changing weighted person mass.
 - Add a fixture-property regression test and capture the deliberate
   `mass="conserve"` H2 failure.
 - Run all requested verification and write `out.md`.
