@@ -1301,11 +1301,14 @@ def explain_html(
     charter: str | None = None,
     burndown: Mapping[str, object] | None = None,
     replays: Sequence[Mapping[str, object]] | None = None,
+    title: str | None = None,
 ) -> str:
     """Render one deterministic, self-contained explanation page.
 
     ``charter``, ``burndown``, and ``replays`` are optional enrichment data.
     The graph explorer and any calibration evidence in the run always render.
+    ``title`` names the page (the browser tab and any gallery it lands in);
+    it defaults to the manifest's country label plus "graph run".
     This function performs no file or network access.
     """
 
@@ -1342,7 +1345,7 @@ def explain_html(
         "<!doctype html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>{_escape(manifest.country)} graph run</title>"
+        f"<title>{_escape(title or f'{manifest.country} graph run')}</title>"
         f'<style>{_STYLE}</style></head><body><main class="shell">'
         '<header class="masthead"><div><p class="eyebrow">Microcosm graph</p>'
         f"<h1>{_escape(manifest.country)} graph run</h1>"

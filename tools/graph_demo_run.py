@@ -443,6 +443,7 @@ def build_demo(destination: Path) -> Path:
             charter=charter,
             burndown=burndown,
             replays=replays,
+            title="Microcosm node graph explorer",
         )
 
         store_destination = destination / "store"
