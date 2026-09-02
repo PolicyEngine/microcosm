@@ -16,6 +16,7 @@ import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 
+from .canonical import canonical_json
 from .decl import (
     MASS_POLICIES,
     ROWS_ALL,
@@ -34,6 +35,7 @@ __all__ = [
     "dtype_for_token",
     "dtype_matches",
     "expand_lineage_receipt",
+    "entrant_strata_receipt",
     "mass_record_receipt",
     "owned_ids",
     "patch",
@@ -377,6 +379,46 @@ def _lineage_json_scalar(
     return value
 
 
+def _stratum_receipt_scalar(value: object) -> object:
+    """Encode one cache-safe entrant stratum label for a JSON receipt."""
+
+    missing = pd.isna(value)
+    if isinstance(missing, bool | np.bool_) and bool(missing):
+        raise PopulationError("EXPAND entrant stratum labels cannot be null.")
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bytes):
+        return {"bytes_hex": value.hex()}
+    if not isinstance(value, str | int | float | bool):
+        raise PopulationError(
+            f"EXPAND entrant stratum label {value!r} is not a cache-safe scalar."
+        )
+    if isinstance(value, float) and not np.isfinite(value):
+        raise PopulationError(f"EXPAND entrant stratum label {value!r} is not finite.")
+    return value
+
+
+def _stratum_from_receipt_scalar(value: object) -> object:
+    """Decode one executor-authored entrant stratum label from a receipt."""
+
+    if isinstance(value, Mapping):
+        if set(value) != {"bytes_hex"} or not isinstance(value["bytes_hex"], str):
+            raise PopulationError("EXPAND entrant stratum receipt label is malformed.")
+        encoded = value["bytes_hex"]
+        try:
+            decoded = bytes.fromhex(encoded)
+        except ValueError as error:
+            raise PopulationError(
+                "EXPAND entrant stratum receipt bytes are malformed."
+            ) from error
+        if encoded != decoded.hex():
+            raise PopulationError(
+                "EXPAND entrant stratum receipt bytes are not canonical."
+            )
+        return decoded
+    return _stratum_receipt_scalar(value)
+
+
 def expand_lineage_receipt(
     expand: Mapping[str, pd.Series],
 ) -> dict[str, list[list[object]]]:
@@ -403,6 +445,195 @@ def expand_lineage_receipt(
             )
         ]
     return payload
+
+
+def _entrant_person_ids(frame: Frame, lineage: Mapping[str, pd.Series]) -> pd.Index:
+    """Return null-lineage person targets in declared lineage order."""
+
+    person = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person)
+    person_lineage = lineage[person]
+    entrant_positions = np.flatnonzero(
+        person_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+    )
+    return pd.Index(person_lineage.index.take(entrant_positions), name=id_column)
+
+
+def _validated_entrant_strata(
+    frame: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+    raw: object,
+) -> pd.Series | None:
+    """Validate and align the iff contract for entrant-person strata."""
+
+    person = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person)
+    id_dtype = frame.table(person)[id_column].dtype
+    entrant_ids = _entrant_person_ids(frame, lineage)
+    if not len(entrant_ids):
+        if raw is not None:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} returned strata without entrant persons."
+            )
+        return None
+    if raw is None:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} omitted strata for entrant persons "
+            f"{entrant_ids[:5].tolist()}."
+        )
+    if not isinstance(raw, pd.Series):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata is not a Series."
+        )
+    labels_index = pd.Index(raw.index, name=id_column)
+    if labels_index.nlevels != 1 or labels_index.dtype != id_dtype:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata index must use "
+            f"{id_dtype!s} person ids."
+        )
+    if not labels_index.is_unique:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} repeats entrant strata person ids."
+        )
+    if labels_index.isna().any():
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata contains null person ids."
+        )
+    missing = entrant_ids[~entrant_ids.isin(labels_index)]
+    extra = labels_index[~labels_index.isin(entrant_ids)]
+    if len(missing) or len(extra):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata must name exactly the entrant "
+            f"persons; missing={missing[:5].tolist()}, extra={extra[:5].tolist()}."
+        )
+    if not (
+        pd.api.types.is_object_dtype(raw.dtype) or isinstance(raw.dtype, pd.StringDtype)
+    ):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata must use object or string "
+            f"labels, got {raw.dtype!s}."
+        )
+    if raw.isna().any():
+        raise PopulationError(
+            f"EXPAND node {node.id!r} entrant strata contains missing labels."
+        )
+    aligned = raw.reindex(entrant_ids).copy()
+    for value in aligned.array:
+        _stratum_receipt_scalar(value)
+    return aligned
+
+
+def entrant_strata_receipt(
+    frame: Frame,
+    node: Node,
+    expand: Mapping[str, pd.Series],
+    strata: pd.Series | None,
+) -> list[list[object]] | None:
+    """Return executor-authored entrant-person strata in lineage order."""
+
+    lineage = _validate_expand_lineage(frame, node, expand)
+    aligned = _validated_entrant_strata(frame, node, lineage, strata)
+    if aligned is None:
+        return None
+    return [
+        [_lineage_json_scalar(target), _stratum_receipt_scalar(label)]
+        for target, label in zip(aligned.index, aligned.array, strict=True)
+    ]
+
+
+def _cached_entrant_strata(
+    frame: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+    receipt: Mapping[str, object],
+) -> pd.Series | None:
+    """Parse the executor-authored entrant-strata cache attestation."""
+
+    person = frame.schema.person_entity
+    id_column = frame.schema.entity_id_column(person)
+    id_dtype = frame.table(person)[id_column].dtype
+    entrant_ids = _entrant_person_ids(frame, lineage)
+    if not len(entrant_ids):
+        if "entrant_strata" in receipt:
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} has entrant strata without "
+                "entrant persons."
+            )
+        return None
+    raw = receipt.get("entrant_strata")
+    if not isinstance(raw, list):
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} has no entrant-strata receipt."
+        )
+    targets: list[object] = []
+    labels: list[object] = []
+    for entry in raw:
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} has malformed entrant strata."
+            )
+        targets.append(entry[0])
+        labels.append(_stratum_from_receipt_scalar(entry[1]))
+    try:
+        target_index = pd.Index(
+            pd.Series(targets, dtype=id_dtype).array, name=id_column
+        )
+    except (TypeError, ValueError) as error:
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} entrant strata contain invalid "
+            f"{id_dtype!s} person ids."
+        ) from error
+    if not target_index.equals(entrant_ids):
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} entrant strata do not name its "
+            "entrant persons in lineage order."
+        )
+    return pd.Series(labels, index=entrant_ids, dtype=object)
+
+
+def _assert_cached_expand_strata(
+    before: Frame,
+    after: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+    receipt: Mapping[str, object],
+) -> None:
+    """Verify cached incumbent, copied, and entrant person strata by lineage."""
+
+    person = before.schema.person_entity
+    id_column = before.schema.entity_id_column(person)
+    before_ids = pd.Index(before.table(person)[id_column], name=id_column)
+    person_lineage = lineage[person]
+    expected_ids = before_ids.append(pd.Index(person_lineage.index, name=id_column))
+    after_ids = pd.Index(after.table(person)[id_column], name=id_column)
+    if not after_ids.equals(expected_ids):
+        raise PopulationError(f"Cached EXPAND node {node.id!r} reordered person ids.")
+    entrant_strata = _cached_entrant_strata(before, node, lineage, receipt)
+    expected = before.strata.astype(object).tolist()
+    entrant_positions: list[int] = []
+    for target, source in zip(person_lineage.index, person_lineage.array, strict=True):
+        if pd.isna(source):
+            assert entrant_strata is not None
+            entrant_positions.append(len(expected))
+            expected.append(entrant_strata.loc[target])
+            continue
+        source_position = before_ids.get_loc(source)
+        expected.append(before.strata.iloc[source_position])
+    actual = after.strata.astype(object).reset_index(drop=True)
+    if not actual.equals(pd.Series(expected, dtype=object)):
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} strata disagree with its lineage "
+            "and entrant-strata receipt."
+        )
+    for position in entrant_positions:
+        actual_label = _stratum_receipt_scalar(actual.iloc[position])
+        expected_label = _stratum_receipt_scalar(expected[position])
+        if canonical_json(actual_label) != canonical_json(expected_label):
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} entrant stratum label "
+                "disagrees with its receipt."
+            )
 
 
 def _expand_lineage_from_receipt(
@@ -566,6 +797,11 @@ def restore_cached_expand(
 
     if node.structural is not StructuralDelta.EXPAND or result.frame is None:
         raise PopulationError("restore_cached_expand requires an EXPAND Frame.")
+    if result.strata is not None:
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} returned kernel strata instead of "
+            "its executor frame artifact."
+        )
     frame = result.frame
     if frame.schema != population.frame.schema:
         raise PopulationError(f"Cached EXPAND node {node.id!r} changed schema.")
@@ -575,6 +811,7 @@ def restore_cached_expand(
     lineage = _validate_expand_lineage(
         population.frame, node, receipt_lineage, after=frame
     )
+    _assert_cached_expand_strata(population.frame, frame, node, lineage, result.receipt)
     _assert_expand_weights(population, frame, node, result)
 
     design_weights: dict[str, np.ndarray] = {}
@@ -720,6 +957,10 @@ def patch(
     _assert_no_ordinary_structural_outputs(population, node)
     expected_columns = {(owned.entity, owned.column) for owned in node.outputs}
     lineage_expand = node.structural is StructuralDelta.EXPAND and result.frame is None
+    if result.strata is not None and not lineage_expand:
+        raise PopulationError(
+            f"Node {node.id!r} returned entrant strata outside a lineage EXPAND."
+        )
     if not lineage_expand and set(result.columns) != expected_columns:
         raise PopulationError(
             f"Node {node.id!r} returned columns {sorted(result.columns)}; "
@@ -855,8 +1096,10 @@ def _remap_expand_memberships(
     source_person = before.table(person)
     person_id = before.schema.entity_id_column(person)
     source_person_ids = pd.Index(source_person[person_id])
+    entrant_mask = person_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+    copied_indices = np.flatnonzero(~entrant_mask)
     source_positions = source_person_ids.get_indexer(
-        person_lineage.to_numpy(copy=False)
+        person_lineage.iloc[copied_indices].to_numpy(copy=False)
     )
     if (source_positions < 0).any():  # defended by lineage validation
         raise PopulationError(
@@ -883,16 +1126,24 @@ def _remap_expand_memberships(
                     )
 
         seen: dict[object, int] = {}
-        remapped: list[object] = []
-        for source_position, source_person_id in zip(
-            source_positions, person_lineage.array, strict=True
+        remapped = (
+            tables[person][membership]
+            .iloc[len(source_person) :]
+            .reset_index(drop=True)
+            .copy()
+        )
+        for addition_position, source_position, source_person_id in zip(
+            copied_indices,
+            source_positions,
+            person_lineage.iloc[copied_indices].array,
+            strict=True,
         ):
             # Select the membership Series directly.  Selecting a mixed-type
             # DataFrame row can coerce a large integer group id through float.
             source_group = source_person[membership].iloc[source_position]
             candidates = group_targets.get(source_group, [])
             if not candidates:
-                remapped.append(source_group)
+                remapped.iloc[addition_position] = source_group
                 continue
             ordinal = seen.get(source_person_id, 0)
             if ordinal >= len(candidates):
@@ -900,13 +1151,12 @@ def _remap_expand_memberships(
                     f"EXPAND node {node.id!r} cannot align {membership!r} for "
                     f"copied person {source_person_id!r}."
                 )
-            remapped.append(candidates[ordinal])
+            remapped.iloc[addition_position] = candidates[ordinal]
             seen[source_person_id] = ordinal + 1
 
         carried = source_person[membership].reset_index(drop=True)
-        additions = pd.Series(remapped, dtype=source_person[membership].dtype)
         tables[person][membership] = pd.concat(
-            [carried, additions], ignore_index=True
+            [carried, remapped], ignore_index=True
         ).array
 
 
@@ -938,7 +1188,6 @@ def _patch_expand(
 
     lineage_positions: dict[str, np.ndarray] = {}
     target_ids: dict[str, pd.Index] = {}
-    entrant_masks: dict[str, np.ndarray] = {}
     for entity in before.entities:
         id_column = before.schema.entity_id_column(entity)
         entity_lineage = lineage[entity]
@@ -949,7 +1198,6 @@ def _patch_expand(
         new_targets = pd.Index(entity_lineage.index, name=id_column)
         target_ids[entity] = source_ids.append(new_targets)
         entrants = entity_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
-        entrant_masks[entity] = entrants
         source_positions = np.full(len(entity_lineage), -1, dtype=np.int64)
         copied = ~entrants
         source_positions[copied] = source_ids.get_indexer(
@@ -976,11 +1224,7 @@ def _patch_expand(
                 )
 
     person = before.schema.person_entity
-    if entrant_masks[person].any():
-        raise PopulationError(
-            f"EXPAND node {node.id!r} cannot admit {person!r} entrants: "
-            "KernelResult has no field that materializes their required stratum."
-        )
+    entrant_strata = _validated_entrant_strata(before, node, lineage, result.strata)
 
     aligned_cells: dict[tuple[str, str], pd.Series] = {}
     for entity, column, dtype in cells:
@@ -1078,12 +1322,30 @@ def _patch_expand(
         weights[entity] = Weights(old.values[positions], kind=old.kind)
 
     person_positions = lineage_positions[person]
-    strata = pd.Series(
-        before.strata.iloc[person_positions].array.copy(),
-        index=tables[person].index,
-        name=before.strata.name,
-        dtype=before.strata.dtype,
-    )
+    if entrant_strata is None:
+        strata = pd.Series(
+            before.strata.iloc[person_positions].array.copy(),
+            index=tables[person].index,
+            name=before.strata.name,
+            dtype=before.strata.dtype,
+        )
+    else:
+        additions: list[object] = []
+        entrant_values = iter(entrant_strata.array)
+        for source_position in person_positions[len(before.table(person)) :]:
+            additions.append(
+                next(entrant_values)
+                if source_position < 0
+                else before.strata.iloc[source_position]
+            )
+        strata = pd.concat(
+            [
+                before.strata.astype(object).reset_index(drop=True),
+                pd.Series(additions, dtype=object),
+            ],
+            ignore_index=True,
+        )
+        strata.name = before.strata.name
     frame = Frame(
         tables,
         before.schema,

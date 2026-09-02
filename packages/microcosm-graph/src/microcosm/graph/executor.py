@@ -47,6 +47,7 @@ from .keys import (
 from .manifest import Decision, NodeReceipt, RunManifest
 from .population import (
     Population,
+    entrant_strata_receipt,
     expand_lineage_receipt,
     mass_record_receipt,
     patch,
@@ -695,6 +696,15 @@ def _validate_result(
         raise NodeRejected(f"Node {node.id!r} result.artifacts is not a mapping.")
     if not isinstance(result.receipt, Mapping):
         raise NodeRejected(f"Node {node.id!r} result.receipt is not a mapping.")
+    if result.strata is not None and not isinstance(result.strata, pd.Series):
+        raise NodeRejected(f"Node {node.id!r} result.strata is not a Series.")
+    if result.strata is not None and (
+        cache_hit or node.structural is not StructuralDelta.EXPAND or not node.entrants
+    ):
+        raise NodeRejected(
+            f"Node {node.id!r} returned entrant strata outside a fresh "
+            "entrants=True EXPAND."
+        )
     if kernel_capabilities.structural is not node.structural:
         raise NodeRejected(
             f"Node {node.id!r} declares structural={node.structural.value!r}, but "
@@ -813,10 +823,18 @@ def _validate_result(
             assert result.expand is not None
             try:
                 receipt["expand"] = expand_lineage_receipt(result.expand)
+                assert population is not None
+                strata_receipt = entrant_strata_receipt(
+                    population.frame, node, result.expand, result.strata
+                )
             except (TypeError, ValueError) as error:
                 raise NodeRejected(
-                    f"EXPAND node {node.id!r} returned malformed lineage: {error}"
+                    f"EXPAND node {node.id!r} returned malformed lineage or "
+                    f"entrant strata: {error}"
                 ) from error
+            receipt.pop("entrant_strata", None)
+            if strata_receipt is not None:
+                receipt["entrant_strata"] = strata_receipt
     if kernel_capabilities.role is KernelRole.GATE:
         outcome = receipt.get("outcome")
         if outcome not in GATE_OUTCOMES:
@@ -1545,7 +1563,12 @@ def run_graph(
             cache_hit=hit,
             mass_partition=compiled.graph.mass_partition,
         )
-        if compiled.graph.mass_partition is not None and node.structural not in {
+        author_mass = compiled.graph.mass_partition is not None or (
+            node.structural is StructuralDelta.EXPAND
+            and node.entrants
+            and "entrant_strata" in normalized_receipt
+        )
+        if author_mass and node.structural not in {
             StructuralDelta.NONE,
             StructuralDelta.CREATE,
         }:
