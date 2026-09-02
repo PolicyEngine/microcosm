@@ -82,6 +82,14 @@ licensed references over 14 distinct tabs.
   `spec_sha256` vectors that attest the schema set.
 - DESIGN.md process rule 5; `changelog.d/848-root-identity.added.md`.
 
+## Gotcha for the next editor of this lane
+
+`microcosm.build.source_runtime` is a `_DIRECT_KERNEL_MODULE` in
+`spec_engine/seeds.py`, so its **source** is attested by every country's
+`spec_sha256`. Any edit to the gate's code moves the `am`, `be`, `uk`, and
+loader golden vectors, even when no manifest changed. Re-pin those four last,
+after the code is final, or you will chase them repeatedly.
+
 ## Next
 
 - Full `uv run pytest` and `uv run ruff check .`, then push and open the PR.
