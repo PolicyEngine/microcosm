@@ -553,12 +553,19 @@ def _input_tolerances(
         else node.base
     )
     assert input_version is not None
+    rewritten = {
+        (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
+    }
     resolved: dict[tuple[str, str], Tolerance | None] = {}
     for slice_ in node.inputs:
         for column in slice_.columns:
             coordinate = (slice_.entity, column)
-            owner_id = compiled.owners.get(
-                (input_version, slice_.entity, column), input_version
+            owner_id = (
+                input_version
+                if coordinate in rewritten
+                else compiled.owners.get(
+                    (input_version, slice_.entity, column), input_version
+                )
             )
             owner = compiled.graph.node(owner_id)
             resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
@@ -1379,6 +1386,7 @@ def _all_node_keys(
             keys,
             implementation,
             source_keys,
+            kernel_tolerance=kernel.capabilities.tolerance,
         )
     return keys, implementations
 

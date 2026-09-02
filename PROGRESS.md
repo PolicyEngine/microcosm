@@ -43,6 +43,12 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   keys, and manifest save/load reconstructs the declared `Tolerance` without a
   schema bump. The C5 acceptance, manifest, view, and explain checks report
   `39 passed in 3.35s`.
+- Hardened C5 after independent cache review: a kernel's non-null declared
+  tolerance now enters its node key, so changes invalidate its receipt and all
+  readers through ordinary artifact/frame dependencies. Rewrite inputs resolve
+  to the incumbent structural holder in both key construction and
+  `KernelContext.tolerances`, matching compilation's self-dependency exception.
+  Keys, executor, and C5 checks report `38 passed in 1.79s`.
 - Implemented D6 partitioned mass accounting: the ledger computes effective
   person mass per partition and stratum (including group-to-person broadcast),
   `conserve` rejects the first changed partition by value, executor-authored
