@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
+import pandas as pd
 import pytest
 
 import microcosm.graph as graph_api
@@ -14,12 +16,12 @@ from microcosm.graph.manifest import Decision, NodeReceipt, RunManifest
 from microcosm.graph.population import MassRecord
 
 
-def _capabilities() -> Capabilities:
+def _capabilities(role: KernelRole = KernelRole.GATE) -> Capabilities:
     return Capabilities(
         determinism=Determinism.SEEDED,
         seed_source=SeedSource.EXECUTOR,
         structural=StructuralDelta.NONE,
-        role=KernelRole.GATE,
+        role=role,
         dependencies=("numpy",),
     )
 
@@ -39,6 +41,51 @@ def _receipt(key: str, *, hit: bool = False, wall_time: float = 0.2) -> NodeRece
         weight_key="f" * 64,
         opaque_artifacts={"diagnostics": "1" * 64},
     )
+
+
+def _persisted_manifest(
+    store: graph_api.ContentStore,
+    *,
+    tier: str = "evidence",
+    gate_outcome: str = "fail",
+    release_outcome: str | None = None,
+) -> RunManifest:
+    gate_artifact = "2" * 64
+    release_artifact = "3" * 64
+    for key, name in (
+        (gate_artifact, "gate_verdict"),
+        (release_artifact, "tier"),
+    ):
+        store.put_column(
+            key,
+            pd.Series([name], index=pd.Index([1]), dtype="string"),
+            declared_dtype="string",
+        )
+    gate = NodeReceipt(
+        key="a" * 64,
+        hit=False,
+        seed=1,
+        kernel_ref="gate@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(KernelRole.GATE),
+        receipt={"outcome": gate_outcome, "evidence": {"fixture": True}},
+        artifacts={("release", "gate_verdict"): gate_artifact},
+    )
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={
+            "tier": tier,
+            "outcome": release_outcome or ("pass" if tier == "certified" else "fail"),
+            "gate_ancestry": ["gate"],
+        },
+        artifacts={("release", "tier"): release_artifact},
+    )
+    return RunManifest("toy", {"release": release, "gate": gate})
 
 
 def test_manifest_json_round_trip_and_convenient_lookup() -> None:
@@ -209,6 +256,105 @@ def test_transient_mass_ledgers_are_immutable_and_not_portable_identity() -> Non
     restored = RunManifest.from_json(manifest.to_json())
     with pytest.raises(KeyError, match="not attached"):
         restored.mass_ledger("calibrated")
+
+
+def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store)
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+
+    document = json.loads(path.read_text())
+    assert document["schema_version"] == 1
+    assert document["key"] == manifest.key
+    assert document["tier"] == "evidence"
+    assert document["known_failures"] == ["gate"]
+    assert document["content_addressed"] == {
+        "node_keys": ["a" * 64, "c" * 64],
+        "decisions": [],
+    }
+
+    restored = RunManifest.load(path, store)
+    assert restored.key == manifest.key
+    assert restored.tier == "evidence"
+    assert restored.known_failures == ("gate",)
+    with pytest.raises(graph_api.NodeRejectedError, match="evidence"):
+        RunManifest.load_certified(path, store)
+
+
+def test_certified_loader_checks_unreached_before_tier(tmp_path: Path) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    certified = _persisted_manifest(
+        store, tier="certified", gate_outcome="not_applicable"
+    )
+    certified_path = tmp_path / "certified.json"
+    certified.save(certified_path)
+    assert RunManifest.load_certified(certified_path, store).key == certified.key
+
+    unreached = _persisted_manifest(
+        store,
+        tier="certified",
+        gate_outcome="pass",
+        release_outcome="unreached",
+    )
+    unreached_path = tmp_path / "unreached.json"
+    unreached.save(unreached_path)
+    with pytest.raises(graph_api.NodeRejectedError, match="unreached"):
+        RunManifest.load_certified(unreached_path, store)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("tier", "certified"),
+        ("schema_version", True),
+        ("known_failures", []),
+        ("key", "0" * 64),
+        ("content_addressed", {"node_keys": [], "decisions": []}),
+    ],
+)
+def test_load_rejects_every_persisted_projection_mismatch(
+    tmp_path: Path, field: str, replacement: object
+) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store)
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+    document = json.loads(path.read_text())
+    document[field] = replacement
+    path.write_text(json.dumps(document))
+
+    with pytest.raises(graph_api.StoreCorruptError, match=manifest.key):
+        RunManifest.load(path, store)
+
+
+@pytest.mark.parametrize("artifact_kind", ["column", "frame", "weight", "opaque"])
+def test_load_requires_every_manifest_artifact(
+    tmp_path: Path, artifact_kind: str
+) -> None:
+    missing_key = "9" * 64
+    receipt = NodeReceipt(
+        key="a" * 64,
+        hit=False,
+        seed=1,
+        kernel_ref="compute@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(KernelRole.COMPUTE),
+        artifacts=({("person", "x"): missing_key} if artifact_kind == "column" else {}),
+        frame_key=missing_key if artifact_kind == "frame" else None,
+        weight_key=missing_key if artifact_kind == "weight" else None,
+        opaque_artifacts=(
+            {"diagnostic": missing_key} if artifact_kind == "opaque" else {}
+        ),
+    )
+    manifest = RunManifest("toy", {"compute": receipt})
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+
+    with pytest.raises(graph_api.StoreMissError):
+        RunManifest.load(path, graph_api.ContentStore(tmp_path / "store"))
+
+    assert json.loads(path.read_text())["tier"] is None
 
 
 def test_package_exports_runtime_implementations_and_failures() -> None:

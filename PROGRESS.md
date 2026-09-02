@@ -2,7 +2,7 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. Strict role-based gate/release execution semantics are implemented and focused unit tests pass. Manifest persistence is next. The frozen acceptance fixtures still contain role/tier and H1 integration contradictions that cannot be resolved without changing an unowned test fixture or weakening the rulings.
+Active on `node-graph-release` in the required local clone. Strict gate/release execution and manifest persistence are implemented and focused tests pass. F2, both F3 cases, and F5 now strict-XPASS; F4 remains blocked by the two frozen toy conflicts. Canonical graph serialization is next.
 
 ## Done
 
@@ -18,10 +18,13 @@ Active on `node-graph-release` in the required local clone. Strict role-based ga
 - Implemented closed gate outcomes, exception-to-owned-fail conversion only for gate-role kernels, and unchanged abort behavior for compute/release exceptions.
 - Implemented transitive gate-ancestry tier derivation, strict release-owned tier comparison, decision-name outcome overlay, and decision-neutral cached release receipts.
 - Added focused executor tests for every gate outcome, exception evidence, non-gate aborts, transitive ancestry, tier mismatch rejection, and missing/signed decision cache invariance; all 26 executor tests pass.
+- Added canonical manifest save/load with a stored content-addressed body, fixed schema version, derived tier, sorted known failures, signed decisions, and complete portable receipts.
+- Added corruption checks for the body/key and all derived top-level fields, plus typed existence validation for column, frame, weight, and opaque artifact keys.
+- Added certified loading with `unreached` precedence and evidence-tier refusal; all 21 manifest tests pass.
+- Confirmed F2, F3, the evidence-flip replay, and F5 strict-XPASS against the unedited acceptance tests.
 
 ## Next
 
-- Implement and verify manifest save/load/certified semantics that fit the owned-file boundary.
 - Resolve whether the unowned acceptance fixture may receive a separate corrective change; without that authority F4 and H1 cannot honestly turn green.
 - Implement canonical graph serialization and deterministic real-kernel fixture generation independently of the broken H1 consumer.
 

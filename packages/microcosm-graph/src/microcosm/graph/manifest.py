@@ -7,20 +7,25 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from .canonical import canonical_json, sha256_domain
 from .decl import StructuralDelta
+from .errors import NodeRejectedError, StoreCorruptError
 from .kernel import Capabilities, Determinism, KernelRole, Numeric, SeedSource
 from .population import MassRecord
 
 if TYPE_CHECKING:
     from microcosm.frame import Frame
 
+    from .store import ContentStore
+
 __all__ = ["Decision", "NodeReceipt", "RunManifest"]
 
 _SCHEMA_VERSION = 1
+_CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
 
 def _freeze_json(value: object) -> object:
@@ -327,6 +332,43 @@ class RunManifest:
         )
 
     @property
+    def tier(self) -> str | None:
+        """The release tier derived from the release node receipt, if present."""
+
+        releases = [
+            (node_id, node)
+            for node_id, node in self.nodes.items()
+            if node.capabilities.role is KernelRole.RELEASE
+        ]
+        if not releases:
+            return None
+        if len(releases) != 1:
+            raise ValueError("a run manifest must contain at most one release node")
+        node_id, release = releases[0]
+        tier = release.receipt.get("tier")
+        if tier not in {"certified", "evidence"}:
+            raise ValueError(
+                f"release node {node_id!r} has invalid derived tier {tier!r}"
+            )
+        return str(tier)
+
+    @property
+    def known_failures(self) -> tuple[str, ...]:
+        """Gate failures and explicit rejections, sorted by node id."""
+
+        failures: set[str] = set()
+        for node_id, node in self.nodes.items():
+            outcome = node.receipt.get("outcome")
+            if (
+                node.capabilities.role is KernelRole.GATE
+                and outcome not in _CERTIFYING_GATE_OUTCOMES
+            ):
+                failures.add(node_id)
+            if node.receipt.get("rejected") is True or outcome == "rejected":
+                failures.add(node_id)
+        return tuple(sorted(failures))
+
+    @property
     def key(self) -> str:
         return sha256_domain("manifest", canonical_json(self.content_addressed))
 
@@ -379,6 +421,9 @@ class RunManifest:
         payload = {
             "schema_version": _SCHEMA_VERSION,
             "key": self.key,
+            "tier": self.tier,
+            "known_failures": self.known_failures,
+            "content_addressed": self.content_addressed,
             "country": self.country,
             "nodes": {
                 node_id: receipt._payload() for node_id, receipt in self.nodes.items()
@@ -393,6 +438,13 @@ class RunManifest:
     def to_json_bytes(self) -> bytes:
         return self.to_json().encode("utf-8")
 
+    def save(self, path: str | Path) -> None:
+        """Write the canonical portable manifest document to ``path``."""
+
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(self.to_json(), encoding="utf-8")
+
     @classmethod
     def from_json(cls, value: str | bytes | bytearray) -> Self:
         """Restore a manifest and verify its serialized content key."""
@@ -404,7 +456,9 @@ class RunManifest:
         raw = json.loads(value)
         if not isinstance(raw, dict):
             raise ValueError("manifest JSON must contain an object")
-        if raw.get("schema_version") != _SCHEMA_VERSION:
+        if type(raw.get("schema_version")) is not int or (
+            raw["schema_version"] != _SCHEMA_VERSION
+        ):
             raise ValueError(
                 f"unsupported manifest schema version {raw.get('schema_version')!r}"
             )
@@ -428,12 +482,129 @@ class RunManifest:
             finished_at=_string_field(raw, "finished_at"),
             host=_string_field(raw, "host"),
         )
+        body = raw.get("content_addressed")
+        if "content_addressed" in raw:
+            if not isinstance(body, Mapping):
+                raise ValueError("manifest content-addressed body must be an object")
+            recomputed_body = json.loads(canonical_json(manifest.content_addressed))
+            if body != recomputed_body:
+                raise ValueError(
+                    "manifest content key mismatch: the content-addressed body "
+                    "does not match portable provenance"
+                )
+            recomputed_key = sha256_domain("manifest", canonical_json(body))
+        else:
+            recomputed_key = manifest.key
         serialized_key = raw.get("key")
-        if serialized_key != manifest.key:
+        if serialized_key != recomputed_key or recomputed_key != manifest.key:
             raise ValueError(
                 "manifest content key mismatch: serialized provenance was altered"
             )
+        if "tier" in raw and raw["tier"] != manifest.tier:
+            raise ValueError(
+                f"manifest tier mismatch: stored {raw['tier']!r}, "
+                f"derived {manifest.tier!r}"
+            )
+        if "known_failures" in raw:
+            expected_failures = list(manifest.known_failures)
+            if raw["known_failures"] != expected_failures:
+                raise ValueError(
+                    "manifest known_failures mismatch: stored "
+                    f"{raw['known_failures']!r}, derived {expected_failures!r}"
+                )
         return manifest
+
+    @classmethod
+    def load(cls, path: str | Path, store: ContentStore) -> Self:
+        """Load a saved manifest and validate its identity and artifacts."""
+
+        source = Path(path)
+        try:
+            text = source.read_text(encoding="utf-8")
+            raw = json.loads(text)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise StoreCorruptError(
+                f"Manifest <unknown> at {source} is not readable JSON."
+            ) from error
+        if not isinstance(raw, dict):
+            raise StoreCorruptError(
+                f"Manifest <unknown> at {source} does not contain an object."
+            )
+        claimed_key = raw.get("key")
+        key_label = claimed_key if isinstance(claimed_key, str) else "<unknown>"
+        raw_body = raw.get("content_addressed")
+        body_key = (
+            sha256_domain("manifest", canonical_json(raw_body))
+            if isinstance(raw_body, Mapping)
+            else "<unavailable>"
+        )
+        identity_label = f"{key_label} (body key {body_key})"
+        required = {
+            "schema_version",
+            "key",
+            "tier",
+            "known_failures",
+            "content_addressed",
+            "country",
+            "nodes",
+            "decisions",
+            "started_at",
+            "finished_at",
+            "host",
+        }
+        missing = sorted(required - set(raw))
+        if missing:
+            raise StoreCorruptError(
+                f"Manifest {identity_label} is missing persisted fields {missing!r}."
+            )
+        try:
+            manifest = cls.from_json(text)
+        except (TypeError, ValueError) as error:
+            raise StoreCorruptError(
+                f"Manifest {identity_label} failed validation: {error}"
+            ) from error
+
+        try:
+            _validate_artifacts(manifest, store)
+        except ValueError as error:
+            raise StoreCorruptError(
+                f"Manifest {identity_label} contains an invalid artifact key: {error}"
+            ) from error
+        return manifest
+
+    @classmethod
+    def load_certified(cls, path: str | Path, store: ContentStore) -> Self:
+        """Load ``path`` only when its reached release is certified."""
+
+        manifest = cls.load(path, store)
+        releases = [
+            node
+            for node in manifest.nodes.values()
+            if node.capabilities.role is KernelRole.RELEASE
+        ]
+        if any(node.receipt.get("outcome") == "unreached" for node in releases):
+            raise NodeRejectedError(
+                f"Manifest {manifest.key} release outcome is unreached."
+            )
+        if manifest.tier != "certified":
+            raise NodeRejectedError(
+                f"Manifest {manifest.key} is evidence-tier, not certified."
+            )
+        return manifest
+
+
+def _validate_artifacts(manifest: RunManifest, store: ContentStore) -> None:
+    """Confirm that every manifest artifact exists with its declared kind."""
+
+    for node in manifest.nodes.values():
+        for key in node.artifacts.values():
+            store.metadata(key, kind="column")
+        if node.frame_key is not None:
+            store.metadata(node.frame_key, kind="frame")
+        if node.weight_key is not None:
+            store.metadata(node.weight_key, kind="column")
+        for key in node.opaque_artifacts.values():
+            store.metadata(key, kind="bytes")
 
 
 def _string_field(payload: Mapping[str, object], name: str) -> str:
