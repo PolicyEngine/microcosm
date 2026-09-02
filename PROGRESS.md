@@ -87,11 +87,14 @@ or `_toy.py` edit is authorized.
 - Follow-up implemented: any `receipt["mass"]["partition"]` block now
   rejects when `Graph.mass_partition` is absent, even when every unpartitioned
   total is otherwise correct.
+- Follow-up implemented: the fit.qrf tolerance comment now states the owner's
+  provisional-budget wording, and the canonical fixture generator repinned its
+  source-derived implementation hash to
+  `9b412a44b3e9d2cfc44b6ed2635e46edefc09c942af10235c56b0839cac906fd`.
+  A runtime unit test binds the one-ULP contract to that pin; H1 remains exact.
 
 ## Next
 
-- Implement the QRF comment/pin follow-up, then run the complete verification
-  boundary and keep this journal current.
 - Run every requested verification command and copy its exact summary lines
   into `/private/tmp/microcosm-fix-851/out.md`.
 

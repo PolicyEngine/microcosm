@@ -49,11 +49,11 @@ FIT_QRF_DEPENDENCIES = (
 )
 """Distributions whose versions form part of ``fit.qrf@1``'s identity."""
 
-#: How far ``fit.qrf@1`` numbers may move between machines. On 2026-09-02 the
-#: 12-cell H1 fixture was bit-identical between native arm64 and x86_64 under
-#: Rosetta (max absolute difference 0, max relative difference 0, max ULP 0)
-#: with the locked Python 3.14.4 numeric stack. One ULP is the smallest
-#: non-bitwise bound and supplies one ULP of margin above that observation.
+#: Provisional one-ULP acceptance budget, not an established cross-platform
+#: upper bound. On 2026-09-02, one 12-output positive-only H1 fixture was
+#: bit-identical between native arm64 and x86_64 under Rosetta. Broader
+#: native-x86, seed, regime, near-tie, and non-binary-exact coverage is required
+#: before treating this as a kernel-wide bound.
 FIT_QRF_TOLERANCE = Tolerance(ulps=1)
 
 
