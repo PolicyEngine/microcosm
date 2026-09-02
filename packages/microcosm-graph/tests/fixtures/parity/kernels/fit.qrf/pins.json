@@ -1,1 +1,1 @@
-{"dependencies":{"numpy":"2.4.6","pandas":"3.0.3","quantile-forest":"1.4.2","scikit-learn":"1.8.0"},"implementation_hash":"3a0fabca2f9bedf98c33846e7b6d59825f17007933b78ec5aeb31d3f0a2706e7","kernel":"fit.qrf@1","node":"fit_qrf","seed":947}
+{"dependencies":{"numpy":"2.4.6","pandas":"3.0.3","quantile-forest":"1.4.2","scikit-learn":"1.8.0"},"implementation_hash":"469e470fc814e0cf5f00f55373f15ad16a60ec7e988c23558ec4b78ee9ebbf03","kernel":"fit.qrf@1","node":"fit_qrf","seed":947}

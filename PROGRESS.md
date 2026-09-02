@@ -65,12 +65,20 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   cache-replay, declared-receipt, and backward-compatibility paths. JSON-key
   collisions now surface uniformly as a node-naming rejection rather than an
   internal population exception.
+- Measured the 12-cell H1 `fit.qrf@1` direct output on native arm64 and
+  x86_64/Rosetta under the locked Python 3.14.4 numeric stack: 0 differing
+  cells, max absolute difference `0.0`, max relative difference `0.0`, and max
+  ULP distance `0`. Both outputs match committed `direct.csv` byte-for-byte
+  (SHA-256 `7b8dbd56c91ee71552ff6d892a42c56494b1813fb5d4b11553a8a8ccc9b90dca`).
+  Set `FIT_QRF_TOLERANCE` to `Tolerance(ulps=1)`, the smallest non-bitwise
+  bound and one ULP above the observation; updated only the fit.qrf source-hash
+  pin, not parity data. Kernel and H1 checks report `8 passed in 4.96s`.
 
 ## Next
 
 - Harden the independent-review B6 cache and C5 key-resolution edge cases.
-- Record the measured fit.qrf H1 arm64/x86_64 bound, run the full verification
-  matrix, and write `out.md`.
+- Run the sanctioned three-marker flip, restore suite pins, execute the full
+  verification matrix, and write `out.md`.
 
 # ACS predictor release join
 

@@ -49,12 +49,12 @@ FIT_QRF_DEPENDENCIES = (
 )
 """Distributions whose versions form part of ``fit.qrf@1``'s identity."""
 
-#: How far ``fit.qrf@1`` numbers may move between machines. The forest stack
-#: promises no cross-platform bit stability (charter H1 records the claim as
-#: ``tolerance_bound``); this bound is provisional until measured on the H1
-#: fixture across arm64 and x86_64 (amendment 13 follow-up), and parity in
-#: the locked environment is still asserted byte for byte.
-FIT_QRF_TOLERANCE = Tolerance(rtol=1e-6)
+#: How far ``fit.qrf@1`` numbers may move between machines. On 2026-09-02 the
+#: 12-cell H1 fixture was bit-identical between native arm64 and x86_64 under
+#: Rosetta (max absolute difference 0, max relative difference 0, max ULP 0)
+#: with the locked Python 3.14.4 numeric stack. One ULP is the smallest
+#: non-bitwise bound and supplies one ULP of margin above that observation.
+FIT_QRF_TOLERANCE = Tolerance(ulps=1)
 
 
 QRF_EXECUTOR_SEED_HIGH = 2**31 - 1
