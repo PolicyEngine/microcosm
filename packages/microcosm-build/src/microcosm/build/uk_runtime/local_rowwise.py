@@ -600,10 +600,22 @@ def build_uk_rowwise_local_surface_matrix(
             f"{row.area_code}/{row.metric}"
             for row in target_frame.loc[unreachable].head(5).itertuples(index=False)
         ]
+        # The refusal is the evidence for support-or-target work, so it carries
+        # the full breakdown, not only five examples.
+        missing_rows = target_frame.loc[unreachable]
+        by_metric = {
+            str(key): int(value)
+            for key, value in missing_rows.groupby("metric").size().items()
+        }
+        by_grain = {
+            str(key): int(value)
+            for key, value in missing_rows.groupby("area_type").size().items()
+        }
         raise ValueError(
             f"{int(unreachable.sum())} target row(s) have a nonzero target "
-            f"but zero household support: {examples}. Add support (clones, "
-            "assignment) or fix the target surface."
+            f"but zero household support: {examples}; by metric {by_metric}; "
+            f"by grain {by_grain}. Add support (clones, assignment) or fix the "
+            "target surface."
         )
     single_grain = grains[0] if len(grains) == 1 else None
     return UKRowwiseLocalMatrix(
