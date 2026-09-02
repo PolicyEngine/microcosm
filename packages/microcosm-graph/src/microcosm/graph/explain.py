@@ -944,6 +944,23 @@ def _mass_payload(
                 "stratum_after": dict(record.after_by_stratum),
                 "policy": record.policy,
             }
+    if node.base is not None:
+        before = manifest.populations.get(node.base)
+        after = manifest.populations.get(node.id)
+        if before is not None and after is not None:
+            before_mass = before.stratum_mass()
+            after_mass = after.stratum_mass()
+            return {
+                "before": float(before_mass.sum()),
+                "after": float(after_mass.sum()),
+                "stratum_before": {
+                    str(key): float(value) for key, value in before_mass.items()
+                },
+                "stratum_after": {
+                    str(key): float(value) for key, value in after_mass.items()
+                },
+                "policy": node.mass,
+            }
     return None
 
 

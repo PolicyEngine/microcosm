@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 import microcosm.graph as graph_api
-from microcosm.graph import describe, explain_html
+from microcosm.graph import describe, explain_html, graph_to_json
 
 ROOT = Path(__file__).parents[3]
 
@@ -40,6 +40,16 @@ def _burndown() -> dict[str, object]:
         "describe_target": "target_b",
     }
     return data
+
+
+def _tool(name: str):
+    path = ROOT / "tools" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"_{name}_test", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _snapshot(run) -> dict[str, object]:
@@ -221,3 +231,49 @@ def test_manifest_only_page_omits_optional_sections(tmp_path: Path) -> None:
     assert "Calibration view" in rendered
     assert "Acceptance burndown" not in rendered
     assert "Incident replays" not in rendered
+
+
+def test_saved_run_cli_validates_store_and_reattaches_frames(tmp_path: Path) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    manifest_path = tmp_path / "run" / "manifest.json"
+    graph_path = tmp_path / "run" / "graph.json"
+    output_path = tmp_path / "rendered.html"
+    run.manifest.save(manifest_path)
+    graph_path.write_text(graph_to_json(run.compiled.graph), encoding="utf-8")
+
+    tool = _tool("graph_explain")
+    tool.render_saved_run(manifest_path, graph_path, output_path)
+
+    rendered = output_path.read_text(encoding="utf-8")
+    assert "Graph explorer" in rendered
+    assert "Calibration view" in rendered
+    assert 'class="chart-bar"' in rendered
+    assert "rural" in rendered
+    assert "urban" in rendered
+
+
+def test_demo_runs_live_replays_and_is_byte_identical(tmp_path: Path) -> None:
+    tool = _tool("graph_demo_run")
+    output = tool.build_demo(tmp_path / "demo")
+    first = output.read_bytes()
+    second = tool.build_demo(tmp_path / "demo").read_bytes()
+
+    assert first == second
+    assert len(first) < 2_000_000
+    rendered = first.decode("utf-8")
+    parser = HTMLParser()
+    parser.feed(rendered)
+    parser.close()
+    for heading in (
+        "Graph explorer",
+        "Acceptance burndown",
+        "Calibration view",
+        "Incident replays",
+    ):
+        assert heading in rendered
+    assert "4 of 4 pass" in rendered
+    assert rendered.count('<span class="badge pass">pass</span>') == 4
+    assert "0 of 9 nodes (0.0%)" in rendered
+    assert (tmp_path / "demo" / "manifest.json").is_file()
+    assert (tmp_path / "demo" / "graph.json").is_file()
+    assert (tmp_path / "demo" / "store").is_dir()
