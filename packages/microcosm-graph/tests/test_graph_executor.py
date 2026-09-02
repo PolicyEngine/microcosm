@@ -1616,3 +1616,115 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
             store=store,
             kernels=executor_registry,
         )
+
+
+def test_entrant_materialization_rejects_a_masked_claimant(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def admit_household(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1],
+                    index=pd.Index([4], name="person_id"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    [pd.NA],
+                    index=pd.Index([30], name="household_id"),
+                    dtype="Int64",
+                ),
+            },
+            columns={
+                ("person", "person_household_id"): pd.Series(
+                    [10, 10, 20, 30],
+                    index=pd.Index([1, 2, 3, 4], name="person_id"),
+                    dtype="int64",
+                ),
+                ("household", "size"): pd.Series(
+                    [2, 1, 1],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="int64",
+                ),
+                ("household", "claim_mask"): pd.Series(
+                    [True, True, False],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="boolean",
+                ),
+            },
+            weights=Weights(
+                np.array([1.0, 2.0, 1.0], dtype=np.float64),
+                WeightKind.DESIGN,
+            ),
+        )
+
+    expand = Node(
+        "admit_household",
+        "masked.expand@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": (
+                ("person", "person_household_id", "int64"),
+                ("household", "size", "int64"),
+                ("household", "claim_mask", "boolean"),
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+    claim_mask = Node(
+        "claim_mask",
+        "claim.mask@1",
+        outputs=(Owned("household", "claim_mask", "boolean"),),
+        params={"materialized_expand_outputs": ("household.claim_mask",)},
+        population=expand.id,
+    )
+    claim_size = Node(
+        "claim_size",
+        "claim.masked-size@1",
+        inputs=(Slice("household", ("claim_mask",)),),
+        outputs=(Owned("household", "size", "int64", rows="claim_mask"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=expand.id,
+    )
+
+    def must_not_run(context: KernelContext) -> KernelResult:
+        raise AssertionError(f"claimant {context.node.id} should not run")
+
+    registry = _registry()
+    registry.register(
+        _Kernel(
+            expand.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                structural=StructuralDelta.EXPAND,
+            ),
+            admit_household,
+        )
+    )
+    mask_kernel = _Kernel(
+        claim_mask.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        must_not_run,
+    )
+    size_kernel = _Kernel(
+        claim_size.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        must_not_run,
+    )
+    registry.register(mask_kernel)
+    registry.register(size_kernel)
+
+    with pytest.raises(NodeRejected, match="household.size.*rows='all'"):
+        _run(
+            Graph("toy", (SOURCE,), (CREATE, expand, claim_mask, claim_size)),
+            source,
+            ContentStore(tmp_path / "store"),
+            registry,
+        )
+    assert mask_kernel.calls == size_kernel.calls == 0

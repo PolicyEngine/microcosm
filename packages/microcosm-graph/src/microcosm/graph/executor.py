@@ -893,6 +893,12 @@ def _validate_entrant_materialization_contract(
                     f"declared through node {claimant_id!r}'s "
                     "materialized_expand_outputs."
                 )
+            if output.rows != ROWS_ALL:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is claimed "
+                    f"through masked rows {output.rows!r}; materialization bridge "
+                    "claims must use rows='all'."
+                )
             carried_dtype = _dtype_token(frame.table(entity)[column])
             if output.dtype != carried_dtype:
                 raise NodeRejected(

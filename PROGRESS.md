@@ -74,11 +74,15 @@ or `_toy.py` edit is authorized.
   explicit input coordinates and rewrite-output incumbents, resolving rewrites
   against the structural input version. A two-case regression covers both an
   implicit rewrite incumbent and the same coordinate explicitly declared.
+- Finding 6 implemented: entrant materialization bridge claims must declare
+  `rows='all'`; masked ownership is rejected before claimant execution. The
+  regression's household mask explicitly excludes the entrant and confirms
+  both claimant kernels remain uncalled.
 
 ## Next
 
-- Implement findings 6 and 7 plus the remaining follow-ups, committing each
-  coherent finding separately and keeping this journal current.
+- Implement finding 7 plus the remaining follow-ups, committing each coherent
+  finding separately and keeping this journal current.
 - Run every requested verification command and copy its exact summary lines
   into `/private/tmp/microcosm-fix-851/out.md`.
 
