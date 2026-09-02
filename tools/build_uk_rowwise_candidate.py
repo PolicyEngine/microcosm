@@ -1339,10 +1339,14 @@ def _joint_dry_run_plan(
                 source_lineage_modulus=args.source_lineage_modulus,
             ).result
         )
-        summaries = uk_ladder_area_support_summary(
-            candidate.frame.table("household"),
-            ladder,
+        # The typed frame weights are the authority; the persisted
+        # household_weight column is an export artefact the loaded spine
+        # does not carry, so attach them the way the real support path does.
+        candidate_household = candidate.frame.table("household").copy()
+        candidate_household["household_weight"] = np.asarray(
+            candidate.frame.weights_for("household").values, dtype=np.float64
         )
+        summaries = uk_ladder_area_support_summary(candidate_household, ladder)
         clone_support[str(clone_count)] = {
             grain: {
                 "minimum_rows": int(rows["nonzero_households"].min()),
