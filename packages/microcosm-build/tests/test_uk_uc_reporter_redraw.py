@@ -39,23 +39,31 @@ def _stage():
 class _StubEngine:
     country = "uk"
 
-    def __init__(self) -> None:
+    def __init__(self, *, fail_all_spi: bool = False) -> None:
         self.calls: list[tuple[object, tuple[str, ...], str]] = []
+        self.fail_all_spi = fail_all_spi
 
     def materialize(self, frame, variables, period):
         self.calls.append((frame, tuple(variables), str(period)))
         benunit = frame.table("benunit")
         person = frame.table("person")
-        # Benefit unit 202 fails the hard award screen. All others pass.
+        # Benefit unit 202 fails the hard award screen. All others pass —
+        # including a child-only unit, because uc_maximum_amount is
+        # mechanical and pays it.
         maximum = np.full(len(benunit), 100.0)
         reduction = np.zeros(len(benunit))
         reduction[benunit["benunit_id"].eq(202).to_numpy()] = 100.0
+        if self.fail_all_spi:
+            reduction[benunit[support_channel_column("benunit")].eq("spi").to_numpy()] = (
+                100.0
+            )
         return {
             "uc_maximum_amount": maximum,
             "uc_income_reduction": reduction,
             "is_child_or_qualifying_young_person_for_universal_credit": (
                 person["is_uc_child"].to_numpy(dtype=bool)
             ),
+            "is_SP_age": person["age"].to_numpy(dtype=float) >= 66.0,
         }
 
 
@@ -95,7 +103,7 @@ class _StubQRFFactory:
         return _StubQRF(self.record, seed=seed)
 
 
-def _frame():
+def _frame(*, child_only: bool = False):
     benunit_rows = [
         # Four canonical, screened FRS training benefit units. The first is a
         # couple-with-child reporter donor needed by uc_capital_coherence.
@@ -112,6 +120,10 @@ def _frame():
         (202, 8, "spi", 1, False, False, 0, 50.0, 1.0),
         (203, 9, "spi", 1, False, False, 0, 0.0, 1.0),
     ]
+    if child_only:
+        # A 17-year-old qualifying young person heading their own SPI unit,
+        # carrying a stage-2 chain fill of 300. Its only member is a child.
+        benunit_rows.append((204, 10, "spi", 1, False, False, 0, 300.0, 1.0))
     people: list[dict[str, object]] = []
     for (
         benunit_id,
@@ -126,6 +138,8 @@ def _frame():
     ) in benunit_rows:
         if married:
             ages = (45, 45)
+        elif benunit_id == 204:
+            ages = (17,)
         else:
             ages = (70,) if benunit_id == 203 else (40,)
         for member, age in enumerate(ages):
@@ -141,7 +155,7 @@ def _frame():
                     "person_household_id": household_id,
                     "age": age,
                     "is_benunit_head": member == 0,
-                    "is_uc_child": False,
+                    "is_uc_child": benunit_id == 204,
                     "employment_income": 10_000.0 + benunit_id + member,
                     "self_employment_income": 100.0 * member,
                     "savings_interest_income": 10.0,
@@ -440,9 +454,31 @@ def test_child_only_benunit_gets_its_eldest_member_as_claimant() -> None:
     )
     uc_child = np.array([False, True, True])
 
-    claimant = _claimant_rows(person, uc_child=uc_child)
+    claimant = _claimant_rows(person, uc_child=uc_child, sp_age=np.zeros(3, bool))
 
     assert claimant.tolist() == [True, False, True]
+
+
+def test_claimant_prefers_working_age_by_the_engine_sp_age_flag() -> None:
+    """Working age comes from the materialized is_SP_age, not a hard-coded 66."""
+
+    from microcosm.build.uk_runtime.uc_reporter_redraw import _claimant_rows
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2],
+            "person_benunit_id": [10, 10],
+            "age": [64.0, 60.0],
+        }
+    )
+    uc_child = np.array([False, False])
+    # The eldest adult is flagged state-pension-age by the engine (early SPA
+    # cohort); the younger adult is the working-age claimant.
+    claimant = _claimant_rows(
+        person, uc_child=uc_child, sp_age=np.array([True, False])
+    )
+
+    assert claimant.tolist() == [False, True]
 
 
 def test_positive_draw_on_a_child_claimant_refuses_at_the_landing() -> None:
@@ -463,7 +499,7 @@ def test_positive_draw_on_a_child_claimant_refuses_at_the_landing() -> None:
     )
     benunit = pd.DataFrame({"benunit_id": [10, 20]})
     uc_child = np.array([False, True])
-    claimant = _claimant_rows(person, uc_child=uc_child)
+    claimant = _claimant_rows(person, uc_child=uc_child, sp_age=np.zeros(2, bool))
     spi = np.array([True, True])
 
     with pytest.raises(ValueError, match="child claimant"):
@@ -513,3 +549,83 @@ def test_child_only_benunits_are_screened_out_of_the_drawn_domain() -> None:
         False,
         True,
     ]
+    with pytest.raises(ValueError, match="at least one person row"):
+        _has_adult_member(
+            person, pd.DataFrame({"benunit_id": [10, 99]}), uc_child=uc_child
+        )
+
+
+def test_child_only_spi_benunit_end_to_end_is_zeroed_and_filed_as_child_only() -> None:
+    """The licensed-build failure's own test: a QYP-only SPI unit through the stage.
+
+    The stub engine pays the unit (uc_maximum_amount is mechanical), so only
+    the non-child-member half of the declared screen keeps it out of the
+    drawn domain; its chain fill of 300 exits at 0, and the receipt files it
+    under ``child_only`` rather than the lone-parent cell.
+    """
+
+    result = redraw_spi_reported_uc(
+        _frame(child_only=True), engine=_StubEngine(), qrf_factory=_StubQRFFactory()
+    )
+
+    person = result.frame.table("person")
+    assert person.loc[
+        person["person_benunit_id"].eq(204), UC_REPORTER_REDRAW_OUTPUT
+    ].tolist() == [0.0]
+    assert result.screen_failed_spi_benunits == 2
+    transitions = result.evidence()["reporter_transitions"]["spi"]
+    assert transitions["child_only"] == {
+        "promoted": 0,
+        "demoted": 1,
+        "held_reporter": 0,
+        "held_nonreporter": 0,
+    }
+    assert "single_with_children" not in transitions
+
+
+def test_empty_screened_spi_domain_refuses_instead_of_zeroing_the_channel() -> None:
+    """An empty draw domain is a refusal, not a success-shaped total wipe."""
+
+    with pytest.raises(ValueError, match="no screened SPI benefit units"):
+        redraw_spi_reported_uc(
+            _frame(),
+            engine=_StubEngine(fail_all_spi=True),
+            qrf_factory=_StubQRFFactory(),
+        )
+
+
+def test_landing_invariants_refuse_base_writes_and_double_landings() -> None:
+    from microcosm.build.uk_runtime.uc_reporter_redraw import (
+        _assert_landing_invariants,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3],
+            "person_benunit_id": [10, 20, 20],
+            UC_REPORTER_REDRAW_OUTPUT: [0.0, 250.0, 0.0],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": [10, 20]})
+    spi = np.array([False, True])
+    draws = np.array([0.0, 250.0])
+    base_before = np.array([0.0])
+
+    _assert_landing_invariants(
+        person, benunit, spi=spi, draws=draws, base_before=base_before
+    )
+
+    touched_base = person.copy()
+    touched_base.loc[0, UC_REPORTER_REDRAW_OUTPUT] = 5.0
+    with pytest.raises(RuntimeError, match="base-channel"):
+        _assert_landing_invariants(
+            touched_base, benunit, spi=spi, draws=draws, base_before=base_before
+        )
+
+    double_landed = person.copy()
+    double_landed.loc[2, UC_REPORTER_REDRAW_OUTPUT] = 125.0
+    double_landed.loc[1, UC_REPORTER_REDRAW_OUTPUT] = 125.0
+    with pytest.raises(RuntimeError, match="exactly one"):
+        _assert_landing_invariants(
+            double_landed, benunit, spi=spi, draws=draws, base_before=base_before
+        )

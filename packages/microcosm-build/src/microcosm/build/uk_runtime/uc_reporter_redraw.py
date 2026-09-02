@@ -44,6 +44,7 @@ UC_REPORTER_SCREEN_VARIABLES = (
     "uc_maximum_amount",
     "uc_income_reduction",
     "is_child_or_qualifying_young_person_for_universal_credit",
+    "is_SP_age",
 )
 UC_REPORTER_AGGREGATES = {
     "uc_child_count": "is_child_or_qualifying_young_person_for_universal_credit",
@@ -69,11 +70,21 @@ UC_REPORTER_TEMPORARY_DERIVED = {
     "positive_pre_takeup_uc_award": (
         "max(0, uc_maximum_amount - uc_income_reduction) > 0"
     ),
+    "has_non_child_member": (
+        "any(NOT is_child_or_qualifying_young_person_for_universal_credit) "
+        "over benefit-unit members"
+    ),
+    "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member",
 }
+UC_REPORTER_SCREEN = "claimable_screen"
 UC_REPORTER_TRAINING_ROWS = (
     "base_frs_channel_not_capital_gains_clone_support_clone_0_screened"
 )
 UC_REPORTER_TARGET_ROWS = "spi_channel_screened"
+#: The rewrite domain is the whole SPI channel: screen-failing SPI benefit
+#: units are zeroed (their stage-2 chain fill was the dead-reporter mass),
+#: not only the screened draw domain declared by ``rows``.
+UC_REPORTER_REWRITE_ROWS = "spi_channel"
 UC_REPORTER_LANDING = "eldest_working_age_adult_lowest_person_id"
 _HOUSEHOLD_CGT_CLONE_COLUMN = "household_is_capital_gains_clone"
 _PERSON_INCOME_COLUMNS = (
@@ -207,14 +218,18 @@ def redraw_spi_reported_uc(
         expected=len(person),
         label="UC child flag",
     )
+    sp_age = _strict_materialized_bool(
+        materialized["is_SP_age"],
+        expected=len(person),
+        label="state pension age flag",
+    )
     # The engine's uc_maximum_amount is mechanical: it computes a positive
     # award for a benefit unit whose only member is a 16-19 qualifying young
-    # person, though such a unit cannot claim. The screen therefore also
-    # requires a non-child member, or child-only units enter the drawn
-    # domain and positive draws land on child claimants (the landing's
-    # fail-closed check).
-    screen &= _has_adult_member(person, benunit, uc_child=uc_child)
-    claimant_rows = _claimant_rows(person, uc_child=uc_child)
+    # person, though such a unit cannot claim. The declared screen is the
+    # award test AND a non-child member (``claimable_screen`` in the spec).
+    has_adult = _has_adult_member(person, benunit, uc_child=uc_child)
+    screen &= has_adult
+    claimant_rows = _claimant_rows(person, uc_child=uc_child, sp_age=sp_age)
     predictors = _benefit_unit_predictors(
         person,
         benunit,
@@ -249,6 +264,15 @@ def redraw_spi_reported_uc(
         raise ValueError("UC reporter redraw has no screened canonical FRS training rows.")
     if float(weights[training].sum()) <= 0.0:
         raise ValueError("UC reporter redraw training weights must have positive mass.")
+    if not target.any():
+        # An empty draw domain is not a valid outcome: the rewrite would zero
+        # every SPI reporter and emit a success-shaped receipt. A renamed
+        # engine variable, an inverted screen, or an all-zero award surface
+        # must refuse here, mirroring the training guard.
+        raise ValueError(
+            "UC reporter redraw has no screened SPI benefit units; refusing to "
+            "zero the SPI channel."
+        )
 
     model_table = predictors.loc[training].copy()
     model_table[UC_REPORTER_TARGET] = reported_before[training]
@@ -264,19 +288,22 @@ def redraw_spi_reported_uc(
         weights=weights[training],
     )
     draws = np.zeros(len(benunit), dtype=np.float64)
-    if target.any():
-        predicted = fitted.predict(encoded_target)
-        if list(predicted.columns) != [UC_REPORTER_TARGET]:
-            raise ValueError(
-                "UC reporter redraw model must return exactly the declared target."
-            )
-        target_draws = pd.to_numeric(
-            predicted[UC_REPORTER_TARGET], errors="coerce"
-        ).to_numpy(dtype=np.float64, na_value=np.nan)
-        if not np.isfinite(target_draws).all() or (target_draws < 0.0).any():
-            raise ValueError("UC reporter redraw produced invalid reported amounts.")
-        draws[target] = target_draws
+    predicted = fitted.predict(encoded_target)
+    if list(predicted.columns) != [UC_REPORTER_TARGET]:
+        raise ValueError(
+            "UC reporter redraw model must return exactly the declared target."
+        )
+    target_draws = pd.to_numeric(
+        predicted[UC_REPORTER_TARGET], errors="coerce"
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    if not np.isfinite(target_draws).all() or (target_draws < 0.0).any():
+        raise ValueError("UC reporter redraw produced invalid reported amounts.")
+    draws[target] = target_draws
 
+    base_before = person.loc[
+        ~person["person_benunit_id"].isin(set(benunit.loc[spi, "benunit_id"])),
+        UC_REPORTER_REDRAW_OUTPUT,
+    ].to_numpy(dtype=np.float64, copy=True)
     _land_spi_draws(
         person,
         benunit,
@@ -285,14 +312,20 @@ def redraw_spi_reported_uc(
         draws=draws,
         uc_child=uc_child,
     )
+    _assert_landing_invariants(
+        person,
+        benunit,
+        spi=spi,
+        draws=draws,
+        base_before=base_before,
+    )
     reported_after = _benefit_unit_reporter_amounts(person, benunit)
-    if np.any(reported_after[spi & ~screen] != 0.0):
-        raise RuntimeError("Screen-failing SPI benefit units retained reported UC.")
     transitions = _reporter_transition_receipt(
         benunit,
         before=reported_before > 0.0,
         after=reported_after > 0.0,
         uc_child=uc_child,
+        has_adult=has_adult,
         person=person,
     )
 
@@ -382,16 +415,27 @@ def _has_adult_member(
         .groupby(person["person_benunit_id"], sort=False)
         .any()
     )
-    return (
-        benunit["benunit_id"].map(adult_by_benunit).fillna(False).to_numpy(dtype=bool)
-    )
+    mapped = benunit["benunit_id"].map(adult_by_benunit)
+    if mapped.isna().any():
+        raise ValueError(
+            "Every benefit unit must have at least one person row; "
+            f"{int(mapped.isna().sum())} benefit unit(s) have none."
+        )
+    return mapped.to_numpy(dtype=bool)
 
 
-def _claimant_rows(person: pd.DataFrame, *, uc_child: np.ndarray) -> np.ndarray:
+def _claimant_rows(
+    person: pd.DataFrame,
+    *,
+    uc_child: np.ndarray,
+    sp_age: np.ndarray,
+) -> np.ndarray:
     age = _finite_numeric(person["age"], label="person.age")
     person_id = person["person_id"].to_numpy()
     adult = ~uc_child
-    working_age = adult & (age < 66.0)
+    # Working age is the engine's own state-pension-age boundary (is_SP_age),
+    # materialized alongside the screen, not a hard-coded age.
+    working_age = adult & ~np.asarray(sp_age, dtype=bool)
     claimant = np.zeros(len(person), dtype=bool)
     for _, positions in person.groupby("person_benunit_id", sort=False).indices.items():
         rows = np.asarray(positions, dtype=np.int64)
@@ -555,15 +599,62 @@ def _land_spi_draws(
     landed = claimant_draws.loc[claimant_spi[claimant_rows]].to_numpy(dtype=float)
     child_claimants = uc_child[claimant_spi]
     if bool((child_claimants & (landed > 0.0)).any()):
-        # The fail-closed half of the child-only-benunit fallback above: the
-        # award screen keeps qualifying-young-person-only units out of the
-        # drawn domain, so a positive amount landing on a child claimant is
-        # the corruption the old total guard feared — refused exactly here.
+        # Defence in depth, not a pipeline fence: through the stage's own
+        # screen a child claimant only arises for a unit with no non-child
+        # member, which the screen already keeps out of the drawn domain, so
+        # its draw is 0 here. This refuses hand-fed draws and any future
+        # screen regression that would land a positive amount on a child.
         raise ValueError(
             "A positive UC reporter draw landed on a child claimant; "
             "the award screen must exclude child-only benefit units."
         )
     person.loc[claimant_spi, UC_REPORTER_REDRAW_OUTPUT] = landed
+
+
+def _assert_landing_invariants(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    *,
+    spi: np.ndarray,
+    draws: np.ndarray,
+    base_before: np.ndarray,
+) -> None:
+    """Refuse a landing that disagrees with the draws or touched the base channel.
+
+    These are checked from the person table after the write, against inputs
+    the write did not derive them from: the base-channel column must be
+    byte-identical to its pre-landing copy, every SPI benefit unit's summed
+    amount must equal its draw, and a reporting SPI unit must carry exactly
+    one positive person row.
+    """
+
+    spi_ids = set(benunit.loc[spi, "benunit_id"])
+    spi_people = person["person_benunit_id"].isin(spi_ids).to_numpy(dtype=bool)
+    base_after = person.loc[~spi_people, UC_REPORTER_REDRAW_OUTPUT].to_numpy(
+        dtype=np.float64
+    )
+    if base_after.shape != base_before.shape or not np.array_equal(
+        base_after, base_before
+    ):
+        raise RuntimeError("UC reporter redraw touched base-channel reported UC.")
+    amounts = pd.to_numeric(person[UC_REPORTER_REDRAW_OUTPUT], errors="coerce")
+    by_benunit = amounts.groupby(person["person_benunit_id"], sort=False).sum()
+    positive_rows = (
+        (amounts > 0.0).groupby(person["person_benunit_id"], sort=False).sum()
+    )
+    spi_benunit_ids = benunit.loc[spi, "benunit_id"]
+    summed = spi_benunit_ids.map(by_benunit).fillna(0.0).to_numpy(dtype=np.float64)
+    positive = spi_benunit_ids.map(positive_rows).fillna(0).to_numpy(dtype=np.int64)
+    expected = draws[spi]
+    if not np.array_equal(summed, expected):
+        raise RuntimeError(
+            "UC reporter redraw landed amounts that disagree with the draws."
+        )
+    if np.any(positive != (expected > 0.0).astype(np.int64)):
+        raise RuntimeError(
+            "UC reporter redraw must land each positive draw on exactly one "
+            "person row."
+        )
 
 
 def _reporter_transition_receipt(
@@ -572,6 +663,7 @@ def _reporter_transition_receipt(
     before: np.ndarray,
     after: np.ndarray,
     uc_child: np.ndarray,
+    has_adult: np.ndarray,
     person: pd.DataFrame,
 ) -> dict[str, dict[str, dict[str, int]]]:
     child_count = (
@@ -581,10 +673,17 @@ def _reporter_transition_receipt(
     )
     children = benunit["benunit_id"].map(child_count).fillna(0).to_numpy(dtype=int)
     couple = _boolean_values(benunit["is_married"])
+    # A unit with no non-child member (a 16-19 qualifying young person
+    # heading their own unit) is not a lone parent: file it under its own
+    # label so the with-children cells the measurement reads stay clean.
     family_types = np.where(
-        couple,
-        np.where(children > 0, "couple_with_children", "couple_no_children"),
-        np.where(children > 0, "single_with_children", "single_no_children"),
+        ~np.asarray(has_adult, dtype=bool),
+        "child_only",
+        np.where(
+            couple,
+            np.where(children > 0, "couple_with_children", "couple_no_children"),
+            np.where(children > 0, "single_with_children", "single_no_children"),
+        ),
     )
     channels = benunit[support_channel_column("benunit")].astype(str).to_numpy()
     receipt: dict[str, dict[str, dict[str, int]]] = {}
@@ -692,7 +791,8 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             "output": UC_REPORTER_REDRAW_OUTPUT,
             "training_rows": UC_REPORTER_TRAINING_ROWS,
             "rows": UC_REPORTER_TARGET_ROWS,
-            "screen": "positive_pre_takeup_uc_award",
+            "rewrite_rows": UC_REPORTER_REWRITE_ROWS,
+            "screen": UC_REPORTER_SCREEN,
             "predictors": list(UC_REPORTER_PREDICTORS),
             "categorical_predictors": ["region"],
             "target": UC_REPORTER_TARGET,

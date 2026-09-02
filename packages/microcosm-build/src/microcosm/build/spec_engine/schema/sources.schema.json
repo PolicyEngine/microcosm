@@ -6701,6 +6701,7 @@
       "output",
       "training_rows",
       "rows",
+      "rewrite_rows",
       "screen",
       "predictors",
       "categorical_predictors",
@@ -6721,6 +6722,9 @@
        "type": "string"
       },
       "rows": {
+       "type": "string"
+      },
+      "rewrite_rows": {
        "type": "string"
       },
       "screen": {

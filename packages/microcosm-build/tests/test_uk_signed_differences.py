@@ -135,7 +135,13 @@ class TestCommittedRegister:
                 "stage-7 true flags plus at most 3,299 screened-SPI "
                 "drawn-reporter flips among 61,211 benunits implies share "
                 "<= 0.605986; max_abs_delta is rounded up at 1e-4 grain. "
-                "The model-expected share is about 0.573; I5 re-derives the actual."
+                "The model-expected share was about 0.573. I5 actual (Part F, "
+                "spine-m): 0.548741, i.e. 0.001951 BELOW the incumbent and inside "
+                "the whole-spine acceptance band, because the redraw's demotions "
+                "outweigh the OR-refresh lift; the signed direction no longer "
+                "describes the measured artifact, and this entry's disposition "
+                "(retire as in-band, or re-sign below) is the adjudication "
+                "recorded on PR #835."
             ),
         }
 
@@ -160,8 +166,11 @@ class TestCommittedRegister:
                 "experiments/832-uc-reporter-receipts.md Part C: 4,428 "
                 "unchanged base-channel reporter persons plus between zero "
                 "and 3,299 one-person SPI reporter landings among 113,649 "
-                "people implies share in [0.038962, 0.067990]. The "
-                "model-expected share is about 0.050; I5 re-derives the actual."
+                "people implies share in [0.038962, 0.067990]. I5 actual "
+                "(Part F, spine-m): 5,730 nonzero reporter records, share "
+                "0.050418, delta 0.006941 below the incumbent, inside the "
+                "signed 0.0184 floor-distance; the above side of the structural "
+                "range is unreached by the built artifact."
             ),
         }
 

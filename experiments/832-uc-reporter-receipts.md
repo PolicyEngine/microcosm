@@ -92,6 +92,29 @@ grain → modeled `universal_credit > 0`), the acceptance-criterion-2 "before" s
 Matches the issue's evidence table (base 95%/86%, SPI 58%/20%) within re-measurement
 tolerance on the newer spine.
 
+## Part F — spine-m actuals for the signed differences
+
+The I5 twin rebuild (spine-m, `data/ukds/acceptance/spine-m-832/`, 14/14 spine gates,
+engine 2.92.1; measured by the licensed session on 2026-09-01) re-derives the two
+I1-bounded signatures from the built artifact:
+
+- **`universal_credit_reported` (person)**: nonzero reporter records 7,298 → **5,730** of
+  113,649 persons, a candidate nonzero share of **0.050418** against the incumbent's
+  0.057359 — the candidate sits **below** the incumbent by 0.006941. The I1 structural
+  range [0.038962, 0.067990] was a ceiling-and-floor bound; the measured draw lands in
+  the lower half, as the ~46% base reporter rate predicted, so the above-incumbent half
+  of that range is not reached in practice.
+- **`would_claim_uc` (benunit)**: the reporter set feeding the coherence OR-refresh shrank,
+  so the flag count fell by 804 records to a candidate share of **0.548741** — 0.001951
+  **below** the incumbent's 0.550692, inside the whole-spine ±0.02 acceptance band. The
+  #828-era lift signature (candidate above, bounded at 0.0553) no longer describes the
+  measured direction; its disposition (retire as in-band, or re-sign below) is an
+  adjudication recorded on PR #835.
+- Whole-spine twin compare vs spine-l: exactly four stage-owned columns differ
+  (`universal_credit_reported`, `frs_benunit_capital`, `uc_reported_capital`,
+  `would_claim_uc`); every other column is byte-identical, and the base-FRS channel shows
+  zero reporter transitions.
+
 ## Part E — the arm comparison, discharged mechanically
 
 Issue #832 asked for a focused comparison of (1) adding benefit-unit predictors to the
