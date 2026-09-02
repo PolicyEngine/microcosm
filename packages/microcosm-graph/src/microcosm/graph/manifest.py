@@ -28,6 +28,27 @@ _SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
 
+class _EntityTable:
+    """Read-only entity-table descriptor installed on attached Frame classes."""
+
+    def __init__(self, entity: str) -> None:
+        self.entity = entity
+
+    def __get__(self, instance: object, owner: type[object]) -> object:
+        if instance is None:
+            return self
+        return instance.table(self.entity)  # type: ignore[attr-defined]
+
+
+def _install_entity_table_accessors(frame: Frame) -> None:
+    """Expose attached entities with the same convenience as ``Frame.person``."""
+
+    frame_type = type(frame)
+    for entity in frame.entities:
+        if not hasattr(frame_type, entity):
+            setattr(frame_type, entity, _EntityTable(entity))
+
+
 def _freeze_json(value: object) -> object:
     """Copy JSON-like receipt data into immutable containers."""
 
@@ -425,11 +446,14 @@ class RunManifest:
         """
 
         try:
-            return self.populations[version_id]
+            population = self.populations[version_id]
         except KeyError as error:
             raise KeyError(
                 f"Population {version_id!r} is not attached to this manifest."
             ) from error
+        if hasattr(population, "entities") and hasattr(population, "table"):
+            _install_entity_table_accessors(population)
+        return population
 
     def mass_ledger(self, version_id: str) -> tuple[MassRecord, ...]:
         """Return the transient mass audit trail for one attached version."""

@@ -20,11 +20,21 @@ in scope.
 - Completed the locked all-package US/UK sync offline. The sandbox made the
   default warm uv cache read-only, so it was cloned to
   `/private/tmp/microcosm-impl-uv-cache` and used with `UV_OFFLINE=1`.
+- Implemented B6 entrant execution: null lineage is validated and receipted,
+  every entrant data cell must have a downstream materialized ownership claim,
+  carried columns and memberships are checked without borrowing an incumbent
+  row, explicit design weights anchor entrant groups, and cached replay
+  rehydrates null lineage. The B6 acceptance property and the focused
+  population/executor/cache checks pass with `--runxfail` (24 passed).
+- Kept person entrants fail-closed because frozen `KernelResult` has no way to
+  provide their mandatory non-null `Frame.strata`; group entrants are fully
+  supported, including copied people assigned to entrant groups. This frozen
+  interface limitation will be reported in `out.md`.
 
 ## Next
 
-- Finish the read-only runtime flow audit, then implement and commit B6, C5,
-  and D6 as coherent steps.
+- Implement and commit C5 tolerance propagation and D6 partitioned mass as
+  separate coherent steps.
 - Measure fit.qrf H1 arm64/x86_64 drift, choose a documented tolerance margin,
   run the full verification matrix, and write `out.md`.
 

@@ -777,6 +777,75 @@ def _validate_result(
     return receipt, artifacts
 
 
+def _validate_entrant_materialization_contract(
+    compiled: CompiledGraph,
+    node: Node,
+    population: Population | None,
+    receipt: Mapping[str, object],
+) -> None:
+    """Require every entrant's carried data cells to have downstream claims."""
+
+    if not node.entrants or population is None:
+        return
+    raw_expand = receipt.get("expand")
+    if not isinstance(raw_expand, Mapping):
+        return  # the ordinary EXPAND validation reports the malformed receipt
+    entrant_entities: set[str] = set()
+    for entity, entries in raw_expand.items():
+        if not isinstance(entity, str) or not isinstance(entries, list):
+            continue
+        if any(
+            isinstance(entry, list) and len(entry) == 2 and entry[1] is None
+            for entry in entries
+        ):
+            entrant_entities.add(entity)
+
+    frame = population.frame
+    for entity in sorted(entrant_entities):
+        if entity not in frame.entities:
+            continue  # lineage validation supplies the node-naming rejection
+        structural = set(_structural_columns(frame, entity))
+        for column in frame.table(entity).columns:
+            column = str(column)
+            if column in structural:
+                continue
+            coordinate = (entity, column)
+            claimant_id = compiled.owners.get((node.id, entity, column))
+            if claimant_id is None:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {entity}.{column} "
+                    "has no materialized_expand_outputs ownership claim."
+                )
+            claimant = compiled.graph.node(claimant_id)
+            claimed = claimant.params.get("materialized_expand_outputs", ())
+            spelling = f"{entity}.{column}"
+            output = next(
+                (
+                    owned
+                    for owned in claimant.outputs
+                    if (owned.entity, owned.column) == coordinate
+                ),
+                None,
+            )
+            if (
+                not isinstance(claimed, tuple)
+                or spelling not in claimed
+                or output is None
+                or output.rewrite
+            ):
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is not "
+                    f"declared through node {claimant_id!r}'s "
+                    "materialized_expand_outputs."
+                )
+            carried_dtype = _dtype_token(frame.table(entity)[column])
+            if output.dtype != carried_dtype:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} entrant cell {spelling} is claimed "
+                    f"as {output.dtype!r}; its carried dtype is {carried_dtype!r}."
+                )
+
+
 def _create_population(node: Node, frame: Frame) -> Population:
     # Entity ids and membership columns are structural Frame columns rather
     # than declaration-owned data cells, but Population ownership is total
@@ -1384,6 +1453,9 @@ def run_graph(
             result,
             incumbent,
             cache_hit=hit,
+        )
+        _validate_entrant_materialization_contract(
+            compiled, node, incumbent, normalized_receipt
         )
         if kernel.capabilities.role is KernelRole.RELEASE:
             derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)

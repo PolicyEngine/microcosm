@@ -272,9 +272,15 @@ def population_from_frame(
     )
 
 
-def _lineage_json_scalar(value: object) -> str | int | float | bool:
+def _lineage_json_scalar(
+    value: object, *, allow_null: bool = False
+) -> str | int | float | bool | None:
     """Detach one entity id into the scalar vocabulary accepted by receipts."""
 
+    if pd.isna(value):
+        if allow_null:
+            return None
+        raise PopulationError(f"EXPAND lineage id {value!r} is not a JSON scalar.")
     if isinstance(value, np.generic):
         value = value.item()
     if not isinstance(value, str | int | float | bool):
@@ -301,7 +307,10 @@ def expand_lineage_receipt(
                 f"EXPAND lineage for {entity!r} is not a pandas Series."
             )
         payload[entity] = [
-            [_lineage_json_scalar(target), _lineage_json_scalar(source)]
+            [
+                _lineage_json_scalar(target),
+                _lineage_json_scalar(source, allow_null=True),
+            ]
             for target, source in zip(
                 lineage.index.tolist(), lineage.tolist(), strict=True
             )
@@ -340,11 +349,20 @@ def _expand_lineage_from_receipt(
             )
         id_column = frame.schema.entity_id_column(entity)
         dtype = frame.table(entity)[id_column].dtype
+        source_dtype: object = dtype
+        if any(pd.isna(value) for value in sources) and pd.api.types.is_integer_dtype(
+            dtype
+        ):
+            numpy_dtype = np.dtype(dtype)
+            prefix = "UInt" if np.issubdtype(numpy_dtype, np.unsignedinteger) else "Int"
+            source_dtype = pd.api.types.pandas_dtype(
+                f"{prefix}{numpy_dtype.itemsize * 8}"
+            )
         lineage[entity] = pd.Series(
             sources,
             index=pd.Index(pd.Series(targets, dtype=dtype).array, name=id_column),
             name=id_column,
-            dtype=dtype,
+            dtype=source_dtype,
         )
     return lineage
 
@@ -378,7 +396,17 @@ def _validate_expand_lineage(
         id_column = frame.schema.entity_id_column(entity)
         source_ids = pd.Index(frame.table(entity)[id_column], name=id_column)
         targets = pd.Index(lineage.index, name=id_column)
-        if targets.dtype != source_ids.dtype or lineage.dtype != source_ids.dtype:
+        source_is_null = lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+        nullable_sources = bool(source_is_null.any())
+        nullable_source_dtype = getattr(lineage.dtype, "numpy_dtype", None)
+        if targets.dtype != source_ids.dtype or (
+            lineage.dtype != source_ids.dtype
+            and not (
+                nullable_sources
+                and nullable_source_dtype is not None
+                and np.dtype(nullable_source_dtype) == np.dtype(source_ids.dtype)
+            )
+        ):
             raise PopulationError(
                 f"EXPAND node {node.id!r} lineage for {entity!r} must use "
                 f"{source_ids.dtype!s} ids for both targets and sources."
@@ -387,9 +415,15 @@ def _validate_expand_lineage(
             raise PopulationError(
                 f"EXPAND node {node.id!r} repeats new target {entity!r} ids."
             )
-        if targets.isna().any() or lineage.isna().any():
+        if targets.isna().any():
             raise PopulationError(
-                f"EXPAND node {node.id!r} lineage for {entity!r} contains null ids."
+                f"EXPAND node {node.id!r} lineage for {entity!r} contains null "
+                "target ids."
+            )
+        if nullable_sources and not node.entrants:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage for {entity!r} contains null "
+                "source ids without entrants=True."
             )
         collisions = targets.intersection(source_ids)
         if len(collisions):
@@ -397,13 +431,19 @@ def _validate_expand_lineage(
                 f"EXPAND node {node.id!r} lineage target {entity!r} ids collide "
                 f"with incumbents {collisions[:5].tolist()}."
             )
-        source_positions = source_ids.get_indexer(lineage.to_numpy(copy=False))
+        source_positions = np.full(len(lineage), -1, dtype=np.int64)
+        copied = ~source_is_null
+        source_positions[copied] = source_ids.get_indexer(
+            lineage.iloc[np.flatnonzero(copied)].to_numpy(copy=False)
+        )
         if (source_positions < 0).any():
-            bad = lineage.iloc[np.flatnonzero(source_positions < 0)[:5]].tolist()
-            raise PopulationError(
-                f"EXPAND node {node.id!r} lineage names unknown {entity!r} "
-                f"source ids {bad}."
-            )
+            unknown = copied & (source_positions < 0)
+            if unknown.any():
+                bad = lineage.iloc[np.flatnonzero(unknown)[:5]].tolist()
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} lineage names unknown {entity!r} "
+                    f"source ids {bad}."
+                )
         if after is not None:
             after_ids = pd.Index(after.table(entity)[id_column], name=id_column)
             if not source_ids.isin(after_ids).all():
@@ -457,13 +497,34 @@ def restore_cached_expand(
         values[retained] = old_anchor[positions[retained]]
         if not retained.all():
             sources = lineage[entity].reindex(after_ids[~retained])
-            source_positions = before_ids.get_indexer(sources.to_numpy(copy=False))
+            source_is_null = sources.isna().to_numpy(dtype=np.bool_, copy=False)
+            introduced_positions = np.flatnonzero(~retained)
+            copied_positions = introduced_positions[~source_is_null]
+            source_positions = before_ids.get_indexer(
+                sources.iloc[np.flatnonzero(~source_is_null)].to_numpy(copy=False)
+            )
             if (source_positions < 0).any():  # defended by lineage validation
                 raise PopulationError(
                     f"Cached EXPAND node {node.id!r} has unknown design lineage "
                     f"for new {entity!r} ids."
                 )
-            values[~retained] = old_anchor[source_positions]
+            values[copied_positions] = old_anchor[source_positions]
+            entrant_positions = introduced_positions[source_is_null]
+            if len(entrant_positions):
+                try:
+                    current = frame.weights_for(entity)
+                except ValueError as error:
+                    raise PopulationError(
+                        f"Cached EXPAND node {node.id!r} has no design anchor for "
+                        f"entrant {entity!r} ids."
+                    ) from error
+                if current.kind is not WeightKind.DESIGN:
+                    raise PopulationError(
+                        f"Cached EXPAND node {node.id!r} cannot anchor entrant "
+                        f"{entity!r} ids from {current.kind.value!r} weights; "
+                        "explicit design weights are required."
+                    )
+                values[entrant_positions] = current.values[entrant_positions]
         design_weights[entity] = values
 
     ledger = (
@@ -658,6 +719,8 @@ def _targets_by_source(lineage: pd.Series) -> dict[object, list[object]]:
 
     grouped: dict[object, list[object]] = {}
     for target, source in zip(lineage.index, lineage.array, strict=True):
+        if pd.isna(source):
+            continue
         grouped.setdefault(source, []).append(target)
     return grouped
 
@@ -761,9 +824,9 @@ def _patch_expand(
 
     lineage = _validate_expand_lineage(before, node, result.expand)
 
-    tables: dict[str, pd.DataFrame] = {}
     lineage_positions: dict[str, np.ndarray] = {}
     target_ids: dict[str, pd.Index] = {}
+    entrant_masks: dict[str, np.ndarray] = {}
     for entity in before.entities:
         id_column = before.schema.entity_id_column(entity)
         entity_lineage = lineage[entity]
@@ -772,29 +835,45 @@ def _patch_expand(
             source_table[id_column].to_numpy(copy=True), name=id_column
         )
         new_targets = pd.Index(entity_lineage.index, name=id_column)
-        targets = source_ids.append(new_targets)
-        source_positions = source_ids.get_indexer(entity_lineage.to_numpy(copy=False))
-        positions = np.concatenate(
+        target_ids[entity] = source_ids.append(new_targets)
+        entrants = entity_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+        entrant_masks[entity] = entrants
+        source_positions = np.full(len(entity_lineage), -1, dtype=np.int64)
+        copied = ~entrants
+        source_positions[copied] = source_ids.get_indexer(
+            entity_lineage.iloc[np.flatnonzero(copied)].to_numpy(copy=False)
+        )
+        lineage_positions[entity] = np.concatenate(
             [np.arange(len(source_ids), dtype=np.int64), source_positions]
         )
-        carried = source_table.iloc[positions].reset_index(drop=True)
-        replacement_ids = pd.Series(
-            targets.to_numpy(copy=True), dtype=source_table[id_column].dtype
+
+        if entrants.any():
+            carried = {
+                (entity, str(column))
+                for column in source_table.columns
+                if column != id_column
+            }
+            missing = sorted(carried - cell_coordinates)
+            if missing:
+                names = [
+                    f"{carried_entity}.{column}" for carried_entity, column in missing
+                ]
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} entrant rows do not materialize "
+                    f"carried columns {names}."
+                )
+
+    person = before.schema.person_entity
+    if entrant_masks[person].any():
+        raise PopulationError(
+            f"EXPAND node {node.id!r} cannot admit {person!r} entrants: "
+            "KernelResult has no field that materializes their required stratum."
         )
-        if len(replacement_ids) != len(carried):
-            raise PopulationError(
-                f"EXPAND node {node.id!r} lineage index/value lengths disagree "
-                f"for {entity!r}."
-            )
-        carried[id_column] = replacement_ids.array
-        tables[entity] = carried
-        lineage_positions[entity] = positions
-        target_ids[entity] = targets
 
-    _remap_expand_memberships(before, tables, lineage, node)
-
+    aligned_cells: dict[tuple[str, str], pd.Series] = {}
     for entity, column, dtype in cells:
-        incoming = result.columns[(entity, column)]
+        coordinate = (entity, column)
+        incoming = result.columns[coordinate]
         if not isinstance(incoming, pd.Series):
             raise PopulationError(
                 f"EXPAND node {node.id!r} cell {entity}.{column} is not a Series."
@@ -815,6 +894,52 @@ def _patch_expand(
             dtype,
             label=f"EXPAND node {node.id!r} cell {entity}.{column}",
         )
+        source_table = before.table(entity)
+        if column in source_table:
+            carried_dtype = token_for_dtype(source_table[column].dtype)
+            if dtype != carried_dtype:
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} carried cell {entity}.{column} "
+                    f"declares {dtype!r}; its incumbent dtype is {carried_dtype!r}."
+                )
+            incumbent = aligned.iloc[: len(source_table)].reset_index(drop=True)
+            if not storage_equal(source_table[column], incumbent):
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} changed carried storage in "
+                    f"{entity}.{column} for incumbent rows."
+                )
+        aligned_cells[coordinate] = aligned
+
+    tables: dict[str, pd.DataFrame] = {}
+    for entity in before.entities:
+        id_column = before.schema.entity_id_column(entity)
+        source_table = before.table(entity)
+        positions = lineage_positions[entity]
+        addition_positions = positions[len(source_table) :]
+        if len(source_table):
+            additions = source_table.iloc[
+                np.maximum(addition_positions, 0)
+            ].reset_index(drop=True)
+        else:
+            additions = source_table.reindex(range(len(addition_positions))).copy()
+        carried = pd.concat(
+            [source_table.reset_index(drop=True), additions], ignore_index=True
+        )
+        replacement_ids = pd.Series(
+            target_ids[entity].to_numpy(copy=True),
+            dtype=source_table[id_column].dtype,
+        )
+        if len(replacement_ids) != len(carried):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage index/value lengths disagree "
+                f"for {entity!r}."
+            )
+        carried[id_column] = replacement_ids.array
+        tables[entity] = carried
+
+    _remap_expand_memberships(before, tables, lineage, node)
+
+    for (entity, column), aligned in aligned_cells.items():
         tables[entity][column] = aligned.array
 
     weight_entity = _expand_weight_entity(node)
@@ -832,9 +957,14 @@ def _patch_expand(
             weights[entity] = result.weights
             continue
         old = before.weights_for(entity)
-        weights[entity] = Weights(old.values[lineage_positions[entity]], kind=old.kind)
+        positions = lineage_positions[entity]
+        if (positions < 0).any():
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cannot admit entrants on weighted "
+                f"entity {entity!r}; only {weight_entity!r} has materialized weights."
+            )
+        weights[entity] = Weights(old.values[positions], kind=old.kind)
 
-    person = before.schema.person_entity
     person_positions = lineage_positions[person]
     strata = pd.Series(
         before.strata.iloc[person_positions].array.copy(),
@@ -1210,13 +1340,11 @@ def _carry_design_weights(
             introduced = before_positions < 0
             if introduced.any():
                 sources = lineage.reindex(after_ids[introduced])
-                if sources.isna().any():
-                    raise PopulationError(
-                        f"EXPAND node {node.id!r} has incomplete design lineage "
-                        f"for {entity!r}."
-                    )
-                before_positions[introduced] = before_ids.get_indexer(
-                    sources.to_numpy(copy=False)
+                source_is_null = sources.isna().to_numpy(dtype=np.bool_, copy=False)
+                introduced_positions = np.flatnonzero(introduced)
+                copied_positions = introduced_positions[~source_is_null]
+                before_positions[copied_positions] = before_ids.get_indexer(
+                    sources.iloc[np.flatnonzero(~source_is_null)].to_numpy(copy=False)
                 )
         values = np.empty(len(after_ids), dtype=np.float64)
         retained = before_positions >= 0
