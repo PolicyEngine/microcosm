@@ -43,6 +43,9 @@ against that fix.
   tamper regressions. Also limited entrant-triggered mass authorship to declared
   entrant EXPAND nodes so unrelated receipts cannot activate it. The affected
   focused suites report `61 passed in 2.02s`.
+- Strengthened that attestation to canonical scalar equality, which also
+  distinguishes `-0.0` from `0.0`; the signed-zero replay joins the tamper
+  matrix and the affected suites now report `62 passed in 2.02s`.
 
 ## Next
 

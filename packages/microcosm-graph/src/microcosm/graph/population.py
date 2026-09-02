@@ -16,6 +16,7 @@ import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 
+from .canonical import canonical_json
 from .decl import (
     MASS_POLICIES,
     ROWS_ALL,
@@ -605,9 +606,9 @@ def _assert_cached_expand_strata(
     for position in entrant_positions:
         actual_label = _stratum_json_scalar(actual.iloc[position])
         expected_label = _stratum_json_scalar(expected[position])
-        if type(actual_label) is not type(expected_label):
+        if canonical_json(actual_label) != canonical_json(expected_label):
             raise PopulationError(
-                f"Cached EXPAND node {node.id!r} entrant stratum label type "
+                f"Cached EXPAND node {node.id!r} entrant stratum label "
                 "disagrees with its receipt."
             )
 
