@@ -53,8 +53,21 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {"spi_support_channel", "cgt_incidence_clone", "cgt_band_donors"}
 )
 
+# The executor's mass ledger is weighted *person* mass per stratum
+# (``Frame.stratum_mass``: household weights broadcast through membership), so
+# ``conserve`` is satisfiable only by an expansion that keeps household
+# composition fixed.  CGT cloning does (a clone is its source household at
+# half weight).  The SPI support channel does not: it stacks synthetic
+# households whose person counts differ from the FRS households whose mass
+# they take over, so household mass is conserved exactly (the stage's
+# ``allocate_zero_weight_prior_mass`` declares ``conservation: exact_total``)
+# while person mass moves with the composition change.  On the FRS 2024-25
+# spine that is 68.25m -> 65.44m persons, which ``conserve`` rejects at the
+# node.  The node therefore *declares* its mass change: the kernel states the
+# person-mass ledger the executor verifies and asserts the household-mass
+# invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
-    "spi_support_channel": "conserve",
+    "spi_support_channel": "declared",
     "cgt_incidence_clone": "conserve",
     "cgt_band_donors": "free",
 }

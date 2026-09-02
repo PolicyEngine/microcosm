@@ -633,9 +633,18 @@ def _graph_stage_records(
     manifest,
     store: ContentStore,
     stages,
+    frame,
 ) -> tuple[StageRecord, ...]:
-    """Project immediate node artifacts onto the legacy record schema."""
+    """Project immediate node artifacts onto the legacy record schema.
 
+    Entity ids and memberships are executor-carried context, not owned cells,
+    so the root node exposes no artifact for them although ``frs_spine``
+    declares them as outputs.  Their share is read from the final population
+    instead, which is what the legacy plan recorded (identity columns are
+    never zero, so the value is 1.0 on every vintage).
+    """
+
+    structural = _structural_columns(frame)
     records: list[StageRecord] = []
     for stage in stages:
         output_node = (
@@ -651,6 +660,9 @@ def _graph_stage_records(
                 for coordinate, key in output_receipt.artifacts.items()
                 if coordinate[1] == column
             ]
+            if not matches and column in structural:
+                shares[column] = _nonzero_shares(frame, [column])[column]
+                continue
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
@@ -668,6 +680,15 @@ def _graph_stage_records(
             )
         )
     return tuple(records)
+
+
+def _structural_columns(frame) -> frozenset[str]:
+    """Entity id and membership columns the executor carries outside owned cells."""
+
+    schema = frame.schema
+    columns = {schema.entity_id_column(entity) for entity in frame.entities}
+    columns.update(schema.membership_column(group) for group in schema.group_entities)
+    return frozenset(columns)
 
 
 def _new_build_id(timestamp: datetime) -> str:
@@ -1253,6 +1274,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest=graph_manifest,
             store=graph_store,
             stages=stages,
+            frame=frame,
         )
         sampling = sampled_root.sampling
         if spine_battery is not None:
