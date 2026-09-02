@@ -87,6 +87,16 @@ passes its `TargetRegistry`, including the UK and US release builders. Calls
 without a registry retain legacy target identity fields because they do not
 provide enough declared information to construct structured identities.
 
+Schema 7 also separates the statistic category from its measurement. For
+legacy Ledger concepts whose declared unit agrees with a trailing `_count` or
+`_amount`, the suffix is represented as `variable.measure` (`count` or `total`)
+instead of remaining in `variable.id`. For example,
+`hmrc.spi_employment_income_count` and
+`hmrc.spi_employment_income_amount` both use the variable identifier
+`spi_employment_income`; their measure values remain distinct. An explicit
+`diagnostic_variable_id` or `variable` metadata value always takes precedence
+and is not rewritten.
+
 ## Example
 
 ```python

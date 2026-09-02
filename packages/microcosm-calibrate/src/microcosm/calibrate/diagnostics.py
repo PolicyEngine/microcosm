@@ -232,21 +232,36 @@ def _variable_id(
     *,
     source_id: str,
 ) -> str:
-    """Return a stable variable identifier for a registry-backed target."""
+    """Return a stable statistic identifier for a registry-backed target.
 
-    for key in (
-        "diagnostic_variable_id",
-        "variable",
-        "ledger_measure_concept",
-        "ledger_source_concept",
-    ):
-        value = _metadata_string(metadata, key)
-        if not value:
-            continue
+    Explicit diagnostic identifiers are already producer declarations and are
+    preserved verbatim. Ledger measure concepts are older compound identifiers:
+    some append ``_count`` or ``_amount`` even though schema 7 represents that
+    distinction separately in ``variable.measure``. Remove only the suffix that
+    agrees with the declared unit so count and amount rows remain one dashboard
+    category without conflating their measurements.
+    """
+
+    def without_source_prefix(value: str) -> str:
         for prefix in (f"{source_id}.", f"{source_id}:"):
             if value.startswith(prefix):
                 return value[len(prefix) :]
         return value
+
+    for key in ("diagnostic_variable_id", "variable"):
+        value = _metadata_string(metadata, key)
+        if value:
+            return without_source_prefix(value)
+
+    measure = _variable_measure(metadata)
+    measure_suffix = {"count": "_count", "total": "_amount"}.get(measure, "")
+    for key in ("ledger_measure_concept", "ledger_source_concept"):
+        value = _metadata_string(metadata, key)
+        if value:
+            identifier = without_source_prefix(value)
+            if measure_suffix and identifier.endswith(measure_suffix):
+                identifier = identifier[: -len(measure_suffix)]
+            return identifier
     contract_id = _metadata_string(metadata, "contract_target_id")
     if contract_id:
         prefix = re.split(r"[./]", contract_id, maxsplit=1)[0]

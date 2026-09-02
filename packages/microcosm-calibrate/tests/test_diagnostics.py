@@ -554,6 +554,58 @@ def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
     assert payload["dimensions"]["sex"]["values"] == {"female": "Female"}
 
 
+def test_registry_diagnostics_separate_measure_from_variable_category(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="employment_income_amount_band_100000",
+                entity="household",
+                measure="income",
+                value=truths["income"],
+                period=2025,
+                source="HMRC SPI",
+                family="hmrc",
+                metadata={
+                    "ledger_selector_source_name": "hmrc",
+                    "ledger_measure_concept": "hmrc.spi_employment_income_amount",
+                    "ledger_measure_unit": "gbp",
+                    "ledger_filter_total_income_lower_bound": "100000",
+                },
+            ),
+            TargetSpec(
+                name="employment_income_count_band_100000",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                period=2025,
+                source="HMRC SPI",
+                family="hmrc",
+                metadata={
+                    "ledger_selector_source_name": "hmrc",
+                    "ledger_measure_concept": "hmrc.spi_employment_income_count",
+                    "ledger_measure_unit": "count",
+                    "ledger_filter_total_income_lower_bound": "100000",
+                },
+            ),
+        ),
+        country="uk",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    payload = diagnostics_payload(result, target_registry=registry)
+
+    variables = [row["variable"] for row in payload["targets"]]
+    assert variables == [
+        {"id": "spi_employment_income", "measure": "total"},
+        {"id": "spi_employment_income", "measure": "count"},
+    ]
+    assert payload["targets"][0]["dimensions"] == {"total_income_lower_bound": "100000"}
+    assert payload["targets"][1]["dimensions"] == {"total_income_lower_bound": "100000"}
+
+
 def test_registry_diagnostics_reject_missing_compiled_target_identity(
     feasible_frame,
 ) -> None:
