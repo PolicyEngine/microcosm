@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .canonical import canonical_json, normative, sha256_domain
 from .decl import CompiledGraph, StructuralDelta
+from .kernel import Tolerance
 
 __all__ = [
     "artifact_key",
@@ -100,6 +101,8 @@ def node_key(
     input_keys: Mapping[str, str],
     kernel_impl_hash: str,
     source_keys: Mapping[str, str],
+    *,
+    kernel_tolerance: Tolerance | None = None,
 ) -> str:
     """Derive a node key from its declaration and resolved input identities.
 
@@ -119,12 +122,19 @@ def node_key(
         input_version = node.base
 
     resolved: dict[tuple[str, str], str] = {}
+    rewritten = {
+        (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
+    }
     if input_version is not None:
         for slice_ in node.inputs:
             for column in slice_.columns:
                 coordinate = (slice_.entity, column)
-                producer = compiled.owners.get(
-                    (input_version, slice_.entity, column), input_version
+                producer = (
+                    input_version
+                    if coordinate in rewritten
+                    else compiled.owners.get(
+                        (input_version, slice_.entity, column), input_version
+                    )
                 )
                 producer_key = _required_key(input_keys, producer, node_id)
                 resolved[coordinate] = artifact_key(producer_key, slice_.entity, column)
@@ -174,6 +184,20 @@ def node_key(
     graph_facts = (
         {} if node.structural is StructuralDelta.NONE else compiled.graph.normative()
     )
+    # A declared numeric tolerance is part of the kernel's executable contract:
+    # readers receive it in KernelContext and receipts expose it. Keeping it in
+    # the producer key prevents stale cached evidence when the declaration moves.
+    numeric_facts = (
+        {}
+        if kernel_tolerance is None
+        else {
+            "tolerance": {
+                "rtol": float(kernel_tolerance.rtol),
+                "atol": float(kernel_tolerance.atol),
+                "ulps": kernel_tolerance.ulps,
+            }
+        }
+    )
     return _hash_parts(
         "node",
         normative(node),
@@ -182,6 +206,7 @@ def node_key(
         kernel_impl_hash,
         resolved_sources,
         graph_facts,
+        numeric_facts,
     )
 
 

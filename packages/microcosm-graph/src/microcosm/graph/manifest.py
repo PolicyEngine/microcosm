@@ -11,21 +11,47 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
+from microcosm.frame import Frame
+
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
-from .kernel import Capabilities, Determinism, KernelRole, Numeric, SeedSource
+from .kernel import (
+    Capabilities,
+    Determinism,
+    KernelRole,
+    Numeric,
+    SeedSource,
+    Tolerance,
+)
 from .population import MassRecord
 
 if TYPE_CHECKING:
-    from microcosm.frame import Frame
-
     from .store import ContentStore
 
 __all__ = ["Decision", "NodeReceipt", "RunManifest"]
 
 _SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
+
+
+class _AttachedFrame(Frame):
+    """A manifest-attached Frame with read-only entity-name convenience."""
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> object:
+        if name in self.entities:
+            return self.table(name)
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
+
+
+def _attach_entity_accessors(frame: Frame) -> Frame:
+    """Add convenience access locally without mutating the global Frame class."""
+
+    if type(frame) is Frame:
+        frame.__class__ = _AttachedFrame
+    return frame
 
 
 def _freeze_json(value: object) -> object:
@@ -53,6 +79,16 @@ def _freeze_json(value: object) -> object:
 
 def _enum_value(value: object) -> object:
     return value.value if isinstance(value, Enum) else value
+
+
+def _tolerance_payload(tolerance: Tolerance | None) -> dict[str, object] | None:
+    if tolerance is None:
+        return None
+    return {
+        "rtol": float(tolerance.rtol),
+        "atol": float(tolerance.atol),
+        "ulps": tolerance.ulps,
+    }
 
 
 @dataclass(frozen=True)
@@ -241,6 +277,7 @@ class NodeReceipt:
                 "role": _enum_value(capabilities.role),
                 "consumes_se": capabilities.consumes_se,
                 "dependencies": capabilities.dependencies,
+                "tolerance": _tolerance_payload(capabilities.tolerance),
             },
             "receipt": self.receipt,
             "artifacts": tuple(
@@ -425,11 +462,14 @@ class RunManifest:
         """
 
         try:
-            return self.populations[version_id]
+            population = self.populations[version_id]
         except KeyError as error:
             raise KeyError(
                 f"Population {version_id!r} is not attached to this manifest."
             ) from error
+        if isinstance(population, Frame):
+            population = _attach_entity_accessors(population)
+        return population
 
     def mass_ledger(self, version_id: str) -> tuple[MassRecord, ...]:
         """Return the transient mass audit trail for one attached version."""
@@ -687,6 +727,35 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         raise ValueError("capabilities.dependencies must be an array")
     if not all(isinstance(item, str) for item in dependencies):
         raise ValueError("capabilities.dependencies must contain strings")
+    raw_tolerance = value.get("tolerance")
+    if raw_tolerance is None:
+        tolerance = None
+    else:
+        if not isinstance(raw_tolerance, Mapping) or set(raw_tolerance) != {
+            "rtol",
+            "atol",
+            "ulps",
+        }:
+            raise ValueError(
+                "capabilities.tolerance must be null or an object containing "
+                "rtol, atol, and ulps"
+            )
+        rtol = raw_tolerance["rtol"]
+        atol = raw_tolerance["atol"]
+        ulps = raw_tolerance["ulps"]
+        if (
+            isinstance(rtol, bool)
+            or not isinstance(rtol, int | float)
+            or isinstance(atol, bool)
+            or not isinstance(atol, int | float)
+            or isinstance(ulps, bool)
+            or not isinstance(ulps, int)
+        ):
+            raise ValueError(
+                "capabilities.tolerance rtol/atol must be numeric and ulps "
+                "must be an integer"
+            )
+        tolerance = Tolerance(rtol=float(rtol), atol=float(atol), ulps=ulps)
     return Capabilities(
         determinism=Determinism(_string_field(value, "determinism")),
         numeric=Numeric(_string_field(value, "numeric")),
@@ -695,6 +764,7 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         role=KernelRole(str(value.get("role", KernelRole.COMPUTE.value))),
         consumes_se=consumes_se,
         dependencies=tuple(dependencies),
+        tolerance=tolerance,
     )
 
 

@@ -234,7 +234,7 @@ def test_capabilities_protocol_and_wrapped_source_hash() -> None:
         numeric=Numeric.TOLERANCE_BOUND,
         seed_source=SeedSource.PARAM,
         dependencies=FIT_QRF_DEPENDENCIES,
-        tolerance=Tolerance(rtol=1e-6),
+        tolerance=Tolerance(ulps=1),
     )
     assert QRF_EXECUTOR_KERNEL.capabilities.seed_source is SeedSource.EXECUTOR
     assert QRF_PARAM_KERNEL.implementation_hash() == source_hash(

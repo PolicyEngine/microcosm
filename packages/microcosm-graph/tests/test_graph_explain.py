@@ -176,8 +176,8 @@ def test_page_contains_every_charter_property(explanation) -> None:
     for identifier in identifiers:
         assert f"<code>{identifier}</code>" in rendered
     assert "35 green" not in rendered  # V1-V4 are also represented.
-    assert "41 green" in rendered
-    assert "3 red" in rendered
+    assert "44 green" in rendered
+    assert "0 red" in rendered
     assert "<th>Flip PR</th>" in rendered
     assert "Not recorded" in rendered
 
