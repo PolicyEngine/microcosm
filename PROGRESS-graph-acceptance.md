@@ -14,6 +14,11 @@ Two naming notes, both forced by the repository rather than chosen:
 
 ## State
 
+> Historical (2026-09-02): this journal describes the suite the day it was
+> written. The `node-graph` branch merged into `main` in #836 with every
+> charter property green (burndown 37/37, including H1–H3 parity); the
+> current state is `docs/graph-acceptance.md` and git.
+
 The suite is complete and red. `uv run pytest packages/microcosm-graph`
 reports **41 xfailed, 37 passed**: one strict `xfail` per charter property in
 groups A–H plus the four incident replays, and green guards that protect the
