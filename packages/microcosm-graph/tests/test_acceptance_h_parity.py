@@ -193,7 +193,6 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     assert "_STAGE_NAMES" not in driver
 
 
-@pytest.mark.xfail(strict=True, reason="charter H3: awaiting fixture from US lane")
 @pytest.mark.requires_us
 def test_h3_us_post_transfer_parity(tmp_path: Path) -> None:
     """The derive/seed/simulate subgraph reproduces its pinned fixture output.

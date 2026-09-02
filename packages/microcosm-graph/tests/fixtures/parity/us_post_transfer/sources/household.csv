@@ -1,0 +1,6 @@
+household_id,TYPEHUGQ,household_spine_source_id,household_source_id,household_support_channel,household_support_clone_index
+83,1,83,83,asec,0
+84,1,83,84,acs,0
+183,1,83,83,asec,1
+184,1,83,84,acs,1
+283,1,83,83,asec,2
