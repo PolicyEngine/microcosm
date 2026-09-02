@@ -3,24 +3,28 @@
 Real-build kernels reconstruct a minimal UK :class:`~microcosm.frame.Frame`
 from only their declared ``KernelContext.tables``, invoke the existing stage
 transform unchanged, and project the owned cells back out.  Structural stages
-return source lineage, memberships, cell overlays, and explicit weights; the
-graph executor, not the kernel, materializes the expanded population.
+return new-row source lineage through :attr:`KernelResult.expand`, cell
+overlays through ``columns``, and explicit weights; the graph executor carries
+the rows and remaps memberships.
 
-Parity execution must bind the same unchanged transforms through the caller.
-An unbound registry remains available for graph/hash inspection, but its stage
-kernels fail explicitly rather than replaying recorded deltas: such a replay
-would make parity agree with itself.
+Production execution binds transforms through the caller.  The hermetic H2
+bundle carries a data-only marker from which an otherwise unbound registry
+lazily reconstructs those same transforms.  Without that marker, unbound stage
+kernels still fail explicitly rather than replaying recorded deltas: such a
+replay would make parity agree with itself.
 """
 
 from __future__ import annotations
 
 import importlib
+import json
 from collections.abc import Mapping
+from pathlib import Path
 from types import MappingProxyType
 
 import pandas as pd
 
-from microcosm.frame import Frame, WeightKind
+from microcosm.frame import Frame, MassChangeRecord, WeightKind
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -123,7 +127,10 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     return source_hash(type(kernel), _stage_module(stage))
 
 
-def _mass_log_payload(frame: Frame) -> list[dict[str, object]]:
+def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
+    prefix_length = len(before.mass_log)
+    if after.mass_log[:prefix_length] != before.mass_log:
+        raise ValueError("A UK stage replaced its incumbent Frame mass records.")
     return [
         {
             "entity": record.entity,
@@ -132,7 +139,7 @@ def _mass_log_payload(frame: Frame) -> list[dict[str, object]]:
             "declared_factor": record.declared_factor,
             "reason": record.reason,
         }
-        for record in frame.mass_log
+        for record in after.mass_log[prefix_length:]
     ]
 
 
@@ -145,6 +152,337 @@ def _invoke_transform(transform: object, frame: Frame, context: KernelContext):
     return transform(frame)
 
 
+def _json_mapping(path: Path, *, label: str) -> Mapping[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Cannot read UK parity fixture {label} at {path}.") from error
+    if not isinstance(value, Mapping):
+        raise ValueError(f"UK parity fixture {label} at {path} must be an object.")
+    return value
+
+
+def _mapping(value: object, *, label: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"UK parity fixture {label} must be an object.")
+    return value
+
+
+def _fixture_input(
+    source: Path,
+    inputs: Mapping[str, object],
+    name: str,
+) -> Path:
+    relative = inputs.get(name)
+    if not isinstance(relative, str) or not relative:
+        raise ValueError(
+            f"UK parity fixture inputs.{name} must be a non-empty relative path."
+        )
+    if Path(relative).is_absolute():
+        raise ValueError(f"UK parity fixture inputs.{name} must be relative.")
+    root = source.resolve()
+    path = (root / relative).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as error:
+        raise ValueError(
+            f"UK parity fixture inputs.{name} escapes its source directory."
+        ) from error
+    if not path.exists():
+        raise ValueError(f"UK parity fixture input {name!r} is absent at {path}.")
+    return path
+
+
+def _fixture_hmrc_income_targets(path: Path):
+    from .hmrc_income import (
+        HMRCIncomeBandTargetRecord,
+        HMRCIncomeSourceProvenance,
+        HMRCIncomeTargetSet,
+    )
+
+    payload = _json_mapping(path, label="HMRC income targets")
+    raw_source = dict(_mapping(payload.get("source"), label="HMRC source"))
+    local_path = raw_source.get("local_path")
+    table_names = raw_source.get("table_names")
+    if not isinstance(local_path, str):
+        raise ValueError("UK parity fixture HMRC source.local_path must be a string.")
+    if not isinstance(table_names, list) or not all(
+        isinstance(value, str) for value in table_names
+    ):
+        raise ValueError(
+            "UK parity fixture HMRC source.table_names must be a string list."
+        )
+    raw_source["local_path"] = Path(local_path)
+    raw_source["table_names"] = tuple(table_names)
+    raw_targets = payload.get("targets")
+    if not isinstance(raw_targets, list):
+        raise ValueError("UK parity fixture HMRC targets must be a list.")
+    return HMRCIncomeTargetSet(
+        source=HMRCIncomeSourceProvenance(**raw_source),
+        targets=tuple(
+            HMRCIncomeBandTargetRecord(
+                **dict(_mapping(value, label="HMRC target record"))
+            )
+            for value in raw_targets
+        ),
+    )
+
+
+def _fixture_cgt_distribution(path: Path):
+    from .hmrc_capital_gains import (
+        HMRCCapitalGainsBandTotal,
+        HMRCCapitalGainsCell,
+        HMRCCapitalGainsIncomeTotal,
+        HMRCCapitalGainsJointDistribution,
+        HMRCCapitalGainsSourceProvenance,
+    )
+
+    payload = _json_mapping(path, label="CGT distribution")
+    raw_source = dict(_mapping(payload.get("source"), label="CGT source"))
+    local_path = raw_source.get("local_path")
+    if not isinstance(local_path, str):
+        raise ValueError("UK parity fixture CGT source.local_path must be a string.")
+    raw_source["local_path"] = Path(local_path)
+
+    def records(name: str) -> list[Mapping[str, object]]:
+        raw = payload.get(name)
+        if not isinstance(raw, list):
+            raise ValueError(f"UK parity fixture CGT {name} must be a list.")
+        return [_mapping(value, label=f"CGT {name} record") for value in raw]
+
+    return HMRCCapitalGainsJointDistribution(
+        cells=tuple(HMRCCapitalGainsCell(**dict(value)) for value in records("cells")),
+        band_totals=tuple(
+            HMRCCapitalGainsBandTotal(**dict(value)) for value in records("band_totals")
+        ),
+        income_totals=tuple(
+            HMRCCapitalGainsIncomeTotal(**dict(value))
+            for value in records("income_totals")
+        ),
+        source=HMRCCapitalGainsSourceProvenance(**raw_source),
+        total_individuals=float(payload["total_individuals"]),
+        total_gains=float(payload["total_gains"]),
+    )
+
+
+def _fixture_implementations(source: Path) -> Mapping[str, object]:
+    """Reconstruct current transforms from one data-only H2 descriptor."""
+
+    from microcosm.build.source_manifest import SourceStageSpec
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+
+    from .age_tail import UKAgeTailStageTransform
+    from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
+    from .cgt_structure import (
+        UKCGTBandDonorStageTransform,
+        UKCGTIncidenceCloneStageTransform,
+    )
+    from .etb_services import UKETBServicesStageTransform
+    from .etb_vat import UKETBVATStageTransform
+    from .frs_brma import UKFRSBRMAStageTransform
+    from .frs_council_tax import UKFRSCouncilTaxStageTransform
+    from .frs_disability import UKFRSDisabilityStageTransform
+    from .frs_education import UKFRSEducationStageTransform
+    from .frs_education_grants import UKFRSEducationGrantSplitStageTransform
+    from .frs_employment import UKFRSEmploymentStageTransform
+    from .frs_household_draws import UKFRSHouseholdDrawsStageTransform
+    from .frs_legacy_proxies import UKFRSLegacyProxiesStageTransform
+    from .frs_person_draws import UKFRSPersonDrawsStageTransform
+    from .frs_take_up import UKFRSTakeUpStageTransform
+    from .lcfs_consumption import UKLCFSConsumptionStageTransform
+    from .regional_uprating import UKRegionalPropertyUpratingStageTransform
+    from .salary_sacrifice import UKSalarySacrificeStageTransform
+    from .spi_spine import (
+        UKFRSHMRCSpineLeavesStageTransform,
+        UKSPIIncomeSpineStageTransform,
+        UKSPISupportChannelStageTransform,
+    )
+    from .student_loans import UKStudentLoansStageTransform
+    from .take_up_contract import load_uk_take_up_contract
+    from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
+    from .was_wealth import UKWASWealthStageTransform
+
+    descriptor = _json_mapping(source / "fixture.json", label="descriptor")
+    if descriptor.get("schema_version") != "uk-spine-parity-fixture.v1":
+        raise ValueError(
+            "UK parity fixture schema_version must be 'uk-spine-parity-fixture.v1'."
+        )
+    raw_stages = _mapping(descriptor.get("stages"), label="stages")
+    stages: dict[str, SourceStageSpec] = {}
+    for name, raw_stage in raw_stages.items():
+        if not isinstance(name, str):
+            raise ValueError("UK parity fixture stage names must be strings.")
+        stage = SourceStageSpec.from_mapping(
+            _mapping(raw_stage, label=f"stage {name!r}")
+        )
+        if stage.stage != name:
+            raise ValueError(
+                f"UK parity fixture stage key {name!r} contains {stage.stage!r}."
+            )
+        stages[name] = stage
+    if set(stages) != set(_STAGE_MODULES):
+        missing = sorted(set(_STAGE_MODULES) - set(stages))
+        extra = sorted(set(stages) - set(_STAGE_MODULES))
+        raise ValueError(
+            "UK parity fixture must describe the current 26-stage spine "
+            f"(missing={missing}, extra={extra})."
+        )
+
+    config = _mapping(descriptor.get("config"), label="config")
+    inputs = _mapping(descriptor.get("inputs"), label="inputs")
+    raw_dir = _fixture_input(source, inputs, "frs_raw")
+    was = pd.read_csv(
+        _fixture_input(source, inputs, "was"), float_precision="round_trip"
+    )
+    lcfs_household = pd.read_csv(
+        _fixture_input(source, inputs, "lcfs_household"),
+        float_precision="round_trip",
+    )
+    lcfs_person = pd.read_csv(
+        _fixture_input(source, inputs, "lcfs_person"),
+        float_precision="round_trip",
+    )
+    etb = pd.read_csv(
+        _fixture_input(source, inputs, "etb"), float_precision="round_trip"
+    )
+    spi_path = _fixture_input(source, inputs, "spi_donor")
+    spi_donor = pd.read_csv(spi_path, float_precision="round_trip")
+    hmrc_targets_path = _fixture_input(source, inputs, "hmrc_income_targets")
+    income_targets = _fixture_hmrc_income_targets(hmrc_targets_path)
+    cgt_distribution = _fixture_cgt_distribution(
+        _fixture_input(source, inputs, "cgt_distribution")
+    )
+    cgt_parameters = UKCGTPolicyParameters(
+        **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
+    )
+
+    engine = PolicyEngineUKEngine()
+    contract = load_uk_take_up_contract()
+    qrf_estimators = int(config["qrf_estimators"])
+    donor_sample_size = int(config["spi_donor_sample_size"])
+    sample_fraction = float(config["spi_sample_fraction"])
+    calibration_year = int(config["student_loans_calibration_year"])
+    return MappingProxyType(
+        {
+            "frs_employment": UKFRSEmploymentStageTransform(
+                raw_dir, stage=stages["frs_employment"]
+            ),
+            "frs_council_tax": UKFRSCouncilTaxStageTransform(
+                raw_dir, stage=stages["frs_council_tax"]
+            ),
+            "frs_disability": UKFRSDisabilityStageTransform(
+                stage=stages["frs_disability"]
+            ),
+            "frs_education": UKFRSEducationStageTransform(
+                raw_dir, stage=stages["frs_education"]
+            ),
+            "frs_legacy_proxies": UKFRSLegacyProxiesStageTransform(
+                raw_dir,
+                stage=stages["frs_legacy_proxies"],
+                engine=engine,
+            ),
+            "frs_education_grant_split": UKFRSEducationGrantSplitStageTransform(
+                stage=stages["frs_education_grant_split"], engine=engine
+            ),
+            "frs_take_up": UKFRSTakeUpStageTransform(
+                contract=contract, stage=stages["frs_take_up"]
+            ),
+            "frs_person_draws": UKFRSPersonDrawsStageTransform(
+                contract=contract, stage=stages["frs_person_draws"]
+            ),
+            "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
+                contract=contract, stage=stages["frs_household_draws"]
+            ),
+            "frs_brma": UKFRSBRMAStageTransform(
+                stage=stages["frs_brma"], engine=engine
+            ),
+            "was_wealth": UKWASWealthStageTransform(
+                stage=stages["was_wealth"], engine=engine, donor=was
+            ),
+            "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
+                stage=stages["regional_property_uprating"]
+            ),
+            "lcfs_consumption": UKLCFSConsumptionStageTransform(
+                stage=stages["lcfs_consumption"],
+                engine=engine,
+                lcfs_household=lcfs_household,
+                lcfs_person=lcfs_person,
+                was_donor=was,
+            ),
+            "etb_vat": UKETBVATStageTransform(
+                stage=stages["etb_vat"], engine=engine, donor=etb
+            ),
+            "etb_services": UKETBServicesStageTransform(
+                stage=stages["etb_services"], engine=engine, donor=etb
+            ),
+            "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
+                raw_dir, stage=stages["frs_hmrc_spine_leaves"]
+            ),
+            "spi_support_channel": UKSPISupportChannelStageTransform(
+                stage=stages["spi_support_channel"],
+                sample_fraction=sample_fraction,
+            ),
+            "hmrc_spi_income_spine": UKSPIIncomeSpineStageTransform(
+                spi_path,
+                hmrc_targets_path,
+                stage=stages["hmrc_spi_income_spine"],
+                qrf_estimators=qrf_estimators,
+                donor_sample_size=donor_sample_size,
+                sampled_rung=True,
+                donor_table=spi_donor,
+                source_targets=income_targets,
+            ),
+            "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
+                stage=stages["uc_capital_coherence"]
+            ),
+            "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
+                stage=stages["cgt_incidence_clone"]
+            ),
+            "cgt_band_donors": UKCGTBandDonorStageTransform(
+                stage=stages["cgt_band_donors"]
+            ),
+            "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
+                stages["hmrc_cgt_gains_spine"],
+                cgt_distribution.source.local_path,
+                distribution=cgt_distribution,
+                parameters=cgt_parameters,
+            ),
+            "salary_sacrifice": UKSalarySacrificeStageTransform(
+                stage=stages["salary_sacrifice"]
+            ),
+            "student_loans": UKStudentLoansStageTransform(
+                stage=stages["student_loans"], calibration_year=calibration_year
+            ),
+            "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
+        }
+    )
+
+
+class _FixtureTransformResolver:
+    """Lazily bind the H2 fixture marker without weakening normal registries."""
+
+    def __init__(self) -> None:
+        self._by_source: dict[Path, Mapping[str, object]] = {}
+
+    def resolve(self, stage: str, context: KernelContext) -> object | None:
+        raw_source = context.sources.get("frs")
+        if raw_source is None:
+            return None
+        source = Path(raw_source).resolve()
+        if not (source / "fixture.json").is_file():
+            return None
+        implementations = self._by_source.get(source)
+        if implementations is None:
+            implementations = _fixture_implementations(source)
+            self._by_source[source] = implementations
+        try:
+            return implementations[stage]
+        except KeyError as error:
+            raise ValueError(
+                f"UK parity fixture has no transform for stage {stage!r}."
+            ) from error
+
+
 def _minimal_frame(context: KernelContext) -> Frame:
     missing = set(UK_NATIONAL_SCHEMA.entities) - context.tables.keys()
     if missing:
@@ -153,6 +491,24 @@ def _minimal_frame(context: KernelContext) -> Frame:
         )
     if "household" not in context.weights:
         raise ValueError(f"UK stage {context.node.id!r} lacks household weights.")
+    mass_log: tuple[MassChangeRecord, ...] = ()
+    if context.params.get("stage") == "hmrc_spi_income_spine":
+        # KernelContext deliberately has no legacy Frame.mass_log channel.  The
+        # SPI income transform consumes only the immediately preceding support
+        # allocation reason, whose exact current-spine record is reconstructible
+        # from the conserved household total and reviewed public reason.
+        from .spi_support import SPI_PRIOR_MASS_CHANGE_REASON
+
+        total = context.weights["household"].total
+        mass_log = (
+            MassChangeRecord(
+                entity="household",
+                old_total=total,
+                new_total=total,
+                declared_factor=1.0,
+                reason=SPI_PRIOR_MASS_CHANGE_REASON,
+            ),
+        )
     return Frame(
         {
             entity: context.tables[entity].copy(deep=True)
@@ -161,6 +517,7 @@ def _minimal_frame(context: KernelContext) -> Frame:
         UK_NATIONAL_SCHEMA,
         {"household": context.weights["household"]},
         context.strata.copy(deep=True),
+        mass_log=mass_log,
         metadata={"time_period": str(context.params.get("time_period", "2024"))},
     )
 
@@ -196,7 +553,10 @@ def _normalize_create_frame(frame: Frame, context: KernelContext) -> Frame:
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
-        metadata=frame.metadata,
+        metadata={
+            **frame.metadata,
+            "time_period": str(context.params.get("time_period", "2024")),
+        },
     )
 
 
@@ -274,22 +634,31 @@ class UKStageKernel(KernelBase):
 
     capabilities = _COMPUTE
 
-    def __init__(self, stage: str, transform: object | None = None) -> None:
+    def __init__(
+        self,
+        stage: str,
+        transform: object | None = None,
+        fixture_resolver: _FixtureTransformResolver | None = None,
+    ) -> None:
         self.stage = stage
         self.transform = transform
+        self.fixture_resolver = fixture_resolver
         self.ref = f"uk.stage.{stage}@1"
 
     def implementation_hash(self) -> str:
         return _implementation_hash(self, self.stage, self.transform)
 
     def run(self, context: KernelContext) -> KernelResult:
-        if self.transform is None:
+        transform = self.transform
+        if transform is None and self.fixture_resolver is not None:
+            transform = self.fixture_resolver.resolve(self.stage, context)
+        if transform is None:
             raise RuntimeError(
                 f"UK stage {self.stage!r} has no bound production transform; "
                 "recorded fixture deltas are not accepted as parity evidence."
             )
         before = _minimal_frame(context)
-        after = _invoke_transform(self.transform, before, context)
+        after = _invoke_transform(transform, before, context)
         if not isinstance(after, Frame):
             raise TypeError(
                 f"UK stage {self.stage!r} returned {type(after).__name__}, not Frame."
@@ -304,7 +673,7 @@ class UKStageKernel(KernelBase):
             columns=MappingProxyType(columns),
             receipt={
                 "stage": self.stage,
-                "frame_mass_log_append": _mass_log_payload(after),
+                "frame_mass_log_append": _mass_log_payload(before, after),
             },
         )
 
@@ -323,26 +692,27 @@ def _source_lineage(
     *,
     id_offset: int | None,
 ) -> pd.Series:
-    """Derive immediate target-to-source ids from a real structural result."""
+    """Derive new target-to-immediate-source ids from a structural result."""
 
     id_column = before.schema.entity_id_column(entity)
     before_table = before.table(entity)
     after_table = after.table(entity)
     before_ids = pd.Index(before_table[id_column])
+    targets: list[object] = []
     values: list[object] = []
     source_column = f"{entity}_source_id"
     for _, row in after_table.iterrows():
         target = row[id_column]
         if target in before_ids:
-            values.append(target)
-            continue
-        if source_column in after_table and row[source_column] in before_ids:
-            values.append(row[source_column])
             continue
 
+        # CGT stages retain long-lived source-id provenance from the SPI
+        # support stage, so their immediate clone lineage is the stage's
+        # reviewed ID offset, not that older provenance column.
         if id_offset is not None:
             candidate = target - id_offset
             if candidate in before_ids:
+                targets.append(target)
                 values.append(candidate)
                 continue
             raise ValueError(
@@ -350,13 +720,18 @@ def _source_lineage(
                 f"offset lineage {candidate!r} is not an incumbent id."
             )
 
+        if source_column in after_table and row[source_column] in before_ids:
+            targets.append(target)
+            values.append(row[source_column])
+            continue
+
         raise ValueError(
             f"UK stage produced {entity!r} target id {target!r} without an "
             f"explicit {source_column!r} or a declared ID-offset lineage rule."
         )
     return pd.Series(
         values,
-        index=pd.Index(after_table[id_column].to_numpy(copy=True), name=id_column),
+        index=pd.Index(targets, name=id_column, dtype=before_table[id_column].dtype),
         dtype=before_table[id_column].dtype,
         name=id_column,
     )
@@ -367,22 +742,31 @@ class UKExpandStageKernel(KernelBase):
 
     capabilities = _EXPAND
 
-    def __init__(self, stage: str, transform: object | None = None) -> None:
+    def __init__(
+        self,
+        stage: str,
+        transform: object | None = None,
+        fixture_resolver: _FixtureTransformResolver | None = None,
+    ) -> None:
         self.stage = stage
         self.transform = transform
+        self.fixture_resolver = fixture_resolver
         self.ref = f"uk.stage.expand.{stage}@1"
 
     def implementation_hash(self) -> str:
         return _implementation_hash(self, self.stage, self.transform)
 
     def run(self, context: KernelContext) -> KernelResult:
-        if self.transform is None:
+        transform = self.transform
+        if transform is None and self.fixture_resolver is not None:
+            transform = self.fixture_resolver.resolve(self.stage, context)
+        if transform is None:
             raise RuntimeError(
                 f"UK stage {self.stage!r} has no bound production transform; "
                 "recorded fixture deltas are not accepted as parity evidence."
             )
         before = _minimal_frame(context)
-        after = _invoke_transform(self.transform, before, context)
+        after = _invoke_transform(transform, before, context)
         if not isinstance(after, Frame):
             raise TypeError(
                 f"UK stage {self.stage!r} returned {type(after).__name__}, not Frame."
@@ -402,25 +786,15 @@ class UKExpandStageKernel(KernelBase):
                     for group in before.schema.group_entities
                 ),
             )
-        columns: dict[tuple[str, str], pd.Series] = {}
+        expand: dict[str, pd.Series] = {}
         for entity in before.entities:
-            id_column = before.schema.entity_id_column(entity)
-            columns[(entity, id_column)] = _source_lineage(
+            expand[entity] = _source_lineage(
                 before,
                 after,
                 entity,
                 id_offset=id_offset,
             )
-        person = before.schema.person_entity
-        person_ids = _id_index(after, person)
-        for group in before.schema.group_entities:
-            membership = before.schema.membership_column(group)
-            columns[(person, membership)] = pd.Series(
-                after.table(person)[membership].array.copy(),
-                index=person_ids,
-                name=membership,
-                dtype=after.table(person)[membership].dtype,
-            )
+        columns: dict[tuple[str, str], pd.Series] = {}
         for entity, column, dtype in cells:
             columns[(entity, column)] = _owned_series(after, entity, column, dtype)
         weight_entity = str(context.params["expand_weight_entity"])
@@ -434,10 +808,11 @@ class UKExpandStageKernel(KernelBase):
             )
         return KernelResult(
             columns=MappingProxyType(columns),
+            expand=MappingProxyType(expand),
             weights=after_weights,
             receipt={
                 "stage": self.stage,
-                "frame_mass_log_append": _mass_log_payload(after),
+                "frame_mass_log_append": _mass_log_payload(before, after),
             },
         )
 
@@ -446,7 +821,7 @@ def build_uk_registry(
     graph: Graph,
     implementations: Mapping[str, object],
 ) -> KernelRegistry:
-    """Bind graph refs to supplied real transforms or inspectable stubs."""
+    """Bind graph refs to supplied transforms or the hermetic H2 descriptor."""
 
     stage_names = {
         str(node.params["stage"]) for node in graph.nodes if "stage" in node.params
@@ -465,6 +840,7 @@ def build_uk_registry(
     registry.register(UKCreateKernel(implementations.get("frs_spine")))
     registry.register(UKIdentityKernel())
     registry.register(UKClaimKernel())
+    fixture_resolver = _FixtureTransformResolver()
     for stage in sorted(stage_names):
         transform = implementations.get(stage)
         if stage in {
@@ -472,9 +848,9 @@ def build_uk_registry(
             "cgt_incidence_clone",
             "cgt_band_donors",
         }:
-            registry.register(UKExpandStageKernel(stage, transform))
+            registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:
-            registry.register(UKStageKernel(stage, transform))
+            registry.register(UKStageKernel(stage, transform, fixture_resolver))
 
     required = {node.kernel for node in graph.nodes}
     if set(registry.refs()) != required:

@@ -448,6 +448,8 @@ class UKSPIIncomeSpineStageTransform:
     # ultra-sparse restored columns, so the effective-mass fence records the
     # gap instead of raising (f100 keeps the strict fence).
     sampled_rung: bool = False
+    donor_table: pd.DataFrame | None = field(default=None, repr=False, compare=False)
+    source_targets: HMRCIncomeTargetSet | None = None
     # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPIIncomeSpineResult | None = field(default=None, init=False)
 
@@ -461,7 +463,15 @@ class UKSPIIncomeSpineStageTransform:
         qrf_estimators: int = 100,
         donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
         sampled_rung: bool = False,
+        donor_table: pd.DataFrame | None = None,
+        source_targets: HMRCIncomeTargetSet | None = None,
     ) -> None:
+        if donor_table is not None and not isinstance(donor_table, pd.DataFrame):
+            raise TypeError("donor_table must be a pandas DataFrame.")
+        if source_targets is not None and not isinstance(
+            source_targets, HMRCIncomeTargetSet
+        ):
+            raise TypeError("source_targets must be an HMRCIncomeTargetSet.")
         object.__setattr__(self, "spi_tab_path", Path(spi_tab_path))
         object.__setattr__(self, "hmrc_ods_path", Path(hmrc_ods_path))
         object.__setattr__(self, "stage", stage)
@@ -469,6 +479,12 @@ class UKSPIIncomeSpineStageTransform:
         object.__setattr__(self, "qrf_estimators", qrf_estimators)
         object.__setattr__(self, "donor_sample_size", donor_sample_size)
         object.__setattr__(self, "sampled_rung", bool(sampled_rung))
+        object.__setattr__(
+            self,
+            "donor_table",
+            None if donor_table is None else donor_table.copy(deep=True),
+        )
+        object.__setattr__(self, "source_targets", source_targets)
         object.__setattr__(self, "last_result", None)
 
     @property
@@ -485,8 +501,16 @@ class UKSPIIncomeSpineStageTransform:
             qrf_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
         )
-        donor_identity = verify_spi_donor_identity(self.spi_tab_path)
-        ods_identity = verify_hmrc_spi_collated_ods(self.hmrc_ods_path)
+        donor_identity = (
+            verify_spi_donor_identity(self.spi_tab_path)
+            if self.donor_table is None
+            else None
+        )
+        ods_identity = (
+            verify_hmrc_spi_collated_ods(self.hmrc_ods_path)
+            if self.source_targets is None
+            else None
+        )
         tables = engine_tables(frame)
         assert_frs_hmrc_auxiliary_crosswalk_available(tables["person"])
         support = _support_result_from_frame(frame, tables)
@@ -500,6 +524,7 @@ class UKSPIIncomeSpineStageTransform:
             donor_sample_size=self.donor_sample_size,
             build_period=uk_time_period(frame),
             verified_donor=donor_identity,
+            donor_table=self.donor_table,
             initialize_frs_channel_columns=stage1_op.parameters[
                 "initialize_frs_channel_columns"
             ],
@@ -515,9 +540,13 @@ class UKSPIIncomeSpineStageTransform:
             mass_log=frame.mass_log,
         )
         validate_uk_national_frame(result_frame)
-        source_targets = materialize_hmrc_spi_income_band_targets(
-            ods_identity,
-            build_period=uk_time_period(frame),
+        source_targets = (
+            materialize_hmrc_spi_income_band_targets(
+                ods_identity,
+                build_period=uk_time_period(frame),
+            )
+            if self.source_targets is None
+            else self.source_targets
         )
         identity_rows = _assert_post_draw_identity(result_frame)
         distributional_mass_shares = _distributional_mass_shares(result_frame)

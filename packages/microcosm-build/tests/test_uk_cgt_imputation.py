@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime import cgt_imputation
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_STAGE_NAME,
     UK_CGT_MASS_CONSERVATION_REASON,
@@ -15,8 +17,10 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     impute_uk_capital_gains,
     summarize_uk_cgt_imputation,
     uk_capital_gains_imputation_stage,
+    uk_cgt_spine_stage_transform,
     uk_cgt_taxable_income_proxy,
 )
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -387,6 +391,69 @@ class TestStage:
 
         with pytest.raises(ValueError, match="bytes, not the pinned"):
             stage.run(frame)
+
+
+def test_cgt_spine_parsed_inputs_match_the_path_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stage = spec.sources.stage_map()["hmrc_cgt_gains_spine"]
+    distribution = _distribution(cell_people=10.0)
+    ods_path = tmp_path / "synthetic-cgt.ods"
+    ods_path.write_bytes(b"synthetic cgt source")
+    frame = _frame(
+        6,
+        gains=[5_000.0, 20_000.0, 75_000.0, 300_000.0, 2_500_000.0, 0.0],
+        incomes=[20_000.0, 40_000.0, 60_000.0, 120_000.0, 250_000.0, 20_000.0],
+    )
+    resolved: list[str] = []
+
+    def load_distribution(path, *, tax_year):
+        assert path == ods_path
+        assert tax_year == "2023-24"
+        resolved.append("distribution")
+        return distribution
+
+    def load_parameters(period):
+        assert period == "2023"
+        resolved.append("parameters")
+        return PARAMETERS
+
+    monkeypatch.setattr(
+        cgt_imputation,
+        "materialize_hmrc_capital_gains_joint_distribution",
+        load_distribution,
+    )
+    monkeypatch.setattr(cgt_imputation, "uk_cgt_policy_parameters", load_parameters)
+    path_transform = uk_cgt_spine_stage_transform(stage, ods_path)
+    from_path = path_transform(frame)
+    assert resolved == ["distribution", "parameters"]
+
+    def unexpected_loader(*_args, **_kwargs):
+        raise AssertionError("parsed inputs must bypass source resolution")
+
+    monkeypatch.setattr(
+        cgt_imputation,
+        "materialize_hmrc_capital_gains_joint_distribution",
+        unexpected_loader,
+    )
+    monkeypatch.setattr(
+        cgt_imputation,
+        "uk_cgt_policy_parameters",
+        unexpected_loader,
+    )
+    seam_transform = uk_cgt_spine_stage_transform(
+        stage,
+        ods_path,
+        distribution=distribution,
+        parameters=PARAMETERS,
+    )
+    from_seam = seam_transform(frame)
+
+    assert uk_frame_content_identity(from_path) == uk_frame_content_identity(from_seam)
+    assert path_transform.checkpoint_metadata() == seam_transform.checkpoint_metadata()
 
 
 REAL_2023_24 = {

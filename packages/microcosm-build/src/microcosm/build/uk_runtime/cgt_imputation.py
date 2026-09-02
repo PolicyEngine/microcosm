@@ -669,6 +669,9 @@ def uk_capital_gains_imputation_stage(
 def uk_cgt_spine_stage_transform(
     stage: SourceStageSpec,
     ods_path: str | Path,
+    *,
+    distribution: HMRCCapitalGainsJointDistribution | None = None,
+    parameters: UKCGTPolicyParameters | None = None,
 ):
     """Bind the spine manifest, then reuse the reviewed merged CGT runtime.
 
@@ -677,7 +680,12 @@ def uk_cgt_spine_stage_transform(
     """
 
     _assert_cgt_spine_stage_parameters(stage)
-    return UKCGTSpineStageTransform(stage=stage, ods_path=Path(ods_path))
+    return UKCGTSpineStageTransform(
+        stage=stage,
+        ods_path=Path(ods_path),
+        distribution=distribution,
+        parameters=parameters,
+    )
 
 
 @dataclass(frozen=True)
@@ -686,15 +694,21 @@ class UKCGTSpineStageTransform:
 
     stage: SourceStageSpec
     ods_path: Path
+    distribution: HMRCCapitalGainsJointDistribution | None = None
+    parameters: UKCGTPolicyParameters | None = None
     last_result: UKCGTImputationSummary | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         _assert_cgt_spine_stage_parameters(self.stage)
-        distribution = materialize_hmrc_capital_gains_joint_distribution(
-            self.ods_path,
-            tax_year=HMRC_CGT_SOURCE_VINTAGE,
-        )
-        parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+        distribution = self.distribution
+        if distribution is None:
+            distribution = materialize_hmrc_capital_gains_joint_distribution(
+                self.ods_path,
+                tax_year=HMRC_CGT_SOURCE_VINTAGE,
+            )
+        parameters = self.parameters
+        if parameters is None:
+            parameters = uk_cgt_policy_parameters(uk_time_period(frame))
         result = impute_uk_capital_gains(
             frame,
             distribution,

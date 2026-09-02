@@ -144,7 +144,6 @@ def _direct_table(case: Path):
     return pd.read_csv(case / "direct.csv", float_precision="round_trip")
 
 
-@pytest.mark.xfail(strict=True, reason="charter H2: awaiting fixture from UK lane")
 def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     """The UK spine as a graph reproduces ``uk_frame_content_identity``.
 

@@ -21,8 +21,10 @@ from microcosm.graph.population import (
     PopulationError,
     dtype_for_token,
     dtype_matches,
+    expand_lineage_receipt,
     owned_ids,
     patch,
+    restore_cached_expand,
     storage_equal,
     token_for_dtype,
     weight_cap_receipt,
@@ -435,6 +437,83 @@ def test_expand_must_retain_every_original_id() -> None:
     )
     with pytest.raises(PopulationError, match="dropped original"):
         patch(population, node, KernelResult(frame=filtered))
+
+
+def _lineage_expand_node() -> Node:
+    return Node(
+        "lineage_expand",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="conserve",
+    )
+
+
+def _lineage_expand_result(*, bad_source: bool = False) -> KernelResult:
+    return KernelResult(
+        expand={
+            "person": pd.Series(
+                [999 if bad_source else 1, 2],
+                index=pd.Index([5, 6], name="person_id"),
+                dtype="int64",
+            ),
+            "household": pd.Series(
+                [10],
+                index=pd.Index([40], name="household_id"),
+                dtype="int64",
+            ),
+        },
+        weights=Weights(
+            np.array([0.5, 2.0, 3.0, 0.5], dtype=np.float64),
+            WeightKind.IMPORTANCE,
+        ),
+    )
+
+
+def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> None:
+    population = _population()
+    node = _lineage_expand_node()
+    result = _lineage_expand_result()
+
+    expanded = patch(population, node, result)
+
+    person = expanded.frame.table("person")
+    assert person["person_id"].tolist() == [1, 2, 3, 4, 5, 6]
+    assert person["person_household_id"].tolist() == [10, 10, 20, 30, 40, 40]
+    assert person["amount"].tolist() == [-0.0, 1.0, -0.0, 2.0, -0.0, 1.0]
+    np.testing.assert_array_equal(
+        expanded.design_weights["household"], np.array([1.0, 2.0, 3.0, 1.0])
+    )
+    assert expanded.mass_ledger[-1].operation == "expand"
+
+    assert result.expand is not None
+    cached = restore_cached_expand(
+        population,
+        node,
+        KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt={"expand": expand_lineage_receipt(result.expand)},
+        ),
+    )
+    np.testing.assert_array_equal(
+        cached.design_weights["household"], expanded.design_weights["household"]
+    )
+    assert cached.mass_ledger == expanded.mass_ledger
+
+
+def test_expand_lineage_rejects_an_unknown_source_id() -> None:
+    with pytest.raises(PopulationError, match="unknown 'person' source ids"):
+        patch(
+            _population(),
+            _lineage_expand_node(),
+            _lineage_expand_result(bad_source=True),
+        )
 
 
 def test_structural_nodes_cannot_rewrite_carried_cell_storage() -> None:

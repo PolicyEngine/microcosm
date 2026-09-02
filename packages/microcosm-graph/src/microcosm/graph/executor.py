@@ -46,6 +46,7 @@ from .keys import (
 from .manifest import Decision, NodeReceipt, RunManifest
 from .population import (
     Population,
+    expand_lineage_receipt,
     patch,
     restore_cached_expand,
     weight_cap_receipt,
@@ -416,6 +417,36 @@ def _project_context(
     for slice_ in node.inputs:
         slices.setdefault(slice_.entity, []).append(slice_)
 
+    raw_materialized = node.params.get("materialized_expand_outputs", ())
+    if not isinstance(raw_materialized, tuple) or any(
+        not isinstance(value, str) or "." not in value for value in raw_materialized
+    ):
+        raise NodeRejected(
+            f"Node {node.id!r} params['materialized_expand_outputs'] must be a "
+            "tuple of 'entity.column' strings."
+        )
+    materialized: set[tuple[str, str]] = set()
+    owned_by_coordinate = {
+        (output.entity, output.column): output for output in node.outputs
+    }
+    for value in raw_materialized:
+        entity, column = value.split(".", 1)
+        coordinate = (entity, column)
+        output = owned_by_coordinate.get(coordinate)
+        if output is None or output.rewrite:
+            raise NodeRejected(
+                f"Node {node.id!r} materialized EXPAND output {value!r} must be "
+                "one of its non-rewrite owned cells."
+            )
+        if population.owners.get(coordinate) != population.version:
+            raise NodeRejected(
+                f"Node {node.id!r} materialized EXPAND output {value!r} was not "
+                f"installed by population version {population.version!r}."
+            )
+        materialized.add(coordinate)
+    if len(materialized) != len(raw_materialized):
+        raise NodeRejected(f"Node {node.id!r} repeats a materialized EXPAND output.")
+
     tables: dict[str, pd.DataFrame] = {}
     entity_masks: dict[str, np.ndarray] = {}
     projected_entities = set(slices)
@@ -432,28 +463,24 @@ def _project_context(
         columns = _structural_columns(frame, entity)
         for slice_ in entity_slices:
             columns.extend(slice_.columns)
-        rewrite_inputs = node.params.get("rewrite_inputs", ())
-        if not isinstance(rewrite_inputs, tuple) or any(
-            not isinstance(value, str) or "." not in value for value in rewrite_inputs
-        ):
-            raise NodeRejected(
-                f"Node {node.id!r} params['rewrite_inputs'] must be a tuple of "
-                "'entity.column' strings."
-            )
-        owned_coordinates = {(owned.entity, owned.column) for owned in node.outputs}
-        for coordinate in rewrite_inputs:
-            rewrite_entity, rewrite_column = coordinate.split(".", 1)
-            if (rewrite_entity, rewrite_column) not in owned_coordinates:
+        for owned in node.outputs:
+            if owned.entity != entity or not owned.rewrite:
+                continue
+            if owned.column not in table:
                 raise NodeRejected(
-                    f"Node {node.id!r} rewrite input {coordinate!r} is not one "
-                    "of its owned cells."
+                    f"Node {node.id!r} rewrite incumbent "
+                    f"{owned.entity}.{owned.column} is absent."
                 )
-            if rewrite_entity == entity:
-                if rewrite_column not in table:
-                    raise NodeRejected(
-                        f"Node {node.id!r} rewrite input {coordinate!r} is absent."
-                    )
-                columns.append(rewrite_column)
+            columns.append(owned.column)
+        for materialized_entity, materialized_column in sorted(materialized):
+            if materialized_entity != entity:
+                continue
+            if materialized_column not in table:
+                raise NodeRejected(
+                    f"Node {node.id!r} materialized EXPAND output "
+                    f"{materialized_entity}.{materialized_column} is absent."
+                )
+            columns.append(materialized_column)
         columns = list(dict.fromkeys(columns))
         if row_specs and next(iter(row_specs)) != ROWS_ALL:
             row_column = str(next(iter(row_specs)))
@@ -612,6 +639,8 @@ def _validate_result(
         )
     if not isinstance(result.columns, Mapping):
         raise NodeRejected(f"Node {node.id!r} result.columns is not a mapping.")
+    if result.expand is not None and not isinstance(result.expand, Mapping):
+        raise NodeRejected(f"Node {node.id!r} result.expand is not a mapping.")
     if not isinstance(result.artifacts, Mapping):
         raise NodeRejected(f"Node {node.id!r} result.artifacts is not a mapping.")
     if not isinstance(result.receipt, Mapping):
@@ -673,6 +702,17 @@ def _validate_result(
                 f"EXPAND node {node.id!r} returned a Frame; kernels return "
                 "source lineage, cells, and weights, and the executor expands."
             )
+        if not cache_hit and result.expand is None:
+            raise NodeRejected(
+                f"EXPAND node {node.id!r} returned no per-entity lineage."
+            )
+        if cache_hit and result.expand is not None:
+            raise NodeRejected(
+                f"Cached EXPAND node {node.id!r} returned kernel lineage instead "
+                "of its executor frame artifact."
+            )
+    elif result.expand is not None:
+        raise NodeRejected(f"Non-EXPAND node {node.id!r} returned expansion lineage.")
     if result.frame is not None and not isinstance(result.frame, Frame):
         raise NodeRejected(f"Node {node.id!r} result.frame is not a Frame.")
     if node.structural is StructuralDelta.CREATE:
@@ -713,6 +753,20 @@ def _validate_result(
             raise NodeRejected(f"Node {node.id!r} artifact {name!r} is not bytes.")
         artifacts[name] = payload
     receipt = _normal_json_mapping(result.receipt, f"Node {node.id!r} receipt")
+    if node.structural is StructuralDelta.EXPAND:
+        if cache_hit:
+            if not isinstance(receipt.get("expand"), dict):
+                raise NodeRejected(
+                    f"Cached EXPAND node {node.id!r} has no lineage receipt."
+                )
+        else:
+            assert result.expand is not None
+            try:
+                receipt["expand"] = expand_lineage_receipt(result.expand)
+            except (TypeError, ValueError) as error:
+                raise NodeRejected(
+                    f"EXPAND node {node.id!r} returned malformed lineage: {error}"
+                ) from error
     if kernel_capabilities.role is KernelRole.GATE:
         outcome = receipt.get("outcome")
         if outcome not in GATE_OUTCOMES:

@@ -8,7 +8,16 @@ import pandas as pd
 import pytest
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime import spi_income
+from microcosm.build.uk_runtime import spi_income, spi_spine
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.hmrc_income import (
+    HMRC_SPI_BUILD_PERIOD,
+    HMRC_SPI_INCOME_BAND_LOWER_BOUNDS,
+    HMRC_SPI_INCOME_COMPONENTS,
+    HMRCIncomeBandTargetRecord,
+    HMRCIncomeSourceProvenance,
+    HMRCIncomeTargetSet,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_income import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
@@ -19,6 +28,7 @@ from microcosm.build.uk_runtime.spi_income import (
 from microcosm.build.uk_runtime.spi_spine import (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     UKFRSHMRCSpineLeavesStageTransform,
+    UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
     _assert_income_stage_parameters,
     _support_stage_parameters,
@@ -34,7 +44,7 @@ from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclara
 from microcosm.frame import WeightKind
 
 
-def _base_frame() -> object:
+def _base_frame(*, time_period: str = "2023") -> object:
     person = pd.DataFrame(
         {
             "person_id": [2001, 1001],
@@ -78,7 +88,7 @@ def _base_frame() -> object:
         person=person,
         benunit=benunit,
         household=household,
-        time_period="2023",
+        time_period=time_period,
         weight_kind=WeightKind.DESIGN,
     )
 
@@ -339,6 +349,45 @@ def _donor_file(tmp_path: Path) -> Path:
     return path
 
 
+def _synthetic_hmrc_targets(path: Path) -> HMRCIncomeTargetSet:
+    upper_bounds = (*HMRC_SPI_INCOME_BAND_LOWER_BOUNDS[1:], None)
+    targets = tuple(
+        HMRCIncomeBandTargetRecord(
+            name=f"synthetic/{component}/{measure}/{lower_bound}",
+            component=component,
+            measure=measure,
+            unit="people" if measure == "count" else "GBP",
+            value=1_000.0 if measure == "count" else 1_000_000.0,
+            period=HMRC_SPI_BUILD_PERIOD,
+            total_income_lower_bound=lower_bound,
+            total_income_upper_bound=upper_bound,
+        )
+        for lower_bound, upper_bound in zip(
+            HMRC_SPI_INCOME_BAND_LOWER_BOUNDS,
+            upper_bounds,
+            strict=True,
+        )
+        for component in HMRC_SPI_INCOME_COMPONENTS
+        for measure in ("count", "amount")
+    )
+    return HMRCIncomeTargetSet(
+        source=HMRCIncomeSourceProvenance(
+            local_path=path,
+            sha256="0" * 64,
+            publication_url="https://example.test/hmrc",
+            ods_url="https://example.test/hmrc.ods",
+            source_vintage="2023-24",
+            source_tax_year="2023-24",
+            source_tax_year_start=2023,
+            build_period=HMRC_SPI_BUILD_PERIOD,
+            table_names=("Table_3_6", "Table_3_7"),
+            size_bytes=path.stat().st_size,
+            mime_type="application/vnd.oasis.opendocument.spreadsheet",
+        ),
+        targets=targets,
+    )
+
+
 def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_stage2(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -472,6 +521,104 @@ def _with_mutated_operation(
             payload.update(overrides)
         operations.append(payload)
     return SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
+
+
+def test_spi_spine_parsed_inputs_match_the_path_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _FakeQRF.events = []
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    monkeypatch.setattr(
+        spi_income,
+        "_refresh_disability_derived_inputs",
+        lambda person, spi_people, build_period: person,
+    )
+    support_frame = UKSPISupportChannelStageTransform(
+        stage=_committed_stage("spi_support_channel"),
+        sample_fraction=0.0002,
+    )(_base_frame(time_period=HMRC_SPI_BUILD_PERIOD))
+    income_stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"),
+        "fit_weighted_qrf_stage1",
+        sample_size=1,
+    )
+    donor_path = _donor_file(tmp_path)
+    ods_path = tmp_path / "synthetic-hmrc.ods"
+    ods_path.write_bytes(b"synthetic hmrc source")
+    source_targets = _synthetic_hmrc_targets(ods_path)
+    ods_identity = object()
+    resolved: list[str] = []
+
+    def verify_donor(path):
+        assert path == donor_path
+        resolved.append("donor")
+        return SimpleNamespace(path=donor_path.resolve())
+
+    def verify_targets(path):
+        assert path == ods_path
+        resolved.append("target identity")
+        return ods_identity
+
+    def materialize_targets(identity, *, build_period):
+        assert identity is ods_identity
+        assert build_period == HMRC_SPI_BUILD_PERIOD
+        resolved.append("targets")
+        return source_targets
+
+    monkeypatch.setattr(spi_spine, "verify_spi_donor_identity", verify_donor)
+    monkeypatch.setattr(spi_spine, "verify_hmrc_spi_collated_ods", verify_targets)
+    monkeypatch.setattr(
+        spi_spine,
+        "materialize_hmrc_spi_income_band_targets",
+        materialize_targets,
+    )
+    path_transform = UKSPIIncomeSpineStageTransform(
+        donor_path,
+        ods_path,
+        stage=income_stage,
+        donor_sample_size=1,
+        sampled_rung=True,
+    )
+    from_path = path_transform(support_frame)
+    assert resolved == ["donor", "target identity", "targets"]
+
+    def unexpected_loader(*_args, **_kwargs):
+        raise AssertionError("parsed inputs must bypass source resolution")
+
+    monkeypatch.setattr(
+        spi_spine,
+        "verify_spi_donor_identity",
+        unexpected_loader,
+    )
+    monkeypatch.setattr(
+        spi_spine,
+        "verify_hmrc_spi_collated_ods",
+        unexpected_loader,
+    )
+    monkeypatch.setattr(
+        spi_spine,
+        "materialize_hmrc_spi_income_band_targets",
+        unexpected_loader,
+    )
+    monkeypatch.setattr(
+        spi_income,
+        "_verify_spi_donor_identity",
+        unexpected_loader,
+    )
+    seam_transform = UKSPIIncomeSpineStageTransform(
+        donor_path,
+        ods_path,
+        stage=income_stage,
+        donor_sample_size=1,
+        sampled_rung=True,
+        donor_table=pd.read_csv(donor_path, delimiter="\t"),
+        source_targets=source_targets,
+    )
+    from_seam = seam_transform(support_frame)
+
+    assert uk_frame_content_identity(from_path) == uk_frame_content_identity(from_seam)
+    assert path_transform.checkpoint_metadata() == seam_transform.checkpoint_metadata()
 
 
 def test_income_stage_parameters_accept_the_committed_manifest() -> None:
