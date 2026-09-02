@@ -15,6 +15,8 @@ ordinary claim node for its stage cells.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
@@ -29,6 +31,7 @@ from microcosm.graph import (
 )
 
 from ..country_spec import CountrySpec, load_country_spec
+from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
     "UK_SPINE_EXCLUSIONS",
@@ -62,6 +65,145 @@ _STRUCTURAL_WEIGHT_KIND = {
     "cgt_incidence_clone": "importance",
     "cgt_band_donors": "importance",
 }
+
+_SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
+    "frs_spine": ("frs",),
+    "frs_employment": ("frs",),
+    "frs_council_tax": ("frs",),
+    "frs_education": ("frs",),
+    "frs_legacy_proxies": ("frs",),
+    "was_wealth": ("was",),
+    "lcfs_consumption": ("lcfs_household", "lcfs_person", "was"),
+    "etb_vat": ("etb",),
+    "etb_services": ("etb",),
+    "frs_hmrc_spine_leaves": ("frs",),
+    "hmrc_spi_income_spine": ("spi", "hmrc_income"),
+    "hmrc_cgt_gains_spine": ("hmrc_cgt",),
+}
+
+_SPLIT_SOURCE_DESCRIPTIONS = {
+    "frs": "Pinned local FRS table directory.",
+    "was": "Pinned local WAS household donor table.",
+    "lcfs_household": "Pinned local LCFS household donor table.",
+    "lcfs_person": "Pinned local LCFS person donor table.",
+    "etb": "Pinned local ETB household donor table.",
+    "spi": "Pinned local SPI donor table.",
+    "hmrc_income": "Pinned local HMRC income facts workbook.",
+    "hmrc_cgt": "Pinned local HMRC capital-gains facts workbook.",
+}
+
+# ``None`` means the implementation genuinely has an open formula/model
+# surface and therefore receives every live cell.  Finite sets are the direct
+# Frame reads inventoried from the existing transform.  Structural ids,
+# memberships, weights, and strata are executor-carried context rather than
+# ordinary owned cells.
+_STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
+    "frs_employment": frozenset(),
+    "frs_council_tax": frozenset(),
+    "frs_disability": frozenset(
+        ("person", column)
+        for column in (
+            "attendance_allowance_reported",
+            "dla_sc_reported",
+            "dla_m_reported",
+            "pip_m_reported",
+            "pip_dl_reported",
+            "sda_reported",
+            "incapacity_benefit_reported",
+            "iidb_reported",
+            "afcs_reported",
+            "esa_contrib_reported",
+            "esa_income_reported",
+        )
+    ),
+    "frs_education": frozenset(
+        ("person", column)
+        for column in (
+            "age",
+            "universal_credit_reported",
+            "jsa_contrib_reported",
+            "jsa_income_reported",
+            "esa_contrib_reported",
+            "esa_income_reported",
+        )
+    ),
+    "frs_legacy_proxies": None,
+    "frs_education_grant_split": None,
+    "frs_take_up": frozenset(
+        ("person", column)
+        for column in (
+            "child_benefit_reported",
+            "pension_credit_reported",
+            "universal_credit_reported",
+        )
+    ),
+    "frs_person_draws": frozenset({("person", "age")}),
+    "frs_household_draws": frozenset(),
+    "frs_brma": None,
+    "was_wealth": None,
+    "regional_property_uprating": frozenset(
+        {
+            ("household", "region"),
+            ("household", "main_residence_value"),
+            ("household", "property_wealth"),
+        }
+    ),
+    "lcfs_consumption": None,
+    "etb_vat": None,
+    "etb_services": None,
+    "frs_hmrc_spine_leaves": frozenset({("person", "employee_pension_contributions")}),
+    "spi_support_channel": None,
+    "hmrc_spi_income_spine": None,
+    "uc_capital_coherence": frozenset(
+        {
+            ("person", "person_support_channel"),
+            ("person", "universal_credit_reported"),
+            ("benunit", "frs_benunit_capital"),
+            ("benunit", "would_claim_uc"),
+        }
+    ),
+    "cgt_incidence_clone": None,
+    "cgt_band_donors": None,
+    "hmrc_cgt_gains_spine": frozenset(
+        ("person", column)
+        for column in (
+            "capital_gains",
+            "employment_income",
+            "self_employment_income",
+            "savings_interest_income",
+            "dividend_income",
+            "private_pension_income",
+            "property_income",
+            "state_pension_reported",
+            "tax_free_savings_income",
+        )
+    ),
+    "salary_sacrifice": None,
+    "student_loans": frozenset(
+        {
+            ("person", "age"),
+            ("person", "student_loans"),
+            ("person", "student_loan_repayments"),
+            ("person", "current_education"),
+            ("household", "region"),
+        }
+    ),
+    "age_tail": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "person_source_id"),
+        }
+    ),
+}
+
+_CONTEXT_CARRIERS = frozenset(
+    {
+        ("person", "age"),
+        ("benunit", "frs_benunit_capital"),
+        ("household", "region"),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -460,6 +602,33 @@ def _slices(
     )
 
 
+def _stage_slices(
+    live: Mapping[tuple[str, str], _Cell],
+    stage: str,
+    *,
+    exclude: frozenset[tuple[str, str]] = frozenset(),
+    shape_anchor: tuple[str, str] | None = None,
+) -> tuple[Slice, ...]:
+    consumes = _STAGE_CONSUMES[stage]
+    if consumes is None:
+        return _slices(live, exclude=exclude)
+    requested = consumes | _CONTEXT_CARRIERS
+    # Frame column order is covered by uk_frame_content_identity.  Until the
+    # frozen graph declaration has a shape-only dependency, one cell from the
+    # immediately preceding stage anchors that schema-order dependency.  It is
+    # intentionally additional to the transform's value reads above.
+    if shape_anchor is not None:
+        requested = requested | {shape_anchor}
+    requested = requested - exclude
+    missing = requested - live.keys()
+    if missing:
+        raise ValueError(
+            f"UK graph stage {stage!r} consumes unavailable cells: {sorted(missing)}."
+        )
+    selected = {coordinate: live[coordinate] for coordinate in sorted(requested)}
+    return _slices(selected)
+
+
 def _deduplicate(cells: Iterable[_Cell]) -> tuple[_Cell, ...]:
     resolved: dict[tuple[str, str], _Cell] = {}
     for cell in cells:
@@ -487,13 +656,101 @@ def _manifest_stages(spec: CountrySpec) -> tuple[object, ...]:
     return selected
 
 
-def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
+def _declared_stage_cells(manifest_stage: object) -> tuple[_Cell, ...]:
+    stage_name = manifest_stage.stage
+    declared = set((*manifest_stage.outputs, *manifest_stage.rewrites))
+    if stage_name == "hmrc_spi_income_spine" and manifest_stage.rewrites:
+        # The production transform refreshes disability categories/flags on
+        # SPI rows in addition to the packaged declared rewrites.  Synthetic
+        # reduced manifests which omit the rewrite surface do not perform it.
+        declared.update((*_HMRC_SPI_HIDDEN_STRING, *_HMRC_SPI_HIDDEN_BOOL))
+    cells = tuple(cell for cell in _STAGE_CELLS[stage_name] if cell.column in declared)
+    unresolved = declared - {cell.column for cell in cells}
+    if unresolved:
+        raise ValueError(
+            f"The UK graph has no typed cells for {stage_name}: {sorted(unresolved)}."
+        )
+    return _deduplicate(cells)
+
+
+def _stage_contract_sha256(stage: object, spec: CountrySpec) -> str:
+    """Bind a node to its manifest operations, seeds, artifacts, and resources."""
+
+    resource_pins = {
+        str(artifact["resource"]): str(spec.resource_hashes[artifact["resource"]])
+        for artifact in stage.artifacts
+        if "resource" in artifact
+    }
+    payload = {
+        "stage": stage.stage,
+        "survey": stage.survey,
+        "source": stage.source,
+        "grain": stage.grain,
+        "artifacts": [dict(artifact) for artifact in stage.artifacts],
+        "operations": [
+            {"kind": operation.kind, **dict(operation.parameters)}
+            for operation in stage.operations
+        ],
+        "outputs": list(stage.outputs),
+        "rewrites": list(stage.rewrites),
+        "nonnegative_outputs": list(stage.nonnegative_outputs),
+        "resource_pins": resource_pins,
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _source_names(stage_name: str, source_mode: str) -> tuple[str, ...]:
+    if source_mode == "bundle":
+        return ("frs",)
+    return _SPLIT_STAGE_SOURCES.get(stage_name, ())
+
+
+def _source_refs(source_mode: str) -> tuple[SourceRef, ...]:
+    if source_mode == "bundle":
+        return (
+            SourceRef(
+                "frs",
+                "csv-tables",
+                "Content-bound UK FRS and donor fixture/source bundle.",
+            ),
+        )
+    return tuple(
+        SourceRef(name, "csv-tables", description)
+        for name, description in _SPLIT_SOURCE_DESCRIPTIONS.items()
+    )
+
+
+def uk_spine_graph(
+    spec: CountrySpec | None = None,
+    *,
+    source_mode: str = "bundle",
+    sample_fraction: float = 1.0,
+    sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
+) -> Graph:
     """Return the source-bound graph for the packaged UK FRS spine."""
 
+    from .frs_spine import UKFRSSpineStageTransform
+
+    if source_mode not in {"bundle", "split"}:
+        raise ValueError("UK graph source_mode must be 'bundle' or 'split'.")
+    if not 0.0 < sample_fraction <= 1.0:
+        raise ValueError("UK graph sample_fraction must be in (0, 1].")
+    if sample_seed < 0:
+        raise ValueError("UK graph sample_seed must be non-negative.")
     resolved = load_country_spec("uk") if spec is None else spec
     stages = _manifest_stages(resolved)
-    root_stage = stages[0]
-    root_cells = _root_cells(root_stage.outputs)
+    # The root transform loads the complete national-frame seed schema even
+    # when a reduced hermetic manifest names only the output under test.
+    # CREATE must declare every loaded cell, never merely the StagePlan's
+    # historically incomplete ownership surface.
+    root_cells = _root_cells(UKFRSSpineStageTransform.output_columns())
     live: dict[tuple[str, str], _Cell] = {cell.coordinate: cell for cell in root_cells}
 
     nodes: list[Node] = [
@@ -502,8 +759,13 @@ def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
             kernel="uk.create@1",
             outputs=tuple(cell.owned() for cell in root_cells),
             structural=StructuralDelta.CREATE,
-            sources=("frs",),
-            params={"time_period": "2024"},
+            sources=_source_names("frs_spine", source_mode),
+            params={
+                "time_period": "2024",
+                "stage_contract_sha256": _stage_contract_sha256(stages[0], resolved),
+                "sample_fraction": float(sample_fraction),
+                "sample_seed": int(sample_seed),
+            },
             description="Load the source-bound UK FRS root population.",
         )
     ]
@@ -538,10 +800,11 @@ def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
         )
     )
     current_population = root_boundary
+    shape_anchor = root_cells[-1].coordinate
 
     for manifest_stage in stages[1:]:
         stage_name = manifest_stage.stage
-        cells = _deduplicate(_STAGE_CELLS[stage_name])
+        cells = _declared_stage_cells(manifest_stage)
         coordinates = frozenset(cell.coordinate for cell in cells)
         incumbent = frozenset(coordinates & live.keys())
 
@@ -550,7 +813,11 @@ def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
                 Node(
                     id=stage_name,
                     kernel=f"uk.stage.expand.{stage_name}@1",
-                    inputs=_slices(live),
+                    inputs=_stage_slices(
+                        live,
+                        stage_name,
+                        shape_anchor=shape_anchor,
+                    ),
                     params={
                         "stage": stage_name,
                         "time_period": "2024",
@@ -559,10 +826,13 @@ def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
                         ),
                         "expand_weight_entity": "household",
                         "expand_weight_kind": _STRUCTURAL_WEIGHT_KIND[stage_name],
+                        "stage_contract_sha256": _stage_contract_sha256(
+                            manifest_stage, resolved
+                        ),
                     },
                     structural=StructuralDelta.EXPAND,
                     base=current_population,
-                    sources=("frs",),
+                    sources=_source_names(stage_name, source_mode),
                     mass=_STRUCTURAL_MASS[stage_name],
                     description=f"Run structural UK stage {stage_name}.",
                 )
@@ -601,7 +871,12 @@ def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
                 Node(
                     id=stage_name,
                     kernel=f"uk.stage.{stage_name}@1",
-                    inputs=_slices(live, exclude=coordinates),
+                    inputs=_stage_slices(
+                        live,
+                        stage_name,
+                        exclude=coordinates,
+                        shape_anchor=shape_anchor,
+                    ),
                     outputs=tuple(cell.owned() for cell in cells),
                     population=current_population,
                     params={
@@ -612,24 +887,37 @@ def uk_spine_graph(spec: CountrySpec | None = None) -> Graph:
                             for cell in cells
                             if cell.coordinate in incumbent
                         ),
+                        "stage_contract_sha256": _stage_contract_sha256(
+                            manifest_stage, resolved
+                        ),
                     },
-                    sources=("frs",),
+                    sources=_source_names(stage_name, source_mode),
                     description=f"Run UK spine stage {stage_name}.",
                 )
             )
 
         for cell in cells:
             live[cell.coordinate] = cell
+        if cells:
+            shape_anchor = cells[-1].coordinate
+
+        if stage_name == "frs_brma":
+            checkpoint = "frs_brma.checkpoint"
+            nodes.append(
+                Node(
+                    id=checkpoint,
+                    kernel="uk.identity@1",
+                    inputs=_slices(live),
+                    structural=StructuralDelta.FILTER,
+                    base=current_population,
+                    description="Freeze the assembled-spine gate population.",
+                )
+            )
+            current_population = checkpoint
 
     return Graph(
         country="uk",
-        sources=(
-            SourceRef(
-                "frs",
-                "csv-tables",
-                "Content-bound UK FRS and donor fixture/source bundle.",
-            ),
-        ),
+        sources=_source_refs(source_mode),
         nodes=tuple(nodes),
     )
 

@@ -12,7 +12,9 @@ from microcosm.build.source_manifest import (
     FORBIDDEN_SOURCE_DEPENDENCIES,
     SourceManifest,
 )
+from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS, uk_spine_graph
 from microcosm.frame import Frame
+from microcosm.graph import compile_graph
 
 ROOT = Path(__file__).resolve().parents[3]
 UK_PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build/uk"
@@ -76,16 +78,6 @@ UK_SOURCE_STAGE_NAMES = [
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
 ]
-UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES = [
-    "frs_spine",
-    *E3_STAGE_NAMES,
-    *E4_STAGE_NAMES,
-    *E6_STAGE_NAMES,
-    *E7_STAGE_NAMES,
-    *UC_COHERENCE_STAGE_NAMES,
-    *E8_STAGE_NAMES,
-    *POST_E8_STAGE_NAMES,
-]
 FROZEN_SOURCE_STAGES_SHA256 = (
     "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea"
 )
@@ -97,6 +89,19 @@ def _load_json(path: Path) -> dict:
 
 def _identity(frame: Frame) -> Frame:
     return frame
+
+
+def _uk_graph_stage_names(spec) -> list[str]:
+    manifest_stages = {
+        stage.stage
+        for stage in spec.sources.stages
+        if stage.stage not in UK_SPINE_EXCLUSIONS
+    }
+    return [
+        node_id
+        for node_id in compile_graph(uk_spine_graph(spec)).order
+        if node_id in manifest_stages
+    ]
 
 
 def _assert_no_forbidden_dependency(value: object) -> None:
@@ -150,10 +155,9 @@ class TestUKSourceStagesManifest:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert (
-            names[names.index("etb_services") + 1 : names.index("cgt_incidence_clone")]
-            == [*E7_STAGE_NAMES, *UC_COHERENCE_STAGE_NAMES]
-        )
+        assert names[
+            names.index("etb_services") + 1 : names.index("cgt_incidence_clone")
+        ] == [*E7_STAGE_NAMES, *UC_COHERENCE_STAGE_NAMES]
 
     def test_e8_block_is_contiguous_and_the_certified_pair_stays_last(self) -> None:
         # Two invariants, and only two: the E8 stages stay contiguous, and the
@@ -251,15 +255,14 @@ class TestUKSourceStagesManifest:
     def test_country_stage_plan_assembles_spine_plan(self) -> None:
         spec = load_country_spec("uk")
         implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
+        graph_stage_names = _uk_graph_stage_names(spec)
         plan = country_stage_plan(
             spec,
             implementations,
-            stage_names=tuple(UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES),
+            stage_names=tuple(graph_stage_names),
         )
 
-        assert [stage.name for stage in plan.stages] == (
-            UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES
-        )
+        assert [stage.name for stage in plan.stages] == graph_stage_names
 
     @pytest.mark.parametrize(
         "implementations, match",
@@ -838,9 +841,7 @@ class TestE3ManifestLockstep:
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
-        assert (
-            stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
-        )
+        assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
 
     def test_e8_declared_seed_lockstep(self) -> None:
         stages = load_country_spec("uk").sources.stage_map()
@@ -861,7 +862,7 @@ class TestE3ManifestLockstep:
         spec = load_country_spec("uk")
         implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
 
-        driver_stage_names = tuple(UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES)
+        driver_stage_names = tuple(_uk_graph_stage_names(spec))
         plan = country_stage_plan(spec, implementations, stage_names=driver_stage_names)
 
         assert [stage.name for stage in plan.stages] == list(driver_stage_names)

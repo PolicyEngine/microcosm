@@ -20,6 +20,7 @@ from microcosm.build.uk_runtime import (
     frs_education_grants,
     frs_legacy_proxies,
 )
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
@@ -1112,7 +1113,11 @@ def _patch_spi_spine_driver_runtime(
                 benunit=benunit,
                 household=household,
                 time_period=uk_time_period(frame),
-                weight_kind=uk_household_weight_kind(frame),
+                weight_kind=(
+                    WeightKind.IMPORTANCE
+                    if self.stage.stage == "spi_support_channel"
+                    else uk_household_weight_kind(frame)
+                ),
                 household_weights=frame.weights_for("household").values,
                 mass_log=frame.mass_log,
             )
@@ -1221,11 +1226,8 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
     assert sidecar["schema_version"] == 2
-    assert sidecar["stages"] == [
-        name
-        for name in tool._STAGE_NAMES
-        if name in _synthetic_spec(stage).sources.stage_map()
-    ]
+    assert sidecar["stages"] == list(tool._uk_spine_stage_names(_synthetic_spec(stage)))
+    assert sidecar["uk_frame_content_identity"] == uk_frame_content_identity(frame)
     assert sidecar["entity_row_counts"] == {
         "person": 3,
         "benunit": 2,
@@ -1639,7 +1641,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
     stage_map = spec.sources.stage_map()
-    stages = [stage_map[name] for name in tool._STAGE_NAMES]
+    stages = [stage_map[name] for name in tool._uk_spine_stage_names(spec)]
 
     pins = tool._input_artifact_pins(stages)
 
@@ -1681,7 +1683,9 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     assert spec.sources is not None
     stages = spec.sources.stage_map()
 
-    declared = tool._declared_seeds([stages[name] for name in tool._STAGE_NAMES])
+    declared = tool._declared_seeds(
+        [stages[name] for name in tool._uk_spine_stage_names(spec)]
+    )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}

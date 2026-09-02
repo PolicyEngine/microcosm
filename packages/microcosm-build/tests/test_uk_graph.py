@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.graph import (
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
+    Graph,
     KernelResult,
     Node,
     StructuralDelta,
@@ -191,7 +192,8 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     compiled = compile_graph(uk_spine_graph(spec))
     stage_order = tuple(node_id for node_id in compiled.order if node_id in expected)
 
-    assert stage_order == expected
+    assert set(stage_order) == set(expected)
+    assert len(stage_order) == len(expected)
     assert all(
         set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
         for index, node_id in enumerate(compiled.order)
@@ -200,6 +202,55 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
         compiled.graph.node(node_id).inputs
         for node_id in expected[1:]
         if node_id not in UK_SPINE_STRUCTURAL_STAGES
+    )
+    graph = compiled.graph
+    reversed_declaration = Graph(
+        graph.country, graph.sources, tuple(reversed(graph.nodes))
+    )
+    assert compile_graph(reversed_declaration).order == compiled.order
+    assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
+    assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
+    assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
+    assert (
+        "spi_support_channel" in compiled.predecessors["hmrc_spi_income_spine.boundary"]
+    )
+
+
+def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:
+    graph = uk_spine_graph(
+        source_mode="split",
+        sample_fraction=0.1,
+        sample_seed=999,
+    )
+
+    assert {source.name for source in graph.sources} == {
+        "frs",
+        "was",
+        "lcfs_household",
+        "lcfs_person",
+        "etb",
+        "spi",
+        "hmrc_income",
+        "hmrc_cgt",
+    }
+    assert graph.node("lcfs_consumption").sources == (
+        "lcfs_household",
+        "lcfs_person",
+        "was",
+    )
+    assert graph.node("hmrc_spi_income_spine").sources == (
+        "spi",
+        "hmrc_income",
+    )
+    assert graph.node("hmrc_cgt_gains_spine").sources == ("hmrc_cgt",)
+    create = graph.node("create_uk_frs")
+    assert create.params["sample_fraction"] == 0.1
+    assert create.params["sample_seed"] == 999
+    assert len(str(create.params["stage_contract_sha256"])) == 64
+    assert all(
+        len(str(node.params["stage_contract_sha256"])) == 64
+        for node in graph.nodes
+        if "stage" in node.params
     )
 
 

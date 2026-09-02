@@ -42,6 +42,7 @@ from microcosm.graph import (
 from microcosm.graph.population import dtype_for_token
 
 from .national_frame import UK_NATIONAL_SCHEMA
+from .rowwise_geography import id_multiplier_for_values
 
 __all__ = [
     "UKClaimKernel",
@@ -118,8 +119,12 @@ def _stage_module(stage: str):
 
 
 def _implementation_hash(kernel: object, stage: str, transform: object | None) -> str:
-    bearing = type(transform) if transform is not None else _stage_module(stage)
-    return source_hash(type(kernel), bearing)
+    # The stage module is the behavior-bearing source in both real and fixture
+    # mode.  Hashing an injected transform's dynamic test wrapper would make
+    # hermetic registries unhashable and, more importantly, would fail to bind
+    # production edits made elsewhere in that stage's module.
+    del transform
+    return source_hash(type(kernel), _stage_module(stage))
 
 
 def _mass_log_payload(frame: Frame) -> list[dict[str, object]]:
@@ -133,6 +138,15 @@ def _mass_log_payload(frame: Frame) -> list[dict[str, object]]:
         }
         for record in frame.mass_log
     ]
+
+
+def _invoke_transform(transform: object, frame: Frame, context: KernelContext):
+    """Invoke a stage, giving context-bound adapters only declared sources."""
+
+    run_with_sources = getattr(transform, "run_with_sources", None)
+    if callable(run_with_sources):
+        return run_with_sources(frame, context.sources)
+    return transform(frame)
 
 
 def _minimal_frame(context: KernelContext) -> Frame:
@@ -209,7 +223,9 @@ class UKCreateKernel(KernelBase):
         else:
             from .frs_spine import uk_frs_spine_seed_frame
 
-            frame = self.transform(uk_frs_spine_seed_frame())
+            frame = _invoke_transform(
+                self.transform, uk_frs_spine_seed_frame(), context
+            )
         if not isinstance(frame, Frame):
             raise TypeError(
                 f"The UK root transform returned {type(frame).__name__}, not Frame."
@@ -291,7 +307,7 @@ class UKStageKernel(KernelBase):
         if self.transform is None:
             return self._run_fixture(context)
         before = _minimal_frame(context)
-        after = self.transform(before)
+        after = _invoke_transform(self.transform, before, context)
         if not isinstance(after, Frame):
             raise TypeError(
                 f"UK stage {self.stage!r} returned {type(after).__name__}, not Frame."
@@ -342,7 +358,8 @@ def _source_lineage(
     before: Frame,
     after: Frame,
     entity: str,
-    expanded_cells: frozenset[tuple[str, str]],
+    *,
+    id_offset: int | None,
 ) -> pd.Series:
     """Derive immediate target-to-source ids from a real structural result."""
 
@@ -361,30 +378,20 @@ def _source_lineage(
             values.append(row[source_column])
             continue
 
-        ignored = {
-            id_column,
-            *(
-                before.schema.membership_column(group)
-                for group in before.schema.group_entities
-                if entity == before.schema.person_entity
-            ),
-            *(column for owner, column in expanded_cells if owner == entity),
-        }
-        comparable = [
-            column
-            for column in before_table.columns
-            if column in after_table and column not in ignored
-        ]
-        candidates = np.ones(len(before_table), dtype=np.bool_)
-        for column in comparable:
-            candidates &= before_table[column].eq(row[column]).to_numpy(dtype=np.bool_)
-        positions = np.flatnonzero(candidates)
-        if len(positions) != 1:
+        if id_offset is not None:
+            candidate = target - id_offset
+            if candidate in before_ids:
+                values.append(candidate)
+                continue
             raise ValueError(
-                f"UK stage could not derive unique {entity!r} lineage for target "
-                f"id {target!r}; candidates={len(positions)}."
+                f"UK stage produced {entity!r} target id {target!r} whose "
+                f"offset lineage {candidate!r} is not an incumbent id."
             )
-        values.append(before_table[id_column].iloc[int(positions[0])])
+
+        raise ValueError(
+            f"UK stage produced {entity!r} target id {target!r} without an "
+            f"explicit {source_column!r} or a declared ID-offset lineage rule."
+        )
     return pd.Series(
         values,
         index=pd.Index(after_table[id_column].to_numpy(copy=True), name=id_column),
@@ -410,18 +417,34 @@ class UKExpandStageKernel(KernelBase):
         if self.transform is None:
             return self._run_fixture(context)
         before = _minimal_frame(context)
-        after = self.transform(before)
+        after = _invoke_transform(self.transform, before, context)
         if not isinstance(after, Frame):
             raise TypeError(
                 f"UK stage {self.stage!r} returned {type(after).__name__}, not Frame."
             )
         cells = _expand_cells(context)
-        cell_coordinates = frozenset((entity, column) for entity, column, _ in cells)
+        id_offset = None
+        if self.stage in {"cgt_incidence_clone", "cgt_band_donors"}:
+            id_offset = id_multiplier_for_values(
+                *(
+                    before.table(entity)[before.schema.entity_id_column(entity)]
+                    for entity in before.entities
+                ),
+                *(
+                    before.table(before.schema.person_entity)[
+                        before.schema.membership_column(group)
+                    ]
+                    for group in before.schema.group_entities
+                ),
+            )
         columns: dict[tuple[str, str], pd.Series] = {}
         for entity in before.entities:
             id_column = before.schema.entity_id_column(entity)
             columns[(entity, id_column)] = _source_lineage(
-                before, after, entity, cell_coordinates
+                before,
+                after,
+                entity,
+                id_offset=id_offset,
             )
         person = before.schema.person_entity
         person_ids = _id_index(after, person)
@@ -436,9 +459,17 @@ class UKExpandStageKernel(KernelBase):
         for entity, column, dtype in cells:
             columns[(entity, column)] = _owned_series(after, entity, column, dtype)
         weight_entity = str(context.params["expand_weight_entity"])
+        after_weights = after.weights_for(weight_entity)
+        declared_kind = WeightKind(str(context.params["expand_weight_kind"]))
+        if after_weights.kind is not declared_kind:
+            raise ValueError(
+                f"UK EXPAND stage {self.stage!r} returned weight kind "
+                f"{after_weights.kind.value!r}, not declared "
+                f"{declared_kind.value!r}."
+            )
         return KernelResult(
             columns=MappingProxyType(columns),
-            weights=after.weights_for(weight_entity),
+            weights=after_weights,
             receipt={
                 "stage": self.stage,
                 "frame_mass_log_append": _mass_log_payload(after),

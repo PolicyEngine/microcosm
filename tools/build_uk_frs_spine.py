@@ -14,7 +14,6 @@ from pathlib import Path
 
 from microcosm.build.country_spec import (
     GatesManifest,
-    country_stage_plan,
     load_country_spec,
 )
 from microcosm.build.frame_sampling import (
@@ -38,6 +37,7 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.plan import StageRecord
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
@@ -49,6 +49,7 @@ from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
@@ -73,6 +74,11 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_EXCLUSIONS,
+    uk_registry,
+    uk_spine_graph,
+)
 from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
@@ -101,6 +107,7 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 )
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+from microcosm.graph import ContentStore, compile_graph, run_graph
 
 _PIPELINE = "uk-frs-spine"
 _REPOSITORY = Path(__file__).resolve().parents[1]
@@ -111,34 +118,26 @@ _RUNG_ABORT_EXIT_CODE = 3
 #: standing in for a key is correct only while two independently-maintained
 #: orderings happen to agree (the uk-data#468 class).
 UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
-_STAGE_NAMES = (
-    "frs_spine",
-    "frs_employment",
-    "frs_council_tax",
-    "frs_disability",
-    "frs_education",
-    "frs_legacy_proxies",
-    "frs_education_grant_split",
-    "frs_take_up",
-    "frs_person_draws",
-    "frs_household_draws",
-    "frs_brma",
-    "was_wealth",
-    "regional_property_uprating",
-    "lcfs_consumption",
-    "etb_vat",
-    "etb_services",
-    "frs_hmrc_spine_leaves",
-    "spi_support_channel",
-    "hmrc_spi_income_spine",
-    "uc_capital_coherence",
-    "cgt_incidence_clone",
-    "cgt_band_donors",
-    "hmrc_cgt_gains_spine",
-    "salary_sacrifice",
-    "student_loans",
-    "age_tail",
-)
+
+
+def _uk_spine_stage_names(spec) -> tuple[str, ...]:
+    """Derive the runnable manifest stages from graph ownership edges."""
+
+    if spec.sources is None:
+        raise ValueError("UK country spec has no source stages.")
+    declared = {
+        stage.stage
+        for stage in spec.sources.stages
+        if stage.stage not in UK_SPINE_EXCLUSIONS
+    }
+    compiled = compile_graph(uk_spine_graph(spec))
+    ordered = tuple(node_id for node_id in compiled.order if node_id in declared)
+    if set(ordered) != declared:
+        raise ValueError(
+            "UK spine graph and manifest stage roster disagree: "
+            f"graph={list(ordered)!r}, manifest={sorted(declared)!r}."
+        )
+    return ordered
 
 
 def _rung_sample_fraction(value: str) -> float:
@@ -572,6 +571,7 @@ def _build_sidecar(
     return {
         "schema_version": 2,
         "pipeline": _PIPELINE,
+        "uk_frame_content_identity": uk_frame_content_identity(frame),
         "stages": [stage.stage for stage in stages],
         "time_period": str(frame.metadata["time_period"]),
         "household_weight_kind": uk_household_weight_kind(frame).value,
@@ -620,6 +620,54 @@ def _nonzero_shares(frame, columns: list[str]) -> dict[str, float]:
                 shares[column] = float((values != 0).mean())
             break
     return shares
+
+
+def _series_nonzero_share(values) -> float:
+    if values.dtype == object or str(values.dtype).startswith("string"):
+        return float(values.fillna("").astype(str).ne("").mean())
+    return float((values != 0).mean())
+
+
+def _graph_stage_records(
+    *,
+    manifest,
+    store: ContentStore,
+    stages,
+) -> tuple[StageRecord, ...]:
+    """Project immediate node artifacts onto the legacy record schema."""
+
+    records: list[StageRecord] = []
+    for stage in stages:
+        output_node = (
+            f"{stage.stage}.owned"
+            if f"{stage.stage}.owned" in manifest.nodes
+            else stage.stage
+        )
+        output_receipt = manifest.nodes[output_node]
+        shares: dict[str, float] = {}
+        for column in stage.outputs:
+            matches = [
+                (coordinate, key)
+                for coordinate, key in output_receipt.artifacts.items()
+                if coordinate[1] == column
+            ]
+            if len(matches) != 1:
+                raise RuntimeError(
+                    f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
+                    f"for declared output {column!r}."
+                )
+            shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
+        execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
+        records.append(
+            StageRecord(
+                stage=stage.stage,
+                produced=stage.outputs,
+                donor_survey=stage.survey,
+                nonzero_share=shares,
+                seconds=manifest.nodes[execution_node].wall_time,
+            )
+        )
+    return tuple(records)
 
 
 def _new_build_id(timestamp: datetime) -> str:
@@ -681,6 +729,61 @@ def _sample_spine_frame(
         "normalization_factor": float(factor),
         "receipt": dict(receipt),
     }
+
+
+class _SampledGraphRootTransform:
+    """CREATE-stage adapter applying the declared sampling rung at ingest."""
+
+    def __init__(self, transform, *, fraction: float, seed: int) -> None:
+        self.transform = transform
+        self.fraction = fraction
+        self.seed = seed
+        self.sampling: dict[str, object] | None = None
+
+    def _sample(self, assembled):
+        sampled, self.sampling = _sample_spine_frame(
+            assembled,
+            fraction=self.fraction,
+            seed=self.seed,
+        )
+        return sampled
+
+    def __call__(self, frame):
+        return self._sample(self.transform(frame))
+
+    def run_with_sources(self, frame, sources):
+        runner = getattr(self.transform, "run_with_sources", None)
+        assembled = (
+            runner(frame, sources) if callable(runner) else self.transform(frame)
+        )
+        return self._sample(assembled)
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        hook = getattr(self.transform, "checkpoint_metadata", None)
+        if not callable(hook):
+            raise RuntimeError("FRS root transform exposes no checkpoint metadata.")
+        return dict(hook())
+
+
+class _GraphSourceTransform:
+    """Build a file-reading stage from only the node's declared source paths."""
+
+    def __init__(self, factory) -> None:
+        self.factory = factory
+        self.transform = None
+
+    def run_with_sources(self, frame, sources):
+        self.transform = self.factory(sources)
+        result = self.transform(frame)
+        if hasattr(self.transform, "fit_weight_records"):
+            self.fit_weight_records = self.transform.fit_weight_records
+        return result
+
+    def __getattr__(self, name: str):
+        transform = self.__dict__.get("transform")
+        if transform is None:
+            raise AttributeError(name)
+        return getattr(transform, name)
 
 
 def _run_plan_with_spine_sampling(
@@ -825,6 +928,19 @@ def _rung_abort_receipt(
     }
 
 
+def _exception_chain_contains(error: BaseException, text: str) -> bool:
+    """Match a named rung edge through graph execution wrappers."""
+
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if text in str(current):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
@@ -870,7 +986,14 @@ def main(argv: list[str] | None = None) -> int:
         if spec.sources is None:
             raise ValueError("UK country spec has no source stages.")
         stages_by_name = spec.sources.stage_map()
-        stage_names = tuple(name for name in _STAGE_NAMES if name in stages_by_name)
+        graph = uk_spine_graph(
+            spec,
+            source_mode="split",
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+        )
+        compiled_graph = compile_graph(graph)
+        stage_names = _uk_spine_stage_names(spec)
         if "hmrc_cgt_gains_spine" in stage_names and args.cgt_ods is None:
             raise ValueError(
                 "--cgt-ods is required when hmrc_cgt_gains_spine is scheduled."
@@ -926,36 +1049,48 @@ def main(argv: list[str] | None = None) -> int:
         engine = _rules_engine()
         stochastic_contract = load_uk_take_up_contract()
         frs_release = load_uk_frs_release()
-        hmrc_spine_transform = UKSPIIncomeSpineStageTransform(
-            args.spi_tab,
-            args.hmrc_ods,
-            stage=stages_by_name["hmrc_spi_income_spine"],
-            sampled_rung=args.sample_fraction != 1.0,
+        hmrc_spine_transform = _GraphSourceTransform(
+            lambda sources: UKSPIIncomeSpineStageTransform(
+                sources["spi"],
+                sources["hmrc_income"],
+                stage=stages_by_name["hmrc_spi_income_spine"],
+                sampled_rung=args.sample_fraction != 1.0,
+            )
         )
         implementations = {
-            "frs_spine": UKFRSSpineStageTransform(
-                args.frs_raw_dir,
-                stage=stages_by_name["frs_spine"],
+            "frs_spine": _GraphSourceTransform(
+                lambda sources: UKFRSSpineStageTransform(
+                    sources["frs"],
+                    stage=stages_by_name["frs_spine"],
+                )
             ),
-            "frs_employment": UKFRSEmploymentStageTransform(
-                args.frs_raw_dir,
-                stage=stages_by_name["frs_employment"],
+            "frs_employment": _GraphSourceTransform(
+                lambda sources: UKFRSEmploymentStageTransform(
+                    sources["frs"],
+                    stage=stages_by_name["frs_employment"],
+                )
             ),
-            "frs_council_tax": UKFRSCouncilTaxStageTransform(
-                args.frs_raw_dir,
-                stage=stages_by_name["frs_council_tax"],
+            "frs_council_tax": _GraphSourceTransform(
+                lambda sources: UKFRSCouncilTaxStageTransform(
+                    sources["frs"],
+                    stage=stages_by_name["frs_council_tax"],
+                )
             ),
             "frs_disability": UKFRSDisabilityStageTransform(
                 stage=stages_by_name["frs_disability"],
             ),
-            "frs_education": UKFRSEducationStageTransform(
-                args.frs_raw_dir,
-                stage=stages_by_name["frs_education"],
+            "frs_education": _GraphSourceTransform(
+                lambda sources: UKFRSEducationStageTransform(
+                    sources["frs"],
+                    stage=stages_by_name["frs_education"],
+                )
             ),
-            "frs_legacy_proxies": UKFRSLegacyProxiesStageTransform(
-                args.frs_raw_dir,
-                stage=stages_by_name["frs_legacy_proxies"],
-                engine=engine,
+            "frs_legacy_proxies": _GraphSourceTransform(
+                lambda sources: UKFRSLegacyProxiesStageTransform(
+                    sources["frs"],
+                    stage=stages_by_name["frs_legacy_proxies"],
+                    engine=engine,
+                )
             ),
             "frs_education_grant_split": (
                 UKFRSEducationGrantSplitStageTransform(
@@ -981,10 +1116,12 @@ def main(argv: list[str] | None = None) -> int:
             ),
         }
         if "was_wealth" in stage_names:
-            implementations["was_wealth"] = UKWASWealthStageTransform(
-                stage=stages_by_name["was_wealth"],
-                engine=engine,
-                was_tab_path=args.was_tab,
+            implementations["was_wealth"] = _GraphSourceTransform(
+                lambda sources: UKWASWealthStageTransform(
+                    stage=stages_by_name["was_wealth"],
+                    engine=engine,
+                    was_tab_path=sources["was"],
+                )
             )
         if "regional_property_uprating" in stage_names:
             implementations["regional_property_uprating"] = (
@@ -993,29 +1130,37 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         if "lcfs_consumption" in stage_names:
-            implementations["lcfs_consumption"] = UKLCFSConsumptionStageTransform(
-                stage=stages_by_name["lcfs_consumption"],
-                engine=engine,
-                lcfs_hh_tab_path=args.lcfs_hh_tab,
-                lcfs_person_tab_path=args.lcfs_person_tab,
-                was_tab_path=args.was_tab,
+            implementations["lcfs_consumption"] = _GraphSourceTransform(
+                lambda sources: UKLCFSConsumptionStageTransform(
+                    stage=stages_by_name["lcfs_consumption"],
+                    engine=engine,
+                    lcfs_hh_tab_path=sources["lcfs_household"],
+                    lcfs_person_tab_path=sources["lcfs_person"],
+                    was_tab_path=sources["was"],
+                )
             )
         if "etb_vat" in stage_names:
-            implementations["etb_vat"] = UKETBVATStageTransform(
-                stage=stages_by_name["etb_vat"],
-                engine=engine,
-                etb_tab_path=args.etb_tab,
+            implementations["etb_vat"] = _GraphSourceTransform(
+                lambda sources: UKETBVATStageTransform(
+                    stage=stages_by_name["etb_vat"],
+                    engine=engine,
+                    etb_tab_path=sources["etb"],
+                )
             )
         if "etb_services" in stage_names:
-            implementations["etb_services"] = UKETBServicesStageTransform(
-                stage=stages_by_name["etb_services"],
-                engine=engine,
-                etb_tab_path=args.etb_tab,
+            implementations["etb_services"] = _GraphSourceTransform(
+                lambda sources: UKETBServicesStageTransform(
+                    stage=stages_by_name["etb_services"],
+                    engine=engine,
+                    etb_tab_path=sources["etb"],
+                )
             )
-        implementations["frs_hmrc_spine_leaves"] = UKFRSHMRCSpineLeavesStageTransform(
-            args.frs_raw_dir,
-            stage=stages_by_name["frs_hmrc_spine_leaves"],
-            sampled_rung=args.sample_fraction != 1.0,
+        implementations["frs_hmrc_spine_leaves"] = _GraphSourceTransform(
+            lambda sources: UKFRSHMRCSpineLeavesStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_hmrc_spine_leaves"],
+                sampled_rung=args.sample_fraction != 1.0,
+            )
         )
         implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
             stage=stages_by_name["spi_support_channel"],
@@ -1037,9 +1182,11 @@ def main(argv: list[str] | None = None) -> int:
                 stage=stages_by_name["cgt_band_donors"]
             )
         if "hmrc_cgt_gains_spine" in stage_names:
-            implementations["hmrc_cgt_gains_spine"] = uk_cgt_spine_stage_transform(
-                stages_by_name["hmrc_cgt_gains_spine"],
-                args.cgt_ods,
+            implementations["hmrc_cgt_gains_spine"] = _GraphSourceTransform(
+                lambda sources: uk_cgt_spine_stage_transform(
+                    stages_by_name["hmrc_cgt_gains_spine"],
+                    sources["hmrc_cgt"],
+                )
             )
         if "salary_sacrifice" in stage_names:
             implementations["salary_sacrifice"] = UKSalarySacrificeStageTransform(
@@ -1054,11 +1201,12 @@ def main(argv: list[str] | None = None) -> int:
             implementations["age_tail"] = UKAgeTailStageTransform(
                 stage=stages_by_name["age_tail"]
             )
-        plan = country_stage_plan(
-            spec,
-            implementations,
-            stage_names=stage_names,
+        sampled_root = _SampledGraphRootTransform(
+            implementations["frs_spine"],
+            fraction=args.sample_fraction,
+            seed=args.sample_seed,
         )
+        implementations["frs_spine"] = sampled_root
         spine_gate_path = _spine_gate_report_path(args.spine_h5)
         spine_gate_manifest = _spine_gate_manifest_from_spec(spec)
         spine_battery = (
@@ -1072,17 +1220,70 @@ def main(argv: list[str] | None = None) -> int:
             if spine_gate_manifest is not None
             else None
         )
-        frame, records, sampling = _run_plan_with_spine_sampling(
-            plan,
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            spine_battery=spine_battery,
-            stage_evidence_provider=lambda executed: _collect_stage_evidence(
-                stage_names=executed,
-                implementations=implementations,
-            ),
-            gate_artifacts={"rules_engine": engine},
+        checkpoint_root = (
+            args.checkpoint_dir
+            if args.checkpoint_dir is not None
+            else args.spine_h5.parent / f".{args.spine_h5.stem}.checkpoints"
         )
+        graph_sources = {"frs": args.frs_raw_dir}
+        if "was_wealth" in stage_names or "lcfs_consumption" in stage_names:
+            graph_sources["was"] = args.was_tab
+        if "lcfs_consumption" in stage_names:
+            graph_sources["lcfs_household"] = args.lcfs_hh_tab
+            graph_sources["lcfs_person"] = args.lcfs_person_tab
+        if "etb_vat" in stage_names or "etb_services" in stage_names:
+            graph_sources["etb"] = args.etb_tab
+        if "hmrc_spi_income_spine" in stage_names:
+            graph_sources["spi"] = args.spi_tab
+            graph_sources["hmrc_income"] = args.hmrc_ods
+        if "hmrc_cgt_gains_spine" in stage_names:
+            graph_sources["hmrc_cgt"] = args.cgt_ods
+        graph_store = ContentStore(checkpoint_root / "node-graph")
+        graph_manifest = run_graph(
+            compiled_graph,
+            sources=graph_sources,
+            store=graph_store,
+            kernels=uk_registry(implementations, graph=graph),
+            resume="forbid",
+            decisions=(),
+        )
+        final_version = compiled_graph.versions[compiled_graph.order[-1]]
+        frame = graph_manifest.population(final_version)
+        records = _graph_stage_records(
+            manifest=graph_manifest,
+            store=graph_store,
+            stages=stages,
+        )
+        sampling = sampled_root.sampling
+        if spine_battery is not None:
+            if UK_SPINE_ASSEMBLED_FINAL_STAGE not in stage_names:
+                raise RuntimeError(
+                    "spine battery is armed but the graph has no assembled "
+                    f"boundary stage {UK_SPINE_ASSEMBLED_FINAL_STAGE!r}."
+                )
+            assembled_index = stage_names.index(UK_SPINE_ASSEMBLED_FINAL_STAGE) + 1
+            assembled_version = compiled_graph.versions[UK_SPINE_ASSEMBLED_FINAL_STAGE]
+            _run_spine_gate_phase(
+                spine_battery,
+                "assembled",
+                frame=graph_manifest.population(assembled_version),
+                stage_evidence=_collect_stage_evidence(
+                    stage_names=stage_names[:assembled_index],
+                    implementations=implementations,
+                ),
+                gate_artifacts={"rules_engine": engine},
+            )
+            if assembled_index < len(stage_names):
+                _run_spine_gate_phase(
+                    spine_battery,
+                    "transferred",
+                    frame=frame,
+                    stage_evidence=_collect_stage_evidence(
+                        stage_names=stage_names,
+                        implementations=implementations,
+                    ),
+                    gate_artifacts={"rules_engine": engine},
+                )
         if spine_battery is not None:
             append_phase(state, "spine_gates_evaluated")
         append_phase(state, "spine_built")
@@ -1128,13 +1329,13 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         stage_evidence = _collect_stage_evidence(
-            stage_names=_STAGE_NAMES,
+            stage_names=stage_names,
             implementations=implementations,
         )
         if stage_evidence:
             sidecar["stage_evidence"] = stage_evidence
         fit_weight_records = _collect_fit_weight_records(
-            stage_names=_STAGE_NAMES,
+            stage_names=stage_names,
             implementations=implementations,
         )
         if fit_weight_records:
@@ -1194,10 +1395,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
         return 0
     except Exception as error:
-        if (
-            isinstance(error, ValueError)
-            and args.sample_fraction != 1.0
-            and _RUNG_NAMED_EDGE_SIGNATURE in str(error)
+        if args.sample_fraction != 1.0 and _exception_chain_contains(
+            error, _RUNG_NAMED_EDGE_SIGNATURE
         ):
             rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
             receipt = _rung_abort_receipt(args, error=error)
