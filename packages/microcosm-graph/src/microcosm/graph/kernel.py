@@ -17,7 +17,10 @@ Structural kernels return data, and the executor does the structural work:
 - ``EXPAND`` returns the clone lineage as :attr:`KernelResult.expand` (per
   entity, new ids to the source ids they copy) plus the new weights; the
   executor carries every column from the source rows, records the lineage
-  in the receipt, and records mass.
+  in the receipt, and records mass. A node declared ``entrants=True`` may
+  also add rows with null lineage; the kernel then materializes their
+  columns, and for entrant persons their stratum through
+  :attr:`KernelResult.strata` (amendments 11 and 14).
 - ``REWEIGHT`` (and any node with a declared weight transition) returns
   :attr:`KernelResult.weights`; the executor validates the kind transition
   and the mass policy.
@@ -238,6 +241,10 @@ class KernelResult:
             ``weights``.
         weights: ``REWEIGHT`` kernels and declared weight transitions only:
             the new explicit weights of the transition's entity.
+        strata: ``EXPAND`` kernels on a node with ``entrants=True`` only: the
+            stratum label of every entrant person, indexed by its new id.
+            Copied persons inherit their source's stratum and must not
+            appear here; an entrant person absent from it rejects the node.
         artifacts: Opaque bytes stored beside the node's outputs (a fitted
             model, a diagnostic table), keyed by name.
         receipt: Descriptive facts for the manifest. Never hashed into a
@@ -252,6 +259,7 @@ class KernelResult:
     keep: pd.Series | None = None
     expand: Mapping[str, pd.Series] | None = None
     weights: Weights | None = None
+    strata: pd.Series | None = None
     artifacts: Mapping[str, bytes] = field(default_factory=dict)
     receipt: Mapping[str, object] = field(default_factory=dict)
 

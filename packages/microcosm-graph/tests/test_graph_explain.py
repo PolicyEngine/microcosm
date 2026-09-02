@@ -172,12 +172,14 @@ def test_page_contains_every_node_and_its_click_detail(explanation) -> None:
 def test_page_contains_every_charter_property(explanation) -> None:
     _run, charter, rendered = explanation
     identifiers = re.findall(r"^\|\s*([A-Z]\d+)\s*\|", charter, re.MULTILINE)
-    assert len(dict.fromkeys(identifiers)) == 44  # 41 + B6, C5, D6 (amendments 11-13)
+    assert (
+        len(dict.fromkeys(identifiers)) == 45
+    )  # 41 + B6, C5, D6, B7 (amendments 11-14)
     for identifier in identifiers:
         assert f"<code>{identifier}</code>" in rendered
     assert "35 green" not in rendered  # V1-V4 are also represented.
     assert "41 green" in rendered
-    assert "3 red" in rendered
+    assert "4 red" in rendered
     assert "<th>Flip PR</th>" in rendered
     assert "Not recorded" in rendered
 
