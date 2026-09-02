@@ -5,9 +5,9 @@ Branch: `acceptance-11-13`
 
 ## State
 
-In progress. B6 is committed; C5 is committed-red-ready and has been proved
-without its marker; D6 remains to implement. This lane owns acceptance tests
-only; runtime modules remain untouched.
+In progress. B6 and C5 are committed; D6 is committed-red-ready and has been
+proved without its marker. Full verification and the final report remain.
+This lane owns acceptance tests only; runtime modules remain untouched.
 
 ## Done
 
@@ -26,8 +26,11 @@ only; runtime modules remain untouched.
 - Added the C5 tolerance-bound producer and reporting gate plus
   `test_c5_tolerance_is_declared`. The declaration refusals are green, the
   marked test xfails, and `--runxfail` reaches the missing receipt tolerance.
+- Added `test_d6_mass_is_partitioned` with a temporary int64 period source,
+  partition-specific conserve refusal, and independently computed free-policy
+  ledger expectations. Its green declaration refusal passes; `--runxfail`
+  proves the current rejection omits the required period value.
 
 ## Next
 
-- Add and independently prove the honest RED D6 charter test, then commit it.
 - Run the full requested verification suite and write `out.md`.
