@@ -70,11 +70,15 @@ or `_toy.py` edit is authorized.
   pin positive/negative zero equivalence, corrupt a real stored capability
   block, and prove a PARAM-seeded fit.qrf entry cannot satisfy the
   EXECUTOR-seeded kernel despite their intentionally equal implementation hashes.
+- Finding 4 implemented: `KernelContext.tolerances` now covers the union of
+  explicit input coordinates and rewrite-output incumbents, resolving rewrites
+  against the structural input version. A two-case regression covers both an
+  implicit rewrite incumbent and the same coordinate explicitly declared.
 
 ## Next
 
-- Implement findings 4, 6, and 7 plus all follow-ups, committing each coherent
-  finding separately and keeping this journal current.
+- Implement findings 6 and 7 plus the remaining follow-ups, committing each
+  coherent finding separately and keeping this journal current.
 - Run every requested verification command and copy its exact summary lines
   into `/private/tmp/microcosm-fix-851/out.md`.
 

@@ -522,7 +522,7 @@ def _input_tolerances(
     node_id: str,
     kernels: KernelRegistry,
 ) -> Mapping[tuple[str, str], Tolerance | None]:
-    """Resolve each declared input exactly like compilation and node keys do."""
+    """Resolve explicit inputs and rewrite incumbents as compilation does."""
 
     node = compiled.graph.node(node_id)
     if node.structural is StructuralDelta.CREATE:
@@ -536,19 +536,22 @@ def _input_tolerances(
     rewritten = {
         (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
     }
+    coordinates = rewritten | {
+        (slice_.entity, column) for slice_ in node.inputs for column in slice_.columns
+    }
     resolved: dict[tuple[str, str], Tolerance | None] = {}
-    for slice_ in node.inputs:
-        for column in slice_.columns:
-            coordinate = (slice_.entity, column)
-            owner_id = (
-                input_version
-                if coordinate in rewritten
-                else compiled.owners.get(
-                    (input_version, slice_.entity, column), input_version
-                )
+    for coordinate in sorted(coordinates):
+        entity, column = coordinate
+        owner_id = (
+            input_version
+            if coordinate in rewritten
+            else compiled.owners.get(
+                (input_version, entity, column),
+                input_version,
             )
-            owner = compiled.graph.node(owner_id)
-            resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
+        )
+        owner = compiled.graph.node(owner_id)
+        resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
     return MappingProxyType(resolved)
 
 

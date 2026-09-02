@@ -32,6 +32,8 @@ from microcosm.graph.kernel import (
     KernelRegistry,
     KernelResult,
     KernelRole,
+    Numeric,
+    Tolerance,
 )
 from microcosm.graph.manifest import Decision
 from microcosm.graph.store import (
@@ -668,10 +670,13 @@ def test_output_entity_receives_only_its_structural_id_view(tmp_path: Path) -> N
     )
 
 
+@pytest.mark.parametrize("explicit_rewrite_input", [False, True])
 def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
     tmp_path: Path,
+    explicit_rewrite_input: bool,
 ) -> None:
     source = _source_path(tmp_path / "source")
+    boundary_tolerance = Tolerance(atol=1e-6)
 
     def keep_all(context: KernelContext) -> KernelResult:
         person = context.tables["person"]
@@ -687,6 +692,11 @@ def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
             "age",
             "income",
         }
+        assert context.tolerances == {
+            ("person", "age"): boundary_tolerance,
+            ("person", "income"): boundary_tolerance,
+        }
+
         return KernelResult(
             columns={
                 ("person", "income"): pd.Series(
@@ -707,7 +717,9 @@ def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
     rewriter = Node(
         "rewrite_income",
         "rewrite.income@1",
-        inputs=(Slice("person", ("age",)),),
+        inputs=(
+            Slice("person", ("age", "income") if explicit_rewrite_input else ("age",)),
+        ),
         outputs=(Owned("person", "income", "float64", rewrite=True),),
         population=boundary.id,
     )
@@ -715,7 +727,12 @@ def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
     registry.register(
         _Kernel(
             boundary.kernel,
-            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER),
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                numeric=Numeric.TOLERANCE_BOUND,
+                structural=StructuralDelta.FILTER,
+                tolerance=boundary_tolerance,
+            ),
             keep_all,
         )
     )
@@ -730,7 +747,7 @@ def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
     manifest = _run(
         Graph("toy", (SOURCE,), (CREATE, boundary, rewriter)),
         source,
-        ContentStore(tmp_path / "store"),
+        ContentStore(tmp_path / f"store-{explicit_rewrite_input}"),
         registry,
     )
 
