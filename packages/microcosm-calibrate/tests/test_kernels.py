@@ -62,16 +62,20 @@ def _node(
     transition_mass: str = "conserve",
     parameter_mass: str = "conserve",
 ) -> Node:
+    # A weight transition is a structural REWEIGHT node (interface amendment 6).
     return Node(
         id="calibrate",
         kernel="calibrate.adam@1",
         inputs=(Slice("household", ("income", "eligible")),),
         params={**SOLVER_PARAMS, "mass": parameter_mass},
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition(
             "household",
             to_kind,
             mass=transition_mass,
         ),
+        mass=transition_mass,
     )
 
 
@@ -144,6 +148,9 @@ def test_calibrate_adam_preserves_none_standard_error_unchanged() -> None:
         inputs=node.inputs,
         params=params,
         weights=node.weights,
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        mass=node.mass,
     )
 
     result = CALIBRATE_ADAM.run(_context(frame, node))
@@ -200,6 +207,9 @@ def test_calibrate_adam_rejects_unknown_params_and_invalid_standard_errors() -> 
         inputs=node.inputs,
         params=unknown_params,
         weights=node.weights,
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        mass=node.mass,
     )
     with pytest.raises(ValueError, match="unknown parameter"):
         CALIBRATE_ADAM.run(_context(frame, unknown_node))
@@ -212,6 +222,9 @@ def test_calibrate_adam_rejects_unknown_params_and_invalid_standard_errors() -> 
         inputs=node.inputs,
         params=invalid_params,
         weights=node.weights,
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        mass=node.mass,
     )
     with pytest.raises(ValueError, match="standard error must be positive"):
         CALIBRATE_ADAM.run(_context(frame, invalid_node))
