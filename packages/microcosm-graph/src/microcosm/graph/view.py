@@ -91,6 +91,16 @@ def describe(
             'Seed: int.from_bytes(sha256(b"seed\\0" + node_key)[:8], "little")'
         )
     else:
+        tolerance = run_receipt.capabilities.tolerance
+        tolerance_text = canonical_json(
+            None
+            if tolerance is None
+            else {
+                "rtol": tolerance.rtol,
+                "atol": tolerance.atol,
+                "ulps": tolerance.ulps,
+            }
+        ).decode("utf-8")
         lines.extend(
             [
                 'Seed: int.from_bytes(sha256(b"seed\\0" + node_key)[:8], '
@@ -102,7 +112,8 @@ def describe(
                 f"numeric={_value(run_receipt.capabilities.numeric)}, "
                 f"seed={_value(run_receipt.capabilities.seed_source)}, "
                 f"structural={_value(run_receipt.capabilities.structural)}, "
-                f"consumes_se={run_receipt.capabilities.consumes_se}",
+                f"consumes_se={run_receipt.capabilities.consumes_se}, "
+                f"tolerance={tolerance_text}",
                 "Receipt: " + canonical_json(run_receipt.receipt).decode("utf-8"),
             ]
         )

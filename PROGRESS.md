@@ -30,11 +30,16 @@ in scope.
   provide their mandatory non-null `Frame.strata`; group entrants are fully
   supported, including copied people assigned to entrant groups. This frozen
   interface limitation will be reported in `out.md`.
+- Implemented C5 tolerance propagation: capability receipts and explorer
+  payloads always encode exact `rtol`/`atol`/`ulps` or null, kernel contexts
+  receive immutable tolerance maps resolved with the same owner rule as node
+  keys, and manifest save/load reconstructs the declared `Tolerance` without a
+  schema bump. The C5 acceptance, manifest, view, and explain checks report
+  `39 passed in 3.35s`.
 
 ## Next
 
-- Implement and commit C5 tolerance propagation and D6 partitioned mass as
-  separate coherent steps.
+- Implement and commit D6 partitioned mass accounting and receipts.
 - Measure fit.qrf H1 arm64/x86_64 drift, choose a documented tolerance margin,
   run the full verification matrix, and write `out.md`.
 

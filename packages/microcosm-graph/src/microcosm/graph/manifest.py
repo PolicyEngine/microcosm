@@ -14,7 +14,14 @@ from typing import TYPE_CHECKING, Self
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
-from .kernel import Capabilities, Determinism, KernelRole, Numeric, SeedSource
+from .kernel import (
+    Capabilities,
+    Determinism,
+    KernelRole,
+    Numeric,
+    SeedSource,
+    Tolerance,
+)
 from .population import MassRecord
 
 if TYPE_CHECKING:
@@ -74,6 +81,16 @@ def _freeze_json(value: object) -> object:
 
 def _enum_value(value: object) -> object:
     return value.value if isinstance(value, Enum) else value
+
+
+def _tolerance_payload(tolerance: Tolerance | None) -> dict[str, object] | None:
+    if tolerance is None:
+        return None
+    return {
+        "rtol": tolerance.rtol,
+        "atol": tolerance.atol,
+        "ulps": tolerance.ulps,
+    }
 
 
 @dataclass(frozen=True)
@@ -262,6 +279,7 @@ class NodeReceipt:
                 "role": _enum_value(capabilities.role),
                 "consumes_se": capabilities.consumes_se,
                 "dependencies": capabilities.dependencies,
+                "tolerance": _tolerance_payload(capabilities.tolerance),
             },
             "receipt": self.receipt,
             "artifacts": tuple(
@@ -711,6 +729,35 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         raise ValueError("capabilities.dependencies must be an array")
     if not all(isinstance(item, str) for item in dependencies):
         raise ValueError("capabilities.dependencies must contain strings")
+    raw_tolerance = value.get("tolerance")
+    if raw_tolerance is None:
+        tolerance = None
+    else:
+        if not isinstance(raw_tolerance, Mapping) or set(raw_tolerance) != {
+            "rtol",
+            "atol",
+            "ulps",
+        }:
+            raise ValueError(
+                "capabilities.tolerance must be null or an object containing "
+                "rtol, atol, and ulps"
+            )
+        rtol = raw_tolerance["rtol"]
+        atol = raw_tolerance["atol"]
+        ulps = raw_tolerance["ulps"]
+        if (
+            isinstance(rtol, bool)
+            or not isinstance(rtol, int | float)
+            or isinstance(atol, bool)
+            or not isinstance(atol, int | float)
+            or isinstance(ulps, bool)
+            or not isinstance(ulps, int)
+        ):
+            raise ValueError(
+                "capabilities.tolerance rtol/atol must be numeric and ulps "
+                "must be an integer"
+            )
+        tolerance = Tolerance(rtol=float(rtol), atol=float(atol), ulps=ulps)
     return Capabilities(
         determinism=Determinism(_string_field(value, "determinism")),
         numeric=Numeric(_string_field(value, "numeric")),
@@ -719,6 +766,7 @@ def _capabilities_from_payload(value: object) -> Capabilities:
         role=KernelRole(str(value.get("role", KernelRole.COMPUTE.value))),
         consumes_se=consumes_se,
         dependencies=tuple(dependencies),
+        tolerance=tolerance,
     )
 
 

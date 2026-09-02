@@ -34,6 +34,7 @@ from .kernel import (
     KernelRegistry,
     KernelResult,
     KernelRole,
+    Tolerance,
 )
 from .keys import (
     artifact_key,
@@ -81,6 +82,7 @@ def _opaque_artifact_key(key: str, name: str) -> str:
 
 
 def _capabilities_payload(capabilities: Capabilities) -> dict[str, object]:
+    tolerance = capabilities.tolerance
     return {
         "determinism": capabilities.determinism.value,
         "numeric": capabilities.numeric.value,
@@ -89,6 +91,15 @@ def _capabilities_payload(capabilities: Capabilities) -> dict[str, object]:
         "role": capabilities.role.value,
         "consumes_se": capabilities.consumes_se,
         "dependencies": list(capabilities.dependencies),
+        "tolerance": (
+            None
+            if tolerance is None
+            else {
+                "rtol": tolerance.rtol,
+                "atol": tolerance.atol,
+                "ulps": tolerance.ulps,
+            }
+        ),
     }
 
 
@@ -400,6 +411,7 @@ def _project_context(
     *,
     key: str,
     sources: Mapping[str, Path],
+    tolerances: Mapping[tuple[str, str], Tolerance | None],
 ) -> KernelContext:
     if population is None:
         return KernelContext(
@@ -410,6 +422,7 @@ def _project_context(
             params=node.params,
             rng=np.random.default_rng(seed(key)),
             sources=MappingProxyType({name: sources[name] for name in node.sources}),
+            tolerances=tolerances,
         )
 
     frame = population.frame
@@ -519,7 +532,36 @@ def _project_context(
         params=node.params,
         rng=np.random.default_rng(seed(key)),
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
+        tolerances=tolerances,
     )
+
+
+def _input_tolerances(
+    compiled: CompiledGraph,
+    node_id: str,
+    kernels: KernelRegistry,
+) -> Mapping[tuple[str, str], Tolerance | None]:
+    """Resolve each declared input exactly like compilation and node keys do."""
+
+    node = compiled.graph.node(node_id)
+    if node.structural is StructuralDelta.CREATE:
+        return MappingProxyType({})
+    input_version = (
+        compiled.versions[node_id]
+        if node.structural is StructuralDelta.NONE
+        else node.base
+    )
+    assert input_version is not None
+    resolved: dict[tuple[str, str], Tolerance | None] = {}
+    for slice_ in node.inputs:
+        for column in slice_.columns:
+            coordinate = (slice_.entity, column)
+            owner_id = compiled.owners.get(
+                (input_version, slice_.entity, column), input_version
+            )
+            owner = compiled.graph.node(owner_id)
+            resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
+    return MappingProxyType(resolved)
 
 
 def _validate_series(
@@ -1424,7 +1466,13 @@ def run_graph(
                     raise
 
         if result is None:
-            context = _project_context(node, incumbent, key=key, sources=source_paths)
+            context = _project_context(
+                node,
+                incumbent,
+                key=key,
+                sources=source_paths,
+                tolerances=_input_tolerances(compiled, node_id, kernels),
+            )
             before = _context_digest(context)
             try:
                 result = kernel.run(context)

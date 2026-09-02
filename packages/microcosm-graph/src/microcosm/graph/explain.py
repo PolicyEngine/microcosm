@@ -460,6 +460,7 @@ def _render_graph(
 
 def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
     capabilities = receipt.capabilities
+    tolerance = capabilities.tolerance
     return {
         "determinism": _value(capabilities.determinism),
         "numeric": _value(capabilities.numeric),
@@ -468,6 +469,15 @@ def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
         "role": _value(capabilities.role),
         "consumes_se": capabilities.consumes_se,
         "dependencies": capabilities.dependencies,
+        "tolerance": (
+            None
+            if tolerance is None
+            else {
+                "rtol": tolerance.rtol,
+                "atol": tolerance.atol,
+                "ulps": tolerance.ulps,
+            }
+        ),
     }
 
 
