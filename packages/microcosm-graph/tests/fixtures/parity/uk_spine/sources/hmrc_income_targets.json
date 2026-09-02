@@ -1,0 +1,2100 @@
+{
+  "source": {
+    "build_period": "2024",
+    "local_path": "synthetic-hmrc.ods",
+    "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+    "ods_url": "https://example.test/hmrc.ods",
+    "publication_url": "https://example.test/hmrc",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size_bytes": 0,
+    "source_tax_year": "2023-24",
+    "source_tax_year_start": 2023,
+    "source_vintage": "2023-24 synthetic",
+    "table_names": [
+      "Table_3_6",
+      "Table_3_7"
+    ]
+  },
+  "targets": [
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/12570",
+      "period": "2024",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/15000",
+      "period": "2024",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/20000",
+      "period": "2024",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/30000",
+      "period": "2024",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/40000",
+      "period": "2024",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/50000",
+      "period": "2024",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/70000",
+      "period": "2024",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/100000",
+      "period": "2024",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/150000",
+      "period": "2024",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/200000",
+      "period": "2024",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/300000",
+      "period": "2024",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/500000",
+      "period": "2024",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "count",
+      "name": "synthetic/employment_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "employment_income",
+      "measure": "amount",
+      "name": "synthetic/employment_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "count",
+      "name": "synthetic/self_employment_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "self_employment_income",
+      "measure": "amount",
+      "name": "synthetic/self_employment_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "count",
+      "name": "synthetic/state_pension/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "state_pension",
+      "measure": "amount",
+      "name": "synthetic/state_pension/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "count",
+      "name": "synthetic/private_pension_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "private_pension_income",
+      "measure": "amount",
+      "name": "synthetic/private_pension_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "count",
+      "name": "synthetic/property_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "property_income",
+      "measure": "amount",
+      "name": "synthetic/property_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "count",
+      "name": "synthetic/savings_interest_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "savings_interest_income",
+      "measure": "amount",
+      "name": "synthetic/savings_interest_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "count",
+      "name": "synthetic/dividend_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "dividend_income",
+      "measure": "amount",
+      "name": "synthetic/dividend_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "count",
+      "name": "synthetic/other_investment_income/count/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people",
+      "value": 1000.0
+    },
+    {
+      "component": "other_investment_income",
+      "measure": "amount",
+      "name": "synthetic/other_investment_income/amount/1000000",
+      "period": "2024",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP",
+      "value": 1000000.0
+    }
+  ]
+}

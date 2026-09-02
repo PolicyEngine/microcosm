@@ -171,7 +171,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         {
             ("person", "person_support_channel"),
             ("person", "universal_credit_reported"),
+            ("benunit", "benunit_support_channel"),
+            ("benunit", "dependent_children"),
             ("benunit", "frs_benunit_capital"),
+            ("benunit", "is_married"),
             ("benunit", "would_claim_uc"),
         }
     ),
@@ -185,6 +188,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "self_employment_income",
             "savings_interest_income",
             "dividend_income",
+            "miscellaneous_income",
             "private_pension_income",
             "property_income",
             "state_pension_reported",
@@ -198,6 +202,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "student_loans"),
             ("person", "student_loan_repayments"),
             ("person", "current_education"),
+            ("person", "highest_education"),
             ("household", "region"),
         }
     ),
@@ -490,19 +495,19 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
     ),
     "spi_support_channel": (
-        _Cell("household", "household_is_spi_synthetic", "bool"),
+        _Cell("person", "person_source_id", "int64"),
         _Cell("person", "person_support_channel", "string"),
         _Cell("person", "person_support_clone_index", "int64"),
-        _Cell("person", "person_source_id", "int64"),
+        _Cell("benunit", "benunit_source_id", "int64"),
         _Cell("benunit", "benunit_support_channel", "string"),
         _Cell("benunit", "benunit_support_clone_index", "int64"),
-        _Cell("benunit", "benunit_source_id", "int64"),
-        _Cell("household", "household_support_channel", "string"),
-        _Cell("household", "household_support_clone_index", "int64"),
-        _Cell("household", "household_source_id", "int64"),
         _Cell("household", "source_household_id", "int64"),
         _Cell("household", "source_year", "int64"),
         _Cell("household", "source_household_key", "string"),
+        _Cell("household", "household_source_id", "int64"),
+        _Cell("household", "household_support_channel", "string"),
+        _Cell("household", "household_support_clone_index", "int64"),
+        _Cell("household", "household_is_spi_synthetic", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
     "uc_capital_coherence": (
@@ -531,9 +536,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
 }
 
 _HMRC_SPI_FLOAT_COLUMNS = (
-    "other_investment_income",
-    "gift_aid",
     "charitable_investment_gifts",
+    "gift_aid",
+    "other_investment_income",
     "hmrc_spi_employment_benefits",
     "hmrc_spi_employment_expenses",
     "hmrc_spi_other_social_security_income",
