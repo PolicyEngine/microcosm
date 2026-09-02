@@ -4,6 +4,15 @@ Branch `chronicle-dual-accept`. Journal for this lane. Root journals are
 history, not state (see CLAUDE.md); this one is current only while the branch
 is open.
 
+> **Corrected 2026-09-02 by the round-2 review pass.** Several identity and
+> design claims below were accurate to the first pass and are wrong now. The
+> accepted artifact set is three ids, not two; the chronicle-era successor of
+> the artifact id is `.v3`; epoch resolution is a declared registry, not
+> namespace parsing; and the env half is `LOGBOOK_*`, not `CHRONICLE_*`. Each
+> is annotated in place below. See `PROGRESS-chronicle-dual-accept-round2.md`
+> and the PR's "Review fixes (round 2)" section for what is actually in the
+> branch.
+
 ## Goal
 
 Microcosm must accept BOTH ledger-era and chronicle-era Chronicle identities
@@ -12,10 +21,24 @@ Microcosm must accept BOTH ledger-era and chronicle-era Chronicle identities
 - schema ids: `policyengine_ledger.consumer_artifact.v1` **and**
   `policyengine_chronicle.consumer_artifact.v2`; `ledger.consumer_fact.v1`
   **and** `chronicle.consumer_fact.v2`
+
+  *(Corrected 2026-09-02: wrong at both ends. Chronicle's `main` emits
+  `policyengine_ledger.consumer_artifact.v2` today, so that pair rejected
+  every artifact Chronicle publishes; and the chronicle-era successor of the
+  v2 id is `policyengine_chronicle.consumer_artifact.v3`. The branch now
+  accepts all three.)*
 - hash domains: `ledger.<x>.v2` **and** `chronicle.<x>.v3` (same canonical
   payload, new domain string)
+
+  *(Corrected 2026-09-02: the version numbers differ by family. The
+  source-side domains are ledger `v1` → chronicle `v2`; only the derived
+  families are `v2` → `v3`.)*
 - env names: `CHRONICLE_*` preferred, legacy honored with a once-per-process
   deprecation warning
+
+  *(Corrected on the PR before merge, and again here: these are the
+  **Logbook** store's credentials, so the preferred spellings are
+  `LOGBOOK_*`. See the PR review comment of 2026-09-01.)*
 
 Frozen (microcosm#639): nothing on disk or in artifacts renames. Diagnostic
 field names (`ledger_aggregate_fact_key`, `ledger_commit`), H5 attrs,
@@ -36,8 +59,19 @@ in the lane's report. PR #849, open, do not merge.
   lookup in a frozen domain list, because chronicle#143 declares the `v3`
   spelling only for the aggregate and semantic fact families. Only identity
   strings the spec names explicitly are pinned as literals.
+
+  *(Corrected 2026-09-02: structural detection reported
+  `chronicle.<anything>.vN` as Chronicle-**issued** identity, which is a
+  guess dressed as a witness. Resolution is now a declared registry keyed by
+  `(namespace, family, version)`; an undeclared spelling in a Chronicle
+  namespace is reported as `undeclared`. The claim that chronicle#143
+  "declares the `v3` spelling" for two families also overstated the issue,
+  which lists `dual-hash window or v3 domains` as open options.)*
 - `microcosm/build/chronicle_env.py` — the env dual-read window, one helper,
   one `DeprecationWarning` per process per legacy name.
+
+  *(Renamed before merge to `microcosm/build/logbook_env.py`; there is no
+  `chronicle_env.py` on the branch.)*
 - `ledger_artifact.py` — the manifest `schema_version` is a membership test
   over both eras; per-row schema ids and fact keys are carried as published;
   `provenance()` records the observed manifest id, `schema_epoch`,
