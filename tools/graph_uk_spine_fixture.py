@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the hermetic charter-H2 UK spine parity fixture.
 
-The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 26
+The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 27
 stages are the current production transform classes.  Private source files
 are replaced only through their supported parsed-input seams.  The bundle's
 ``fixture.json`` is deliberately data-only so the graph's unbound UK registry
@@ -99,6 +99,9 @@ from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.uc_reporter_redraw import (
+    UKUCReporterRedrawStageTransform,
+)
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -118,10 +121,13 @@ _ROOT_HOUSEHOLDS = 135
 _DONOR_ROWS = 64
 _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
+#: The packaged FRS spine roster the fixture exercises (manifest minus the
+#: certified-pair exclusions); moves whenever a spine stage is added.
+UK_FIXTURE_STAGE_COUNT = 27
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 26-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 27-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -836,8 +842,10 @@ def _fixture_stages(
                 n_estimators=_QRF_ESTIMATORS,
             )
         stages.append(stage)
-    if len(stages) != 26:
-        raise RuntimeError(f"Expected 26 UK fixture stages, got {len(stages)}.")
+    if len(stages) != UK_FIXTURE_STAGE_COUNT:
+        raise RuntimeError(
+            f"Expected {UK_FIXTURE_STAGE_COUNT} UK fixture stages, got {len(stages)}."
+        )
     return tuple(stages)
 
 
@@ -1057,6 +1065,9 @@ def _build_implementations(
             donor_table=spi_donor,
             source_targets=income_targets,
         ),
+        "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
+            stage=stages["uc_reporter_redraw"], engine=engine
+        ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
@@ -1087,7 +1098,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 26-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 27-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1112,7 +1123,7 @@ def _run_legacy_plan(
     expected_stage_names = tuple(stage.stage for stage in stages)
     if tuple(record.stage for record in records) != expected_stage_names:
         raise RuntimeError(
-            "The legacy fixture StagePlan did not execute all 26 stages."
+            f"The legacy fixture StagePlan did not execute all {UK_FIXTURE_STAGE_COUNT} stages."
         )
     return final
 

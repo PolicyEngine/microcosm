@@ -97,7 +97,7 @@ class TestCommittedRegister:
         assert register.differences
         assert register.scope_note
 
-    def test_uc_capital_entries_pin_new_exports_and_monotone_claim_lift(self) -> None:
+    def test_uc_capital_entries_pin_new_exports_and_retired_claim_lift(self) -> None:
         register = load_uk_spine_swap_signed_differences()
 
         for column, identifier in {
@@ -113,28 +113,47 @@ class TestCommittedRegister:
             assert entry is not None
             assert entry.id == identifier
 
-        claim = register.matching(
-            surface="nonzero_shares",
-            column="would_claim_uc",
-            expectation="column_differs",
-            entity="benunit",
+        # Retired 2026-09-02 on the spine-m actuals (Part F of the #832
+        # receipts): the reporter redraw's demotions outweigh #828's OR-refresh
+        # lift, leaving would_claim_uc 0.001951 below the incumbent — inside the
+        # whole-spine acceptance band, where the register's doctrine signs
+        # nothing. An unsigned would_claim_uc divergence is a defect again.
+        assert (
+            register.matching(
+                surface="nonzero_shares",
+                column="would_claim_uc",
+                expectation="column_differs",
+                entity="benunit",
+            )
+            is None
         )
-        assert claim is not None
-        assert claim.id == "uc-reporter-claim-refresh-lift"
-        assert claim.quantitative == {
+
+        reporter = register.matching(
+            surface="nonzero_shares",
+            column="universal_credit_reported",
+            expectation="column_differs",
+            entity="person",
+        )
+        assert reporter is not None
+        assert reporter.id == "uc-reporter-benefit-unit-redraw-incidence"
+        assert reporter.quantitative == {
             "shares": {
-                "would_claim_uc": {
-                    "incumbent_share": 0.550692,
-                    "direction": "candidate_above",
-                    "max_abs_delta": 0.0367,
+                "universal_credit_reported": {
+                    "incumbent_share": 0.057359,
+                    "direction": "candidate_below",
+                    "max_abs_delta": 0.0184,
                 }
             },
             "magnitude_provenance": (
-                "I1 pre-change receipts, committed as "
-                "experiments/828-uc-capital-receipts.md (Part B; raw JSON "
-                "licensed-side in data/ukds/acceptance/828-uc-capital/); "
-                "2,245 SPI-channel false "
-                "reporters divided by 61,211 benunits, rounded up at 1e-4 grain."
+                "I1 dry-run bound from "
+                "experiments/832-uc-reporter-receipts.md Part C: 4,428 "
+                "unchanged base-channel reporter persons plus between zero "
+                "and 3,299 one-person SPI reporter landings among 113,649 "
+                "people implies share in [0.038962, 0.067990]. I5 actual "
+                "(Part F, spine-m): 5,730 nonzero reporter records, share "
+                "0.050418, delta 0.006941 below the incumbent, inside the "
+                "signed 0.0184 floor-distance; the above side of the structural "
+                "range is unreached by the built artifact."
             ),
         }
 

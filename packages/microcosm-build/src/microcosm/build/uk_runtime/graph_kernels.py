@@ -80,6 +80,7 @@ _STAGE_MODULES = {
     "frs_hmrc_spine_leaves": "frs_hmrc_leaves",
     "spi_support_channel": "spi_spine",
     "hmrc_spi_income_spine": "spi_spine",
+    "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_band_donors": "cgt_structure",
@@ -338,6 +339,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .student_loans import UKStudentLoansStageTransform
     from .take_up_contract import load_uk_take_up_contract
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
+    from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
     from .was_wealth import UKWASWealthStageTransform
 
     descriptor, stages = _fixture_descriptor(source)
@@ -445,6 +447,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 sampled_rung=True,
                 donor_table=spi_donor,
                 source_targets=income_targets,
+            ),
+            "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
+                stage=stages["uc_reporter_redraw"], engine=engine
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]

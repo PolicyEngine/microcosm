@@ -2686,6 +2686,76 @@
       "stage": "uc_capital_coherence",
       "survey": "Family Resources Survey 2024-25"
     },
+    "uc_reporter_redraw": {
+      "artifacts": [],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses.",
+      "operations": [
+        {
+          "derived": {
+            "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member",
+            "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
+            "positive_pre_takeup_uc_award": "max(0, uc_maximum_amount - uc_income_reduction) > 0",
+            "uc_reported_capital": "frs_benunit_capital"
+          },
+          "kind": "derive"
+        },
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "uc_maximum_amount",
+            "uc_income_reduction",
+            "is_child_or_qualifying_young_person_for_universal_credit",
+            "is_SP_age"
+          ]
+        },
+        {
+          "aggregates": {
+            "uc_child_count": "is_child_or_qualifying_young_person_for_universal_credit",
+            "universal_credit_reported_amount": "universal_credit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "sum"
+        },
+        {
+          "categorical_predictors": [
+            "region"
+          ],
+          "fit": "regime_gated_qrf",
+          "kind": "redraw_spi_reported_uc",
+          "landing": "eldest_working_age_adult_lowest_person_id",
+          "output": "universal_credit_reported",
+          "predictors": [
+            "is_married",
+            "uc_child_band",
+            "benunit_employment_income",
+            "benunit_self_employment_income",
+            "claimant_earnings",
+            "partner_earnings",
+            "benunit_investment_income",
+            "claimant_age",
+            "region"
+          ],
+          "rewrite_rows": "spi_channel",
+          "rows": "spi_channel_screened",
+          "screen": "claimable_screen",
+          "seed": 44,
+          "target": "universal_credit_reported_amount",
+          "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
+          "weight_mapping": "household_to_benunit"
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "universal_credit_reported"
+      ],
+      "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
+      "stage": "uc_reporter_redraw",
+      "survey": "Family Resources Survey 2024-25"
+    },
     "was_wealth": {
       "artifacts": [
         {
