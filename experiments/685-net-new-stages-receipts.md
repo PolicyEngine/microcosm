@@ -65,15 +65,15 @@ unweighted binomial band and was refused on one band cell by weight variance
 alone (design effect 1.4 among assigned units), which is why the receipt now
 carries both figures.
 
-### Engine round-trip (policyengine-uk 2.92.1 on twin A; `roundtrip_uc_deductions_twin_a.json`)
+### Engine round-trip (policyengine-uk 2.92.1 on the rebased twin A, main `47c74225` with #835; `roundtrip_uc_deductions_e9r_twin_a.json`)
 
 At 2024 (25% cap) and 2025 (15% cap), row for row across all 61,211 benefit
 units: `uc_has_deduction` equals `would_claim_uc & award > 0 & latent > 0`
 with 0 disagreements; `combination != NONE` iff `latent > 0` with 0
 disagreements; the engine's fallback recomputed from the held draws equals
-the held attributes on every claimant with a positive award (8,423 at 2024,
-8,344 at 2025; rate max abs diff 0.0, 0 combination mismatches); no
-non-claimant carries a positive `uc_deductions`. 24,702 non-claimant units
+the held attributes on every claimant with a positive award (8,303 at 2024,
+8,232 at 2025; rate max abs diff 0.0, 0 combination mismatches); no
+non-claimant carries a positive `uc_deductions`. 24,781 non-claimant units
 carry a positive latent rate, the documented latent semantics.
 
 Per-household statistics among UC recipients (`universal_credit > 0`),
@@ -81,21 +81,22 @@ compared with pe-uk's validation table and DWP:
 
 | Statistic | 2024 | 2025 | pe-uk | DWP |
 |---|---|---|---|---|
-| Mean monthly deduction among deducting | £67.05 | £50.89 | £66 / £50 | £67–68 / £51–54 |
-| At-cap share of recipients | 0.148 | 0.265 | 0.134 / 0.264 | 0.13–0.14 / 0.21 |
-| Above-cap share of recipients | 0.026 | 0.026 | 0.018 | 0.02 |
+| Mean monthly deduction among deducting | £66.81 | £50.66 | £66 / £50 | £67–68 / £51–54 |
+| At-cap share of recipients | 0.145 | 0.263 | 0.134 / 0.264 | 0.13–0.14 / 0.21 |
+| Above-cap share of recipients | 0.027 | 0.027 | 0.018 | 0.02 |
 
 Incidence among recipients must be read on unique rows: CGT clone and
 band-donor households (50.1% of recipient rows) carry the completed
 attributes copied from their source rows and double-count draws. On the
-4,201 (2024) and 4,163 (2025) unique recipient rows the unweighted incidence
-is 0.4875 and 0.4886 against a region-mix expectation of 0.470, z = 2.28 and
-2.40 (within three sigma); the weighted figure is 0.4953 and 0.4968 with a
-design effect of 1.55. The per-unit share over all 30,455 unique benefit
+4,141 (2024) and 4,107 (2025) unique recipient rows the unweighted incidence
+is 0.4844 and 0.4858 against a region-mix expectation of 0.470, z = 1.84 and
+2.00 (within three sigma); the weighted figure is 0.4914 and 0.4929 with a
+design effect of 1.56. The pre-rebase twins (before #835's reporter redraw) gave z = 2.28 and
+2.40 on the same statistic; the six E9 columns are byte-identical between the two runs. The per-unit share over all 30,455 unique benefit
 units is 0.470, as declared.
 
 Reported, not accepted (they scale with the UC caseload gap, #701 and
-uk-data#452): 2.56m weighted deducting benefit units and £1.57bn a year of
+uk-data#452): 2.50m weighted deducting benefit units and £1.52bn a year of
 deductions at 2025.
 
 ### Identity (`verify_uk_identity_stability.py --check e9`, twin A)
@@ -139,17 +140,20 @@ are #789's.
 
 ## Part E — twins, attribution, parity, battery (I5)
 
-- **Twins**: two full licensed builds of the branch (`e9-twin-a`,
-  `e9-twin-b`) are payload-identical (`compare_uk_h5_payload.py`,
-  `payload_identical: true`); both run 27 stages, 113,649 / 61,211 / 52,846
-  rows, household mass 29,247,433.0, and pass the spine battery 15 of 15
-  (`uk_stage_was_wealth_support` now checks 15 columns with zero clipped rows).
-- **Attribution against the control** (main `90293e0a` plus the #844 fixes,
-  built with the same inputs): the only columns present on the twins and not
+- **Twins**: two full licensed builds of the rebased branch (`e9r-twin-a`,
+  `e9r-twin-b`, on main `47c74225` with #835 and #844) are payload-identical
+  (`compare_uk_h5_payload.py`, `payload_identical: true`); both run 28 stages,
+  113,649 / 61,211 / 52,846 rows, household mass 29,247,433.0, and pass the
+  spine battery 15 of 15 (`uk_stage_was_wealth_support` now checks 15 columns
+  with zero clipped rows). The pre-rebase pair (`e9-twin-a`, `e9-twin-b`,
+  27 stages, main `90293e0a` plus the #844 fixes) was payload-identical too,
+  and the six E9 columns are byte-identical across the two pairs.
+- **Attribution against the control** (`control-47c74225`, built from that
+  main with the same inputs): the only columns present on the twins and not
   on the control are the six E9 columns; no common column differs in any
   entity; E5's fourteen columns are byte-equal
-  (`attribution_control_vs_twin_a.json`; the payload tool's per-table
-  `columns_only_right` lists exactly the same six).
+  (`attribution_control47c74225_vs_e9r_twin_a.json`; the payload tool's
+  per-table `columns_only_right` lists exactly the same six).
 - **Strict parity** against the pinned eFRS reference: the twin and the
   control produce the identical set of 15 unsigned beyond-band columns
   (`bus_fare_spending`, `bus_subsidy_spending`, `corporate_wealth`,
