@@ -30,17 +30,25 @@ was needed.
 
 ## New head SHA
 
-**`a5121a1e0c4da8d7767fe8322bc948a957c7c5e7`**, pushed as a fast-forward of
-`origin/chronicle-dual-accept` (no force needed — the branch was reset to the
-exact PR head before new commits were added).
+**`a5121a1e0c4da8d7767fe8322bc948a957c7c5e7`** is the head of the substantive
+code/docs/PR-body correction (all verification below was run against this
+sha). One further commit, `b98edd88`, adds this report file (`out.md`,
+following this repo's established per-task convention — see "out.md history"
+below) on top, making `b98edd88` the actual current branch tip. Both were
+pushed as fast-forwards of `origin/chronicle-dual-accept` (no force needed —
+the branch was reset to the exact PR head before any new commits were added).
 
-Three new commits on top of `4115573c`:
+Three code/docs commits on top of `4115573c` (the original PR head):
 
 1. `061544e1` — Rename the CHRONICLE_* env dual-read window to LOGBOOK_* (module
    rename + all symbol renames + every caller)
 2. `ee73a624` — Reframe the env dual-read window as a Logbook cleanup, not
    chronicle#143 (changelog, README, journal correction note)
 3. `a5121a1e` — Apply ruff import-sort and formatting to the renamed files
+
+Plus the report commit:
+
+4. `b98edd88` — Report the CHRONICLE_* to LOGBOOK_* correction on PR #849 (this file)
 
 ## Files changed (relative to 4115573c)
 
@@ -201,6 +209,15 @@ body.
 - `CHRONICLE_*_BANDS` / `CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT` — real
   Chronicle aliases, correctly still `CHRONICLE_*`.
 - No merge was performed. PR #849 remains open.
+
+## out.md history
+
+Root `out.md` is this repo's established ephemeral per-task report file
+(`git log --all -- out.md` shows dozens of prior merged PRs overwriting it
+with their own final report, same as this one). Its prior content — an
+Armenia country-package report from PR #814, merged 2026-08-28 — remains
+fully recoverable at `git show 305a13ed:out.md` and was not otherwise lost;
+overwriting it here follows the same convention every prior task used.
 
 ## Backup branch
 
