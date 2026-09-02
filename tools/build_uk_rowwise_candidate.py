@@ -30,7 +30,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.frame_sampling import normalize_sampled_household_mass
 from microcosm.build.gate_battery import (
     BlockingMode,
     EvidenceContext,
@@ -113,7 +112,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
-    sample_uk_national_frame,
+    sample_uk_spine_frame,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import MassChangeRecord
@@ -195,29 +194,25 @@ def _sample_candidate_frame(
     fraction: float,
     seed: int,
 ) -> tuple[Any, dict[str, Any]]:
-    """Sample before cloning and receipt the full-mass normalization."""
+    """Sample spine families below f100; keep the full rung untouched."""
 
     pre_count = len(frame.table("household"))
-    full_mass = float(frame.weights_for("household").total)
-    sampled, receipt = sample_uk_national_frame(
+    if fraction == 1.0:
+        return frame, {
+            "fraction": 1.0,
+            "seed": int(seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[fraction],
+            "sampled": False,
+            "pre_household_count": int(pre_count),
+            "post_household_count": int(pre_count),
+        }
+
+    sampled, receipt = sample_uk_spine_frame(
         frame,
         fraction=fraction,
         seed=seed,
     )
-    normalized, factor = normalize_sampled_household_mass(
-        sampled,
-        target_mass=full_mass,
-        source_name="UK spine (rowwise candidate)",
-    )
-    return normalized, {
-        "fraction": float(fraction),
-        "seed": int(seed),
-        "rung_token": UK_SAMPLE_RUNG_TOKENS[fraction],
-        "pre_household_count": int(pre_count),
-        "post_household_count": int(len(normalized.table("household"))),
-        "normalization_factor": float(receipt.get("normalization_factor", factor)),
-        "receipt": dict(receipt),
-    }
+    return sampled, {"sampled": True, **receipt}
 
 
 def _resolve_candidate_engine_surface(

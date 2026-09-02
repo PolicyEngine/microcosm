@@ -175,9 +175,11 @@ def _write_ladder(
 def _write_staging_h5(
     path: Path,
     *,
-    households_per_region: int = 1,
+    households_per_region: int = 3,
     region_masses: tuple[float, float, float, float] = (3.0, 10.0, 10.0, 10.0),
 ) -> None:
+    if households_per_region < 3:
+        raise ValueError("spine fixture needs one raw row and two derivatives")
     region_names = (
         "LONDON",
         "WALES",
@@ -185,6 +187,16 @@ def _write_staging_h5(
         "NORTHERN_IRELAND",
     )
     household_ids = list(range(1, 4 * households_per_region + 1))
+    source_household_ids: list[int] = []
+    support_clone_indices: list[int] = []
+    spi_flags: list[bool] = []
+    for region_index in range(4):
+        first = region_index * households_per_region + 1
+        raw_count = households_per_region - 2
+        source_household_ids.extend(range(first, first + raw_count))
+        source_household_ids.extend([first, first])
+        support_clone_indices.extend([0] * raw_count + [0, 1])
+        spi_flags.extend([False] * raw_count + [True, False])
     household = pd.DataFrame(
         {
             "household_id": household_ids,
@@ -196,9 +208,15 @@ def _write_staging_h5(
             "region": [
                 region for region in region_names for _ in range(households_per_region)
             ],
-            "clone_index": [0] * len(household_ids),
-            "household_is_spi_synthetic": [False] * len(household_ids),
+            "source_household_id": source_household_ids,
+            "source_household_key": [
+                f"2023:{source_id}" for source_id in source_household_ids
+            ],
+            "household_source_id": source_household_ids,
+            "household_support_clone_index": support_clone_indices,
+            "household_is_spi_synthetic": spi_flags,
             "household_is_capital_gains_clone": [False] * len(household_ids),
+            "household_is_cgt_band_donor": [False] * len(household_ids),
         }
     )
     person_ids = [10_000 + household_id for household_id in household_ids]
@@ -239,7 +257,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     input_h5 = tmp_path / "staging.h5"
     ladder_path = tmp_path / "ladder.npz"
     output_dir = tmp_path / "candidate"
-    _write_staging_h5(input_h5, households_per_region=50)
+    _write_staging_h5(input_h5, households_per_region=52)
     ladder = _write_ladder(ladder_path)
     import microcosm.build.uk_runtime.battery_bindings as battery_bindings
 
@@ -311,7 +329,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert candidate_kind is WeightKind.CALIBRATED
     assert candidate_household["source_year"].unique().tolist() == [2023]
     assert len(set(candidate_household["source_household_key"])) == 200
-    assert {"2023:1", "2023:200"} <= set(candidate_household["source_household_key"])
+    assert {"2023:1", "2023:206"} <= set(candidate_household["source_household_key"])
     assert len(candidate_mass_log) == 3
     calibration_records = [
         record
@@ -387,15 +405,15 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         "target_weight_rule": "uniform",
     }
     assert manifest["solve"]["n_targets"] == 4
-    assert manifest["solve"]["n_households"] == 400
+    assert manifest["solve"]["n_households"] == 416
     assert np.isfinite(manifest["solve"]["initial_loss"])
     assert np.isfinite(manifest["solve"]["final_loss"])
     assert np.isfinite(manifest["solve"]["max_abs_relative_error"])
     assert np.isfinite(manifest["solve"]["median_abs_relative_error"])
     assert manifest["solve"]["past_cap"]["n_targets"] == 4
-    assert manifest["support"]["min_assigned_households"] == 100
-    assert manifest["support"]["min_nonzero_households"] == 100
-    assert manifest["support"]["min_effective_sample_size"] == pytest.approx(100.0)
+    assert manifest["support"]["min_assigned_households"] == 104
+    assert manifest["support"]["min_nonzero_households"] == 104
+    assert manifest["support"]["min_effective_sample_size"] == pytest.approx(104.0)
 
     diagnostics = pd.read_csv(output_dir / builder.SOLVE_DIAGNOSTICS_FILENAME)
     support = pd.read_csv(output_dir / builder.AREA_SUPPORT_FILENAME)
@@ -488,6 +506,14 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     captured = capsys.readouterr()
     plan = json.loads(captured.out)
     assert plan["dry_run"] is True
+    assert plan["sampling"] == {
+        "fraction": 1.0,
+        "seed": 578,
+        "rung_token": "f100",
+        "sampled": False,
+        "pre_household_count": 12,
+        "post_household_count": 12,
+    }
     assert plan["bound_target_families"] == ["census_households/constituency"]
     adjudications = plan["binding_adjudications"]
     assert adjudications["register_resource"] == "local_binding_adjudications.json"
@@ -505,10 +531,10 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert cross_grain["groups"] == []
     assert cross_grain["absence"]
     assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
-    assert plan["shapes"]["person"][0] == 8
-    assert plan["shapes"]["benunit"][0] == 8
-    assert plan["shapes"]["household"][0] == 8
-    assert plan["shapes"]["local_matrix"] == [4, 8]
+    assert plan["shapes"]["person"][0] == 24
+    assert plan["shapes"]["benunit"][0] == 24
+    assert plan["shapes"]["household"][0] == 24
+    assert plan["shapes"]["local_matrix"] == [4, 24]
     assert plan["target_count"] == 4
     assert not output_dir.exists()
     assert not (output_dir / "logbook-spool").exists()
@@ -527,13 +553,35 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
     output_dir = tmp_path / "dry-run-output"
     _write_staging_h5(input_h5)
     _write_ladder(ladder_path)
+
+    def compact_sampler_forbidden(*_args, **_kwargs):
+        pytest.fail("rowwise spine path called the certified-compact sampler")
+
     monkeypatch.setattr(
         builder,
         "sample_uk_national_frame",
+        compact_sampler_forbidden,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        builder,
+        "sample_uk_spine_frame",
         lambda frame, **_kwargs: (
             frame,
-            {"normalization_factor": 1.0, "synthetic_fixture": True},
+            {
+                "fraction": 0.01,
+                "seed": 578,
+                "rung_token": "f001",
+                "pre_household_count": 12,
+                "post_household_count": 12,
+                "pre_family_count": 4,
+                "post_family_count": 4,
+                "normalization_factor": 1.0,
+                "strata_count": 4,
+                "receipt": {"synthetic_fixture": True},
+            },
         ),
+        raising=False,
     )
 
     assert (
@@ -588,9 +636,39 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
     plan = json.loads(capsys.readouterr().out)
     assert plan["sampling"]["fraction"] == 0.01
     assert plan["sampling"]["rung_token"] == "f001"
-    assert plan["sampling"]["pre_household_count"] == 4
+    assert plan["sampling"]["pre_household_count"] == 12
     assert plan["sampling"]["post_household_count"] >= 1
     assert plan["sampling"]["normalization_factor"] > 0
+
+
+def test_candidate_f100_does_not_call_any_sampler(monkeypatch, tmp_path) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_staging_h5(input_h5)
+    frame, _ = builder.load_uk_national_frame(input_h5)
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("f100 called a sampler")
+
+    monkeypatch.setattr(builder, "sample_uk_national_frame", forbidden, raising=False)
+    monkeypatch.setattr(builder, "sample_uk_spine_frame", forbidden, raising=False)
+
+    sampled, receipt = builder._sample_candidate_frame(
+        frame,
+        fraction=1.0,
+        seed=578,
+    )
+
+    assert sampled is frame
+    assert receipt == {
+        "fraction": 1.0,
+        "seed": 578,
+        "rung_token": "f100",
+        "sampled": False,
+        "pre_household_count": 12,
+        "post_household_count": 12,
+    }
 
 
 def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
@@ -635,9 +713,9 @@ def test_candidate_engine_surface_reuses_one_resolver(
     monkeypatch.setattr(
         builder,
         "compute_household_metrics",
-        lambda _simulation, area_type, **_kwargs: pd.DataFrame(
-            {f"{area_type}_metric": np.ones(4)},
-            index=[1, 2, 3, 4],
+        lambda _simulation, area_type, *, household_ids, **_kwargs: pd.DataFrame(
+            {f"{area_type}_metric": np.ones(len(household_ids))},
+            index=household_ids,
         ),
     )
     registry = TargetRegistry([], country="uk")
@@ -655,9 +733,9 @@ def test_candidate_engine_surface_reuses_one_resolver(
     assert receipt == {
         "mode": "stub",
         "engine_version": "test",
-        "households": 4,
-        "persons": 4,
-        "benunits": 4,
+        "households": 12,
+        "persons": 12,
+        "benunits": 12,
         "national_inputs": 0,
         "local_metrics": {"constituency": 1, "la": 1},
         "blocks": 1,
@@ -716,8 +794,8 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
 
     assert len(constructions) == 2
     assert [len(call["frame"].table("household")) for call in constructions] == [
-        4,
-        4,
+        12,
+        12,
     ]
     assert receipt["blocks"] == 2
     assert receipt["deviation"] == "per_clone_block_engine_resolution"

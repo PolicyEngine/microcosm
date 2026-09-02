@@ -357,6 +357,10 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.national_sampling import (
+    sample_uk_spine_frame,
+    uk_spine_source_family_units,
+)
 from microcosm.build.uk_runtime.oa_ladder_sources import (
     LADDER_OA_COLUMNS,
     assemble_uk_oa_ladder,
@@ -548,6 +552,7 @@ __all__ = [
     "rowwise_calibration_mass_reason",
     "runtime_provenance",
     "rotated_uk_local_holdout",
+    "sample_uk_spine_frame",
     "uk_cgt_annual_exempt_amount",
     "UK_CGT_REQUIRED_COLUMNS",
     "UK_CGT_TARGET_COVERAGE_REQUIREMENTS",
@@ -856,6 +861,7 @@ __all__ = [
     "uk_firm_source_data_from_ledger_facts",
     "uk_calibration_diagnostics_payload",
     "uk_support_limited_misses",
+    "uk_spine_source_family_units",
     "uk_frame_content_identity",
     "uk_dsa_policy",
     "uk_dwp_baseline_disability_rates",
