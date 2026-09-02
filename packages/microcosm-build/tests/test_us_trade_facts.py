@@ -7,6 +7,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from microcosm.build.chronicle_epoch import (
+    CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+)
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
@@ -813,3 +818,69 @@ def test_cbp_and_district_facts_compile_into_ledger_targets(tmp_path):
     by_name = {spec.name: spec for spec in registry.specs}
     assert by_name["cbp_total_entry_summaries_fytd2026"].value == 83_133_856
     assert by_name["district70_customs_value_2026_01"].value == 2_000_000
+
+
+def test_minted_artifact_declares_the_ledger_era_id_and_loads_under_either(tmp_path):
+    """Emission stays ledger-era; acceptance covers both (chronicle#143).
+
+    These rows are minted from Census/CBP source bytes, not derived from a
+    Chronicle row whose epoch they could inherit, and their bytes are pinned,
+    so the declared id must not move on Chronicle's cutover. The declaration
+    is nonetheless an argument rather than a literal, checked against both
+    eras, so flipping it later is a caller decision.
+    """
+    rows = build_import_entry_fact_rows(
+        _margins(),
+        retrieval_manifest=_manifest_entries(),
+        extracted_at="2026-08-05T00:00:00+00:00",
+    )
+
+    default_manifest = write_consumer_artifact(
+        tmp_path / "default",
+        rows,
+        retrieval_manifest=_manifest_entries(),
+        generator=default_generator_block(months=("2026-01", "2026-02")),
+    )
+    assert default_manifest["schema_version"] == LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION
+    # Every row's key stays in Microcosm's own frozen namespace, outside both
+    # Chronicle eras, so the cutover cannot re-identify them (microcosm#639).
+    assert all(
+        row["aggregate_fact_key"].startswith("populace_us_trade.aggregate_fact.v1:")
+        for row in rows
+    )
+    assert all(
+        row["schema_version"] == LEDGER_CONSUMER_FACT_SCHEMA_VERSION for row in rows
+    )
+
+    chronicle_manifest = write_consumer_artifact(
+        tmp_path / "chronicle",
+        rows,
+        retrieval_manifest=_manifest_entries(),
+        generator=default_generator_block(months=("2026-01", "2026-02")),
+        schema_version=CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    )
+    assert (
+        chronicle_manifest["schema_version"]
+        == CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION
+    )
+    # Only the declaration moved: the fact bytes are identical either way.
+    assert chronicle_manifest["facts_sha256"] == default_manifest["facts_sha256"]
+
+    for directory, expected_epoch in (
+        (tmp_path / "default", "ledger"),
+        (tmp_path / "chronicle", "chronicle"),
+    ):
+        artifact = load_ledger_consumer_artifact(directory)
+        assert artifact.fact_row_count == len(rows)
+        assert artifact.schema_epoch == expected_epoch
+        # Microcosm-minted keys belong to neither era, so nothing is claimed.
+        assert artifact.provenance()["fact_key_epochs"] == []
+
+    with pytest.raises(ValueError, match="Refusing to write a consumer artifact"):
+        write_consumer_artifact(
+            tmp_path / "bogus",
+            rows,
+            retrieval_manifest=_manifest_entries(),
+            generator=default_generator_block(months=("2026-01",)),
+            schema_version="policyengine_chronicle.consumer_artifact.v9",
+        )

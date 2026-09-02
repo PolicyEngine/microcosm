@@ -90,8 +90,10 @@ for `published` and `certified` rows.
 
 ## The live store
 
-The best-effort Supabase insert (`POPULACE_LEDGER_URL` +
-`POPULACE_LEDGER_KEY`, the migration's insert-only `logbook_writer` role)
+The best-effort Supabase insert (`CHRONICLE_URL` + `CHRONICLE_KEY`, the
+migration's insert-only `logbook_writer` role; the ledger-era
+`POPULACE_LEDGER_URL` / `POPULACE_LEDGER_KEY` stay honored for the
+chronicle#143 dual-read window and warn once per process)
 uses the same scope rule as the archives after this PR's migration is applied
 by the project owner. The writer key is unaffected: rows are still inserted
 through the same role and the scope is derived from the hashed `pipeline`

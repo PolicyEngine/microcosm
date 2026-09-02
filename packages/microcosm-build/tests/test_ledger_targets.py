@@ -2939,3 +2939,92 @@ def test_exact_period_contract_sum_keeps_equivalent_untyped_annual_range_cells()
     ).specs
 
     assert spec.value == 30.0  # Both synthetic cells belong to the same academic year.
+
+
+def test__given_mixed_epoch_fact_feed__then_both_eras_compile_to_targets() -> None:
+    """Ledger-era and chronicle-era rows calibrate side by side.
+
+    During Chronicle's rename cutover a feed carries history under
+    ``ledger.*`` domains beside newly emitted rows under ``chronicle.*``
+    (PolicyEngine/chronicle#143). Keys are opaque to this compiler, so both
+    must select — and each target's name and metadata must carry its own
+    row's key verbatim rather than being normalised onto one epoch.
+    """
+    # Given
+    ledger_era = _consumer_fact_row()
+    chronicle_era = _consumer_fact_row(
+        aggregate_fact_key="chronicle.aggregate_fact.v3:def456",
+        semantic_fact_key="chronicle.semantic_fact.v3:def456",
+        lineage={
+            "source_record_id": "irs_soi.ty2024.table_1_1.all.adjusted_gross_income",
+            "source_cell_keys": ["chronicle.source_cell.v3:cell"],
+            "source_row_keys": [],
+        },
+    )
+    chronicle_era.pop("legacy_fact_key", None)
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        entity_by_ledger_entity={"tax_unit": "tax_unit"},
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
+    )
+
+    # When
+    selection = select_ledger_targets([ledger_era, chronicle_era], mapping)
+
+    # Then
+    assert not selection.unsupported
+    assert [spec.name for spec in selection.specs] == [
+        "ledger.aggregate_fact.v2:abc123",
+        "chronicle.aggregate_fact.v3:def456",
+    ]
+    chronicle_spec = selection.specs[1]
+    assert (
+        chronicle_spec.metadata["ledger_fact_key"]
+        == "chronicle.aggregate_fact.v3:def456"
+    )
+    # The diagnostic field names stay ledger-era: they are frozen at v1
+    # (microcosm#639) and name a slot, not an epoch.
+    assert (
+        chronicle_spec.metadata["ledger_aggregate_fact_key"]
+        == "chronicle.aggregate_fact.v3:def456"
+    )
+    assert (
+        chronicle_spec.metadata["ledger_semantic_fact_key"]
+        == "chronicle.semantic_fact.v3:def456"
+    )
+
+
+def test__given_chronicle_era_reference_pin__then_it_resolves_against_the_feed() -> (
+    None
+):
+    """A reference pinned to a chronicle-era key resolves without a code change."""
+    # Given
+    reference = LedgerTargetReference(
+        name="nation/irs/adjusted gross income/total",
+        ledger_fact_key="chronicle.aggregate_fact.v3:def456",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        filter="is_tax_return",
+        period=2024,
+        source="IRS SOI Table 1.1",
+        family="irs_soi",
+    )
+    fact = _consumer_fact_row(
+        aggregate_fact_key="chronicle.aggregate_fact.v3:def456",
+        semantic_fact_key="chronicle.semantic_fact.v3:def456",
+    )
+    fact.pop("legacy_fact_key", None)
+
+    # When
+    registry = compile_ledger_target_references([fact], [reference], country="us")
+
+    # Then
+    assert [spec.name for spec in registry.specs] == [
+        "nation/irs/adjusted gross income/total"
+    ]
+    assert (
+        registry.specs[0].metadata["ledger_fact_key"]
+        == "chronicle.aggregate_fact.v3:def456"
+    )
