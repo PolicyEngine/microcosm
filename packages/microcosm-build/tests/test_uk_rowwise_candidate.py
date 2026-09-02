@@ -854,8 +854,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
                 family="national_stub",
                 metadata={
                     "contract_target_id": "dwp.uc.households",
-                    "geography_level": "country",
-                    "geography_id": "K02000001",
+                    "ledger_geography_level": "country",
+                    "ledger_geography_id": "K02000001",
                 },
             )
         ],

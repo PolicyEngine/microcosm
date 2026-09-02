@@ -104,6 +104,7 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_scoped_gate_manifest,
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.ledger_targets import _spec_geography
 from microcosm.build.uk_runtime.measure_simulation import (
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
@@ -1393,7 +1394,7 @@ def _local_vintage_census(registry: TargetRegistry) -> list[dict[str, object]]:
         target = str(spec.period)
         if not resolved or resolved == target:
             continue
-        level = str(spec.metadata.get("geography_level", ""))
+        level, _ = _spec_geography(spec)
         key = (spec.family, level, resolved, target)
         counts[key] = counts.get(key, 0) + 1
     return [
@@ -1549,9 +1550,8 @@ def _local_diagnostics_registry(
     if national_registry is not None:
         specs.extend(national_registry.specs)
         for spec in national_registry.specs:
-            geography[spec.to_target().row_name] = str(
-                spec.metadata.get("geography_level", "national")
-            )
+            level, _ = _spec_geography(spec)
+            geography[spec.to_target().row_name] = level
     return TargetRegistry(specs, country="uk"), geography
 
 

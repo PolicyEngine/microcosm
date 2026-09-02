@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import lru_cache
 from importlib import resources as importlib_resources
 from typing import Any
 
@@ -38,7 +39,7 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
-from microcosm.calibrate import TargetRegistry
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import Frame
 
 
@@ -630,6 +631,7 @@ class UKFrameTargetAdapter:
         )
 
 
+@lru_cache(maxsize=2)
 def _uk_contract_targets(
     *,
     national_only: bool = True,
@@ -648,6 +650,64 @@ def _uk_contract_targets(
         or set(target.get("geography_levels") or ())
         <= UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS
     }
+
+
+def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
+    """Resolve one compiled target's local or Ledger geography spelling."""
+
+    metadata = spec.metadata
+
+    def spelling(prefix: str, label: str) -> tuple[str, str] | None:
+        level_key = f"{prefix}geography_level"
+        id_key = f"{prefix}geography_id"
+        if level_key not in metadata and id_key not in metadata:
+            return None
+        level = str(metadata.get(level_key) or "").strip()
+        geography_id = str(metadata.get(id_key) or "").strip()
+        if not level or not geography_id:
+            raise ValueError(
+                f"UK target {spec.name!r} has blank {label} geography "
+                f"(level={level!r}, id={geography_id!r})."
+            )
+        return level, geography_id
+
+    local = spelling("", "local")
+    ledger = spelling("ledger_", "ledger")
+    if local is not None and ledger is not None and local != ledger:
+        raise ValueError(
+            f"UK target {spec.name!r} geography spellings disagree: "
+            f"local={local!r}, ledger={ledger!r}."
+        )
+    resolved = local or ledger
+    if resolved is None:
+        raise ValueError(
+            f"UK target {spec.name!r} names no geography under either the "
+            "local or Ledger metadata spelling."
+        )
+
+    level, geography_id = resolved
+    if local is None or level in UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS:
+        contract_target_id = str(
+            metadata.get("contract_target_id", spec.name.split("@", 1)[0])
+        )
+        contract = _uk_contract_targets(national_only=False).get(contract_target_id)
+        if contract is None:
+            raise ValueError(
+                f"UK target {spec.name!r} references unknown contract target "
+                f"{contract_target_id!r}."
+            )
+        declared_levels = tuple(
+            str(value).strip()
+            for value in contract.get("geography_levels") or ()
+            if str(value).strip()
+        )
+        if level not in declared_levels:
+            raise ValueError(
+                f"UK target {spec.name!r} resolved national geography level "
+                f"{level!r}, which disagrees with contract target "
+                f"{contract_target_id!r} levels {list(declared_levels)!r}."
+            )
+    return level, geography_id
 
 
 def apply_uk_cross_grain_reconciliation(
@@ -688,8 +748,7 @@ def uk_local_target_surface(
     output_rows: list[dict[str, Any]] = []
     reconciliation_rows: list[dict[str, Any]] = []
     for spec in local_registry.specs:
-        geography_level = str(spec.metadata.get("geography_level", ""))
-        geography_id = str(spec.metadata.get("geography_id", ""))
+        geography_level, geography_id = _spec_geography(spec)
         contract_target_id = str(
             spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0])
         )
