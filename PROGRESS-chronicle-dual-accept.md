@@ -61,8 +61,8 @@ The lane's first pass added a per-row `schema_version` check to
 validation `main` never performed, on a field `main` never read. Real feeds do
 not honor that set. The pinned US fiscal-refresh feed
 `consumer_facts_buildn_v9_4.jsonl`, which the release path loads through this
-loader, declares `arch.consumer_fact.v1` on 37,006 of its first 200,000 rows
-and `ledger.consumer_fact.v1` on 399. The check failed the build closed on its
+loader, declares `arch.consumer_fact.v1` on 37,006 of its 37,405 rows and
+`ledger.consumer_fact.v1` on the other 399. The check failed the build closed on its
 own pinned input, and **PR CI could not see it**: the feed is gated data
 outside PR CI. Reproduced directly, fixed, and pinned by a test.
 
@@ -89,7 +89,9 @@ in this repo.
 
 The pinned feeds carry an `arch.*` key namespace alongside `ledger.*` — 37,006
 rows against 399 in `consumer_facts_buildn_v9_4.jsonl`, across all eleven
-families. Microcosm treats those keys opaquely, so nothing here depends on
+families. Over that whole feed `fact_key_epochs` is `('ledger',)` and
+`fact_schema_versions` is `('arch.consumer_fact.v1', 'ledger.consumer_fact.v1')`,
+so the arch producer is witnessed by the row ids rather than by an epoch. Microcosm treats those keys opaquely, so nothing here depends on
 what `arch` is, and the epoch module reports it as outside both declared eras.
 Whether chronicle#143's cutover is meant to re-epoch `arch.*` rows too is a
 question for the Chronicle lane; this branch does not guess.
