@@ -1,3 +1,36 @@
+# PR #851 review fix lane
+
+## State
+
+In progress on 2026-09-02 in the isolated `/private/tmp/microcosm-fix-851`
+worktree on branch `fix-851`, based exactly on `graph-amendments-impl` at
+`6348ed7b`. The task is to implement every owner-ruled must-fix item and
+follow-up from the local PR #851 review, with one regression test and one
+commit per finding, then run the complete requested verification boundary.
+No network access, merge, push, frozen-interface edit, acceptance-test edit,
+or `_toy.py` edit is authorized.
+
+## Done
+
+- Read `CLAUDE.md`, the repository agent instructions, the PR-review workflow,
+  and the full local review at
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/node-graph/review-851/out.md`.
+- Confirmed `graph-amendments-impl` resolves to the requested base
+  `6348ed7b5f8ee8a76f103193f9a631b52df4faea`.
+- Created the requested worktree and branch with
+  `git worktree add /private/tmp/microcosm-fix-851 -b fix-851 graph-amendments-impl`.
+- Recorded the prohibited files and the required sync, test, lint, interface,
+  CI-inventory, acceptance-burndown, commit, and reporting constraints.
+
+## Next
+
+- Sync the task-local environment with both country extras.
+- Map each ruling to current production code and runtime unit coverage.
+- Implement findings 1, 2, 3, 4, 6, and 7 plus all follow-ups, committing each
+  coherent finding separately and keeping this journal current.
+- Run every requested verification command and copy its exact summary lines
+  into `/private/tmp/microcosm-fix-851/out.md`.
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
