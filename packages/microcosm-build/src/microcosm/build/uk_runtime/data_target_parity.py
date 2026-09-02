@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import re
+from datetime import date
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -14,6 +17,7 @@ UK_DATA_TARGET_PARITY_RESOURCE = "uk_data_target_parity.json"
 UK_DATA_TARGET_PARITY_SCHEMA_VERSION = 1
 UK_DATA_TARGET_INVENTORY_RESOURCE = "uk_data_target_inventory.json"
 UK_DATA_TARGET_INVENTORY_SCHEMA_VERSION = 1
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 _INVENTORY_PACKAGE = "policyengine_" + "uk_data"
 
@@ -35,6 +39,7 @@ UK_DATA_TARGET_INVENTORY_HELPER_EXEMPTIONS = frozenset(
         _source("__init__"),
         _source("_common"),
         _source("_land"),
+        _inventory_id("datasets/local_areas/constituencies/targets/__init__.py"),
     }
 )
 
@@ -56,6 +61,15 @@ _REFERENCE = {
     "incumbent_inventory": UK_DATA_TARGET_INVENTORY_RESOURCE,
     "incumbent_commit": "8629dbb",
     "verified_on": "2026-09-01",
+    "inventory_nature": (
+        "A sha-stamped snapshot of the incumbent's target-bearing modules, "
+        "re-extracted manually against a local checkout and committed. CI "
+        "checks the parity concerns against the committed snapshot; the "
+        "recorded per-file hashes are re-verified against a tree only by "
+        "verify_uk_data_target_inventory_against_tree (env-gated test or by "
+        "hand), so 'uk-data moved' is caught on re-extraction, not "
+        "continuously."
+    ),
     "governing_rule": (
         "Every late uk-data target family, dataset-level anchor, and credibility "
         "check has a Microcosm home or an explicit Chesterton fence."
@@ -589,30 +603,39 @@ def _local_contract_covers(target_id: str, levels: tuple[str, ...]) -> tuple[str
     if "local_authority" in levels:
         covers.add(_inventory_id("datasets/local_areas/local_authorities/loss.py"))
 
+    # The incumbent shipped one producer script per grain; a row bound at a
+    # grain covers that grain's script, so neither twin can go uncovered.
+    grains = tuple(
+        grain
+        for grain, level in (
+            ("constituencies", "constituency"),
+            ("local_authorities", "local_authority"),
+        )
+        if level in levels
+    )
     if target_id.startswith("hmrc."):
-        covers.update(
-            {
-                _source("local_income"),
-                _inventory_id(
-                    "datasets/local_areas/constituencies/targets/"
-                    "create_employment_incomes.py"
-                ),
-                _inventory_id(
-                    "datasets/local_areas/constituencies/targets/"
-                    "create_total_incomes.py"
-                ),
-            }
-        )
+        covers.add(_source("local_income"))
+        for grain in grains:
+            covers.update(
+                {
+                    _inventory_id(
+                        f"datasets/local_areas/{grain}/targets/"
+                        "create_employment_incomes.py"
+                    ),
+                    _inventory_id(
+                        f"datasets/local_areas/{grain}/targets/create_total_incomes.py"
+                    ),
+                }
+            )
     elif target_id.startswith("ons.age."):
-        covers.update(
-            {
-                _source("local_age"),
+        covers.add(_source("local_age"))
+        for grain in grains:
+            covers.add(
                 _inventory_id(
-                    "datasets/local_areas/constituencies/targets/"
+                    f"datasets/local_areas/{grain}/targets/"
                     "fill_missing_age_demographics.py"
-                ),
-            }
-        )
+                )
+            )
     elif target_id.startswith("dwp.uc."):
         covers.add(_source("local_uc"))
     elif target_id.startswith(("ons.equiv_", "ons.tenure.", "ons.rent.")):
@@ -770,7 +793,50 @@ def _load_uk_data_target_inventory(
         raise ValueError(
             "UK data-target inventory entries must be sorted by inventory_id."
         )
+    try:
+        date.fromisoformat(str(inventory.get("extracted_on", "")))
+    except ValueError as error:
+        raise ValueError(
+            "UK data-target inventory extracted_on must be an ISO date."
+        ) from error
+    for entry in entries:
+        digest = str(entry.get("sha256", ""))
+        if not _SHA256_HEX.fullmatch(digest):
+            raise ValueError(
+                "UK data-target inventory entry "
+                f"{entry.get('inventory_id')!r} has a malformed sha256."
+            )
     return inventory
+
+
+def verify_uk_data_target_inventory_against_tree(
+    tree: str | Path,
+    inventory_path: str | Path | None = None,
+) -> None:
+    """Re-hash every inventory entry against a local incumbent checkout.
+
+    The committed snapshot records a sha256 per file; this is the only place
+    those hashes are read. It refuses on a missing file or a digest mismatch,
+    naming each, so a moved incumbent is caught when someone re-verifies —
+    it is not a continuous CI property.
+    """
+
+    inventory = _load_uk_data_target_inventory(inventory_path)
+    root = Path(tree)
+    problems: list[str] = []
+    for entry in inventory["entries"]:
+        path = root / str(entry["path"])
+        if not path.is_file():
+            problems.append(f"missing: {entry['path']}")
+            continue
+        measured = hashlib.sha256(path.read_bytes()).hexdigest()
+        if measured != entry["sha256"]:
+            problems.append(f"sha256 mismatch: {entry['path']}")
+    if problems:
+        raise ValueError(
+            "UK data-target inventory does not match the incumbent tree at "
+            f"{root}: {problems[:10]}."
+        )
 
 
 def _assert_inventory_bijection(

@@ -81,9 +81,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--contract", type=Path, default=UK_PACKAGE_ROOT / "uk_population_targets.json"
     )
-    parser.add_argument(
-        "--ledger-facts", type=Path, default=Path(".codex-work/consumer_facts_uk.jsonl")
-    )
+    # The pinned consumer feed is licensed and untracked: it must be named
+    # explicitly so a regeneration never silently binds to a stale local copy.
+    parser.add_argument("--ledger-facts", type=Path, required=True)
     parser.add_argument(
         "--crosswalk", type=Path, default=UK_PACKAGE_ROOT / "local_area_crosswalk.json"
     )

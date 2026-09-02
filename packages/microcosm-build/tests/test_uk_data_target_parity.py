@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import os
+from pathlib import Path
 
 import pytest
 
@@ -105,3 +107,70 @@ def test_evidence_never_cites_untracked_codex_work() -> None:
     rows = build_uk_data_target_parity()["concerns"]
 
     assert all(".codex-work" not in row["evidence"] for row in rows)
+
+
+def test_inventory_entries_carry_well_formed_hashes_and_date() -> None:
+    inventory = data_target_parity._load_uk_data_target_inventory()
+    assert inventory["extracted_on"]
+    for entry in inventory["entries"]:
+        assert len(entry["sha256"]) == 64
+        assert set(entry["sha256"]) <= set("0123456789abcdef")
+
+
+def test_inventory_loader_refuses_a_malformed_hash(tmp_path: Path) -> None:
+    import json
+
+    inventory = data_target_parity._load_uk_data_target_inventory()
+    inventory["entries"][0]["sha256"] = "not-a-digest"
+    path = tmp_path / "inventory.json"
+    path.write_text(json.dumps(inventory))
+    with pytest.raises(ValueError, match="malformed sha256"):
+        data_target_parity._load_uk_data_target_inventory(path)
+
+
+def test_inventory_hashes_match_a_local_incumbent_tree() -> None:
+    """The recorded hashes are read here, against a real checkout.
+
+    Opt-in: the incumbent tree is not a repository input, so this test skips
+    unless MICROCOSM_UK_DATA_TREE names a checkout at the pinned commit. When
+    it runs it is the only continuous re-verification of the snapshot; the
+    committed artifact otherwise proves that the concerns cover the snapshot,
+    not that the snapshot still matches uk-data.
+    """
+
+    tree = os.environ.get("MICROCOSM_UK_DATA_TREE")
+    if not tree:
+        pytest.skip("set MICROCOSM_UK_DATA_TREE to a uk-data checkout to re-hash")
+    data_target_parity.verify_uk_data_target_inventory_against_tree(tree)
+
+
+def test_tree_verifier_refuses_a_drifted_file(tmp_path: Path) -> None:
+    import json
+
+    inventory = data_target_parity._load_uk_data_target_inventory()
+    entry = inventory["entries"][0]
+    (tmp_path / entry["path"]).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / entry["path"]).write_text("# drifted\n")
+    path = tmp_path / "inventory.json"
+    path.write_text(json.dumps(inventory))
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        data_target_parity.verify_uk_data_target_inventory_against_tree(tmp_path, path)
+
+
+def test_la_target_producers_are_inventoried_and_covered() -> None:
+    """The LA twins of the constituency producer scripts cannot go silent."""
+
+    inventory = data_target_parity._load_uk_data_target_inventory()
+    ids = {entry["inventory_id"] for entry in inventory["entries"]}
+    for grain in ("constituencies", "local_authorities"):
+        for script in (
+            "create_employment_incomes",
+            "create_total_incomes",
+            "fill_missing_age_demographics",
+        ):
+            assert (
+                data_target_parity._inventory_id(
+                    f"datasets/local_areas/{grain}/targets/{script}.py"
+                )
+                in ids
+            )

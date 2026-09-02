@@ -684,6 +684,15 @@ _DOCTRINE: dict[str, Any] = {
             "Unsigned absence raises, and a deferral becomes stale and raises "
             "as soon as the pinned feed can compile that cell."
         ),
+        "enforcement_point": (
+            "Both refusals fire inside the reference compiler, which runs only "
+            "when the surface is regenerated against the pinned consumer feed "
+            "(a licensed, untracked input passed explicitly to "
+            "tools/generate_uk_local_target_references.py). CI verifies the "
+            "committed compile through the census and membership drift gates; "
+            "it cannot re-run the compiler, so a feed that later carries new "
+            "facts is caught at the next regeneration, not continuously."
+        ),
         "solve_semantics": (
             "The solve surface remains dense and finite by design; "
             "local_rowwise.py refuses non-finite targets rather than treating "

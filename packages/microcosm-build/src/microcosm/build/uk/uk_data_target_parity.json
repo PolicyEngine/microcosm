@@ -309,9 +309,11 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
         "policyengine_uk_data.targets.sources.local_income"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.amount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_income.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.amount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
       "status": "ported_local_declared"
     },
     {
@@ -322,9 +324,11 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
         "policyengine_uk_data.targets.sources.local_income"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_income.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
       "status": "ported_local_declared"
     },
     {
@@ -335,9 +339,11 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
         "policyengine_uk_data.targets.sources.local_income"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.self_employment_income.amount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_income.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.self_employment_income.amount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
       "status": "ported_local_declared"
     },
     {
@@ -348,9 +354,11 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
         "policyengine_uk_data.targets.sources.local_income"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.self_employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_income.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.self_employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
       "status": "ported_local_declared"
     },
     {
@@ -360,9 +368,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.0_10; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.0_10; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -372,9 +381,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.10_20; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.10_20; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -384,9 +394,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.20_30; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.20_30; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -396,9 +407,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.30_40; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.30_40; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -408,9 +420,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.40_50; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.40_50; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -420,9 +433,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.50_60; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.50_60; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -432,9 +446,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.60_70; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.60_70; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -444,9 +459,10 @@
         "policyengine_uk_data.datasets.local_areas.constituencies.loss",
         "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
         "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
         "policyengine_uk_data.targets.sources.local_age"
       ],
-      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.70_80; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_age.py.",
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.70_80; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
       "status": "ported_local_declared"
     },
     {
@@ -925,6 +941,7 @@
     "governing_rule": "Every late uk-data target family, dataset-level anchor, and credibility check has a Microcosm home or an explicit Chesterton fence.",
     "incumbent_commit": "8629dbb",
     "incumbent_inventory": "uk_data_target_inventory.json",
+    "inventory_nature": "A sha-stamped snapshot of the incumbent's target-bearing modules, re-extracted manually against a local checkout and committed. CI checks the parity concerns against the committed snapshot; the recorded per-file hashes are re-verified against a tree only by verify_uk_data_target_inventory_against_tree (env-gated test or by hand), so 'uk-data moved' is caught on re-extraction, not continuously.",
     "issue_citation_rule": "Incumbent issues are cited as uk-data#NNN.",
     "verified_on": "2026-09-01"
   },

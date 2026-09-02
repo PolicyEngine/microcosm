@@ -31,6 +31,12 @@
       "sha256": "b4802cfb053f4245a9dc833561e8dac29aaf6d7740bbd6715c1b4b1f01baa26c"
     },
     {
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.__init__",
+      "kind": "helper",
+      "path": "policyengine_uk_data/datasets/local_areas/constituencies/targets/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "inventory_id": "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
       "kind": "local_target_producer",
       "path": "policyengine_uk_data/datasets/local_areas/constituencies/targets/create_employment_incomes.py",
@@ -53,6 +59,24 @@
       "kind": "local_matrix",
       "path": "policyengine_uk_data/datasets/local_areas/local_authorities/loss.py",
       "sha256": "3eb10e5f139ed76c34c401db2f348d1334bdb7ac0a19d62dfac8ef1515799293"
+    },
+    {
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+      "kind": "local_target_producer",
+      "path": "policyengine_uk_data/datasets/local_areas/local_authorities/targets/create_employment_incomes.py",
+      "sha256": "cd64843548cb28166152fb455f55335b99c31ef8657358eed676b457250f7163"
+    },
+    {
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
+      "kind": "local_target_producer",
+      "path": "policyengine_uk_data/datasets/local_areas/local_authorities/targets/create_total_incomes.py",
+      "sha256": "e9ab1903d332273a8b91f0fdf9a0d5687ac626b0bce727af61574d9d65608bbd"
+    },
+    {
+      "inventory_id": "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+      "kind": "local_target_producer",
+      "path": "policyengine_uk_data/datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py",
+      "sha256": "2204c43b41f64fb86f037f70386ee71b04ba57310f9a82df838fff9f8e4dace1"
     },
     {
       "inventory_id": "policyengine_uk_data.targets.sources.__init__",

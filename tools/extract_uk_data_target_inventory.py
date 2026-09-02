@@ -1,5 +1,12 @@
 #!/usr/bin/env python
-"""Statically extract the pinned uk-data target and credibility inventory."""
+"""Statically extract the pinned uk-data target and credibility inventory.
+
+The inventory is a sha-stamped snapshot of the incumbent's target-bearing
+modules at one commit. It is re-extracted manually against a local checkout
+and committed; CI checks the parity register against the committed snapshot,
+and ``verify_uk_data_target_inventory_against_tree`` (run by the env-gated
+test, or by hand) re-hashes it against a tree.
+"""
 
 from __future__ import annotations
 
@@ -15,21 +22,19 @@ DEFAULT_OUTPUT = Path(
 )
 PACKAGE_ROOT = "policyengine_" + "uk_data"
 
+# Modules that carry targets but sit outside a globbable directory.
 LOCAL_TARGET_MODULES = {
     "datasets/local_areas/constituencies/devolved_housing.py": (
         "local_target_producer"
     ),
     "datasets/local_areas/constituencies/loss.py": "local_matrix",
-    "datasets/local_areas/constituencies/targets/create_employment_incomes.py": (
-        "local_target_producer"
-    ),
-    "datasets/local_areas/constituencies/targets/create_total_incomes.py": (
-        "local_target_producer"
-    ),
-    "datasets/local_areas/constituencies/targets/"
-    "fill_missing_age_demographics.py": "local_target_producer",
     "datasets/local_areas/local_authorities/loss.py": "local_matrix",
 }
+
+# Every per-grain target-producer script is globbed, so a new grain or a new
+# script under any ``local_areas/*/targets/`` directory lands in the
+# inventory and must be covered by a parity concern.
+LOCAL_TARGET_PRODUCER_GLOB = "datasets/local_areas/*/targets/*.py"
 
 DATASET_ANCHOR_MODULES = {
     "datasets/imputations/consumption.py",
@@ -60,9 +65,18 @@ CREDIBILITY_GATE_MODULES = {
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--uk-data-tree", type=Path, required=True)
     parser.add_argument("--commit", required=True)
+    parser.add_argument(
+        "--extracted-on",
+        type=date.fromisoformat,
+        required=True,
+        help=(
+            "ISO date recorded in the artifact. Passed explicitly so a "
+            "re-extraction of an unchanged tree is byte-stable."
+        ),
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
     return parser
 
@@ -90,7 +104,9 @@ def _entry(tree: Path, relative: Path, *, kind: str) -> dict[str, str]:
     }
 
 
-def build_inventory(tree: Path, *, commit: str) -> dict[str, object]:
+def build_inventory(
+    tree: Path, *, commit: str, extracted_on: date
+) -> dict[str, object]:
     """Build the canonical inventory without importing the archived package."""
 
     package = tree / PACKAGE_ROOT
@@ -104,6 +120,11 @@ def build_inventory(tree: Path, *, commit: str) -> dict[str, object]:
         relative = source_path.relative_to(tree)
         relative_kinds[relative] = (
             "helper" if source_path.name.startswith("_") else "target_source"
+        )
+    for producer_path in sorted(package.glob(LOCAL_TARGET_PRODUCER_GLOB)):
+        relative = producer_path.relative_to(tree)
+        relative_kinds[relative] = (
+            "helper" if producer_path.name.startswith("_") else "local_target_producer"
         )
 
     for relative, kind in LOCAL_TARGET_MODULES.items():
@@ -120,14 +141,18 @@ def build_inventory(tree: Path, *, commit: str) -> dict[str, object]:
     return {
         "schema_version": 1,
         "incumbent_commit": str(commit),
-        "extracted_on": date.today().isoformat(),
+        "extracted_on": extracted_on.isoformat(),
         "entries": entries,
     }
 
 
 def main() -> None:
     args = _parser().parse_args()
-    inventory = build_inventory(args.uk_data_tree, commit=args.commit)
+    inventory = build_inventory(
+        args.uk_data_tree,
+        commit=args.commit,
+        extracted_on=args.extracted_on,
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
         json.dumps(inventory, indent=2, sort_keys=True) + "\n",
