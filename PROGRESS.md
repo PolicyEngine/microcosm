@@ -18,11 +18,15 @@ worktree remains untouched.
 - Made child presence independent of region (`household_id % 5` versus `% 4`)
   and regenerated the fixture. The real support transform now changes weighted
   person mass from 272.7 to 272.43 while household mass remains 226.8.
+- Added a UK-engine regression over the committed raw fixture that runs the
+  real FRS root and SPI support transforms, rejects person-mass conservation at
+  the executor's tolerance, and checks exact household mass plus its mass-log
+  receipt. Added the required one-line changelog fragment.
 
 ## Next
 
-- Add a fixture-property regression test and capture the deliberate
-  `mass="conserve"` H2 failure.
+- Capture the deliberate `mass="conserve"` driver-path failure and restore the
+  declared policy.
 - Run all requested verification and write `out.md`.
 
 ---
