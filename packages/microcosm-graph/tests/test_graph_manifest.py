@@ -6,13 +6,15 @@ import json
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 import microcosm.graph as graph_api
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.decl import StructuralDelta
 from microcosm.graph.kernel import Capabilities, Determinism, KernelRole, SeedSource
-from microcosm.graph.manifest import Decision, NodeReceipt, RunManifest
+from microcosm.graph.manifest import Decision, NodeReceipt, PopulationView, RunManifest
 from microcosm.graph.population import MassRecord
 
 
@@ -23,6 +25,32 @@ def _capabilities(role: KernelRole = KernelRole.COMPUTE) -> Capabilities:
         structural=StructuralDelta.NONE,
         role=role,
         dependencies=("numpy",),
+    )
+
+
+def _frame() -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2], dtype=np.int64),
+            "person_household_id": np.asarray([10, 20], dtype=np.int64),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([10, 20], dtype=np.int64),
+            "size": np.asarray([1, 1], dtype=np.int64),
+        }
+    )
+    return Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(
+                np.asarray([1.0, 2.0], dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+        pd.Series(["a", "b"], name="stratum"),
     )
 
 
@@ -88,8 +116,8 @@ def _persisted_manifest(
     return RunManifest("toy", {"release": release, "gate": gate})
 
 
-def test_manifest_json_round_trip_and_convenient_lookup() -> None:
-    population = object()
+def test_manifest_json_round_trip_and_population_view() -> None:
+    raw = _frame()
     manifest = RunManifest(
         country="toy",
         nodes={"b": _receipt("b" * 64), "a": _receipt("a" * 64)},
@@ -97,7 +125,7 @@ def test_manifest_json_round_trip_and_convenient_lookup() -> None:
         started_at="2026-09-01T12:00:00Z",
         finished_at="2026-09-01T12:00:01Z",
         host="runner-1",
-        populations={"survey": population},  # type: ignore[dict-item]
+        populations={"survey": raw, "filtered": raw},
     )
     restored = RunManifest.from_json(manifest.to_json())
     assert restored == manifest
@@ -105,9 +133,30 @@ def test_manifest_json_round_trip_and_convenient_lookup() -> None:
     assert manifest.nodes["a"] is manifest.node("a")
     assert manifest.receipts["a"] is manifest.receipt("a")
     assert manifest["a"].artifacts[("person", "x")] == "d" * 64
-    assert manifest.population("survey") is population
+
+    survey = manifest.population("survey")
+    filtered = manifest.population("filtered")
+    assert type(survey) is type(filtered) is PopulationView
+    assert isinstance(survey, Frame)
+    assert manifest.population("survey") is survey
+    assert type(raw) is Frame
+    assert not hasattr(raw, "household")
+    assert survey.person is raw.person
+    assert survey.household is raw.table("household")
+    assert survey.table("household") is raw.table("household")
+    assert survey.weights_for("household") is raw.weights_for("household")
+    assert survey.strata is raw.strata
+    with pytest.raises(AttributeError, match="PopulationView.*missing"):
+        _ = survey.missing
+
     with pytest.raises(KeyError, match="not attached"):
         restored.population("survey")
+    with pytest.raises(TypeError, match="values must be Frame"):
+        RunManifest(
+            "toy",
+            {"a": _receipt("a" * 64)},
+            populations={"survey": object()},  # type: ignore[dict-item]
+        )
 
 
 def test_manifest_key_excludes_every_operational_field() -> None:
@@ -397,6 +446,7 @@ def test_load_requires_every_manifest_artifact(
 def test_package_exports_runtime_implementations_and_failures() -> None:
     assert graph_api.ContentStore.__module__.endswith(".store")
     assert graph_api.RunManifest is RunManifest
+    assert graph_api.PopulationView is PopulationView
     assert graph_api.NodeReceipt is NodeReceipt
     assert graph_api.Decision is Decision
     assert graph_api.run_graph.__module__.endswith(".executor")

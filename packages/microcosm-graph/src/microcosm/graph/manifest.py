@@ -29,29 +29,33 @@ from .population import MassRecord
 if TYPE_CHECKING:
     from .store import ContentStore
 
-__all__ = ["Decision", "NodeReceipt", "RunManifest"]
+__all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
 _SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
 
-class _AttachedFrame(Frame):
-    """A manifest-attached Frame with read-only entity-name convenience."""
+class PopulationView(Frame):
+    """Zero-copy manifest view with entity-name table access.
+
+    All attached populations use this type. Existing :class:`Frame` accessors
+    remain available, and a group entity can also be read by name (for example,
+    `view.household` is equivalent to `view.table("household")`). The source
+    Frame keeps its original type.
+    """
 
     __slots__ = ()
+
+    def __init__(self, frame: Frame) -> None:
+        if not isinstance(frame, Frame):
+            raise TypeError("PopulationView requires a Frame")
+        for slot in Frame.__slots__:
+            object.__setattr__(self, slot, getattr(frame, slot))
 
     def __getattr__(self, name: str) -> object:
         if name in self.entities:
             return self.table(name)
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
-
-
-def _attach_entity_accessors(frame: Frame) -> Frame:
-    """Add convenience access locally without mutating the global Frame class."""
-
-    if type(frame) is Frame:
-        frame.__class__ = _AttachedFrame
-    return frame
 
 
 def _freeze_json(value: object) -> object:
@@ -338,8 +342,17 @@ class RunManifest:
         for name in ("started_at", "finished_at", "host"):
             if not isinstance(getattr(self, name), str):
                 raise TypeError(f"RunManifest.{name} must be a string")
+        populations: dict[str, PopulationView] = {}
+        for version_id, frame in self.populations.items():
+            if not isinstance(version_id, str):
+                raise TypeError("RunManifest.populations keys must be strings")
+            if not isinstance(frame, Frame):
+                raise TypeError("RunManifest.populations values must be Frame")
+            populations[version_id] = PopulationView(frame)
         object.__setattr__(
-            self, "populations", MappingProxyType(dict(self.populations))
+            self,
+            "populations",
+            MappingProxyType(populations),
         )
         mass_ledgers: dict[str, tuple[MassRecord, ...]] = {}
         for version_id, records in self.mass_ledgers.items():
@@ -453,7 +466,7 @@ class RunManifest:
     def receipt(self, node_id: str) -> NodeReceipt:
         return self.node(node_id)
 
-    def population(self, version_id: str) -> Frame:
+    def population(self, version_id: str) -> PopulationView:
         """Return an attached final population version.
 
         Population frames are deliberately not serialized in manifest JSON;
@@ -467,8 +480,8 @@ class RunManifest:
             raise KeyError(
                 f"Population {version_id!r} is not attached to this manifest."
             ) from error
-        if isinstance(population, Frame):
-            population = _attach_entity_accessors(population)
+        if not isinstance(population, PopulationView):  # __post_init__ invariant
+            raise RuntimeError("attached population was not normalized")
         return population
 
     def mass_ledger(self, version_id: str) -> tuple[MassRecord, ...]:

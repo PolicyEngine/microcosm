@@ -78,11 +78,17 @@ or `_toy.py` edit is authorized.
   `rows='all'`; masked ownership is rejected before claimant execution. The
   regression's household mask explicitly excludes the entrant and confirms
   both claimant kernels remain uncalled.
+- Finding 7 implemented: the `__class__` mutation is gone. Every attached
+  frame is normalized once to the public, zero-copy `PopulationView` subtype,
+  whose documented entity-name accessor supplies `.household` while inherited
+  `Frame.person` remains the pre-existing person path. The regression proves
+  one return type across versions, unchanged source-frame type, shared tables,
+  weights and strata, and B5/B6/B7/D6 behavior.
 
 ## Next
 
-- Implement finding 7 plus the remaining follow-ups, committing each coherent
-  finding separately and keeping this journal current.
+- Implement the QRF comment/pin and undeclared-partition receipt follow-ups,
+  committing each coherent step and keeping this journal current.
 - Run every requested verification command and copy its exact summary lines
   into `/private/tmp/microcosm-fix-851/out.md`.
 
