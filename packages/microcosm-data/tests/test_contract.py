@@ -137,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "bcbcfd552424313b0843bc68ad64afea04c3b4146b01458cc9fdaf54b85aea82"
+    "9d4f1d5bdcf803bc718eeb27a3cae58730b3a7933eb8b417306c52234775651d"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "76c861d48d48d73fd8f18f3d5cddac2855294c2839105ca2b6ac9a8a9d4b5f2f"
+    "a59a9308811298813fb5b92ae0c13ba50939c5e206b47a64e94d2ec5897087b3"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "dfbad2aa2930ef7e615742bd43bccd6cadaeb77ceb46f9161bb81b715dda20aa"
+    "306dabe4a310a8bf0a50f95e00c393e79e64fb723d6830328dd92a553044552e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -170,6 +170,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
+    "uk_stage_uc_deduction_attributes": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
@@ -253,6 +258,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_uc_deduction_combination_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
     "uk_student_loan_plan_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1150,6 +1160,8 @@ def _gate_battery_payload(
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "uc_capital_coherence",
+        "uc_deduction_attributes",
         "cgt_incidence_clone",
         "cgt_band_donors",
         "hmrc_cgt_gains_spine",
@@ -1159,6 +1171,7 @@ def _gate_battery_payload(
     ]
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
+        "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
