@@ -35,7 +35,7 @@ LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT = "e2fc882c35f9203c788a7159e7b08b0b5e5
 #: Chronicle-era spelling of the same pin. This identifier only *looks* like an
 #: environment variable to a grep — it is a git commit of the source-coverage
 #: contract, so it takes an alias rather than the dual-read window in
-#: :mod:`microcosm.build.chronicle_env`. The ledger-era name stays exported: it
+#: :mod:`microcosm.build.logbook_env`. The ledger-era name stays exported: it
 #: is what callers import, and the ``ledger_commit`` diagnostic field it feeds
 #: is frozen at v1 (microcosm#639).
 CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT = LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT

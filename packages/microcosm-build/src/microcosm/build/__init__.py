@@ -49,9 +49,9 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
-from microcosm.build.chronicle_env import (  # noqa: E402 - after the compat gate
-    chronicle_env,
-    chronicle_env_names,
+from microcosm.build.logbook_env import (  # noqa: E402 - after the compat gate
+    logbook_env,
+    logbook_env_names,
 )
 from microcosm.build.chronicle_epoch import (  # noqa: E402 - after the compat gate
     ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
@@ -224,8 +224,8 @@ __all__ = [
     "MonetaryTargetProfile",
     "PreparedMonetaryMeasure",
     "add_ledger_artifact_args",
-    "chronicle_env",
-    "chronicle_env_names",
+    "logbook_env",
+    "logbook_env_names",
     "fact_key_epoch",
     "feed_fact_key_epochs",
     "is_chronicle_fact_key",

@@ -162,7 +162,7 @@ LEDGER_HMRC_BANDS: dict[str, str] = {
 # Chronicle-era spellings of the three band maps above. These identifiers only
 # look like environment variables to a grep — they are plain support-layout
 # data, so they take aliases rather than the dual-read window in
-# :mod:`microcosm.build.chronicle_env`. The ledger-era names stay: they are what
+# :mod:`microcosm.build.logbook_env`. The ledger-era names stay: they are what
 # the generator below imports, and the value ids they translate are published
 # Chronicle ids, unaffected by the rename.
 CHRONICLE_ONS_TURNOVER_BANDS = LEDGER_ONS_TURNOVER_BANDS

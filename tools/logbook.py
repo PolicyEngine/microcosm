@@ -7,11 +7,11 @@ exactly one named chain; ``validate`` and ``render`` accept either a single
 archive or a directory of them, reporting chain by chain.
 
 Remote export uses a distinct, read-only ``logbook_exporter`` JWT supplied
-as ``CHRONICLE_EXPORT_KEY`` plus the hosted project's gateway key in
-``CHRONICLE_API_KEY``.  It never reuses the insert-only writer key. The
+as ``LOGBOOK_EXPORT_KEY`` plus the hosted project's gateway key in
+``LOGBOOK_API_KEY``.  It never reuses the insert-only writer key. The
 ledger-era spellings (``POPULACE_LEDGER_EXPORT_KEY``,
 ``POPULACE_LEDGER_API_KEY``, ``POPULACE_LEDGER_URL``) stay honored for the
-chronicle#143 dual-read window and warn once per process.
+Logbook dual-read window (microcosm#632) and warn once per process.
 The live store is row-oriented and carries every attempt across all scopes;
 the per-scope split is an archive convention, not a database partition.
 """
@@ -27,14 +27,14 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request
 
-from microcosm.build.chronicle_env import (
-    CHRONICLE_API_KEY_ENV,
-    CHRONICLE_EXPORT_KEY_ENV,
-    CHRONICLE_URL_ENV,
+from microcosm.build.logbook_env import (
     LEGACY_API_KEY_ENV,
     LEGACY_EXPORT_KEY_ENV,
-    chronicle_env,
-    describe_chronicle_env,
+    LOGBOOK_API_KEY_ENV,
+    LOGBOOK_EXPORT_KEY_ENV,
+    LOGBOOK_URL_ENV,
+    describe_logbook_env,
+    logbook_env,
 )
 from microcosm.build.logbook import (
     LOGBOOK_ROW_FIELDS,
@@ -57,9 +57,10 @@ ROOT = Path(__file__).resolve().parents[1]
 #: chain is born, and country is the outermost one.
 DEFAULT_ARCHIVE_ROOT = ROOT / "logbook"
 DEFAULT_SPOOL_ROOT = ROOT / "logbook-spool"
-#: Ledger-era names, still honored through the chronicle#143 dual-read window.
-#: Reads go through :func:`microcosm.build.chronicle_env.chronicle_env`, which
-#: prefers ``CHRONICLE_EXPORT_KEY`` / ``CHRONICLE_API_KEY``.
+#: Ledger-era names, still honored through the Logbook dual-read window
+#: (microcosm#632). Reads go through
+#: :func:`microcosm.build.logbook_env.logbook_env`, which prefers
+#: ``LOGBOOK_EXPORT_KEY`` / ``LOGBOOK_API_KEY``.
 REMOTE_EXPORT_KEY_ENV = LEGACY_EXPORT_KEY_ENV
 REMOTE_API_KEY_ENV = LEGACY_API_KEY_ENV
 REMOTE_PAGE_SIZE = 500
@@ -257,14 +258,14 @@ def _archive_scope(archive: Path) -> str:
 
 
 def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
-    ledger_url = chronicle_env(CHRONICLE_URL_ENV)
-    export_key = chronicle_env(CHRONICLE_EXPORT_KEY_ENV)
-    api_key = chronicle_env(CHRONICLE_API_KEY_ENV)
+    ledger_url = logbook_env(LOGBOOK_URL_ENV)
+    export_key = logbook_env(LOGBOOK_EXPORT_KEY_ENV)
+    api_key = logbook_env(LOGBOOK_API_KEY_ENV)
     if not ledger_url or not export_key or not api_key:
         raise ValueError(
             "remote export requires "
-            + describe_chronicle_env(
-                CHRONICLE_URL_ENV, CHRONICLE_EXPORT_KEY_ENV, CHRONICLE_API_KEY_ENV
+            + describe_logbook_env(
+                LOGBOOK_URL_ENV, LOGBOOK_EXPORT_KEY_ENV, LOGBOOK_API_KEY_ENV
             )
         )
 
