@@ -285,6 +285,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
     mortgages: list[dict[str, object]] = []
     for household_id in range(1, _ROOT_HOUSEHOLDS + 1):
         scotland = household_id % 4 == 0
+        # Keep household composition independent of the region cadence so the
+        # region-stratified SPI prior allocation changes weighted person mass.
+        has_child = household_id % 5 == 0
         region = (8, 11, 12, 1)[household_id % 4]
         households.append(
             {
@@ -318,7 +321,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SERNUM": household_id,
                 "BENUNIT": 1,
                 "FAMTYPB2": 5,
-                "DEPCHLDB": int(household_id % 4 == 0),
+                "DEPCHLDB": int(has_child),
                 "TOTCAPB4": 100.0 + household_id,
             }
         )
@@ -372,7 +375,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "HEARTVAL": 5.0,
         }
         adults.append(adult)
-        if household_id % 4 == 0:
+        if has_child:
             children.append(
                 {
                     "SERNUM": household_id,

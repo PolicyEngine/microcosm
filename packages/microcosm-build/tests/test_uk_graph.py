@@ -404,6 +404,37 @@ def test_spi_support_channel_declares_its_mass_change_and_cgt_clones_conserve() 
 
 
 @pytest.mark.requires_uk
+def test_spi_support_fixture_changes_person_mass_and_conserves_household_mass() -> None:
+    """Keep H2 sensitive to support-channel composition changes."""
+
+    from pathlib import Path
+
+    from microcosm.build.uk_runtime.frs_spine import uk_frs_spine_seed_frame
+    from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
+
+    root = Path(__file__).resolve().parents[3]
+    fixture = root / "packages/microcosm-graph/tests/fixtures/parity/uk_spine"
+    _, implementations = fixture_stage_plan_inputs(fixture / "sources")
+    before = implementations["frs_spine"](uk_frs_spine_seed_frame())
+    after = implementations["spi_support_channel"](before)
+
+    before_person_mass = before.stratum_mass()
+    after_person_mass = after.stratum_mass()
+    assert before_person_mass.index.equals(after_person_mass.index)
+    assert not np.isclose(
+        float(after_person_mass.sum()),
+        float(before_person_mass.sum()),
+        rtol=1e-9,
+        atol=0.0,
+    )
+
+    before_household_mass = before.weights_for("household").total
+    assert after.weights_for("household").total == before_household_mass
+    assert after.mass_log[-1].old_total == before_household_mass
+    assert after.mass_log[-1].new_total == before_household_mass
+
+
+@pytest.mark.requires_uk
 def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     tmp_path,
 ) -> None:
