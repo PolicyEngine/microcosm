@@ -1,1 +1,1 @@
-tools/graph_uk_spine_fixture.py; current 26-transform legacy StagePlan oracle with parsed private-source seams.
+tools/graph_uk_spine_fixture.py; current 26-transform legacy StagePlan oracle with parsed private-source seams. The oracle identity is computed live by legacy_oracle_identity(), never pinned: it is machine-specific.

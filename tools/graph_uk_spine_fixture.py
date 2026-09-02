@@ -7,6 +7,9 @@ are replaced only through their supported parsed-input seams.  The bundle's
 ``fixture.json`` is deliberately data-only so the graph's unbound UK registry
 can reconstruct the same transforms; no recorded stage deltas are written or
 replayed.
+
+The oracle's identity is machine-specific, so it is never pinned:
+``legacy_oracle_identity`` recomputes it in the acceptance test's own process.
 """
 
 from __future__ import annotations
@@ -845,9 +848,10 @@ def _normalization_markdown() -> str:
         "The unchanged legacy transforms retain these 21 textual table columns as",
         "pandas `object`. The frozen graph dtype token `string` is specified by",
         'interface-freeze amendment 10 as pandas `StringDtype(storage="python")`.',
-        "Before computing only the legacy oracle's `uk_frame_content_identity`,",
-        "the generator casts exactly this audited surface to that dtype. No values,",
-        "row order, column order, weights, strata, mass records, or metadata change.",
+        "Before computing the legacy oracle's `uk_frame_content_identity` (live,",
+        "in `legacy_oracle_identity`), exactly this audited surface is cast to that",
+        "dtype. No values, row order, column order, weights, strata, mass records,",
+        "or metadata change.",
         "",
     ]
     for entity, columns in _NORMALIZED_STRING_COLUMNS.items():
@@ -1079,6 +1083,59 @@ def _build_implementations(
     return implementations, root_capture
 
 
+def _run_legacy_plan(
+    stages: Iterable[SourceStageSpec],
+    implementations: Mapping[str, object],
+) -> Frame:
+    """Run the legacy 26-stage StagePlan oracle and return its final frame."""
+
+    stages = tuple(stages)
+    committed = load_country_spec("uk")
+    fixture_spec = replace(
+        committed,
+        sources=SourceManifest(
+            country="uk",
+            version=1,
+            policy="Hermetic real-transform H2 parity fixture.",
+            stages=stages,
+        ),
+        geography_spine=None,
+    )
+    plan = country_stage_plan(fixture_spec, implementations)
+    # Pandas 3 infers its transitional ``str`` dtype for text by default;
+    # the legacy spine contract predates that switch and its physical text
+    # surface is object. Preserve that legacy side of the comparison; the
+    # one explicit interface normalization happens in
+    # ``_normalize_legacy_strings``.
+    with pd.option_context("future.infer_string", False):
+        final, records = plan.run(uk_frs_spine_seed_frame())
+    expected_stage_names = tuple(stage.stage for stage in stages)
+    if tuple(record.stage for record in records) != expected_stage_names:
+        raise RuntimeError(
+            "The legacy fixture StagePlan did not execute all 26 stages."
+        )
+    return final
+
+
+def legacy_oracle_identity(fixture: Path) -> str:
+    """The legacy oracle's normalized identity on the fixture, computed live.
+
+    Rebuilds the same 26 transforms the graph's unbound UK registry
+    reconstructs from ``fixture/sources`` and runs them through the legacy
+    StagePlan in this process. The identity is a byte-exact fingerprint of
+    every cell, and floating-point stages differ at the last bit between
+    machines (2026-09-02: three distinct values on one Mac and the two CI
+    runners with identical library versions), so parity is asserted against
+    this live value and never against a pinned string.
+    """
+
+    from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
+
+    stages, implementations = fixture_stage_plan_inputs(fixture / "sources")
+    final = _run_legacy_plan(stages, implementations)
+    return uk_frame_content_identity(_normalize_legacy_strings(final))
+
+
 def generate(output: Path) -> None:
     """Write all deterministic H2 artifacts beneath ``output``."""
 
@@ -1125,29 +1182,7 @@ def generate(output: Path) -> None:
         cgt_distribution=cgt_distribution,
         cgt_parameters=cgt_parameters,
     )
-    committed = load_country_spec("uk")
-    fixture_spec = replace(
-        committed,
-        sources=SourceManifest(
-            country="uk",
-            version=1,
-            policy="Hermetic real-transform H2 parity fixture.",
-            stages=stages,
-        ),
-        geography_spine=None,
-    )
-    plan = country_stage_plan(fixture_spec, implementations)
-    # Pandas 3 infers its transitional ``str`` dtype for text by default;
-    # the legacy spine contract predates that switch and its physical text
-    # surface is object. Preserve that legacy side of the comparison, then
-    # perform the one explicit interface normalization below.
-    with pd.option_context("future.infer_string", False):
-        final, records = plan.run(uk_frs_spine_seed_frame())
-    expected_stage_names = tuple(stage.stage for stage in stages)
-    if tuple(record.stage for record in records) != expected_stage_names:
-        raise RuntimeError(
-            "The legacy fixture StagePlan did not execute all 26 stages."
-        )
+    final = _run_legacy_plan(stages, implementations)
     try:
         root_frame = root_capture["frame"]
     except KeyError as error:
@@ -1181,18 +1216,22 @@ def generate(output: Path) -> None:
     }
     _write_json(sources / "fixture.json", descriptor)
 
-    normalized = _normalize_legacy_strings(final)
     graph = uk_spine_graph()
     (output / "uk_spine.json").write_text(graph_to_json(graph) + "\n", encoding="utf-8")
-    (output / "uk_frame_content_identity.txt").write_text(
-        uk_frame_content_identity(normalized) + "\n", encoding="utf-8"
+    # Reported, never pinned: the identity is machine-specific (see
+    # ``legacy_oracle_identity``), so the acceptance test computes it live.
+    print(
+        "legacy oracle identity on this machine: "
+        + uk_frame_content_identity(_normalize_legacy_strings(final))
     )
     (output / "NORMALIZATION.md").write_text(
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
         "tools/graph_uk_spine_fixture.py; current 26-transform legacy "
-        "StagePlan oracle with parsed private-source seams.\n",
+        "StagePlan oracle with parsed private-source seams. The oracle "
+        "identity is computed live by legacy_oracle_identity(), never "
+        "pinned: it is machine-specific.\n",
         encoding="utf-8",
     )
 

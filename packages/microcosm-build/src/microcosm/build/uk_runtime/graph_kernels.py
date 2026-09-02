@@ -21,6 +21,7 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -44,6 +45,9 @@ from microcosm.graph.population import dtype_for_token
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
+if TYPE_CHECKING:
+    from microcosm.build.source_manifest import SourceStageSpec
+
 __all__ = [
     "UKClaimKernel",
     "UKCreateKernel",
@@ -51,6 +55,7 @@ __all__ = [
     "UKIdentityKernel",
     "UKStageKernel",
     "build_uk_registry",
+    "fixture_stage_plan_inputs",
 ]
 
 
@@ -265,10 +270,42 @@ def _fixture_cgt_distribution(path: Path):
     )
 
 
+def _fixture_descriptor(
+    source: Path,
+) -> tuple[Mapping[str, object], dict[str, SourceStageSpec]]:
+    """Parse the H2 bundle's descriptor and its 26 stage specs, keyed by name."""
+
+    from microcosm.build.source_manifest import SourceStageSpec
+
+    descriptor = _json_mapping(source / "fixture.json", label="descriptor")
+    if descriptor.get("schema_version") != "uk-spine-parity-fixture.v1":
+        raise ValueError(
+            "UK parity fixture schema_version must be 'uk-spine-parity-fixture.v1'."
+        )
+    stage_payloads = _mapping(descriptor.get("stages"), label="stages")
+    stages: dict[str, SourceStageSpec] = {}
+    for name, payload in stage_payloads.items():
+        if not isinstance(name, str):
+            raise ValueError("UK parity fixture stage names must be strings.")
+        stage = SourceStageSpec.from_mapping(_mapping(payload, label=f"stage {name!r}"))
+        if stage.stage != name:
+            raise ValueError(
+                f"UK parity fixture stage key {name!r} contains {stage.stage!r}."
+            )
+        stages[name] = stage
+    if set(stages) != set(_STAGE_MODULES):
+        missing = sorted(set(_STAGE_MODULES) - set(stages))
+        extra = sorted(set(stages) - set(_STAGE_MODULES))
+        raise ValueError(
+            "UK parity fixture must describe the current 26-stage spine "
+            f"(missing={missing}, extra={extra})."
+        )
+    return descriptor, stages
+
+
 def _fixture_implementations(source: Path) -> Mapping[str, object]:
     """Reconstruct current transforms from one data-only H2 descriptor."""
 
-    from microcosm.build.source_manifest import SourceStageSpec
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
@@ -302,31 +339,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .was_wealth import UKWASWealthStageTransform
 
-    descriptor = _json_mapping(source / "fixture.json", label="descriptor")
-    if descriptor.get("schema_version") != "uk-spine-parity-fixture.v1":
-        raise ValueError(
-            "UK parity fixture schema_version must be 'uk-spine-parity-fixture.v1'."
-        )
-    raw_stages = _mapping(descriptor.get("stages"), label="stages")
-    stages: dict[str, SourceStageSpec] = {}
-    for name, raw_stage in raw_stages.items():
-        if not isinstance(name, str):
-            raise ValueError("UK parity fixture stage names must be strings.")
-        stage = SourceStageSpec.from_mapping(
-            _mapping(raw_stage, label=f"stage {name!r}")
-        )
-        if stage.stage != name:
-            raise ValueError(
-                f"UK parity fixture stage key {name!r} contains {stage.stage!r}."
-            )
-        stages[name] = stage
-    if set(stages) != set(_STAGE_MODULES):
-        missing = sorted(set(_STAGE_MODULES) - set(stages))
-        extra = sorted(set(stages) - set(_STAGE_MODULES))
-        raise ValueError(
-            "UK parity fixture must describe the current 26-stage spine "
-            f"(missing={missing}, extra={extra})."
-        )
+    descriptor, stages = _fixture_descriptor(source)
 
     config = _mapping(descriptor.get("config"), label="config")
     inputs = _mapping(descriptor.get("inputs"), label="inputs")
@@ -456,6 +469,46 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
         }
     )
+
+
+def fixture_stage_plan_inputs(
+    source: Path,
+) -> tuple[tuple[SourceStageSpec, ...], Mapping[str, object]]:
+    """The H2 bundle as legacy StagePlan inputs: ordered specs, every transform.
+
+    The graph's CREATE node loads the captured root frame, so the kernel
+    mapping carries no ``frs_spine`` transform; the legacy oracle applies one
+    built from the same ``frs_raw`` tables, added here. The descriptor keys
+    stages by name, so the committed UK manifest supplies the order the
+    legacy plan runs them in.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+
+    from .frs_spine import UKFRSSpineStageTransform
+
+    descriptor, stages = _fixture_descriptor(source)
+    committed = load_country_spec("uk")
+    if committed.sources is None:
+        raise ValueError("The committed UK country spec declares no sources.")
+    ordered = tuple(
+        stages[stage.stage]
+        for stage in committed.sources.stages
+        if stage.stage in stages
+    )
+    if len(ordered) != len(stages):
+        unordered = sorted(set(stages) - {stage.stage for stage in ordered})
+        raise ValueError(
+            "UK parity fixture stages missing from the committed spine order: "
+            f"{unordered}."
+        )
+    inputs = _mapping(descriptor.get("inputs"), label="inputs")
+    raw_dir = _fixture_input(source, inputs, "frs_raw")
+    implementations = dict(_fixture_implementations(source))
+    implementations["frs_spine"] = UKFRSSpineStageTransform(
+        raw_dir, stage=stages["frs_spine"]
+    )
+    return ordered, MappingProxyType(implementations)
 
 
 class _FixtureTransformResolver:

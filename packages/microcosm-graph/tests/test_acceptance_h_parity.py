@@ -41,8 +41,9 @@ PARITY = Path(__file__).parent / "fixtures" / "parity"
 KERNEL_PARITY = PARITY / "kernels"
 
 #: H2: ``uk_spine.json`` — the 26-stage FRS spine expressed as a graph — plus
-#: ``uk_frame_content_identity.txt``, the identity the current spine produces
-#: on the same fixture.
+#: ``sources/``, the data-only bundle both the graph and the legacy oracle
+#: rebuild their transforms from. The oracle's identity is machine-specific,
+#: so it is computed live in the test's own process, never pinned.
 UK_SPINE_PARITY = PARITY / "uk_spine"
 
 #: H3: ``us_post_transfer.json`` — the derive/seed/simulate subgraph of the
@@ -152,18 +153,24 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     engine tier (``requires_uk``) and skips in the engine-free fast lane.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/uk_spine/`` with
-    ``uk_spine.json`` and ``uk_frame_content_identity.txt``. Stage order comes
+    ``uk_spine.json`` and ``sources/``; the legacy oracle's identity is
+    computed live from those sources (it is machine-specific). Stage order comes
     from declared ``consumes``: the assertion below is that the compiled
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
     in ``tools/build_uk_frs_spine.py`` — the 26 names intersected with a
     28-stage packaged manifest, kept in step by hand — can be deleted.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
-    expected = (UK_SPINE_PARITY / "uk_frame_content_identity.txt").read_text().strip()
 
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
     from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
     from microcosm.graph import ContentStore, compile_graph, graph_from_json, run_graph
+    from tools.graph_uk_spine_fixture import legacy_oracle_identity
+
+    # The identity is a byte-exact fingerprint of every cell, and the spine's
+    # floating-point stages differ at the last bit between machines, so the
+    # oracle runs here, in the same process, on the same on-disk sources.
+    expected = legacy_oracle_identity(UK_SPINE_PARITY)
 
     # The graph the UK lane ships is also pinned as JSON beside the fixture, so
     # a silent change to the declaration shows up as a fixture diff.
