@@ -194,6 +194,72 @@ def test_structural_nodes_depend_on_every_node_of_their_base() -> None:
     assert compiled.predecessors["adults"] == ("fit_a", "survey")
 
 
+def test_rewrites_own_a_carried_column_in_a_versioned_population() -> None:
+    subset = Node(
+        "adults",
+        "select.rows@1",
+        structural=StructuralDelta.FILTER,
+        base="survey",
+        inputs=(Slice("person", ("is_adult",)),),
+    )
+    rewriter = Node(
+        "recode_income",
+        "k@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "income", "float64", rewrite=True),),
+        population="adults",
+    )
+    reader = Node(
+        "uses_income",
+        "k@1",
+        inputs=(Slice("person", ("income",)),),
+        outputs=(Owned("person", "y", "float64"),),
+        population="adults",
+    )
+    compiled = compile_graph(Graph("toy", (SRC,), (CREATE, subset, rewriter, reader)))
+    assert compiled.owners[("adults", "person", "income")] == "recode_income"
+    assert compiled.predecessors["recode_income"] == ("adults",)
+    assert compiled.predecessors["uses_income"] == ("adults", "recode_income")
+
+
+def test_rewrites_need_a_base_with_a_matching_declared_dtype() -> None:
+    in_create = Node(
+        "recode_income",
+        "k@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "income", "float64", rewrite=True),),
+    )
+    with pytest.raises(GraphError, match="needs a version with a base"):
+        compile_graph(Graph("toy", (SRC,), (CREATE, in_create)))
+
+    subset = Node(
+        "adults",
+        "select.rows@1",
+        structural=StructuralDelta.FILTER,
+        base="survey",
+        inputs=(Slice("person", ("is_adult",)),),
+    )
+    wrong_dtype = Node(
+        "recode_income",
+        "k@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "income", "string", rewrite=True),),
+        population="adults",
+    )
+    with pytest.raises(GraphError, match="incumbent is declared 'float64'"):
+        compile_graph(Graph("toy", (SRC,), (CREATE, subset, wrong_dtype)))
+
+    unknown = Node(
+        "recode_ghost",
+        "k@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "ghost", "float64", rewrite=True),),
+        population="adults",
+    )
+    with pytest.raises(GraphError, match="which no node defines"):
+        compile_graph(Graph("toy", (SRC,), (CREATE, subset, unknown)))
+
+
 def test_a_filter_cannot_read_a_column_nobody_defines() -> None:
     subset = Node(
         "adults",

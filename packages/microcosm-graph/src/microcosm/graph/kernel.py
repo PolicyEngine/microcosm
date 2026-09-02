@@ -14,6 +14,10 @@ Structural kernels return data, and the executor does the structural work:
 - ``FILTER`` returns the surviving-row mask as :attr:`KernelResult.keep`;
   the executor subsets the base version by id, carries every column, and
   records mass.
+- ``EXPAND`` returns the clone lineage as :attr:`KernelResult.expand` (per
+  entity, new ids to the source ids they copy) plus the new weights; the
+  executor carries every column from the source rows, records the lineage
+  in the receipt, and records mass.
 - ``REWEIGHT`` (and any node with a declared weight transition) returns
   :attr:`KernelResult.weights`; the executor validates the kind transition
   and the mass policy.
@@ -163,6 +167,13 @@ class KernelResult:
         keep: ``FILTER`` kernels only: a boolean Series indexed by the ids
             of the filtered entity in the base version; ``True`` keeps the
             row. The executor applies it and records mass.
+        expand: ``EXPAND`` kernels only: entity name to a Series indexed by
+            the ids of the rows the new version adds, whose values are the
+            ids of the base rows they copy. Every base row survives; the
+            executor carries each column from the source row, and the
+            person-to-group memberships of a copied group's members follow
+            the copied group. Weights for expanded entities come through
+            ``weights``.
         weights: ``REWEIGHT`` kernels and declared weight transitions only:
             the new explicit weights of the transition's entity.
         artifacts: Opaque bytes stored beside the node's outputs (a fitted
@@ -177,6 +188,7 @@ class KernelResult:
     columns: Mapping[tuple[str, str], pd.Series] = field(default_factory=dict)
     frame: Frame | None = None
     keep: pd.Series | None = None
+    expand: Mapping[str, pd.Series] | None = None
     weights: Weights | None = None
     artifacts: Mapping[str, bytes] = field(default_factory=dict)
     receipt: Mapping[str, object] = field(default_factory=dict)

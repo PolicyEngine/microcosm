@@ -186,6 +186,12 @@ class Owned:
         rows: :data:`ROWS_ALL`, or a boolean input column naming the owned
             positions. Positions outside the mask are never written.
         ownership: ``PRODUCED`` writes values; ``ABSENT`` asserts null.
+        rewrite: The node replaces a column its population version carries
+            from its base. The kernel receives the incumbent values under the
+            same column name, the base's declared dtype must equal ``dtype``,
+            and the node owns the column in its own version. A rewrite needs a
+            version with a base, so a column loaded by a ``CREATE`` node is
+            rewritten only after a structural node has opened a new version.
     """
 
     entity: str
@@ -193,6 +199,7 @@ class Owned:
     dtype: str
     rows: str = ROWS_ALL
     ownership: Ownership = Ownership.PRODUCED
+    rewrite: bool = False
 
     def __post_init__(self) -> None:
         _nonempty("Owned.entity", self.entity)
@@ -354,10 +361,11 @@ class Node:
                     f"Node {self.id!r}: owned-row mask {o.rows!r} on {o.entity!r} "
                     "must be one of the node's input columns."
                 )
-            if (o.entity, o.column) in declared_inputs:
+            if (o.entity, o.column) in declared_inputs and not o.rewrite:
                 raise GraphError(
                     f"Node {self.id!r} both reads and owns {o.entity}.{o.column}; "
-                    "a node cannot own a column it consumes."
+                    "a node cannot own a column it consumes unless the cell is "
+                    "declared as a rewrite."
                 )
 
     def normative(self) -> dict[str, object]:
@@ -472,6 +480,12 @@ def compile_graph(graph: Graph) -> CompiledGraph:
     for node in graph.nodes:
         for owned in node.outputs:
             key = (versions[node.id], owned.entity, owned.column)
+            if owned.rewrite and by_id[key[0]].structural is StructuralDelta.CREATE:
+                raise GraphError(
+                    f"Node {node.id!r} rewrites {owned.entity}.{owned.column} inside "
+                    f"the CREATE version {key[0]!r}; a rewrite needs a version with "
+                    "a base to carry the incumbent from."
+                )
             if key in owners:
                 raise GraphError(
                     f"{owned.entity}.{owned.column} in version {key[0]!r} is owned "
@@ -534,8 +548,11 @@ def compile_graph(graph: Graph) -> CompiledGraph:
             continue
         version = versions[node.id]
         predecessors[node.id].add(version)
+        rewritten = {(o.entity, o.column) for o in node.outputs if o.rewrite}
         for s in node.inputs:
             for column in s.columns:
+                if (s.entity, column) in rewritten:
+                    continue  # the incumbent arrives through the rewrite itself
                 source = reader_of(node.id, version, s.entity, column)
                 if source == node.id:
                     raise GraphError(f"Node {node.id!r} depends on itself.")
@@ -543,6 +560,26 @@ def compile_graph(graph: Graph) -> CompiledGraph:
             check_mask(node.id, version, s.entity, s.rows)
         for o in node.outputs:
             check_mask(node.id, version, o.entity, o.rows)
+            if not o.rewrite:
+                continue
+            holder = by_id[version]
+            if holder.structural is StructuralDelta.CREATE:
+                raise GraphError(
+                    f"Node {node.id!r} rewrites {o.entity}.{o.column} inside the "
+                    f"CREATE version {version!r}; a rewrite needs a version with a "
+                    "base to carry the incumbent from."
+                )
+            base_dtype = declared_dtype(holder.base, o.entity, o.column)  # type: ignore[arg-type]
+            if base_dtype is None:
+                raise GraphError(
+                    f"Node {node.id!r} rewrites {o.entity}.{o.column}, which no "
+                    f"node defines below version {version!r}."
+                )
+            if base_dtype != o.dtype:
+                raise GraphError(
+                    f"Node {node.id!r} rewrites {o.entity}.{o.column} as {o.dtype!r} "
+                    f"but the incumbent is declared {base_dtype!r}."
+                )
 
     depth: dict[str, int] = {}
 

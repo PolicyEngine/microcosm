@@ -186,6 +186,21 @@ Amendments so far (each re-locked):
    run continues; a compute or release kernel that raises still aborts the
    run. `certified` requires every ancestral gate to be `pass` or
    `not_applicable`.
+8. **Rewrites are declared cells.** `Owned.rewrite=True` says a node
+   replaces a column its version carries from its base: the kernel receives
+   the incumbent under the same name, the base's declared dtype must match,
+   and the node owns the column in its own version. A rewrite therefore
+   needs a version with a base (an identity `FILTER` opens one). Raised by
+   the UK lane, which had ten rewriting stages; adopted 2026-09-01.
+9. **Expansion lineage is a result field.** `KernelResult.expand` maps, per
+   entity, the ids a new version adds to the base ids they copy; the
+   executor carries columns from source rows, records lineage in the
+   receipt, and records mass. Raised by the UK lane for the three clone
+   stages; adopted 2026-09-01.
+10. **Strings are `string`.** The graph stores text as pandas `string`
+    (python storage); a population entering the graph with `object`
+    strings is normalized at `CREATE`. Parity fixtures compare identities
+    after the same normalization on the legacy side, and say so.
 
 ## Ownership
 
