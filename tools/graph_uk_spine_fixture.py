@@ -1117,23 +1117,29 @@ def _run_legacy_plan(
     return final
 
 
-def legacy_oracle_identity(fixture: Path) -> str:
-    """The legacy oracle's normalized identity on the fixture, computed live.
+def legacy_oracle_frame(fixture: Path) -> Frame:
+    """The legacy oracle's final frame on the fixture, computed live.
 
     Rebuilds the same 26 transforms the graph's unbound UK registry
-    reconstructs from ``fixture/sources`` and runs them through the legacy
-    StagePlan in this process. The identity is a byte-exact fingerprint of
+    reconstructs from ``fixture/sources``, runs them through the legacy
+    StagePlan in this process, and applies the one string normalization the
+    fixture documents. The content identity is a byte-exact fingerprint of
     every cell, and floating-point stages differ at the last bit between
     machines (2026-09-02: three distinct values on one Mac and the two CI
     runners with identical library versions), so parity is asserted against
-    this live value and never against a pinned string.
+    this live frame and never against a pinned string.
     """
 
     from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
 
     stages, implementations = fixture_stage_plan_inputs(fixture / "sources")
-    final = _run_legacy_plan(stages, implementations)
-    return uk_frame_content_identity(_normalize_legacy_strings(final))
+    return _normalize_legacy_strings(_run_legacy_plan(stages, implementations))
+
+
+def legacy_oracle_identity(fixture: Path) -> str:
+    """``uk_frame_content_identity`` of :func:`legacy_oracle_frame`."""
+
+    return uk_frame_content_identity(legacy_oracle_frame(fixture))
 
 
 def generate(output: Path) -> None:

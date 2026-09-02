@@ -71,6 +71,67 @@ def _assert_same_bytes(actual, expected) -> None:
     assert np.array_equal(actual.isna().to_numpy(), expected.isna().to_numpy())
 
 
+def _frame_differences(actual, expected) -> str:
+    """Name the cells two frames disagree on; two identities alone say nothing."""
+    import pandas as pd
+
+    lines: list[str] = []
+    for entity in sorted(set(actual.entities) | set(expected.entities)):
+        if entity not in actual.entities or entity not in expected.entities:
+            lines.append(f"{entity}: present in only one frame")
+            continue
+        left, right = actual.table(entity), expected.table(entity)
+        if list(left.columns) != list(right.columns):
+            symmetric = sorted(set(left.columns) ^ set(right.columns))
+            lines.append(f"{entity}: column order or set differs ({symmetric})")
+        if len(left) != len(right):
+            lines.append(f"{entity}: {len(left)} vs {len(right)} rows")
+            continue
+        for column in left.columns:
+            if column not in right.columns:
+                continue
+            x, y = left[column], right[column]
+            if str(x.dtype) != str(y.dtype):
+                lines.append(f"{entity}.{column}: dtype {x.dtype} vs {y.dtype}")
+            if x.equals(y):
+                continue
+            if pd.api.types.is_numeric_dtype(x) and pd.api.types.is_numeric_dtype(y):
+                xv = x.to_numpy(dtype="float64", na_value=np.nan)
+                yv = y.to_numpy(dtype="float64", na_value=np.nan)
+                unequal = ~np.isclose(xv, yv, rtol=0.0, atol=0.0, equal_nan=True)
+                count = int(unequal.sum())
+                largest = float(np.nanmax(np.abs(xv - yv)[unequal])) if count else 0.0
+                lines.append(
+                    f"{entity}.{column}: {count} of {len(x)} cells differ, "
+                    f"max |difference| {largest:.3e}"
+                )
+            else:
+                count = int((x.astype("string") != y.astype("string")).sum())
+                lines.append(f"{entity}.{column}: {count} of {len(x)} cells differ")
+    for entity in sorted(
+        set(actual.weighted_entities) | set(expected.weighted_entities)
+    ):
+        if (
+            entity not in actual.weighted_entities
+            or entity not in expected.weighted_entities
+        ):
+            lines.append(f"{entity}: weighted in only one frame")
+            continue
+        xv = np.asarray(actual.weights_for(entity).values, dtype="float64")
+        yv = np.asarray(expected.weights_for(entity).values, dtype="float64")
+        if xv.shape != yv.shape:
+            lines.append(f"{entity} weights: {xv.shape} vs {yv.shape}")
+        elif xv.tobytes() != yv.tobytes():
+            unequal = ~np.isclose(xv, yv, rtol=0.0, atol=0.0, equal_nan=True)
+            lines.append(
+                f"{entity} weights: {int(unequal.sum())} of {len(xv)} differ, "
+                f"max |difference| {float(np.nanmax(np.abs(xv - yv))):.3e}"
+            )
+    return "\n".join(lines) or (
+        "no table cell or weight differs; strata, mass log, or metadata differ"
+    )
+
+
 def _require(path: Path, produced_by: str) -> Path:
     """Fail with the fixture's path and its owner, never with a bare error."""
     assert path.exists(), (
@@ -165,12 +226,13 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
     from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
     from microcosm.graph import ContentStore, compile_graph, graph_from_json, run_graph
-    from tools.graph_uk_spine_fixture import legacy_oracle_identity
+    from tools.graph_uk_spine_fixture import legacy_oracle_frame
 
     # The identity is a byte-exact fingerprint of every cell, and the spine's
     # floating-point stages differ at the last bit between machines, so the
     # oracle runs here, in the same process, on the same on-disk sources.
-    expected = legacy_oracle_identity(UK_SPINE_PARITY)
+    oracle = legacy_oracle_frame(UK_SPINE_PARITY)
+    expected = uk_frame_content_identity(oracle)
 
     # The graph the UK lane ships is also pinned as JSON beside the fixture, so
     # a silent change to the declaration shows up as a fixture diff.
@@ -192,7 +254,20 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
         decisions=(),
     )
     final_version = compiled.versions[compiled.order[-1]]
-    assert uk_frame_content_identity(manifest.population(final_version)) == expected
+    final = manifest.population(final_version)
+    actual = uk_frame_content_identity(final)
+    if actual != expected:
+        # Say which cells disagree, and whether the legacy path itself is
+        # process-deterministic on this machine, before failing.
+        differences = _frame_differences(final, oracle)
+        repeated = uk_frame_content_identity(legacy_oracle_frame(UK_SPINE_PARITY))
+        stability = (
+            "legacy oracle reproduces its own identity in this process"
+            if repeated == expected
+            else f"legacy oracle is NOT process-deterministic here: {repeated}"
+        )
+        print(f"H2 graph {actual} != legacy {expected}\n{stability}\n{differences}")
+        pytest.fail(f"graph != legacy oracle; {stability}\n{differences}")
 
     # Charter F12: stage order is derived from declared inputs, so the
     # hand-maintained tuple in the UK driver is gone.
