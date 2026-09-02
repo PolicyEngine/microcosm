@@ -73,12 +73,16 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   Set `FIT_QRF_TOLERANCE` to `Tolerance(ulps=1)`, the smallest non-bitwise
   bound and one ULP above the observation; updated only the fit.qrf source-hash
   pin, not parity data. Kernel and H1 checks report `8 passed in 4.96s`.
+- Ran the sanctioned acceptance flip after the three properties passed
+  together (`3 passed in 0.62s`). Its resulting diff removes exactly the B6,
+  C5, and D6 strict-xfail decorators. Restored the suite burndown to zero red
+  and the explorer pin to 44 green / 0 red; the three properties plus both
+  pins report `5 passed in 1.63s`.
 
 ## Next
 
 - Harden the independent-review B6 cache and C5 key-resolution edge cases.
-- Run the sanctioned three-marker flip, restore suite pins, execute the full
-  verification matrix, and write `out.md`.
+- Execute the full verification matrix and write `out.md`.
 
 # ACS predictor release join
 

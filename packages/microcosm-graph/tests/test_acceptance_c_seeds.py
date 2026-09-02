@@ -182,7 +182,6 @@ def test_c4_seed_from_identity(tmp_path: Path) -> None:
     assert len(set(elsewhere.seeds().values())) == len(elsewhere.seeds())
 
 
-@pytest.mark.xfail(strict=True, reason="charter C5: tolerance propagation pending")
 def test_c5_tolerance_is_declared(tmp_path: Path) -> None:
     """Receipts and readers carry an owner's exact declared tolerance.
 
