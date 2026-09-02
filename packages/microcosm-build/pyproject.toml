@@ -12,6 +12,7 @@ dependencies = [
     "scipy>=1.13",
     "huggingface-hub>=0.20",
     "microcosm-frame>=0.1,<0.2",
+    "microcosm-graph>=0.1,<0.2",
     "microcosm-fit>=0.1,<0.2",
     "microcosm-calibrate>=0.1,<0.2",
     # Parquet is the artifact format for the us_trade margin and entry
@@ -67,6 +68,7 @@ packages = ["src/microcosm"]
 
 [tool.uv.sources]
 microcosm-frame = { workspace = true }
+microcosm-graph = { workspace = true }
 microcosm-fit = { workspace = true }
 microcosm-calibrate = { workspace = true }
 microcosm-data = { workspace = true }
