@@ -21,8 +21,8 @@ and the evidence substrate (support summaries, past-cap census).
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
+    uk_local_target_loss_weights,
 )
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES
 from microcosm.build.uk_runtime.national_frame import (
@@ -47,6 +48,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_reviewed_exclusion_register,
 )
+from microcosm.calibrate.registry import TargetRegistry
 from microcosm.calibrate.solve import (
     CONSERVE_MASS,
     FREE_MASS,
@@ -62,13 +64,15 @@ __all__ = [
     "UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE",
     "UKRowwiseDoctrineSolve",
     "UKRowwiseLocalMatrix",
+    "UKRowwiseNationalRows",
     "build_uk_rowwise_local_matrix",
+    "build_uk_rowwise_local_surface_matrix",
     "past_cap_census",
     "require_adjudicated_uk_local_binding",
+    "rotated_uk_local_holdout",
     "uk_area_support_summary",
     "uk_ladder_area_support_summary",
     "rowwise_calibration_mass_reason",
-    "rotated_uk_local_holdout",
     "rowwise_area_support_summary",
     "solve_uk_rowwise_weights_under_doctrine",
 ]
@@ -83,10 +87,11 @@ UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE = "local_binding_adjudications.j
 class UKRowwiseLocalMatrix:
     """Sparse rowwise calibration surface: one column per cloned household.
 
-    ``metric_values`` retains the per-household metric matrix the constraint
-    rows were assembled from, so the declarative target expression the solve
-    hands to ``calibrate()`` derives from exactly the same numbers as the
-    hand-assembled sparse matrix.
+    The ``*_by_grain`` mappings are authoritative for a multi-grain problem.
+    The flat ``area_codes``, ``metric_names``, ``assigned_areas``, and
+    ``metric_values`` attributes remain populated for a single-grain problem
+    so existing callers retain their established interface; they are empty
+    for a multi-grain problem.
     """
 
     matrix: sp.csr_matrix
@@ -97,14 +102,27 @@ class UKRowwiseLocalMatrix:
     household_ids: tuple[Any, ...]
     assigned_areas: tuple[str, ...]
     metric_values: np.ndarray
+    area_codes_by_grain: Mapping[str, tuple[str, ...]]
+    metric_names_by_grain: Mapping[str, tuple[str, ...]]
+    assigned_areas_by_grain: Mapping[str, tuple[str, ...]]
+    metric_values_by_grain: Mapping[str, np.ndarray]
 
     @property
     def n_areas(self) -> int:
-        return len(self.area_codes)
+        return sum(len(codes) for codes in self.area_codes_by_grain.values())
 
     @property
     def n_households(self) -> int:
         return len(self.household_ids)
+
+
+@dataclass(frozen=True)
+class UKRowwiseNationalRows:
+    """Materialized national targets held fixed in the joint local solve."""
+
+    targets: TargetSet
+    registry: TargetRegistry
+    families: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -124,11 +142,14 @@ class UKRowwiseDoctrineSolve:
     weights: np.ndarray
     initial_weights: np.ndarray
     diagnostics: pd.DataFrame
+    national_diagnostics: pd.DataFrame
     loss_trajectory: np.ndarray
     initial_loss: float
     final_loss: float
     n_nonzero: int
     past_cap_census: Mapping[str, Any]
+    national_past_cap_census: Mapping[str, Any]
+    all_past_cap_census: Mapping[str, Any]
     binding_adjudications: Mapping[str, Any]
 
 
@@ -245,50 +266,21 @@ def build_uk_rowwise_local_matrix(
         code_column: Target frame column holding area codes.
     """
 
-    from microcosm.build.uk_runtime.local_geography import align_area_targets
-
-    if metrics.empty:
-        raise ValueError("metrics must not be empty.")
-    if metrics.index.has_duplicates:
-        duplicates = metrics.index[metrics.index.duplicated()].unique()
-        raise ValueError(
-            "metrics household index must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates[:5]))}."
-        )
-    metric_labels = [str(column) for column in metrics.columns]
-    duplicate_labels = sorted(
-        {label for label in metric_labels if metric_labels.count(label) > 1}
+    from microcosm.build.uk_runtime.local_geography import (
+        _AREA_METADATA_COLUMNS,
+        align_area_targets,
     )
-    if duplicate_labels:
-        raise ValueError(f"metrics has duplicate column label(s): {duplicate_labels}.")
-    from microcosm.build.uk_runtime.local_geography import _AREA_METADATA_COLUMNS
 
-    metadata_collisions = sorted(set(metric_labels) & set(_AREA_METADATA_COLUMNS))
+    names = tuple(str(column) for column in metrics.columns)
+    duplicate_names = sorted({name for name in names if names.count(name) > 1})
+    if duplicate_names:
+        raise ValueError(f"metrics has duplicate column label(s): {duplicate_names}.")
+    metadata_collisions = sorted(set(names) & set(_AREA_METADATA_COLUMNS))
     if metadata_collisions:
         raise ValueError(
             "metric column(s) collide with target-frame metadata names and "
             f"would silently calibrate metadata: {metadata_collisions}."
         )
-    values = metrics.to_numpy(dtype=np.float64)
-    if not np.isfinite(values).all():
-        raise ValueError("metrics must be finite.")
-
-    if isinstance(assigned_areas, pd.Series):
-        if not assigned_areas.index.equals(metrics.index):
-            raise ValueError(
-                "assigned_areas index must align with the metrics household index."
-            )
-        assigned = assigned_areas.astype(str).to_numpy()
-    else:
-        assigned = np.asarray([str(code) for code in assigned_areas], dtype=object)
-        if len(assigned) != len(metrics):
-            raise ValueError(
-                "assigned_areas must align with metrics rows, got "
-                f"{len(assigned)} assignments for {len(metrics)} rows."
-            )
-    blank = np.array([not code.strip() for code in assigned.tolist()])
-    if blank.any():
-        raise ValueError(f"assigned_areas contains {int(blank.sum())} blank code(s).")
 
     if area_codes is None:
         if code_column not in targets.columns:
@@ -298,80 +290,307 @@ def build_uk_rowwise_local_matrix(
             )
         area_codes = targets[code_column].astype(str).tolist()
     codes = tuple(str(code) for code in area_codes)
-    if len(set(codes)) != len(codes):
-        raise ValueError("area_codes must be unique.")
-
-    uncovered = sorted(set(assigned.tolist()) - set(codes))
-    if uncovered:
-        raise ValueError(
-            "target surface does not cover assigned area(s): "
-            f"{uncovered[:5]}. Every assigned area must carry targets — "
-            "local misses are support or target work, never silent "
-            "exclusion."
-        )
-
-    metric_names = tuple(str(column) for column in metrics.columns)
-    target_values = align_area_targets(
+    aligned = align_area_targets(
         targets,
         codes,
-        metric_names=metric_names,
+        metric_names=names,
         code_column=code_column,
     )
-
-    area_index_by_code = {code: index for index, code in enumerate(codes)}
-    household_area_index = np.asarray(
-        [area_index_by_code[code] for code in assigned.tolist()],
-        dtype=np.int64,
+    surface = pd.DataFrame(
+        [
+            {
+                "area_type": area_type,
+                "area_code": code,
+                "metric": metric,
+                "value": float(aligned.loc[code, metric]),
+                "target_name": f"{area_type}/{code}/{metric}",
+                "family": local_target_census.family_for_metric(metric),
+            }
+            for code in codes
+            for metric in names
+        ]
     )
-    n_metrics = len(metric_names)
-    n_households = len(metrics)
+    return build_uk_rowwise_local_surface_matrix(
+        {area_type: metrics},
+        {area_type: assigned_areas},
+        surface,
+        area_codes_by_grain={area_type: codes},
+        area_metric_order_by_grain={area_type: names},
+        _canonical_surface_order=False,
+    )
 
-    rows: list[np.ndarray] = []
-    cols: list[np.ndarray] = []
-    data: list[np.ndarray] = []
-    target_rows: list[dict[str, Any]] = []
-    for area_index, area_code in enumerate(codes):
-        members = np.flatnonzero(household_area_index == area_index)
-        for metric_index, metric_name in enumerate(metric_names):
-            target_index = area_index * n_metrics + metric_index
-            target_rows.append(
-                {
-                    "target_index": target_index,
-                    "area_type": area_type,
-                    "area_code": area_code,
-                    "area_index": area_index,
-                    "metric": metric_name,
-                    "metric_index": metric_index,
-                    "value": float(target_values.loc[area_code, metric_name]),
-                }
+
+def build_uk_rowwise_local_surface_matrix(
+    metrics_by_grain: Mapping[str, pd.DataFrame],
+    assigned_by_grain: Mapping[str, pd.Series | Sequence[str]],
+    surface: pd.DataFrame,
+    *,
+    area_codes_by_grain: Mapping[str, Sequence[str]],
+    area_metric_order_by_grain: Mapping[str, Sequence[str]] | None = None,
+    require_every_assigned_area_covered: bool = True,
+    _canonical_surface_order: bool = True,
+) -> UKRowwiseLocalMatrix:
+    """Build one sparse matrix from present cells across UK local grains.
+
+    Surface rows are long-format present cells; an absent cell contributes no
+    constraint row. The public path orders rows by grain, metric, and roster
+    area. ``_canonical_surface_order`` exists only for the dense compatibility
+    wrapper, whose established area-major row order is part of its contract.
+    """
+
+    from microcosm.build.uk_runtime.local_geography import _AREA_METADATA_COLUMNS
+
+    required = {
+        "area_type",
+        "area_code",
+        "metric",
+        "value",
+        "target_name",
+        "family",
+    }
+    missing = sorted(required - set(surface.columns))
+    if missing:
+        raise ValueError(f"surface is missing required column(s): {missing}.")
+    if surface.empty:
+        raise ValueError("surface must contain at least one present cell.")
+    grains = tuple(grain for grain in AREA_TYPES if grain in metrics_by_grain)
+    unknown_grains = sorted(set(metrics_by_grain) - set(AREA_TYPES))
+    if unknown_grains:
+        raise ValueError(f"unsupported area_type value(s): {unknown_grains}.")
+    if not grains:
+        raise ValueError("metrics_by_grain must contain a supported UK local grain.")
+    for label, mapping in (
+        ("assigned_by_grain", assigned_by_grain),
+        ("area_codes_by_grain", area_codes_by_grain),
+    ):
+        if set(mapping) != set(grains):
+            raise ValueError(
+                f"{label} grains must equal metrics_by_grain grains; got "
+                f"{sorted(mapping)} vs {sorted(grains)}."
             )
-            if len(members) == 0:
-                continue
-            column_values = values[members, metric_index]
-            nonzero = np.flatnonzero(column_values)
-            if len(nonzero) == 0:
-                continue
-            rows.append(np.full(len(nonzero), target_index, dtype=np.int64))
-            cols.append(members[nonzero].astype(np.int64))
-            data.append(column_values[nonzero].astype(np.float64, copy=False))
+    surface_grains = set(surface["area_type"].astype(str))
+    if not surface_grains <= set(grains):
+        raise ValueError(
+            "surface contains unsupported or unmaterialized area_type value(s): "
+            f"{sorted(surface_grains - set(grains))}."
+        )
+    if surface.duplicated(["area_type", "area_code", "metric"]).any():
+        duplicates = surface.loc[
+            surface.duplicated(["area_type", "area_code", "metric"], keep=False),
+            ["area_type", "area_code", "metric"],
+        ].drop_duplicates()
+        raise ValueError(
+            "surface has duplicate (area_type, area_code, metric) cell(s): "
+            f"{[tuple(row) for row in duplicates.head(5).to_numpy()]}."
+        )
+    values = surface["value"].to_numpy(dtype=np.float64)
+    if not np.isfinite(values).all():
+        raise ValueError("surface values must be finite.")
+    for column in ("area_type", "area_code", "metric", "target_name", "family"):
+        blank = surface[column].astype(str).str.strip().eq("")
+        if blank.any():
+            raise ValueError(
+                f"surface column {column!r} contains {int(blank.sum())} blank value(s)."
+            )
 
-    if rows:
-        row_array = np.concatenate(rows)
-        col_array = np.concatenate(cols)
-        data_array = np.concatenate(data)
+    household_index: pd.Index | None = None
+    metric_values_by_grain: dict[str, np.ndarray] = {}
+    metric_names_by_grain: dict[str, tuple[str, ...]] = {}
+    assigned_areas_by_grain: dict[str, tuple[str, ...]] = {}
+    area_codes_normalized: dict[str, tuple[str, ...]] = {}
+    household_area_index_by_grain: dict[str, np.ndarray] = {}
+    for grain in grains:
+        metrics = metrics_by_grain[grain]
+        if metrics.empty:
+            raise ValueError(f"metrics_by_grain[{grain!r}] must not be empty.")
+        if metrics.index.has_duplicates:
+            duplicates = metrics.index[metrics.index.duplicated()].unique()
+            raise ValueError(
+                f"metrics_by_grain[{grain!r}] household index must be unique; "
+                f"duplicate value(s): {list(map(str, duplicates[:5]))}."
+            )
+        if household_index is None:
+            household_index = metrics.index
+        elif not metrics.index.equals(household_index):
+            raise ValueError(
+                "all grains must share the identical household index in the "
+                f"identical order; {grain!r} does not align."
+            )
+        labels = [str(column) for column in metrics.columns]
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        if duplicates:
+            raise ValueError(
+                f"metrics_by_grain[{grain!r}] has duplicate column label(s): "
+                f"{duplicates}."
+            )
+        collisions = sorted(set(labels) & set(_AREA_METADATA_COLUMNS))
+        if collisions:
+            raise ValueError(
+                "metric column(s) collide with target-frame metadata names and "
+                f"would silently calibrate metadata: {collisions}."
+            )
+        order = tuple(
+            str(name)
+            for name in (
+                labels
+                if area_metric_order_by_grain is None
+                else area_metric_order_by_grain[grain]
+            )
+        )
+        if len(set(order)) != len(order) or set(order) != set(labels):
+            raise ValueError(
+                f"area metric order for {grain!r} must name every metric exactly once."
+            )
+        metric_names_by_grain[grain] = order
+        metric_values = metrics.loc[:, list(order)].to_numpy(dtype=np.float64)
+        if not np.isfinite(metric_values).all():
+            raise ValueError(f"metrics_by_grain[{grain!r}] must be finite.")
+        metric_values_by_grain[grain] = metric_values
+
+        assigned_input = assigned_by_grain[grain]
+        if isinstance(assigned_input, pd.Series):
+            if not assigned_input.index.equals(metrics.index):
+                raise ValueError(
+                    f"assigned_by_grain[{grain!r}] index must align with the "
+                    "metrics household index."
+                )
+            assigned = assigned_input.astype(str).to_numpy()
+        else:
+            assigned = np.asarray([str(code) for code in assigned_input], dtype=object)
+            if len(assigned) != len(metrics):
+                raise ValueError(
+                    f"assigned_by_grain[{grain!r}] must align with metrics rows."
+                )
+        if any(not code.strip() for code in assigned.tolist()):
+            raise ValueError(f"assigned_by_grain[{grain!r}] contains blank code(s).")
+        assigned_areas_by_grain[grain] = tuple(assigned.tolist())
+
+        codes = tuple(str(code) for code in area_codes_by_grain[grain])
+        if len(set(codes)) != len(codes):
+            raise ValueError(f"area roster for {grain!r} must be unique.")
+        if any(not code.strip() for code in codes):
+            raise ValueError(f"area roster for {grain!r} contains blank code(s).")
+        off_roster_assignments = sorted(set(assigned.tolist()) - set(codes))
+        if off_roster_assignments:
+            raise ValueError(
+                f"assigned area(s) are not on the {grain!r} roster: "
+                f"{off_roster_assignments[:5]}."
+            )
+        grain_surface = surface.loc[surface["area_type"].astype(str) == grain]
+        off_roster_cells = sorted(
+            set(grain_surface["area_code"].astype(str)) - set(codes)
+        )
+        if off_roster_cells:
+            raise ValueError(
+                f"surface cell area(s) are not on the {grain!r} roster: "
+                f"{off_roster_cells[:5]}."
+            )
+        unknown_metrics = sorted(set(grain_surface["metric"].astype(str)) - set(order))
+        if unknown_metrics:
+            raise ValueError(
+                f"surface metric(s) are absent from {grain!r} metrics: "
+                f"{unknown_metrics[:5]}."
+            )
+        covered = set(grain_surface["area_code"].astype(str))
+        uncovered = sorted(set(assigned.tolist()) - covered)
+        if require_every_assigned_area_covered and uncovered:
+            raise ValueError(
+                f"target surface does not cover assigned area(s) on {grain!r}: "
+                f"{uncovered[:5]}. Every assigned area must carry at least one "
+                "present cell."
+            )
+        area_codes_normalized[grain] = codes
+        code_index = {code: index for index, code in enumerate(codes)}
+        household_area_index_by_grain[grain] = np.asarray(
+            [code_index[code] for code in assigned.tolist()], dtype=np.int32
+        )
+
+    assert household_index is not None
+    ordered = surface.copy()
+    ordered["area_type"] = ordered["area_type"].astype(str)
+    ordered["area_code"] = ordered["area_code"].astype(str)
+    ordered["metric"] = ordered["metric"].astype(str)
+    if _canonical_surface_order:
+        grain_rank = {grain: index for index, grain in enumerate(AREA_TYPES)}
+        metric_rank = {
+            (grain, metric): index
+            for grain in grains
+            for index, metric in enumerate(metric_names_by_grain[grain])
+        }
+        area_rank = {
+            (grain, code): index
+            for grain in grains
+            for index, code in enumerate(area_codes_normalized[grain])
+        }
+        ordered["_grain_rank"] = ordered["area_type"].map(grain_rank)
+        ordered["_metric_rank"] = [
+            metric_rank[(grain, metric)]
+            for grain, metric in ordered[["area_type", "metric"]].itertuples(
+                index=False, name=None
+            )
+        ]
+        ordered["_area_rank"] = [
+            area_rank[(grain, code)]
+            for grain, code in ordered[["area_type", "area_code"]].itertuples(
+                index=False, name=None
+            )
+        ]
+        ordered = ordered.sort_values(
+            ["_grain_rank", "_metric_rank", "_area_rank"], kind="stable"
+        ).drop(columns=["_grain_rank", "_metric_rank", "_area_rank"])
+    ordered = ordered.reset_index(drop=True)
+
+    row_arrays: list[np.ndarray] = []
+    col_arrays: list[np.ndarray] = []
+    data_arrays: list[np.ndarray] = []
+    target_rows: list[dict[str, Any]] = []
+    passthrough_columns = [
+        column
+        for column in ordered.columns
+        if column not in {"area_type", "area_code", "metric", "value"}
+    ]
+    for target_index, row in enumerate(ordered.itertuples(index=False)):
+        payload = row._asdict()
+        grain = str(payload["area_type"])
+        code = str(payload["area_code"])
+        metric = str(payload["metric"])
+        area_index = area_codes_normalized[grain].index(code)
+        metric_index = metric_names_by_grain[grain].index(metric)
+        target_row = {
+            "target_index": target_index,
+            "area_type": grain,
+            "area_code": code,
+            "area_index": area_index,
+            "metric": metric,
+            "metric_index": metric_index,
+            "value": float(payload["value"]),
+        }
+        target_row.update({column: payload[column] for column in passthrough_columns})
+        target_rows.append(target_row)
+        members = np.flatnonzero(household_area_index_by_grain[grain] == area_index)
+        if not len(members):
+            continue
+        column_values = metric_values_by_grain[grain][members, metric_index]
+        nonzero = np.flatnonzero(column_values)
+        if not len(nonzero):
+            continue
+        row_arrays.append(np.full(len(nonzero), target_index, dtype=np.int64))
+        col_arrays.append(members[nonzero].astype(np.int64))
+        data_arrays.append(column_values[nonzero].astype(np.float64, copy=False))
+    if row_arrays:
+        row_array = np.concatenate(row_arrays)
+        col_array = np.concatenate(col_arrays)
+        data_array = np.concatenate(data_arrays)
     else:
         row_array = np.array([], dtype=np.int64)
         col_array = np.array([], dtype=np.int64)
         data_array = np.array([], dtype=np.float64)
     matrix = sp.csr_matrix(
         (data_array, (row_array, col_array)),
-        shape=(len(codes) * n_metrics, n_households),
+        shape=(len(target_rows), len(household_index)),
         dtype=np.float64,
     )
     target_frame = pd.DataFrame(target_rows)
-    # Fail closed on unreachable rows: a nonzero target whose area has no
-    # supporting entries can never be hit and would sit invisibly inside the
-    # loss cap. Misses are support or target work, never silent exclusion.
     row_support = np.diff(matrix.indptr)
     unreachable = (row_support == 0) & (
         target_frame["value"].to_numpy(dtype=np.float64) != 0.0
@@ -386,15 +605,30 @@ def build_uk_rowwise_local_matrix(
             f"but zero household support: {examples}. Add support (clones, "
             "assignment) or fix the target surface."
         )
+    single_grain = grains[0] if len(grains) == 1 else None
     return UKRowwiseLocalMatrix(
         matrix=matrix,
         targets=target_frame["value"].to_numpy(dtype=np.float64),
         target_frame=target_frame,
-        area_codes=codes,
-        metric_names=metric_names,
-        household_ids=tuple(metrics.index.tolist()),
-        assigned_areas=tuple(assigned.tolist()),
-        metric_values=values,
+        area_codes=(
+            area_codes_normalized[single_grain] if single_grain is not None else ()
+        ),
+        metric_names=(
+            metric_names_by_grain[single_grain] if single_grain is not None else ()
+        ),
+        household_ids=tuple(household_index.tolist()),
+        assigned_areas=(
+            assigned_areas_by_grain[single_grain] if single_grain is not None else ()
+        ),
+        metric_values=(
+            metric_values_by_grain[single_grain]
+            if single_grain is not None
+            else np.empty((len(household_index), 0), dtype=np.float64)
+        ),
+        area_codes_by_grain=area_codes_normalized,
+        metric_names_by_grain=metric_names_by_grain,
+        assigned_areas_by_grain=assigned_areas_by_grain,
+        metric_values_by_grain=metric_values_by_grain,
     )
 
 
@@ -631,7 +865,10 @@ def _derive_uk_local_bound_families_from_target_frame(
             f"{missing} are required to derive bound families."
         )
     derived: set[str] = set()
-    cells = target_frame[["area_type", "metric"]].drop_duplicates()
+    columns = ["area_type", "metric"]
+    if "family" in target_frame.columns:
+        columns.append("family")
+    cells = target_frame[columns].drop_duplicates()
     for row in cells.itertuples(index=False):
         area_type = str(row.area_type)
         if area_type not in AREA_TYPES:
@@ -641,7 +878,11 @@ def _derive_uk_local_bound_families_from_target_frame(
                 f"{list(AREA_TYPES)}."
             )
         metric = str(row.metric)
-        family = local_target_census.family_for_metric(metric)
+        family = (
+            str(row.family)
+            if "family" in target_frame.columns
+            else local_target_census.family_for_metric(metric)
+        )
         if family not in family_rows:
             raise ValueError(
                 "UK local binding declarations: target surface metric "
@@ -681,14 +922,19 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     hand-assembled sparse matrix was built from.
     """
 
-    assigned = np.asarray(problem.assigned_areas, dtype=object)
-    metric_columns = {
-        name: np.ascontiguousarray(problem.metric_values[:, index], dtype=np.float64)
-        for index, name in enumerate(problem.metric_names)
-    }
-    area_masks = {
-        code: (assigned == code).astype(np.float64) for code in problem.area_codes
-    }
+    area_indices: dict[str, np.ndarray] = {}
+    metric_columns: dict[tuple[str, str], np.ndarray] = {}
+    for grain, codes in problem.area_codes_by_grain.items():
+        code_index = {code: index for index, code in enumerate(codes)}
+        area_indices[grain] = np.asarray(
+            [code_index[code] for code in problem.assigned_areas_by_grain[grain]],
+            dtype=np.int32,
+        )
+        for index, name in enumerate(problem.metric_names_by_grain[grain]):
+            metric_columns[(grain, name)] = np.ascontiguousarray(
+                problem.metric_values_by_grain[grain][:, index],
+                dtype=np.float64,
+            )
 
     def _constant_vector(values: np.ndarray):
         def vector(frame: Frame) -> np.ndarray:
@@ -696,21 +942,43 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
 
         return vector
 
+    def _lazy_area_mask(indices: np.ndarray, area_index: int):
+        def vector(frame: Frame) -> np.ndarray:
+            return (indices == area_index).astype(np.float64)
+
+        return vector
+
     targets = []
     for row in problem.target_frame.itertuples(index=False):
+        area_type = str(row.area_type)
+        metadata = {
+            "area_type": area_type,
+            "area_code": str(row.area_code),
+            "metric": str(row.metric),
+        }
+        for column in ("family", "target_name", "contract_target_id"):
+            if column in problem.target_frame.columns:
+                value = getattr(row, column)
+                if pd.notna(value) and str(value):
+                    metadata[column] = str(value)
         targets.append(
             Target(
-                name=f"{row.area_type}/{row.area_code}/{row.metric}",
+                name=str(
+                    row.target_name
+                    if "target_name" in problem.target_frame.columns
+                    else f"{row.area_type}/{row.area_code}/{row.metric}"
+                ),
                 entity="household",
-                measure=_constant_vector(metric_columns[str(row.metric)]),
+                measure=_constant_vector(metric_columns[(area_type, str(row.metric))]),
                 value=float(row.value),
-                filter=_constant_vector(area_masks[str(row.area_code)]),
-                source="uk_rowwise_local_surface",
-                metadata={
-                    "area_type": str(row.area_type),
-                    "area_code": str(row.area_code),
-                    "metric": str(row.metric),
-                },
+                period=(row.period if "period" in problem.target_frame.columns else 0),
+                filter=_lazy_area_mask(area_indices[area_type], int(row.area_index)),
+                source=(
+                    str(row.source)
+                    if "source" in problem.target_frame.columns
+                    else "uk_rowwise_local_surface"
+                ),
+                metadata=metadata,
             )
         )
     return TargetSet(targets)
@@ -721,6 +989,9 @@ def solve_uk_rowwise_weights_under_doctrine(
     problem: UKRowwiseLocalMatrix,
     *,
     bound_families: Sequence[str],
+    national_rows: UKRowwiseNationalRows | None = None,
+    target_weight_rule: str = "uniform",
+    restore: Callable[[Frame], Frame] | None = None,
     epochs: int = 512,
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
@@ -746,10 +1017,27 @@ def solve_uk_rowwise_weights_under_doctrine(
 
     doctrine = UK_LOCAL_SOLVE_DOCTRINE
     _require_uniform_target_surface(problem)
+    local_bound_families = tuple(
+        family for family in bound_families if not str(family).startswith("national/")
+    )
     binding_adjudications = require_adjudicated_uk_local_binding(
-        bound_families,
+        local_bound_families,
         problem.target_frame,
     )
+    national_families = (
+        ()
+        if national_rows is None
+        else tuple(f"national/{family}" for family in national_rows.families)
+    )
+    declared_national = tuple(
+        str(family) for family in bound_families if str(family).startswith("national/")
+    )
+    if set(declared_national) != set(national_families):
+        raise ValueError(
+            "joint rowwise solve national bound families disagree with the "
+            f"materialized registry: declared {sorted(declared_national)}, "
+            f"expected {sorted(national_families)}."
+        )
     mass_reason = rowwise_calibration_mass_reason(bound_families)
 
     household = frame.table("household")
@@ -789,7 +1077,43 @@ def solve_uk_rowwise_weights_under_doctrine(
             "revive them upstream with a recorded mass change."
         )
 
-    target_set = _rowwise_target_set(problem)
+    local_target_set = _rowwise_target_set(problem)
+    if national_rows is not None:
+        if len(national_rows.targets) != len(national_rows.registry.specs):
+            raise ValueError(
+                "national target rows must align one-for-one with their registry: "
+                f"{len(national_rows.targets)} materialized rows vs "
+                f"{len(national_rows.registry.specs)} specs."
+            )
+        for index, (target, spec) in enumerate(
+            zip(
+                national_rows.targets.targets,
+                national_rows.registry.specs,
+                strict=True,
+            )
+        ):
+            if target.row_name != spec.to_target().row_name:
+                raise ValueError(
+                    "materialized national target rows are not aligned with "
+                    f"their registry: row {index} reports {target.row_name!r} "
+                    f"where the registry declares {spec.to_target().row_name!r}."
+                )
+    target_set = TargetSet(
+        [
+            *local_target_set.targets,
+            *(() if national_rows is None else national_rows.targets.targets),
+        ]
+    )
+    local_count = len(local_target_set)
+    national_count = len(target_set) - local_count
+    grain_labels = [
+        *problem.target_frame["area_type"].astype(str).tolist(),
+        *(["national"] * national_count),
+    ]
+    target_loss_weights = uk_local_target_loss_weights(
+        grain_labels,
+        rule=target_weight_rule,
+    )
     result = calibrate(
         frame,
         target_set,
@@ -803,6 +1127,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         l0_lambda=l0_lambda,
         budget_iters=budget_iters,
         seed=seed,
+        target_loss_weights=target_loss_weights,
         target_loss_cap=doctrine.target_loss_cap,
     )
     if result.skipped:
@@ -814,10 +1139,10 @@ def solve_uk_rowwise_weights_under_doctrine(
             f"target(s): {reasons}. The rowwise surface must compile whole — "
             "a skipped target is a harness bug, never a silent exclusion."
         )
-    if len(result.diagnostics) != len(problem.target_frame):
+    if len(result.diagnostics) != len(target_set):
         raise ValueError(
-            "compiled diagnostics do not cover the declared target surface: "
-            f"{len(result.diagnostics)} rows vs {len(problem.target_frame)}."
+            "compiled diagnostics do not cover the declared joint target surface: "
+            f"{len(result.diagnostics)} rows vs {len(target_set)}."
         )
     # The evidence tables consume diagnostics positionally, and diagnostics
     # order is documented only as "aligned to the compiled problem rows" —
@@ -837,7 +1162,9 @@ def solve_uk_rowwise_weights_under_doctrine(
                 "misattributed."
             )
 
-    targets_vec = problem.targets
+    targets_vec = np.asarray(
+        [target.value for target in target_set.targets], dtype=np.float64
+    )
     initial_estimates = np.asarray(
         [diagnostic.initial_estimate for diagnostic in result.diagnostics],
         dtype=np.float64,
@@ -860,24 +1187,65 @@ def solve_uk_rowwise_weights_under_doctrine(
         )
 
     scales = default_target_loss_scales(targets_vec)
+    local_targets_vec = targets_vec[:local_count]
+    local_scales = scales[:local_count]
+    local_initial = initial_estimates[:local_count]
+    local_final = final_estimates[:local_count]
     diagnostics = problem.target_frame.copy()
-    diagnostics["target"] = targets_vec
-    diagnostics["initial_estimate"] = initial_estimates
-    diagnostics["final_estimate"] = final_estimates
+    diagnostics["target"] = local_targets_vec
+    diagnostics["initial_estimate"] = local_initial
+    diagnostics["final_estimate"] = local_final
     diagnostics["relative_error"] = np.divide(
-        final_estimates - targets_vec,
-        scales,
-        out=np.zeros_like(targets_vec, dtype=np.float64),
-        where=scales != 0,
+        local_final - local_targets_vec,
+        local_scales,
+        out=np.zeros_like(local_targets_vec, dtype=np.float64),
+        where=local_scales != 0,
     )
     diagnostics["abs_relative_error"] = np.abs(diagnostics["relative_error"])
     census = past_cap_census(
+        local_initial,
+        local_final,
+        local_targets_vec,
+        target_loss_cap=doctrine.target_loss_cap,
+        target_loss_scales=local_scales,
+        target_frame=problem.target_frame,
+    )
+    national_specs = () if national_rows is None else national_rows.registry.specs
+    national_initial = initial_estimates[local_count:]
+    national_final = final_estimates[local_count:]
+    national_targets_vec = targets_vec[local_count:]
+    national_scales = scales[local_count:]
+    national_diagnostics = pd.DataFrame(
+        {
+            "name": [spec.to_target().row_name for spec in national_specs],
+            "family": [spec.family for spec in national_specs],
+            "target": national_targets_vec,
+            "initial_estimate": national_initial,
+            "final_estimate": national_final,
+            "relative_error": np.divide(
+                national_final - national_targets_vec,
+                national_scales,
+                out=np.zeros_like(national_targets_vec, dtype=np.float64),
+                where=national_scales != 0,
+            ),
+        }
+    )
+    national_diagnostics["abs_relative_error"] = np.abs(
+        national_diagnostics["relative_error"]
+    )
+    national_census = past_cap_census(
+        national_initial,
+        national_final,
+        national_targets_vec,
+        target_loss_cap=doctrine.target_loss_cap,
+        target_loss_scales=national_scales,
+    )
+    all_census = past_cap_census(
         initial_estimates,
         final_estimates,
         targets_vec,
         target_loss_cap=doctrine.target_loss_cap,
         target_loss_scales=scales,
-        target_frame=problem.target_frame,
     )
     # Reported in float64 from the compiled estimates (the trajectory head
     # is a float32 optimizer value), matching the pre-migration solver's
@@ -886,7 +1254,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         relative_error_loss(
             initial_estimates,
             targets_vec,
-            target_loss_weights=None,
+            target_loss_weights=target_loss_weights,
             target_loss_scales=scales,
             target_loss_cap=doctrine.target_loss_cap,
         )
@@ -900,26 +1268,43 @@ def solve_uk_rowwise_weights_under_doctrine(
     # ship if the kernel product held strata or metadata the rebuilt frame
     # lost (both trivially equal today; the guard is the boundary marker
     # for the day they are not).
-    calibrated_household = result.frame.table("household").copy()
+    clean_result = result.frame if restore is None else restore(result.frame)
+    slash_columns = {
+        entity: [
+            str(column)
+            for column in clean_result.table(entity).columns
+            if "/" in str(column)
+        ]
+        for entity in clean_result.entities
+    }
+    slash_columns = {
+        entity: columns for entity, columns in slash_columns.items() if columns
+    }
+    if slash_columns:
+        raise ValueError(
+            "prepared slash-named measure columns survived the rowwise solve "
+            f"restore and cannot reach an H5 writer: {slash_columns}."
+        )
+    calibrated_household = clean_result.table("household").copy()
     calibrated_household["household_weight"] = np.asarray(
         result.weights, dtype=np.float64
     )
     finished = uk_national_frame(
-        person=result.frame.table("person"),
-        benunit=result.frame.table("benunit"),
+        person=clean_result.table("person"),
+        benunit=clean_result.table("benunit"),
         household=calibrated_household,
-        time_period=uk_time_period(result.frame),
+        time_period=uk_time_period(clean_result),
         weight_kind=WeightKind.CALIBRATED,
-        mass_log=result.frame.mass_log,
+        mass_log=clean_result.mass_log,
     )
     validate_uk_national_frame(finished)
-    if not result.frame.strata.equals(finished.strata):
+    if not clean_result.strata.equals(finished.strata):
         raise ValueError(
             "the calibrated frame carries strata the rebuilt UK national "
             "frame would drop; extend uk_national_frame to carry them "
             "before shipping a strata-bearing local solve."
         )
-    if dict(result.frame.metadata) != dict(finished.metadata):
+    if dict(clean_result.metadata) != dict(finished.metadata):
         raise ValueError(
             "the calibrated frame carries metadata beyond the UK time "
             "period; the rebuild would drop it, so the solve refuses "
@@ -931,12 +1316,36 @@ def solve_uk_rowwise_weights_under_doctrine(
         weights=np.asarray(result.weights, dtype=np.float64),
         initial_weights=np.asarray(result.initial_weights, dtype=np.float64),
         diagnostics=diagnostics,
+        national_diagnostics=national_diagnostics,
         loss_trajectory=np.asarray(result.loss_trajectory, dtype=np.float64),
         initial_loss=initial_loss,
         final_loss=float(result.final_loss),
         n_nonzero=int(result.n_nonzero),
         past_cap_census=census,
+        national_past_cap_census=national_census,
+        all_past_cap_census=all_census,
         binding_adjudications=binding_adjudications,
+    )
+
+
+def _subset_rowwise_problem(
+    problem: UKRowwiseLocalMatrix,
+    target_indices: Sequence[int],
+) -> UKRowwiseLocalMatrix:
+    indices = np.asarray(target_indices, dtype=np.int64)
+    if indices.ndim != 1:
+        raise ValueError("target_indices must be one-dimensional.")
+    if len(indices) == 0:
+        raise ValueError("a rowwise training problem must retain target rows.")
+    if (indices < 0).any() or (indices >= len(problem.targets)).any():
+        raise ValueError("target_indices contains an out-of-range row.")
+    target_frame = problem.target_frame.iloc[indices].reset_index(drop=True).copy()
+    target_frame["target_index"] = np.arange(len(indices), dtype=np.int64)
+    return replace(
+        problem,
+        matrix=problem.matrix[indices].tocsr(),
+        targets=problem.targets[indices],
+        target_frame=target_frame,
     )
 
 
@@ -944,6 +1353,10 @@ def rotated_uk_local_holdout(
     frame: Frame,
     problem: UKRowwiseLocalMatrix,
     *,
+    bound_families: Sequence[str] | None = None,
+    national_rows: UKRowwiseNationalRows | None = None,
+    target_weight_rule: str = "uniform",
+    restore: Callable[[Frame], Frame] | None = None,
     epochs: int = 512,
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
@@ -952,7 +1365,7 @@ def rotated_uk_local_holdout(
     budget_iters: int = 10,
     solve_seed: int = 0,
 ) -> dict[str, object]:
-    """Run the fixed five-fold target rotation through actual local solves."""
+    """Run five local-row rotations with national rows fixed in training."""
 
     folds = rotated_folds(
         len(problem.targets),
@@ -961,6 +1374,13 @@ def rotated_uk_local_holdout(
     )
     all_indices = np.arange(len(problem.targets), dtype=np.int64)
     fold_rows: list[dict[str, object]] = []
+    declared_national = []
+    if bound_families is not None:
+        declared_national = [
+            str(family)
+            for family in bound_families
+            if str(family).startswith("national/")
+        ]
     for fold_index, holdout_indices in enumerate(folds):
         train_indices = np.setdiff1d(
             all_indices,
@@ -968,17 +1388,19 @@ def rotated_uk_local_holdout(
             assume_unique=True,
         )
         train_problem = _subset_rowwise_problem(problem, train_indices)
-        train_families = sorted(
-            {
-                f"{local_target_census.family_for_metric(str(row.metric))}/"
-                f"{row.area_type}"
-                for row in train_problem.target_frame.itertuples(index=False)
-            }
+        train_families = _derive_uk_local_bound_families_from_target_frame(
+            train_problem.target_frame,
+            family_rows=_uk_local_census_family_rows(
+                local_target_census.load_uk_local_target_census()
+            ),
         )
         train_solve = solve_uk_rowwise_weights_under_doctrine(
             frame,
             train_problem,
-            bound_families=train_families,
+            bound_families=[*train_families, *declared_national],
+            national_rows=national_rows,
+            target_weight_rule=target_weight_rule,
+            restore=restore,
             epochs=epochs,
             learning_rate=learning_rate,
             conserve_mass=conserve_mass,
@@ -992,9 +1414,15 @@ def rotated_uk_local_holdout(
             problem.matrix[holdout_indices] @ train_solve.weights,
             dtype=np.float64,
         ).reshape(-1)
+        held_weights = uk_local_target_loss_weights(
+            problem.target_frame.iloc[holdout_indices]["area_type"].astype(str),
+            rule=target_weight_rule,
+        )
         loss = relative_error_loss(
             held_estimates,
             held_targets,
+            target_loss_weights=held_weights,
+            target_loss_scales=default_target_loss_scales(held_targets),
             target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
         )
         fold_rows.append(
@@ -1003,6 +1431,9 @@ def rotated_uk_local_holdout(
                 "n_train_targets": int(len(train_indices)),
                 "n_holdout_targets": int(len(holdout_indices)),
                 "holdout_target_indices": holdout_indices.tolist(),
+                "training_national_rows": (
+                    0 if national_rows is None else len(national_rows.targets)
+                ),
                 "holdout_loss": loss,
             }
         )
@@ -1022,26 +1453,6 @@ def rotated_uk_local_holdout(
         "fold_losses": list(summary.fold_losses),
         "folds": fold_rows,
     }
-
-
-def _subset_rowwise_problem(
-    problem: UKRowwiseLocalMatrix,
-    indices: np.ndarray,
-) -> UKRowwiseLocalMatrix:
-    if indices.ndim != 1 or not len(indices):
-        raise ValueError("a rotated local training surface must be non-empty.")
-    target_frame = problem.target_frame.iloc[indices].reset_index(drop=True).copy()
-    target_frame["target_index"] = np.arange(len(target_frame), dtype=np.int64)
-    return UKRowwiseLocalMatrix(
-        matrix=problem.matrix[indices].tocsr(),
-        targets=np.asarray(problem.targets[indices], dtype=np.float64),
-        target_frame=target_frame,
-        area_codes=problem.area_codes,
-        metric_names=problem.metric_names,
-        household_ids=problem.household_ids,
-        assigned_areas=problem.assigned_areas,
-        metric_values=problem.metric_values,
-    )
 
 
 def rowwise_area_support_summary(

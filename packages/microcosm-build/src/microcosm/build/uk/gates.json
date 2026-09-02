@@ -769,9 +769,10 @@
         ],
         "minimum_rows": 50,
         "minimum_effective_sample_size": 50.0,
-        "minimum_distinct_sources": 50
+        "minimum_distinct_sources": 50,
+        "exclusions_resource": "local_area_support_exclusions.json"
       },
-      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
+      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. Reviewed exclusions carry measured shortfalls; a stale exclusion fails and must be retired. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
     },
     {
       "id": "uk_local_target_fit",

@@ -16,12 +16,88 @@ from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
+    uk_local_target_surface,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
 FIXTURE_FEED_ROWS = (
     Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
 )
+
+
+def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households",
+                entity="household",
+                value=90.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households",
+                    "geography_level": "country",
+                    "geography_id": "K02000001",
+                },
+            ),
+            TargetSpec(
+                name="dwp.uc.households_by_area@E14000001",
+                entity="household",
+                value=30.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_by_area",
+                    "geography_level": "constituency",
+                    "geography_id": "E14000001",
+                },
+            ),
+            TargetSpec(
+                name="dwp.uc.households_by_area@S14000001",
+                entity="household",
+                value=15.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_by_area",
+                    "geography_level": "constituency",
+                    "geography_id": "S14000001",
+                },
+            ),
+        ],
+        country="uk",
+    )
+    ladder = SimpleNamespace(
+        households=np.asarray([10.0, 20.0]),
+        constituency_code=np.asarray(["E14000001", "S14000001"]),
+        local_authority_code=np.asarray(["E06000001", "S12000005"]),
+    )
+
+    surface, receipt = uk_local_target_surface(
+        registry,
+        ladder,
+        bound_national_target_ids=("dwp.uc.households",),
+        period=2025,
+    )
+
+    uc = surface.loc[surface["metric"] == "uc_households"]
+    assert uc["value"].tolist() == [60.0, 30.0]
+    assert uc["target_name"].tolist() == [
+        "dwp.uc.households_by_area@E14000001",
+        "dwp.uc.households_by_area@S14000001",
+    ]
+    ladder_rows = surface.loc[surface["metric"] == "households"]
+    assert set(ladder_rows["area_type"]) == {"constituency", "la"}
+    assert all(ladder_rows["period"] == 2025)
+    assert "national_uc_caseload_vs_uc_households_by_area" in {
+        group["bridge_id"] for group in receipt["groups"]
+    }
 
 
 def test_local_parity_fixture_aligns_legacy_council_tax_band_names():

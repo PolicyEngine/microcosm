@@ -32,7 +32,10 @@ from microcosm.calibrate import (
 from microcosm.frame import Frame, WeightKind, Weights
 
 __all__ = [
+    "CalibrationFrameAdapter",
     "UKNationalCalibrationStage",
+    "drop_injected_measure_inputs",
+    "inject_measure_inputs",
     "national_calibration_mass_reason",
     "uk_national_calibration_stage",
 ]
@@ -339,7 +342,7 @@ def _doctrine_bounds(doctrine: UKNationalSolveDoctrine) -> dict[str, object]:
     }
 
 
-def _inject_measure_inputs(
+def inject_measure_inputs(
     adapter: UKFrameTargetAdapter,
     measure_inputs: Mapping[tuple[str, str], np.ndarray],
 ) -> None:
@@ -347,7 +350,7 @@ def _inject_measure_inputs(
         adapter.tables[entity][variable] = values
 
 
-def _drop_injected_measure_inputs(
+def drop_injected_measure_inputs(
     adapter: UKFrameTargetAdapter,
     measure_inputs: Mapping[tuple[str, str], np.ndarray],
     original_columns: Mapping[str, set[str]],
@@ -357,7 +360,7 @@ def _drop_injected_measure_inputs(
             adapter.tables[entity].drop(columns=[variable], inplace=True)
 
 
-class _CalibrationFrameAdapter(UKFrameTargetAdapter):
+class CalibrationFrameAdapter(UKFrameTargetAdapter):
     """The shared UK adapter plus the prepared-frame/restore lifecycle.
 
     Prepared measure columns are scratch state: they exist for constraint
@@ -425,14 +428,14 @@ def prepare_uk_target_frame(
     resolution = None
     if measure_resolver is not None:
         resolution = resolve_target_measures(
-            lambda: _CalibrationFrameAdapter(frame),
+            lambda: CalibrationFrameAdapter(frame),
             registry,
             measure_resolver,
             period=period,
         )
-    adapter = _CalibrationFrameAdapter(frame)
+    adapter = CalibrationFrameAdapter(frame)
     if resolution is not None:
-        _inject_measure_inputs(adapter, resolution.measure_inputs)
+        inject_measure_inputs(adapter, resolution.measure_inputs)
     materialized = materialize_uk_ledger_targets(adapter, registry, period=period)
     if materialized.skipped:
         raise RuntimeError(
@@ -442,3 +445,9 @@ def prepare_uk_target_frame(
     return adapter.prepared_frame(), (
         None if resolution is None else dict(resolution.receipt)
     )
+
+
+# Compatibility aliases for the established internal call sites.
+_CalibrationFrameAdapter = CalibrationFrameAdapter
+_inject_measure_inputs = inject_measure_inputs
+_drop_injected_measure_inputs = drop_injected_measure_inputs

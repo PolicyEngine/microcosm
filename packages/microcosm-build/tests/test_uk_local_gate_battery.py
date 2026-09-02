@@ -44,6 +44,7 @@ def test_local_area_support_parameters_pin_both_grains_and_all_floors() -> None:
         "minimum_rows": 50,
         "minimum_effective_sample_size": 50.0,
         "minimum_distinct_sources": 50,
+        "exclusions_resource": "local_area_support_exclusions.json",
     }
 
 

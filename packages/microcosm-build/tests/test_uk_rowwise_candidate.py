@@ -8,6 +8,7 @@ import importlib.util
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,7 @@ from microcosm.build.uk_runtime import (
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import MassChangeRecord, WeightKind
 
 
@@ -170,14 +172,18 @@ def _write_ladder(
     return load_uk_oa_ladder(path)
 
 
-def _write_staging_h5(path: Path, *, households_per_region: int = 1) -> None:
+def _write_staging_h5(
+    path: Path,
+    *,
+    households_per_region: int = 1,
+    region_masses: tuple[float, float, float, float] = (3.0, 10.0, 10.0, 10.0),
+) -> None:
     region_names = (
         "LONDON",
         "WALES",
         "SCOTLAND",
         "NORTHERN_IRELAND",
     )
-    region_masses = (3.0, 10.0, 10.0, 10.0)
     household_ids = list(range(1, 4 * households_per_region + 1))
     household = pd.DataFrame(
         {
@@ -190,6 +196,7 @@ def _write_staging_h5(path: Path, *, households_per_region: int = 1) -> None:
             "region": [
                 region for region in region_names for _ in range(households_per_region)
             ],
+            "clone_index": [0] * len(household_ids),
             "household_is_spi_synthetic": [False] * len(household_ids),
             "household_is_capital_gains_clone": [False] * len(household_ids),
         }
@@ -282,7 +289,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     )
 
     candidate_h5 = output_dir / builder.CANDIDATE_FILENAME_TEMPLATE.format(
-        source_year=2023
+        calibration_year=2025
     )
     expected_sidecars = {
         builder.MANIFEST_FILENAME,
@@ -290,6 +297,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         builder.AREA_SUPPORT_FILENAME,
         builder.PAST_CAP_FILENAME,
         builder.CALIBRATION_DIAGNOSTICS_FILENAME,
+        builder.LOCAL_REGISTRY_FILENAME,
         builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(source_year=2023),
     }
     assert candidate_h5.exists()
@@ -504,6 +512,443 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert plan["target_count"] == 4
     assert not output_dir.exists()
     assert not (output_dir / "logbook-spool").exists()
+
+
+def test_candidate_sampling_rung_receipt_and_engine_block_validation(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "dry-run-output"
+    _write_staging_h5(input_h5)
+    _write_ladder(ladder_path)
+    monkeypatch.setattr(
+        builder,
+        "sample_uk_national_frame",
+        lambda frame, **_kwargs: (
+            frame,
+            {"normalization_factor": 1.0, "synthetic_fixture": True},
+        ),
+    )
+
+    assert (
+        builder._parse_args(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(output_dir),
+            ]
+        ).n_clones
+        == 4
+    )
+    with pytest.raises(ValueError, match="must equal --n-clones"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(output_dir),
+                "--n-clones",
+                "4",
+                "--engine-blocks",
+                "2",
+                "--dry-run",
+            ]
+        )
+    assert (
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(output_dir),
+                "--n-clones",
+                "2",
+                "--sample-fraction",
+                "0.01",
+                "--sample-seed",
+                "578",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["sampling"]["fraction"] == 0.01
+    assert plan["sampling"]["rung_token"] == "f001"
+    assert plan["sampling"]["pre_household_count"] == 4
+    assert plan["sampling"]["post_household_count"] >= 1
+    assert plan["sampling"]["normalization_factor"] > 0
+
+
+def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
+    builder = _load_builder_module()
+    with pytest.raises(ValueError, match="only with --dry-run"):
+        builder.main(
+            [
+                "--input-h5",
+                str(tmp_path / "missing.h5"),
+                "--ladder",
+                str(tmp_path / "missing.npz"),
+                "--out",
+                str(tmp_path / "out"),
+                "--candidate-clone-counts",
+                "1,2,4",
+            ]
+        )
+
+
+def test_candidate_engine_surface_reuses_one_resolver(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    _write_staging_h5(input_h5)
+    frame, _ = builder.load_uk_national_frame(input_h5)
+    constructions = []
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            constructions.append(kwargs)
+            self.simulation = object()
+            self.contract_targets = {}
+
+        def receipt(self):
+            return {
+                "mode": "stub",
+                "policyengine_uk_version": "test",
+            }
+
+    monkeypatch.setattr(
+        builder,
+        "compute_household_metrics",
+        lambda _simulation, area_type, **_kwargs: pd.DataFrame(
+            {f"{area_type}_metric": np.ones(4)},
+            index=[1, 2, 3, 4],
+        ),
+    )
+    registry = TargetRegistry([], country="uk")
+    prepared, restore, national, local_metrics, receipt = (
+        builder._resolve_candidate_engine_surface(
+            frame,
+            registry,
+            period=2025,
+            scratch_dir=tmp_path / "scratch",
+            resolver_factory=StubResolver,
+        )
+    )
+
+    assert len(constructions) == 1
+    assert receipt == {
+        "mode": "stub",
+        "engine_version": "test",
+        "households": 4,
+        "persons": 4,
+        "benunits": 4,
+        "national_inputs": 0,
+        "local_metrics": {"constituency": 1, "la": 1},
+        "blocks": 1,
+    }
+    assert set(local_metrics) == {"constituency", "la"}
+    assert len(national.targets) == 0
+    assert restore(prepared).table("household").equals(frame.table("household"))
+
+
+def test_candidate_engine_surface_resolves_real_per_clone_blocks(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    _write_staging_h5(input_h5)
+    frame, _ = builder.load_uk_national_frame(input_h5)
+    ladder = _write_ladder(ladder_path)
+    clone = builder._clone_with_ladder_binding(
+        frame,
+        ladder,
+        n_clones=2,
+        seed=7,
+        source_year=2023,
+        expected_constituency_vintage="2024_pcon",
+        source_lineage_modulus=None,
+    ).result
+    constructions = []
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            constructions.append(kwargs)
+            self.simulation = object()
+            self.contract_targets = {}
+
+        def receipt(self):
+            return {"mode": "stub", "policyengine_uk_version": "test"}
+
+    monkeypatch.setattr(
+        builder,
+        "compute_household_metrics",
+        lambda _simulation, area_type, *, household_ids, **_kwargs: pd.DataFrame(
+            {f"{area_type}_metric": np.arange(len(household_ids), dtype=float)},
+            index=household_ids,
+        ),
+    )
+    prepared, restore, _, metrics, receipt = builder._resolve_candidate_engine_surface(
+        clone.frame,
+        TargetRegistry([], country="uk"),
+        period=2025,
+        scratch_dir=tmp_path / "block-scratch",
+        resolver_factory=StubResolver,
+        blocks=2,
+    )
+
+    assert len(constructions) == 2
+    assert [len(call["frame"].table("household")) for call in constructions] == [
+        4,
+        4,
+    ]
+    assert receipt["blocks"] == 2
+    assert receipt["deviation"] == "per_clone_block_engine_resolution"
+    assert (
+        metrics["constituency"].index.tolist()
+        == clone.frame.table("household")["household_id"].tolist()
+    )
+    assert restore(prepared).table("household").equals(clone.frame.table("household"))
+
+
+def test_joint_candidate_f100_and_f001_end_to_end(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The driver solves one local/ladder/national matrix at both rung postures."""
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    _write_staging_h5(
+        input_h5,
+        households_per_region=200,
+        region_masses=(4.0, 10.0, 10.0, 9.0),
+    )
+    ladder_frame = _ladder_frame()
+    ladder_frame.loc[0, "households"] = 1.0
+    english = ladder_frame.iloc[0].copy()
+    extra_english = []
+    for suffix in (2, 3):
+        row = english.copy()
+        row["oa_code"] = f"E0000000{suffix}"
+        row["lsoa_code"] = row["oa_code"]
+        row["msoa_code"] = row["oa_code"]
+        row["constituency_code"] = f"E1400000{suffix}"
+        row["local_authority_code"] = f"E0900000{suffix}"
+        row["households"] = 1.0
+        extra_english.append(row)
+    ladder_frame = pd.concat(
+        [ladder_frame, pd.DataFrame(extra_english)], ignore_index=True
+    )
+    payload = assemble_uk_oa_ladder(ladder_frame, _ladder_metadata())
+    np.savez_compressed(ladder_path, **payload)
+    ladder = load_uk_oa_ladder(ladder_path)
+
+    national_registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="national.stub.households",
+                entity="household",
+                measure="national/ones",
+                value=33.0,
+                period=2025,
+                source="synthetic national fixture",
+                family="national_stub",
+                metadata={
+                    "contract_target_id": "dwp.uc.households",
+                    "geography_level": "country",
+                    "geography_id": "K02000001",
+                },
+            )
+        ],
+        country="uk",
+    )
+    local_registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="ons.tenure.owned_outright@E09000001",
+                entity="household",
+                measure="tenure/owned_outright",
+                value=1.0,
+                period=2025,
+                source="synthetic local fact fixture",
+                family="ons",
+                metadata={
+                    "contract_target_id": "ons.tenure.owned_outright",
+                    "geography_level": "local_authority",
+                    "geography_id": "E09000001",
+                    "ledger_fact_period": "2023",
+                },
+            )
+        ],
+        country="uk",
+    )
+    artifact = SimpleNamespace(
+        provenance=lambda: {
+            "facts_sha256": "1" * 64,
+            "manifest_sha256": "2" * 64,
+            "artifact_id": "synthetic-joint-fixture",
+        }
+    )
+    joint_inputs = {
+        "artifact": artifact,
+        "calibration_year": 2025,
+        "national_registry": national_registry,
+        "band_edge_registry": national_registry,
+        "local_registry": local_registry,
+        "measure_exclusions": {},
+    }
+    monkeypatch.setattr(
+        builder, "_load_joint_target_inputs", lambda _args: joint_inputs
+    )
+
+    constructions = []
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            constructions.append(kwargs)
+            self.frame = kwargs["frame"]
+            self.simulation = object()
+            self.contract_targets = {}
+
+        def receipt(self):
+            return {"mode": "stub", "policyengine_uk_version": "test"}
+
+    monkeypatch.setattr(
+        builder,
+        "resolve_target_measures",
+        lambda _factory, _registry, provider, **_kwargs: SimpleNamespace(
+            measure_inputs={
+                ("household", "national/ones"): np.ones(
+                    len(provider.frame.table("household")), dtype=float
+                )
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "materialize_uk_ledger_targets",
+        lambda *_args, **_kwargs: SimpleNamespace(skipped=()),
+    )
+    monkeypatch.setattr(
+        builder,
+        "compute_household_metrics",
+        lambda _simulation, area_type, *, household_ids, **_kwargs: pd.DataFrame(
+            {
+                "households": np.ones(len(household_ids), dtype=float),
+                **(
+                    {"tenure/owned_outright": np.ones(len(household_ids), dtype=float)}
+                    if area_type == "la"
+                    else {}
+                ),
+            },
+            index=household_ids,
+        ),
+    )
+    real_resolve = builder._resolve_candidate_engine_surface
+    monkeypatch.setattr(
+        builder,
+        "_resolve_candidate_engine_surface",
+        lambda *args, **kwargs: real_resolve(
+            *args, resolver_factory=StubResolver, **kwargs
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "rotated_uk_local_holdout",
+        lambda *_args, **_kwargs: {"report_only": True, "folds": []},
+    )
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+
+    f100_out = tmp_path / "joint-f100"
+    assert (
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(f100_out),
+                "--n-clones",
+                "2",
+                "--epochs",
+                "2",
+                "--skip-holdout",
+            ]
+        )
+        == 0
+    )
+    f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
+    assert f100["schema_version"] == 2
+    assert f100["solve"]["n_targets_by_kind"] == {
+        "local": 1,
+        "ladder": 12,
+        "national": 1,
+    }
+    assert f100["solve"]["n_targets"] == 14
+    assert f100["solve"]["measure_resolution"]["mode"] == "stub"
+    assert f100["releasable"] is True
+    assert _spool_rows(f100_out)[0].rung == "f100"
+
+    f001_out = tmp_path / "joint-f001"
+    assert (
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(f001_out),
+                "--n-clones",
+                "1",
+                "--sample-fraction",
+                "0.01",
+                "--epochs",
+                "2",
+                "--skip-holdout",
+            ]
+        )
+        == 0
+    )
+    f001 = json.loads((f001_out / builder.MANIFEST_FILENAME).read_text())
+    assert f001["rung_surface"]["dropped_cells"] > 0
+    assert f001["rung_surface"]["dropped_by_grain"]["constituency"] >= 1
+    assert f001["rung_surface"]["dropped_by_grain"]["la"] >= 1
+    assert "uk_local_area_support" in f001["failing_gate_ids"]
+    assert f001["releasable"] is False
+    assert _spool_rows(f001_out)[0].rung == "f001"
+    assert len(constructions) == 2
 
 
 def test_candidate_refusal_records_receipt_and_reraises(
@@ -753,7 +1198,11 @@ def test_candidate_publication_rolls_back_on_interrupt(
     staging_dir = tmp_path / "staging"
     output_dir = tmp_path / "candidate"
     staging_dir.mkdir()
-    output_paths = builder._output_paths(output_dir, source_year=2023)
+    output_paths = builder._output_paths(
+        output_dir,
+        source_year=2023,
+        calibration_year=2025,
+    )
     staged = {key: staging_dir / path.name for key, path in output_paths.items()}
     for path in staged.values():
         path.write_text("complete staged artifact\n")

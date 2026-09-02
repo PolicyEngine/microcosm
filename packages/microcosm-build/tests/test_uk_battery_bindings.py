@@ -49,6 +49,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
 from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassReference,
 )
+from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
 
@@ -1029,6 +1030,62 @@ class TestPreflightBindings:
         ]
         assert stages.status is GateStatus.FAILED
         assert "omits required release family stage(s)" in stages.result.failures[0]
+
+
+def test_area_support_binding_resolves_register_and_rejects_expired_entry(
+    monkeypatch,
+    uk_gates,
+) -> None:
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_area_support"]
+    binding = UK_GATE_REGISTRY["area_support"]
+    support = pd.DataFrame(
+        {
+            "geography_level": ["constituency", "local_authority"],
+            "area_code": ["E14000001", "E06000001"],
+            "assigned_households": [50, 50],
+            "nonzero_households": [50, 50],
+            "effective_sample_size": [50.0, 50.0],
+            "nonzero_source_households": [50, 50],
+        }
+    )
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, _levels: {
+            "constituency": ("E14000001",),
+            "local_authority": ("E06000001",),
+        },
+    )
+    context = EvidenceContext(
+        artifacts={
+            "uk_area_support_summary": support,
+            "exclusions_evaluated_on": CLOCK,
+        }
+    )
+
+    committed = binding.evaluate(context, entry.parameters)
+    assert committed.passed is True
+    assert committed.details["reviewed_exclusions"] == {}
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "load_uk_reviewed_exclusion_register",
+        lambda *_args, **_kwargs: {
+            "constituency/E14000001": UKReviewedExclusion(
+                reason="synthetic expired support review",
+                approved_by="reviewer",
+                adjudication="microcosm#762",
+                approved_on="2026-01-01",
+                expires_on="2026-02-01",
+            )
+        },
+    )
+    expired = binding.evaluate(context, entry.parameters)
+    assert expired.passed is False
+    assert expired.details["invalid_reviewed_exclusions"] == ["constituency/E14000001"]
+    assert "outside its approval window" in expired.failures[0]
 
 
 class TestParameterVocabulary:

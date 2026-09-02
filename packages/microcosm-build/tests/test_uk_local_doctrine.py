@@ -19,6 +19,8 @@ from microcosm.build.uk_runtime import (
     UK_LOCAL_TARGET_LOSS_CAP,
     UKLocalSolveDoctrine,
     past_cap_census,
+    uk_local_doctrine_with_overrides,
+    uk_local_target_loss_weights,
 )
 
 
@@ -84,6 +86,35 @@ def test_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio == UK_LOCAL_MAX_WEIGHT_RATIO
     assert UK_LOCAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
     assert UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
+    assert UKLocalSolveDoctrine(
+        target_weight_rule="grain_equal"
+    ).target_weight_rule == ("grain_equal")
+
+
+def test_grain_equal_weights_give_each_grain_one_equal_share() -> None:
+    labels = ["national", "national", "constituency", "la", "la", "la"]
+    weights = uk_local_target_loss_weights(labels, rule="grain_equal")
+    assert weights is not None
+    assert weights[:2].sum() == pytest.approx(1 / 3)
+    assert weights[2:3].sum() == pytest.approx(1 / 3)
+    assert weights[3:].sum() == pytest.approx(1 / 3)
+    assert uk_local_target_loss_weights(labels, rule="uniform") is None
+
+
+def test_local_doctrine_override_is_receipted_and_bounds_are_frozen() -> None:
+    doctrine, receipt = uk_local_doctrine_with_overrides(
+        UK_LOCAL_SOLVE_DOCTRINE,
+        {"target_weight_rule": "grain_equal"},
+    )
+    assert doctrine.target_weight_rule == "grain_equal"
+    assert receipt == {
+        "target_weight_rule": {"default": "uniform", "effective": "grain_equal"}
+    }
+    with pytest.raises(ValueError, match="reviewed constants"):
+        uk_local_doctrine_with_overrides(
+            UK_LOCAL_SOLVE_DOCTRINE,
+            {"target_loss_cap": 2.0},
+        )
 
 
 def test_doctrine_rejects_tampered_bounds() -> None:

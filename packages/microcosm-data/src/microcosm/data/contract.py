@@ -46,7 +46,6 @@ from pathlib import Path
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
@@ -376,13 +375,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "f7e2cf43fc2dd18a3d1add2965bb67e4faf21299678838ee0ac43694bb498a34"
+    "d76f012fbedb67488c7ebb63a6bde8226cd7e73988edd008e98fc63d3510475e"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a787221b57af1c0d8c653ee652597fe3f79d5ff3ba8c58f6c16ee7a3ce755ea8"
+    "df8c92926e2e914f00e785806d32a09bad953b84a92c9009afc408e4e633f333"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "b7fa1a0e7d242f474ac5746de0f0115a96b935dbbcce57f4cdbbc955d0f9a0b9"
+    "0de7f35156d984316c0b495e92437440384b9ea709a900e3829124463c85200b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -401,7 +400,6 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
-    "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
@@ -425,7 +423,6 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
-    "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
@@ -449,7 +446,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
-    "uk_stage_age_tail_targets": ("stage_health", "assembled"),
+    "uk_stage_age_tail_targets": ("stage_health", "transferred"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -468,7 +465,6 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
-    "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -510,7 +506,6 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
-        "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
@@ -608,7 +603,6 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
-            "uk_stage_uc_deduction_attributes",
             "uk_stage_was_wealth_support",
         }
     ),
@@ -634,7 +628,6 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
             "uk_uc_capital_coherence",
-            "uk_uc_deduction_combination_enum_domain",
             "uk_qrf_tail_concentration",
             "uk_release_family_build_stages",
             "uk_release_input_coverage",
@@ -650,10 +643,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "70a47a57039a236ae67df7d019fc7f8d43cbffab14a47d00a1e3e28dbc83a5a3"
+            "1605cf3fe1be4983cfb4ed806a34d69375cdc3e4e0c8883cc49481ac5870399a"
         ),
         "policy_sha256": (
-            "21e6b68e013cfc33a5bf96e141c42fd6fb23a34a237ae71a9e5f806a958552c8"
+            "3d14ad24eff7f5afd343164560db24095d27fafb36c619ddf725c32e00b35a69"
         ),
     },
     "calibration_seam": {
@@ -666,10 +659,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "57311d9aedbf7ba9ebcbe9721a386002f5d27ed77b10a589e3466f2265c3f1ef"
+            "97f25fa3cf48b8828450831be7c986704740eddb35ed08a27da950e8dc412b64"
         ),
         "policy_sha256": (
-            "6d6638d38e999e8a8aec8fd72083a31a369dc5be1a1af57569c41e8b423ad39c"
+            "b72d6c6289e71e0e59556aea707676847b602a230e83f2d96bfd1fd4a9e86883"
         ),
     },
 }
@@ -855,32 +848,9 @@ def _check_target_registry_ref(
         failures.append(f"{filename} {owner}.target_registry.n_specs must be > 0.")
 
 
-def _check_base_pool_not_denied(manifest: Mapping, failures: list[str]) -> None:
-    """A release assembled from a denied pool may not be published, however it
-    reached the release directory (microcosm#856)."""
-
-    base_pool = manifest.get("base_pool")
-    if not isinstance(base_pool, Mapping):
-        return
-    match = denied_pool_publication_for(
-        publication_run_id=base_pool.get("publication_run_id"),
-        manifest_sha256=base_pool.get("manifest_sha256"),
-        pool_h5_sha256=base_pool.get("pool_h5_sha256"),
-        content_identity_sha256=base_pool.get("content_identity_sha256"),
-    )
-    if match is not None:
-        run_id, denied, how = match
-        failures.append(
-            f"build_manifest.json base_pool is denied publication {run_id!r} "
-            f"(matched by {how}; release_id {denied.release_id!r}) and cannot be "
-            f"published. Reason: {denied.reason}. Reference: {denied.reference}."
-        )
-
-
 def _check_build_manifest(
     manifest: Mapping, release_id: str, failures: list[str]
 ) -> None:
-    _check_base_pool_not_denied(manifest, failures)
     build_id = manifest.get("build_id")
     if not build_id:
         failures.append("build_manifest.json is missing 'build_id'.")

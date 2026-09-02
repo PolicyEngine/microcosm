@@ -129,6 +129,7 @@ Canonical artifact keys:
 | `input_mass_reference` | the UK national build, when the licensed sidecar is supplied | `input_mass_parity` (UK override) |
 | `reviewed_input_mass_exclusions` (optional override) | the UK national build | `input_mass_parity` (UK override) |
 | `reviewed_qrf_tail_exclusions` (optional override) | the UK national build | `tail_concentration` (UK override) |
+| `uk_area_support_summary`, `exclusions_evaluated_on` | the UK local rowwise build | `area_support` (UK binding; reviewed exclusions carry measured shortfalls and stale entries fail) |
 
 The UK registry
 (`microcosm.build.uk_runtime.battery_bindings.UK_GATE_REGISTRY`) is the

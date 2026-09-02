@@ -27,9 +27,16 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.ladder_targets import (
+    constituency_household_targets,
+    local_authority_household_targets,
+)
+from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
+    AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
     area_groups_from_codes,
     load_uk_local_geography_contract,
+    metric_names,
 )
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame
@@ -660,6 +667,127 @@ def apply_uk_cross_grain_reconciliation(
         _uk_contract_targets(national_only=False),
         UK_CROSS_GRAIN_RULE,
     )
+
+
+def uk_local_target_surface(
+    local_registry: TargetRegistry,
+    ladder: Any,
+    *,
+    bound_national_target_ids: Iterable[str],
+    period: int | str,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Assemble and reconcile the present-cell UK local target surface."""
+
+    level_to_area_type = {
+        level: area_type
+        for area_type, level in AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.items()
+    }
+    target_id_to_metric = {
+        target_id: metric for metric, target_id in _uk_local_metric_target_ids().items()
+    }
+    output_rows: list[dict[str, Any]] = []
+    reconciliation_rows: list[dict[str, Any]] = []
+    for spec in local_registry.specs:
+        geography_level = str(spec.metadata.get("geography_level", ""))
+        geography_id = str(spec.metadata.get("geography_id", ""))
+        contract_target_id = str(
+            spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0])
+        )
+        if geography_level in level_to_area_type:
+            area_type = level_to_area_type[geography_level]
+            metric = target_id_to_metric.get(contract_target_id)
+            if metric is None:
+                raise ValueError(
+                    "UK local target surface cannot map contract target "
+                    f"{contract_target_id!r} to a PolicyEngine metric."
+                )
+            allowed = set(metric_names(area_type))
+            if metric not in allowed:
+                raise ValueError(
+                    f"UK local target surface metric {metric!r} is not declared "
+                    f"for area_type {area_type!r}."
+                )
+            output_position = len(output_rows)
+            output_rows.append(
+                {
+                    "area_type": area_type,
+                    "area_code": geography_id,
+                    "metric": metric,
+                    "value": float(spec.value),
+                    "target_name": spec.name,
+                    "family": family_for_metric(metric),
+                    "source_family": spec.family,
+                    "source": spec.source,
+                    "period": period,
+                    "contract_target_id": contract_target_id,
+                }
+            )
+            reconciliation_rows.append(
+                {
+                    "grain": area_type,
+                    "geography_id": geography_id,
+                    "target_id": f"contract:{contract_target_id}",
+                    "value": float(spec.value),
+                    "_output_position": output_position,
+                }
+            )
+        elif geography_level in UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS:
+            reconciliation_rows.append(
+                {
+                    "grain": geography_level,
+                    "geography_id": geography_id,
+                    "target_id": contract_target_id,
+                    "value": float(spec.value),
+                    "_output_position": None,
+                }
+            )
+        else:
+            raise ValueError(
+                f"UK target {spec.name!r} names unsupported geography_level "
+                f"{geography_level!r}."
+            )
+
+    for area_type, targets in (
+        ("constituency", constituency_household_targets(ladder)),
+        ("la", local_authority_household_targets(ladder)),
+    ):
+        for row in targets.itertuples(index=False):
+            output_position = len(output_rows)
+            output_rows.append(
+                {
+                    "area_type": area_type,
+                    "area_code": str(row.code),
+                    "metric": "households",
+                    "value": float(row.households),
+                    "target_name": (
+                        f"external:census_households/households@{row.code}"
+                    ),
+                    "family": "census_households",
+                    "source": "UK OA geography ladder",
+                    "period": period,
+                    "contract_target_id": "external:census_households/households",
+                }
+            )
+            reconciliation_rows.append(
+                {
+                    "grain": area_type,
+                    "geography_id": str(row.code),
+                    "target_id": "external:census_households/households",
+                    "value": float(row.households),
+                    "_output_position": output_position,
+                }
+            )
+
+    reconciliation = pd.DataFrame(reconciliation_rows)
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        reconciliation[["grain", "geography_id", "target_id", "value"]],
+        bound_national_target_ids,
+    )
+    for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
+        output_position = reconciliation.iloc[position]["_output_position"]
+        if pd.notna(output_position):
+            output_rows[int(output_position)]["value"] = float(value)
+    return pd.DataFrame(output_rows), receipt
 
 
 def _validate_uk_cross_grain_declarations() -> None:

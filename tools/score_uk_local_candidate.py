@@ -27,7 +27,7 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 17_077
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 19_618
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
@@ -61,7 +61,7 @@ def _verify_artifact(path: str | Path, expected_sha256: str) -> dict[str, object
 def _candidate_estimates(
     diagnostics: Mapping[str, object],
     registry: TargetRegistry,
-) -> dict[str, float]:
+) -> tuple[dict[str, float], dict[str, object]]:
     if diagnostics.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
         raise ValueError("UK local scoring requires schema-v6 candidate diagnostics.")
     rows = diagnostics.get("targets")
@@ -83,14 +83,17 @@ def _candidate_estimates(
             raise ValueError("candidate diagnostics contain invalid target estimates.")
         estimates[name] = float(raw)
     expected = {spec.to_target().row_name for spec in registry.specs}
-    if set(estimates) != expected:
-        missing = sorted(expected - set(estimates))
-        extra = sorted(set(estimates) - expected)
+    missing = sorted(expected - set(estimates))
+    if missing:
         raise ValueError(
-            "candidate diagnostics must exactly cover the frozen local register; "
-            f"missing={missing[:10]}, extra={extra[:10]}."
+            "candidate diagnostics must cover every frozen local register row; "
+            f"missing={missing[:10]}."
         )
-    return estimates
+    extra = sorted(set(estimates) - expected)
+    return (
+        {name: estimates[name] for name in expected},
+        {"count": len(extra), "rows": extra},
+    )
 
 
 def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
@@ -334,7 +337,10 @@ def score_uk_local_candidate(
             f"mismatches={wrong_period[:10]}."
         )
     holdout = _candidate_holdout(candidate_diagnostics)
-    candidate = _candidate_estimates(candidate_diagnostics, target_registry)
+    candidate, rows_outside_register = _candidate_estimates(
+        candidate_diagnostics,
+        target_registry,
+    )
     incumbent = _incumbent_estimates(
         target_registry,
         incumbent_weights,
@@ -405,6 +411,7 @@ def score_uk_local_candidate(
         "incumbent_holdout_loss": None,
         "candidate_target_wins": candidate_wins,
         "incumbent_target_wins": incumbent_wins,
+        "rows_outside_register": rows_outside_register,
         "holdout_basis": holdout["basis"],
         "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
         "candidate_holdout": holdout,

@@ -258,6 +258,7 @@ def author_area_target_references(
 
     active_rows: list[dict[str, Any]] = []
     target_entries: dict[str, Any] = {}
+    uprating_holds: list[dict[str, str]] = []
 
     for target in contract.get("targets", ()):
         target_id = str(target["target_id"])
@@ -336,16 +337,26 @@ def author_area_target_references(
                             "the candidate now compiles."
                         )
                     spec = registry.specs[0]
+                    resolved_period = str(spec.metadata.get("ledger_fact_period", ""))
+                    _apply_uprating_hold(row, resolved_period, config.target_period)
+                    if "uprating_from_period" in row:
+                        uprating_holds.append(
+                            {
+                                "name": row["name"],
+                                "target_id": target_id,
+                                "geography_level": geography_level,
+                                "geography_id": area_id,
+                                "from": str(row["uprating_from_period"]),
+                                "to": str(row["uprating_to_period"]),
+                            }
+                        )
                     active_rows.append(row)
                     entry.update(
                         {
                             "status": "active",
                             "resolved_period": spec.period,
                             "resolved_value": spec.value,
-                            "resolved_fact_period": spec.metadata.get(
-                                "ledger_fact_period",
-                                "",
-                            ),
+                            "resolved_fact_period": resolved_period,
                             "resolved_fact_key": _json_safe_ledger_id(
                                 spec.metadata.get("ledger_aggregate_fact_key", "")
                             ),
@@ -398,6 +409,10 @@ def author_area_target_references(
             }
             for deferral in config.area_signed_deferrals
         ],
+        "uprating_holds": uprating_holds,
+        "holds_by_target": dict(
+            sorted(Counter(row["target_id"] for row in uprating_holds).items())
+        ),
         "targets": target_entries,
     }
     return AuthoredTargetReferences(tuple(active_rows), report)
