@@ -298,6 +298,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "us_late_producer_registry.py",
         "validation_input_coverage.py",
         "warm_start_selection.py",
+        # The node-graph adapter: declares the post-transfer subgraph and wraps
+        # the unchanged stage functions as kernels (charter H3). It registers
+        # nothing with the source registry and treats no population itself.
+        "graph.py",
+        "graph_kernels.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
