@@ -117,7 +117,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     sample_uk_spine_frame,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
-from microcosm.frame import MassChangeRecord
+from microcosm.frame import Frame, MassChangeRecord
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
 BOUND_NATIONAL_TARGETS: tuple[str, ...] = ()
@@ -260,7 +260,41 @@ def _resolve_candidate_engine_surface(
                 ].tolist()
             )
             person_mask = person["person_household_id"].isin(household_ids)
-            block_frames.append((clone_index, frame.select(person_mask)))
+            block = frame.select(person_mask)
+            # The block carries a K-th of the cloned mass while its log still
+            # ends on the full-clone record, and the scratch export validates
+            # the chain. Declare the subset explicitly: old = the cloned
+            # total, new = the block total, reason naming the block. The block
+            # frame is engine scratch and is discarded after resolution.
+            block_weights = block.weights_for("household")
+            full_total = float(frame.weights_for("household").total)
+            block_total = float(block_weights.total)
+            subset_record = MassChangeRecord(
+                entity="household",
+                old_total=full_total,
+                new_total=block_total,
+                declared_factor=block_total / full_total,
+                reason=(
+                    f"engine resolution block {clone_index} of {blocks}: "
+                    "scratch subset of the cloned frame for measure "
+                    "resolution only, discarded after resolution"
+                ),
+            )
+            block = Frame(
+                {
+                    **{name: block.table(name) for name in block.entities},
+                    **{name: block.link(name) for name in block.links},
+                },
+                block.schema,
+                {
+                    entity: block.weights_for(entity)
+                    for entity in block.weighted_entities
+                },
+                block.strata,
+                mass_log=(*block.mass_log, subset_record),
+                metadata=block.metadata,
+            )
+            block_frames.append((clone_index, block))
 
     measure_parts: dict[tuple[str, str], list[pd.Series]] = {}
     metric_parts: dict[str, list[pd.DataFrame]] = {

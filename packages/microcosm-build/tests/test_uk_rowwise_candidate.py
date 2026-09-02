@@ -22,7 +22,10 @@ from microcosm.build.uk_runtime import (
     read_uk_single_year_weight_metadata,
     write_uk_national_frame,
 )
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    uk_national_frame,
+    validate_uk_national_frame,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import MassChangeRecord, WeightKind
 
@@ -987,6 +990,10 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         def __init__(self, **kwargs):
             constructions.append(kwargs)
             self.frame = kwargs["frame"]
+            # A live resolver writes the frame to a scratch H5 through the
+            # national-frame writer, which validates the mass chain; a block
+            # must therefore carry a record whose total equals its weights.
+            validate_uk_national_frame(self.frame)
             self.simulation = object()
             self.contract_targets = {}
 
