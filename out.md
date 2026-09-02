@@ -236,10 +236,11 @@ uv run python tools/ci_test_groups.py --verify
 tracked_test_files=353
 verification=ok
 
-uv run python tools/graph_acceptance_burndown.py --verify
+uv run python tools/graph_acceptance_burndown.py --verify --baseline origin/main
 total         0
 red        0  none
 missing    0  none
+baseline=origin/main
 verification=ok
 ```
 

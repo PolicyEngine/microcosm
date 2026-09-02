@@ -88,10 +88,12 @@ and the measured fit.qrf tolerance are green. The required final report is in
   single-quiet equivalent reports `29 passed in 52.86s`. Dedicated H1-H3
   parity reports `3 passed in 114.66s (0:01:54)`.
 - Repository checks report `All checks passed!`, `13 files already formatted`,
-  `tracked_test_files=353` / `verification=ok`, and acceptance burndown
-  `total 0`, `red 0`, `verification=ok`. The three frozen interface files are
-  byte-unchanged from `graph-amendments-11-13`; only the fit.qrf implementation
-  hash pin moved, so no demo structural pin needed regeneration.
+  `tracked_test_files=353` / `verification=ok`, and the explicitly requested
+  `origin/main` acceptance burndown reports `total 0`, `red 0`, `missing 0`,
+  `baseline=origin/main`, `verification=ok`. The three frozen interface files
+  are byte-unchanged from `graph-amendments-11-13`; only the fit.qrf
+  implementation hash pin moved, so no demo structural pin needed
+  regeneration.
 - Wrote `out.md` with the implementation SHA, per-amendment file/line handoff,
   retained verification summaries, the arm64/x86 measurement table, the honest
   207-versus-206 suite-count discrepancy, and the frozen-interface
