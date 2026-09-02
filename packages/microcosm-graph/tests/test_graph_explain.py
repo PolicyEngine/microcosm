@@ -158,6 +158,36 @@ def test_explain_html_is_the_public_export() -> None:
     assert graph_api.explain_html is explain_html
 
 
+def test_entrant_person_strata_survive_cache_and_are_explained(tmp_path: Path) -> None:
+    expand, claim = toy.entrant_person_node()
+    graph = toy.small_graph(nodes=(toy.CREATE, expand, claim))
+    cold = toy.run_toy(graph, tmp_path / "cold")
+    warm = toy.run_toy(
+        graph,
+        tmp_path / "warm",
+        sources=cold.sources,
+        registry=cold.registry,
+        store=cold.store,
+    )
+    entrant_id = int(cold.manifest.population("survey").person["person_id"].max()) + 1
+
+    assert warm.manifest.nodes[expand.id].hit
+    assert warm.manifest.population(expand.id).strata.equals(
+        cold.manifest.population(expand.id).strata
+    )
+    assert cold.manifest.nodes[expand.id].receipt["entrant_strata"] == (
+        (entrant_id, "urban"),
+    )
+    assert (
+        warm.manifest.nodes[expand.id].receipt["entrant_strata"]
+        == cold.manifest.nodes[expand.id].receipt["entrant_strata"]
+    )
+    detail = describe(cold.compiled, expand.id, cold.manifest)
+    rendered = explain_html(cold.compiled, cold.manifest)
+    assert "entrant_strata" in detail and "urban" in detail
+    assert "entrant_strata" in rendered and "urban" in rendered
+
+
 def test_page_contains_every_node_and_its_click_detail(explanation) -> None:
     run, _charter, rendered = explanation
     for node_id in run.compiled.order:
@@ -172,11 +202,13 @@ def test_page_contains_every_node_and_its_click_detail(explanation) -> None:
 def test_page_contains_every_charter_property(explanation) -> None:
     _run, charter, rendered = explanation
     identifiers = re.findall(r"^\|\s*([A-Z]\d+)\s*\|", charter, re.MULTILINE)
-    assert len(dict.fromkeys(identifiers)) == 44  # 41 + B6, C5, D6 (amendments 11-13)
+    assert (
+        len(dict.fromkeys(identifiers)) == 45
+    )  # 41 + B6, C5, D6, B7 (amendments 11-14)
     for identifier in identifiers:
         assert f"<code>{identifier}</code>" in rendered
     assert "35 green" not in rendered  # V1-V4 are also represented.
-    assert "44 green" in rendered
+    assert "45 green" in rendered
     assert "0 red" in rendered
     assert "<th>Flip PR</th>" in rendered
     assert "Not recorded" in rendered

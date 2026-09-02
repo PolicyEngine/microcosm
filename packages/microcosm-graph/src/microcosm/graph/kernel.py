@@ -17,7 +17,10 @@ Structural kernels return data, and the executor does the structural work:
 - ``EXPAND`` returns the clone lineage as :attr:`KernelResult.expand` (per
   entity, new ids to the source ids they copy) plus the new weights; the
   executor carries every column from the source rows, records the lineage
-  in the receipt, and records mass.
+  in the receipt, and records mass. A node declared ``entrants=True`` may
+  also add rows with null lineage; the kernel then materializes their
+  columns, and for entrant persons their stratum through
+  :attr:`KernelResult.strata` (amendments 11 and 14).
 - ``REWEIGHT`` (and any node with a declared weight transition) returns
   :attr:`KernelResult.weights`; the executor validates the kind transition
   and the mass policy.
@@ -171,6 +174,25 @@ class Capabilities:
     tolerance: Tolerance | None = None
 
     def __post_init__(self) -> None:
+        # Every field is validated here, so a registered contract is a real
+        # one: a string that spells an enum member does not pass as the member.
+        for name, kind in (
+            ("determinism", Determinism),
+            ("numeric", Numeric),
+            ("seed_source", SeedSource),
+            ("structural", StructuralDelta),
+            ("role", KernelRole),
+        ):
+            if not isinstance(getattr(self, name), kind):
+                raise TypeError(f"Capabilities.{name} must be a {kind.__name__}.")
+        if not isinstance(self.consumes_se, bool):
+            raise TypeError("Capabilities.consumes_se must be a boolean.")
+        if not isinstance(self.dependencies, tuple) or any(
+            not isinstance(name, str) or not name for name in self.dependencies
+        ):
+            raise TypeError(
+                "Capabilities.dependencies must be a tuple of distribution names."
+            )
         if self.tolerance is not None and not isinstance(self.tolerance, Tolerance):
             raise TypeError("Capabilities.tolerance must be a Tolerance or None.")
         if self.numeric is Numeric.TOLERANCE_BOUND and self.tolerance is None:
@@ -238,6 +260,10 @@ class KernelResult:
             ``weights``.
         weights: ``REWEIGHT`` kernels and declared weight transitions only:
             the new explicit weights of the transition's entity.
+        strata: ``EXPAND`` kernels on a node with ``entrants=True`` only: the
+            stratum label of every entrant person, indexed by its new id.
+            Copied persons inherit their source's stratum and must not
+            appear here; an entrant person absent from it rejects the node.
         artifacts: Opaque bytes stored beside the node's outputs (a fitted
             model, a diagnostic table), keyed by name.
         receipt: Descriptive facts for the manifest. Never hashed into a
@@ -252,6 +278,7 @@ class KernelResult:
     keep: pd.Series | None = None
     expand: Mapping[str, pd.Series] | None = None
     weights: Weights | None = None
+    strata: pd.Series | None = None
     artifacts: Mapping[str, bytes] = field(default_factory=dict)
     receipt: Mapping[str, object] = field(default_factory=dict)
 
@@ -343,6 +370,11 @@ class KernelRegistry:
     def register(self, kernel: Kernel) -> Kernel:
         if not isinstance(kernel, Kernel):
             raise TypeError(f"{kernel!r} does not satisfy the Kernel protocol.")
+        if not isinstance(kernel.capabilities, Capabilities):
+            raise TypeError(
+                f"Kernel {getattr(kernel, 'ref', kernel)!r} must carry a Capabilities "
+                "instance, not a look-alike."
+            )
         if kernel.ref in self._kernels and self._kernels[kernel.ref] is not kernel:
             raise ValueError(f"Kernel {kernel.ref!r} is already registered.")
         self._kernels[kernel.ref] = kernel
