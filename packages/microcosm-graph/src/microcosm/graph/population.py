@@ -14,7 +14,7 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 
 from .decl import (
     MASS_POLICIES,
@@ -36,6 +36,7 @@ __all__ = [
     "owned_ids",
     "patch",
     "population_from_frame",
+    "restore_cached_expand",
     "storage_equal",
     "token_for_dtype",
     "weight_cap_receipt",
@@ -270,6 +271,83 @@ def population_from_frame(
     )
 
 
+def restore_cached_expand(
+    population: Population, node: Node, result: KernelResult
+) -> Population:
+    """Restore a previously validated EXPAND frame against its keyed base.
+
+    A cache record stores the executor-materialized Frame, never a
+    kernel-returned population.  Its content hash and node key already bind it
+    to this base version.  This function re-establishes graph ownership,
+    design-weight ancestry, and the executor mass ledger without relaxing the
+    miss-path lineage validation.
+    """
+
+    if node.structural is not StructuralDelta.EXPAND or result.frame is None:
+        raise PopulationError("restore_cached_expand requires an EXPAND Frame.")
+    frame = result.frame
+    if frame.schema != population.frame.schema:
+        raise PopulationError(f"Cached EXPAND node {node.id!r} changed schema.")
+    for entity in frame.entities:
+        id_column = frame.schema.entity_id_column(entity)
+        before_ids = pd.Index(population.frame.table(entity)[id_column])
+        after_ids = pd.Index(frame.table(entity)[id_column])
+        if not before_ids.isin(after_ids).all():
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} dropped incumbent {entity!r} ids."
+            )
+    _assert_expand_weights(population, frame, node, result)
+
+    design_weights: dict[str, np.ndarray] = {}
+    for entity, old_anchor in population.design_weights.items():
+        id_column = frame.schema.entity_id_column(entity)
+        before_ids = pd.Index(population.frame.table(entity)[id_column])
+        after_table = frame.table(entity)
+        after_ids = pd.Index(after_table[id_column])
+        positions = before_ids.get_indexer(after_ids)
+        values = np.empty(len(after_ids), dtype=np.float64)
+        retained = positions >= 0
+        values[retained] = old_anchor[positions[retained]]
+        if not retained.all():
+            source_column = f"{entity}_source_id"
+            if source_column in after_table:
+                source_positions = before_ids.get_indexer(
+                    after_table.loc[~retained, source_column]
+                )
+                if (source_positions < 0).any():
+                    raise PopulationError(
+                        f"Cached EXPAND node {node.id!r} has unknown design "
+                        f"lineage in {source_column!r}."
+                    )
+                values[~retained] = old_anchor[source_positions]
+            else:
+                current = frame.weights_for(entity)
+                if current.kind is not WeightKind.DESIGN:
+                    raise PopulationError(
+                        f"Cached EXPAND node {node.id!r} cannot restore design "
+                        f"lineage for new {entity!r} ids."
+                    )
+                values[~retained] = current.values[~retained]
+        design_weights[entity] = values
+
+    ledger = (
+        *population.mass_ledger,
+        _mass_record(population.frame, frame, node, result, _mass_policy(node)),
+    )
+    owners = {
+        (entity, str(column)): node.id
+        for entity in frame.entities
+        for column in frame.table(entity).columns
+    }
+    return Population.from_frame(
+        frame,
+        node.id,
+        owners,
+        mass_ledger=ledger,
+        design_weights=design_weights,
+    )
+
+
 def owned_ids(population: Population, owned: Owned) -> pd.Index:
     """Entity ids at exactly the positions covered by an ``Owned`` declaration."""
 
@@ -318,7 +396,22 @@ def storage_equal(
 
 
 def patch(population: Population, node: Node, result: KernelResult) -> Population:
-    """Validate and apply one node result without mutating ``population``."""
+    """Validate and apply one node result without mutating ``population``.
+
+    ``EXPAND`` has one runtime convention beyond the frozen declaration
+    surface.  A kernel still never receives or returns a population: its
+    ``columns`` map carries one target-id-indexed source-id lineage Series per
+    entity, the remapped person membership Series, and the cell overlays
+    enumerated by ``params['expand_cells']``.  ``result.weights`` is the full
+    target vector named by ``params['expand_weight_entity']`` and
+    ``params['expand_weight_kind']``.  The executor validates those pieces and
+    carries every other cell from the named source rows here.
+
+    The convention is deliberately encoded in existing ``KernelResult``
+    fields so the frozen ``decl.py`` and ``kernel.py`` interfaces remain
+    unchanged.  It is content-addressed because every contract component is a
+    normative node parameter.
+    """
 
     if node.structural is StructuralDelta.CREATE:
         raise PopulationError(
@@ -331,7 +424,8 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
         )
     _assert_no_ordinary_structural_outputs(population, node)
     expected_columns = {(owned.entity, owned.column) for owned in node.outputs}
-    if set(result.columns) != expected_columns:
+    lineage_expand = node.structural is StructuralDelta.EXPAND and result.frame is None
+    if not lineage_expand and set(result.columns) != expected_columns:
         raise PopulationError(
             f"Node {node.id!r} returned columns {sorted(result.columns)}; "
             f"expected exactly {sorted(expected_columns)}."
@@ -342,10 +436,21 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
         if result.frame is not None:
             raise PopulationError(f"Non-structural node {node.id!r} returned a Frame.")
         frame, owners = _patch_columns(population, node, result)
+    elif lineage_expand:
+        frame, owners = _patch_expand(population, node, result)
     else:
         frame, owners = _patch_structural(population, node, result)
 
-    if node.weights is not None:
+    expand_weight_entity = _expand_weight_entity(node) if lineage_expand else None
+    if expand_weight_entity is not None:
+        _assert_carried_weights(
+            population.frame,
+            frame,
+            node,
+            transitioning=expand_weight_entity,
+        )
+        _assert_expand_weights(population, frame, node, result)
+    elif node.weights is not None:
         _assert_carried_weights(
             population.frame,
             frame,
@@ -360,7 +465,9 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
     else:
         _assert_carried_weights(population.frame, frame, node)
 
-    design_weights = _carry_design_weights(population, frame, node)
+    frame = _append_frame_mass_log(population.frame, frame, node, result)
+
+    design_weights = _carry_design_weights(population, frame, node, result)
     _assert_design_weight_cap(frame, design_weights, node)
 
     ledger = population.mass_ledger
@@ -376,6 +483,262 @@ def patch(population: Population, node: Node, result: KernelResult) -> Populatio
         mass_ledger=ledger,
         design_weights=design_weights,
     )
+
+
+def _expand_cells(node: Node) -> tuple[tuple[str, str, str], ...]:
+    """Return the normative ``(entity, column, dtype)`` EXPAND overlays."""
+
+    raw = node.params.get("expand_cells")
+    if not isinstance(raw, tuple):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} needs tuple params['expand_cells']."
+        )
+    cells: list[tuple[str, str, str]] = []
+    for item in raw:
+        if (
+            not isinstance(item, tuple)
+            or len(item) != 3
+            or any(not isinstance(part, str) or not part for part in item)
+        ):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} has malformed expand_cells entry {item!r}."
+            )
+        entity, column, dtype = item
+        # Reuse the declaration token validator without importing frozen
+        # declaration internals into this runtime convention.
+        dtype_for_token(dtype)
+        cells.append((entity, column, dtype))
+    if len({(entity, column) for entity, column, _ in cells}) != len(cells):
+        raise PopulationError(f"EXPAND node {node.id!r} repeats an expanded cell.")
+    return tuple(cells)
+
+
+def _expand_weight_entity(node: Node) -> str | None:
+    raw = node.params.get("expand_weight_entity")
+    if node.structural is not StructuralDelta.EXPAND:
+        return None
+    if not isinstance(raw, str) or not raw:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} needs params['expand_weight_entity']."
+        )
+    return raw
+
+
+def _patch_expand(
+    population: Population, node: Node, result: KernelResult
+) -> tuple[Frame, dict[tuple[str, str], str]]:
+    """Materialize a source-lineage EXPAND result in the executor."""
+
+    before = population.frame
+    if before.links:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} cannot yet carry association link tables."
+        )
+    cells = _expand_cells(node)
+    for entity, _, _ in cells:
+        if entity not in before.entities:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} names unknown entity {entity!r}."
+            )
+
+    structural_coordinates = {
+        (entity, before.schema.entity_id_column(entity)) for entity in before.entities
+    }
+    person = before.schema.person_entity
+    membership_coordinates = {
+        (person, before.schema.membership_column(group))
+        for group in before.schema.group_entities
+    }
+    cell_coordinates = {(entity, column) for entity, column, _ in cells}
+    expected = structural_coordinates | membership_coordinates | cell_coordinates
+    if set(result.columns) != expected:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} returned columns {sorted(result.columns)}; "
+            f"its lineage contract requires exactly {sorted(expected)}."
+        )
+
+    tables: dict[str, pd.DataFrame] = {}
+    lineage_positions: dict[str, np.ndarray] = {}
+    target_ids: dict[str, pd.Index] = {}
+    for entity in before.entities:
+        id_column = before.schema.entity_id_column(entity)
+        lineage = result.columns[(entity, id_column)]
+        if not isinstance(lineage, pd.Series):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage for {entity!r} is not a Series."
+            )
+        source_table = before.table(entity)
+        source_ids = pd.Index(source_table[id_column].to_numpy(copy=True))
+        targets = pd.Index(lineage.index, name=id_column)
+        if not targets.is_unique:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} repeats target {entity!r} ids."
+            )
+        if len(targets) < len(source_ids):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} has fewer target than source {entity!r} rows."
+            )
+        positions = source_ids.get_indexer(lineage.to_numpy(copy=False))
+        if (positions < 0).any():
+            bad = lineage.iloc[np.flatnonzero(positions < 0)[:5]].tolist()
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage names unknown {entity!r} "
+                f"source ids {bad}."
+            )
+        target_position = targets.get_indexer(source_ids)
+        if (target_position < 0).any() or not np.array_equal(
+            lineage.iloc[target_position].to_numpy(copy=False),
+            source_ids.to_numpy(copy=False),
+        ):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} must retain every incumbent "
+                f"{entity!r} id with self-lineage."
+            )
+        carried = source_table.iloc[positions].reset_index(drop=True)
+        replacement_ids = pd.Series(
+            targets.to_numpy(copy=True), dtype=source_table[id_column].dtype
+        )
+        if len(replacement_ids) != len(carried):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} lineage index/value lengths disagree "
+                f"for {entity!r}."
+            )
+        carried[id_column] = replacement_ids.array
+        tables[entity] = carried
+        lineage_positions[entity] = positions
+        target_ids[entity] = targets
+
+    person_table = tables[person]
+    for group in before.schema.group_entities:
+        membership = before.schema.membership_column(group)
+        incoming = result.columns[(person, membership)]
+        if not isinstance(incoming, pd.Series):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} membership {membership!r} is not a Series."
+            )
+        expected_ids = target_ids[person]
+        if (
+            not incoming.index.is_unique
+            or len(incoming) != len(expected_ids)
+            or set(incoming.index) != set(expected_ids)
+        ):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} membership {membership!r} must name "
+                "every target person exactly once."
+            )
+        aligned = incoming.reindex(expected_ids)
+        assert_dtype(
+            aligned,
+            token_for_dtype(before.table(person)[membership].dtype),
+            label=f"EXPAND node {node.id!r} membership {membership}",
+        )
+        group_ids = set(tables[group][before.schema.entity_id_column(group)].tolist())
+        unknown = set(aligned.tolist()) - group_ids
+        if unknown:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} membership {membership!r} names "
+                f"unknown target ids {sorted(unknown)[:5]}."
+            )
+        person_table[membership] = aligned.array
+
+    for entity, column, dtype in cells:
+        incoming = result.columns[(entity, column)]
+        if not isinstance(incoming, pd.Series):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cell {entity}.{column} is not a Series."
+            )
+        ids = target_ids[entity]
+        if (
+            not incoming.index.is_unique
+            or len(incoming) != len(ids)
+            or set(incoming.index) != set(ids)
+        ):
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cell {entity}.{column} must name "
+                "every target id exactly once."
+            )
+        aligned = incoming.reindex(ids)
+        assert_dtype(
+            aligned,
+            dtype,
+            label=f"EXPAND node {node.id!r} cell {entity}.{column}",
+        )
+        tables[entity][column] = aligned.array
+
+    weight_entity = _expand_weight_entity(node)
+    assert weight_entity is not None
+    if weight_entity not in before.weighted_entities:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} cannot replace inherited weights for "
+            f"{weight_entity!r}."
+        )
+    if result.weights is None:
+        raise PopulationError(f"EXPAND node {node.id!r} returned no weights.")
+    weights: dict[str, Weights] = {}
+    for entity in before.weighted_entities:
+        if entity == weight_entity:
+            weights[entity] = result.weights
+            continue
+        old = before.weights_for(entity)
+        weights[entity] = Weights(old.values[lineage_positions[entity]], kind=old.kind)
+
+    person_positions = lineage_positions[person]
+    strata = pd.Series(
+        before.strata.iloc[person_positions].array.copy(),
+        index=tables[person].index,
+        name=before.strata.name,
+        dtype=before.strata.dtype,
+    )
+    frame = Frame(
+        tables,
+        before.schema,
+        weights,
+        strata,
+        mass_log=before.mass_log,
+        metadata=before.metadata,
+    )
+    owners = {
+        (entity, str(column)): node.id
+        for entity in frame.entities
+        for column in frame.table(entity).columns
+    }
+    return frame, owners
+
+
+def _assert_expand_weights(
+    population: Population, frame: Frame, node: Node, result: KernelResult
+) -> None:
+    entity = _expand_weight_entity(node)
+    assert entity is not None
+    raw_kind = node.params.get("expand_weight_kind")
+    if not isinstance(raw_kind, str):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} needs params['expand_weight_kind']."
+        )
+    try:
+        declared_kind = WeightKind(raw_kind)
+    except ValueError as error:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} declares unknown weight kind {raw_kind!r}."
+        ) from error
+    assert result.weights is not None
+    if result.weights.kind is not declared_kind:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} returned {result.weights.kind.value!r} "
+            f"weights, not declared {raw_kind!r}."
+        )
+    if len(result.weights.values) != frame.n(entity):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} returned {len(result.weights.values)} "
+            f"weights for {frame.n(entity)} target {entity!r} rows."
+        )
+    installed = frame.weights_for(entity)
+    if installed.kind is not declared_kind or not np.array_equal(
+        installed.values, result.weights.values
+    ):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} did not install its declared weights."
+        )
 
 
 def _patch_columns(
@@ -655,7 +1018,10 @@ def _assert_carried_weights(
 
 
 def _carry_design_weights(
-    population: Population, frame: Frame, node: Node
+    population: Population,
+    frame: Frame,
+    node: Node,
+    result: KernelResult,
 ) -> dict[str, np.ndarray]:
     """Align original design weights to the new version by stable entity id."""
 
@@ -664,7 +1030,17 @@ def _carry_design_weights(
         id_column = frame.schema.entity_id_column(entity)
         before_ids = pd.Index(population.frame.table(entity)[id_column])
         after_ids = pd.Index(frame.table(entity)[id_column])
-        before_positions = before_ids.get_indexer(after_ids)
+        if node.structural is StructuralDelta.EXPAND and result.frame is None:
+            lineage = result.columns.get((entity, id_column))
+            if not isinstance(lineage, pd.Series):
+                raise PopulationError(
+                    f"EXPAND node {node.id!r} has no design lineage for {entity!r}."
+                )
+            before_positions = before_ids.get_indexer(
+                lineage.reindex(after_ids).to_numpy(copy=False)
+            )
+        else:
+            before_positions = before_ids.get_indexer(after_ids)
         values = np.empty(len(after_ids), dtype=np.float64)
         retained = before_positions >= 0
         values[retained] = old_anchor[before_positions[retained]]
@@ -689,6 +1065,113 @@ def _carry_design_weights(
             values[~retained] = current.values[~retained]
         carried[entity] = values
     return carried
+
+
+def _append_frame_mass_log(
+    before: Frame,
+    frame: Frame,
+    node: Node,
+    result: KernelResult,
+) -> Frame:
+    """Append transform-authored ``Frame.mass_log`` records from a receipt.
+
+    Graph mass accounting remains executor-authored in ``Population``'s
+    ledger.  This separate append preserves legacy Frame content identity for
+    stages whose public Frame contract records a justified mass change or an
+    explicit conservation check.
+    """
+
+    raw_records = result.receipt.get("frame_mass_log_append", ())
+    if raw_records in (None, ()):  # normalized JSON cache receipts use lists
+        return frame
+    if not isinstance(raw_records, list | tuple):
+        raise PopulationError(
+            f"Node {node.id!r} receipt['frame_mass_log_append'] must be a list."
+        )
+    records: list[MassChangeRecord] = []
+    for index, raw in enumerate(raw_records):
+        if not isinstance(raw, Mapping):
+            raise PopulationError(
+                f"Node {node.id!r} frame mass record {index} is not a mapping."
+            )
+        expected = {
+            "entity",
+            "old_total",
+            "new_total",
+            "declared_factor",
+            "reason",
+        }
+        if set(raw) != expected:
+            raise PopulationError(
+                f"Node {node.id!r} frame mass record {index} fields are "
+                f"{sorted(raw)}, not {sorted(expected)}."
+            )
+        entity = raw["entity"]
+        reason = raw["reason"]
+        factor = raw["declared_factor"]
+        if not isinstance(entity, str) or entity not in frame.weighted_entities:
+            raise PopulationError(
+                f"Node {node.id!r} frame mass record {index} names unknown "
+                f"weighted entity {entity!r}."
+            )
+        if not isinstance(reason, str) or not reason.strip():
+            raise PopulationError(
+                f"Node {node.id!r} frame mass record {index} needs a reason."
+            )
+        if factor is not None and (
+            isinstance(factor, bool) or not isinstance(factor, int | float)
+        ):
+            raise PopulationError(
+                f"Node {node.id!r} frame mass record {index} has invalid factor."
+            )
+        numeric: list[float] = []
+        for field_name in ("old_total", "new_total"):
+            value = raw[field_name]
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise PopulationError(
+                    f"Node {node.id!r} frame mass record {index}.{field_name} must "
+                    "be numeric."
+                )
+            converted = float(value)
+            if not np.isfinite(converted):
+                raise PopulationError(
+                    f"Node {node.id!r} frame mass record "
+                    f"{index}.{field_name} is not finite."
+                )
+            numeric.append(converted)
+        records.append(
+            MassChangeRecord(
+                entity=entity,
+                old_total=numeric[0],
+                new_total=numeric[1],
+                declared_factor=None if factor is None else float(factor),
+                reason=reason,
+            )
+        )
+
+    # The legacy records describe the stage boundary, not arbitrary numbers.
+    first = records[0]
+    last = records[-1]
+    before_total = before.weights_for(first.entity).total
+    after_total = frame.weights_for(last.entity).total
+    if not np.isclose(first.old_total, before_total, rtol=_MASS_RTOL, atol=0.0):
+        raise PopulationError(
+            f"Node {node.id!r} frame mass log starts at {first.old_total!r}; "
+            f"the incumbent {first.entity!r} total is {before_total!r}."
+        )
+    if not np.isclose(last.new_total, after_total, rtol=_MASS_RTOL, atol=0.0):
+        raise PopulationError(
+            f"Node {node.id!r} frame mass log ends at {last.new_total!r}; "
+            f"the resulting {last.entity!r} total is {after_total!r}."
+        )
+    return Frame(
+        _copied_tables(frame),
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=(*frame.mass_log, *records),
+        metadata=frame.metadata,
+    )
 
 
 def _design_cap(node: Node) -> tuple[str, float] | None:
@@ -839,7 +1322,14 @@ def _mass_record(
         after_total=after_total,
         before_by_stratum=before_pairs,
         after_by_stratum=after_pairs,
-        entity=node.weights.entity if node.weights is not None else None,
+        entity=(
+            node.weights.entity
+            if node.weights is not None
+            else _expand_weight_entity(node)
+            if node.structural is StructuralDelta.EXPAND
+            and "expand_weight_entity" in node.params
+            else None
+        ),
     )
 
 

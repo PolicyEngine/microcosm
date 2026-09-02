@@ -44,7 +44,12 @@ from .keys import (
     weights_key,
 )
 from .manifest import Decision, NodeReceipt, RunManifest
-from .population import Population, patch, weight_cap_receipt
+from .population import (
+    Population,
+    patch,
+    restore_cached_expand,
+    weight_cap_receipt,
+)
 from .store import (
     ContentStore,
     ResumePolicy,
@@ -427,6 +432,28 @@ def _project_context(
         columns = _structural_columns(frame, entity)
         for slice_ in entity_slices:
             columns.extend(slice_.columns)
+        rewrite_inputs = node.params.get("rewrite_inputs", ())
+        if not isinstance(rewrite_inputs, tuple) or any(
+            not isinstance(value, str) or "." not in value for value in rewrite_inputs
+        ):
+            raise NodeRejected(
+                f"Node {node.id!r} params['rewrite_inputs'] must be a tuple of "
+                "'entity.column' strings."
+            )
+        owned_coordinates = {(owned.entity, owned.column) for owned in node.outputs}
+        for coordinate in rewrite_inputs:
+            rewrite_entity, rewrite_column = coordinate.split(".", 1)
+            if (rewrite_entity, rewrite_column) not in owned_coordinates:
+                raise NodeRejected(
+                    f"Node {node.id!r} rewrite input {coordinate!r} is not one "
+                    "of its owned cells."
+                )
+            if rewrite_entity == entity:
+                if rewrite_column not in table:
+                    raise NodeRejected(
+                        f"Node {node.id!r} rewrite input {coordinate!r} is absent."
+                    )
+                columns.append(rewrite_column)
         columns = list(dict.fromkeys(columns))
         if row_specs and next(iter(row_specs)) != ROWS_ALL:
             row_column = str(next(iter(row_specs)))
@@ -576,6 +603,8 @@ def _validate_result(
     kernel_capabilities: Capabilities,
     result: KernelResult,
     population: Population | None,
+    *,
+    cache_hit: bool = False,
 ) -> tuple[dict[str, object], dict[str, bytes]]:
     if not isinstance(result, KernelResult):
         raise NodeRejected(
@@ -615,7 +644,7 @@ def _validate_result(
                 f"Node {node.id!r} returned output keys {sorted(got)!r}, not exactly "
                 f"its owned keys {sorted(expected)!r}."
             )
-    elif got:
+    elif node.structural is not StructuralDelta.EXPAND and got:
         raise NodeRejected(
             f"Structural node {node.id!r} returned column outputs; structural "
             "results use frame, keep, or weights."
@@ -628,27 +657,41 @@ def _validate_result(
     elif result.keep is not None:
         raise NodeRejected(f"Non-FILTER node {node.id!r} returned a keep mask.")
 
-    if (
-        node.structural not in {StructuralDelta.CREATE, StructuralDelta.EXPAND}
-        and result.frame is not None
+    if node.structural not in {StructuralDelta.CREATE, StructuralDelta.EXPAND} and (
+        result.frame is not None
     ):
         raise NodeRejected(f"Node {node.id!r} returned a Frame outside CREATE/EXPAND.")
-    if (
-        node.structural
-        in {
-            StructuralDelta.CREATE,
-            StructuralDelta.EXPAND,
-        }
-        and result.frame is None
-    ):
-        raise NodeRejected(f"Structural node {node.id!r} did not return a Frame.")
+    if node.structural is StructuralDelta.CREATE and result.frame is None:
+        raise NodeRejected(f"CREATE node {node.id!r} did not return a Frame.")
+    if node.structural is StructuralDelta.EXPAND:
+        if cache_hit and result.frame is None:
+            raise NodeRejected(
+                f"Cached EXPAND node {node.id!r} has no executor frame artifact."
+            )
+        if not cache_hit and result.frame is not None:
+            raise NodeRejected(
+                f"EXPAND node {node.id!r} returned a Frame; kernels return "
+                "source lineage, cells, and weights, and the executor expands."
+            )
     if result.frame is not None and not isinstance(result.frame, Frame):
         raise NodeRejected(f"Node {node.id!r} result.frame is not a Frame.")
     if node.structural is StructuralDelta.CREATE:
         assert result.frame is not None
         _validate_create(node, result.frame)
 
-    if (node.weights is None) != (result.weights is None):
+    lineage_expand = node.structural is StructuralDelta.EXPAND
+    if lineage_expand:
+        weight_entity = node.params.get("expand_weight_entity")
+        weight_kind = node.params.get("expand_weight_kind")
+        if not isinstance(weight_entity, str) or not weight_entity:
+            raise NodeRejected(
+                f"EXPAND node {node.id!r} has no normative weight entity."
+            )
+        if not isinstance(weight_kind, str) or not weight_kind:
+            raise NodeRejected(f"EXPAND node {node.id!r} has no normative weight kind.")
+        if result.weights is None:
+            raise NodeRejected(f"EXPAND node {node.id!r} returned no weights.")
+    elif (node.weights is None) != (result.weights is None):
         state = "returned" if result.weights is not None else "did not return"
         raise NodeRejected(
             f"Node {node.id!r} {state} weights inconsistently with its declaration."
@@ -717,11 +760,24 @@ def _apply_result(
     node: Node,
     result: KernelResult,
     population: Population | None,
+    *,
+    cache_hit: bool = False,
 ) -> Population:
     if node.structural is StructuralDelta.CREATE:
         assert result.frame is not None
         return _create_population(node, result.frame)
     assert population is not None
+    if (
+        cache_hit
+        and node.structural is StructuralDelta.EXPAND
+        and result.frame is not None
+    ):
+        try:
+            return restore_cached_expand(population, node, result)
+        except (TypeError, ValueError) as error:
+            raise NodeRejected(
+                f"Node {node.id!r} cached EXPAND rejected: {error}"
+            ) from error
     if node.structural is StructuralDelta.FILTER:
         person_entity = population.frame.schema.person_entity
         id_column = population.frame.schema.entity_id_column(person_entity)
@@ -819,8 +875,16 @@ def _write_node(
 
     weight_entry: dict[str, str] | None = None
     if result.weights is not None:
-        assert node.weights is not None
-        entity = node.weights.entity
+        if node.weights is not None:
+            entity = node.weights.entity
+        elif node.structural is StructuralDelta.EXPAND and isinstance(
+            node.params.get("expand_weight_entity"), str
+        ):
+            entity = str(node.params["expand_weight_entity"])
+        else:  # defended by result validation
+            raise NodeRejected(
+                f"Node {node.id!r} returned weights without an entity contract."
+            )
         id_column = population.frame.schema.entity_id_column(entity)
         ids = population.frame.table(entity)[id_column]
         weights_series = pd.Series(
@@ -1007,14 +1071,21 @@ def _load_cached_result(
             raise StoreCorrupt(
                 f"Cached node {node.id!r} weight entry is malformed."
             ) from error
-        if node.weights is None or entity != node.weights.entity:
+        expected_weight_entity = (
+            node.weights.entity
+            if node.weights is not None
+            else node.params.get("expand_weight_entity")
+            if node.structural is StructuralDelta.EXPAND
+            else None
+        )
+        if entity != expected_weight_entity:
             raise StoreCorrupt(
                 f"Cached node {node.id!r} carries undeclared weights for {entity!r}."
             )
         loaded_weights = Weights(
             values=weight_series.to_numpy(dtype=np.float64, copy=True), kind=kind
         )
-    elif node.weights is not None:
+    elif node.weights is not None or node.structural is StructuralDelta.EXPAND:
         raise StoreMiss(f"Cached node {node.id!r} is missing its weights artifact.")
 
     opaque: dict[str, bytes] = {}
@@ -1254,7 +1325,11 @@ def run_graph(
                     )
 
         normalized_receipt, opaque = _validate_result(
-            node, kernel.capabilities, result, incumbent
+            node,
+            kernel.capabilities,
+            result,
+            incumbent,
+            cache_hit=hit,
         )
         if kernel.capabilities.role is KernelRole.RELEASE:
             derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)
@@ -1265,7 +1340,7 @@ def run_graph(
             )
             normalized_receipt["gate_ancestry"] = list(gate_ids)
         normalized_receipt["capabilities"] = _capabilities_payload(kernel.capabilities)
-        updated = _apply_result(node, result, incumbent)
+        updated = _apply_result(node, result, incumbent, cache_hit=hit)
         normalized_receipt.update(weight_cap_receipt(updated, node))
         cache_receipt = normalized_receipt
         run_receipt = dict(cache_receipt)
