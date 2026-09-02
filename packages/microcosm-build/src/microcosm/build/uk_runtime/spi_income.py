@@ -335,6 +335,7 @@ def impute_uk_spi_income_support(
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     build_period: int | str = 2023,
     verified_donor: VerifiedSPIDonorIdentity | None = None,
+    donor_table: pd.DataFrame | None = None,
     initialize_frs_channel_columns: Mapping[str, float] | None = None,
     stage1_base_redraw_columns: Sequence[str] = (),
 ) -> UKSPIIncomeImputationResult:
@@ -354,19 +355,26 @@ def impute_uk_spi_income_support(
         raise ValueError("donor_sample_size must be a positive integer or None.")
 
     donor_path = Path(spi_tab_path).expanduser().resolve()
-    if verified_donor is None:
-        # Keep the private helper call as the narrow test seam used by the
-        # synthetic-donor unit tests. Production receives an opaque identity.
-        verified_donor = _verify_spi_donor_identity(donor_path)
-    elif verified_donor.path != donor_path:
-        raise ValueError(
-            "Verified SPI donor identity does not match the requested donor path."
-        )
-    if isinstance(verified_donor, VerifiedSPIDonorIdentity):
-        _assert_verified_spi_donor_current(verified_donor)
-    raw_donor = pd.read_csv(donor_path, delimiter="\t")
-    if isinstance(verified_donor, VerifiedSPIDonorIdentity):
-        _assert_verified_spi_donor_current(verified_donor)
+    if donor_table is None:
+        if verified_donor is None:
+            # Keep the private helper call as the narrow test seam used by the
+            # synthetic-donor unit tests. Production receives an opaque identity.
+            verified_donor = _verify_spi_donor_identity(donor_path)
+        elif verified_donor.path != donor_path:
+            raise ValueError(
+                "Verified SPI donor identity does not match the requested donor path."
+            )
+        if isinstance(verified_donor, VerifiedSPIDonorIdentity):
+            _assert_verified_spi_donor_current(verified_donor)
+        raw_donor = pd.read_csv(donor_path, delimiter="\t")
+        if isinstance(verified_donor, VerifiedSPIDonorIdentity):
+            _assert_verified_spi_donor_current(verified_donor)
+    else:
+        if verified_donor is not None:
+            raise ValueError("donor_table and verified_donor are mutually exclusive.")
+        if not isinstance(donor_table, pd.DataFrame):
+            raise TypeError("donor_table must be a pandas DataFrame.")
+        raw_donor = donor_table.copy(deep=True)
     donor = _prepare_spi_donor(raw_donor, seed=seed)
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
     if donor_sample_size is not None:
