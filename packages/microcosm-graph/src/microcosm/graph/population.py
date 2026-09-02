@@ -780,11 +780,24 @@ def _patch_columns(
         owned_mask = entity_ids.isin(ids).to_numpy(dtype=np.bool_)
         if owned.column in table:
             incumbent = table[owned.column].copy(deep=True)
-            assert_dtype(
-                incumbent,
-                owned.dtype,
-                label=f"Incumbent {owned.entity}.{owned.column}",
-            )
+            if not dtype_matches(incumbent, owned.dtype):
+                if owned.rows != ROWS_ALL:
+                    raise PopulationError(
+                        f"Node {node.id!r} cannot change dtype of masked cell "
+                        f"{owned.entity}.{owned.column}: incumbent is "
+                        f"{incumbent.dtype!s}, declaration is {owned.dtype!r}."
+                    )
+                # A full-cell rewrite may intentionally replace the physical
+                # dtype (the UK age-tail stage is int64 -> float64).  There are
+                # no unowned positions whose storage needs protection.
+                table[owned.column] = pd.Series(
+                    incoming.array.copy(),
+                    index=table.index,
+                    name=owned.column,
+                    dtype=dtype_for_token(owned.dtype),
+                )
+                owners[(owned.entity, owned.column)] = node.id
+                continue
         else:
             incumbent = _empty_column(len(table), owned.dtype, owned_mask)
             table[owned.column] = incumbent
@@ -1082,7 +1095,7 @@ def _append_frame_mass_log(
     """
 
     raw_records = result.receipt.get("frame_mass_log_append", ())
-    if raw_records in (None, ()):  # normalized JSON cache receipts use lists
+    if raw_records is None or raw_records == () or raw_records == []:
         return frame
     if not isinstance(raw_records, list | tuple):
         raise PopulationError(

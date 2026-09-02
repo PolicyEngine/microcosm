@@ -1,0 +1,1 @@
+Lane F / tools/graph_uk_spine_fixture.py; direct 26-stage StagePlan synthetic parity oracle.

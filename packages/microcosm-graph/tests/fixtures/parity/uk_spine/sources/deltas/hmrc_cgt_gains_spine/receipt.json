@@ -1,0 +1,11 @@
+{
+  "frame_mass_log_append": [
+    {
+      "declared_factor": null,
+      "entity": "household",
+      "new_total": 414.0,
+      "old_total": 414.0,
+      "reason": "Amounts-only capital gains redraw on the source spine: household weights pass through unchanged and total household mass is conserved."
+    }
+  ]
+}
