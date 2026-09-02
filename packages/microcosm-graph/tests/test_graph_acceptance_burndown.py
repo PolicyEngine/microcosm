@@ -180,7 +180,7 @@ def _repository(tmp_path: Path, sources: dict[str, str]) -> Path:
     )
     for name, text in sources.items():
         (root / "packages" / "microcosm-graph" / "tests" / name).write_text(text)
-    subprocess.run(["git", "init", "-q", "-b", "node-graph"], cwd=root, check=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(
         [
@@ -197,7 +197,7 @@ def _repository(tmp_path: Path, sources: dict[str, str]) -> Path:
         check=True,
     )
     subprocess.run(
-        ["git", "update-ref", "refs/remotes/origin/node-graph", "HEAD"],
+        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
         cwd=root,
         check=True,
     )
