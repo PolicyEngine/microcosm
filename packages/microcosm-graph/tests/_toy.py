@@ -69,6 +69,7 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StructuralDelta,
+    Tolerance,
     WeightTransition,
     compile_graph,
     run_graph,
@@ -83,6 +84,7 @@ __all__ = [
     "PUBLISH_DECISION",
     "SOURCE",
     "STRATA",
+    "TOY_TOLERANCE",
     "ToyKernel",
     "ToyRun",
     "absent_node",
@@ -130,6 +132,9 @@ GATE_OUTCOMES = frozenset(
 
 #: The one source every toy graph reads, through the ``csv-tables`` codec.
 SOURCE = SourceRef("survey", "csv-tables", description="the toy country's tables")
+
+#: Cross-machine numeric movement declared by the C5 toy producer.
+TOY_TOLERANCE = Tolerance(rtol=1e-6)
 
 
 def id_column(entity: str) -> str:
@@ -576,6 +581,37 @@ class GateThreshold(ToyKernel):
         )
 
 
+class GateReportsTolerance(ToyKernel):
+    """A gate that reports the input owner's declared numeric tolerance."""
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        entity = str(context.params["entity"])
+        column = str(context.params["column"])
+        observed = float(context.tables[entity][column].astype("float64").mean())
+        declared = context.tolerances[(entity, column)]
+        tolerance = (
+            None
+            if declared is None
+            else {
+                "rtol": declared.rtol,
+                "atol": declared.atol,
+                "ulps": declared.ulps,
+            }
+        )
+        verdict_column = str(context.params["verdict_column"])
+        return KernelResult(
+            columns={
+                ("release", verdict_column): pd.Series(
+                    ["pass"], index=_owned_ids(context, "release"), dtype="string"
+                )
+            },
+            receipt={
+                "outcome": "pass",
+                "evidence": {"observed": observed, "tolerance": tolerance},
+            },
+        )
+
+
 class ReleaseTier(ToyKernel):
     """Derive a release tier from the gate verdicts declared as its inputs."""
 
@@ -740,6 +776,14 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
     kernels = (
         SourceCsv("source.csv@1", _CREATE),
         DeriveAdd("derive.add@1", _DETERMINISTIC),
+        DeriveAdd(
+            "derive.tolerant@1",
+            Capabilities(
+                determinism=Determinism.DETERMINISTIC,
+                numeric=Numeric.TOLERANCE_BOUND,
+                tolerance=TOY_TOLERANCE,
+            ),
+        ),
         DrawUniform("draw.uniform@1", _SEEDED),
         ImputeChain("impute.chain@1", _SEEDED),
         SimulateStub("simulate.stub@1", _DETERMINISTIC),
@@ -760,6 +804,10 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
         CalibrateToy("calibrate.blind@1", _REWEIGHT),
         GateThreshold(
             "gate.threshold@1",
+            Capabilities(determinism=Determinism.DETERMINISTIC, role=KernelRole.GATE),
+        ),
+        GateReportsTolerance(
+            "gate.tolerance@1",
             Capabilities(determinism=Determinism.DETERMINISTIC, role=KernelRole.GATE),
         ),
         ReleaseTier(
