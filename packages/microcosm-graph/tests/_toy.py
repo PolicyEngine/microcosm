@@ -99,6 +99,7 @@ __all__ = [
     "draw",
     "drop_nodes",
     "entrant_expand_node",
+    "entrant_person_node",
     "full_graph",
     "gate_node",
     "graph_source_files",
@@ -514,6 +515,86 @@ class ExpandEntrants(ToyKernel):
         )
 
 
+class ExpandEntrantPerson(ToyKernel):
+    """EXPAND: admit one entrant person into an incumbent household.
+
+    The entrant copies nothing: every person column is materialized from a
+    template row, its memberships name incumbent groups, and its stratum
+    arrives through ``KernelResult.strata`` (amendment 14). ``strata_mode``
+    exercises the refusals: ``missing`` omits the field, ``unknown_id``
+    labels an id the node never adds, ``labels_incumbent`` labels an
+    incumbent person as well.
+    """
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        person_ids = pd.Index(person["person_id"], name="person_id")
+        template = person.iloc[0]
+        entrant_id = int(person_ids.max()) + 1
+        target_ids = person_ids.append(
+            pd.Index([entrant_id], dtype="int64", name="person_id")
+        )
+
+        def overlay(column: str, dtype: str, value: object) -> pd.Series:
+            values = pd.concat(
+                [person[column].reset_index(drop=True), pd.Series([value])],
+                ignore_index=True,
+            )
+            return pd.Series(pd.array(values, dtype=dtype), index=target_ids)
+
+        columns = {
+            ("person", "age"): overlay("age", "int64", 30),
+            ("person", "income"): overlay("income", "float64", 12_500.0),
+            ("person", "is_adult"): overlay("is_adult", "boolean", True),
+            ("person", "receives_x"): overlay("receives_x", "boolean", False),
+            ("person", "person_household_id"): overlay(
+                "person_household_id", "int64", int(template["person_household_id"])
+            ),
+            ("person", "person_release_id"): overlay(
+                "person_release_id", "int64", int(template["person_release_id"])
+            ),
+        }
+        mode = str(context.params.get("strata_mode", "ok"))
+        labelled = {
+            "ok": [entrant_id],
+            "unknown_id": [entrant_id + 1],
+            "labels_incumbent": [int(person_ids[0]), entrant_id],
+        }
+        strata = (
+            None
+            if mode == "missing"
+            else pd.Series(
+                ["urban"] * len(labelled[mode]),
+                index=pd.Index(labelled[mode], dtype="int64", name="person_id"),
+                dtype=object,
+                name="stratum",
+            )
+        )
+        empty = {
+            entity: pd.Series(
+                [],
+                index=pd.Index([], dtype="int64", name=id_column(entity)),
+                dtype="int64",
+            )
+            for entity in ("household", "release")
+        }
+        household_weights = context.weights["household"]
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    pd.array([pd.NA], dtype="Int64"),
+                    index=pd.Index([entrant_id], dtype="int64", name="person_id"),
+                ),
+                **empty,
+            },
+            columns=columns,
+            weights=Weights(
+                household_weights.values.copy(), kind=household_weights.kind
+            ),
+            strata=strata,
+        )
+
+
 class ClaimMaterializedExpand(ToyKernel):
     """Claim kernel-supplied EXPAND columns through the ownership surface."""
 
@@ -791,6 +872,7 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
         AbsentColumn("absent.column@1", _DETERMINISTIC),
         SelectRows("select.rows@1", _FILTER),
         ExpandEntrants("expand.entrants@1", _EXPAND),
+        ExpandEntrantPerson("expand.entrant_person@1", _EXPAND),
         ClaimMaterializedExpand("claim.expand@1", _DETERMINISTIC),
         ReweightScale("reweight.scale@1", _REWEIGHT),
         CalibrateToy(
@@ -1161,6 +1243,58 @@ def entrant_expand_node(
             "claim_cells": claim_cells,
             "materialized_expand_outputs": tuple(
                 f"{entity}.{column}" for entity, column, _ in claim_cells
+            ),
+        },
+        population=node_id,
+    )
+    return expand, claim
+
+
+def entrant_person_node(
+    node_id: str = "immigrant_cohort",
+    *,
+    strata_mode: str = "ok",
+) -> tuple[Node, Node]:
+    """An EXPAND admitting one entrant person, plus the claim of its cells."""
+    data_cells = (
+        ("person", "age", "int64"),
+        ("person", "income", "float64"),
+        ("person", "is_adult", "boolean"),
+        ("person", "receives_x", "boolean"),
+    )
+    overlays = (
+        *data_cells,
+        ("person", "person_household_id", "int64"),
+        ("person", "person_release_id", "int64"),
+    )
+    expand = Node(
+        node_id,
+        "expand.entrant_person@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        inputs=(
+            Slice("person", ("age", "income", "is_adult", "receives_x")),
+            Slice("household", ("household_size",)),
+        ),
+        params={
+            "expand_cells": overlays,
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+            "strata_mode": strata_mode,
+        },
+        mass="free",
+        entrants=True,
+    )
+    claim = Node(
+        f"claim_{node_id}",
+        "claim.expand@1",
+        outputs=tuple(
+            Owned(entity, column, dtype) for entity, column, dtype in data_cells
+        ),
+        params={
+            "claim_cells": data_cells,
+            "materialized_expand_outputs": tuple(
+                f"{entity}.{column}" for entity, column, _ in data_cells
             ),
         },
         population=node_id,

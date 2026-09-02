@@ -308,3 +308,48 @@ def test_b6_entrants_are_declared(tmp_path: Path) -> None:
             tmp_path / "incomplete",
         )
     assert "household_size" in str(error.value)
+
+
+@pytest.mark.xfail(strict=True, reason="charter B7: entrant person strata pending")
+def test_b7_entrant_persons_carry_their_stratum(tmp_path: Path) -> None:
+    """An entrant person's stratum arrives through ``KernelResult.strata``.
+
+    Immigrant cohorts are persons, so an EXPAND admitting entrants must be
+    able to add a person that copies nobody: every column materialized,
+    memberships naming incumbent groups, and its stratum declared by id.
+    The ledger counts the entrant from the node that admits it; a missing
+    label, a label for an id the node never adds, or a label for an
+    incumbent person rejects the node by name.
+    """
+    expand, claim = toy.entrant_person_node()
+    run = toy.run_toy(
+        toy.small_graph(nodes=(toy.CREATE, expand, claim)), tmp_path / "cohort"
+    )
+    before = run.manifest.population("survey")
+    after = run.manifest.population(expand.id)
+    entrant_id = int(before.person["person_id"].max()) + 1
+
+    assert len(after.person) == len(before.person) + 1
+    assert len(after.household) == len(before.household)
+    entrant = after.person.set_index("person_id").loc[entrant_id]
+    assert entrant["age"] == 30 and entrant["income"] == 12_500.0
+    assert (
+        entrant["person_household_id"] == before.person["person_household_id"].iloc[0]
+    )
+    assert after.strata.iloc[-1] == "urban"
+    assert after.strata.iloc[: len(before.person)].tolist() == before.strata.tolist()
+
+    receipt = run.manifest.nodes[expand.id].receipt
+    assert receipt["expand"]["person"] == ((entrant_id, None),)
+    mass = receipt["mass"]
+    assert mass["after"] > mass["before"]
+    assert mass["stratum_after"]["urban"] > mass["stratum_before"]["urban"]
+    assert mass["stratum_after"]["rural"] == mass["stratum_before"]["rural"]
+
+    for mode in ("missing", "unknown_id", "labels_incumbent"):
+        bad, bad_claim = toy.entrant_person_node(f"cohort_{mode}", strata_mode=mode)
+        with pytest.raises(NodeRejectedError, match=f"cohort_{mode}"):
+            toy.run_toy(
+                toy.small_graph(nodes=(toy.CREATE, bad, bad_claim)),
+                tmp_path / mode,
+            )

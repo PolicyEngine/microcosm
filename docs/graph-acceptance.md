@@ -46,6 +46,7 @@ its owner.
 | B4 | **Inputs are immutable.** A kernel receives read-only views; an in-place write raises inside the kernel and the node fails. | leg 1 finding 5 | same |
 | B5 | **Null means absence.** A node declares each owned cell as *produced* or *absent*. A kernel writing a non-null value into an absent-declared cell is rejected. | `DESIGN.md:128-134` | same |
 | B6 | **Entrants are declared.** An `EXPAND` node with `entrants=True` may return rows with null lineage; the executor requires the kernel to materialize every carried column for such a row (dtype-checked), records them as entrants rather than copies in the lineage receipt, and refuses null lineage on a node without the declaration. `entrants=True` with `mass='conserve'` is a compile error. | Dynamics: immigrant cohorts (microcosm-dynamics#412, #218) | Max's session; amendment 11 |
+| B7 | **Entrant persons carry their stratum.** An entrant row on the person entity takes its stratum from `KernelResult.strata` (indexed by its new id); an entrant person absent from it, a label for a copied or incumbent person, or a label for an unknown id rejects the node. Entrant persons join incumbent or entrant groups through the materialized membership columns, and the mass ledger counts them from the node that admits them. | Dynamics: immigrant cohorts are persons (microcosm-dynamics#412, #218) | Max's session; amendment 14 |
 
 ## C. Seeds and factorization
 
@@ -224,6 +225,13 @@ Amendments so far (each re-locked):
     reader the declared tolerance of every input cell's owner. Raised by
     the H2 parity finding (root weights differ by one ulp between arm64
     and x86) and the dynamics review; adopted 2026-09-02.
+
+14. **Entrant persons carry their stratum.** `KernelResult.strata` (EXPAND
+    kernels on an `entrants=True` node only) names the stratum of every
+    entrant person by its new id; the executor requires exactly the entrant
+    persons there. Raised by the implementation of amendment 11, which
+    found the frozen result had no channel for a new person's mandatory
+    stratum and left person entrants fail-closed; adopted 2026-09-02.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
