@@ -2,9 +2,11 @@
 
 ## State
 
-In progress on 2026-09-02 on branch `h2-fixture-spi-composition`, based on
-`origin/fix-spi-support-channel-mass-836`. The pre-existing `node-graph`
-worktree remains untouched.
+Complete on 2026-09-02 on branch `h2-fixture-spi-composition`, based on
+`origin/fix-spi-support-channel-mass-836`. The fixture exposes the production
+composition property, the regression and negative proof cover it, and all
+requested verification is green. The pre-existing `node-graph` worktree was
+not modified and nothing was pushed.
 
 ## Done
 
@@ -26,10 +28,20 @@ worktree remains untouched.
   the fixture-backed driver test. It failed at the intended executor check:
   `272.7 -> 272.43` in stratum `default` (1 failed, 1 warning in 27.15s).
   Restored `mass="declared"`; the production graph source has no residual diff.
+- Re-ran the generator in the locked UK environment; it reproduced the
+  committed bytes and printed machine-local oracle identity
+  `837a67b5d7fd6dd2a974ac41d772d6cb809ff2111d59b8b7c9c2a738ce2b42fa`.
+- The requested graph/build pytest aggregate exits zero; its count-bearing
+  equivalent reports 208 passed, 1 skipped, and 1 warning in 124.47 seconds.
+- Repository Ruff passes, both touched Python files are formatted, the CI test
+  inventory verifier reports `verification=ok`, the graph acceptance burndown
+  remains 37 green / 0 red / 0 missing and reports `verification=ok`, and the
+  branch diff passes `git diff --check`.
 
 ## Next
 
-- Run all requested verification and write `out.md`.
+- No implementation work remains. Write `out.md`; the dispatcher owns the
+  push.
 
 ---
 
