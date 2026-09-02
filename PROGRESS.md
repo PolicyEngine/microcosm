@@ -26,6 +26,13 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   row, explicit design weights anchor entrant groups, and cached replay
   rehydrates null lineage. The B6 acceptance property and the focused
   population/executor/cache checks pass with `--runxfail` (24 passed).
+- Hardened B6 after independent cache review: cached null sources now retain
+  nullability for NumPy and pandas nullable integers and boolean ids. Attached
+  population frames expose entity-name convenience through a local same-layout
+  subclass, preserving object identity without mutating the global `Frame`
+  class. The focused acceptance/manifest rerun reports `2 passed in 0.91s`,
+  and a cold/warm entrant probe reports `False True` with identical null
+  lineage receipts.
 - Kept person entrants fail-closed because frozen `KernelResult` has no way to
   provide their mandatory non-null `Frame.strata`; group entrants are fully
   supported, including copied people assigned to entrant groups. This frozen

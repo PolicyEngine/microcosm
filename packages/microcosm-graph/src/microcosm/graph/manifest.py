@@ -11,6 +11,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
+from microcosm.frame import Frame
+
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
@@ -25,8 +27,6 @@ from .kernel import (
 from .population import MassRecord
 
 if TYPE_CHECKING:
-    from microcosm.frame import Frame
-
     from .store import ContentStore
 
 __all__ = ["Decision", "NodeReceipt", "RunManifest"]
@@ -35,25 +35,23 @@ _SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
 
-class _EntityTable:
-    """Read-only entity-table descriptor installed on attached Frame classes."""
+class _AttachedFrame(Frame):
+    """A manifest-attached Frame with read-only entity-name convenience."""
 
-    def __init__(self, entity: str) -> None:
-        self.entity = entity
+    __slots__ = ()
 
-    def __get__(self, instance: object, owner: type[object]) -> object:
-        if instance is None:
-            return self
-        return instance.table(self.entity)  # type: ignore[attr-defined]
+    def __getattr__(self, name: str) -> object:
+        if name in self.entities:
+            return self.table(name)
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
 
-def _install_entity_table_accessors(frame: Frame) -> None:
-    """Expose attached entities with the same convenience as ``Frame.person``."""
+def _attach_entity_accessors(frame: Frame) -> Frame:
+    """Add convenience access locally without mutating the global Frame class."""
 
-    frame_type = type(frame)
-    for entity in frame.entities:
-        if not hasattr(frame_type, entity):
-            setattr(frame_type, entity, _EntityTable(entity))
+    if type(frame) is Frame:
+        frame.__class__ = _AttachedFrame
+    return frame
 
 
 def _freeze_json(value: object) -> object:
@@ -469,8 +467,8 @@ class RunManifest:
             raise KeyError(
                 f"Population {version_id!r} is not attached to this manifest."
             ) from error
-        if hasattr(population, "entities") and hasattr(population, "table"):
-            _install_entity_table_accessors(population)
+        if isinstance(population, Frame):
+            population = _attach_entity_accessors(population)
         return population
 
     def mass_ledger(self, version_id: str) -> tuple[MassRecord, ...]:

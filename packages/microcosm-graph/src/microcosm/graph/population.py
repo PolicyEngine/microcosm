@@ -437,10 +437,11 @@ def _expand_lineage_from_receipt(
         id_column = frame.schema.entity_id_column(entity)
         dtype = frame.table(entity)[id_column].dtype
         source_dtype: object = dtype
-        if any(pd.isna(value) for value in sources) and pd.api.types.is_integer_dtype(
-            dtype
-        ):
-            numpy_dtype = np.dtype(dtype)
+        has_null_source = any(pd.isna(value) for value in sources)
+        if has_null_source and pd.api.types.is_bool_dtype(dtype):
+            source_dtype = pd.BooleanDtype()
+        elif has_null_source and pd.api.types.is_integer_dtype(dtype):
+            numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
             prefix = "UInt" if np.issubdtype(numpy_dtype, np.unsignedinteger) else "Int"
             source_dtype = pd.api.types.pandas_dtype(
                 f"{prefix}{numpy_dtype.itemsize * 8}"
