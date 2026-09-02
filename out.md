@@ -1,119 +1,172 @@
-# Armenia country package final report (#814)
+# H2 UK SPI fixture composition report
 
-Date: 2026-08-28
+Date: 2026-09-02
 
-Branch: `armenia-country-package-814`
+Branch: `h2-fixture-spi-composition`
+
+Verified handoff commit: `470ced30efbac6bcc9b985e8835ec50857e2d611`
+
+Worktree: `/private/tmp/microcosm-h2-fixture-spi-composition`
+
+No push was performed.
 
 ## Outcome
 
-The Armenia package is complete as a schema-valid, spec-only, engine-free
-greenfield contract. It is not represented as an executable build: the exact
-`populace-us` artifact, Armenian facts, generated cell bindings, community
-distribution, gate policy, and shared runtime kernels remain explicit
-prerequisites.
+The hermetic H2 UK spine fixture now carries the composition-changing mass
+property seen on licensed FRS data. Child presence follows
+`household_id % 5`, independently of the `% 4` region cadence, so the
+region-stratified SPI support allocation redistributes household weight across
+different household sizes. The fixture remains small and deterministic: 135
+root households and 162 root people.
 
-The closed `am/` inventory mirrors Belgium's six typed resources and five
-generation-zero JSON projections. It declares:
+The real fixture-backed SPI stage now has these totals:
 
-- a two-stage load of a to-be-authenticated public `populace-us` artifact and
-  target-derived marz assignment; every record remains a US donor support
-  record and is never described as Armenian microdata;
-- a 2022-census-vintage community spine constrained to the assigned marz, with
-  10 marzes plus Yerevan and 71 consolidated communities documented but no
-  invented code roster;
-- eight Ledger-only, count/indicator calibration authoring contracts spanning
-  demography, household structure, consumption, labour, earnings, pensions,
-  and family benefits;
-- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
-  cell-pinned Ledger references and direct/pre-built candidate bindings before
-  runtime activation;
-- wage/payment, raw-income diagnostic, and national-accounts facts outside the
-  solver manifest until their validation role or AMD-compatible pre-built bridge
-  is enforceable;
-- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
-  support, weight-audit, ESS, and ratio gate declarations, plus active
-  release-blocking reference-coverage/support/output checks; and
-- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
-  dissemination stated and exact ArmStat/donor licence text left as a mandatory
-  verification item.
+- weighted person mass before: `272.7`
+- weighted person mass after: `272.43`
+- weighted person-mass delta: `-0.2699999999999818`
+- household mass before: `226.8`
+- household mass after: `226.8`
 
-`HARVEST.md` has exactly one solver worklist row per live target-reference key,
-plus separate deferred validation/amount, geography, source-authentication, and
-external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
-permanent survey tax-benefit holdouts, the amount/currency boundary,
-`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
+For comparison, the old fixture produced person mass `282.24 -> 282.24` and
+therefore could not reject `mass="conserve"`.
 
-Package identity after review:
+The generator and committed `benunit`, `child`, and `person` fixture sources
+were regenerated. A regression in
+`packages/microcosm-build/tests/test_uk_graph.py` runs the real FRS root and
+SPI support transforms from the committed fixture, asserts person mass changes
+at the executor's `rtol=1e-9`, and asserts exact household-mass conservation in
+both the Frame weights and mass-log receipt. The requested one-line towncrier
+fragment was added.
 
-- CountrySpec fingerprint:
-  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
-- Typed spec SHA-256:
-  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
+`PRODUCED_BY.txt` and `NORMALIZATION.md` were not changed because their
+statements remain accurate. The regenerated machine-local legacy oracle
+identity was
+`837a67b5d7fd6dd2a974ac41d772d6cb809ff2111d59b8b7c9c2a738ce2b42fa`;
+as documented, it is not pinned.
+
+## Deliberate `conserve` proof
+
+I temporarily changed `_STRUCTURAL_MASS["spi_support_channel"]` from
+`"declared"` to `"conserve"` and ran the fixture-backed driver path. The driver
+path was used because H2 first compares the pinned graph JSON and would stop on
+that declaration mismatch before executing the support node. The production
+source was restored immediately afterward and has no residual diff.
+
+Command:
+
+```sh
+UV_CACHE_DIR=/private/tmp/microcosm-h2-uv-cache uv run pytest -o addopts='' packages/microcosm-build/tests/test_uk_graph.py::test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture -q --tb=short
+```
+
+Failing output, verbatim:
+
+```text
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___ test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture ___
+packages/microcosm-graph/src/microcosm/graph/executor.py:863: in _apply_result
+    return patch(population, node, result)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/microcosm-graph/src/microcosm/graph/population.py:605: in patch
+    record = _mass_record(before, frame, node, result, policy)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/microcosm-graph/src/microcosm/graph/population.py:1468: in _mass_record
+    _assert_mass_mapping(
+packages/microcosm-graph/src/microcosm/graph/population.py:1569: in _assert_mass_mapping
+    raise PopulationError(
+E   microcosm.graph.population.PopulationError: Node 'spi_support_channel' mass='conserve' changed stratum 'default': 272.7 -> 272.43.
+
+The above exception was the direct cause of the following exception:
+packages/microcosm-build/tests/test_uk_graph.py:475: in test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture
+    manifest = run_graph(
+packages/microcosm-graph/src/microcosm/graph/executor.py:1397: in run_graph
+    updated = _apply_result(node, result, incumbent, cache_hit=hit)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/microcosm-graph/src/microcosm/graph/executor.py:867: in _apply_result
+    raise NodeRejected(f"Node {node.id!r} patch rejected: {error}") from error
+E   microcosm.graph.errors.NodeRejectedError: Node 'spi_support_channel' patch rejected: Node 'spi_support_channel' mass='conserve' changed stratum 'default': 272.7 -> 272.43.
+----------------------------- Captured stdout call -----------------------------
+microcosm-fit: near-discrete target (13 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (3 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (14 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (25 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (32 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (32 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (32 distinct values); bounding max_samples_leaf at 4096 for this forest.
+microcosm-fit: near-discrete target (32 distinct values); bounding max_samples_leaf at 4096 for this forest.
+----------------------------- Captured stderr call -----------------------------
+  File "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph/.venv/lib/python3.14/site-packages/joblib/externals/loky/backend/context.py", line 249, in _count_physical_cores
+    cpu_count_physical = _count_physical_cores_darwin()
+  File "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph/.venv/lib/python3.14/site-packages/joblib/externals/loky/backend/context.py", line 318, in _count_physical_cores_darwin
+    return int(cpu_info)
+=============================== warnings summary ===============================
+packages/microcosm-build/tests/test_uk_graph.py::test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture
+  /Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph/.venv/lib/python3.14/site-packages/policyengine_uk/utils/scenario.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class Scenario(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED packages/microcosm-build/tests/test_uk_graph.py::test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture
+1 failed, 1 warning in 27.15s
+```
 
 ## Verification
 
-All commands ran offline. The package-wide command used the exact lock-required
-`policyengine-us==1.819.0` already present in the local uv cache, so the two
-engine-only test files ran inside the same aggregate rather than failing for a
-missing optional dependency.
+The locked UK environment sync completed:
 
-Exact requested package-wide command:
-
-```sh
-UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+```text
+Resolved 125 packages in 2ms
+Checked 98 packages in 2ms
 ```
 
-Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
-seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
-and PolicyEngine-US runtime warnings; none is Armenia-specific.
+The exact requested aggregate command
+`uv run pytest packages/microcosm-graph packages/microcosm-build/tests/test_uk_graph.py -q`
+exited 0. Because repository `addopts` already contains `-q`, that exact
+invocation is double-quiet and suppresses the count line. The same test scope
+was rerun with configured `addopts` cleared while retaining the requested
+command-line `-q`; its exact summary was:
 
-Additional checks:
+```text
+208 passed, 1 skipped, 1 warning in 124.47s (0:02:04)
+```
 
-- Focused package/golden/compiler suite:
-  `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
-  — **101 passed** in 29.82 seconds.
-- Authoritative `shared-spec` CI group:
-  `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
-  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
-- `ruff check .` — **passed**.
-- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
-  files tracked.
-- `git diff --check` — **passed**.
+Other requested checks:
 
-## Deviations from Belgium and why
+- `uv run ruff check .`
 
-1. Armenia consumes a pre-built public US donor pool instead of native,
-   restricted SILC. No `support_spine.json` is present because the current
-   vocabulary describes raw ASEC pool construction, not an existing artifact.
-2. Armenia is engine-free. No target, gate, or release file requires
-   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
-   through the Axiom adapter.
-3. Marz is target-assigned before community cloning. The clone factor is the
-   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
-   wait for the 71-to-11 roster and within-marz support evidence.
-4. There is no incumbent, so parity/export/target-surface gates are absent.
-   National accounts back a deferred macro-realism band; CEQ and World Bank
-   estimates remain documentation-only band candidates until harvested.
-5. The live solver manifest contains eight count/indicator series contracts,
-   not guessed scalar cells or AMD amount targets. Those series will expand to
-   the reviewed cell-level profile after Chronicle harvest; the eventual
-   10–16-margin selection is not fabricated in this package.
+  ```text
+  All checks passed!
+  ```
 
-## Top five maintainer questions
+- `uv run ruff format --check tools/graph_uk_spine_fixture.py packages/microcosm-build/tests/test_uk_graph.py`
 
-1. Which immutable `populace-us` revision/file, hash, licence, and column
-   inventory certify the donor input?
-2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
-   the 2024 profile, and what generated cell-reference/binding artifact owns
-   their fanout?
-3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
-   donor consumption bands and any future amount rows conceptually comparable?
-4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
-   weight-ratio thresholds—and which shared evaluators—activate the deferred
-   gate declarations?
-5. What is the authoritative 2022 marz/community roster and assignment table,
-   and when will the shared geography/source-coverage runtimes land under
-   `populace#263/#265`?
+  ```text
+  2 files already formatted
+  ```
 
-No network fetch, push, PR, artifact build, release, or publication was
-performed. The repository-root `PROGRESS.md` was not touched.
+- `uv run python tools/ci_test_groups.py --verify`
+
+  ```text
+  verification=ok
+  ```
+
+- `uv run python tools/graph_acceptance_burndown.py --verify --baseline origin/main`
+
+  ```text
+  green     37  A1 A2 A3 A4 A5 A6 A7 B1 B2 B3 B4 B5 C1 C2 C3 C4 D1 D2 D3 D4 D5 E1 E2 E3 E4 E5 F1 F2 F3 F4 F5 G1 G2 G3 H1 H2 H3
+  red        0  none
+  missing    0  none
+  verification=ok
+  ```
+
+- `git diff --check origin/fix-spi-support-channel-mass-836...HEAD` exited 0
+  with no output.
+
+## Limitations
+
+No requested work was omitted. The sandbox denied writes to the default warm
+uv cache, so only the cached build requirements were copied into a writable
+temporary cache; the locked sync and every requested command then completed
+without network access. GitNexus repository resources were not exposed in this
+session, so call/dependency and change-impact analysis was performed directly
+from source, tests, and the branch diff.
