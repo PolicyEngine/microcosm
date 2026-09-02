@@ -134,3 +134,31 @@ Same surface and inputs as R6; the receipted override `target_weight_rule: unifo
 | gates | area_support FAILED (12), target_fit 20 cells, weight_ratio | area_support FAILED (189), target_fit 20 cells, weight_ratio |
 
 Reading: `grain_equal` buys the national fit the joint solve is supposed to keep, at almost no local cost, and pays for it in weight concentration. Under both rules the realized stretch sits on the 100× bound and the support floor fails, so the weighting question (A2) cannot be settled at this bound: the stretch bound (A3) is the binding decision. Measurement runs at 20 and 10 under both rules follow (R8).
+
+## R8 — A3 measurement: stretch bound 100 / 20 / 10 under both weighting rules (2026-09-03 01:40–02:40; K=10, f100, no holdout, `--engine-blocks 10`)
+
+Measurement branch `uk-rowwise-candidate-762-measure` (worktree `populace-762m`, cut from PR B at c67efecc; **never merged**): `UK_LOCAL_MAX_WEIGHT_RATIO` edited to 20.0 (commit "MEASUREMENT ONLY: stretch bound 20") and then 10.0; every other input, pin, seed and the chain identical to R6/R7. Output directories `f100-k10-{U,G}{20,10}-eval` beside R6/R7's. Wall 775–826 s, peak 11.3–12.1 GB each.
+
+| | U (100) | G (100) | U20 | G20 | U10 | G10 |
+|---|---|---|---|---|---|---|
+| loss initial → final | 0.2777→0.0162 | 0.3198→0.0203 | 0.2777→0.0162 | 0.3198→0.0203 | 0.2777→0.0165 | 0.3198→0.0207 |
+| median / max abs relative error | 0.0083 / 16.45 | 0.0092 / 1.42 | 0.0082 / 16.92 | 0.0085 / 1.14 | 0.0081 / 17.18 | 0.0074 / 0.96 |
+| realized max ratio vs design | 100.0 | 100.0 | 20.0 | 20.0 | 10.0 | 10.0 |
+| max / positive-median weight | 312.5 | 1,014.5 | 120.8 | 840.4 | 104.6 | 578.1 |
+| ESS fraction / top-1 % weight share | 0.216 / 0.138 | 0.070 / 0.290 | 0.244 / 0.135 | 0.099 / 0.237 | 0.273 / 0.123 | 0.137 / 0.171 |
+| constituencies ESS < 50 (min constituency ESS) | 12 (16.3) | 189 (11.8) | 3 (35.6) | 41 (24.0) | **0 (54.1)** | 5 (42.3) |
+| local within 10 %: age / census / HMRC / UC / tenure / council tax | 100 / 99.9 / 99.6 / 100 / 99.4 / 86.3 | 100 / 98.7 / 99.1 / 100 / 97.5 / 87.5 | 100 / 99.9 / 99.7 / 99.9 / 99.4 / 86.2 | 100 / 98.6 / 98.9 / 99.9 / 97.4 / 87.3 | 100 / 99.8 / 99.5 / 99.8 / 99.4 / 86.2 | 99.9 / 97.2 / 98.9 / 99.7 / 96.9 / 87.0 |
+| local cells past 25 % (diagnostic target_fit) | 104 | 94 | 106 | 108 | 110 | 116 |
+| national within 10 % / 25 % (n-weighted) | 77.7 / 90.1 | 92.3 / 97.8 | 77.7 / 90.1 | 92.0 / 97.5 | 77.7 / 89.3 | 91.8 / 97.3 |
+| mass factor | 0.960 | 0.973 | 0.960 | 0.971 | 0.960 | 0.973 |
+| release-blocking gates | area_support | area_support | area_support | area_support | **none (exit 0)** | area_support |
+
+Per national family at bound 10 (n; within 10 % U10 / G10): hmrc_spi (129; 84 / 97), dwp_universal_credit (95; 89 / 99), ons_population (50; 92 / 100), obr (21; 43 / 62), council_tax_stock (18; 67 / 72), dwp_two_child_limit (15; 67 / 100), ons_household_composition (7; 29 / 71), slc_student_support (6; 50 / 83), dwp_legacy_benefits (4; 25 / 25), hmrc_salary_sacrifice (3; 33 / 100), ons_land (3; 0 / 0), slc_borrowers (3; 33 / 33), slc_repayments (3; 67 / 100), single-cell families benefit_cap / isc / public-sector employment (0 / 100 each), savings interest (0 / 0), CGT and Scottish child payment (100 / 100).
+
+Readings:
+
+1. **The stretch bound costs no fit.** Tightening 100 → 10 leaves the final loss, every local family's within-10 % share and the national shares unchanged to a tenth of a point under both rules. The extra stretch at 100 was buying weight concentration, not fit: under `uniform` the max/median ratio falls 312 → 105 and the ESS fraction rises 0.22 → 0.27; under `grain_equal` 1,014 → 578 and 0.07 → 0.14.
+2. **Bound 10 is the only bound at which a run clears the support floor.** U10 passes every release-blocking gate (0 areas failed; min constituency ESS 54.1; the two reviewed micro-LAs stand on their exclusions). It is also the national doctrine's constant, so ruling it makes the two UK doctrines agree.
+3. **The weighting rule is a national-fit vs support trade, now quantified at bound 10.** `grain_equal` lifts the national rows from 78 % to 92 % within 10 % (UC 89 → 99, SPI 84 → 97, OBR 43 → 62, two-child limit 67 → 100, household composition 29 → 71) and costs 2.6 points of census-household fit, 2.5 of tenure, half the ESS fraction, and five constituencies that miss the floor by 0.3–7.7 ESS (E14001123, E14001187, E14001417, E14001421, E14001563). Under `uniform` the 364 national rows are 1.8 % of 20,480 rows and are effectively ignored.
+4. The `target_fit` and `weight_ratio` entries that fail in every run are `diagnostic` criticality (not release-blocking). `target_fit` is dominated by council tax (97 of 110 cells at U10: the band-H shortage and the A14/Wales deferrals' neighbours); `weight_ratio` measures max/median of the final weights against 100 and stays above it at bound 10 because the design weights (staging importance × ladder clone) already spread ~10×.
+5. R9 measures the plan's K escalation for `grain_equal` at bound 10 (K=15, same chain) to see whether the five near-floor constituencies clear without giving up the national fit.
