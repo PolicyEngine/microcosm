@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 
 import microcosm.graph as graph_api
@@ -114,3 +117,64 @@ def test_graph_serializers_are_public_without_replacing_frozen_graph() -> None:
     assert graph_api.Graph is Graph
     assert graph_api.graph_to_json is graph_to_json
     assert graph_api.graph_from_json is graph_from_json
+
+
+def test_generated_parity_graphs_bind_real_kernels_and_direct_bytes(
+    tmp_path: Path,
+) -> None:
+    from microcosm.calibrate.kernels import CALIBRATE_ADAM
+    from microcosm.graph import ContentStore, KernelContext, compile_graph, run_graph
+    from tools.graph_parity_fixtures import (
+        FIXTURES,
+        _frame_for_case,
+        parity_registry,
+    )
+
+    registry = parity_registry()
+    for name in ("fit.qrf", "calibrate", "simulate"):
+        case = FIXTURES / name
+        text = (case / "graph.json").read_text()
+        graph = graph_from_json(text)
+        pins = json.loads((case / "pins.json").read_text())
+        kernel = registry.get(pins["kernel"])
+        assert graph_to_json(graph) == text
+        assert graph.sources == (SourceRef("fixture", "csv-tables"),)
+        assert graph.nodes[-1].id == pins["node"]
+        assert kernel.implementation_hash() == pins["implementation_hash"]
+
+        direct = pd.read_csv(case / "direct.csv")
+        if name != "calibrate":
+            store = ContentStore(tmp_path / name)
+            manifest = run_graph(
+                compile_graph(graph),
+                sources={"fixture": case},
+                store=store,
+                kernels=parity_registry(),
+                resume="forbid",
+                decisions=(),
+            )
+            receipt = manifest.nodes[pins["node"]]
+            for cell, key in receipt.artifacts.items():
+                actual = store.load_column(key)
+                expected = direct[f"{cell[0]}.{cell[1]}"]
+                assert actual.dtype == expected.dtype
+                assert actual.to_numpy().tobytes() == expected.to_numpy().tobytes()
+            continue
+
+        inputs = pd.read_csv(case / "inputs.csv", float_precision="round_trip")
+        frame = _frame_for_case(name, inputs)
+        node = graph.nodes[-1]
+        context = KernelContext(
+            node=node,
+            tables={"household": frame.table("household")},
+            weights={"household": frame.resolve_weights("household")},
+            strata=frame.strata,
+            params=node.params,
+            rng=np.random.default_rng(0),
+        )
+        result = CALIBRATE_ADAM.run(context)
+        assert result.weights is not None
+        assert (
+            result.weights.values.tobytes()
+            == direct["household.weights"].to_numpy().tobytes()
+        )

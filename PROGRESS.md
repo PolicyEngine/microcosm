@@ -2,7 +2,7 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. Strict gate/release execution, manifest persistence, and canonical graph serialization are implemented with focused tests green. F2, both F3 cases, and F5 now strict-XPASS; F4 and the H1 consumer remain blocked by frozen-test contradictions. Honest real-kernel fixture generation is next.
+Active on `node-graph-release` in the required local clone. All in-scope runtime, persistence, serialization, and honest real-kernel fixture work is implemented with focused tests green. F2, both F3 cases, and F5 strict-XPASS; F4 and the checked-in H1 consumer remain blocked by frozen-test contradictions. Determinism and broad verification are next.
 
 ## Done
 
@@ -24,11 +24,15 @@ Active on `node-graph-release` in the required local clone. Strict gate/release 
 - Confirmed F2, F3, the evidence-flip replay, and F5 strict-XPASS against the unedited acceptance tests.
 - Added lossless canonical `Graph` JSON serialization/deserialization without changing the frozen `Graph` class or either locked interface file.
 - Exported only `graph_to_json` and `graph_from_json`; all three serialization tests pass, including enum, tuple/array, malformed-shape, and public-identity checks.
+- Added `tools/graph_parity_fixtures.py` with an importable `ParityCsvSource`, `ParityRulesEngine`, real-kernel registry, canonical module hashing, and deterministic writers.
+- Generated and pinned `fit.qrf`, `calibrate`, and `simulate` graphs, inputs, direct outputs, implementation hashes, seeds, and dependency versions under the required fixture path.
+- Added a focused proxy test proving every generated graph round-trips, every pin matches its real bound kernel, and the three wrapper outputs match the direct-call bytes (calibration is checked at its weight result boundary).
 
 ## Next
 
 - Resolve whether the unowned acceptance fixture may receive a separate corrective change; without that authority F4 and H1 cannot honestly turn green.
-- Implement deterministic real-kernel fixture generation independently of the broken H1 consumer.
+- Commit the generated fixture layer, rerun the generator, and prove it changes no tracked byte.
+- Run broad verification and the sanctioned acceptance flip for only the properties that actually strict-XPASS.
 
 # ACS predictor release join
 

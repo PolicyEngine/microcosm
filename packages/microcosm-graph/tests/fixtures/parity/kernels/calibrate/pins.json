@@ -1,0 +1,1 @@
+{"dependencies":{"numpy":"2.4.6","pandas":"3.0.3","scipy":"1.17.1","torch":"2.12.0"},"implementation_hash":"a8156eb822300c731866457def75855e93869d78747d6316766e8d6e8534ebab","kernel":"calibrate.adam@1","node":"calibrate","seed":0}
