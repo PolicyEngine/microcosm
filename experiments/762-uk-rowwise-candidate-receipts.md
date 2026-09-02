@@ -94,3 +94,43 @@ Why band H is not a clone-count problem: spine-m carries **170 band-H households
 | 10 | 192 s / 9.9 GB (10 engine blocks) | 86 | LA: band H × 84, Scilly × 2 |
 
 Proposed dispositions (A14, María): K=10 for the first candidate (measured); sign a deferral for the 296 band-H LA cells (`voa.council_tax_stock.by_area.band_h`, spine support 49 raw sources); amend A4 so the two support-excluded authorities' cells are signed-deferred as well (they stay in the solve through the other families' rows; their own cells are unsupported by the exclusion's own evidence).
+
+## R6 — Run U: f100 at K=10, uniform weighting, no holdout (2026-09-03 00:xx; attempt chained on R5's failed row; disposition failed — artifact written, unreleasable)
+
+The A14 surface (19,105 register cells + 1,011 ladder rows + 364 national = **20,480 targets × 528,460 households**), engine per clone block, one uniform solve (512 epochs, lr 0.15, cap 10, stretch bound 100). Wall 797 s, peak 9.7 GB.
+
+| measure | value |
+|---|---|
+| loss initial → final | 0.2777 → 0.0162 |
+| median / max abs relative error | 0.0083 / 16.45 (council-tax band G, one authority) |
+| past-cap (all rows) | 17 at init, 1 at final, 16 escaped, 0 pushed out; national rows 0 / 0 |
+| realized max weight ratio vs design | **100.0 (on the bound)**; max/positive-median weight 312.5 |
+| calibration mass change | 29,247,433 → 28,073,792 (×0.960, free mass) |
+| local fit within 10 % / 25 % | age 100 % / 100 % (8,072); census households 99.9 % / 100 % (1,011); HMRC 99.6 % / 99.9 % (4,031); UC 100 % / 100 % (3,508); tenure 99.4 % / 99.9 % (1,436); council tax 86.3 % / 95.2 % (2,058) |
+| national fit within 10 % / 25 % | hmrc_spi 83 % / 95 % (129); dwp_universal_credit 90 % / 96 % (95); ons_population 92 % / 96 % (50); obr 48 % / 76 % (21); household composition 29 % / 57 % (7); ons_land 0 % / 33 % (3, corporate land value −681 %) |
+| gates | ladder, per_family_fit, weight_ess passed; **area_support FAILED (release-blocking): 12 constituencies with calibrated ESS < 50 (18.3–49.8; pre-calibration K=10 minima 245)**; target_fit diagnostic: 20 cells > 25 %; weight_ratio diagnostic: 312.5 > 100 |
+| support-limited misses | constituency 2 failing cells (both in the bottom-ESS decile); LA 102, Spearman −0.25 |
+| releasable | false (blocked at f100) |
+
+Reading: the local surface fits (every family but council tax above 99 % within 10 %), the national families fit as the national line does, and the block is the doctrine's own stretch: a handful of rows in twelve constituencies were pushed to the 100× bound and the Kish ESS of those areas collapsed below María's floor. This is the A3 evidence: the bound the local doctrine inherited (100) is too loose for the support floor it now has to satisfy; the national doctrine binds at 10 and the exact-k ladder at 20.
+
+## R7 — Run G: f100 at K=10, `grain_equal` weighting, no holdout (2026-09-03 01:xx; chained on R6's row; disposition failed — artifact written, unreleasable)
+
+Same surface and inputs as R6; the receipted override `target_weight_rule: uniform → grain_equal` (one equal share each for the national rows, the constituency rows and the local-authority rows; uniform within). Wall 830 s, peak 6.6 GB.
+
+| measure | Run U (uniform) | Run G (grain_equal) |
+|---|---|---|
+| loss initial → final | 0.2777 → 0.0162 | 0.3198 → 0.0203 |
+| median / max abs relative error | 0.0083 / 16.45 | 0.0092 / 1.42 |
+| past-cap all rows (init → final, pushed out) | 17 → 1, 0 | 17 → 0, 0 |
+| realized max ratio vs design | 100.0 (bound) | 100.0 (bound) |
+| max / positive-median weight | 312.5 | 1,014.5 |
+| ESS fraction | 0.216 | 0.070 |
+| constituencies with calibrated ESS < 50 | **12** | **189** |
+| mass factor | 0.960 | 0.973 |
+| local within 10 %: age / census hh / HMRC / UC / tenure / council tax | 100 / 99.9 / 99.6 / 100 / 99.4 / 86.3 | 100 / 98.7 / 99.1 / 100 / 97.5 / 87.5 |
+| national within 10 % (n-weighted) / 25 % | 77.7 % / 90.1 % | **92.3 % / 97.8 %** |
+| national within 10 %: hmrc_spi / dwp_uc / ons_population / obr | 83 / 89 / 92 / 48 | 98 / 99 / 100 / 67 |
+| gates | area_support FAILED (12), target_fit 20 cells, weight_ratio | area_support FAILED (189), target_fit 20 cells, weight_ratio |
+
+Reading: `grain_equal` buys the national fit the joint solve is supposed to keep, at almost no local cost, and pays for it in weight concentration. Under both rules the realized stretch sits on the 100× bound and the support floor fails, so the weighting question (A2) cannot be settled at this bound: the stretch bound (A3) is the binding decision. Measurement runs at 20 and 10 under both rules follow (R8).
