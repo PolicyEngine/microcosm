@@ -98,6 +98,59 @@ UK_CROSS_GRAIN_BRIDGES = (
         higher_target_ids=("dwp.uc.households",),
         lower_side="contract:dwp.uc.households_by_area",
     ),
+    # The national ONS controls use inclusive integer-age bands (0--9), while
+    # local targets use equivalent half-open encodings (0--10), so their
+    # signatures cannot match directly. These bridges let the K02000001 UK
+    # control rescale both constituency and local-authority bands over its
+    # England/Wales/Scotland/Northern Ireland legs.
+    CrossGrainBridge(
+        bridge_id="national_age_0_9_vs_local_age_0_10",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_0_9_by_region",),
+        lower_side="contract:ons.age.0_10",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_10_19_vs_local_age_10_20",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_10_19_by_region",),
+        lower_side="contract:ons.age.10_20",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_20_29_vs_local_age_20_30",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_20_29_by_region",),
+        lower_side="contract:ons.age.20_30",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_30_39_vs_local_age_30_40",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_30_39_by_region",),
+        lower_side="contract:ons.age.30_40",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_40_49_vs_local_age_40_50",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_40_49_by_region",),
+        lower_side="contract:ons.age.40_50",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_50_59_vs_local_age_50_60",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_50_59_by_region",),
+        lower_side="contract:ons.age.50_60",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_60_69_vs_local_age_60_70",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_60_69_by_region",),
+        lower_side="contract:ons.age.60_70",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_70_79_vs_local_age_70_80",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_70_79_by_region",),
+        lower_side="contract:ons.age.70_80",
+    ),
 )
 # A future move of these declarations into country-package spec JSON follows
 # the country-owned specification direction established in microcosm#159.

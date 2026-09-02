@@ -900,6 +900,14 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
     assert [bridge.bridge_id for bridge in UK_CROSS_GRAIN_BRIDGES] == [
         "national_household_composition_partition_vs_census_households",
         "national_uc_caseload_vs_uc_households_by_area",
+        "national_age_0_9_vs_local_age_0_10",
+        "national_age_10_19_vs_local_age_10_20",
+        "national_age_20_29_vs_local_age_20_30",
+        "national_age_30_39_vs_local_age_30_40",
+        "national_age_40_49_vs_local_age_40_50",
+        "national_age_50_59_vs_local_age_50_60",
+        "national_age_60_69_vs_local_age_60_70",
+        "national_age_70_79_vs_local_age_70_80",
     ]
     assert UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids == (
         "ons.household_composition.lone_households_under_65",
@@ -914,6 +922,104 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
         "ons.household_composition.multi_family_households",
     )
     assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == ("dwp.uc.households",)
+
+
+def test_uk_age_cross_grain_bridges_are_complete_and_exclude_80_89():
+    age_bridges = {
+        bridge.bridge_id: (
+            bridge.concept,
+            bridge.higher_target_ids,
+            bridge.lower_side,
+        )
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        if bridge.bridge_id.startswith("national_age_")
+    }
+
+    assert age_bridges == {
+        f"national_age_{lower}_{upper - 1}_vs_local_age_{lower}_{upper}": (
+            "uk.person.count",
+            (f"ons.population.age_{lower}_{upper - 1}_by_region",),
+            f"contract:ons.age.{lower}_{upper}",
+        )
+        for lower, upper in zip(range(0, 80, 10), range(10, 90, 10), strict=True)
+    }
+    assert all(
+        "80_89" not in target_id
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        for target_id in bridge.higher_target_ids
+    )
+
+
+def test_uk_age_bridge_rescales_constituency_and_la_to_uk_control():
+    national_id = "ons.population.age_0_9_by_region"
+    local_id = "ons.age.0_10"
+    constituency_values = (25.0, 25.0, 25.0, 24.999)
+    la_values = (25.0, 25.0, 25.0, 25.001)
+    surface = pd.DataFrame(
+        [
+            {
+                "grain": "country",
+                "geography_id": "K02000001",
+                "target_id": national_id,
+                "value": 100.0,
+            },
+            *[
+                {
+                    "grain": "constituency",
+                    "geography_id": area,
+                    "target_id": local_id,
+                    "value": value,
+                }
+                for area, value in zip(
+                    ("E14000001", "W07000041", "S14000001", "N06000001"),
+                    constituency_values,
+                    strict=True,
+                )
+            ],
+            *[
+                {
+                    "grain": "la",
+                    "geography_id": area,
+                    "target_id": local_id,
+                    "value": value,
+                }
+                for area, value in zip(
+                    ("E06000001", "W06000001", "S12000005", "N09000001"),
+                    la_values,
+                    strict=True,
+                )
+            ],
+        ]
+    )
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        (national_id,),
+    )
+
+    assert reconciled.loc[reconciled["grain"] == "constituency", "value"].sum() == (
+        pytest.approx(100.0)
+    )
+    assert reconciled.loc[reconciled["grain"] == "la", "value"].sum() == pytest.approx(
+        100.0
+    )
+    groups = [
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_age_0_9_vs_local_age_0_10"
+    ]
+    assert {group["legs"][0]["reason"] for group in groups} == {
+        "standing cross-grain rule: country controls constituency",
+        "standing cross-grain rule: country controls la",
+    }
+    assert all(group["winning_grain"] == "country" for group in groups)
+    for group in groups:
+        assert len(group["legs"]) == 1
+        leg = group["legs"][0]
+        assert leg["parent_geography_id"] == "K02000001"
+        assert leg["leg"] == "England+Wales+Scotland+Northern Ireland"
+        assert leg["new_total"] == pytest.approx(100.0)
+        assert leg["declared_factor"] == pytest.approx(1.0, abs=2e-5)
 
 
 def test_committed_contract_detects_exact_uc_payment_partition():
@@ -990,7 +1096,11 @@ def test_council_tax_stock_country_control_rescales_la_band_counts():
 
 
 def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
-    household_bridge, uc_bridge = UK_CROSS_GRAIN_BRIDGES
+    bridges = {bridge.bridge_id: bridge for bridge in UK_CROSS_GRAIN_BRIDGES}
+    household_bridge = bridges[
+        "national_household_composition_partition_vs_census_households"
+    ]
+    uc_bridge = bridges["national_uc_caseload_vs_uc_households_by_area"]
     household_surface = pd.DataFrame(
         [
             *[

@@ -112,6 +112,72 @@ def test_bridge_sums_exhaustive_higher_partition_to_one_control():
     ]
 
 
+def test_bridge_rescales_constituency_and_la_to_same_country_control():
+    bridge = CrossGrainBridge(
+        "national_age_vs_local_age",
+        concept="people",
+        higher_target_ids=("national_age",),
+        lower_side="contract:local_age",
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national_age", 100.0),
+            ("constituency", "E1", "local_age", 60.0),
+            ("constituency", "S1", "local_age", 39.999),
+            ("la", "E9", "local_age", 50.0),
+            ("la", "S9", "local_age", 50.001),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national_age",),
+        {
+            "national_age": {
+                "measurement": {
+                    "concept": "people",
+                    "entity": "household",
+                    "map_to": None,
+                    "filters": [{"age": {"minimum": 0, "maximum": 9}}],
+                }
+            },
+            "local_age": {
+                "measurement": {
+                    "concept": "people",
+                    "entity": "household",
+                    "map_to": None,
+                    "filters": [{"age": {"lower": 0, "upper": 10}}],
+                }
+            },
+        },
+        _rule(bridges=(bridge,)),
+    )
+
+    assert reconciled.loc[reconciled["grain"] == "constituency", "value"].sum() == (
+        pytest.approx(100.0)
+    )
+    assert reconciled.loc[reconciled["grain"] == "la", "value"].sum() == pytest.approx(
+        100.0
+    )
+    bridge_groups = [
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_age_vs_local_age"
+    ]
+    assert {group["legs"][0]["reason"] for group in bridge_groups} == {
+        "standing cross-grain rule: country controls constituency",
+        "standing cross-grain rule: country controls la",
+    }
+    assert all(
+        group["bridge_id"] == "national_age_vs_local_age" for group in bridge_groups
+    )
+    assert all(
+        group["legs"][0]["declared_factor"] == pytest.approx(1.0, abs=2e-5)
+        for group in bridge_groups
+    )
+
+
 def test_middle_grain_wins_when_country_is_absent():
     surface = pd.DataFrame(
         [

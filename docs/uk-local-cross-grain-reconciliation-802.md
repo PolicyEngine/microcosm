@@ -10,7 +10,7 @@ the solve signature.
 ## Detection and bridges
 
 Exact matches use the measurement fields `concept`, `entity`, `map_to`, and
-`filters`. Two explicit UK bridges cover relationships that those fields
+`filters`. Explicit UK bridges cover relationships that those fields
 cannot express on their own:
 
 - The 10-cell `ons.household_composition.*` partition sums to the national
@@ -19,6 +19,16 @@ cannot express on their own:
 - `dwp.uc.households` bridges to `dwp.uc.households_by_area`. The four
   `dwp.uc.payment_distribution_*` rows also match the by-area target exactly
   and form a separate exhaustive national partition.
+
+Eight age bridges pair the single-cell UK controls
+`ons.population.age_0_9_by_region` through
+`ons.population.age_70_79_by_region` with the corresponding local
+`ons.age.0_10` through `ons.age.70_80` bands. They represent the same
+integer-age populations, but the national inclusive and local half-open filter
+encodings do not signature-match. Each bridge therefore rescales both the
+constituency and local-authority band to the `K02000001` UK total over the
+declared England, Wales, Scotland, and Northern Ireland legs. The national
+80--89 band has no local counterpart and is deliberately not bridged.
 
 These declarations live beside the UK Ledger target orchestration in
 `uk_runtime/ledger_targets.py`. Tests pin the precedence and complete bridge
