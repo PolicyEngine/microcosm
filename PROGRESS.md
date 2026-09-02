@@ -94,10 +94,10 @@ was performed.
   A runtime unit test binds the one-ULP contract to that pin and changes only
   tolerance to prove it remains outside `implementation_hash`; H1 remains exact.
 - Complete verification boundary recorded exactly:
-  - graph shard: `233 passed in 120.87s (0:02:00)`
-  - graph shard count form: `233 passed in 102.06s (0:01:42)`
-  - kernel and country graph selection: `29 passed in 45.35s`
-  - H1-H3 byte-exact selection: `3 passed in 78.63s (0:01:18)`
+  - graph shard: `233 passed in 91.19s (0:01:31)`
+  - graph shard count form: `233 passed in 90.87s (0:01:30)`
+  - kernel and country graph selection: `29 passed in 47.73s`
+  - H1-H3 byte-exact selection: `3 passed in 88.27s (0:01:28)`
   - Ruff lint: `All checks passed!`
   - touched-file format: `10 files already formatted`
   - CI inventory: `tracked_test_files=353` and `verification=ok`
