@@ -47,11 +47,11 @@ __all__ = [
     "SupportSpineSourceSpec",
     "SupportSpineSpec",
     "audit_microdata_pins",
-    "load_country_microdata_pin_allowlist",
     "load_microdata_pin_allowlist",
     "load_source_manifest",
     "load_support_spine_manifest",
     "microdata_artifact_entries",
+    "packaged_microdata_pin_allowlist",
     "resolved_chronicle_registrations",
 ]
 
@@ -252,7 +252,9 @@ _CHRONICLE_ARTIFACT_REQUIRED_KEYS = frozenset(
     {"access", "package_id", "sha256", "source_id", "year"}
 )
 _CHRONICLE_ARTIFACT_OPTIONAL_KEYS = frozenset({"filename"})
-_MICRODATA_PIN_PENDING_KEYS = frozenset({"issue", "locator", "reason", "stage"})
+_MICRODATA_PIN_PENDING_KEYS = frozenset(
+    {"country", "issue", "locator", "reason", "stage"}
+)
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _CHRONICLE_SLUG = re.compile(r"[a-z0-9]+(?:[_-][a-z0-9]+)*")
 _FOUR_DIGIT_YEAR = re.compile(r"(?<![0-9])[0-9]{4}(?![0-9])")
@@ -396,6 +398,7 @@ class MicrodataArtifactEntry:
 class MicrodataPinPendingEntry:
     """One reviewed reason a microdata root is not pinned yet."""
 
+    country: str
     stage: str
     locator: str
     reason: str
@@ -422,6 +425,7 @@ class MicrodataPinPendingEntry:
                     f"{context} pending row key {key!r} must be a non-empty string."
                 )
         return cls(
+            country=raw["country"],
             stage=raw["stage"],
             locator=raw["locator"],
             reason=raw["reason"],
@@ -431,15 +435,16 @@ class MicrodataPinPendingEntry:
 
 @dataclass(frozen=True)
 class MicrodataPinAllowlist:
-    """Country allowlist of microdata roots that are not pinned yet.
+    """The one allowlist of microdata roots that are not pinned yet.
 
-    ``baseline_count`` is the ratchet: the committed number of rows this country
-    is allowed to carry. Loading refuses a file whose row count exceeds it, so a
-    new unpinned root cannot land without either pinning something else or a
-    reviewed baseline change.
+    There is a single file for the whole workspace rather than one per country,
+    so the ratchet is a single number a reviewer can watch. ``baseline_count``
+    is that ratchet: the committed number of rows the repository is allowed to
+    carry. Loading refuses a file whose row count exceeds it, so a new unpinned
+    root cannot land without either pinning an existing one or a reviewed
+    baseline change.
     """
 
-    country: str
     version: int
     policy: str
     baseline_count: int
@@ -447,12 +452,9 @@ class MicrodataPinAllowlist:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> MicrodataPinAllowlist:
-        country = raw.get("country")
         version = raw.get("version")
         policy = raw.get("policy", "")
         baseline_count = raw.get("baseline_count")
-        if not isinstance(country, str) or not country:
-            raise ValueError("microdata pin allowlist requires a non-empty 'country'.")
         if not isinstance(version, int) or isinstance(version, bool) or version < 1:
             raise ValueError(
                 "microdata pin allowlist requires positive integer 'version'."
@@ -468,12 +470,12 @@ class MicrodataPinAllowlist:
                 "microdata pin allowlist requires a non-negative integer "
                 "'baseline_count'."
             )
-        context = f"{country} microdata pin allowlist"
+        context = "microdata pin allowlist"
         pending = tuple(
             MicrodataPinPendingEntry.from_mapping(row, context=context)
             for row in _require_mapping_sequence(raw.get("pending", ()))
         )
-        keys = [row.key for row in pending]
+        keys = [(row.country, *row.key) for row in pending]
         duplicates = sorted({key for key in keys if keys.count(key) > 1})
         if duplicates:
             raise ValueError(f"{context} repeats pending row(s): {duplicates}.")
@@ -484,19 +486,25 @@ class MicrodataPinAllowlist:
                 "ratchet and may only shrink."
             )
         return cls(
-            country=country,
             version=version,
             policy=policy,
             baseline_count=baseline_count,
             pending=pending,
         )
 
-    def row_map(self) -> Mapping[tuple[str, str], MicrodataPinPendingEntry]:
-        return {row.key: row for row in self.pending}
+    def for_country(self, country: str) -> tuple[MicrodataPinPendingEntry, ...]:
+        """Return the rows that excuse ``country``'s unpinned roots."""
+
+        return tuple(row for row in self.pending if row.country == country)
+
+    def row_map(
+        self, country: str | None = None
+    ) -> Mapping[tuple[str, str], MicrodataPinPendingEntry]:
+        rows = self.pending if country is None else self.for_country(country)
+        return {row.key: row for row in rows}
 
 
 EMPTY_MICRODATA_PIN_ALLOWLIST = MicrodataPinAllowlist(
-    country="",
     version=1,
     policy="No allowlist file: every microdata root must be pinned.",
     baseline_count=0,
@@ -872,7 +880,8 @@ def audit_microdata_pins(
     ratchet baseline.
     """
 
-    rows = (allowlist or EMPTY_MICRODATA_PIN_ALLOWLIST).row_map()
+    country = source.country if isinstance(source, SourceManifest) else None
+    rows = (allowlist or EMPTY_MICRODATA_PIN_ALLOWLIST).row_map(country)
     entries = microdata_artifact_entries(source)
     gaps: list[MicrodataPinGap] = []
     for entry in entries:
@@ -938,25 +947,12 @@ def load_microdata_pin_allowlist(resource: Any) -> MicrodataPinAllowlist:
     return MicrodataPinAllowlist.from_mapping(raw)
 
 
-def load_country_microdata_pin_allowlist(country: str) -> MicrodataPinAllowlist:
-    """Load a country's pending allowlist, or the empty one when it has none.
+def packaged_microdata_pin_allowlist() -> MicrodataPinAllowlist:
+    """Load the one packaged allowlist of not-yet-pinned microdata roots."""
 
-    A country with no allowlist file has nothing pending: every microdata root
-    it declares is pinned, and its ratchet baseline is zero.
-    """
-
-    resource = files(f"microcosm.build.{country}").joinpath(
-        MICRODATA_PIN_ALLOWLIST_FILENAME
+    return load_microdata_pin_allowlist(
+        files("microcosm.build").joinpath(MICRODATA_PIN_ALLOWLIST_FILENAME)
     )
-    if not resource.is_file():
-        return EMPTY_MICRODATA_PIN_ALLOWLIST
-    allowlist = load_microdata_pin_allowlist(resource)
-    if allowlist.country != country:
-        raise ValueError(
-            f"{country} {MICRODATA_PIN_ALLOWLIST_FILENAME} declares country "
-            f"{allowlist.country!r}."
-        )
-    return allowlist
 
 
 def load_source_manifest(resource: Any) -> SourceManifest:

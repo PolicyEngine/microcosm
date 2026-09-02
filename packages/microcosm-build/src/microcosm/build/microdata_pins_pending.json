@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "policy": "Raw microdata roots that no Chronicle registration witnesses yet (microcosm#848). One reviewed row per root, and the file is a ratchet: a row leaves when its root is pinned, but the row count may never exceed baseline_count. Adding an unpinned root therefore costs a pin somewhere else or a reviewed baseline change. A country absent from this file has every microdata root pinned.",
+  "baseline_count": 39,
+  "pending": [
+    {
+      "country": "am",
+      "stage": "load_populace_us_support_pool",
+      "locator": "policyengine/populace-us",
+      "reason": "Armenia is a spec-only package. The policyengine/populace-us support pool has no certified revision, filename, or SHA-256 yet; the entry's own integrity_note makes those artifact coordinates a harvest item.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "be",
+      "stage": "silc_load",
+      "locator": "Statbel BE-SILC scientific-use files: D (household register), R (personal register), H (household data), P (personal data)",
+      "reason": "Statbel BE-SILC scientific-use files (D, R, H, P) are restricted and not yet provisioned for a build; the entry names four files with no hashes. Registration is hash-only and needs the provisioned copies first.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "puf_tax_detail",
+      "locator": "IRS SOI Public Use File, including source-year adjusted gross income E00100, weight S006, total interest paid deduction E19200, state and local tax refunds E00700, educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515",
+      "reason": "IRS SOI Public Use File. The entry names the 2015 PUF field set with no distributed-file hash, and the IRS withdrew the file, so a registration must witness the licensed copy the build actually reads.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "puf_tax_detail",
+      "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+      "reason": "puf_2024.h5 is a versioned_derived_microdata artifact materialized by the retired pipeline at commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, not a publisher release, so it has no Chronicle access class. Its identity must resolve through the registration of the 2015 PUF behind it.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "education_inputs",
+      "locator": "IRS SOI Public Use File E03230 and optional E87530 tuition fields",
+      "reason": "IRS SOI Public Use File. The entry names the 2015 PUF field set with no distributed-file hash, and the IRS withdrew the file, so a registration must witness the licensed copy the build actually reads.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "education_inputs",
+      "locator": "Census CPS ASEC person ED_VAL educational-assistance field",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "retirement_contributions",
+      "locator": "Census CPS ASEC person RETCB_VAL, WSAL_VAL, and SEMP_VAL fields",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "childcare_inputs",
+      "locator": "Census CPS ASEC replicated SPM-unit SPM_CHILDCAREXPNS field",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "adult_care_inputs",
+      "locator": "Census CPS ASEC person PEDISDRS self-care difficulty item and the measured SPM-unit childcare expense distribution",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "energy_subsidy",
+      "locator": "Census CPS ASEC replicated SPM-unit SPM_ENGVAL field",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "child_support_inputs",
+      "locator": "Census CPS ASEC person CSP_VAL child support received and CHSP_VAL annual child support paid fields",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "disability_benefits_input",
+      "locator": "Census CPS ASEC person DIS_VAL1, DIS_SC1, DIS_VAL2, and DIS_SC2 fields",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "workers_compensation_input",
+      "locator": "Census CPS ASEC person annual workers' compensation amount WC_VAL",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "scf_wealth",
+      "locator": "https://www.federalreserve.gov/econres/files/scf2022s.zip",
+      "reason": "Full-file SHA-256 pending one network-enabled provisioning fetch, as the entry's own integrity_note records; the summary-extract hashes are a different artifact and must not be reused here.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "scf_wealth",
+      "locator": "Census SIPP 2023 public-use file; immutable Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+      "reason": "The declared SHA-256 witnesses the retired pipeline's Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6, not the Census-distributed SIPP 2023 release. Chronicle registers the publisher artifact, whose own hash needs one network-enabled fetch.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "ssi_disability_criteria",
+      "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+      "reason": "The declared SHA-256 witnesses the retired pipeline's Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6, not the Census-distributed SIPP 2023 release. Chronicle registers the publisher artifact, whose own hash needs one network-enabled fetch.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "sipp_head_start",
+      "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+      "reason": "The declared SHA-256 witnesses the retired pipeline's Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6, not the Census-distributed SIPP 2023 release. Chronicle registers the publisher artifact, whose own hash needs one network-enabled fetch.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "ssi_take_up",
+      "locator": "CPS ASEC annual SSI amount SSI_VAL, used only as the reported-recipient true anchor",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "sipp_tips",
+      "locator": "Census SIPP 2023 public-use slim tip extract; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+      "reason": "The declared SHA-256 witnesses pu2023_slim.csv on the retired pipeline's Hugging Face mirror \u2014 a PolicyEngine-derived column subset of SIPP 2023 with no publisher release of its own to register. Registration must reference the Census-distributed SIPP 2023 file the subset came from.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "org_wages",
+      "locator": "jan24pub through dec24pub; HRMIS 4 and 8",
+      "reason": "Reads twelve CPS basic monthly files (jan24pub through dec24pub). The entry pins the generated cache's content hash, not the twelve distributed archives, so registration needs one entry per monthly file.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "meps_esi_premiums",
+      "locator": "Census CPS ASEC NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL fields; the three NOW_* fields are absent from the current hermetic HDF inputs",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "prior_year_income",
+      "locator": "Census CPS ASEC person files identified by source_year and PERIDNUM",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "immigration_status",
+      "locator": "Census CPS ASEC person file citizenship (PRCITSHP), entry year (PEINUSYR), nativity (PENATVTY), and program-participation fields",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "hours_worked",
+      "locator": "Census CPS ASEC person file usual weekly hours (HRSWK), reference-week hours (A_HRS1), and weeks worked (WKSWORK)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "snap_take_up",
+      "locator": "Census CPS ASEC SPM unit reported SNAP subsidy (SPM_SNAPSUB)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "snap_state_take_up",
+      "locator": "Census CPS ASEC SPM unit reported SNAP subsidy (SPM_SNAPSUB)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "relationship_inputs",
+      "locator": "Census CPS ASEC person household sequence (PH_SEQ), within-household person sequence (P_SEQ), and marital status (A_MARITL)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "medicare_take_up_input",
+      "locator": "SHA-locked Census CPS ASEC person Medicare coverage last year (MCARE)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "retirement_distributions",
+      "locator": "Census CPS ASEC person retirement-distribution account codes and amounts (DST_SC1/DST_VAL1, DST_SC2/DST_VAL2, DST_SC1_YNG/DST_VAL1_YNG, DST_SC2_YNG/DST_VAL2_YNG)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "eligibility_inputs",
+      "locator": "Census CPS ASEC person file disability-difficulty items (PEDISDRS/PEDISEAR/PEDISEYE/PEDISOUT/PEDISPHY/PEDISREM), school enrollment (A_HSCOL, A_FTPT), parent line pointers (PEPAR1, PEPAR2), veterans' payments (VET_VAL), and reported SSI (SSI_VAL)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "pregnancy",
+      "locator": "Census CPS ASEC person file sex (A_SEX) and age (A_AGE)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "snap_abawd_discretionary_exemption",
+      "locator": "Census CPS ASEC person file age (A_AGE)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "acs_rent",
+      "locator": "SHA-locked Census CPS ASEC person and household tables",
+      "reason": "Locator names SHA-locked CPS ASEC person and household tables pooled over 2022-2024 rather than one distributed file; the same per-archive split as the other ASEC column entries is required before it can be pinned.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "acs_rent",
+      "locator": "Census ACS 2022 PUMS processed person/household arrays (acs_2022.h5)",
+      "reason": "acs_2022.h5 is hash-pinned but is processed ACS 2022 PUMS arrays produced by the retired pipeline, not a publisher release, so versioned_derived_microdata has no Chronicle access class. The official person and household PUMS zips it derives from are named in the entry and unhashed.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "vehicle_assets",
+      "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+      "reason": "The declared SHA-256 witnesses the retired pipeline's Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6, not the Census-distributed SIPP 2023 release. Chronicle registers the publisher artifact, whose own hash needs one network-enabled fetch.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "voluntary_filing_input",
+      "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+      "reason": "The declared SHA-256 witnesses the retired pipeline's Hugging Face mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6, not the Census-distributed SIPP 2023 release. Chronicle registers the publisher artifact, whose own hash needs one network-enabled fetch.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "aca_marketplace_inputs",
+      "locator": "CPS ASEC current coverage and health premium fields",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "medicaid_take_up",
+      "locator": "CPS ASEC current Medicaid coverage at interview (has_medicaid_health_coverage_at_interview)",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    },
+    {
+      "country": "us",
+      "stage": "other_health_insurance_premiums",
+      "locator": "Census CPS ASEC person PHIP_VAL reported premium, carried as health_insurance_premiums_without_medicare_part_b",
+      "reason": "Stage reads CPS ASEC columns pooled across the build-selected income years, so the entry names a column universe rather than one distributed file and no single SHA-256 witnesses it. Pinning needs one artifact entry per pooled ASEC survey-year archive; the 2023, 2024, and 2025 zips are already hash-pinned in us_runtime/education_assistance_source.py.",
+      "issue": "PolicyEngine/microcosm#848"
+    }
+  ]
+}
