@@ -60,8 +60,10 @@ verification matrix passes. The implementation is ready for handoff.
 - Confirmed the frozen `decl.py`, `kernel.py`, `graph-interface.lock`, and
   `_toy.py` are byte-identical to merge commit `602c0f81`, the amendment-14
   parent actually merged into this branch.
+- Wrote the requested implementation, receipt-shape, and verification handoff
+  to the source worktree's `out.md`.
 
 ## Next
 
-- Write the final branch SHA, file/line handoff, receipt shape, and exact
-  verification summaries to the requested source-worktree `out.md`.
+- No implementation work remains. Hand off the committed branch and `out.md`;
+  do not push.
