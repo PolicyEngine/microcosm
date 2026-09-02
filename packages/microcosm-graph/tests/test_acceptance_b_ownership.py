@@ -22,7 +22,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.graph import KernelContext, Node, Owned, Ownership, Slice
+from microcosm.graph import (
+    GraphError,
+    KernelContext,
+    Node,
+    NodeRejectedError,
+    Owned,
+    Ownership,
+    Slice,
+    StructuralDelta,
+)
 
 if "_toy" not in sys.modules:
     _SPEC = importlib.util.spec_from_file_location(
@@ -233,3 +242,70 @@ def test_b5_null_means_absence(tmp_path: Path) -> None:
 
     with pytest.raises(NodeRejectedError, match="no_data"):
         toy.run_toy(liar, tmp_path / "liar")
+
+
+@pytest.mark.xfail(strict=True, reason="charter B6: entrant execution pending")
+def test_b6_entrants_are_declared(tmp_path: Path) -> None:
+    """Null lineage is an explicit, complete, and receipted entrant contract.
+
+    The backwards-compatible lineage shape keeps ``(new, source)`` pairs under
+    ``expand`` and uses a null source for entrants. The test admits a household
+    entrant because the frozen result interface has no separate output for a
+    new person's stratum. Its complete carried data surface is materialized by
+    the EXPAND kernel and passed through ``materialized_expand_outputs``.
+    """
+    with pytest.raises(GraphError, match="conserved_entrants"):
+        Node(
+            "conserved_entrants",
+            "expand.entrants@1",
+            structural=StructuralDelta.EXPAND,
+            base="survey",
+            entrants=True,
+            mass="conserve",
+        )
+
+    expand, claim = toy.entrant_expand_node()
+    run = toy.run_toy(
+        toy.small_graph(nodes=(toy.CREATE, expand, claim)), tmp_path / "declared"
+    )
+    before = run.manifest.population("survey")
+    after = run.manifest.population(expand.id)
+    person_copy_id = int(before.person["person_id"].max()) + 1
+    household_entrant_id = int(before.household["household_id"].max()) + 1
+
+    assert len(after.person) == len(before.person) + 1
+    assert len(after.household) == len(before.household) + 1
+    copied = after.person.set_index("person_id").loc[person_copy_id]
+    source = before.person.set_index("person_id").loc[1]
+    assert copied["person_household_id"] == household_entrant_id
+    pd.testing.assert_series_equal(
+        copied.drop(labels="person_household_id"),
+        source.drop(labels="person_household_id"),
+        check_names=False,
+    )
+    entrant = after.household.set_index("household_id").loc[household_entrant_id]
+    assert entrant["household_size"] == 1
+    assert after.household["household_size"].dtype == np.dtype("int64")
+    assert after.weights_for("household").values[-1] == 125.0
+    lineage = run.manifest.nodes[expand.id].receipt
+    assert lineage["expand"]["person"] == ((person_copy_id, 1),)
+    assert lineage["expand"]["household"] == ((household_entrant_id, None),)
+
+    undeclared, undeclared_claim = toy.entrant_expand_node(
+        "undeclared_entrants", entrants=False
+    )
+    with pytest.raises(NodeRejectedError, match="undeclared_entrants"):
+        toy.run_toy(
+            toy.small_graph(nodes=(toy.CREATE, undeclared, undeclared_claim)),
+            tmp_path / "undeclared",
+        )
+
+    incomplete, incomplete_claim = toy.entrant_expand_node(
+        "incomplete_entrant", missing_entrant_column="household_size"
+    )
+    with pytest.raises(NodeRejectedError, match="incomplete_entrant") as error:
+        toy.run_toy(
+            toy.small_graph(nodes=(toy.CREATE, incomplete, incomplete_claim)),
+            tmp_path / "incomplete",
+        )
+    assert "household_size" in str(error.value)

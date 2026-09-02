@@ -271,9 +271,19 @@ def test_the_real_suite_is_all_strict_and_all_accounted_for() -> None:
     """The tool's own checks, run against the suite it exists to score."""
     data = burndown.report(burndown.counts(burndown.suite_files()))
     root = burndown.ROOT
-    assert data["total"] == 0
+    assert data["total"] == 3
     assert not [entry for entry in data["properties"] if entry["state"] == "missing"]
-    assert all(entry["state"] == "green" for entry in data["properties"])
+    states = {entry["id"]: entry["state"] for entry in data["properties"]}
+    assert {identifier for identifier, state in states.items() if state == "red"} == {
+        "B6",
+        "C5",
+        "D6",
+    }
+    assert all(
+        state == "green"
+        for identifier, state in states.items()
+        if identifier not in {"B6", "C5", "D6"}
+    )
     for entry in data["files"]:
         source = (root / entry["file"]).read_text()
         for marker in markers_in(source, entry["file"]):
@@ -291,3 +301,45 @@ def test_the_tool_runs_from_the_command_line(flag: str) -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout
+
+
+NEW_PROPERTY_STARTS_RED = (
+    ONE_RED_PROPERTY
+    + """
+
+@pytest.mark.xfail(strict=True, reason="charter A9: pending")
+def test_a9_nine() -> None:
+    assert False
+"""
+)
+
+
+def test_verify_lets_a_property_new_to_the_charter_start_red(tmp_path: Path) -> None:
+    """The charter's meta-TDD rule: a new property is committed red first.
+
+    A marker on an id the baseline charter never listed is not a re-red; a
+    marker on an id it did list still is.
+    """
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    (root / "docs" / "graph-acceptance.md").write_text(
+        "| Id | Property |\n|---|---|\n| A1 | one |\n| A3 | three |\n| A9 | nine |\n"
+    )
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(NEW_PROPERTY_STARTS_RED)
+    admitted = _run(root, "--verify")
+    assert admitted.returncode == 0, admitted.stdout
+    assert "1 -> 1 (+1 new: A9)" in admitted.stdout
+    assert "verification=ok" in admitted.stdout
+
+    # The same marker on a property the baseline charter already listed
+    # (A3, green there) is a re-red and still fails.
+    target.write_text(
+        NEW_PROPERTY_STARTS_RED.replace(
+            "def test_a3_three() -> None:\n    assert True",
+            '@pytest.mark.xfail(strict=True, reason="charter A3: pending")\n'
+            "def test_a3_three() -> None:\n    assert False",
+        )
+    )
+    refused = _run(root, "--verify")
+    assert refused.returncode == 1
+    assert "re-reds 1 property" in refused.stdout

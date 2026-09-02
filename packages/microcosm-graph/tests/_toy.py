@@ -69,6 +69,7 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StructuralDelta,
+    Tolerance,
     WeightTransition,
     compile_graph,
     run_graph,
@@ -83,6 +84,7 @@ __all__ = [
     "PUBLISH_DECISION",
     "SOURCE",
     "STRATA",
+    "TOY_TOLERANCE",
     "ToyKernel",
     "ToyRun",
     "absent_node",
@@ -96,6 +98,7 @@ __all__ = [
     "descendants",
     "draw",
     "drop_nodes",
+    "entrant_expand_node",
     "full_graph",
     "gate_node",
     "graph_source_files",
@@ -129,6 +132,9 @@ GATE_OUTCOMES = frozenset(
 
 #: The one source every toy graph reads, through the ``csv-tables`` codec.
 SOURCE = SourceRef("survey", "csv-tables", description="the toy country's tables")
+
+#: Cross-machine numeric movement declared by the C5 toy producer.
+TOY_TOLERANCE = Tolerance(rtol=1e-6)
 
 
 def id_column(entity: str) -> str:
@@ -432,6 +438,98 @@ class ReweightScale(ToyKernel):
         )
 
 
+class ExpandEntrants(ToyKernel):
+    """EXPAND: add one copied person and one materialized entrant household."""
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        person_ids = pd.Index(person["person_id"], name="person_id")
+        person_source_id = int(person_ids[0])
+        person_copy_id = int(person_ids.max()) + 1
+
+        household = context.tables["household"]
+        household_ids = pd.Index(household["household_id"], name="household_id")
+        household_entrant_id = int(household_ids.max()) + 1
+        household_target_ids = household_ids.append(
+            pd.Index([household_entrant_id], dtype="int64", name="household_id")
+        )
+        person_target_ids = person_ids.append(
+            pd.Index([person_copy_id], dtype="int64", name="person_id")
+        )
+
+        household_size = pd.concat(
+            [
+                household["household_size"].reset_index(drop=True),
+                pd.Series([1], dtype="int64"),
+            ],
+            ignore_index=True,
+        )
+        materialized_size = pd.Series(
+            household_size.array, index=household_target_ids, dtype="int64"
+        )
+        if context.params.get("missing_entrant_column") == "household_size":
+            materialized_size = materialized_size.drop(index=household_entrant_id)
+        memberships = pd.concat(
+            [
+                person["person_household_id"].reset_index(drop=True),
+                pd.Series([household_entrant_id], dtype="int64"),
+            ],
+            ignore_index=True,
+        )
+        materialized_memberships = pd.Series(
+            memberships.array, index=person_target_ids, dtype="int64"
+        )
+
+        empty_releases = pd.Series(
+            [],
+            index=pd.Index([], dtype="int64", name="release_id"),
+            dtype="int64",
+        )
+        household_weights = context.weights["household"]
+        expanded_weights = np.append(
+            household_weights.values, float(context.params["entrant_weight"])
+        )
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [person_source_id],
+                    index=pd.Index([person_copy_id], dtype="int64", name="person_id"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    pd.array([pd.NA], dtype="Int64"),
+                    index=pd.Index(
+                        [household_entrant_id],
+                        dtype="int64",
+                        name="household_id",
+                    ),
+                ),
+                "release": empty_releases,
+            },
+            columns={
+                ("household", "household_size"): materialized_size,
+                ("person", "person_household_id"): materialized_memberships,
+            },
+            weights=Weights(expanded_weights, kind=household_weights.kind),
+        )
+
+
+class ClaimMaterializedExpand(ToyKernel):
+    """Claim kernel-supplied EXPAND columns through the ownership surface."""
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        columns: dict[tuple[str, str], pd.Series] = {}
+        for item in context.params["claim_cells"]:
+            entity, column, dtype = (str(value) for value in item)
+            table = context.tables[entity]
+            columns[(entity, column)] = pd.Series(
+                table[column].array.copy(),
+                index=pd.Index(table[id_column(entity)], name=id_column(entity)),
+                dtype=dtype,
+            )
+        return KernelResult(columns=columns)
+
+
 class CalibrateToy(ToyKernel):
     """An ``importance -> calibrated`` transition hitting one target exactly."""
 
@@ -480,6 +578,37 @@ class GateThreshold(ToyKernel):
                 )
             },
             receipt={"outcome": outcome, "evidence": evidence},
+        )
+
+
+class GateReportsTolerance(ToyKernel):
+    """A gate that reports the input owner's declared numeric tolerance."""
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        entity = str(context.params["entity"])
+        column = str(context.params["column"])
+        observed = float(context.tables[entity][column].astype("float64").mean())
+        declared = context.tolerances[(entity, column)]
+        tolerance = (
+            None
+            if declared is None
+            else {
+                "rtol": declared.rtol,
+                "atol": declared.atol,
+                "ulps": declared.ulps,
+            }
+        )
+        verdict_column = str(context.params["verdict_column"])
+        return KernelResult(
+            columns={
+                ("release", verdict_column): pd.Series(
+                    ["pass"], index=_owned_ids(context, "release"), dtype="string"
+                )
+            },
+            receipt={
+                "outcome": "pass",
+                "evidence": {"observed": observed, "tolerance": tolerance},
+            },
         )
 
 
@@ -626,6 +755,9 @@ _CREATE = Capabilities(
 _FILTER = Capabilities(
     determinism=Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER
 )
+_EXPAND = Capabilities(
+    determinism=Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND
+)
 _REWEIGHT = Capabilities(
     determinism=Determinism.DETERMINISTIC, structural=StructuralDelta.REWEIGHT
 )
@@ -644,12 +776,22 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
     kernels = (
         SourceCsv("source.csv@1", _CREATE),
         DeriveAdd("derive.add@1", _DETERMINISTIC),
+        DeriveAdd(
+            "derive.tolerant@1",
+            Capabilities(
+                determinism=Determinism.DETERMINISTIC,
+                numeric=Numeric.TOLERANCE_BOUND,
+                tolerance=TOY_TOLERANCE,
+            ),
+        ),
         DrawUniform("draw.uniform@1", _SEEDED),
         ImputeChain("impute.chain@1", _SEEDED),
         SimulateStub("simulate.stub@1", _DETERMINISTIC),
         PatchColumn("patch.column@1", _DETERMINISTIC),
         AbsentColumn("absent.column@1", _DETERMINISTIC),
         SelectRows("select.rows@1", _FILTER),
+        ExpandEntrants("expand.entrants@1", _EXPAND),
+        ClaimMaterializedExpand("claim.expand@1", _DETERMINISTIC),
         ReweightScale("reweight.scale@1", _REWEIGHT),
         CalibrateToy(
             "calibrate.toy@1",
@@ -662,6 +804,10 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
         CalibrateToy("calibrate.blind@1", _REWEIGHT),
         GateThreshold(
             "gate.threshold@1",
+            Capabilities(determinism=Determinism.DETERMINISTIC, role=KernelRole.GATE),
+        ),
+        GateReportsTolerance(
+            "gate.tolerance@1",
             Capabilities(determinism=Determinism.DETERMINISTIC, role=KernelRole.GATE),
         ),
         ReleaseTier(
@@ -972,6 +1118,54 @@ def select_node(
         params={"mask": mask, "policy": policy},
         mass=policy,
     )
+
+
+def entrant_expand_node(
+    node_id: str = "scheduled_entries",
+    *,
+    entrants: bool = True,
+    missing_entrant_column: str | None = None,
+) -> tuple[Node, Node]:
+    """An EXPAND plus the ownership claim for its materialized person fields."""
+    overlays = (
+        ("household", "household_size", "int64"),
+        ("person", "person_household_id", "int64"),
+    )
+    claim_cells = (overlays[0],)
+    expand = Node(
+        node_id,
+        "expand.entrants@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        inputs=(
+            Slice("person", ("age",)),
+            Slice("household", ("household_size",)),
+        ),
+        params={
+            "expand_cells": overlays,
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+            "entrant_weight": 125.0,
+            "missing_entrant_column": missing_entrant_column,
+        },
+        mass="free",
+        entrants=entrants,
+    )
+    claim = Node(
+        f"claim_{node_id}",
+        "claim.expand@1",
+        outputs=tuple(
+            Owned(entity, column, dtype) for entity, column, dtype in claim_cells
+        ),
+        params={
+            "claim_cells": claim_cells,
+            "materialized_expand_outputs": tuple(
+                f"{entity}.{column}" for entity, column, _ in claim_cells
+            ),
+        },
+        population=node_id,
+    )
+    return expand, claim
 
 
 POOL = Node(

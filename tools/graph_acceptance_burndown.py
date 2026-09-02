@@ -295,14 +295,34 @@ def verify(ref: str = BASELINE_REF) -> int:
         print(f"baseline={ref} unavailable; the ratchet did not run")
     else:
         print(f"baseline={ref}")
+        # A property the charter gained since the baseline is committed red
+        # first (the charter's meta-TDD rule), so its marker is not a re-red.
+        baseline_charter = baseline_source(ref, CHARTER)
+        known = set(charter_ids(baseline_charter)) if baseline_charter else set()
         for file in sorted(current):
             source = baseline_source(ref, file)
             if source is None:
                 print(f"  [new]  {file}: {len(current[file])}")
                 continue
-            was = len(markers_in(source, file))
-            now = len(current[file])
-            print(f"  {'rose' if now > was else 'ok':<6} {file}: {was} -> {now}")
+            was_markers = markers_in(source, file)
+            was_ids = {marker.charter_id for marker in was_markers}
+            new_reds = sorted(
+                {
+                    marker.charter_id
+                    for marker in current[file]
+                    if marker.charter_id
+                    and marker.charter_id not in was_ids
+                    and marker.charter_id not in known
+                }
+            )
+            was = len(was_markers)
+            now = len(current[file]) - len(new_reds)
+            suffix = (
+                f" (+{len(new_reds)} new: {', '.join(new_reds)})" if new_reds else ""
+            )
+            print(
+                f"  {'rose' if now > was else 'ok':<6} {file}: {was} -> {now}{suffix}"
+            )
             if now > was:
                 problems.append(
                     f"{file} re-reds {now - was} propert"
