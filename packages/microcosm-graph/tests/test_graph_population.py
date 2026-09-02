@@ -394,6 +394,35 @@ def test_declared_mass_validates_the_kernel_receipt() -> None:
         patch(population, node, result)
 
 
+def test_mass_receipt_rejects_partition_when_graph_has_none() -> None:
+    population = _population()
+    node = Node(
+        "importance",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        weights=WeightTransition("household", "importance", mass="declared"),
+        mass="declared",
+    )
+    receipt = _mass_receipt(
+        policy="declared",
+        before=7.0,
+        after=14.0,
+        stratum_before={"a": 2.0, "b": 5.0},
+        stratum_after={"a": 4.0, "b": 10.0},
+    )
+    mass = receipt["mass"]
+    assert isinstance(mass, dict)
+    mass["partition"] = {}
+    result = KernelResult(
+        weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE),
+        receipt=receipt,
+    )
+
+    with pytest.raises(PopulationError, match="declares no mass partition"):
+        patch(population, node, result)
+
+
 def test_filter_requires_subset_ids_and_records_free_mass() -> None:
     population = _population()
     filtered = population.frame.select(

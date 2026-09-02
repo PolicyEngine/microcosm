@@ -2154,6 +2154,11 @@ def _validate_mass_receipt(
     _assert_receipt_mapping(
         raw.get("stratum_after"), after, f"Node {node_id!r} mass.stratum_after"
     )
+    if mass_partition is None and "partition" in raw:
+        raise PopulationError(
+            f"Node {node_id!r} mass.partition is present but the graph "
+            "declares no mass partition."
+        )
     if mass_partition is not None and "partition" in raw:
         _validate_partition_mass_receipt(
             raw["partition"],

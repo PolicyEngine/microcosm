@@ -84,11 +84,14 @@ or `_toy.py` edit is authorized.
   `Frame.person` remains the pre-existing person path. The regression proves
   one return type across versions, unchanged source-frame type, shared tables,
   weights and strata, and B5/B6/B7/D6 behavior.
+- Follow-up implemented: any `receipt["mass"]["partition"]` block now
+  rejects when `Graph.mass_partition` is absent, even when every unpartitioned
+  total is otherwise correct.
 
 ## Next
 
-- Implement the QRF comment/pin and undeclared-partition receipt follow-ups,
-  committing each coherent step and keeping this journal current.
+- Implement the QRF comment/pin follow-up, then run the complete verification
+  boundary and keep this journal current.
 - Run every requested verification command and copy its exact summary lines
   into `/private/tmp/microcosm-fix-851/out.md`.
 
