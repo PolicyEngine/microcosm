@@ -870,6 +870,7 @@ def audit_microdata_pins(
     source: SourceManifest | SourceStageSpec | Mapping[str, Any],
     *,
     allowlist: MicrodataPinAllowlist | None = None,
+    country: str | None = None,
 ) -> tuple[MicrodataPinGap, ...]:
     """Return every microdata root that is neither pinned nor allowlisted.
 
@@ -878,9 +879,14 @@ def audit_microdata_pins(
     naming the stage, locator, reason, and tracking issue. A row that names an
     already-pinned root is itself a gap: stale rows would quietly inflate the
     ratchet baseline.
+
+    The allowlist is shared across countries, so its rows are scoped before the
+    orphan check runs: a :class:`SourceManifest` names its own country, and a
+    stage spec or raw manifest mapping must be told which one with ``country``.
     """
 
-    country = source.country if isinstance(source, SourceManifest) else None
+    if country is None and isinstance(source, SourceManifest):
+        country = source.country
     rows = (allowlist or EMPTY_MICRODATA_PIN_ALLOWLIST).row_map(country)
     entries = microdata_artifact_entries(source)
     gaps: list[MicrodataPinGap] = []

@@ -84,6 +84,20 @@ class TestPinnedOrListed:
         assert entries
         assert all(entry.is_pinned for entry in entries)
 
+    def test_a_raw_manifest_mapping_scopes_rows_by_the_country_it_is_told(
+        self,
+    ) -> None:
+        # The allowlist spans every country, so auditing a raw mapping without
+        # a country would report the 37 US rows as orphans of the UK replay
+        # manifest.
+        gaps = audit_microdata_pins(
+            _frozen_uk_replay_manifest(),
+            allowlist=packaged_microdata_pin_allowlist(),
+            country="uk",
+        )
+
+        assert [gap.message() for gap in gaps] == []
+
     @pytest.mark.parametrize("country", FULLY_PINNED_COUNTRIES)
     def test_fully_pinned_countries_carry_no_pending_rows(self, country: str) -> None:
         allowlist = packaged_microdata_pin_allowlist()
