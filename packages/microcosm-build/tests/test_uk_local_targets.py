@@ -28,6 +28,7 @@ class FakeUKSimulation:
             "income_tax": [1.0, 0.0, 2.0, 3.0],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
+            "num_children": [0, 0, 1],
             "is_child": [1.0, 0.0, 0.0, 1.0],
             "equiv_hbai_household_net_income": [100.0, 200.0, 300.0],
             "equiv_hbai_household_net_income_ahc": [80.0, 150.0, 260.0],
@@ -195,6 +196,47 @@ def test_compute_constituency_household_metrics() -> None:
     assert metrics["uc_households"].tolist() == [0.0, 1.0, 1.0]
     assert metrics["uc_hh_0_children"].tolist() == [0.0, 1.0, 0.0]
     assert metrics["uc_hh_1_child"].tolist() == [0.0, 0.0, 1.0]
+
+
+def test_uc_child_bands_sum_uc_benefit_units_to_household() -> None:
+    class MultiBenunitUKSimulation(FakeUKSimulation):
+        def __init__(self):
+            self.person_household = np.asarray([0, 0])
+            self.benunit_household = np.asarray([0, 0, 0])
+            self.data = {
+                "household_id": [101],
+                "self_employment_income": [0.0, 0.0],
+                "employment_income": [0.0, 0.0],
+                "income_tax": [0.0, 0.0],
+                "age": [35, 10],
+                "universal_credit": [100.0, 50.0, 0.0],
+                "num_children": [1, 3, 2],
+                "is_child": [0.0, 1.0],
+            }
+
+        def map_result(self, values, from_entity, to_entity):
+            assert to_entity == "household"
+            values = np.asarray(values, dtype=float)
+            out = np.zeros(1, dtype=float)
+            links = (
+                self.person_household
+                if from_entity == "person"
+                else self.benunit_household
+            )
+            for index, household_index in enumerate(links):
+                out[household_index] += values[index]
+            return out
+
+    metrics = compute_household_metrics(
+        MultiBenunitUKSimulation(),
+        "constituency",
+    )
+
+    assert metrics["uc_households"].tolist() == [2.0]
+    assert metrics["uc_hh_0_children"].tolist() == [0.0]
+    assert metrics["uc_hh_1_child"].tolist() == [1.0]
+    assert metrics["uc_hh_2_children"].tolist() == [0.0]
+    assert metrics["uc_hh_3plus_children"].tolist() == [1.0]
 
 
 def test_compute_la_household_metrics() -> None:

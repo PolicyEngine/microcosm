@@ -812,7 +812,17 @@ def uk_local_target_surface(
                 f"{geography_level!r}."
             )
 
-    fanout_controls_summed: list[dict[str, Any]] = []
+    bridge_control_ids = {
+        target_id
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        for target_id in bridge.higher_target_ids
+    }
+    fanout_target_ids = {
+        target_id
+        for (target_id, _), cells in national_control_groups.items()
+        if len(cells) > 1 and target_id not in bridge_control_ids
+    }
+    fanout_targets_not_controls: list[dict[str, Any]] = []
     for (target_id, geography_id), cells in national_control_groups.items():
         cell_names = sorted(name for name, _, _ in cells)
         geography_levels = sorted({level for _, level, _ in cells})
@@ -822,31 +832,44 @@ def uk_local_target_surface(
                 f"fan-out cells {cell_names} with mixed geography levels "
                 f"{geography_levels}."
             )
-        total = math.fsum(value for _, _, value in cells)
-        if not math.isfinite(total):
+        activated_sum = math.fsum(value for _, _, value in cells)
+        if not math.isfinite(activated_sum):
             raise ValueError(
                 f"UK national target {target_id!r} at {geography_id!r} has "
                 f"fan-out cells {cell_names} with a non-finite summed total."
             )
-        reconciliation_rows.append(
+        if target_id in fanout_target_ids:
+            if len(cells) > 1:
+                fanout_targets_not_controls.append(
+                    {
+                        "target_id": target_id,
+                        "geography_id": geography_id,
+                        "cells": len(cells),
+                        "cell_names": cell_names,
+                        "activated_sum": activated_sum,
+                        "reason": (
+                            "The activated cells are a band subset, so this "
+                            "distribution is not a cross-grain control."
+                        ),
+                    }
+                )
+            continue
+        reconciliation_rows.extend(
             {
-                "grain": geography_levels[0],
+                "grain": geography_level,
                 "geography_id": geography_id,
                 "target_id": target_id,
-                "value": total,
+                "value": value,
                 "_output_position": None,
             }
+            for _, geography_level, value in cells
         )
-        if len(cells) > 1:
-            fanout_controls_summed.append(
-                {
-                    "target_id": target_id,
-                    "geography_id": geography_id,
-                    "cells": len(cells),
-                    "cell_names": cell_names,
-                    "total": total,
-                }
-            )
+
+    bound_control_ids = tuple(
+        str(target_id)
+        for target_id in bound_national_target_ids
+        if str(target_id) not in fanout_target_ids
+    )
 
     for area_type, targets in (
         ("constituency", constituency_household_targets(ladder)),
@@ -882,10 +905,10 @@ def uk_local_target_surface(
     reconciliation = pd.DataFrame(reconciliation_rows)
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         reconciliation[["grain", "geography_id", "target_id", "value"]],
-        bound_national_target_ids,
+        bound_control_ids,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
     )
-    receipt["fanout_controls_summed"] = fanout_controls_summed
+    receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
         output_position = reconciliation.iloc[position]["_output_position"]
         if pd.notna(output_position):

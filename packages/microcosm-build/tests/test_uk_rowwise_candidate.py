@@ -28,6 +28,34 @@ from microcosm.frame import MassChangeRecord, WeightKind
 
 
 @pytest.fixture(autouse=True)
+def _empty_support_exclusions_for_synthetic_rosters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic candidates never carry the committed micro-LA exclusions.
+
+    The committed ``local_area_support_exclusions.json`` names real local
+    authorities measured on the licensed spine; a synthetic roster either
+    lacks them (unknown) or meets the floor (stale), and the gate rightly
+    fails either way. These tests exercise the machinery, so the support
+    register is pinned empty here; the committed entries are covered by
+    ``test_uk_battery_bindings.py``.
+    """
+
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    real_loader = battery_bindings.load_uk_reviewed_exclusion_register
+
+    def _loader(path, *, resource, **kwargs):
+        if resource == "local_area_support_exclusions.json":
+            return {}
+        return real_loader(path, resource=resource, **kwargs)
+
+    monkeypatch.setattr(
+        battery_bindings, "load_uk_reviewed_exclusion_register", _loader
+    )
+
+
+@pytest.fixture(autouse=True)
 def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
@@ -1055,16 +1083,21 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     dry_unbound = dry_plan["cross_grain"]["unbound_bridges"]
     assert [entry["bridge_id"] for entry in dry_unbound] == [household_bridge.bridge_id]
     assert dry_unbound[0]["missing"] == sorted(reviewed_missing)
-    dry_fanout = dry_plan["cross_grain"]["fanout_controls_summed"]
+    dry_fanout = dry_plan["cross_grain"]["fanout_targets_not_controls"]
     assert dry_fanout == [
         {
             "target_id": fanout_target_id,
             "geography_id": "K03000001",
             "cells": 3,
             "cell_names": list(fanout_names),
-            "total": 99.0,
+            "activated_sum": 99.0,
+            "reason": (
+                "The activated cells are a band subset, so this distribution "
+                "is not a cross-grain control."
+            ),
         }
     ]
+    assert "fanout_controls_summed" not in dry_plan["cross_grain"]
     assert not dry_out.exists()
 
     f100_out = tmp_path / "joint-f100"
@@ -1097,8 +1130,10 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert f100["solve"]["measure_resolution"]["mode"] == "stub"
     assert f100["cross_grain"]["unbound_bridges"] == dry_unbound
     assert f100["solve"]["cross_grain"]["unbound_bridges"] == dry_unbound
-    assert f100["cross_grain"]["fanout_controls_summed"] == dry_fanout
-    assert f100["solve"]["cross_grain"]["fanout_controls_summed"] == dry_fanout
+    assert f100["cross_grain"]["fanout_targets_not_controls"] == dry_fanout
+    assert f100["solve"]["cross_grain"]["fanout_targets_not_controls"] == dry_fanout
+    assert "fanout_controls_summed" not in f100["cross_grain"]
+    assert "fanout_controls_summed" not in f100["solve"]["cross_grain"]
     assert f100["releasable"] is True
     assert _spool_rows(f100_out)[0].rung == "f100"
 

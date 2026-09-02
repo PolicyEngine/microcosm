@@ -205,43 +205,65 @@ def _national_control_spec(
     )
 
 
-def test_uk_local_target_surface_sums_fanout_national_control(monkeypatch) -> None:
-    from microcosm.build.uk_runtime import ledger_targets as module
-
+def test_uk_local_target_surface_excludes_fanout_from_cross_grain_controls() -> None:
     specs = [
         _national_control_spec(f"payment-band-{index}", value=value)
         for index, value in enumerate((10.0, 20.0, 30.0))
     ]
-    captured: dict[str, pd.DataFrame] = {}
+    specs.extend(
+        [
+            TargetSpec(
+                name=f"dwp.uc.households_by_area@{area}",
+                entity="household",
+                value=value,
+                measure="uc_households",
+                period=2025,
+                source="synthetic local UC fixture",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_by_area",
+                    "geography_level": "constituency",
+                    "geography_id": area,
+                },
+            )
+            for area, value in (("E14000001", 30.0), ("S14000001", 15.0))
+        ]
+    )
 
-    def capture(frame, *_args, **_kwargs):
-        captured["frame"] = frame.copy(deep=True)
-        return frame.copy(deep=True), {"groups": []}
-
-    monkeypatch.setattr(module, "apply_uk_cross_grain_reconciliation", capture)
-
-    _, receipt = module.uk_local_target_surface(
+    surface, receipt = uk_local_target_surface(
         TargetRegistry(specs, country="uk"),
-        _minimal_target_surface_ladder(),
+        SimpleNamespace(
+            households=np.asarray([30.0, 15.0]),
+            constituency_code=np.asarray(["E14000001", "S14000001"]),
+            local_authority_code=np.asarray(["E06000001", "S12000005"]),
+        ),
         bound_national_target_ids=("dwp.uc.payment_distribution_single",),
         period=2025,
     )
 
-    controls = captured["frame"].loc[
-        captured["frame"]["target_id"] == "dwp.uc.payment_distribution_single"
+    assert surface.loc[surface["metric"] == "uc_households", "value"].tolist() == [
+        30.0,
+        15.0,
     ]
-    assert controls[["grain", "geography_id", "value"]].to_dict("records") == [
-        {"grain": "country", "geography_id": "K03000001", "value": 60.0}
-    ]
-    assert receipt["fanout_controls_summed"] == [
+    assert receipt["bound_higher_targets"] == []
+    assert all(
+        group["bridge_id"] != "national_uc_caseload_vs_uc_households_by_area"
+        for group in receipt["groups"]
+    )
+    assert receipt["fanout_targets_not_controls"] == [
         {
             "target_id": "dwp.uc.payment_distribution_single",
             "geography_id": "K03000001",
             "cells": 3,
             "cell_names": ["payment-band-0", "payment-band-1", "payment-band-2"],
-            "total": 60.0,
+            "activated_sum": 60.0,
+            "reason": (
+                "The activated cells are a band subset, so this distribution "
+                "is not a cross-grain control."
+            ),
         }
     ]
+    assert "fanout_controls_summed" not in receipt
 
 
 def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> None:
@@ -249,8 +271,9 @@ def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> N
 
     captured: dict[str, pd.DataFrame] = {}
 
-    def capture(frame, *_args, **_kwargs):
+    def capture(frame, bound_higher_targets, *_args, **_kwargs):
         captured["frame"] = frame.copy(deep=True)
+        captured["bound"] = tuple(bound_higher_targets)
         return frame.copy(deep=True), {"groups": []}
 
     monkeypatch.setattr(module, "apply_uk_cross_grain_reconciliation", capture)
@@ -269,7 +292,9 @@ def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> N
     assert controls[["grain", "geography_id", "value"]].to_dict("records") == [
         {"grain": "country", "geography_id": "K03000001", "value": 42.0}
     ]
-    assert receipt["fanout_controls_summed"] == []
+    assert captured["bound"] == ("dwp.uc.payment_distribution_single",)
+    assert receipt["fanout_targets_not_controls"] == []
+    assert "fanout_controls_summed" not in receipt
 
 
 def test_uk_local_target_surface_refuses_named_nonfinite_national_cell() -> None:

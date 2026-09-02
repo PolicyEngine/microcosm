@@ -164,8 +164,8 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "uc_households",
         "description": (
-            "Households on Universal Credit, and (constituency only, in code "
-            "today) the split by number of children."
+            "Universal Credit benefit units summed onto household rows, and "
+            "(constituency only) their split by benefit-unit num_children."
         ),
         "sources": ["dwp_stat_xplore_uc"],
         "adjudications": [_UC_GRAIN_FENCE_ID],
@@ -558,13 +558,13 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "The runtime maps benefit-unit-level UC receipt to household "
-            "grain: a physical household containing two UC benefit units "
-            "contributes 2 to uc_households but 1 to a child band. DWP UC "
-            "statistics count UC claim households, which align with benefit "
-            "units rather than physical FRS households. Binding must "
-            "declare the grain crosswalk (or change the runtime metric) "
-            "before either UC family enters a solve."
+            "The runtime maps benefit-unit-level UC receipt and each UC "
+            "benefit unit's num_children band onto household rows by sum: a "
+            "physical household containing two UC benefit units contributes "
+            "2 to uc_households and one contribution to each unit's child "
+            "band. This aligns the runtime with DWP UC claim households, "
+            "which correspond to benefit units rather than physical FRS "
+            "households; binding must preserve this reviewed grain crosswalk."
         ),
         "authority": (
             "DWP Universal Credit official statistics Stat-Xplore user "
