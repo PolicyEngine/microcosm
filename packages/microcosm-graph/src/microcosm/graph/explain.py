@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from .decl import CompiledGraph, StructuralDelta
+from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta
 from .manifest import NodeReceipt, RunManifest
 from .view import describe
 
@@ -193,6 +193,7 @@ details.metadata[open] { background: var(--surface); border: 1px solid var(--bor
 .graph-node.gate-unreached .node-box { stroke: var(--color-red-600); stroke-width: 3; }
 .graph-node.gate-pass .node-box, .graph-node.gate-not_applicable .node-box {
   stroke: var(--color-green-600); stroke-width: 3; }
+.graph-node:focus .node-box, .graph-node.selected .node-box { stroke-width: 4.5; }
 .node-title { fill: var(--text); font-size: 13px; font-weight: 760; }
 .node-line { fill: var(--muted); font-size: 10.5px; }
 .node-status { fill: var(--text); font-size: 10.5px; font-weight: 720; }
@@ -301,7 +302,8 @@ def _node_status(receipt: NodeReceipt) -> tuple[str, str]:
     if role != "gate":
         return f"status-{store}", store
     outcome = str(receipt.receipt.get("outcome", "unrecorded"))
-    return f"status-{store} gate-{outcome}", f"{store} · gate {outcome}"
+    outcome_class = outcome if outcome in GATE_OUTCOMES else "unknown"
+    return f"status-{store} gate-{outcome_class}", f"{store} · gate {outcome}"
 
 
 def _depths(compiled: CompiledGraph) -> dict[str, int]:
@@ -389,7 +391,7 @@ def _render_graph(
     }
     pieces = [
         f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
-        'role="img" aria-label="Topologically layered graph run">'
+        'role="group" aria-label="Topologically layered graph run">'
     ]
     for version, (x, y, group_width, group_height) in groups.items():
         pieces.append(
@@ -429,7 +431,8 @@ def _render_graph(
         pieces.extend(
             [
                 f'<g class="graph-node {status_class}" data-node-detail="{tokens[node_id]}" '
-                'tabindex="0" role="button" aria-pressed="false">',
+                f'tabindex="0" role="button" aria-label="{_escape(title)}" '
+                'aria-pressed="false">',
                 f"<title>{_escape(title)}</title>",
                 f'<rect class="node-box" x="{point.x}" y="{point.y}" '
                 f'width="{_NODE_WIDTH}" height="{_NODE_HEIGHT}" rx="8" />',

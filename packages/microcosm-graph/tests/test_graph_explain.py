@@ -6,6 +6,7 @@ import html
 import importlib.util
 import re
 import sys
+from dataclasses import replace
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -225,6 +226,27 @@ def test_page_is_offline_deterministic_and_parseable(explanation) -> None:
         burndown=_burndown(),
         replays=_replays(run),
     )
+
+
+def test_gate_outcome_is_text_not_markup(tmp_path: Path) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    gate = run.manifest.nodes["gate_tax"]
+    outcome = 'pass" onmouseover="alert(1)'
+    changed_gate = replace(
+        gate,
+        receipt={**dict(gate.receipt), "outcome": outcome},
+    )
+    manifest = replace(
+        run.manifest,
+        nodes={**dict(run.manifest.nodes), "gate_tax": changed_gate},
+    )
+
+    rendered = explain_html(run.compiled, manifest)
+
+    assert "gate-unknown" in rendered
+    assert 'onmouseover="alert(1)"' not in rendered
+    assert "pass&amp;quot;" not in rendered
+    assert "pass&quot; onmouseover=&quot;alert(1)" in rendered
 
 
 def test_manifest_only_page_omits_optional_sections(tmp_path: Path) -> None:
