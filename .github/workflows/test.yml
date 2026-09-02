@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main, node-graph]
+    branches: [main]
   pull_request:
-    branches: [main, node-graph]
+    branches: [main]
 
 jobs:
   changes:
@@ -166,9 +166,9 @@ jobs:
       - name: Verify the graph acceptance burndown is monotone
         # The charter's second process rule, executable: the number of red
         # properties in the microcosm-graph acceptance suite never rises
-        # against origin/node-graph. The tool fetches that ref itself when the
-        # CI checkout does not carry it, and warns rather than failing when the
-        # branch is gone, so this cannot break main after the shard merges.
+        # against origin/main. The tool fetches that ref itself when the CI
+        # checkout does not carry it, and warns rather than failing when the
+        # baseline is unavailable.
         run: uv run python tools/graph_acceptance_burndown.py --verify
       - name: Sync workspace
         run: uv sync --all-packages --locked

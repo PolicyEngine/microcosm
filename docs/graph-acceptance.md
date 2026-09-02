@@ -15,7 +15,7 @@ Three process rules keep the suite honest:
    implementation PR fails CI, so a test can never be green by accident.
 2. **Monotone burndown.** `tools/graph_acceptance_burndown.py --verify`
    fails if the number of `xfail` markers in the suite is higher than on
-   `origin/node-graph`. Nobody re-reds a property.
+   `origin/main` (`origin/node-graph` until the shard merged). Nobody re-reds a property.
 3. **Implementer ≠ author.** The lane that writes a property's test is a
    different lane from the one that makes it pass, and implementation
    pull requests never edit the suite. Ownership is in the last section.
@@ -219,6 +219,6 @@ pull request reviewed by the Fable main.
 - **Max:** the rulings in the review's "Decisions that are yours" as they
   come due, and the `node-graph → main` merge.
 
-Branch: `node-graph`, off `origin/main` at `4c6cc58c`. Work lands as pull
+Branch: `node-graph`, off `origin/main` at `4c6cc58c`; merged into `main` on 2026-09-02 in #836 with every property green. Work lands as pull
 requests into `node-graph`; `node-graph` merges to `main` when the suite has
 zero `xfail` markers and H1–H2 are green.
