@@ -106,12 +106,12 @@ was performed.
 - Confirmed the worktree remained clean after verification and the frozen
   `decl.py`, `kernel.py`, `docs/graph-interface.lock`, acceptance tests,
   and `_toy.py` are unchanged from `6348ed7b`.
+- Wrote the required final report to `out.md` against verified implementation
+  SHA `bfa8342758596cd37fda713daab261789a0ee108`.
 
 ## Next
 
-- Write and commit `out.md` with the verified implementation SHA, per-finding
-  file/line and regression evidence, and every exact verification summary.
-- Perform the final clean-worktree audit. Do not push.
+- Nothing further in scope. Lane complete; do not push.
 
 # ACS predictor release join
 
