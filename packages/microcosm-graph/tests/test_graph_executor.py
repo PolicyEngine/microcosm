@@ -1621,7 +1621,7 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
 def test_fit_qrf_tolerance_source_hash_pin_is_current() -> None:
     import json
 
-    from microcosm.fit.kernels import QRFKernel, QRF_PARAM_KERNEL
+    from microcosm.fit.kernels import QRF_PARAM_KERNEL, QRFKernel
     from tools.graph_parity_fixtures import FIXTURES
 
     pins = json.loads((FIXTURES / "fit.qrf" / "pins.json").read_text())
