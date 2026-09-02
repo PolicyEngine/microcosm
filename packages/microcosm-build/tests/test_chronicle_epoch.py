@@ -657,8 +657,7 @@ def test_every_published_key_field_is_witnessed_for_its_epoch() -> None:
 
     The captured feed fixture carries nine single-key fields and two key
     lists, not just the four identifiers targets resolve by. Chronicle's
-    cutover moves families independently — the spec declares ``v3`` only for
-    the aggregate and semantic families — so a row can straddle it: ledger-era
+    cutover moves families independently, so a row can straddle it: ledger-era
     aggregate key, chronicle-era source-release key. Reading only the
     resolution set would report that row as pure ledger-era.
     """

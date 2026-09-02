@@ -9,13 +9,17 @@ margin series to that exact contract from the Census ingest and archived
 CBP statistics.
 
 The contract has a chronicle-era spelling too (``chronicle.consumer_fact.v2``
-under ``policyengine_chronicle.consumer_artifact.v2``, chronicle#143), and the
-loader accepts both. What this module *emits* stays ledger-era: the rows are
+under ``policyengine_chronicle.consumer_artifact.v3``, chronicle#143), and the
+loader accepts every declared spelling. What this module *emits* stays
+ledger-era, and specifically stays at
+``policyengine_ledger.consumer_artifact.v1`` — the id Microcosm's own minted
+artifacts have always declared, which is a generation behind the
+``...consumer_artifact.v2`` Chronicle itself publishes. The rows are
 byte-pinned goldens, and they are minted from official source bytes rather
 than derived from a Chronicle row whose epoch they would have to inherit.
 :func:`write_consumer_artifact` takes the declared id as an argument, checked
-for membership in both eras, so flipping the declaration later is a caller
-change rather than a code change.
+for membership in the declared set, so flipping the declaration later is a
+caller change rather than a code change.
 
 Producer identity is explicit: these rows are **microcosm-minted** from
 official source bytes — not an export of a PolicyEngine/ledger build — and
