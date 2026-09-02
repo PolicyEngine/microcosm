@@ -4,8 +4,9 @@
 
 The entrant-person strata implementation, cache attestation, mass receipt, and
 lineage presentation coverage are complete. The sanctioned tool flipped
-exactly B7, both suite pins now report zero red, and final verification is in
-progress.
+exactly B7 and both suite pins report zero red. A final review found and fixed
+receipt ID-width restoration; the required verification matrix is being rerun
+against that fix.
 
 ## Done
 
@@ -34,11 +35,14 @@ progress.
 - Updated the burndown total to zero and the explorer summary to 45 green,
   zero red. The focused post-flip tests report `4 passed in 1.03s`, and the
   burndown verifier reports `verification=ok` with `red        0  none`.
+- Fixed warm replay for non-`int64` person IDs by rehydrating JSON receipt IDs
+  through the base ID dtype, matching lineage restoration. The new `int32`
+  regression passes as part of `30 passed in 0.73s` for population tests.
 
 ## Next
 
-- Run the complete graph shard twice as requested (standard repository addopts,
-  then the explicit count configuration).
+- Rerun the complete graph shard twice after the ID-width replay fix (standard
+  repository addopts, then the explicit count configuration).
 - Run the cross-shard kernel/parity selection, lint, formatting, CI grouping,
   and final burndown verification.
 - Record exact summaries and the final branch SHA in `out.md`.

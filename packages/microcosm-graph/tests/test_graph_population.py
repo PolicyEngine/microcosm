@@ -476,7 +476,7 @@ def _lineage_expand_result(*, bad_source: bool = False) -> KernelResult:
     )
 
 
-def _entrant_person_expand_node() -> Node:
+def _entrant_person_expand_node(*, membership_dtype: str = "int64") -> Node:
     return Node(
         "entrant_person",
         "test@1",
@@ -484,7 +484,7 @@ def _entrant_person_expand_node() -> Node:
         base="source",
         params={
             "expand_cells": (
-                ("person", "person_household_id", "int64"),
+                ("person", "person_household_id", membership_dtype),
                 ("person", "keep", "bool"),
                 ("person", "owned", "boolean"),
                 ("person", "nullable", "boolean"),
@@ -498,10 +498,18 @@ def _entrant_person_expand_node() -> Node:
     )
 
 
-def _entrant_person_expand_result(strata: object) -> KernelResult:
-    frame = _frame()
+def _entrant_person_expand_result(
+    strata: object, *, frame: Frame | None = None
+) -> KernelResult:
+    frame = _frame() if frame is None else frame
     person = frame.table("person")
-    ids = pd.Index([*person["person_id"], 5], dtype="int64", name="person_id")
+    person_id_dtype = person["person_id"].dtype
+    household_id_dtype = frame.table("household")["household_id"].dtype
+    entrant_id = int(person["person_id"].max()) + 1
+    ids = pd.Index(
+        pd.Series([*person["person_id"], entrant_id], dtype=person_id_dtype).array,
+        name="person_id",
+    )
     additions = {
         "person_household_id": 10,
         "keep": True,
@@ -510,7 +518,7 @@ def _entrant_person_expand_result(strata: object) -> KernelResult:
         "amount": 3.0,
     }
     tokens = {
-        "person_household_id": "int64",
+        "person_household_id": token_for_dtype(person["person_household_id"].dtype),
         "keep": "bool",
         "owned": "boolean",
         "nullable": "boolean",
@@ -525,13 +533,19 @@ def _entrant_person_expand_result(strata: object) -> KernelResult:
     return KernelResult(
         expand={
             "person": pd.Series(
-                pd.array([pd.NA], dtype="Int64"),
-                index=pd.Index([5], dtype="int64", name="person_id"),
+                pd.array(
+                    [pd.NA],
+                    dtype=f"Int{np.dtype(person_id_dtype).itemsize * 8}",
+                ),
+                index=pd.Index(
+                    pd.Series([entrant_id], dtype=person_id_dtype).array,
+                    name="person_id",
+                ),
             ),
             "household": pd.Series(
                 [],
-                index=pd.Index([], dtype="int64", name="household_id"),
-                dtype="int64",
+                index=pd.Index([], dtype=household_id_dtype, name="household_id"),
+                dtype=household_id_dtype,
             ),
         },
         columns=columns,
@@ -620,6 +634,48 @@ def test_entrant_person_strata_materialize_and_attest_cached_replay() -> None:
                 receipt={"expand": expand_lineage_receipt(result.expand)},
             ),
         )
+
+
+def test_cached_entrant_strata_rehydrate_the_base_id_dtype() -> None:
+    source = _frame()
+    person = source.table("person").copy()
+    household = source.table("household").copy()
+    for column in ("person_id", "person_household_id"):
+        person[column] = person[column].astype("int32")
+    household["household_id"] = household["household_id"].astype("int32")
+    frame = Frame(
+        {"person": person, "household": household},
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata.copy(),
+    )
+    population = Population.from_frame(frame, "source")
+    node = _entrant_person_expand_node(membership_dtype="int32")
+    result = _entrant_person_expand_result(
+        pd.Series(["new"], index=pd.Index([5], dtype="int32"), dtype=object),
+        frame=frame,
+    )
+
+    expanded = patch(population, node, result)
+    assert result.expand is not None
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_strata_receipt(
+            frame, node, result.expand, result.strata
+        ),
+    }
+    cached = restore_cached_expand(
+        population,
+        node,
+        KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt=receipt,
+        ),
+    )
+
+    assert cached.frame.table("person")["person_id"].dtype == np.dtype("int32")
+    pd.testing.assert_series_equal(cached.frame.strata, expanded.frame.strata)
 
 
 @pytest.mark.parametrize(

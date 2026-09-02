@@ -551,8 +551,16 @@ def _cached_entrant_strata(
             )
         targets.append(entry[0])
         labels.append(_stratum_json_scalar(entry[1]))
-    target_index = pd.Index(targets, name=id_column)
-    if target_index.dtype != id_dtype or not target_index.equals(entrant_ids):
+    try:
+        target_index = pd.Index(
+            pd.Series(targets, dtype=id_dtype).array, name=id_column
+        )
+    except (TypeError, ValueError) as error:
+        raise PopulationError(
+            f"Cached EXPAND node {node.id!r} entrant strata contain invalid "
+            f"{id_dtype!s} person ids."
+        ) from error
+    if not target_index.equals(entrant_ids):
         raise PopulationError(
             f"Cached EXPAND node {node.id!r} entrant strata do not name its "
             "entrant persons in lineage order."
