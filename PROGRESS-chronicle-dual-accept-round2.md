@@ -29,11 +29,38 @@ that matter: `policyengine_chronicle.consumer_artifact.v3` and
 
 ## State
 
-Round 2 code, tests, journal and changelog pushed to `chronicle-dual-accept`
-at `3c4ddf2c`. Two full `packages/microcosm-build` suites (clean env and the
-polluted-Logbook env from finding 2) were running at the time of writing;
-their results and the PR-body update are the last steps. **DO NOT MERGE** —
-the lane is authorized to fix and push only.
+Round 2 complete and pushed to `chronicle-dual-accept`; the PR body carries a
+"Review fixes (round 2)" section with the same content as this journal's
+verification block. **DO NOT MERGE** — the lane was authorized to fix and
+push only.
+
+## Verification (2026-09-02)
+
+Both full `packages/microcosm-build` suites — clean shell and the
+polluted-Logbook shell finding 2 specifies — returned **outcome-identical**
+results: 7116 passed, 47 skipped, 2 failed, out of 7165.
+
+The 2 failures are `test_release_target_parity.py::TestRegeneration` and are
+**not this branch's**. They reproduce identically at `1f78847c` (this
+branch's previous head) and at `origin/main` `47c74225`, both verified in a
+throwaway worktree this session:
+
+    ValueError: Ledger target reference
+    'cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount'
+    assertion_policy='observed_only' does not allow resolved fact assertion
+    'source_projection'.
+
+They run only where the pinned feed exists —
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`,
+outside the repo — and skip everywhere else, PR CI included. Worth a separate
+issue: on a machine holding that feed, the committed
+`cbo.revenue_projection.*` reference and the feed row it resolves to disagree
+about assertion class.
+
+`uv run ruff format --check .` is red repo-wide (116 files) at this branch
+*and* at its merge base: ruff 0.15.16's formatter against a repo pinned to
+`ruff>=0.8`, whose CI lint lane runs `ruff check` only. Every file this
+branch touches is format-clean before and after.
 
 ## What changed structurally, for the next reader
 
