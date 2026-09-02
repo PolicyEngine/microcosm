@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from importlib.resources import files
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -24,6 +26,11 @@ from microcosm.build.outer_stage_runtime import (
     frame_identity,
 )
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.source_manifest import load_source_manifest
+from microcosm.build.source_runtime import (
+    RecordedPinAudit,
+    verify_recorded_microdata_pins,
+)
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
 )
@@ -177,6 +184,10 @@ def load_asec_raw_stage_checkpoint(
         label=f"ASEC raw-stage checkpoint {checkpoint_path}",
     )
     _validate_raw_stage_source_columns(loaded.frame, path=checkpoint_path)
+    _cross_check_recorded_source_pins(
+        metadata["raw_source_mappings"],
+        path=checkpoint_path,
+    )
     source_construction_identity = FrameIdentity.from_payload(
         metadata["source_construction_identity"],
         label="ASEC raw-stage source-construction identity",
@@ -398,6 +409,37 @@ def _validate_raw_source_mappings(mappings: object, *, path: Path) -> None:
                     f"ASEC raw-stage checkpoint {path} raw_source_mappings"
                     f"[{column!r}].source_pins[{index}] lacks immutable pins."
                 )
+
+
+def _cross_check_recorded_source_pins(
+    mappings: Mapping[str, Any],
+    *,
+    path: Path,
+) -> RecordedPinAudit:
+    """Reconcile the checkpoint's recorded source pins with the US manifest.
+
+    Root identity (microcosm#848).  The producing run already hashed each ASEC
+    archive it read and wrote the digests into ``source_pins``, so this reads
+    those pins rather than re-hashing hundreds of megabytes per archive.  A pin
+    the manifest pins to different bytes stops the load; a locator the manifest
+    declares no pin for is reported, because that is the state
+    ``microdata_pins_pending.json`` records rather than a fault of this
+    checkpoint.  The metadata contract is unchanged: this is a gate, and the
+    registrations it resolves are recorded by the release builder, not smuggled
+    into the checkpoint binding.
+    """
+
+    manifest = load_source_manifest(
+        files("microcosm.build.us").joinpath("source_stages.json")
+    )
+    pins = [
+        pin for column in sorted(mappings) for pin in mappings[column]["source_pins"]
+    ]
+    return verify_recorded_microdata_pins(
+        manifest,
+        pins,
+        context=f"ASEC raw-stage checkpoint {path}",
+    )
 
 
 def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:

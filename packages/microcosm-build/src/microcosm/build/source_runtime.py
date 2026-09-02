@@ -35,6 +35,7 @@ from microcosm.build.source_manifest import (
 __all__ = [
     "MicrodataFileVerification",
     "MicrodataIdentityError",
+    "RecordedPinAudit",
     "SourceOperationHandler",
     "SourceRuntimeConfig",
     "SourceRuntimeContext",
@@ -43,6 +44,7 @@ __all__ = [
     "run_source_stage",
     "sha256_file",
     "verify_microdata_files",
+    "verified_chronicle_registrations",
     "verify_recorded_microdata_pins",
 ]
 
@@ -290,23 +292,38 @@ def verify_microdata_files(
     return tuple(verifications)
 
 
+@dataclass(frozen=True)
+class RecordedPinAudit:
+    """What a producing run's recorded source pins resolve to."""
+
+    resolved: tuple[ChronicleArtifactReference, ...]
+    unregistered: tuple[str, ...]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "chronicle_artifacts": [ref.to_payload() for ref in self.resolved],
+            "unregistered_locators": list(self.unregistered),
+        }
+
+
 def verify_recorded_microdata_pins(
     source: SourceManifest | SourceStageSpec | Mapping[str, Any],
     pins: Sequence[Mapping[str, Any]],
     *,
     context: str,
-) -> tuple[ChronicleArtifactReference, ...]:
+) -> RecordedPinAudit:
     """Cross-check pins a checkpoint already recorded against the manifest.
 
     The ASEC raw-stage checkpoint records a ``sha256``/``member_sha256`` pin per
-    source file it consumed. Re-hashing those archives would cost gigabytes of
-    reads for a digest the producing run already computed, so this compares the
-    recorded pins against the manifest instead and returns the registrations
-    they resolve to.
+    source archive it consumed. Re-hashing those archives would cost gigabytes
+    of reads for digests the producing run already computed, so this compares
+    the recorded pins against the manifest instead.
 
-    Raises:
-        MicrodataIdentityError: If a recorded pin matches no manifest entry, or
-            matches one whose archive or member digest differs.
+    Disagreement is fatal: a recorded pin whose locator the manifest pins to
+    different bytes stops the build. Absence is not — a locator the manifest
+    declares no pin for is reported as unregistered, because that is exactly the
+    state ``microdata_pins_pending.json`` records, and this check must not
+    invent a registration the repository has not made.
     """
 
     entries = [
@@ -315,6 +332,7 @@ def verify_recorded_microdata_pins(
         if entry.sha256 is not None
     ]
     resolved: list[ChronicleArtifactReference] = []
+    unregistered: list[str] = []
     failures: list[str] = []
     for index, pin in enumerate(pins):
         locator = pin.get("locator")
@@ -322,15 +340,13 @@ def verify_recorded_microdata_pins(
         member_sha256 = pin.get("member_sha256")
         matches = [entry for entry in entries if entry.locator == locator]
         if not matches:
-            failures.append(
-                f"pin[{index}] locator {locator!r} names no hash-pinned "
-                "microdata artifact in this manifest."
-            )
+            if isinstance(locator, str) and locator not in unregistered:
+                unregistered.append(locator)
             continue
         for entry in matches:
             if entry.sha256 != sha256:
                 failures.append(
-                    f"pin[{index}] {locator!r} recorded sha256 {sha256!r}; "
+                    f"  pin[{index}] {locator!r} recorded sha256 {sha256!r}; "
                     f"stage {entry.stage!r} pins {entry.sha256}."
                 )
                 continue
@@ -340,7 +356,7 @@ def verify_recorded_microdata_pins(
                 and entry.member_sha256 != member_sha256
             ):
                 failures.append(
-                    f"pin[{index}] {locator!r} recorded member_sha256 "
+                    f"  pin[{index}] {locator!r} recorded member_sha256 "
                     f"{member_sha256!r}; stage {entry.stage!r} pins "
                     f"{entry.member_sha256}."
                 )
@@ -352,9 +368,38 @@ def verify_recorded_microdata_pins(
             f"{context}: recorded raw-microdata pins disagree with the source "
             "manifest:\n" + "\n".join(failures)
         )
+    return RecordedPinAudit(
+        resolved=tuple(
+            sorted(
+                set(resolved),
+                key=lambda ref: (
+                    ref.source_id,
+                    ref.package_id,
+                    ref.year,
+                    ref.sha256,
+                ),
+            )
+        ),
+        unregistered=tuple(sorted(unregistered)),
+    )
+
+
+def verified_chronicle_registrations(
+    verifications: Sequence[MicrodataFileVerification],
+) -> tuple[ChronicleArtifactReference, ...]:
+    """The distinct registrations a set of verified files resolves to.
+
+    This is the receipt a build records: not every registration the manifest
+    declares, but the ones behind the files this run actually read and hashed.
+    """
+
     return tuple(
         sorted(
-            set(resolved),
+            {
+                verification.registration
+                for verification in verifications
+                if verification.registration is not None
+            },
             key=lambda ref: (ref.source_id, ref.package_id, ref.year, ref.sha256),
         )
     )
