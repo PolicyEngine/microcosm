@@ -964,16 +964,31 @@ def _run_candidate(
                     else ("uk_local_geography_ladder_post_calibration",)
                 ),
             )
-        except GateBatteryBlockedError:
-            _apply_gate_verdicts(
-                state,
-                json.loads(output_paths["local_gates"].read_text(encoding="utf-8")),
-                output_paths["local_gates"],
+        except GateBatteryBlockedError as blocked_error:
+            # Write-then-block, extended to the whole evidence bundle: a
+            # release-blocking failure at f100 still writes the diagnostics,
+            # manifest and artifact (marked unreleasable) so the block can be
+            # reviewed; only a non-passing ladder verdict is structural and
+            # re-raises. The Logbook row records the attempt as failed.
+            gate_report = json.loads(
+                output_paths["local_gates"].read_text(encoding="utf-8")
             )
-            raise
+            _apply_gate_verdicts(state, gate_report, output_paths["local_gates"])
+            ladder_entry = gate_report["gates"].get(
+                "uk_local_geography_ladder_post_calibration", {}
+            )
+            if ladder_entry.get("status") != "passed":
+                raise
+            candidate_gate = clone.gate
+            blocked_failures = [str(failure) for failure in blocked_error.failures]
+        else:
+            _apply_gate_verdicts(state, gate_report, output_paths["local_gates"])
+            blocked_failures = []
         args._gate_report = gate_report
-        _apply_gate_verdicts(state, gate_report, output_paths["local_gates"])
-        append_phase(state, "candidate_gated")
+        args._blocked_failures = blocked_failures
+        append_phase(
+            state, "candidate_gated" if not blocked_failures else "candidate_blocked"
+        )
 
         if args.skip_holdout:
             rotated_holdout = {"skipped": True}
@@ -1049,13 +1064,20 @@ def _run_candidate(
             started_ts=started_ts,
             seed=args.seed,
             code_pin=code_pin,
-            disposition="iterating",
+            disposition="failed" if blocked_failures else "iterating",
             predecessor=predecessor,
             spool_dir=out_dir / "logbook-spool",
             rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         )
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
         print(_json_text(manifest), end="")
+        if blocked_failures:
+            print(
+                "Gate battery blocked the artifact at f100; evidence bundle "
+                f"written, artifact unreleasable: {blocked_failures[:5]}",
+                file=sys.stderr,
+            )
+            return 1
         return 0
     except Exception as error:
         if attempt is None:
@@ -2187,6 +2209,8 @@ def _manifest(
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
         "releasable": args.sample_fraction == 1.0 and all_gates_passed,
+        "blocked_at_f100": bool(getattr(args, "_blocked_failures", [])),
+        "blocking_failures": list(getattr(args, "_blocked_failures", [])),
     }
 
 
