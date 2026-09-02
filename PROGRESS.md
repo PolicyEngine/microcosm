@@ -3,9 +3,9 @@
 ## State
 
 The entrant-person strata implementation, cache attestation, mass receipt, and
-lineage presentation coverage are complete. B7 passes with `--runxfail`; the
-strict marker and pre-implementation suite pins remain until the sanctioned
-flip.
+lineage presentation coverage are complete. The sanctioned tool flipped
+exactly B7, both suite pins now report zero red, and final verification is in
+progress.
 
 ## Done
 
@@ -29,10 +29,16 @@ flip.
 - Added population validation/replay tests and a cold/warm explanation test.
 - Focused result: `58 passed in 2.38s`; B6/C5/D6 result:
   `3 passed in 0.93s`.
+- Ran `tools/graph_acceptance_flip.py`; it reported only
+  `test_b7_entrant_persons_carry_their_stratum` and `flipped 1 property`.
+- Updated the burndown total to zero and the explorer summary to 45 green,
+  zero red. The focused post-flip tests report `4 passed in 1.03s`, and the
+  burndown verifier reports `verification=ok` with `red        0  none`.
 
 ## Next
 
-- Run the complete graph shard with B7 still strict-red and inspect any
-  regressions.
-- Run the sanctioned B7 marker flip, update the two zero-red suite pins, and run
-  every requested verification command.
+- Run the complete graph shard twice as requested (standard repository addopts,
+  then the explicit count configuration).
+- Run the cross-shard kernel/parity selection, lint, formatting, CI grouping,
+  and final burndown verification.
+- Record exact summaries and the final branch SHA in `out.md`.
