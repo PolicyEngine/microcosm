@@ -1743,20 +1743,16 @@ def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
             )
         return
 
-    loaded_frame, receipt, loaded_identity = (
-        builder._load_base_pool_if_identified(
-            pool_h5,
-            allow_gate_failed_base_pool=allow_gate_failed,
-        )
+    loaded_frame, receipt, loaded_identity = builder._load_base_pool_if_identified(
+        pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
     )
 
     assert loaded_frame is frame
     assert loaded_identity is authenticated
     assert receipt["status"] == status
     assert receipt["allow_gate_failed_base_pool"] is allow_gate_failed
-    assert receipt["agreement_gate_reference"]["failure_count"] == len(
-        gate_failures
-    )
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(gate_failures)
 
 
 def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
@@ -1777,7 +1773,9 @@ def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
     )
     out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
     monkeypatch.setattr(
         builder,
         "_load_frame",
@@ -1826,7 +1824,9 @@ def test_builder_refuses_bare_stamped_pool_h5_before_generic_load(
         )
     out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
     monkeypatch.setattr(
         builder,
         "_load_frame",
@@ -4160,6 +4160,13 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
                 measure="income",
                 value=500_000.0,
                 source="fixture",
+                metadata={
+                    "ledger_selector_source_name": "irs_soi",
+                    "ledger_measure_concept": "irs_soi.income",
+                    "ledger_measure_unit": "usd",
+                    "ledger_geography_level": "state",
+                    "ledger_geography_id": "0400000US06",
+                },
             ),
         ),
         country="us",
@@ -4197,6 +4204,19 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     )
 
     diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
+    assert diagnostics["schema_version"] == 7
+    assert diagnostics["targets"][0]["source"] == {
+        "id": "irs_soi",
+        "citation": "fixture",
+    }
+    assert diagnostics["targets"][0]["dimensions"] == {"geography_state": "0400000US06"}
+    assert diagnostics["dimensions"]["geography_state"] == {
+        "label": "State",
+        "role": "geography",
+        "level": "state",
+        "values": {"0400000US06": "CA"},
+        "order": ["0400000US06"],
+    }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
@@ -9160,9 +9180,7 @@ def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> N
     builder = _load_builder_module()
 
     with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
-        builder._exact_k_ladder_manifest_payload(
-            **_gate_failed_exact_k_inputs(builder)
-        )
+        builder._exact_k_ladder_manifest_payload(**_gate_failed_exact_k_inputs(builder))
 
 
 def _gate_failed_base_pool_receipt() -> dict[str, object]:

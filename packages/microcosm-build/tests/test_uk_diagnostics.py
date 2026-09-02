@@ -577,7 +577,7 @@ def test_payload_requires_a_valid_matching_uk_registry() -> None:
             target_geography_levels=geography,
             target_registry=TargetRegistry((), country="uk"),
         )
-    with pytest.raises(ValueError, match="exactly partition"):
+    with pytest.raises(ValueError, match="does not contain compiled target row"):
         uk_calibration_diagnostics_payload(
             result,
             frame,

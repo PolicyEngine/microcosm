@@ -76,6 +76,17 @@ frontier can be read off any run's artifact. The standalone
 `effective_sample_size(weights)` scores any weight vector, e.g. a published
 artifact's.
 
+Registry-backed diagnostics use schema 7. Each target publishes structured
+`source`, `variable`, and `dimensions` objects, and the artifact publishes a
+top-level dimension dictionary. Ledger geography metadata becomes one typed
+geography dimension per level (for example, `geography_country` or
+`geography_state`), with stable geography identifiers, producer-owned labels,
+and deterministic value order. Ledger filter and layout dimensions remain
+separate non-geographic dimensions. This applies to every country release that
+passes its `TargetRegistry`, including the UK and US release builders. Calls
+without a registry retain legacy target identity fields because they do not
+provide enough declared information to construct structured identities.
+
 ## Example
 
 ```python

@@ -125,11 +125,13 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
 )
 
 # Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 6 = final per-target loss attribution plus warning-only degradation).
+# (schema 7 = structured source, variable, and dimension identity for
+# registry-backed release diagnostics).
 # microcosm-data cannot import
 # microcosm-calibrate (dependency direction), so the builder test suite pins the
 # two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 7
+_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7})
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -3165,14 +3167,16 @@ def _check_calibration_diagnostics(
             "calibration_diagnostics.json grandfathered June UK release "
             f"requires legacy schema version 2, got {schema_version!r}."
         )
-    elif (
-        not grandfathered_uk_june
-        and schema_version != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    elif not grandfathered_uk_june and (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version not in _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
     ):
         failures.append(
             f"calibration_diagnostics.json 'schema_version' is {schema_version!r}; "
-            f"this library publishes version "
-            f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+            "supported versions are "
+            f"{sorted(_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS)} and "
+            f"this library publishes version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
         )
 
     expected_sections = {
@@ -3205,6 +3209,15 @@ def _check_calibration_diagnostics(
     )
 
     targets = diagnostics.get("targets")
+    dimension_definitions = diagnostics.get("dimensions")
+    if schema_version == 7 and not isinstance(dimension_definitions, Mapping):
+        failures.append(
+            "calibration_diagnostics.json schema 7 requires a top-level "
+            "'dimensions' object."
+        )
+        dimension_definitions = {}
+    if schema_version == 7 and isinstance(dimension_definitions, Mapping):
+        _check_diagnostics_dimension_definitions(dimension_definitions, failures)
     if isinstance(targets, list):
         surface = diagnostics.get("target_surface")
         if isinstance(surface, Mapping) and surface.get("n_targets") != len(targets):
@@ -3241,6 +3254,17 @@ def _check_calibration_diagnostics(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing non-empty 'source'."
                 )
+            if schema_version == 7:
+                _check_structured_diagnostics_target(
+                    target,
+                    index=index,
+                    dimension_definitions=(
+                        dimension_definitions
+                        if isinstance(dimension_definitions, Mapping)
+                        else {}
+                    ),
+                    failures=failures,
+                )
             if not grandfathered_uk_june:
                 if not isinstance(target.get("measure"), Mapping):
                     failures.append(
@@ -3258,6 +3282,115 @@ def _check_calibration_diagnostics(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing 'metadata' object."
                 )
+
+
+def _check_diagnostics_dimension_definitions(
+    dimensions: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate the schema-7 dimension dictionary."""
+
+    for dimension_id, definition in dimensions.items():
+        owner = f"calibration_diagnostics.json dimension {dimension_id!r}"
+        if not isinstance(dimension_id, str) or not dimension_id:
+            failures.append(
+                "calibration_diagnostics.json dimension ids must be non-empty strings."
+            )
+            continue
+        if not isinstance(definition, Mapping):
+            failures.append(f"{owner} must be an object.")
+            continue
+        if (
+            not isinstance(definition.get("label"), str)
+            or not str(definition.get("label")).strip()
+        ):
+            failures.append(f"{owner} requires a non-empty string 'label'.")
+        role = definition.get("role")
+        if role not in {None, "geography"}:
+            failures.append(f"{owner} has unsupported role {role!r}.")
+        if role == "geography" and (
+            not isinstance(definition.get("level"), str)
+            or not str(definition.get("level")).strip()
+        ):
+            failures.append(
+                f"{owner} with role 'geography' requires a non-empty string 'level'."
+            )
+        value_labels = definition.get("values")
+        if value_labels is not None and not isinstance(value_labels, Mapping):
+            failures.append(f"{owner} 'values' must be an object when provided.")
+        elif isinstance(value_labels, Mapping):
+            for raw_value, label in value_labels.items():
+                if (
+                    not isinstance(raw_value, str)
+                    or not raw_value
+                    or not isinstance(label, str)
+                    or not label.strip()
+                ):
+                    failures.append(
+                        f"{owner} value labels must map non-empty strings to "
+                        "non-empty strings."
+                    )
+                    break
+        order = definition.get("order")
+        if order is not None and (
+            not isinstance(order, list)
+            or any(not isinstance(value, str) or not value for value in order)
+            or len(set(order)) != len(order)
+        ):
+            failures.append(
+                f"{owner} 'order' must be a list of unique non-empty strings."
+            )
+
+
+def _check_structured_diagnostics_target(
+    target: Mapping,
+    *,
+    index: int,
+    dimension_definitions: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate complete structured identity on one schema-7 target row."""
+
+    owner = f"calibration_diagnostics.json target row {index}"
+    for field in ("source", "variable"):
+        value = target.get(field)
+        if (
+            not isinstance(value, Mapping)
+            or not isinstance(value.get("id"), str)
+            or not str(value.get("id")).strip()
+        ):
+            failures.append(
+                f"{owner} schema 7 requires {field!r} to be an object with a "
+                "non-empty string 'id'."
+            )
+    values = target.get("dimensions")
+    if not isinstance(values, Mapping):
+        failures.append(f"{owner} schema 7 requires a 'dimensions' object.")
+        return
+    geography_count = 0
+    for dimension_id, raw_value in values.items():
+        if dimension_id not in dimension_definitions:
+            failures.append(f"{owner} references undefined dimension {dimension_id!r}.")
+            continue
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            failures.append(
+                f"{owner} dimension {dimension_id!r} must have a non-empty "
+                "string value."
+            )
+            continue
+        definition = dimension_definitions.get(dimension_id)
+        if not isinstance(definition, Mapping):
+            continue
+        if definition.get("role") == "geography":
+            geography_count += 1
+            labels = definition.get("values")
+            if isinstance(labels, Mapping) and raw_value not in labels:
+                failures.append(
+                    f"{owner} geography value {raw_value!r} has no label in "
+                    f"dimension {dimension_id!r}."
+                )
+    if geography_count > 1:
+        failures.append(f"{owner} may populate at most one geography-role dimension.")
 
 
 def _uk_non_negative_int(

@@ -399,7 +399,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert diagnostics["metric"].unique().tolist() == ["households"]
     assert len(support) == 8
     assert past_cap["n_targets"] == 4
-    assert calibration_diagnostics["schema_version"] == 6
+    assert calibration_diagnostics["schema_version"] == 7
     uk_diagnostics = calibration_diagnostics["uk_diagnostics"]
     assert len(uk_diagnostics["weakest_families"]) == 1
     assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_by_fit"]) == 4
