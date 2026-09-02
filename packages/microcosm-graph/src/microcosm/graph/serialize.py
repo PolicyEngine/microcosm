@@ -85,6 +85,7 @@ def _node_payload(node: Node) -> dict[str, object]:
                 "dtype": owned.dtype,
                 "rows": owned.rows,
                 "ownership": owned.ownership.value,
+                **({"rewrite": True} if owned.rewrite else {}),
             }
             for owned in node.outputs
         ],
@@ -193,13 +194,20 @@ def _slice_from_payload(value: object, label: str) -> Slice:
 
 def _owned_from_payload(value: object, label: str) -> Owned:
     payload = _mapping(value, label)
-    _exact_fields(payload, {"entity", "column", "dtype", "rows", "ownership"}, label)
+    fields = {"entity", "column", "dtype", "rows", "ownership"}
+    if "rewrite" in payload:
+        fields.add("rewrite")
+    _exact_fields(payload, fields, label)
+    rewrite = payload.get("rewrite", False)
+    if not isinstance(rewrite, bool):
+        raise TypeError(f"{label}.rewrite must be a boolean")
     return Owned(
         entity=_string(payload["entity"], f"{label}.entity"),
         column=_string(payload["column"], f"{label}.column"),
         dtype=_string(payload["dtype"], f"{label}.dtype"),
         rows=_string(payload["rows"], f"{label}.rows"),
         ownership=Ownership(_string(payload["ownership"], f"{label}.ownership")),
+        rewrite=rewrite,
     )
 
 

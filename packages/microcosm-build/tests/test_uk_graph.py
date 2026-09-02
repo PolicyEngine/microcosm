@@ -79,32 +79,24 @@ def _expand_node() -> Node:
 
 def _expand_result(*, bad_source: bool = False) -> KernelResult:
     return KernelResult(
+        expand={
+            "person": pd.Series(
+                [99 if bad_source else 1],
+                index=pd.Index([3], name="person_id"),
+                dtype="int64",
+            ),
+            "benunit": pd.Series(
+                [100],
+                index=pd.Index([300], name="benunit_id"),
+                dtype="int64",
+            ),
+            "household": pd.Series(
+                [10],
+                index=pd.Index([30], name="household_id"),
+                dtype="int64",
+            ),
+        },
         columns={
-            ("person", "person_id"): pd.Series(
-                [1, 2, 99 if bad_source else 1],
-                index=pd.Index([1, 2, 3], name="person_id"),
-                dtype="int64",
-            ),
-            ("benunit", "benunit_id"): pd.Series(
-                [100, 200, 100],
-                index=pd.Index([100, 200, 300], name="benunit_id"),
-                dtype="int64",
-            ),
-            ("household", "household_id"): pd.Series(
-                [10, 20, 10],
-                index=pd.Index([10, 20, 30], name="household_id"),
-                dtype="int64",
-            ),
-            ("person", "person_benunit_id"): pd.Series(
-                [100, 200, 300],
-                index=pd.Index([1, 2, 3], name="person_id"),
-                dtype="int64",
-            ),
-            ("person", "person_household_id"): pd.Series(
-                [10, 20, 30],
-                index=pd.Index([1, 2, 3], name="person_id"),
-                dtype="int64",
-            ),
             ("household", "is_clone"): pd.Series(
                 [False, False, True],
                 index=pd.Index([10, 20, 30], name="household_id"),
@@ -211,9 +203,7 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
     assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
-    assert (
-        "spi_support_channel" in compiled.predecessors["hmrc_spi_income_spine.boundary"]
-    )
+    assert "spi_support_channel" in compiled.predecessors["hmrc_spi_income_spine"]
 
 
 def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:

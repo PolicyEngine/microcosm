@@ -6,11 +6,10 @@ declares the complete live slice it can observe, and ``compile_graph`` derives
 the same chain from those ownership edges.  The legacy driver's second,
 hand-maintained ordering is therefore unnecessary.
 
-The frozen graph declarations do not directly express incumbent-cell rewrites
-or a structural stage which also creates cells.  This module uses the runtime
-conventions documented in :mod:`microcosm.graph.population`: a keep-all
-population boundary precedes a rewrite, and an EXPAND node is followed by an
-ordinary claim node for its stage cells.
+Declared rewrites use :class:`microcosm.graph.Owned` cells on a population
+version with a base.  A keep-all population boundary opens such a version
+where needed.  Structural nodes still cannot own cells, so an EXPAND node is
+followed by an ordinary claim node for the cells it materialized.
 """
 
 from __future__ import annotations
@@ -65,6 +64,20 @@ _STRUCTURAL_WEIGHT_KIND = {
     "cgt_incidence_clone": "importance",
     "cgt_band_donors": "importance",
 }
+
+# ``hmrc_spi_income_spine`` has an intentionally conservative open input
+# surface.  Opening a version before the following UC rewrite prevents that
+# earlier reader from resolving its incumbent UC cells to the later owner and
+# forming a declaration cycle.
+_READER_ISOLATION_BOUNDARIES = frozenset(
+    {
+        "uc_capital_coherence",
+        # Earlier stages in this version genuinely condition on age.  The
+        # terminal rewrite must live above them rather than becoming their
+        # same-version owner and reversing those dependencies.
+        "age_tail",
+    }
+)
 
 _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_spine": ("frs",),
@@ -216,13 +229,14 @@ class _Cell:
     def coordinate(self) -> tuple[str, str]:
         return self.entity, self.column
 
-    def owned(self) -> Owned:
-        return Owned(self.entity, self.column, self.dtype)
+    def owned(self, *, rewrite: bool = False) -> Owned:
+        return Owned(self.entity, self.column, self.dtype, rewrite=rewrite)
 
 
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
 _ROOT_PERSON_BOOL = {"is_household_head", "is_benunit_head", "is_parent"}
-_ROOT_PERSON_INT = {"age"}
+_ROOT_PERSON_INT: set[str] = set()
+_ROOT_PERSON_FLOAT = {"age"}
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
     "is_married": "bool",
@@ -261,6 +275,12 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
             cells.append(_Cell("person", column, "bool"))
         elif column in _ROOT_PERSON_INT:
             cells.append(_Cell("person", column, "int64"))
+        elif column in _ROOT_PERSON_FLOAT:
+            # age_tail is an honest float64 rewrite.  Rewrites cannot change
+            # their base's declared dtype, so the graph normalizes age at
+            # CREATE while the legacy spine reaches the same dtype at its
+            # final stage.
+            cells.append(_Cell("person", column, "float64"))
         elif column.startswith("household_"):
             # No root data column currently takes this spelling; keep an
             # explicit failure if the manifest grows rather than guessing.
@@ -789,17 +809,13 @@ def uk_spine_graph(
         Node(
             id="frs_spine",
             kernel="uk.claim@1",
-            outputs=tuple(cell.owned() for cell in root_cells),
+            outputs=tuple(cell.owned(rewrite=True) for cell in root_cells),
             population=root_boundary,
-            params={
-                "rewrite_inputs": tuple(
-                    f"{cell.entity}.{cell.column}" for cell in root_cells
-                )
-            },
             description="Claim the cells assembled by the UK FRS root transform.",
         )
     )
     current_population = root_boundary
+    version_owned = set(live)
     shape_anchor = root_cells[-1].coordinate
 
     for manifest_stage in stages[1:]:
@@ -841,20 +857,38 @@ def uk_spine_graph(
                 Node(
                     id=f"{stage_name}.owned",
                     kernel="uk.claim@1",
-                    inputs=_slices(live, exclude=coordinates),
-                    outputs=tuple(cell.owned() for cell in cells),
+                    outputs=tuple(
+                        cell.owned(rewrite=cell.coordinate in incumbent)
+                        for cell in cells
+                    ),
                     population=stage_name,
                     params={
-                        "rewrite_inputs": tuple(
-                            f"{cell.entity}.{cell.column}" for cell in cells
+                        # Amendment 8 projects declared rewrites directly.
+                        # These are only the new cells installed physically by
+                        # the preceding EXPAND node; structural declarations
+                        # still cannot own them (the one remaining interface
+                        # gap from lane F).
+                        "materialized_expand_outputs": tuple(
+                            f"{cell.entity}.{cell.column}"
+                            for cell in cells
+                            if cell.coordinate not in incumbent
                         )
                     },
                     description=f"Own the cells materialized by {stage_name}.",
                 )
             )
             current_population = stage_name
+            version_owned = set(coordinates)
         else:
-            if incumbent:
+            # A rewrite needs a version with a base, but it needs a fresh
+            # boundary only when this same version already has an owner for
+            # that coordinate.  Structural versions already provide a base;
+            # do not retain identity FILTERs that existed only to transport
+            # lane F's params-carried incumbents.
+            if (
+                coordinates & version_owned
+                or stage_name in _READER_ISOLATION_BOUNDARIES
+            ):
                 boundary = f"{stage_name}.boundary"
                 nodes.append(
                     Node(
@@ -867,6 +901,7 @@ def uk_spine_graph(
                     )
                 )
                 current_population = boundary
+                version_owned = set()
             nodes.append(
                 Node(
                     id=stage_name,
@@ -877,16 +912,14 @@ def uk_spine_graph(
                         exclude=coordinates,
                         shape_anchor=shape_anchor,
                     ),
-                    outputs=tuple(cell.owned() for cell in cells),
+                    outputs=tuple(
+                        cell.owned(rewrite=cell.coordinate in incumbent)
+                        for cell in cells
+                    ),
                     population=current_population,
                     params={
                         "stage": stage_name,
                         "time_period": "2024",
-                        "rewrite_inputs": tuple(
-                            f"{cell.entity}.{cell.column}"
-                            for cell in cells
-                            if cell.coordinate in incumbent
-                        ),
                         "stage_contract_sha256": _stage_contract_sha256(
                             manifest_stage, resolved
                         ),
@@ -895,6 +928,7 @@ def uk_spine_graph(
                     description=f"Run UK spine stage {stage_name}.",
                 )
             )
+            version_owned.update(coordinates)
 
         for cell in cells:
             live[cell.coordinate] = cell
@@ -914,6 +948,7 @@ def uk_spine_graph(
                 )
             )
             current_population = checkpoint
+            version_owned = set()
 
     return Graph(
         country="uk",

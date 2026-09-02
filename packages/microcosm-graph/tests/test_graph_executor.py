@@ -667,6 +667,79 @@ def test_output_entity_receives_only_its_structural_id_view(tmp_path: Path) -> N
     )
 
 
+def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def keep_all(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            keep=pd.Series(True, index=person["person_id"], dtype="bool")
+        )
+
+    def rewrite(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        assert set(person) == {
+            "person_id",
+            "person_household_id",
+            "age",
+            "income",
+        }
+        return KernelResult(
+            columns={
+                ("person", "income"): pd.Series(
+                    person["income"].to_numpy(copy=True) + 1.0,
+                    index=pd.Index(person["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            }
+        )
+
+    boundary = Node(
+        "rewrite_boundary",
+        "identity.filter@1",
+        inputs=(Slice("person", ("selected",)),),
+        structural=StructuralDelta.FILTER,
+        base="survey",
+    )
+    rewriter = Node(
+        "rewrite_income",
+        "rewrite.income@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "income", "float64", rewrite=True),),
+        population=boundary.id,
+    )
+    registry = _registry()
+    registry.register(
+        _Kernel(
+            boundary.kernel,
+            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER),
+            keep_all,
+        )
+    )
+    registry.register(
+        _Kernel(
+            rewriter.kernel,
+            Capabilities(Determinism.DETERMINISTIC),
+            rewrite,
+        )
+    )
+
+    manifest = _run(
+        Graph("toy", (SOURCE,), (CREATE, boundary, rewriter)),
+        source,
+        ContentStore(tmp_path / "store"),
+        registry,
+    )
+
+    assert manifest.population(boundary.id).table("person")["income"].tolist() == [
+        1.0,
+        3.0,
+        4.0,
+    ]
+
+
 def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 
@@ -704,6 +777,116 @@ def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None
         3,
     ]
     assert manifest.mass_ledger("selected")[-1].operation == "filter"
+
+
+def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def expand(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1, 2],
+                    index=pd.Index([4, 5], name="person_id"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    [10],
+                    index=pd.Index([30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            columns={
+                ("household", "is_clone"): pd.Series(
+                    [False, False, True],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="bool",
+                )
+            },
+            weights=Weights(
+                np.array([0.5, 2.0, 0.5], dtype=np.float64),
+                WeightKind.IMPORTANCE,
+            ),
+        )
+
+    def claim(context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        assert set(household) == {"household_id", "is_clone"}
+        return KernelResult(
+            columns={
+                ("household", "is_clone"): pd.Series(
+                    household["is_clone"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="bool",
+                )
+            }
+        )
+
+    clone = Node(
+        "clone",
+        "expand@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": (("household", "is_clone", "bool"),),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="conserve",
+    )
+    claim_clone = Node(
+        "claim_clone",
+        "claim@1",
+        outputs=(Owned("household", "is_clone", "bool"),),
+        params={"materialized_expand_outputs": ("household.is_clone",)},
+        population=clone.id,
+    )
+    expand_kernel = _Kernel(
+        clone.kernel,
+        Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND),
+        expand,
+    )
+    claim_kernel = _Kernel(
+        claim_clone.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        claim,
+    )
+    registry = _registry()
+    registry.register(expand_kernel)
+    registry.register(claim_kernel)
+    graph = Graph("toy", (SOURCE,), (CREATE, clone, claim_clone))
+    store = ContentStore(tmp_path / "store")
+
+    cold = _run(graph, source, store, registry, resume="forbid")
+    assert dict(cold.nodes[clone.id].receipt["expand"]) == {
+        "household": ((30, 10),),
+        "person": ((4, 1), (5, 2)),
+    }
+    assert cold.population(clone.id).table("person")[
+        "person_household_id"
+    ].tolist() == [10, 10, 20, 30, 30]
+    assert cold.population(clone.id).table("household")["is_clone"].tolist() == [
+        False,
+        False,
+        True,
+    ]
+    assert cold.mass_ledger(clone.id)[-1].operation == "expand"
+
+    warm = _run(graph, source, store, registry)
+    assert warm.nodes[clone.id].hit
+    assert warm.nodes[claim_clone.id].hit
+    assert (
+        warm.nodes[clone.id].receipt["expand"] == cold.nodes[clone.id].receipt["expand"]
+    )
+    assert (
+        warm.population(clone.id)
+        .table("person")
+        .equals(cold.population(clone.id).table("person"))
+    )
+    assert expand_kernel.calls == 1
+    assert claim_kernel.calls == 1
 
 
 def test_create_rejects_undeclared_frame_columns(tmp_path: Path) -> None:

@@ -3,8 +3,9 @@
 Real-build kernels reconstruct a minimal UK :class:`~microcosm.frame.Frame`
 from only their declared ``KernelContext.tables``, invoke the existing stage
 transform unchanged, and project the owned cells back out.  Structural stages
-return source lineage, memberships, cell overlays, and explicit weights; the
-graph executor, not the kernel, materializes the expanded population.
+return new-row source lineage through :attr:`KernelResult.expand`, cell
+overlays through ``columns``, and explicit weights; the graph executor carries
+the rows and remaps memberships.
 
 Parity execution must bind the same unchanged transforms through the caller.
 An unbound registry remains available for graph/hash inspection, but its stage
@@ -323,26 +324,27 @@ def _source_lineage(
     *,
     id_offset: int | None,
 ) -> pd.Series:
-    """Derive immediate target-to-source ids from a real structural result."""
+    """Derive new target-to-immediate-source ids from a structural result."""
 
     id_column = before.schema.entity_id_column(entity)
     before_table = before.table(entity)
     after_table = after.table(entity)
     before_ids = pd.Index(before_table[id_column])
+    targets: list[object] = []
     values: list[object] = []
     source_column = f"{entity}_source_id"
     for _, row in after_table.iterrows():
         target = row[id_column]
         if target in before_ids:
-            values.append(target)
-            continue
-        if source_column in after_table and row[source_column] in before_ids:
-            values.append(row[source_column])
             continue
 
+        # CGT stages retain long-lived source-id provenance from the SPI
+        # support stage, so their immediate clone lineage is the stage's
+        # reviewed ID offset, not that older provenance column.
         if id_offset is not None:
             candidate = target - id_offset
             if candidate in before_ids:
+                targets.append(target)
                 values.append(candidate)
                 continue
             raise ValueError(
@@ -350,13 +352,18 @@ def _source_lineage(
                 f"offset lineage {candidate!r} is not an incumbent id."
             )
 
+        if source_column in after_table and row[source_column] in before_ids:
+            targets.append(target)
+            values.append(row[source_column])
+            continue
+
         raise ValueError(
             f"UK stage produced {entity!r} target id {target!r} without an "
             f"explicit {source_column!r} or a declared ID-offset lineage rule."
         )
     return pd.Series(
         values,
-        index=pd.Index(after_table[id_column].to_numpy(copy=True), name=id_column),
+        index=pd.Index(targets, name=id_column, dtype=before_table[id_column].dtype),
         dtype=before_table[id_column].dtype,
         name=id_column,
     )
@@ -402,25 +409,15 @@ class UKExpandStageKernel(KernelBase):
                     for group in before.schema.group_entities
                 ),
             )
-        columns: dict[tuple[str, str], pd.Series] = {}
+        expand: dict[str, pd.Series] = {}
         for entity in before.entities:
-            id_column = before.schema.entity_id_column(entity)
-            columns[(entity, id_column)] = _source_lineage(
+            expand[entity] = _source_lineage(
                 before,
                 after,
                 entity,
                 id_offset=id_offset,
             )
-        person = before.schema.person_entity
-        person_ids = _id_index(after, person)
-        for group in before.schema.group_entities:
-            membership = before.schema.membership_column(group)
-            columns[(person, membership)] = pd.Series(
-                after.table(person)[membership].array.copy(),
-                index=person_ids,
-                name=membership,
-                dtype=after.table(person)[membership].dtype,
-            )
+        columns: dict[tuple[str, str], pd.Series] = {}
         for entity, column, dtype in cells:
             columns[(entity, column)] = _owned_series(after, entity, column, dtype)
         weight_entity = str(context.params["expand_weight_entity"])
@@ -434,6 +431,7 @@ class UKExpandStageKernel(KernelBase):
             )
         return KernelResult(
             columns=MappingProxyType(columns),
+            expand=MappingProxyType(expand),
             weights=after_weights,
             receipt={
                 "stage": self.stage,
