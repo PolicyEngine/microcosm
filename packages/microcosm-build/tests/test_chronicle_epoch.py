@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -77,6 +78,32 @@ def _chronicle_fact_row(**overrides):
     return row
 
 
+#: The captured Chronicle feed this repo carries. Its rows are ledger-era and
+#: frozen: they are the only published Chronicle rows available in-tree.
+_CAPTURED_FEED = (
+    Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
+)
+
+
+def _captured_feed_rows() -> list[dict]:
+    return [
+        json.loads(line)
+        for line in _CAPTURED_FEED.read_text().splitlines()
+        if line.strip()
+    ]
+
+
+def _keys_in(value, _pattern=re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+\.v\d+:")):
+    """Every Chronicle-shaped key anywhere in a row, at any depth."""
+    if isinstance(value, str):
+        return [value] if _pattern.match(value) else []
+    if isinstance(value, dict):
+        return [key for item in value.values() for key in _keys_in(item)]
+    if isinstance(value, list):
+        return [key for item in value for key in _keys_in(item)]
+    return []
+
+
 def _write_artifact_dir(tmp_path, rows, *, schema_version, name="artifact"):
     artifact_dir = tmp_path / name
     artifact_dir.mkdir()
@@ -111,6 +138,26 @@ def test_every_observed_ledger_era_domain_resolves_to_the_ledger_epoch(
     domain: str,
 ) -> None:
     assert fact_key_epoch(f"{domain}:digest") == LEDGER_EPOCH
+
+
+def test_observed_domain_map_covers_the_captured_feed() -> None:
+    """The map documents what the repo has actually seen, not a guess.
+
+    ``LEDGER_FACT_KEY_DOMAINS`` claims to record the ledger-era families this
+    repo's feeds carry, and nothing consults it at runtime — which is exactly
+    how such a list rots. This pins it to the captured feed. The version
+    numbers differ by family (``fact`` and ``source_cell`` are v1 where the
+    rest are v2), which is the concrete reason epoch detection cannot be a
+    lookup in this map.
+    """
+    observed = {
+        key.split(":", 1)[0] for row in _captured_feed_rows() for key in _keys_in(row)
+    }
+
+    assert observed
+    assert observed <= set(LEDGER_FACT_KEY_DOMAINS.values()), sorted(
+        observed - set(LEDGER_FACT_KEY_DOMAINS.values())
+    )
 
 
 def test_chronicle_era_keys_resolve_without_a_declared_version_number() -> None:
@@ -414,8 +461,7 @@ def test_witnessed_key_fields_match_the_captured_feed() -> None:
     Every ``*_key`` field the captured UK feed rows carry is either witnessed
     for its epoch or is a plain source identifier rather than a Chronicle key.
     """
-    fixture = Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
-    rows = [json.loads(line) for line in fixture.read_text().splitlines() if line]
+    rows = _captured_feed_rows()
     assert rows
 
     for row in rows:

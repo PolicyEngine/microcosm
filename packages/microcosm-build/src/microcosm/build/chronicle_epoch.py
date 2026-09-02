@@ -110,16 +110,27 @@ ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS = frozenset(
 )
 
 #: Ledger-era fact-key domains, as *observed* in the feeds and fixtures this
-#: repo carries. Recorded for documentation and for the frozen-history tests;
-#: epoch detection does not consult it, so a family this list has never seen
-#: still resolves to its epoch.
+#: repo carries: every family in
+#: ``tests/fixtures/uk_target_reference_feed_rows.jsonl``, plus
+#: ``source_row``, which only the far larger pinned US feed exercises. The
+#: version numbers are the observed ones and differ by family — ``fact`` and
+#: ``source_cell`` are still v1 while the rest are v2 — which is why epoch
+#: detection is structural and never a lookup here. Recorded for documentation
+#: and for the frozen-history tests; a family this list has never seen still
+#: resolves to its epoch.
 LEDGER_FACT_KEY_DOMAINS: Mapping[str, str] = {
     "aggregate_fact": "ledger.aggregate_fact.v2",
     "semantic_fact": "ledger.semantic_fact.v2",
+    # Carried by ``legacy_fact_key``, not by a ``fact_key`` field.
     "fact": "ledger.fact.v1",
     "source_cell": "ledger.source_cell.v1",
+    "source_row": "ledger.source_row.v1",
     "dimension_set": "ledger.dimension_set.v2",
     "concept_alignment": "ledger.concept_alignment.v2",
+    "observed_measure": "ledger.observed_measure.v2",
+    "source_release": "ledger.source_release.v2",
+    "source_series": "ledger.source_series.v2",
+    "universe_constraint_set": "ledger.universe_constraint_set.v2",
 }
 
 #: Consumer-fact row fields that carry a single Chronicle key. The first four
