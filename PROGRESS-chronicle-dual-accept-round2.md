@@ -29,8 +29,22 @@ that matter: `policyengine_chronicle.consumer_artifact.v3` and
 
 ## State
 
-Round 2 complete; pushed to `chronicle-dual-accept`. **DO NOT MERGE** —
+Round 2 code, tests, journal and changelog pushed to `chronicle-dual-accept`
+at `3c4ddf2c`. Two full `packages/microcosm-build` suites (clean env and the
+polluted-Logbook env from finding 2) were running at the time of writing;
+their results and the PR-body update are the last steps. **DO NOT MERGE** —
 the lane is authorized to fix and push only.
+
+## What changed structurally, for the next reader
+
+The first pass treated epoch as something you could *read off* a key's
+namespace. That is why it accepted a two-id set that excluded the id
+Chronicle actually emits, and why `chronicle.anything.vN` was witnessed as
+Chronicle-issued identity. Round 2 replaces it with a declared registry:
+`DECLARED_IDENTITIES` in `chronicle_epoch.py`, keyed by
+`(namespace, family, version)`. Anything not in that table is `undeclared`
+and is reported as such. If Chronicle publishes its own successor
+enumeration, that table is the one place that changes.
 
 ## Done
 
