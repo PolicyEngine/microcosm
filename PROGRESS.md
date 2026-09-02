@@ -2,11 +2,11 @@
 
 ## State
 
-In progress on branch `impl-11-13` in the isolated worktree
-`/private/tmp/microcosm-impl-11-13`. Charter B6 entrant lineage, C5 declared
-tolerance propagation, and D6 partitioned mass conservation now pass their
-focused acceptance checks; fit.qrf tolerance measurement and full-lane
-verification remain. No network, push, or frozen-interface edits are in scope.
+Implementation and verification are complete on branch `impl-11-13` in the
+isolated worktree `/private/tmp/microcosm-impl-11-13`. Charter B6 entrant
+lineage, C5 declared tolerance propagation, D6 partitioned mass conservation,
+and the measured fit.qrf tolerance are green. Final `out.md` authoring remains.
+No network, push, or frozen-interface edits are in scope.
 
 ## Done
 
@@ -78,11 +78,26 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   C5, and D6 strict-xfail decorators. Restored the suite burndown to zero red
   and the explorer pin to 44 green / 0 red; the three properties plus both
   pins report `5 passed in 1.63s`.
+- The exact requested graph-suite command exited 0 (its second `-q` suppresses
+  the count line). A single-quiet, worker-pinned equivalent reports
+  `207 passed in 573.09s (0:09:33)` with no xfails; collect-only independently
+  reports `207 tests collected in 2.17s`. This is one more test than the
+  handoff's stated 206, despite no added graph test, and will be called out in
+  `out.md` rather than rewritten as the expected count.
+- The exact requested fit/calibrate/frame/UK/US command exited 0; its
+  single-quiet equivalent reports `29 passed in 52.86s`. Dedicated H1-H3
+  parity reports `3 passed in 114.66s (0:01:54)`.
+- Repository checks report `All checks passed!`, `13 files already formatted`,
+  `tracked_test_files=353` / `verification=ok`, and acceptance burndown
+  `total 0`, `red 0`, `verification=ok`. The three frozen interface files are
+  byte-unchanged from `graph-amendments-11-13`; only the fit.qrf implementation
+  hash pin moved, so no demo structural pin needed regeneration.
 
 ## Next
 
 - Harden the independent-review B6 cache and C5 key-resolution edge cases.
-- Execute the full verification matrix and write `out.md`.
+- Write and commit the required `out.md` final report, then confirm a clean
+  worktree and final branch SHA. Do not push.
 
 # ACS predictor release join
 
