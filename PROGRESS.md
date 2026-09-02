@@ -58,6 +58,10 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   structural partition. The broad population/executor/manifest/explain/D6
   check reports `86 passed in 113.19s (0:01:53)`; the final focused D6 rerun
   reports `1 passed in 2.41s`.
+- Independent D6 review also confirmed group broadcast, null-partition,
+  cache-replay, declared-receipt, and backward-compatibility paths. JSON-key
+  collisions now surface uniformly as a node-naming rejection rather than an
+  internal population exception.
 
 ## Next
 

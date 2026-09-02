@@ -1554,7 +1554,12 @@ def run_graph(
                 raise NodeRejected(
                     f"Node {node.id!r} receipt['mass'] is not a mapping."
                 )
-            authored_mass = mass_record_receipt(updated.mass_ledger[-1])
+            try:
+                authored_mass = mass_record_receipt(updated.mass_ledger[-1])
+            except (TypeError, ValueError) as error:
+                raise NodeRejected(
+                    f"Node {node.id!r} mass receipt rejected: {error}"
+                ) from error
             normalized_receipt["mass"] = {**existing_mass, **authored_mass}
         normalized_receipt.update(weight_cap_receipt(updated, node))
         cache_receipt = normalized_receipt
