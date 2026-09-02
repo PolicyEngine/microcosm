@@ -41,6 +41,7 @@ from microcosm.build.logbook import (
 from microcosm.build.logbook_env import (
     LEGACY_API_KEY_ENV,
     LEGACY_EXPORT_KEY_ENV,
+    LEGACY_URL_ENV,
     LOGBOOK_API_KEY_ENV,
     LOGBOOK_EXPORT_KEY_ENV,
     LOGBOOK_URL_ENV,
@@ -117,10 +118,16 @@ def _parser() -> argparse.ArgumentParser:
     source.add_argument(
         "--remote",
         action="store_true",
+        # The help text names the preferred Logbook spellings first and the
+        # ledger-era ones as the fallback they now are, so an operator
+        # reading --help configures the environment the dual-read window
+        # wants rather than the one it merely still tolerates.
         help=(
-            "Read the private live store using POPULACE_LEDGER_URL and the "
-            f"read-only {REMOTE_EXPORT_KEY_ENV}, authenticated at the gateway "
-            f"by {REMOTE_API_KEY_ENV}."
+            f"Read the private live store using {LOGBOOK_URL_ENV} and the "
+            f"read-only {LOGBOOK_EXPORT_KEY_ENV}, authenticated at the "
+            f"gateway by {LOGBOOK_API_KEY_ENV}. The ledger-era names "
+            f"({LEGACY_URL_ENV}, {REMOTE_EXPORT_KEY_ENV}, "
+            f"{REMOTE_API_KEY_ENV}) are still honored and warn once."
         ),
     )
 
