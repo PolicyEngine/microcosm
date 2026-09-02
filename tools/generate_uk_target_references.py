@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.target_reference_authoring import (
+    AuthoredTargetReferences,
     TargetReferenceAuthoringConfig,
     author_target_references,
     target_references_resource,
@@ -91,9 +92,38 @@ DESCRIPTION = (
     "classes and geography-pin decisions are recorded in "
     "uk/target_reference_membership.json. metadata.measure_kind records that "
     "measures are prepared columns produced from the contract binding payload "
-    "referenced by metadata.contract_target_id."
+    "referenced by metadata.contract_target_id. OBR references also declare "
+    "metadata.diagnostic_variable_id as efo_receipts or efo_expenditure so "
+    "schema-7 consumers group the forecast lines by their source table."
 )
 NATIONAL_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
+
+OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID = {
+    "obr.income_tax": "efo_receipts",
+    "obr.ni": "efo_receipts",
+    "obr.ni_employee": "efo_receipts",
+    "obr.ni_employer": "efo_receipts",
+    "obr.ni_self_employed": "efo_receipts",
+    "obr.vat": "efo_receipts",
+    "obr.fuel_duties": "efo_receipts",
+    "obr.capital_gains_tax": "efo_receipts",
+    "obr.sdlt": "efo_receipts",
+    "obr.attendance_allowance": "efo_expenditure",
+    "obr.carers_allowance": "efo_expenditure",
+    "obr.child_benefit": "efo_expenditure",
+    "obr.council_tax": "efo_expenditure",
+    "obr.esa": "efo_expenditure",
+    "obr.housing_benefit": "efo_expenditure",
+    "obr.jobseekers_allowance": "efo_expenditure",
+    "obr.pension_credit": "efo_expenditure",
+    "obr.pip": "efo_expenditure",
+    "obr.state_pension": "efo_expenditure",
+    "obr.statutory_maternity_pay": "efo_expenditure",
+    "obr.tv_licence_fee": "efo_expenditure",
+    "obr.universal_credit_in_cap": "efo_expenditure",
+    "obr.universal_credit_outside_cap": "efo_expenditure",
+    "obr.winter_fuel_allowance": "efo_expenditure",
+}
 
 
 def main() -> None:
@@ -124,6 +154,7 @@ def main() -> None:
         source_fact_feed=str(args.ledger_facts),
     )
     authored = author_target_references(contract, facts, config)
+    authored = _add_diagnostic_variable_ids(authored)
     _add_uk_membership_accounting(authored.membership_report, authored.references)
     resource = target_references_resource(
         country="uk",
@@ -137,6 +168,25 @@ def main() -> None:
     print(json.dumps(authored.membership_report["status_counts"], sort_keys=True))
     print(
         f"active_reference_count={authored.membership_report['active_reference_count']}"
+    )
+
+
+def _add_diagnostic_variable_ids(
+    authored: AuthoredTargetReferences,
+) -> AuthoredTargetReferences:
+    """Assign producer-defined dashboard categories to OBR target references."""
+
+    references: list[dict[str, Any]] = []
+    for reference in authored.references:
+        metadata = dict(reference["metadata"])
+        target_id = str(metadata["contract_target_id"])
+        variable_id = OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID.get(target_id)
+        if variable_id is not None:
+            metadata["diagnostic_variable_id"] = variable_id
+        references.append({**reference, "metadata": metadata})
+    return AuthoredTargetReferences(
+        references=tuple(references),
+        membership_report=authored.membership_report,
     )
 
 
