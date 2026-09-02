@@ -919,23 +919,62 @@ def uk_aggregate_admin_totals(
     return totals, receipt
 
 
+#: The manifest fields the UK run seals into ``run_config``. Narrower than
+#: the artifact's whole manifest on purpose: only the fields that identify
+#: *which* published artifact was compiled belong in the identity digest.
+_LEDGER_MANIFEST_IDENTITY_FIELDS = (
+    "artifact_id",
+    "profile",
+    "schema_version",
+    "generated_at",
+)
+
+#: Epoch witnesses :meth:`LedgerConsumerArtifact.provenance` supplies, split
+#: by shape. Named here so the delegation below cannot quietly drop one: a
+#: run that compiled a chronicle-era or mixed-epoch feed has to say so in its
+#: own evidence, not only in the loader's return value
+#: (PolicyEngine/chronicle#143).
+_LEDGER_EPOCH_WITNESS_SCALARS = ("schema_epoch",)
+_LEDGER_EPOCH_WITNESS_LISTS = (
+    "fact_key_epochs",
+    "undeclared_fact_key_domains",
+    "fact_schema_versions",
+)
+
+
 def _ledger_provenance(artifact: Any) -> dict[str, object]:
-    """The verified identity of the Ledger consumer feed this run compiled.
+    """The verified identity of the Chronicle consumer feed this run compiled.
+
+    Delegates to :meth:`microcosm.build.ledger_artifact.LedgerConsumerArtifact.provenance`
+    rather than rebuilding the block field by field. Rebuilding it is how the
+    epoch witnesses went missing here in the first place: the loader learned
+    which era resolved the targets and the UK run kept reporting only the
+    hashes. Anything the shared block gains, this block gains.
+
+    Only the manifest sub-block is UK-shaped, and it stays narrow because it
+    feeds the run's identity digest.
 
     A bare ``consumer_facts.jsonl`` feed carries no manifest, so its
-    Ledger-side provenance is recorded as absent rather than invented.
+    Chronicle-side provenance is recorded as absent rather than invented. So
+    is a stand-in that predates the shared block: the fields it cannot supply
+    are recorded ``None``/empty rather than fabricated.
     """
 
+    shared = getattr(artifact, "provenance", None)
+    block: Mapping[str, Any] = shared() if callable(shared) else {}
     provenance: dict[str, object] = {
-        "facts_sha256": getattr(artifact, "facts_sha256", None),
-        "fact_row_count": getattr(artifact, "fact_row_count", None),
-        "manifest_sha256": getattr(artifact, "manifest_sha256", None),
+        field: block.get(field, getattr(artifact, field, None))
+        for field in ("facts_sha256", "fact_row_count", "manifest_sha256")
     }
+    for field in _LEDGER_EPOCH_WITNESS_SCALARS:
+        provenance[field] = block.get(field)
+    for field in _LEDGER_EPOCH_WITNESS_LISTS:
+        provenance[field] = list(block.get(field) or ())
     manifest = getattr(artifact, "manifest", None)
     if isinstance(manifest, Mapping):
         provenance["manifest"] = {
             key: manifest.get(key)
-            for key in ("artifact_id", "profile", "schema_version", "generated_at")
+            for key in _LEDGER_MANIFEST_IDENTITY_FIELDS
             if manifest.get(key) is not None
         }
     return provenance
