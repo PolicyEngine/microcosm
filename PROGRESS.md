@@ -58,6 +58,11 @@ or `_toy.py` edit is authorized.
   Regression coverage includes a malicious ID/membership overlay run twice
   against one store and a legacy warm frame with a sorted but non-normative
   inserted group ID.
+- Finding 2 implemented: an EXPAND-materialized entrant value at the graph's
+  partition coordinate is treated as structural and needs no downstream
+  claimant. A composed cold/warm group-entrant regression preserves the
+  partition value and receipt, while a paired ordinary partition owner remains
+  rejected by the existing runtime guard.
 
 ## Next
 

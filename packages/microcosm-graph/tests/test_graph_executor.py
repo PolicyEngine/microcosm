@@ -953,6 +953,174 @@ def test_expand_id_overlay_is_rejected_without_committing_cache(tmp_path: Path) 
     assert kernel.calls == 2
 
 
+def test_partitioned_graph_accepts_structural_entrant_partition_values(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def create_partitioned(context: KernelContext) -> KernelResult:
+        original = _source_frame(context.sources["survey"])
+        tables = {entity: original.table(entity).copy() for entity in original.entities}
+        tables["household"]["period"] = np.array([2024, 2025], dtype=np.int64)
+        return KernelResult(
+            frame=Frame(
+                tables,
+                original.schema,
+                {"household": original.weights_for("household")},
+                original.strata,
+            )
+        )
+
+    def admit_household(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1], index=pd.Index([4], name="person_id"), dtype="int64"
+                ),
+                "household": pd.Series(
+                    [pd.NA],
+                    index=pd.Index([30], name="household_id"),
+                    dtype="Int64",
+                ),
+            },
+            columns={
+                ("person", "person_household_id"): pd.Series(
+                    [10, 10, 20, 30],
+                    index=pd.Index([1, 2, 3, 4], name="person_id"),
+                    dtype="int64",
+                ),
+                ("household", "size"): pd.Series(
+                    [2, 1, 1],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="int64",
+                ),
+                ("household", "period"): pd.Series(
+                    [2024, 2025, 2026],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            weights=Weights(
+                np.array([1.0, 2.0, 1.0], dtype=np.float64), WeightKind.DESIGN
+            ),
+        )
+
+    def pass_through(column: str) -> Callable[[KernelContext], KernelResult]:
+        def run(context: KernelContext) -> KernelResult:
+            household = context.tables["household"]
+            return KernelResult(
+                columns={
+                    ("household", column): pd.Series(
+                        household[column].array.copy(),
+                        index=pd.Index(household["household_id"], name="household_id"),
+                        dtype="int64",
+                    )
+                }
+            )
+
+        return run
+
+    create = replace(
+        CREATE,
+        kernel="partition.source@1",
+        outputs=(*CREATE.outputs, Owned("household", "period", "int64")),
+    )
+    expand = Node(
+        "admit_household",
+        "partition.expand@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": (
+                ("person", "person_household_id", "int64"),
+                ("household", "size", "int64"),
+                ("household", "period", "int64"),
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+    claim_size = Node(
+        "claim_size",
+        "claim.size@1",
+        outputs=(Owned("household", "size", "int64"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=expand.id,
+    )
+    kernels = (
+        _Kernel(
+            create.kernel,
+            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE),
+            create_partitioned,
+        ),
+        _Kernel(
+            expand.kernel,
+            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND),
+            admit_household,
+        ),
+        _Kernel(
+            claim_size.kernel,
+            Capabilities(Determinism.DETERMINISTIC),
+            pass_through("size"),
+        ),
+    )
+
+    def registry(*extra: _Kernel) -> KernelRegistry:
+        result = _registry()
+        for kernel in (*kernels, *extra):
+            result.register(kernel)
+        return result
+
+    graph = Graph(
+        "toy",
+        (SOURCE,),
+        (create, expand, claim_size),
+        mass_partition=("household", "period"),
+    )
+    store = ContentStore(tmp_path / "store")
+    first_registry = registry()
+    cold = _run(graph, source, store, first_registry)
+    warm = _run(graph, source, store, first_registry)
+
+    for manifest in (cold, warm):
+        assert manifest.population(expand.id).table("household")["period"].tolist() == [
+            2024,
+            2025,
+            2026,
+        ]
+        partition = manifest.nodes[expand.id].receipt["mass"]["partition"]  # type: ignore[index]
+        assert (partition["entity"], partition["column"]) == ("household", "period")
+    assert warm.nodes[expand.id].hit
+    assert warm.nodes[claim_size.id].hit
+
+    claim_period = Node(
+        "claim_period",
+        "claim.period@1",
+        outputs=(Owned("household", "period", "int64"),),
+        params={"materialized_expand_outputs": ("household.period",)},
+        population=expand.id,
+    )
+    period_kernel = _Kernel(
+        claim_period.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        pass_through("period"),
+    )
+    with pytest.raises(NodeRejected, match="cannot own mass partition"):
+        _run(
+            Graph(
+                "toy",
+                (SOURCE,),
+                (create, expand, claim_size, claim_period),
+                mass_partition=("household", "period"),
+            ),
+            source,
+            ContentStore(tmp_path / "ordinary-owner"),
+            registry(period_kernel),
+        )
+
+
 def test_create_rejects_undeclared_frame_columns(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 

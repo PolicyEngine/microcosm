@@ -873,6 +873,11 @@ def _validate_entrant_materialization_contract(
         if entity not in frame.entities:
             continue  # lineage validation supplies the node-naming rejection
         structural = set(_structural_columns(frame, entity))
+        if (
+            compiled.graph.mass_partition is not None
+            and compiled.graph.mass_partition[0] == entity
+        ):
+            structural.add(compiled.graph.mass_partition[1])
         for column in frame.table(entity).columns:
             column = str(column)
             if column in structural:
