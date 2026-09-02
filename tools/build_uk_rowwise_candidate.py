@@ -74,6 +74,7 @@ from microcosm.build.uk_runtime import (
     compile_uk_target_registry,
     compute_household_metrics,
     constituency_household_targets,
+    drop_injected_measure_inputs,
     inject_measure_inputs,
     ladder_clone_index_column,
     ladder_target_provenance,
@@ -350,6 +351,13 @@ def _resolve_candidate_engine_surface(
         local_metrics[area_type] = ordered
 
     adapter = CalibrationFrameAdapter(frame)
+    # Injected engine inputs are scratch state for materialization only:
+    # they must be dropped before the prepared frame is assembled, or the
+    # flattening rule refuses columns that now exist on two entities
+    # (region, esa_* on the live spine). Same lifecycle as the national stage.
+    original_columns = {
+        entity: set(table.columns) for entity, table in adapter.tables.items()
+    }
     inject_measure_inputs(adapter, measure_inputs)
     materialized = materialize_uk_ledger_targets(
         adapter,
@@ -387,6 +395,7 @@ def _resolve_candidate_engine_surface(
         scratch_dir.rmdir()
     except OSError:
         pass
+    drop_injected_measure_inputs(adapter, measure_inputs, original_columns)
     national_rows = UKRowwiseNationalRows(
         targets=national_registry.to_target_set(),
         registry=national_registry,

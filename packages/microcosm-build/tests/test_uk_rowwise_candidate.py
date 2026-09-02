@@ -996,20 +996,32 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     monkeypatch.setattr(
         builder,
         "resolve_target_measures",
+        # A live resolver injects ENGINE INPUTS (scratch columns the
+        # materialization reads), some of which also exist on another entity
+        # (region, esa_* on the spine); the driver must drop them before the
+        # prepared frame or the flattening rule refuses the duplicate column.
         lambda _factory, _registry, provider, **_kwargs: SimpleNamespace(
             measure_inputs={
-                (spec.entity, spec.measure): np.ones(
+                ("household", "stub_engine_input"): np.ones(
                     len(provider.frame.table("household")), dtype=float
-                )
-                for spec in _registry.specs
+                ),
+                ("person", "region"): np.zeros(
+                    len(provider.frame.table("person")), dtype=float
+                ),
             }
         ),
     )
-    monkeypatch.setattr(
-        builder,
-        "materialize_uk_ledger_targets",
-        lambda *_args, **_kwargs: SimpleNamespace(skipped=()),
-    )
+
+    def _stub_materialize(adapter, registry, *, period, band_edge_registry=None):
+        # Materialization is what mints the prepared measure columns the
+        # national rows compile against; the stub writes them from the
+        # injected input so the lifecycle matches the real stage.
+        for spec in registry.specs:
+            table = adapter.tables[spec.entity]
+            table[spec.measure] = np.ones(len(table), dtype=float)
+        return SimpleNamespace(skipped=())
+
+    monkeypatch.setattr(builder, "materialize_uk_ledger_targets", _stub_materialize)
     monkeypatch.setattr(
         builder,
         "compute_household_metrics",
