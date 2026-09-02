@@ -152,6 +152,8 @@ tr:last-child td { border-bottom: 0; }
   border-radius: 8px; padding: 10px; }
 .chart svg { display: block; height: auto; max-width: 100%; }
 .chart-bar { fill: var(--chart-1); }
+.chart-bar-before { fill: var(--chart-3); }
+.chart-bar-after { fill: var(--chart-1); }
 .chart-axis { stroke: var(--border-strong); stroke-width: 1; }
 .chart-label { fill: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 11px; }
@@ -816,16 +818,40 @@ def _number(value: object) -> str:
     return str(value)
 
 
+def _frame_ratios(frame, anchor, entity: str) -> list[float]:
+    try:
+        values = frame.weights_for(entity).values
+        design_weights = anchor.weights_for(entity).values
+        id_column = frame.schema.entity_id_column(entity)
+        entity_ids = list(frame.table(entity)[id_column])
+        design_ids = list(anchor.table(entity)[id_column])
+    except (KeyError, ValueError):
+        return []
+    design_by_id = dict(zip(design_ids, design_weights, strict=True))
+    ratios = []
+    for entity_id, current in zip(entity_ids, values, strict=True):
+        design = float(design_by_id.get(entity_id, 0.0))
+        current_value = float(current)
+        if design > 0:
+            ratios.append(current_value / design)
+        elif current_value == 0:
+            ratios.append(0.0)
+        else:
+            ratios.append(math.inf)
+    return ratios
+
+
 def _population_ratios(
     compiled: CompiledGraph,
     manifest: RunManifest,
     node: Node,
-) -> list[float]:
+) -> tuple[list[float], list[float]]:
     if node.weights is None:
-        return []
+        return [], []
+    before = None if node.base is None else manifest.populations.get(node.base)
     after = manifest.populations.get(node.id)
-    if after is None:
-        return []
+    if before is None or after is None:
+        return [], []
     entity = node.weights.entity
     anchor_node = node.base
     anchor = None
@@ -839,78 +865,106 @@ def _population_ratios(
         declaration = compiled.graph.node(anchor_node)
         anchor_node = declaration.base
     if anchor is None:
-        return []
-    try:
-        after_weights = after.weights_for(entity).values
-        design_weights = anchor.weights_for(entity).values
-        id_column = after.schema.entity_id_column(entity)
-        after_ids = list(after.table(entity)[id_column])
-        design_ids = list(anchor.table(entity)[id_column])
-    except (KeyError, ValueError):
-        return []
-    design_by_id = dict(zip(design_ids, design_weights, strict=True))
-    ratios = []
-    for entity_id, calibrated in zip(after_ids, after_weights, strict=True):
-        design = float(design_by_id.get(entity_id, 0.0))
-        calibrated_value = float(calibrated)
-        if design > 0:
-            ratios.append(calibrated_value / design)
-        elif calibrated_value == 0:
-            ratios.append(0.0)
-        else:
-            ratios.append(math.inf)
-    return ratios
+        return [], []
+    return _frame_ratios(before, anchor, entity), _frame_ratios(after, anchor, entity)
 
 
-def _receipt_ratios(receipt: NodeReceipt) -> list[float]:
+def _numeric_sequence(value: object) -> list[float]:
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
+        return []
+    return [float(item) for item in value if isinstance(item, int | float)]
+
+
+def _receipt_ratios(receipt: NodeReceipt) -> tuple[list[float], list[float]]:
     for name in ("weight_ratios", "ratios", "ratio_distribution"):
         raw = receipt.receipt.get(name)
         if isinstance(raw, Mapping):
-            raw = raw.get("values")
-        if isinstance(raw, Sequence) and not isinstance(raw, str | bytes):
-            values = [float(value) for value in raw if isinstance(value, int | float)]
-            if values:
-                return values
-    return []
+            before = _numeric_sequence(raw.get("before"))
+            after = _numeric_sequence(raw.get("after", raw.get("values")))
+            if before or after:
+                return before, after
+        after = _numeric_sequence(raw)
+        if after:
+            return [], after
+    return [], []
 
 
-def _histogram_svg(values: Sequence[float]) -> str:
-    finite = [float(value) for value in values if math.isfinite(float(value))]
-    nonfinite = len(values) - len(finite)
+def _bin_counts(
+    values: Sequence[float], low: float, high: float, bin_count: int
+) -> list[int]:
+    counts = [0] * bin_count
+    if math.isclose(low, high):
+        counts[0] = len(values)
+        return counts
+    width = (high - low) / bin_count
+    for value in values:
+        index = min(bin_count - 1, int((value - low) / width))
+        counts[index] += 1
+    return counts
+
+
+def _histogram_svg(before: Sequence[float], after: Sequence[float]) -> str:
+    finite_before = [float(value) for value in before if math.isfinite(float(value))]
+    finite_after = [float(value) for value in after if math.isfinite(float(value))]
+    finite = [*finite_before, *finite_after]
+    nonfinite = len(before) + len(after) - len(finite)
     if not finite:
         return '<p class="empty">Weight-ratio samples are not present in this manifest.</p>'
     low, high = min(finite), max(finite)
     bin_count = min(12, max(4, int(math.sqrt(len(finite)))))
     if math.isclose(low, high):
         bin_count = 1
-        counts = [len(finite)]
-    else:
-        width = (high - low) / bin_count
-        counts = [0] * bin_count
-        for value in finite:
-            index = min(bin_count - 1, int((value - low) / width))
-            counts[index] += 1
-    chart_width, chart_height = 560, 178
-    left, top, bottom = 38, 14, 30
+    before_counts = _bin_counts(finite_before, low, high, bin_count)
+    after_counts = _bin_counts(finite_after, low, high, bin_count)
+    chart_width, chart_height = 560, 190
+    left, top, bottom = 38, 26, 30
     inner_width = chart_width - left - 12
     inner_height = chart_height - top - bottom
     gap = 4
-    bar_width = (inner_width - gap * max(0, bin_count - 1)) / bin_count
-    maximum = max(counts) or 1
+    group_width = (inner_width - gap * max(0, bin_count - 1)) / bin_count
+    bar_gap = 1 if finite_before and finite_after else 0
+    series_count = 2 if finite_before and finite_after else 1
+    bar_width = (group_width - bar_gap * (series_count - 1)) / series_count
+    maximum = max([*before_counts, *after_counts]) or 1
     bars = []
-    for index, count in enumerate(counts):
-        height = inner_height * count / maximum
-        x = left + index * (bar_width + gap)
-        y = top + inner_height - height
-        bars.append(
-            f'<rect class="chart-bar" x="{x:.2f}" y="{y:.2f}" '
-            f'width="{bar_width:.2f}" height="{height:.2f}" rx="2">'
-            f"<title>{count} records</title></rect>"
-        )
+    series = []
+    if finite_before:
+        series.append(("before", before_counts))
+    if finite_after:
+        series.append(("after", after_counts))
+    for series_index, (label, counts) in enumerate(series):
+        for index, count in enumerate(counts):
+            height = inner_height * count / maximum
+            x = (
+                left
+                + index * (group_width + gap)
+                + series_index * (bar_width + bar_gap)
+            )
+            y = top + inner_height - height
+            bars.append(
+                f'<rect class="chart-bar chart-bar-{label}" x="{x:.2f}" '
+                f'y="{y:.2f}" width="{bar_width:.2f}" height="{height:.2f}" '
+                f'rx="2"><title>{label}: {count} records</title></rect>'
+            )
     note = f"; {nonfinite} non-finite" if nonfinite else ""
+    legend = []
+    legend_x = left
+    for label, css_class in (("Before", "before"), ("After", "after")):
+        values = finite_before if css_class == "before" else finite_after
+        if not values:
+            continue
+        legend.append(
+            f'<rect class="chart-bar-{css_class}" x="{legend_x}" y="6" '
+            'width="10" height="10" rx="2" />'
+            f'<text class="chart-label" x="{legend_x + 15}" y="15">{label} '
+            f"(n={len(values)})</text>"
+        )
+        legend_x += 100
     return (
         f'<svg viewBox="0 0 {chart_width} {chart_height}" role="img" '
-        f'aria-label="Histogram of {len(finite)} finite weight ratios{note}">'
+        f'aria-label="Before and after histogram of {len(finite)} finite weight '
+        f'ratios{note}">'
+        + "".join(legend)
         + "".join(bars)
         + f'<path class="chart-axis" d="M {left} {top + inner_height} H '
         f'{chart_width - 12}" />'
@@ -918,8 +972,7 @@ def _histogram_svg(values: Sequence[float]) -> str:
         f"{_escape(_number(low))}</text>"
         f'<text class="chart-label" text-anchor="end" x="{chart_width - 12}" '
         f'y="{chart_height - 8}">{_escape(_number(high))}</text>'
-        f'<text class="chart-label" x="{left}" y="11">Count · n={len(finite)}'
-        f"{_escape(note)}</text></svg>"
+        "</svg>"
     )
 
 
@@ -1034,9 +1087,9 @@ def _render_calibration(compiled: CompiledGraph, manifest: RunManifest) -> str:
             target_table = (
                 '<p class="empty">This weight transition declares no target table.</p>'
             )
-        ratios = _receipt_ratios(receipt) or _population_ratios(
-            compiled, manifest, node
-        )
+        before_ratios, after_ratios = _receipt_ratios(receipt)
+        if not before_ratios and not after_ratios:
+            before_ratios, after_ratios = _population_ratios(compiled, manifest, node)
         mass = _mass_payload(manifest, node, receipt)
         transition = node.weights
         assert transition is not None
@@ -1051,7 +1104,7 @@ def _render_calibration(compiled: CompiledGraph, manifest: RunManifest) -> str:
             + target_table
             + '<div class="calibration-grid"><div><h4>Weight ratios against design</h4>'
             '<div class="chart">'
-            + _histogram_svg(ratios)
+            + _histogram_svg(before_ratios, after_ratios)
             + "</div></div><div><h4>Mass ledger</h4>"
             + _mass_tables(mass)
             + "</div></div>"

@@ -186,7 +186,10 @@ def test_calibration_view_uses_targets_ratios_and_mass(explanation) -> None:
     assert "household_size" in rendered
     assert "2,500" in rendered
     assert "Weight ratios against design" in rendered
-    assert 'class="chart-bar"' in rendered
+    assert 'class="chart-bar chart-bar-before"' in rendered
+    assert 'class="chart-bar chart-bar-after"' in rendered
+    assert "Before (n=200)" in rendered
+    assert "After (n=200)" in rendered
     assert "Mass ledger" in rendered
     assert "rural" in rendered
     assert "urban" in rendered
@@ -247,7 +250,8 @@ def test_saved_run_cli_validates_store_and_reattaches_frames(tmp_path: Path) -> 
     rendered = output_path.read_text(encoding="utf-8")
     assert "Graph explorer" in rendered
     assert "Calibration view" in rendered
-    assert 'class="chart-bar"' in rendered
+    assert 'class="chart-bar chart-bar-before"' in rendered
+    assert 'class="chart-bar chart-bar-after"' in rendered
     assert "rural" in rendered
     assert "urban" in rendered
 

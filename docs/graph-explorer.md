@@ -133,11 +133,11 @@ Residual is achieved minus declared target. When a receipt does not expose an
 achieved value, residual, standard error, filter, or other field, the table says
 “Not recorded” rather than substituting a nearby diagnostic.
 
-The histogram is the final weight divided by the original design-weight anchor,
-aligned by entity id. For a just-executed run, those arrays come from
-`manifest.populations`. For a saved run, the CLI reloads the structural frames
-identified by `NodeReceipt.frame_key`. A receipt-provided ratio sample would take
-precedence if the runtime adds one later.
+The shared-bin histogram compares both incoming and outgoing weights divided by
+the original design-weight anchor, aligned by entity id. For a just-executed run,
+those arrays come from `manifest.populations`. For a saved run, the CLI reloads
+the structural frames identified by `NodeReceipt.frame_key`. A receipt-provided
+before/after ratio sample would take precedence if the runtime adds one later.
 
 Mass totals and strata come first from `receipt.mass`, then from the attached
 executor `MassRecord`, and finally from the validated before/after structural
