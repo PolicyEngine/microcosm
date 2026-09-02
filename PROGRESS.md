@@ -2,7 +2,7 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. Strict gate/release execution and manifest persistence are implemented and focused tests pass. F2, both F3 cases, and F5 now strict-XPASS; F4 remains blocked by the two frozen toy conflicts. Canonical graph serialization is next.
+Active on `node-graph-release` in the required local clone. Strict gate/release execution, manifest persistence, and canonical graph serialization are implemented with focused tests green. F2, both F3 cases, and F5 now strict-XPASS; F4 and the H1 consumer remain blocked by frozen-test contradictions. Honest real-kernel fixture generation is next.
 
 ## Done
 
@@ -22,11 +22,13 @@ Active on `node-graph-release` in the required local clone. Strict gate/release 
 - Added corruption checks for the body/key and all derived top-level fields, plus typed existence validation for column, frame, weight, and opaque artifact keys.
 - Added certified loading with `unreached` precedence and evidence-tier refusal; all 21 manifest tests pass.
 - Confirmed F2, F3, the evidence-flip replay, and F5 strict-XPASS against the unedited acceptance tests.
+- Added lossless canonical `Graph` JSON serialization/deserialization without changing the frozen `Graph` class or either locked interface file.
+- Exported only `graph_to_json` and `graph_from_json`; all three serialization tests pass, including enum, tuple/array, malformed-shape, and public-identity checks.
 
 ## Next
 
 - Resolve whether the unowned acceptance fixture may receive a separate corrective change; without that authority F4 and H1 cannot honestly turn green.
-- Implement canonical graph serialization and deterministic real-kernel fixture generation independently of the broken H1 consumer.
+- Implement deterministic real-kernel fixture generation independently of the broken H1 consumer.
 
 # ACS predictor release join
 

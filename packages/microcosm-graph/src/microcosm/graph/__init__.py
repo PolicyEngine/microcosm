@@ -100,6 +100,8 @@ __all__ = [
     "WeightTransition",
     "compile_graph",
     "describe",
+    "graph_from_json",
+    "graph_to_json",
     "load_source",
     "run_graph",
     "source_hash",
@@ -131,6 +133,7 @@ from .codecs import (  # noqa: E402 - check dependency series before runtime imp
 from .executor import NodeRejected, run_graph  # noqa: E402
 from .manifest import Decision, NodeReceipt, RunManifest  # noqa: E402
 from .population import MassRecord, Population, PopulationError  # noqa: E402
+from .serialize import graph_from_json, graph_to_json  # noqa: E402
 from .store import (  # noqa: E402
     ContentStore,
     ResumePolicy,
