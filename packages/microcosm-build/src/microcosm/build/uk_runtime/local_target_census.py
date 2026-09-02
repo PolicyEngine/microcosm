@@ -96,6 +96,7 @@ _BHC_AHC_FENCE_ID = "ons_bhc_ahc_noncomparable"
 _UC_GRAIN_FENCE_ID = "uc_unit_vs_household_grain"
 _POPULATION_UNIVERSE_FENCE_ID = "population_universe_private_households"
 _CENSUS_DISCLOSURE_FENCE_ID = "census_disclosure_control_noise"
+_COUNCIL_TAX_UNIVERSE_FENCE_ID = "voa_dwellings_vs_household_frame"
 
 #: Exact metric names mapping to a census family. Matching is equality only,
 #: so a near-miss such as ``uc_householdsX`` fails closed instead of
@@ -117,6 +118,7 @@ _PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
     ("uc_hh_", "uc_households"),
     ("ons/equiv_", "equivalised_income"),
     ("tenure/", "tenure"),
+    ("council_tax/", "council_tax"),
 )
 
 _FAMILIES: tuple[dict[str, Any], ...] = (
@@ -191,6 +193,15 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
         ),
         "sources": ["ons_pipr_private_rents"],
         "adjudications": [],
+    },
+    {
+        "family": "council_tax",
+        "description": (
+            "Chargeable dwelling stock by council-tax band A-H at local-"
+            "authority grain, represented on the household frame."
+        ),
+        "sources": ["voa_council_tax_stock_la"],
+        "adjudications": [_COUNCIL_TAX_UNIVERSE_FENCE_ID],
     },
 )
 
@@ -423,19 +434,50 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "signed_reason_id": "private_rent_pipr_partial_coverage_2025",
         "signed_rationale": (
-            "The pinned Ledger fact feed carries PIPR LA facts at 2026-06 "
-            "for 314 crosswalk England/Wales local authorities, which are "
-            "after the 2025 target period; four English crosswalk local "
-            "authorities are absent, Scotland is BRMA statistical_scope "
-            "grain, and Northern Ireland has no LA rows."
+            "The pinned Ledger fact feed carries one PIPR period, 2026-06, "
+            "with 348 facts: 314 crosswalk England/Wales LA rows, two English "
+            "LA ids outside the crosswalk, 18 Scottish BRMA rows, nine region "
+            "rows, and five country rows. None is at or before the 2025 target "
+            "period; four English crosswalk authorities are absent, Scotland "
+            "has no LA rows, and Northern Ireland has no rows at any grain."
         ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
             "PIPR publishes average rent price levels, not additive rent "
-            "totals. The staged feed's LA rows are signed deferred for the "
-            "2025 local target compile because every matching England/Wales "
-            "LA fact is period 2026-06 and the remaining crosswalk areas "
-            "lack LA-grain facts."
+            "totals. All 361 local-authority cells remain signed deferred for "
+            "the 2025 compile: 314 are after-period, four English cells have "
+            "no matching LA id, 32 Scottish cells are represented only at "
+            "BRMA grain without a signed translation, and 11 Northern Ireland "
+            "cells are absent."
+        ),
+    },
+    {
+        "source_id": "voa_council_tax_stock_la",
+        "publisher": "Valuation Office Agency",
+        "product": (
+            "Council Tax stock of properties, 2025: local-authority counts "
+            "by valuation band."
+        ),
+        "url": (
+            "https://www.gov.uk/government/statistics/council-tax-stock-of-"
+            "properties-2025"
+        ),
+        "geographies": ["la"],
+        "latest_vintage": "2025",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record-set spec "
+            "uk.local_geography.council_tax_stock.by_local_authority.v1 "
+            "supplies 2,541 active band cells: bands B-G cover all 318 "
+            "England/Wales crosswalk authorities, band A covers 317 because "
+            "E09000001 is suppressed, and band H covers 316 because "
+            "W06000019 and W06000024 are absent. Scotland's 32 authorities "
+            "have no VOA band-count rows and Northern Ireland's 11 LGDs use "
+            "domestic rates; all 347 absent cells are signed deferrals. The "
+            "feed has no comparable 2025 LA net series across the roster, so "
+            "council_tax/net is not declared."
         ),
     },
 )
@@ -573,6 +615,24 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
             "finding)."
         ),
     },
+    {
+        "fence_id": _COUNCIL_TAX_UNIVERSE_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "VOA council-tax stock counts chargeable dwellings, including "
+            "empty properties, second homes, and other dwellings that need "
+            "not correspond one-for-one with occupied private households in "
+            "the FRS frame. Binding the band-count family requires an explicit "
+            "adjudication accepting the household proxy or a source-faithful "
+            "dwelling representation."
+        ),
+        "authority": (
+            "uk-data targets/sources/la_council_tax.py lineage doctrine and "
+            "datasets/local_areas/local_authorities/loss.py; uk-data#371; "
+            "microcosm#147 adjudication A3."
+        ),
+    },
 )
 
 _STATUS_DEFINITIONS: dict[str, str] = {
@@ -615,6 +675,83 @@ _SCOPE_NOTE = (
     "Ledger target-profile-driven metric surfaces are governed by their "
     "profile contract and are out of census scope."
 )
+
+_DOCTRINE: dict[str, Any] = {
+    "masked_missing": {
+        "rule": (
+            "A missing local target is represented at compile time by an "
+            "AreaSignedDeferral carrying a signed reason and explicit area ids. "
+            "Unsigned absence raises, and a deferral becomes stale and raises "
+            "as soon as the pinned feed can compile that cell."
+        ),
+        "enforcement_point": (
+            "Both refusals fire inside the reference compiler, which runs only "
+            "when the surface is regenerated against the pinned consumer feed "
+            "(a licensed, untracked input passed explicitly to "
+            "tools/generate_uk_local_target_references.py). CI verifies the "
+            "committed compile through the census and membership drift gates; "
+            "it cannot re-run the compiler, so a feed that later carries new "
+            "facts is caught at the next regeneration, not continuously."
+        ),
+        "solve_semantics": (
+            "The solve surface remains dense and finite by design; "
+            "local_rowwise.py refuses non-finite targets rather than treating "
+            "NaN as an implicit loss mask."
+        ),
+        "incumbent_comparison": (
+            "This supersedes uk-data's per-cell NaN mask with a stronger, "
+            "reviewable compile-time accounting contract."
+        ),
+    },
+    "zero_targets": {
+        "rule": "A published zero-valued local target is legal and intentional.",
+        "enforcement": (
+            "Zero is preserved as a finite target; only an unreachable nonzero "
+            "target is refused by the matrix builder."
+        ),
+        "test": "test_matrix_builder_fails_closed_on_unreachable_nonzero_targets",
+    },
+    "never_fabricate": {
+        "rule": (
+            "Never create a local target by allocating a national or country "
+            "total across areas by population share or another smooth proxy."
+        ),
+        "cautionary_example": (
+            "uk-data datasets/local_areas/constituencies/devolved_housing.py "
+            "allocated hardcoded Wales and Scotland rent totals across "
+            "constituencies in proportion to age-target population. Those "
+            "anchors are deliberately not ported."
+        ),
+        "replacement": (
+            "Record signed absence, a reviewed exclusion, or a declared "
+            "cross-grain bridge backed by a pinned crosswalk; never mint cells."
+        ),
+    },
+    "acceptance_criteria_to_mechanism": {
+        "every_target_accounted": (
+            "The local target compiler requires a compiled reference or an "
+            "AreaSignedDeferral for every metric-by-area cell; unsigned and "
+            "stale deferrals raise."
+        ),
+        "missing_cells_masked_deliberately": (
+            "AreaSignedDeferral is the deliberate compile-time mask; the solve "
+            "accepts only finite rows."
+        ),
+        "intentional_zeros_preserved": (
+            "Finite zero facts compile unchanged and are distinguished from "
+            "missing or unreachable nonzero targets."
+        ),
+        "no_silent_target_fabrication": (
+            "The compiler reads only the sha-pinned Ledger feed, and the "
+            "devolved_housing population-share allocation is a reviewed "
+            "non-port."
+        ),
+        "binding_requires_review": (
+            "require_adjudicated_uk_local_binding refuses a family whose "
+            "declared fences lack an in-force local_binding_adjudications row."
+        ),
+    },
+}
 
 
 def build_uk_local_target_census() -> dict[str, Any]:
@@ -682,6 +819,7 @@ def build_uk_local_target_census() -> dict[str, Any]:
         "schema_version": CENSUS_SCHEMA_VERSION,
         "census_kind": CENSUS_KIND,
         "scope": _SCOPE_NOTE,
+        "doctrine": copy.deepcopy(_DOCTRINE),
         "area_types": list(AREA_TYPES),
         "area_metric_order": area_metric_order,
         "metrics": [metric_rows[name] for name in sorted(metric_rows)],

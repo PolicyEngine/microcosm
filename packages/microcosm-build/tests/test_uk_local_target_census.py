@@ -151,7 +151,24 @@ def test_fences_declare_enforcement_and_gate_reviewed_families() -> None:
     assert "uc_unit_vs_household_grain" in adjudications["uc_households"]
     assert "ons_bhc_ahc_noncomparable" in adjudications["equivalised_income"]
     assert "population_universe_private_households" in adjudications["age_structure"]
+    assert "voa_dwellings_vs_household_frame" in adjudications["council_tax"]
     assert census["scope"], "census must declare its metric-surface scope"
+
+
+def test_council_tax_source_and_fence_pin_measured_coverage() -> None:
+    census = build_uk_local_target_census()
+    sources = {row["source_id"]: row for row in census["sources"]}
+    source = sources["voa_council_tax_stock_la"]
+    assert source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "2,541 active band cells" in source["notes"]
+    assert "E09000001" in source["notes"]
+    assert "W06000019 and W06000024" in source["notes"]
+    assert "council_tax/net is not declared" in source["notes"]
+
+    fences = {row["fence_id"]: row for row in census["binding_fences"]}
+    fence = fences["voa_dwellings_vs_household_frame"]
+    assert "chargeable dwellings" in fence["rule"]
+    assert "occupied private households" in fence["rule"]
 
 
 def test_census_disclosure_fence_names_country_as_winning_grain() -> None:
@@ -162,6 +179,37 @@ def test_census_disclosure_fence_names_country_as_winning_grain() -> None:
     assert "uk_runtime.ledger_targets" in rule
     assert "country wins" in rule
     assert "national same-concept control" in rule
+
+
+def test_masking_fabrication_and_zero_doctrine_is_review_pinned() -> None:
+    doctrine = build_uk_local_target_census()["doctrine"]
+    masked = doctrine["masked_missing"]
+    assert "AreaSignedDeferral" in masked["rule"]
+    assert "Unsigned absence raises" in masked["rule"]
+    assert "stale" in masked["rule"]
+    assert "dense and finite" in masked["solve_semantics"]
+    assert "refuses non-finite targets" in masked["solve_semantics"]
+
+    zero = doctrine["zero_targets"]
+    assert "legal and intentional" in zero["rule"]
+    assert zero["test"] == (
+        "test_matrix_builder_fails_closed_on_unreachable_nonzero_targets"
+    )
+
+    fabrication = doctrine["never_fabricate"]
+    assert "Never create a local target" in fabrication["rule"]
+    assert "devolved_housing.py" in fabrication["cautionary_example"]
+    assert "deliberately not ported" in fabrication["cautionary_example"]
+    assert "never mint cells" in fabrication["replacement"]
+
+    mapping = doctrine["acceptance_criteria_to_mechanism"]
+    assert set(mapping) == {
+        "every_target_accounted",
+        "missing_cells_masked_deliberately",
+        "intentional_zeros_preserved",
+        "no_silent_target_fabrication",
+        "binding_requires_review",
+    }
 
 
 def test_unclassified_metric_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

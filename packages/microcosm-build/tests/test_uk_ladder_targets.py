@@ -212,10 +212,66 @@ def test_ladder_target_provenance_names_the_pairing(tmp_path) -> None:
     assert provenance["households_total"] == pytest.approx(120.0)
 
 
-def test_households_metric_is_appended_last() -> None:
-    # Positional stability: adding the metric must not renumber incumbents.
-    for area_type in ("constituency", "la"):
-        assert metric_names(area_type)[-1] == "households"
+def test_local_metric_surface_is_append_only() -> None:
+    # Positional stability: adding a metric must never renumber the metrics
+    # already in the surface, because consumers address them by index
+    # (local_rowwise builds target_index as area_index * n_metrics +
+    # metric_index). The ladder-derived "households" metric was itself
+    # appended under this rule, so it keeps its index rather than staying
+    # last: a later family lands after it, never before it.
+    prefix_through_households = {
+        "constituency": (
+            "hmrc/self_employment_income/amount",
+            "hmrc/self_employment_income/count",
+            "hmrc/employment_income/amount",
+            "hmrc/employment_income/count",
+            "age/0_10",
+            "age/10_20",
+            "age/20_30",
+            "age/30_40",
+            "age/40_50",
+            "age/50_60",
+            "age/60_70",
+            "age/70_80",
+            "uc_households",
+            "uc_hh_0_children",
+            "uc_hh_1_child",
+            "uc_hh_2_children",
+            "uc_hh_3plus_children",
+            "households",
+        ),
+        "la": (
+            "hmrc/self_employment_income/amount",
+            "hmrc/self_employment_income/count",
+            "hmrc/employment_income/amount",
+            "hmrc/employment_income/count",
+            "age/0_10",
+            "age/10_20",
+            "age/20_30",
+            "age/30_40",
+            "age/40_50",
+            "age/50_60",
+            "age/60_70",
+            "age/70_80",
+            "uc_households",
+            "ons/equiv_net_income_bhc",
+            "ons/equiv_net_income_ahc",
+            "ons/equiv_housing_costs",
+            "tenure/owned_outright",
+            "tenure/owned_mortgage",
+            "tenure/private_rent",
+            "tenure/social_rent",
+            "rent/private_rent",
+            "households",
+        ),
+    }
+    for area_type, prefix in prefix_through_households.items():
+        names = metric_names(area_type)
+        assert names[: len(prefix)] == prefix, (
+            f"{area_type} metric indices were renumbered; new metrics must be "
+            "appended after the existing surface, never inserted into it."
+        )
+        assert len(set(names)) == len(names)
 
 
 def test_census_disclosure_fence_gates_the_household_family() -> None:

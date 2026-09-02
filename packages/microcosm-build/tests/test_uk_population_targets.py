@@ -164,13 +164,13 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 214
+    assert len(resource["targets"]) == 222
 
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
     assert len(registry_scope) == 189
-    assert len(profile_scope) == 25
+    assert len(profile_scope) == 33
     assert target_ids[:189] == registry_scope
     assert target_ids[189:] == profile_scope
 
@@ -205,12 +205,15 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 25
+    assert parity["contract_target_count"] == 33
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 8
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
-    assert corrected_ids == set(parity["scope_target_ids"])
+    added_ids = {entry["target_id"] for entry in parity["activation_additions"]}
+    assert corrected_ids | added_ids == set(parity["scope_target_ids"])
+    assert corrected_ids.isdisjoint(added_ids)
     for entry in parity["corrected"]:
         target = targets[entry["target_id"]]
         assert entry["corrected_selector"] == target["ledger_selector"]
@@ -302,7 +305,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 214
+    assert len(target_ids) == 222
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -485,9 +488,11 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         metric_names_from_target_profile(resource, "constituency")
         == metric_names("constituency")[:-1]
     )
-    assert metric_names_from_target_profile(resource, "la") == metric_names("la")[:-1]
+    assert metric_names_from_target_profile(resource, "la") == tuple(
+        name for name in metric_names("la") if name != "households"
+    )
     assert len(metric_names_from_target_profile(resource, "constituency")) == 17
-    assert len(metric_names_from_target_profile(resource, "la")) == 21
+    assert len(metric_names_from_target_profile(resource, "la")) == 29
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:

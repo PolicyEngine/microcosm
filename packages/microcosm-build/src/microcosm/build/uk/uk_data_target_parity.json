@@ -1,0 +1,958 @@
+{
+  "concerns": [
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_aggregate_smokes",
+      "covers": [
+        "policyengine_uk_data.tests.test_aggregates"
+      ],
+      "evidence": "uk-data aggregate smoke tests; DfE and bus-fare checks were commented out.",
+      "fence": {
+        "origin": "uk-data aggregate tests.",
+        "purpose": "Catch order-of-magnitude imputation failures.",
+        "verdict_basis": "Route to the credibility-gate workstream; do not bind the validation totals."
+      },
+      "reason": "NHS/rail/bus \u00b170% smokes belong to report-only validation.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_bus_fare_distribution",
+      "covers": [
+        "policyengine_uk_data.tests.test_bus_fare_distribution"
+      ],
+      "evidence": "uk-data bus fare distribution test; Chronicle#200/#202.",
+      "fence": {
+        "origin": "uk-data consumption test.",
+        "purpose": "Protect the bus-fare total and London share.",
+        "verdict_basis": "Route with the transport imputation anchors to #148."
+      },
+      "reason": "Bus total and London-share checks follow the WS-E/F transport anchors.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_local_council_tax_outliers",
+      "covers": [
+        "policyengine_uk_data.tests.test_la_council_tax_targets",
+        "policyengine_uk_data.tests.test_la_loss_council_tax"
+      ],
+      "evidence": "uk-data LA council-tax outlier test and uk-data#371; Microcosm council-tax LA surface.",
+      "fence": {
+        "origin": "uk-data LA target test.",
+        "purpose": "Catch implausible band-count/rate joins.",
+        "verdict_basis": "Route to local validation once council-tax references compile; do not modify target values to satisfy the check."
+      },
+      "reason": "The Scilly 2000\u00d7 leak guard belongs to post-compile local validation.",
+      "status": "routed"
+    },
+    {
+      "classification": "compile_contract",
+      "concern_id": "credibility_local_missing_source_mask",
+      "covers": [
+        "policyengine_uk_data.tests.test_la_loss_missing_sources"
+      ],
+      "evidence": "uk-data finite/NaN missing-source test; Microcosm AreaSignedDeferral compiler, stale-deferral refusal, and finite-target solve surface.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_nic_signal",
+      "covers": [
+        "policyengine_uk_data.tests.test_obr_nic_signal"
+      ],
+      "evidence": "uk-data OBR NIC signal test; Microcosm obr.ni* target rows.",
+      "fence": {
+        "origin": "uk-data target credibility test.",
+        "purpose": "Catch inert NIC target columns.",
+        "verdict_basis": "Route to national target-materialization validation; the targets themselves are ported."
+      },
+      "reason": "Non-zero variation per active NIC target is a validation invariant over the ported national family.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_population_fidelity",
+      "covers": [
+        "policyengine_uk_data.tests.test_population",
+        "policyengine_uk_data.tests.test_population_fidelity"
+      ],
+      "evidence": "uk-data population fidelity test (69.5m \u00b14%); Microcosm release/gate validation lane.",
+      "fence": {
+        "origin": "uk-data aggregate test.",
+        "purpose": "Detect gross population-scale drift.",
+        "verdict_basis": "Retain as a validation check in the gate workstream, outside this target-activation PR."
+      },
+      "reason": "Population fidelity is a release validation concern, not another calibration target.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_public_sector_employment",
+      "covers": [
+        "policyengine_uk_data.tests.test_public_sector_employment_target"
+      ],
+      "evidence": "uk-data public-sector-employment aggregate test; Microcosm ons.public_sector_employment.",
+      "fence": {
+        "origin": "uk-data aggregate test documented the FRS overcount.",
+        "purpose": "Expose PSE universe/model mismatch.",
+        "verdict_basis": "Route to post-solve validation; do not alter the pinned target value."
+      },
+      "reason": "The incumbent's 50% simulated / 20% target sanity check validates the ported PSE target.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_reform_impact_regression",
+      "covers": [
+        "policyengine_uk_data.tests.microsimulation.test_reform_impacts"
+      ],
+      "evidence": "uk-data reform-impact regression tests; microcosm#365.",
+      "fence": {
+        "origin": "uk-data regression suite.",
+        "purpose": "Detect economically material end-to-end drift.",
+        "verdict_basis": "Route to microcosm#365; target activation must not tune inputs to this outcome test."
+      },
+      "reason": "The \u00a30.1bn reform-impact suite belongs to microcosm#365, not the target contract.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_regional_land_ordering",
+      "covers": [
+        "policyengine_uk_data.tests.test_regional_land_value_targets"
+      ],
+      "evidence": "uk-data regional-land tests; uk-data#357 and Chronicle#205.",
+      "fence": {
+        "origin": "uk-data regional land validation tests.",
+        "purpose": "Guard the London-highest and London/NE relationship.",
+        "verdict_basis": "Route with A5; do not validate a regional surface that is not yet evidenced."
+      },
+      "reason": "Regional sum/order checks depend on the unresolved regional-land A5 decision.",
+      "status": "routed"
+    },
+    {
+      "classification": "validation_check",
+      "concern_id": "credibility_registry_and_database_contracts",
+      "covers": [
+        "policyengine_uk_data.tests.test_target_registry",
+        "policyengine_uk_data.tests.test_target_db",
+        "policyengine_uk_data.tests.test_publish_local_h5s"
+      ],
+      "evidence": "uk-data registry/db tests and publish_local_h5s.py::validate_local_h5s; Microcosm country-package and release gates.",
+      "fence": {
+        "origin": "uk-data packaging tests.",
+        "purpose": "Prevent malformed target registries and local artifacts.",
+        "verdict_basis": "Use Microcosm country-spec/load and release gates rather than porting the retired H5 publisher."
+      },
+      "reason": "Registry/database and local-H5 publication contracts are superseded by Microcosm spec and artifact gates.",
+      "status": "routed"
+    },
+    {
+      "classification": "cross_grain_rule",
+      "concern_id": "cross_grain_council_tax_stock_country_over_la",
+      "covers": [
+        "policyengine_uk_data.targets.sources.la_council_tax",
+        "policyengine_uk_data.targets.sources.voa_council_tax"
+      ],
+      "evidence": "Local voa.council_tax_stock.by_area.band_a..h measurement signatures exactly match the national VOA/scotgov band-count signatures; apply_uk_cross_grain_reconciliation uses UK_CROSS_GRAIN_RULE so a bound country control rescales LA values.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "cross_grain_grain_gap",
+      "concern_id": "cross_grain_council_tax_stock_england_region",
+      "covers": [
+        "policyengine_uk_data.targets.sources.voa_council_tax"
+      ],
+      "evidence": "Microcosm voa.council_tax_stock.band_* geography_levels include region; CrossGrainRule.grain_precedence is country,constituency,la.",
+      "fence": {
+        "origin": "The national contract materializes English VOA stock by region and Wales by country.",
+        "purpose": "Prevent the LA solve from implicitly choosing between conflicting regional and local stock totals.",
+        "verdict_basis": "Use exact-signature country reconciliation where a country leg exists; record the England regional leg here until #802 machinery gains an adjudicated region bridge."
+      },
+      "reason": "The incumbent English VOA controls are region-grain, while the #802 rule declares only country > constituency > LA and cannot accept region rows.",
+      "status": "routed"
+    },
+    {
+      "classification": "cross_grain_grain_gap",
+      "concern_id": "cross_grain_private_rent_scotland_brma",
+      "covers": [
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Pinned feed has 18 Scottish statistical_scope BRMA rows at 2026-06 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs.",
+      "fence": {
+        "origin": "PIPR publishes Scottish rent levels at BRMA grain.",
+        "purpose": "Preserve source geography without allocating BRMA averages over local authorities.",
+        "verdict_basis": "Keep all 32 Scottish LA cells signed deferred until a source-backed BRMA-to-LA bridge with an explicit aggregation rule exists."
+      },
+      "reason": "CrossGrainBridge cannot express an overlapping BRMA-to-LA geography translation and no signed crosswalk is available.",
+      "status": "routed"
+    },
+    {
+      "classification": "imputation_anchor",
+      "concern_id": "dataset_anchor_bus_subsidy_and_fares",
+      "covers": [
+        "policyengine_uk_data.datasets.imputations.services.services",
+        "policyengine_uk_data.datasets.imputations.consumption"
+      ],
+      "evidence": "uk-data datasets/imputations/services/services.py:33 and datasets/imputations/consumption.py:790,830; Chronicle#200/#202.",
+      "fence": {
+        "origin": "uk-data post-imputation-rescaled bus subsidy and fares, including London share and quintile rates.",
+        "purpose": "Preserve service-consumption totals and distribution.",
+        "verdict_basis": "Route to WS-E/F (#148), using landed DfT facts; never allocate the national total over local areas."
+      },
+      "reason": "BUS05 subsidy/fare totals and the NTS0705 quintile IPF belong to WS-E/F (#148).",
+      "status": "routed"
+    },
+    {
+      "classification": "untargeted_both_sides",
+      "concern_id": "dataset_anchor_dfe_education_spending",
+      "covers": [
+        "policyengine_uk_data.datasets.imputations.services.services",
+        "policyengine_uk_data.tests.test_aggregates"
+      ],
+      "evidence": "uk-data datasets/imputations/frs_only.py and uk-data tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
+      "fence": {
+        "origin": "uk-data imputed DfE education spending without an active calibration target.",
+        "purpose": "Retain the imputed input while avoiding an unsupported aggregate claim.",
+        "verdict_basis": "No target fence to rebuild; keep the corrected DfE entitlement data on the input side until an official aggregate is declared."
+      },
+      "reason": "Education spending was imputed but its aggregate test was commented out; corrected post-ebf733c DfE entitlement data from uk-data#474 remains input-side.",
+      "status": "reviewed_exclusion"
+    },
+    {
+      "classification": "imputation_anchor",
+      "concern_id": "dataset_anchor_rail_subsidy",
+      "covers": [
+        "policyengine_uk_data.datasets.imputations.services.services"
+      ],
+      "evidence": "uk-data datasets/imputations/services/services.py:18; Chronicle transport facts landed in #200/#202.",
+      "fence": {
+        "origin": "uk-data rescaled rail_usage to a national subsidy total.",
+        "purpose": "Anchor the imputed service-consumption mass.",
+        "verdict_basis": "Route to WS-E/F (#148); do not recast it as a local calibration target."
+      },
+      "reason": "The \u00a321.6bn rail anchor belongs to WS-E/F (#148), not the local target solve.",
+      "status": "routed"
+    },
+    {
+      "classification": "imputation_side",
+      "concern_id": "dataset_anchor_vat_band_shares",
+      "covers": [
+        "policyengine_uk_data.datasets.imputations.vat"
+      ],
+      "evidence": "uk-data datasets/imputations/vat.py and uk-data#241; Microcosm target id obr.vat.",
+      "fence": {
+        "origin": "uk-data imputed VAT categories from the ETB and calibrated only aggregate receipts.",
+        "purpose": "Preserve category composition without presenting it as administrative calibration evidence.",
+        "verdict_basis": "Keep the band shares in the imputation lane and the compiled OBR receipts total in calibration."
+      },
+      "reason": "VAT band shares are imputation-side; only the OBR VAT receipts total is a calibration target.",
+      "status": "routed"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.dwp.uc.households_by_area",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_uc"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target dwp.uc.households_by_area; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_uc.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.dwp.uc.households_by_area_children_0",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.targets.sources.local_uc"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target dwp.uc.households_by_area_children_0; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data targets/sources/local_uc.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.dwp.uc.households_by_area_children_1",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.targets.sources.local_uc"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target dwp.uc.households_by_area_children_1; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data targets/sources/local_uc.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.dwp.uc.households_by_area_children_2",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.targets.sources.local_uc"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target dwp.uc.households_by_area_children_2; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data targets/sources/local_uc.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.dwp.uc.households_by_area_children_3plus",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.targets.sources.local_uc"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target dwp.uc.households_by_area_children_3plus; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data targets/sources/local_uc.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.hmrc.employment_income.amount",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
+        "policyengine_uk_data.targets.sources.local_income"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.amount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.hmrc.employment_income.count",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
+        "policyengine_uk_data.targets.sources.local_income"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.hmrc.self_employment_income.amount",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
+        "policyengine_uk_data.targets.sources.local_income"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.self_employment_income.amount; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.hmrc.self_employment_income.count",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.create_total_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_employment_incomes",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.create_total_incomes",
+        "policyengine_uk_data.targets.sources.local_income"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target hmrc.self_employment_income.count; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/create_employment_incomes.py, uk-data datasets/local_areas/constituencies/targets/create_total_incomes.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/create_employment_incomes.py, uk-data datasets/local_areas/local_authorities/targets/create_total_incomes.py, uk-data targets/sources/local_income.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.0_10",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.0_10; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.10_20",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.10_20; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.20_30",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.20_30; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.30_40",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.30_40; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.40_50",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.40_50; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.50_60",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.50_60; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.60_70",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.60_70; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.age.70_80",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.loss",
+        "policyengine_uk_data.datasets.local_areas.constituencies.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.targets.fill_missing_age_demographics",
+        "policyengine_uk_data.targets.sources.local_age"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.age.70_80; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/constituencies/loss.py, uk-data datasets/local_areas/constituencies/targets/fill_missing_age_demographics.py, uk-data datasets/local_areas/local_authorities/loss.py, uk-data datasets/local_areas/local_authorities/targets/fill_missing_age_demographics.py, uk-data targets/sources/local_age.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.equiv_housing_costs",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.equiv_housing_costs; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.equiv_net_income_ahc",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.equiv_net_income_ahc; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.equiv_net_income_bhc",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.equiv_net_income_bhc; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.rent.private_rent",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.rent.private_rent; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.tenure.owned_mortgage",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.tenure.owned_mortgage; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.tenure.owned_outright",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.tenure.owned_outright; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.tenure.private_rent",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.tenure.private_rent; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.ons.tenure.social_rent",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.local_la_extras"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target ons.tenure.social_rent; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/local_la_extras.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_a",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_a; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_b",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_b; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_c",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_c; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_d",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_d; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_e",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_e; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_f",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_f; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_g",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_g; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_local_contract_target",
+      "concern_id": "local_contract.voa.council_tax_stock.by_area.band_h",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss",
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "Microcosm uk/uk_population_targets.json target voa.council_tax_stock.by_area.band_h; uk_data_target_inventory.json pins the incumbent paths uk-data datasets/local_areas/local_authorities/loss.py, uk-data targets/sources/la_council_tax.py.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "local_registry_family",
+      "concern_id": "local_council_tax_band_counts",
+      "covers": [
+        "policyengine_uk_data.targets.sources.la_council_tax",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "uk-data targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..h contract rows compile 2,541 pinned-feed cells with 347 signed deferrals.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "non_linear",
+      "concern_id": "local_council_tax_band_d_rate",
+      "covers": [
+        "policyengine_uk_data.targets.sources.la_council_tax"
+      ],
+      "evidence": "uk-data targets/sources/la_council_tax.py module doctrine; no Microcosm contract row.",
+      "fence": {
+        "origin": "uk-data published Band D rates but did not wire them into the additive LA loss matrix.",
+        "purpose": "Avoid treating a rate as an additive target.",
+        "verdict_basis": "Keep excluded until a rate-aware non-linear objective exists."
+      },
+      "reason": "Band D currency amounts are per-rate, not additive household controls.",
+      "status": "reviewed_exclusion"
+    },
+    {
+      "classification": "awaiting_facts",
+      "concern_id": "local_council_tax_net",
+      "covers": [
+        "policyengine_uk_data.targets.sources.local_la_extras",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "Pinned feed contains country totals and partial/local later-vintage budget series, but no uk.local_geography 2025 LA net record-set spec; needs Chronicle.",
+      "fence": {
+        "origin": "uk-data wired housing/council_tax_net for 318 local authorities.",
+        "purpose": "Anchor net council-tax liability after reductions at LA grain.",
+        "verdict_basis": "Do not combine unlike country totals, 2026 Welsh budgets, or gross dwelling stock; await a comparable pinned LA series."
+      },
+      "reason": "The pinned feed has no comparable 2025 local-authority council-tax net series across the 361-area roster.",
+      "status": "blocked_source"
+    },
+    {
+      "classification": "fabricated_allocation",
+      "concern_id": "local_devolved_constituency_rent_anchors",
+      "covers": [
+        "policyengine_uk_data.datasets.local_areas.constituencies.devolved_housing"
+      ],
+      "evidence": "uk-data datasets/local_areas/constituencies/devolved_housing.py; uk-data#316 and uk-data#206.",
+      "fence": {
+        "origin": "uk-data created Wales and Scotland constituency rent anchors from hardcoded country totals.",
+        "purpose": "Provide a smooth constraint where no constituency facts existed.",
+        "verdict_basis": "Do not rebuild: compile-time signed absence is preferred to population-share fabrication."
+      },
+      "reason": "The incumbent allocated country totals across constituencies by population share; Microcosm doctrine forbids fabricated local targets.",
+      "status": "reviewed_exclusion"
+    },
+    {
+      "classification": "awaiting_facts",
+      "concern_id": "local_ons_public_sector_employment",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_public_sector_employment"
+      ],
+      "evidence": "Microcosm local_validation_levels.json regional PSE placeholder; Chronicle fact request required.",
+      "fence": {
+        "origin": "uk-data carried only the national PSE control and a credibility test.",
+        "purpose": "Do not infer regional employment from the national total.",
+        "verdict_basis": "Retain a report-only placeholder until Chronicle supplies regional facts."
+      },
+      "reason": "No pinned local-grain PSE facts are available.",
+      "status": "routed"
+    },
+    {
+      "classification": "local_registry_family",
+      "concern_id": "local_private_rent_pipr",
+      "covers": [
+        "policyengine_uk_data.targets.sources.local_la_extras",
+        "policyengine_uk_data.datasets.local_areas.local_authorities.loss"
+      ],
+      "evidence": "Microcosm ons.rent.private_rent is declared, but the pinned feed has only 2026-06 PIPR facts: 314 crosswalk E&W rows are after the 2025 target period, four English LAs are absent, 32 Scottish LAs have BRMA-only facts, and 11 NI LAs are absent.",
+      "status": "ported_local_declared"
+    },
+    {
+      "classification": "red_line_national_family",
+      "concern_id": "national_council_tax_stock",
+      "covers": [
+        "policyengine_uk_data.targets.sources.voa_council_tax"
+      ],
+      "evidence": "uk-data targets/sources/voa_council_tax.py:235,275; Microcosm voa.council_tax_stock.* and scotgov.council_tax_stock.* targets.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_dwp_benefits_and_uc_caseloads",
+      "covers": [
+        "policyengine_uk_data.targets.sources.dwp"
+      ],
+      "evidence": "uk-data targets/sources/dwp.py, including post-ebf733c uk-data#458 UC claimant-by-children, family-type, and two-child-limit caseload rows; Microcosm DWP target rows in uk_population_targets.json.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_hmrc_cgt_size_bands",
+      "covers": [
+        "policyengine_uk_data.targets.sources.hmrc_cgt"
+      ],
+      "evidence": "uk-data targets/sources/hmrc_cgt.py:195; Microcosm hmrc_cgt_size_bands.json and uk_population_targets.json CGT rows.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_hmrc_salary_sacrifice",
+      "covers": [
+        "policyengine_uk_data.targets.sources.hmrc_salary_sacrifice"
+      ],
+      "evidence": "uk-data targets/sources/hmrc_salary_sacrifice.py; Microcosm hmrc.salary_sacrifice target rows.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_hmrc_spi_income_bands",
+      "covers": [
+        "policyengine_uk_data.targets.sources.hmrc_spi"
+      ],
+      "evidence": "uk-data targets/sources/hmrc_spi.py:230; Microcosm HMRC SPI amount/count-by-total-income-band targets and replay fences.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "source_unpinned",
+      "concern_id": "national_housing_rate_headcount_products",
+      "covers": [
+        "policyengine_uk_data.targets.sources.housing"
+      ],
+      "evidence": "uk-data targets/sources/housing.py; housing/total_mortgage cites uk-data#453.",
+      "fence": {
+        "origin": "uk-data multiplied three housing rates by headcounts.",
+        "purpose": "Prevent an unpinned derived product from becoming a calibration control.",
+        "verdict_basis": "Block until the underlying rate and population sources are pinned and their universes reconciled."
+      },
+      "reason": "The mortgage/rent product source is not pinned.",
+      "status": "blocked_source"
+    },
+    {
+      "classification": "national_grain_follow_up",
+      "concern_id": "national_nts_vehicle_counts",
+      "covers": [
+        "policyengine_uk_data.targets.sources.nts_vehicles",
+        "policyengine_uk_data.tests.test_vehicle_ownership"
+      ],
+      "evidence": "uk-data targets/sources/nts_vehicles.py; route to the transport workstream.",
+      "fence": {
+        "origin": "uk-data calibrated household vehicle-count controls from NTS.",
+        "purpose": "Preserve the vehicle-distribution anchor.",
+        "verdict_basis": "Route to the national transport surface; no local allocation is authorized."
+      },
+      "reason": "The three NTS vehicle controls have no current national contract analog.",
+      "status": "routed"
+    },
+    {
+      "classification": "red_line_national_family",
+      "concern_id": "national_obr_council_tax",
+      "covers": [
+        "policyengine_uk_data.targets.sources.obr"
+      ],
+      "evidence": "uk-data targets/sources/obr.py:284; Microcosm target ids obr.council_tax and country legs obr.council_tax_{england,scotland,wales}.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "red_line_national_family",
+      "concern_id": "national_obr_national_insurance",
+      "covers": [
+        "policyengine_uk_data.targets.sources.obr"
+      ],
+      "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni, obr.ni_employee, obr.ni_employer, and obr.ni_self_employed.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "not_modeled",
+      "concern_id": "national_obr_national_insurance_class_3",
+      "covers": [
+        "policyengine_uk_data.targets.sources.obr"
+      ],
+      "evidence": "uk-data targets/sources/obr.py:402-409 and uk-data#88.",
+      "fence": {
+        "origin": "uk-data skipped the Class 3 OBR row pending uk-data#88.",
+        "purpose": "Avoid pretending voluntary Class 3 contributions are represented by another NIC variable.",
+        "verdict_basis": "Keep the omission explicit until the country model exposes a source-faithful Class 3 path."
+      },
+      "reason": "The incumbent deliberately skipped Class 3 and no Microcosm dataset path exists.",
+      "status": "reviewed_exclusion"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_obr_receipts",
+      "covers": [
+        "policyengine_uk_data.targets.sources.obr"
+      ],
+      "evidence": "uk-data targets/sources/obr.py: OBR receipt rows; Microcosm uk/uk_population_targets.json: obr.income_tax, obr.vat, obr.fuel_duty, obr.capital_gains_tax, and obr.stamp_duty_land_tax.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_obr_welfare",
+      "covers": [
+        "policyengine_uk_data.targets.sources.obr"
+      ],
+      "evidence": "uk-data targets/sources/obr.py:458 welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_ons_demographics",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_demographics"
+      ],
+      "evidence": "uk-data targets/sources/ons_demographics.py; Microcosm ONS population targets in uk_population_targets.json.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_grain_follow_up",
+      "concern_id": "national_ons_england_tenure",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_tenure"
+      ],
+      "evidence": "uk-data targets/sources/ons_tenure.py:69; Microcosm local ons.tenure.* contract rows.",
+      "fence": {
+        "origin": "uk-data calibrated five England tenure controls.",
+        "purpose": "Preserve an England-level representation check independently of the local Census tenure surface.",
+        "verdict_basis": "Route to the national target workstream; do not synthesize an England total from local cells."
+      },
+      "reason": "The incumbent England-national tenure controls are not part of the current national contract; local tenure is declared separately.",
+      "status": "routed"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_ons_household_composition",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_households"
+      ],
+      "evidence": "uk-data targets/sources/ons_households.py; Microcosm ten-row ons.household_composition partition and UK_CROSS_GRAIN_BRIDGES declaration.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "red_line_national_family",
+      "concern_id": "national_ons_land_values",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_land_values"
+      ],
+      "evidence": "uk-data targets/sources/ons_land_values.py and _land.py; Microcosm target ids ons.land.{land_value,household_land_value,corporate_land_value}.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_ons_public_sector_employment",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_public_sector_employment"
+      ],
+      "evidence": "uk-data targets/sources/ons_public_sector_employment.py; Microcosm target id ons.public_sector_employment.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_ons_savings_interest",
+      "covers": [
+        "policyengine_uk_data.targets.sources.ons_savings"
+      ],
+      "evidence": "uk-data targets/sources/ons_savings.py; Microcosm savings-interest target translation in uk_runtime/ledger_targets.py.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_scottish_child_payment",
+      "covers": [
+        "policyengine_uk_data.targets.sources.scottish_government"
+      ],
+      "evidence": "uk-data targets/sources/scottish_government.py; Microcosm Scottish Child Payment contract row.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_student_loans",
+      "covers": [
+        "policyengine_uk_data.targets.sources.slc",
+        "policyengine_uk_data.targets.sources.slc_repayments"
+      ],
+      "evidence": "uk-data targets/sources/slc.py and slc_repayments.py; Microcosm slc.* target rows and slc_liable_stocks.json.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "national_registry_family",
+      "concern_id": "national_tv_licence_and_policy_statics",
+      "covers": [
+        "policyengine_uk_data.targets.sources.obr"
+      ],
+      "evidence": "uk-data targets/sources/obr.py:617-728; Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
+      "status": "ported_national"
+    },
+    {
+      "classification": "adjudication_pending",
+      "concern_id": "regional_household_land_values",
+      "covers": [
+        "policyengine_uk_data.targets.sources.mhclg_regional_land"
+      ],
+      "evidence": "uk-data targets/sources/mhclg_regional_land.py and storage/regional_land_values.csv; adjudication A5.",
+      "fence": {
+        "origin": "uk-data calibrated 11 GB regional household-land rows using a uniform ratio.",
+        "purpose": "Guard regional ordering without presenting a national scalar as region-specific evidence.",
+        "verdict_basis": "Await A5 and Chronicle#205; property_wealth_intensity is currently national and the target alone cannot move regional intensity."
+      },
+      "reason": "The incumbent uses a uniform national land-to-property ratio; uk-data#357 per-region ratios never merged and Chronicle#205 WAS R8 facts are pending.",
+      "status": "routed"
+    }
+  ],
+  "reference": {
+    "governing_rule": "Every late uk-data target family, dataset-level anchor, and credibility check has a Microcosm home or an explicit Chesterton fence.",
+    "incumbent_commit": "8629dbb",
+    "incumbent_inventory": "uk_data_target_inventory.json",
+    "inventory_nature": "A sha-stamped snapshot of the incumbent's target-bearing modules, re-extracted manually against a local checkout and committed. CI checks the parity concerns against the committed snapshot; the recorded per-file hashes are re-verified against a tree only by verify_uk_data_target_inventory_against_tree (env-gated test or by hand), so 'uk-data moved' is caught on re-extraction, not continuously.",
+    "issue_citation_rule": "Incumbent issues are cited as uk-data#NNN.",
+    "verified_on": "2026-09-01"
+  },
+  "register_kind": "uk_data_target_parity",
+  "schema_version": 1,
+  "status_definitions": {
+    "blocked_source": "Cannot proceed without pinned source evidence.",
+    "ported_local_bound": "Declared, compiled, and admitted to the local solve.",
+    "ported_local_declared": "Declared and compile-accounted on the local contract; solve binding still requires adjudication.",
+    "ported_national": "Represented on the Microcosm national target surface.",
+    "reviewed_exclusion": "Deliberately not ported after review, with a complete fence.",
+    "routed": "Owned by another named workstream or report-only validation lane."
+  }
+}
