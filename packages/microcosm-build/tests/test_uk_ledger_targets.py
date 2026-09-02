@@ -888,6 +888,71 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
     assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
 
 
+def test_reviewed_household_composition_gap_leaves_census_ladder_unbound():
+    household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
+    missing = {
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
+        "ons.household_composition.multi_family_households",
+    }
+    selected = tuple(
+        target_id
+        for target_id in household_bridge.higher_target_ids
+        if target_id not in missing
+    )
+    surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": target_id,
+                    "value": 10.0,
+                }
+                for target_id in selected
+            ],
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "external:census_households/households",
+                "value": 40.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "external:census_households/households",
+                "value": 10.0,
+            },
+        ]
+    )
+    reviewed = {
+        target_id: {
+            "tracking": "microcosm#791",
+            "reason": "relationship-to-head is unavailable",
+        }
+        for target_id in missing
+    }
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        selected,
+        reviewed_unbound_higher_targets=reviewed,
+    )
+
+    assert reconciled.loc[len(selected) :, "value"].tolist() == [40.0, 10.0]
+    assert receipt["groups"] == []
+    assert receipt["unbound_bridges"] == [
+        {
+            "bridge_id": household_bridge.bridge_id,
+            "missing": sorted(missing),
+            "basis": "reviewed_exclusion",
+            "records": {
+                target_id: reviewed[target_id] for target_id in sorted(missing)
+            },
+        }
+    ]
+
+
 def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
     surface = pd.DataFrame(
         [

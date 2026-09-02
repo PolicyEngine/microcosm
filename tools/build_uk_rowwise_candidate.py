@@ -815,6 +815,9 @@ def _run_candidate(
                 local_metrics=local_metrics,
                 period=joint_inputs["calibration_year"],
                 sample_fraction=args.sample_fraction,
+                reviewed_unbound_higher_targets=joint_inputs[
+                    "reviewed_unbound_higher_targets"
+                ],
             )
             args._rung_surface = rung_surface
         args._bound_families = tuple(bound_families)
@@ -1108,6 +1111,17 @@ def _load_joint_target_inputs(args: argparse.Namespace) -> dict[str, Any] | None
     national_registry, exclusion_receipt = apply_uk_calibration_measure_exclusions(
         national_compilation.registry, exclusions
     )
+    national_specs_by_name = {
+        spec.name: spec for spec in national_compilation.registry.specs
+    }
+    reviewed_unbound_higher_targets = {
+        str(
+            national_specs_by_name[name].metadata.get(
+                "contract_target_id", national_specs_by_name[name].name
+            )
+        ): record
+        for name, record in exclusion_receipt.items()
+    }
     if args.register_json is not None:
         try:
             frozen = TargetRegistry.from_json(args.register_json)
@@ -1127,6 +1141,7 @@ def _load_joint_target_inputs(args: argparse.Namespace) -> dict[str, Any] | None
         "band_edge_registry": national_compilation.registry,
         "local_registry": local_compilation.registry,
         "measure_exclusions": exclusion_receipt,
+        "reviewed_unbound_higher_targets": reviewed_unbound_higher_targets,
     }
 
 
@@ -1162,6 +1177,7 @@ def _build_joint_problem(
     local_metrics: Mapping[str, pd.DataFrame],
     period: int,
     sample_fraction: float,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]],
 ) -> tuple[
     pd.DataFrame,
     UKRowwiseLocalMatrix,
@@ -1195,6 +1211,7 @@ def _build_joint_problem(
         target_ladder,
         bound_national_target_ids=national_ids,
         period=period,
+        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
     )
     covered = {
         grain: set(values.astype(str).tolist()) for grain, values in assigned.items()
@@ -1285,6 +1302,7 @@ def _joint_dry_run_plan(
         ladder,
         bound_national_target_ids=_national_contract_target_ids(national_registry),
         period=joint_inputs["calibration_year"],
+        reviewed_unbound_higher_targets=joint_inputs["reviewed_unbound_higher_targets"],
     )
     household = clone.frame.table("household")
     covered = {

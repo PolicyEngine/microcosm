@@ -809,6 +809,7 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
 def test_joint_candidate_f100_and_f001_end_to_end(
     monkeypatch,
     tmp_path,
+    capsys,
 ) -> None:
     """The driver solves one local/ladder/national matrix at both rung postures."""
 
@@ -842,22 +843,36 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     np.savez_compressed(ladder_path, **payload)
     ladder = load_uk_oa_ladder(ladder_path)
 
+    from microcosm.build.uk_runtime.ledger_targets import UK_CROSS_GRAIN_BRIDGES
+
+    household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
+    reviewed_missing = {
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
+        "ons.household_composition.multi_family_households",
+    }
+    selected_composition = tuple(
+        target_id
+        for target_id in household_bridge.higher_target_ids
+        if target_id not in reviewed_missing
+    )
     national_registry = TargetRegistry(
         [
             TargetSpec(
-                name="national.stub.households",
+                name=target_id,
                 entity="household",
-                measure="national/ones",
+                measure=f"national/composition_{index}",
                 value=33.0,
                 period=2025,
                 source="synthetic national fixture",
-                family="national_stub",
+                family="ons",
                 metadata={
-                    "contract_target_id": "dwp.uc.households",
+                    "contract_target_id": target_id,
                     "ledger_geography_level": "country",
                     "ledger_geography_id": "K02000001",
                 },
             )
+            for index, target_id in enumerate(selected_composition)
         ],
         country="uk",
     )
@@ -894,7 +909,20 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         "national_registry": national_registry,
         "band_edge_registry": national_registry,
         "local_registry": local_registry,
-        "measure_exclusions": {},
+        "measure_exclusions": {
+            f"compiled::{target_id}": {
+                "tracking": "microcosm#791",
+                "reason": "relationship-to-head is unavailable",
+            }
+            for target_id in reviewed_missing
+        },
+        "reviewed_unbound_higher_targets": {
+            target_id: {
+                "tracking": "microcosm#791",
+                "reason": "relationship-to-head is unavailable",
+            }
+            for target_id in reviewed_missing
+        },
     }
     monkeypatch.setattr(
         builder, "_load_joint_target_inputs", lambda _args: joint_inputs
@@ -917,9 +945,10 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         "resolve_target_measures",
         lambda _factory, _registry, provider, **_kwargs: SimpleNamespace(
             measure_inputs={
-                ("household", "national/ones"): np.ones(
+                (spec.entity, spec.measure): np.ones(
                     len(provider.frame.table("household")), dtype=float
                 )
+                for spec in _registry.specs
             }
         ),
     )
@@ -966,6 +995,46 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             "local_authority": tuple(sorted(set(ladder.local_authority_code))),
         },
     )
+    real_support_summary = builder.uk_ladder_area_support_summary
+
+    def support_summary(household, ladder_arg):
+        if "household_weight" in household:
+            return real_support_summary(household, ladder_arg)
+        support = pd.DataFrame(
+            {
+                "nonzero_households": [len(household)],
+                "effective_sample_size": [float(len(household))],
+                "nonzero_source_households": [
+                    household["source_household_id"].nunique()
+                ],
+            }
+        )
+        return {"constituency": support, "la": support}
+
+    monkeypatch.setattr(builder, "uk_ladder_area_support_summary", support_summary)
+
+    dry_out = tmp_path / "joint-dry"
+    assert (
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(dry_out),
+                "--n-clones",
+                "2",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    dry_plan = json.loads(capsys.readouterr().out)
+    dry_unbound = dry_plan["cross_grain"]["unbound_bridges"]
+    assert [entry["bridge_id"] for entry in dry_unbound] == [household_bridge.bridge_id]
+    assert dry_unbound[0]["missing"] == sorted(reviewed_missing)
+    assert not dry_out.exists()
 
     f100_out = tmp_path / "joint-f100"
     assert (
@@ -991,10 +1060,12 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert f100["solve"]["n_targets_by_kind"] == {
         "local": 1,
         "ladder": 12,
-        "national": 1,
+        "national": len(selected_composition),
     }
-    assert f100["solve"]["n_targets"] == 14
+    assert f100["solve"]["n_targets"] == 13 + len(selected_composition)
     assert f100["solve"]["measure_resolution"]["mode"] == "stub"
+    assert f100["cross_grain"]["unbound_bridges"] == dry_unbound
+    assert f100["solve"]["cross_grain"]["unbound_bridges"] == dry_unbound
     assert f100["releasable"] is True
     assert _spool_rows(f100_out)[0].rung == "f100"
 

@@ -713,6 +713,8 @@ def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
 def apply_uk_cross_grain_reconciliation(
     local_frame: pd.DataFrame,
     bound_higher_targets: Iterable[str],
+    *,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
@@ -726,6 +728,7 @@ def apply_uk_cross_grain_reconciliation(
         bound_higher_targets,
         _uk_contract_targets(national_only=False),
         UK_CROSS_GRAIN_RULE,
+        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
     )
 
 
@@ -735,6 +738,7 @@ def uk_local_target_surface(
     *,
     bound_national_target_ids: Iterable[str],
     period: int | str,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface."""
 
@@ -841,6 +845,7 @@ def uk_local_target_surface(
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         reconciliation[["grain", "geography_id", "target_id", "value"]],
         bound_national_target_ids,
+        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
     )
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
         output_position = reconciliation.iloc[position]["_output_position"]

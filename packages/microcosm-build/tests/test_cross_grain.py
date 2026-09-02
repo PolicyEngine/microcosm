@@ -150,6 +150,7 @@ def test_absence_receipt_exists_when_no_higher_target_is_bound():
         "bound_higher_targets": [],
         "inconsistencies_in_force": [],
         "groups": [],
+        "unbound_bridges": [],
         "absence": "No cross-grain inconsistencies are in force on this surface.",
     }
 
@@ -172,6 +173,81 @@ def test_partially_bound_declared_partition_is_refused():
             ("part_a",),
             {"part_a": _signature(), "part_b": _signature()},
             _rule(bridges=(bridge,)),
+        )
+
+
+def test_reviewed_partial_partition_is_unbound_with_receipt_and_no_reconciliation():
+    bridge = CrossGrainBridge(
+        "partition",
+        "households",
+        ("part_a", "part_b", "part_c"),
+        "external:census/households",
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "part_a", 10.0),
+            ("constituency", "E1", "external:census/households", 30.0),
+            ("constituency", "W1", "external:census/households", 20.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    original = surface.copy(deep=True)
+    reviewed = {
+        "part_b": {"tracking": "microcosm#791", "reason": "unmeasurable"},
+        "part_c": {"tracking": "microcosm#791", "reason": "unmeasurable"},
+    }
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("part_a",),
+        {
+            "part_a": _signature(),
+            "part_b": _signature(),
+            "part_c": _signature(),
+        },
+        _rule(bridges=(bridge,)),
+        reviewed_unbound_higher_targets=reviewed,
+    )
+
+    pd.testing.assert_frame_equal(reconciled, original)
+    assert receipt["groups"] == []
+    assert receipt["inconsistencies_in_force"] == []
+    assert receipt["unbound_bridges"] == [
+        {
+            "bridge_id": "partition",
+            "missing": ["part_b", "part_c"],
+            "basis": "reviewed_exclusion",
+            "records": reviewed,
+        }
+    ]
+
+
+def test_partial_partition_with_unreviewed_member_names_it_in_refusal():
+    bridge = CrossGrainBridge(
+        "partition",
+        "households",
+        ("part_a", "part_b", "part_c"),
+        "external:census/households",
+    )
+    surface = pd.DataFrame(
+        [("country", "UK", "part_a", 10.0)],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"lack a reviewed exclusion.*part_c",
+    ):
+        detect_cross_grain_inconsistencies(
+            surface,
+            ("part_a",),
+            {
+                "part_a": _signature(),
+                "part_b": _signature(),
+                "part_c": _signature(),
+            },
+            _rule(bridges=(bridge,)),
+            reviewed_unbound_higher_targets={"part_b": {"tracking": "microcosm#791"}},
         )
 
 
@@ -234,9 +310,7 @@ def test_unparented_and_empty_legs_are_refused():
     )
     signatures = {"national": _signature(), "local": _signature()}
     with pytest.raises(ValueError, match="unparented"):
-        apply_cross_grain_reconciliation(
-            unparented, ("national",), signatures, _rule()
-        )
+        apply_cross_grain_reconciliation(unparented, ("national",), signatures, _rule())
 
     empty = pd.DataFrame(
         [
@@ -304,9 +378,7 @@ def test_non_finite_targets_are_refused():
         columns=["grain", "geography_id", "target_id", "value"],
     )
     with pytest.raises(ValueError, match="finite"):
-        apply_cross_grain_reconciliation(
-            surface, (), {"local": _signature()}, _rule()
-        )
+        apply_cross_grain_reconciliation(surface, (), {"local": _signature()}, _rule())
 
 
 def test_off_control_reconciliation_is_refused(monkeypatch):
@@ -328,13 +400,9 @@ def test_off_control_reconciliation_is_refused(monkeypatch):
     )
     signatures = {"national": _signature(), "local": _signature()}
 
-    monkeypatch.setattr(
-        module.np, "isclose", lambda *args, **kwargs: False
-    )
+    monkeypatch.setattr(module.np, "isclose", lambda *args, **kwargs: False)
     with pytest.raises(ValueError, match="off its control"):
-        apply_cross_grain_reconciliation(
-            surface, ("national",), signatures, _rule()
-        )
+        apply_cross_grain_reconciliation(surface, ("national",), signatures, _rule())
 
 
 def test_closure_holds_across_many_legs_with_awkward_floats():
