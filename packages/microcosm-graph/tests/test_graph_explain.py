@@ -178,6 +178,18 @@ def test_page_contains_every_charter_property(explanation) -> None:
     assert "35 green" not in rendered  # V1-V4 are also represented.
     assert "39 green" in rendered
     assert "2 red" in rendered
+    assert "<th>Flip PR</th>" in rendered
+    assert "Not recorded" in rendered
+
+
+def test_burndown_renders_available_flip_pr(tmp_path: Path) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    burndown = _burndown()
+    burndown["properties"][0]["pr"] = "#123"
+
+    rendered = explain_html(run.compiled, run.manifest, burndown=burndown)
+
+    assert "#123" in rendered
 
 
 def test_calibration_view_uses_targets_ratios_and_mass(explanation) -> None:

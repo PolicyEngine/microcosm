@@ -106,7 +106,10 @@ changed node and its descendants.
 The demo combines the burndown tool's JSON state with the first explanatory
 sentence of every property in `docs/graph-acceptance.md`. The burndown tool owns
 A–H; the demo adds V1–V4 as green because this page is their executable review
-surface. H2 and H3 remain red until their country fixtures land.
+surface. H2 and H3 remain red until their country fixtures land. The Flip PR
+column accepts `pr`, `pull_request`, or `flipped_by` provenance from the JSON.
+It says “Not recorded” when the current burndown data does not carry that field,
+so missing process provenance stays visible instead of being guessed.
 
 The measured-payoff table is computed, not transcribed. The demo edits only the
 chained target's descriptive text, reruns against the populated store, and shows

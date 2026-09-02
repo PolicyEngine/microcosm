@@ -639,11 +639,20 @@ def _burndown_properties(
         raw_state = str(item.get("state", ""))
         if raw_state not in {"green", "red"}:
             raw_state = "green" if identifier.startswith("V") else "red"
+        flip_pr = next(
+            (
+                item[field]
+                for field in ("pr", "pull_request", "flipped_by")
+                if item.get(field) not in (None, "")
+            ),
+            "Not recorded",
+        )
         rows.append(
             {
                 "id": identifier,
                 "statement": statement,
                 "state": raw_state,
+                "flip_pr": flip_pr,
                 "reason": "; ".join(str(reason) for reason in item.get("reasons", ()))
                 if isinstance(item.get("reasons", ()), Sequence)
                 else "",
@@ -702,7 +711,8 @@ def _render_burndown(
             if row["reason"]
             else ""
         )
-        + f'</td><td class="state-cell"><span class="badge {row["state"]}">'
+        + f'</td><td class="muted">{_escape(row["flip_pr"])}</td>'
+        + f'<td class="state-cell"><span class="badge {row["state"]}">'
         + _escape(row["state"])
         + "</span></td></tr>"
         for row in properties
@@ -730,9 +740,8 @@ def _render_burndown(
         f'<div class="metrics"><span class="badge green">{green} green</span>'
         f'<span class="badge red">{red} red</span></div></div>'
         '<div class="table-wrap"><table><thead><tr><th>Id</th><th>Property</th>'
-        f"<th>State</th></tr></thead><tbody>{property_rows}</tbody></table></div>"
-        + payoff_html
-        + "</section>"
+        f"<th>Flip PR</th><th>State</th></tr></thead><tbody>{property_rows}</tbody>"
+        "</table></div>" + payoff_html + "</section>"
     )
 
 
