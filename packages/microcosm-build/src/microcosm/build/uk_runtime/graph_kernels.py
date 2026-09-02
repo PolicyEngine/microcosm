@@ -6,25 +6,21 @@ transform unchanged, and project the owned cells back out.  Structural stages
 return source lineage, memberships, cell overlays, and explicit weights; the
 graph executor, not the kernel, materializes the expanded population.
 
-The committed parity fixture uses the same kernel contracts with recorded
-direct-StagePlan deltas under its content-bound source bundle.  This keeps the
-fixture runnable without licensed donor files while still exercising every
-node, ownership edge, rewrite boundary, row expansion, and byte-level Frame
-surface.
+Parity execution must bind the same unchanged transforms through the caller.
+An unbound registry remains available for graph/hash inspection, but its stage
+kernels fail explicitly rather than replaying recorded deltas: such a replay
+would make parity agree with itself.
 """
 
 from __future__ import annotations
 
 import importlib
-import json
 from collections.abc import Mapping
-from pathlib import Path
 from types import MappingProxyType
 
-import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, WeightKind
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -119,8 +115,8 @@ def _stage_module(stage: str):
 
 
 def _implementation_hash(kernel: object, stage: str, transform: object | None) -> str:
-    # The stage module is the behavior-bearing source in both real and fixture
-    # mode.  Hashing an injected transform's dynamic test wrapper would make
+    # The stage module is the behavior-bearing source in every mode. Hashing
+    # an injected transform's dynamic test wrapper would make
     # hermetic registries unhashable and, more importantly, would fail to bind
     # production edits made elsewhere in that stage's module.
     del transform
@@ -273,23 +269,6 @@ class UKClaimKernel(KernelBase):
         return KernelResult(columns=MappingProxyType(columns))
 
 
-def _read_receipt(root: Path) -> dict[str, object]:
-    path = root / "receipt.json"
-    if not path.exists():
-        return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Fixture receipt {path} is not a JSON object.")
-    return payload
-
-
-def _fixture_table(root: Path, entity: str) -> pd.DataFrame:
-    path = root / f"{entity}.csv"
-    if not path.is_file():
-        raise FileNotFoundError(f"UK parity delta is missing {path}.")
-    return pd.read_csv(path, float_precision="round_trip")
-
-
 class UKStageKernel(KernelBase):
     """One ordinary UK stage, parameterized by its manifest stage name."""
 
@@ -305,7 +284,10 @@ class UKStageKernel(KernelBase):
 
     def run(self, context: KernelContext) -> KernelResult:
         if self.transform is None:
-            return self._run_fixture(context)
+            raise RuntimeError(
+                f"UK stage {self.stage!r} has no bound production transform; "
+                "recorded fixture deltas are not accepted as parity evidence."
+            )
         before = _minimal_frame(context)
         after = _invoke_transform(self.transform, before, context)
         if not isinstance(after, Frame):
@@ -324,26 +306,6 @@ class UKStageKernel(KernelBase):
                 "stage": self.stage,
                 "frame_mass_log_append": _mass_log_payload(after),
             },
-        )
-
-    def _run_fixture(self, context: KernelContext) -> KernelResult:
-        root = context.sources["frs"] / "deltas" / self.stage
-        tables: dict[str, pd.DataFrame] = {}
-        columns: dict[tuple[str, str], pd.Series] = {}
-        for owned in context.node.outputs:
-            table = tables.setdefault(owned.entity, _fixture_table(root, owned.entity))
-            id_column = UK_NATIONAL_SCHEMA.entity_id_column(owned.entity)
-            values = _cast_owned(table[owned.column], owned.dtype)
-            columns[(owned.entity, owned.column)] = pd.Series(
-                values.array.copy(),
-                index=pd.Index(table[id_column].to_numpy(copy=True), name=id_column),
-                name=owned.column,
-                dtype=dtype_for_token(owned.dtype),
-            )
-        receipt = {"stage": self.stage, **_read_receipt(root)}
-        return KernelResult(
-            columns=MappingProxyType(columns),
-            receipt=MappingProxyType(receipt),
         )
 
 
@@ -415,7 +377,10 @@ class UKExpandStageKernel(KernelBase):
 
     def run(self, context: KernelContext) -> KernelResult:
         if self.transform is None:
-            return self._run_fixture(context)
+            raise RuntimeError(
+                f"UK stage {self.stage!r} has no bound production transform; "
+                "recorded fixture deltas are not accepted as parity evidence."
+            )
         before = _minimal_frame(context)
         after = _invoke_transform(self.transform, before, context)
         if not isinstance(after, Frame):
@@ -476,71 +441,12 @@ class UKExpandStageKernel(KernelBase):
             },
         )
 
-    def _run_fixture(self, context: KernelContext) -> KernelResult:
-        root = context.sources["frs"] / "deltas" / self.stage
-        cells = _expand_cells(context)
-        by_entity: dict[str, list[tuple[str, str]]] = {}
-        for entity, column, dtype in cells:
-            by_entity.setdefault(entity, []).append((column, dtype))
-
-        columns: dict[tuple[str, str], pd.Series] = {}
-        for entity in UK_NATIONAL_SCHEMA.entities:
-            table = _fixture_table(root, entity)
-            id_column = UK_NATIONAL_SCHEMA.entity_id_column(entity)
-            target_ids = pd.Index(table[id_column].to_numpy(copy=True), name=id_column)
-            source_dtype = context.tables[entity][id_column].dtype
-            columns[(entity, id_column)] = pd.Series(
-                table["__source_id__"].to_numpy(copy=True),
-                index=target_ids,
-                dtype=source_dtype,
-                name=id_column,
-            )
-            if entity == UK_NATIONAL_SCHEMA.person_entity:
-                for group in UK_NATIONAL_SCHEMA.group_entities:
-                    membership = UK_NATIONAL_SCHEMA.membership_column(group)
-                    columns[(entity, membership)] = pd.Series(
-                        table[membership].to_numpy(copy=True),
-                        index=target_ids,
-                        dtype=context.tables[entity][membership].dtype,
-                        name=membership,
-                    )
-            for column, dtype in by_entity.get(entity, ()):
-                values = _cast_owned(table[column], dtype)
-                columns[(entity, column)] = pd.Series(
-                    values.array.copy(),
-                    index=target_ids,
-                    name=column,
-                    dtype=dtype_for_token(dtype),
-                )
-
-        weight_entity = str(context.params["expand_weight_entity"])
-        weight_table = pd.read_csv(root / "weights.csv", float_precision="round_trip")
-        expected_ids = columns[
-            (weight_entity, UK_NATIONAL_SCHEMA.entity_id_column(weight_entity))
-        ].index
-        id_column = UK_NATIONAL_SCHEMA.entity_id_column(weight_entity)
-        actual_ids = pd.Index(weight_table[id_column], name=id_column)
-        if not actual_ids.equals(expected_ids):
-            raise ValueError(
-                f"UK parity weights for {self.stage!r} do not align to targets."
-            )
-        weights = Weights(
-            weight_table["weight"].to_numpy(dtype=np.float64, copy=True),
-            WeightKind(str(context.params["expand_weight_kind"])),
-        )
-        receipt = {"stage": self.stage, **_read_receipt(root)}
-        return KernelResult(
-            columns=MappingProxyType(columns),
-            weights=weights,
-            receipt=MappingProxyType(receipt),
-        )
-
 
 def build_uk_registry(
     graph: Graph,
     implementations: Mapping[str, object],
 ) -> KernelRegistry:
-    """Bind graph refs to fixture readers or the supplied real transforms."""
+    """Bind graph refs to supplied real transforms or inspectable stubs."""
 
     stage_names = {
         str(node.params["stage"]) for node in graph.nodes if "stage" in node.params
