@@ -79,10 +79,11 @@ population versions from `CompiledGraph.versions`, including structural
 `create`, `filter`, `expand`, and `reweight` boundaries.
 
 Every node shows its id, kernel reference, role, structural delta, abbreviated
-node key, and store hit or miss. Blue means a store miss and green means a hit.
-Gate outcomes override that base accent: passing or not-applicable gates are
-green; failed, absent-evidence, or unreached gates are red. The status is always
-written as text too, so colour is not the only signal.
+node key, and store hit or miss. Blue fill means a store miss and green fill
+means a hit. A gate's border independently records its outcome: passing or
+not-applicable gates are green; failed, absent-evidence, or unreached gates are
+red. The statuses are always written as text too, so colour is not the only
+signal.
 
 Select a node with a pointer, Enter, or Space. Its panel contains:
 

@@ -190,9 +190,9 @@ details.metadata[open] { background: var(--surface); border: 1px solid var(--bor
 .graph-node.status-hit .node-box { fill: var(--color-green-100); stroke: var(--color-green-600); }
 .graph-node.status-miss .node-box { fill: var(--color-blue-100); stroke: var(--color-blue-600); }
 .graph-node.gate-fail .node-box, .graph-node.gate-evidence_absent .node-box,
-.graph-node.gate-unreached .node-box { fill: var(--color-red-100); stroke: var(--color-red-600); }
+.graph-node.gate-unreached .node-box { stroke: var(--color-red-600); stroke-width: 3; }
 .graph-node.gate-pass .node-box, .graph-node.gate-not_applicable .node-box {
-  fill: var(--color-green-100); stroke: var(--color-green-600); }
+  stroke: var(--color-green-600); stroke-width: 3; }
 .node-title { fill: var(--text); font-size: 13px; font-weight: 760; }
 .node-line { fill: var(--muted); font-size: 10.5px; }
 .node-status { fill: var(--text); font-size: 10.5px; font-weight: 720; }
