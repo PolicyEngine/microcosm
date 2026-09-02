@@ -111,11 +111,9 @@ def test_entrants_and_mass_partition_round_trip_through_canonical_json() -> None
     text = graph_to_json(graph)
     assert '"entrants":true' in text and '"mass_partition":["person","period"]' in text
     assert graph_from_json(text) == graph
+    # A declaration without either field serializes exactly as it did before
+    # amendments 11 and 12, so every pinned graph JSON still matches.
     plain = Graph("toy", (source,), (create,))
     plain_text = graph_to_json(plain)
-    assert "entrants" not in plain_text
+    assert "entrants" not in plain_text and "mass_partition" not in plain_text
     assert graph_from_json(plain_text) == plain
-    # A declaration written before amendments 11 and 12 still loads.
-    legacy = plain_text.replace(',"mass_partition":null', "")
-    assert "mass_partition" not in legacy
-    assert graph_from_json(legacy) == plain

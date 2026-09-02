@@ -273,13 +273,13 @@ def test_a_filter_cannot_read_a_column_nobody_defines() -> None:
 
 
 def _expand(node_id: str, **overrides: object) -> Node:
+    settings: dict[str, object] = {"mass": "free", **overrides}
     return Node(
         node_id,
         "clone.persons@1",
         base="survey",
         structural=StructuralDelta.EXPAND,
-        mass="free",
-        **overrides,  # type: ignore[arg-type]
+        **settings,  # type: ignore[arg-type]
     )
 
 

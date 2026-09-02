@@ -37,8 +37,12 @@ def graph_to_json(graph: Graph) -> str:
             for source in graph.sources
         ],
         "nodes": [_node_payload(node) for node in graph.nodes],
-        "mass_partition": (
-            None if graph.mass_partition is None else list(graph.mass_partition)
+        # Amendment 12: present only when declared, so a declaration written
+        # before the amendment serializes byte for byte as it did.
+        **(
+            {}
+            if graph.mass_partition is None
+            else {"mass_partition": list(graph.mass_partition)}
         ),
     }
     return canonical_json(payload).decode("utf-8")
