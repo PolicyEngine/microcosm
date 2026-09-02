@@ -98,3 +98,32 @@ question for the Chronicle lane; this branch does not guess.
 
 Nothing outstanding on this branch. Chronicle's own acceptance half lands in
 the parallel lane; the emit flip is a separate, later cutover.
+
+## Correction (2026-09-02): the env half was misnamed
+
+PR #849 review (Fable, main) caught that `POPULACE_LEDGER_URL` /
+`_KEY` / `_API_KEY` / `_EXPORT_KEY` are **Logbook** store credentials
+(Supabase `logbook` schema, `logbook_writer` / `logbook_exporter` roles —
+see `logbook.py`'s docstring and `logbook/README.md`), not Chronicle fact-
+store ones. "Ledger" there was the generic build-ledger sense renamed to
+Logbook on 2026-08-08 (microcosm#632) specifically to stop colliding with
+Chronicle. Naming the preferred spellings `CHRONICLE_*` would have recreated
+that exact collision.
+
+The epoch half above (`chronicle_epoch.py`, `ledger_artifact.py`,
+`import_entry_facts.py`, `ledger_targets.py`) is unaffected and was approved
+as-is. The env half only: `chronicle_env.py` renamed to `logbook_env.py`,
+`CHRONICLE_*_ENV`/`chronicle_env`/`chronicle_env_names`/
+`describe_chronicle_env`/`reset_chronicle_env_deprecation_warnings` renamed
+to `LOGBOOK_*_ENV`/`logbook_env`/`logbook_env_names`/`describe_logbook_env`/
+`reset_logbook_env_deprecation_warnings`, and every caller (`logbook.py`,
+`tools/logbook.py`, `build/__init__.py` exports, `logbook/README.md`, the
+changelog fragment, this file, and the module-path comments in
+`firm_generation.py`/`source_coverage.py`) updated to match. The
+`POPULACE_LEDGER_*` legacy names and the once-per-process
+`DeprecationWarning` behavior are unchanged; the warning text now cites
+microcosm#632 instead of chronicle#143, since this window is a Logbook
+naming cleanup riding along on this branch, not part of the chronicle#143
+epoch migration. `CHRONICLE_*_BANDS` and
+`CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT` are untouched — those really
+do translate Chronicle ids and pin a Chronicle commit.
