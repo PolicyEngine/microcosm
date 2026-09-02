@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .canonical import canonical_json, normative, sha256_domain
 from .decl import CompiledGraph, StructuralDelta
-from .kernel import Tolerance
+from .kernel import Capabilities
 
 __all__ = [
     "artifact_key",
@@ -95,6 +95,35 @@ def _required_key(keys: Mapping[str, str], node_id: str, consumer: str) -> str:
         ) from error
 
 
+def _canonical_tolerance_float(value: int | float) -> float:
+    number = float(value)
+    return 0.0 if number == 0.0 else number
+
+
+def _capabilities_projection(capabilities: Capabilities) -> dict[str, object]:
+    """Return the complete canonical payload for a kernel contract."""
+
+    tolerance = capabilities.tolerance
+    return {
+        "determinism": capabilities.determinism.value,
+        "numeric": capabilities.numeric.value,
+        "seed_source": capabilities.seed_source.value,
+        "structural": capabilities.structural.value,
+        "role": capabilities.role.value,
+        "consumes_se": capabilities.consumes_se,
+        "dependencies": list(capabilities.dependencies),
+        "tolerance": (
+            None
+            if tolerance is None
+            else {
+                "rtol": _canonical_tolerance_float(tolerance.rtol),
+                "atol": _canonical_tolerance_float(tolerance.atol),
+                "ulps": tolerance.ulps,
+            }
+        ),
+    }
+
+
 def node_key(
     compiled: CompiledGraph,
     node_id: str,
@@ -102,7 +131,7 @@ def node_key(
     kernel_impl_hash: str,
     source_keys: Mapping[str, str],
     *,
-    kernel_tolerance: Tolerance | None = None,
+    kernel_capabilities: Capabilities,
 ) -> str:
     """Derive a node key from its declaration and resolved input identities.
 
@@ -184,20 +213,10 @@ def node_key(
     graph_facts = (
         {} if node.structural is StructuralDelta.NONE else compiled.graph.normative()
     )
-    # A declared numeric tolerance is part of the kernel's executable contract:
-    # readers receive it in KernelContext and receipts expose it. Keeping it in
-    # the producer key prevents stale cached evidence when the declaration moves.
-    numeric_facts = (
-        {}
-        if kernel_tolerance is None
-        else {
-            "tolerance": {
-                "rtol": float(kernel_tolerance.rtol),
-                "atol": float(kernel_tolerance.atol),
-                "ulps": kernel_tolerance.ulps,
-            }
-        }
-    )
+    # Capabilities are executable contract, independent of implementation
+    # bytes. Bind the complete declaration so a cache entry produced under one
+    # contract cannot satisfy another kernel with the same ref and code hash.
+    capabilities = _capabilities_projection(kernel_capabilities)
     return _hash_parts(
         "node",
         normative(node),
@@ -206,7 +225,7 @@ def node_key(
         kernel_impl_hash,
         resolved_sources,
         graph_facts,
-        numeric_facts,
+        capabilities,
     )
 
 

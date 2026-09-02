@@ -63,11 +63,18 @@ or `_toy.py` edit is authorized.
   claimant. A composed cold/warm group-entrant regression preserves the
   partition value and receipt, while a paired ordinary partition owner remains
   rejected by the existing runtime guard.
+- Finding 3 implemented: node identity now binds the canonical projection of
+  every `Capabilities` field, cache loads miss when stored capabilities
+  disagree with the registered kernel, and receipts reuse that same projection.
+  Tolerance floats canonicalize signed zero. Regressions vary all eight fields,
+  pin positive/negative zero equivalence, corrupt a real stored capability
+  block, and prove a PARAM-seeded fit.qrf entry cannot satisfy the
+  EXECUTOR-seeded kernel despite their intentionally equal implementation hashes.
 
 ## Next
 
-- Implement findings 1, 2, 3, 4, 6, and 7 plus all follow-ups, committing each
-  coherent finding separately and keeping this journal current.
+- Implement findings 4, 6, and 7 plus all follow-ups, committing each coherent
+  finding separately and keeping this journal current.
 - Run every requested verification command and copy its exact summary lines
   into `/private/tmp/microcosm-fix-851/out.md`.
 

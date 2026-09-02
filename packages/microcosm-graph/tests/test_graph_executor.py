@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.graph.executor as graph_executor
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.decl import (
     Graph,
@@ -1518,4 +1519,83 @@ def test_gate_outcome_is_closed_and_gate_exceptions_become_failures(
             source,
             ContentStore(tmp_path / "compute"),
             compute_registry,
+        )
+
+
+def test_cache_load_misses_when_stored_capabilities_disagree(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _graph()
+    registry = _registry()
+    manifest = _run(graph, source, store, registry)
+
+    node = graph.node("a")
+    key = manifest.nodes["a"].key
+    record_key = graph_executor._cache_record_key(key)
+    record = store.load_json(record_key)
+    stored_capabilities = record["capabilities"]
+    assert isinstance(stored_capabilities, dict)
+    record["capabilities"] = {
+        **stored_capabilities,
+        "seed_source": "param",
+    }
+    store.put_json(record_key, record, node_key=key, verify_existing=False)
+
+    kernel = registry.get(node.kernel)
+    with pytest.raises(StoreMiss, match="capabilities"):
+        graph_executor._load_record(
+            store,
+            node,
+            key=key,
+            kernel_impl_hash=kernel.implementation_hash(),
+            capabilities=kernel.capabilities,
+        )
+
+
+def test_fit_qrf_seed_source_change_misses_a_shared_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from microcosm.fit.kernels import QRF_EXECUTOR_KERNEL, QRF_PARAM_KERNEL
+    from microcosm.graph import graph_from_json
+    from tools.graph_parity_fixtures import FIXTURES, ParityCsvSource
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    case = FIXTURES / "fit.qrf"
+    compiled = compile_graph(graph_from_json((case / "graph.json").read_text()))
+    store = ContentStore(tmp_path / "store")
+
+    param_registry = KernelRegistry()
+    param_registry.register(ParityCsvSource())
+    param_registry.register(QRF_PARAM_KERNEL)
+    cold = run_graph(
+        compiled,
+        sources={"fixture": case},
+        store=store,
+        kernels=param_registry,
+    )
+    assert not cold.nodes["fit_qrf"].hit
+
+    assert QRF_PARAM_KERNEL.ref == QRF_EXECUTOR_KERNEL.ref
+    assert (
+        QRF_PARAM_KERNEL.implementation_hash()
+        == QRF_EXECUTOR_KERNEL.implementation_hash()
+    )
+    assert (
+        QRF_PARAM_KERNEL.capabilities.seed_source
+        is not QRF_EXECUTOR_KERNEL.capabilities.seed_source
+    )
+
+    executor_registry = KernelRegistry()
+    executor_registry.register(ParityCsvSource())
+    executor_registry.register(QRF_EXECUTOR_KERNEL)
+    with pytest.raises(NodeRejected, match="EXECUTOR-seeded.*must omit"):
+        run_graph(
+            compiled,
+            sources={"fixture": case},
+            store=store,
+            kernels=executor_registry,
         )
