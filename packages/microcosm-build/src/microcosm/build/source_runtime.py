@@ -281,9 +281,15 @@ def verify_microdata_files(
                 f"{key!r} was supplied as {path}, which is not a file."
             )
         actual = sha256_file(path, chunk_size=chunk_size)
+        # ``by_key`` only ever holds pinned entries, so this is the one digest
+        # every match shares; read it without an assert, which -O would strip
+        # out of a fail-closed gate.
+        expected = next(iter(pinned))
+        if expected is None:  # pragma: no cover - defensive
+            raise MicrodataIdentityError(
+                f"{key!r} resolved to an unpinned microdata artifact."
+            )
         for entry in matches:
-            expected = entry.sha256
-            assert expected is not None  # guarded when by_key was built
             verification = MicrodataFileVerification(
                 stage=entry.stage,
                 locator=entry.locator,
