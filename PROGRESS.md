@@ -31,6 +31,8 @@ Active on `node-graph-release` in the required local clone. All in-scope runtime
 - Passed the exact owned-file Ruff format check, repository-wide Ruff, all three real-kernel regression files (15 passed, 1 skipped), the CI test inventory verifier, and the pre-flip acceptance burndown verifier.
 - Confirmed `decl.py` and `kernel.py` have no diff from `origin/node-graph`.
 - Ran the sanctioned `tools/graph_acceptance_flip.py` once; it removed only the F2, F3, F5, and replay-F3 markers.
+- Hardened manifest loading after an adversarial audit: release tier is now rederived from the recorded role-gate ancestry instead of trusted from the release receipt, invalid gate receipts are refused, and a noncanonical content body becomes a key-bearing `StoreCorruptError`.
+- Added regressions for a failed-gate/certified-release contradiction, non-finite content-body data, and explicit rejected-node failure accounting; all 24 manifest tests and the focused F/replay acceptance files pass with only F4 xfailed.
 
 ## Next
 

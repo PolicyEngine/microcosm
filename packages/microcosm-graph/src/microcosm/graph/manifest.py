@@ -12,7 +12,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from .canonical import canonical_json, sha256_domain
-from .decl import StructuralDelta
+from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
 from .kernel import Capabilities, Determinism, KernelRole, Numeric, SeedSource
 from .population import MassRecord
@@ -333,7 +333,7 @@ class RunManifest:
 
     @property
     def tier(self) -> str | None:
-        """The release tier derived from the release node receipt, if present."""
+        """The release tier rederived from its recorded gate ancestry."""
 
         releases = [
             (node_id, node)
@@ -345,12 +345,42 @@ class RunManifest:
         if len(releases) != 1:
             raise ValueError("a run manifest must contain at most one release node")
         node_id, release = releases[0]
-        tier = release.receipt.get("tier")
-        if tier not in {"certified", "evidence"}:
+        gate_ancestry = release.receipt.get("gate_ancestry")
+        if not isinstance(gate_ancestry, tuple) or any(
+            not isinstance(gate_id, str) or not gate_id for gate_id in gate_ancestry
+        ):
             raise ValueError(
-                f"release node {node_id!r} has invalid derived tier {tier!r}"
+                f"release node {node_id!r} has invalid gate ancestry {gate_ancestry!r}"
             )
-        return str(tier)
+        if len(set(gate_ancestry)) != len(gate_ancestry):
+            raise ValueError(f"release node {node_id!r} repeats a gate ancestor")
+
+        outcomes: list[str] = []
+        for gate_id in gate_ancestry:
+            try:
+                gate = self.nodes[gate_id]
+            except KeyError as error:
+                raise ValueError(
+                    f"release node {node_id!r} names missing gate {gate_id!r}"
+                ) from error
+            if gate.capabilities.role is not KernelRole.GATE:
+                raise ValueError(
+                    f"release node {node_id!r} names non-gate ancestor {gate_id!r}"
+                )
+            outcomes.append(_gate_outcome(gate_id, gate))
+
+        derived = (
+            "certified"
+            if all(outcome in _CERTIFYING_GATE_OUTCOMES for outcome in outcomes)
+            else "evidence"
+        )
+        stored = release.receipt.get("tier")
+        if stored != derived:
+            raise ValueError(
+                f"release node {node_id!r} tier mismatch: stored {stored!r}, "
+                f"derived {derived!r}"
+            )
+        return derived
 
     @property
     def known_failures(self) -> tuple[str, ...]:
@@ -359,9 +389,8 @@ class RunManifest:
         failures: set[str] = set()
         for node_id, node in self.nodes.items():
             outcome = node.receipt.get("outcome")
-            if (
-                node.capabilities.role is KernelRole.GATE
-                and outcome not in _CERTIFYING_GATE_OUTCOMES
+            if node.capabilities.role is KernelRole.GATE and (
+                _gate_outcome(node_id, node) not in _CERTIFYING_GATE_OUTCOMES
             ):
                 failures.add(node_id)
             if node.receipt.get("rejected") is True or outcome == "rejected":
@@ -533,11 +562,16 @@ class RunManifest:
         claimed_key = raw.get("key")
         key_label = claimed_key if isinstance(claimed_key, str) else "<unknown>"
         raw_body = raw.get("content_addressed")
-        body_key = (
-            sha256_domain("manifest", canonical_json(raw_body))
-            if isinstance(raw_body, Mapping)
-            else "<unavailable>"
-        )
+        try:
+            body_key = (
+                sha256_domain("manifest", canonical_json(raw_body))
+                if isinstance(raw_body, Mapping)
+                else "<unavailable>"
+            )
+        except (TypeError, ValueError) as error:
+            raise StoreCorruptError(
+                f"Manifest {key_label} has an invalid content-addressed body: {error}"
+            ) from error
         identity_label = f"{key_label} (body key {body_key})"
         required = {
             "schema_version",
@@ -591,6 +625,18 @@ class RunManifest:
                 f"Manifest {manifest.key} is evidence-tier, not certified."
             )
         return manifest
+
+
+def _gate_outcome(node_id: str, node: NodeReceipt) -> str:
+    """Return one authenticated-shape gate outcome or reject the manifest."""
+
+    outcome = node.receipt.get("outcome")
+    if outcome not in GATE_OUTCOMES:
+        raise ValueError(
+            f"gate node {node_id!r} has invalid outcome {outcome!r}; "
+            f"expected one of {GATE_OUTCOMES!r}"
+        )
+    return str(outcome)
 
 
 def _validate_artifacts(manifest: RunManifest, store: ContentStore) -> None:

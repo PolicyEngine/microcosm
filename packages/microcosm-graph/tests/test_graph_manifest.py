@@ -16,7 +16,7 @@ from microcosm.graph.manifest import Decision, NodeReceipt, RunManifest
 from microcosm.graph.population import MassRecord
 
 
-def _capabilities(role: KernelRole = KernelRole.GATE) -> Capabilities:
+def _capabilities(role: KernelRole = KernelRole.COMPUTE) -> Capabilities:
     return Capabilities(
         determinism=Determinism.SEEDED,
         seed_source=SeedSource.EXECUTOR,
@@ -301,6 +301,43 @@ def test_certified_loader_checks_unreached_before_tier(tmp_path: Path) -> None:
     unreached.save(unreached_path)
     with pytest.raises(graph_api.NodeRejectedError, match="unreached"):
         RunManifest.load_certified(unreached_path, store)
+
+
+def test_loader_rederives_tier_from_gate_receipts(tmp_path: Path) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store, tier="certified", gate_outcome="pass")
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+    document = json.loads(path.read_text())
+    document["nodes"]["gate"]["receipt"]["outcome"] = "fail"
+    document["known_failures"] = ["gate"]
+    path.write_text(json.dumps(document))
+
+    with pytest.raises(graph_api.StoreCorruptError, match=manifest.key):
+        RunManifest.load_certified(path, store)
+
+
+def test_loader_wraps_noncanonical_body_with_manifest_key(tmp_path: Path) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store)
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+    document = json.loads(path.read_text())
+    document["content_addressed"]["node_keys"][0] = float("nan")
+    path.write_text(json.dumps(document))
+
+    with pytest.raises(graph_api.StoreCorruptError, match=manifest.key):
+        RunManifest.load(path, store)
+
+
+def test_known_failures_includes_explicitly_rejected_nodes() -> None:
+    rejected = replace(
+        _receipt("a" * 64),
+        capabilities=_capabilities(KernelRole.COMPUTE),
+        receipt={"rejected": True},
+    )
+
+    assert RunManifest("toy", {"compute": rejected}).known_failures == ("compute",)
 
 
 @pytest.mark.parametrize(
