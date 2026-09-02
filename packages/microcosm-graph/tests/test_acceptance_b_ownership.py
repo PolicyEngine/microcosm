@@ -107,6 +107,7 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
         "params",
         "rng",
         "sources",
+        "tolerances",  # amendment 13: declared tolerances of the inputs' owners
     }
 
     graph = toy.small_graph(

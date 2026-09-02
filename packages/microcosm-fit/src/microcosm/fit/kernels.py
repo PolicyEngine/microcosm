@@ -27,6 +27,7 @@ from microcosm.graph import (
     KernelResult,
     Numeric,
     SeedSource,
+    Tolerance,
     source_hash,
 )
 
@@ -47,6 +48,13 @@ FIT_QRF_DEPENDENCIES = (
     "quantile-forest",
 )
 """Distributions whose versions form part of ``fit.qrf@1``'s identity."""
+
+#: How far ``fit.qrf@1`` numbers may move between machines. The forest stack
+#: promises no cross-platform bit stability (charter H1 records the claim as
+#: ``tolerance_bound``); this bound is provisional until measured on the H1
+#: fixture across arm64 and x86_64 (amendment 13 follow-up), and parity in
+#: the locked environment is still asserted byte for byte.
+FIT_QRF_TOLERANCE = Tolerance(rtol=1e-6)
 
 
 QRF_EXECUTOR_SEED_HIGH = 2**31 - 1
@@ -114,6 +122,7 @@ class QRFKernel(KernelBase):
             numeric=Numeric.TOLERANCE_BOUND,
             seed_source=seed_source,
             dependencies=FIT_QRF_DEPENDENCIES,
+            tolerance=FIT_QRF_TOLERANCE,
         )
 
     def implementation_hash(self) -> str:

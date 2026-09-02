@@ -45,6 +45,7 @@ its owner.
 | B3 | **Storage-preserving patch.** Patching owned positions preserves the incumbent column's dtype (nullable `boolean` stays nullable `boolean`; float bits including negative zero survive) and leaves every non-owned position byte-identical. This is the WIC guard, made structural. | leg 2 §3.3 | same |
 | B4 | **Inputs are immutable.** A kernel receives read-only views; an in-place write raises inside the kernel and the node fails. | leg 1 finding 5 | same |
 | B5 | **Null means absence.** A node declares each owned cell as *produced* or *absent*. A kernel writing a non-null value into an absent-declared cell is rejected. | `DESIGN.md:128-134` | same |
+| B6 | **Entrants are declared.** An `EXPAND` node with `entrants=True` may return rows with null lineage; the executor requires the kernel to materialize every carried column for such a row (dtype-checked), records them as entrants rather than copies in the lineage receipt, and refuses null lineage on a node without the declaration. `entrants=True` with `mass='conserve'` is a compile error. | Dynamics: immigrant cohorts (microcosm-dynamics#412, #218) | Max's session; amendment 11 |
 
 ## C. Seeds and factorization
 
@@ -54,16 +55,18 @@ its owner.
 | C2 | **Removal invariance.** Removing a node that nothing depends on, or adding a new leaf node, changes no other node's key or output. This is the `0347a009` replay: five targets removed, zero survivors re-modeled. | F5 | same |
 | C3 | **Declared predecessors only.** A chained target's predictors are exactly its declared predecessors. The executor hands a kernel only its declared slices, so an undeclared read is impossible rather than merely detected. | F5, leg 3 §legibility | same |
 | C4 | **Seed from identity.** A node's RNG seed is a pure function of its node key. Two nodes with identical declarations, inputs, and kernels in different graphs draw identical values. No positional RNG consumption exists anywhere in the shard (static check). | F4, `docs/spec-engine.md:254-282` | same |
+| C5 | **Tolerance is declared.** A kernel claiming `tolerance_bound` numerics without a `Tolerance` is refused at registration, and a bitwise kernel may not carry one. The tolerance is recorded in every receipt, and a kernel reading a cell sees its owner's declared tolerance in `KernelContext.tolerances`; a gate comparing against anything else says so in its evidence. | H2 (arm64/x86 one-ulp weights); microcosm-dynamics#412 | Max's session; amendment 13 |
 
 ## D. Weights and mass
 
 | Id | Property | Closes | Owner |
 |---|---|---|---|
 | D1 | **Weight transitions are typed nodes.** `design → importance → calibrated` are the only legal transitions; the executor rejects a regression and rejects a transition declared on inherited (non-explicit) weights. | F9 (leg 1 finding 1) | María / Max's session |
-| D2 | **Mass ledger.** Every population-changing node (select, concat, clone, reweight) emits a mass record with before/after totals and per-stratum mass. Under `conserve`, a stratum losing mass fails the node. `select` cannot drop mass silently. | F9 | same |
+| D2 | **Mass ledger.** Every population-changing node (select, concat, clone, reweight) emits a mass record with before/after totals and per-stratum mass. Mass is weighted person mass per stratum, within each declared partition (amendment 12). Under `conserve`, a stratum losing mass fails the node. An expansion that conserves its weight entity's mass while changing group composition changes person mass and must say so: `declared`, with a receipt stating the invariant it does hold (ruled 2026-09-02 on #844). `select` cannot drop mass silently. | F9 | same |
 | D3 | **Cap anchored to design.** A calibration node's `max_weight_ratio` is asserted against the declared anchor across composed stages; a selection-then-refit chain that ships a record above `R × design` fails. | F9 (#493) | same |
 | D4 | **Filters are binary.** A target filter containing NaN or a non-binary value is rejected at compile. | F9 | same |
 | D5 | **Uncertainty travels.** A target's declared standard error reaches the calibration kernel's inputs; a kernel that ignores a declared `se` must say so in its capability record. | scoreboard row 5 (leg 1 finding 7) | same |
+| D6 | **Mass is partitioned.** With `Graph.mass_partition` set, the ledger reports per stratum within each partition value, `conserve` holds within each partition, and a node that moves mass between partitions under `conserve` fails. Every `CREATE` node declares the partition column with a partition dtype, or compilation fails. A row contributes mass only to the partitions it exists in. | Dynamics: person-period residency (microcosm-dynamics#412) | Max's session; amendment 12 |
 
 ## E. Store and resume
 
@@ -201,6 +204,30 @@ Amendments so far (each re-locked):
     (python storage); a population entering the graph with `object`
     strings is normalized at `CREATE`. Parity fixtures compare identities
     after the same normalization on the legacy side, and say so.
+11. **Entrants are declared.** `Node.entrants=True` (EXPAND only) lets a
+    kernel add rows that copy no base row: their lineage is null, the
+    kernel materializes every carried column for them, the executor
+    records them as entrants, and the node's mass policy cannot be
+    `conserve`. Raised by the dynamics program (immigrant cohorts through
+    the scheduled-entries seam, microcosm-dynamics#412 / #218); Max ruled
+    go 2026-09-02; adopted 2026-09-02.
+12. **Mass is partitioned.** `Graph.mass_partition = (entity, column)`
+    partitions mass accounting (per stratum within each partition value;
+    `conserve` per partition). Every `CREATE` node declares the column
+    with a dtype in `PARTITION_DTYPES`. The field is normative: the
+    executor folds it into every structural node's key, so structural keys
+    move once when a graph adopts it. Raised by the dynamics program for
+    person-period residency; adopted 2026-09-02.
+13. **Tolerance is declared.** `Capabilities.tolerance: Tolerance | None`
+    (`rtol`, `atol`, `ulps`) is required for `tolerance_bound` kernels and
+    forbidden for bitwise ones; `KernelContext.tolerances` hands each
+    reader the declared tolerance of every input cell's owner. Raised by
+    the H2 parity finding (root weights differ by one ulp between arm64
+    and x86) and the dynamics review; adopted 2026-09-02.
+
+Adding a normative field with a default changes the canonical projection
+of every node that carries it, so node keys moved with amendments 11 and
+13's sibling field `entrants`; no released artifact pins a graph key yet.
 
 ## Ownership
 

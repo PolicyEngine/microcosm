@@ -13,6 +13,7 @@ from .decl import (
     DTYPES,
     GATE_OUTCOMES,
     MASS_POLICIES,
+    PARTITION_DTYPES,
     ROWS_ALL,
     WEIGHT_KINDS,
     CompiledGraph,
@@ -46,6 +47,7 @@ from .kernel import (
     KernelRole,
     Numeric,
     SeedSource,
+    Tolerance,
     source_hash,
 )
 
@@ -54,6 +56,7 @@ __all__ = [
     "DTYPES",
     "GATE_OUTCOMES",
     "MASS_POLICIES",
+    "PARTITION_DTYPES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
     "Capabilities",
@@ -85,6 +88,7 @@ __all__ = [
     "RunManifest",
     "SOURCE_CODECS",
     "SeedSource",
+    "Tolerance",
     "Slice",
     "SourceCodec",
     "SourceCodecRegistry",

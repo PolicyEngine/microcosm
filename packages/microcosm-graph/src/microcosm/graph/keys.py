@@ -169,6 +169,11 @@ def node_key(
     else:
         resolved_sources = {}
 
+    # Graph-level mass semantics (amendment 12) change what a structural node
+    # computes, so they enter its key; an ordinary node's key is unaffected.
+    graph_facts = (
+        {} if node.structural is StructuralDelta.NONE else compiled.graph.normative()
+    )
     return _hash_parts(
         "node",
         normative(node),
@@ -176,6 +181,7 @@ def node_key(
         population_input,
         kernel_impl_hash,
         resolved_sources,
+        graph_facts,
     )
 
 

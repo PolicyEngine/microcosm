@@ -30,6 +30,12 @@ ordinary computation, a gate (its receipt carries one of
 is derived from the gate verdicts in its ancestry, and its receipt reports
 ``unreached`` when a required human decision is absent from the run).
 
+Numbers carry their own contract. A kernel whose :class:`Numeric` claim is
+``tolerance_bound`` declares a :class:`Tolerance`; the executor records it
+in the receipt and hands every reader the declared tolerance of each input
+cell's owner through :attr:`KernelContext.tolerances`, so a gate compares
+against a declaration rather than a guess (amendment 13).
+
 This file is a frozen interface (see ``docs/graph-acceptance.md``).
 """
 
@@ -63,6 +69,7 @@ __all__ = [
     "KernelRole",
     "Numeric",
     "SeedSource",
+    "Tolerance",
     "source_hash",
 ]
 
@@ -80,6 +87,42 @@ class Numeric(StrEnum):
 
     BITWISE = "bitwise"
     TOLERANCE_BOUND = "tolerance_bound"
+
+
+@dataclass(frozen=True)
+class Tolerance:
+    """How far a ``tolerance_bound`` kernel's numbers may move between runs.
+
+    Two values agree when they are within ``atol`` absolutely, or within
+    ``rtol`` relatively, or within ``ulps`` last-place units of each other.
+    A bitwise kernel declares no tolerance at all.
+
+    Attributes:
+        rtol: Relative tolerance; non-negative and finite.
+        atol: Absolute tolerance; non-negative and finite.
+        ulps: Units in the last place; non-negative.
+    """
+
+    rtol: float = 0.0
+    atol: float = 0.0
+    ulps: int = 0
+
+    def __post_init__(self) -> None:
+        for name in ("rtol", "atol"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise ValueError(f"Tolerance.{name} must be a number.")
+            if not (value >= 0.0) or value == float("inf"):
+                raise ValueError(f"Tolerance.{name} must be non-negative and finite.")
+        if isinstance(self.ulps, bool) or not isinstance(self.ulps, int):
+            raise ValueError("Tolerance.ulps must be an integer.")
+        if self.ulps < 0:
+            raise ValueError("Tolerance.ulps must be non-negative.")
+        if self.rtol == 0.0 and self.atol == 0.0 and self.ulps == 0:
+            raise ValueError(
+                "Tolerance must allow some movement; a bitwise kernel declares "
+                "no tolerance instead."
+            )
 
 
 class SeedSource(StrEnum):
@@ -113,6 +156,9 @@ class Capabilities:
             standard errors. A kernel that ignores them says so here.
         dependencies: Installed distributions whose versions enter the
             implementation hash.
+        tolerance: Required when ``numeric`` is ``tolerance_bound`` and
+            forbidden otherwise: how far the kernel's numbers may move
+            between runs or machines.
     """
 
     determinism: Determinism
@@ -122,6 +168,18 @@ class Capabilities:
     role: KernelRole = KernelRole.COMPUTE
     consumes_se: bool = False
     dependencies: tuple[str, ...] = ()
+    tolerance: Tolerance | None = None
+
+    def __post_init__(self) -> None:
+        if self.tolerance is not None and not isinstance(self.tolerance, Tolerance):
+            raise TypeError("Capabilities.tolerance must be a Tolerance or None.")
+        if self.numeric is Numeric.TOLERANCE_BOUND and self.tolerance is None:
+            raise ValueError(
+                "A tolerance_bound kernel must declare its Tolerance; a claim of "
+                "bounded movement without a bound is not a claim."
+            )
+        if self.numeric is Numeric.BITWISE and self.tolerance is not None:
+            raise ValueError("A bitwise kernel declares no Tolerance.")
 
 
 @dataclass(frozen=True)
@@ -144,6 +202,9 @@ class KernelContext:
             kernel may use.
         sources: Source name to a content-verified path, for declared
             sources only.
+        tolerances: ``(entity, column)`` of each declared input column to
+            the :class:`Tolerance` its owning kernel declared, or ``None``
+            for a bitwise owner. A gate compares against these.
     """
 
     node: Node
@@ -153,6 +214,7 @@ class KernelContext:
     params: Mapping[str, Param]
     rng: np.random.Generator
     sources: Mapping[str, Path] = field(default_factory=dict)
+    tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

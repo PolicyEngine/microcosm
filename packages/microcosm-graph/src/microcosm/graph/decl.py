@@ -24,6 +24,17 @@ The population model behind the declarations:
   known at compile time: a mask that is not ``bool`` or ``boolean`` is a
   compile error (charter D4). Nulls inside a nullable mask are a run-time
   rejection by the executor.
+- An ``EXPAND`` node copies rows: every new row names the base row it
+  copies, so lineage is total. A node that declares ``entrants=True`` may
+  also add rows that copy nothing (births not patterned on a parent,
+  immigrant cohorts); the kernel materializes every carried column for
+  such a row, the executor records them as entrants rather than copies,
+  and the node cannot claim to conserve mass (amendment 11).
+- Mass is accounted as weighted person mass per stratum. A graph may name
+  a partition column (:attr:`Graph.mass_partition`, e.g. a period on a
+  person-period population); the ledger then reports per stratum within
+  each partition and ``conserve`` holds within each partition, so a row
+  contributes mass only to the partitions it exists in (amendment 12).
 
 This file is a frozen interface (see ``docs/graph-acceptance.md``).
 """
@@ -42,6 +53,7 @@ __all__ = [
     "GATE_OUTCOMES",
     "MASK_DTYPES",
     "MASS_POLICIES",
+    "PARTITION_DTYPES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
     "CompiledGraph",
@@ -81,6 +93,9 @@ WEIGHT_KINDS = ("design", "importance", "calibrated")
 
 #: Mass policies a weight transition or structural node may declare.
 MASS_POLICIES = frozenset({"conserve", "free", "declared"})
+
+#: The dtypes a mass-partition column may have.
+PARTITION_DTYPES = frozenset({"int32", "int64", "string"})
 
 #: The closed set of gate outcomes (charter F4). ``unreached`` is also the
 #: outcome of a release whose required human decisions are absent.
@@ -269,6 +284,11 @@ class Node:
         sources: Names of :class:`SourceRef` entries this node reads.
         weights: A declared weight-kind transition, if any.
         mass: Mass policy for structural nodes that change rows or weights.
+        entrants: ``EXPAND`` nodes only: the kernel may add rows that copy
+            no base row. Such a row has null lineage, the kernel supplies
+            every carried column for it, and the executor records it as an
+            entrant. Entrants add mass, so the node's mass policy cannot be
+            ``conserve``.
         description: Descriptive; never hashed.
         citation: Descriptive; never hashed.
     """
@@ -284,6 +304,7 @@ class Node:
     sources: tuple[str, ...] = ()
     weights: WeightTransition | None = None
     mass: str = "conserve"
+    entrants: bool = False
     description: str = ""
     citation: str = ""
 
@@ -333,6 +354,17 @@ class Node:
                 )
         elif self.base is not None:
             raise GraphError(f"Node {self.id!r}: only structural nodes have a base.")
+        if not isinstance(self.entrants, bool):
+            raise GraphError(f"Node {self.id!r}: entrants must be a boolean.")
+        if self.entrants and self.structural is not StructuralDelta.EXPAND:
+            raise GraphError(
+                f"Node {self.id!r}: only an EXPAND node may admit entrants."
+            )
+        if self.entrants and self.mass == "conserve":
+            raise GraphError(
+                f"Node {self.id!r}: entrants add mass, so an entrant-admitting "
+                "node cannot declare mass='conserve'."
+            )
         if self.weights is not None and self.structural is not StructuralDelta.REWEIGHT:
             raise GraphError(
                 f"Node {self.id!r}: a weight transition changes the population "
@@ -386,11 +418,18 @@ class Graph:
             into node keys (a node's identity is its computation).
         sources: External inputs by name.
         nodes: Every node. Declaration order carries no meaning.
+        mass_partition: ``(entity, column)`` of a column that partitions
+            mass accounting, or ``None``. When set, every ``CREATE`` node
+            declares the column with a dtype in :data:`PARTITION_DTYPES`,
+            the executor's ledger reports per stratum within each partition
+            value, and ``conserve`` holds within each partition. Normative:
+            it enters the key of every structural node.
     """
 
     country: str
     sources: tuple[SourceRef, ...]
     nodes: tuple[Node, ...]
+    mass_partition: tuple[str, str] | None = None
 
     def __post_init__(self) -> None:
         _nonempty("Graph.country", self.country)
@@ -398,6 +437,21 @@ class Graph:
             raise GraphError("Graph repeats a source name.")
         if len({n.id for n in self.nodes}) != len(self.nodes):
             raise GraphError("Graph repeats a node id.")
+        if self.mass_partition is not None:
+            if (
+                not isinstance(self.mass_partition, tuple)
+                or len(self.mass_partition) != 2
+                or not all(isinstance(part, str) for part in self.mass_partition)
+            ):
+                raise GraphError(
+                    "Graph.mass_partition must be an (entity, column) pair of strings."
+                )
+            _nonempty("Graph.mass_partition entity", self.mass_partition[0])
+            _nonempty("Graph.mass_partition column", self.mass_partition[1])
+
+    def normative(self) -> dict[str, object]:
+        """The graph-level facts that enter every structural node's key."""
+        return {"mass_partition": self.mass_partition}
 
     def node(self, node_id: str) -> Node:
         for node in self.nodes:
@@ -436,8 +490,9 @@ def compile_graph(graph: Graph) -> CompiledGraph:
         GraphError: A cell with two owners or none (ownership is total and
             exclusive), an unknown source or population, a structural node
             whose base is not structural, a row mask whose declared dtype is
-            not boolean, a cycle, or a graph with several structural nodes
-            and a node that omits ``population``.
+            not boolean, a mass-partition column that a ``CREATE`` node does
+            not declare with a partition dtype, a cycle, or a graph with
+            several structural nodes and a node that omits ``population``.
     """
 
     by_id = {node.id: node for node in graph.nodes}
@@ -493,6 +548,24 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                 )
             owners[key] = node.id
             dtypes[key] = owned.dtype
+
+    if graph.mass_partition is not None:
+        entity, column = graph.mass_partition
+        for node in structural:
+            if node.structural is not StructuralDelta.CREATE:
+                continue
+            dtype = dtypes.get((node.id, entity, column))
+            if dtype is None:
+                raise GraphError(
+                    f"Graph.mass_partition names {entity}.{column}, which CREATE "
+                    f"node {node.id!r} does not declare; partitions must exist "
+                    "from the first version."
+                )
+            if dtype not in PARTITION_DTYPES:
+                raise GraphError(
+                    f"Graph.mass_partition {entity}.{column} is declared {dtype!r}; "
+                    f"a partition column must be one of {sorted(PARTITION_DTYPES)}."
+                )
 
     def declared_dtype(version: str, entity: str, column: str) -> str | None:
         """The owner-declared dtype of a column as visible in ``version``."""
