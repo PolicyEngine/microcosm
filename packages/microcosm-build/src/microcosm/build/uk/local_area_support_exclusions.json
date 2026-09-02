@@ -1,5 +1,20 @@
 {
   "schema_version": 2,
   "description": "Reviewed UK local-area support-floor exclusions. The register ships empty in PR A; each future entry must carry measured shortfalls and an in-force adjudication.",
-  "exclusions": {}
+  "exclusions": {
+    "local_authority/E06000053": {
+      "reason": "Reviewed exclusion of the local-authority support floor for Isles of Scilly (E06000053): population-proportional ladder assignment gives the area 7 positive-weight rows at the ruled K=4 (17 at K=10; microcosm#761 receipts section R1, identical on spine-i and spine-k), so the 50-row / ESS-50 / 50-source floor is unreachable by clone count. The area stays in the solve with its measured support and is flagged support_below_floor in area_support_summary.csv; consumers must treat its estimates as unsupported. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate).",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A4, ruling 2026-09-02)",
+      "approved_on": "2026-09-02",
+      "expires_on": "2026-12-02"
+    },
+    "local_authority/E09000001": {
+      "reason": "Reviewed exclusion of the local-authority support floor for City of London (E09000001): population-proportional ladder assignment gives the area 14 positive-weight rows at the ruled K=4 (49 at K=10; microcosm#761 receipts section R1, identical on spine-i and spine-k), so the 50-row / ESS-50 / 50-source floor is unreachable by clone count. The area stays in the solve with its measured support and is flagged support_below_floor in area_support_summary.csv; consumers must treat its estimates as unsupported. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate).",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A4, ruling 2026-09-02)",
+      "approved_on": "2026-09-02",
+      "expires_on": "2026-12-02"
+    }
+  }
 }

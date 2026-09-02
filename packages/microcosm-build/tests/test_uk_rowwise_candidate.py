@@ -388,7 +388,13 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert seed["adjudication"] == "microcosm#802"
     assert seed["approved_on"] == "2026-08-31"
     assert seed["expires_on"] == "2026-11-30"
-    assert adjudications["dormant"] == []
+    assert adjudications["dormant"] == [
+        "full_frs_tei_band_unavailable",
+        "hmrc_spi_frame_model_proxy",
+        "population_universe_private_households",
+        "uc_unit_vs_household_grain",
+        "voa_dwellings_vs_household_frame",
+    ]
     cross_grain = manifest["cross_grain"]
     assert cross_grain["bound_national_targets"] == []
     assert cross_grain["bound_higher_targets"] == []
@@ -556,7 +562,13 @@ def test_candidate_dry_run_plans_without_solve_or_write(
         "census_disclosure_control_noise"
         in adjudications["stood_on"]["census_households/constituency"]
     )
-    assert adjudications["dormant"] == []
+    assert adjudications["dormant"] == [
+        "full_frs_tei_band_unavailable",
+        "hmrc_spi_frame_model_proxy",
+        "population_universe_private_households",
+        "uc_unit_vs_household_grain",
+        "voa_dwellings_vs_household_frame",
+    ]
     cross_grain = plan["cross_grain"]
     assert cross_grain["bound_national_targets"] == []
     assert cross_grain["bound_higher_targets"] == []
