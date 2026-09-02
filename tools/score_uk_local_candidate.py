@@ -27,7 +27,7 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 19_618
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 19_444
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.

@@ -177,6 +177,9 @@ def _area_signed_deferrals(
     scottish_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "S"
     )
+    welsh_local_authorities = tuple(
+        area_id for area_id in local_authority_ids if area_id[:1] == "W"
+    )
     if len(scottish_local_authorities) != 32:
         raise ValueError(
             "Scottish council-tax deferral mask expected 32 crosswalk local "
@@ -187,10 +190,14 @@ def _area_signed_deferrals(
             "Northern Ireland council-tax deferral mask expected 11 crosswalk "
             f"local authorities; measured {len(ni_local_authorities)}."
         )
+    if len(welsh_local_authorities) != 22:
+        raise ValueError(
+            "Welsh council-tax deferral mask expected 22 crosswalk local "
+            f"authorities; measured {len(welsh_local_authorities)}."
+        )
     council_tax_ni_area_ids = ni_local_authorities
     council_tax_scotland_area_ids = scottish_local_authorities
     council_tax_city_band_a_area_ids = ("E09000001",)
-    council_tax_wales_band_h_area_ids = ("W06000019", "W06000024")
     pipr_lad_absent_area_ids = (
         "E06000053",
         "E08000016",
@@ -213,6 +220,7 @@ def _area_signed_deferrals(
         rationale: str,
         area_ids: tuple[str, ...],
         allow_empty: bool = False,
+        defer_if_compiles: bool = False,
     ) -> None:
         if target_id not in target_ids:
             raise ValueError(
@@ -239,6 +247,7 @@ def _area_signed_deferrals(
                 reason_id=reason_id,
                 rationale=rationale,
                 area_ids=matched_area_ids,
+                defer_if_compiles=defer_if_compiles,
             )
         )
 
@@ -327,6 +336,23 @@ def _area_signed_deferrals(
             ),
             area_ids=council_tax_ni_area_ids,
         )
+        add(
+            target_id=target_id,
+            geography_level="local_authority",
+            reason_id="council_tax_wales_country_control_absent",
+            rationale=(
+                "The pinned feed carries no Wales country-level council-tax "
+                "stock-by-band fact, so the Welsh local-authority leg has no "
+                "parent control under the standing UK_CROSS_GRAIN_RULE "
+                "(country > constituency > la; unparented legs fail closed). "
+                "Bands A-H cannot bind for Wales until a Wales country control "
+                "is supplied; the Chronicle ask is filed under microcosm#762 / "
+                "A13. For Band H, this mask subsumes the prior two-cell absence "
+                "for W06000019 and W06000024."
+            ),
+            area_ids=welsh_local_authorities,
+            defer_if_compiles=True,
+        )
     add(
         target_id="voa.council_tax_stock.by_area.band_a",
         geography_level="local_authority",
@@ -337,17 +363,6 @@ def _area_signed_deferrals(
             "cell; 317/318 England/Wales Band A cells compile."
         ),
         area_ids=council_tax_city_band_a_area_ids,
-    )
-    add(
-        target_id="voa.council_tax_stock.by_area.band_h",
-        geography_level="local_authority",
-        reason_id="council_tax_wales_band_h_absent",
-        rationale=(
-            "The pinned 2025 VOA local-authority record set publishes no "
-            "Band H cell for W06000019 or W06000024; 316/318 England/Wales "
-            "Band H cells compile."
-        ),
-        area_ids=council_tax_wales_band_h_area_ids,
     )
     add(
         target_id="ons.rent.private_rent",
