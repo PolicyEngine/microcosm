@@ -30,6 +30,9 @@ This lane owns acceptance tests only; runtime modules remain untouched.
   partition-specific conserve refusal, and independently computed free-policy
   ledger expectations. Its green declaration refusal passes; `--runxfail`
   proves the current rejection omits the required period value.
+- Updated the acceptance burndown and explainer test expectations from the
+  inherited all-green state to exactly B6/C5/D6 red. The first full graph run
+  exposed only those two stale bookkeeping assertions.
 
 ## Next
 

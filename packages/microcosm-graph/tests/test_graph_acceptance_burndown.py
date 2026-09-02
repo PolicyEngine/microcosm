@@ -271,9 +271,19 @@ def test_the_real_suite_is_all_strict_and_all_accounted_for() -> None:
     """The tool's own checks, run against the suite it exists to score."""
     data = burndown.report(burndown.counts(burndown.suite_files()))
     root = burndown.ROOT
-    assert data["total"] == 0
+    assert data["total"] == 3
     assert not [entry for entry in data["properties"] if entry["state"] == "missing"]
-    assert all(entry["state"] == "green" for entry in data["properties"])
+    states = {entry["id"]: entry["state"] for entry in data["properties"]}
+    assert {identifier for identifier, state in states.items() if state == "red"} == {
+        "B6",
+        "C5",
+        "D6",
+    }
+    assert all(
+        state == "green"
+        for identifier, state in states.items()
+        if identifier not in {"B6", "C5", "D6"}
+    )
     for entry in data["files"]:
         source = (root / entry["file"]).read_text()
         for marker in markers_in(source, entry["file"]):
