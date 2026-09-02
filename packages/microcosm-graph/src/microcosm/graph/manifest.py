@@ -85,8 +85,8 @@ def _tolerance_payload(tolerance: Tolerance | None) -> dict[str, object] | None:
     if tolerance is None:
         return None
     return {
-        "rtol": tolerance.rtol,
-        "atol": tolerance.atol,
+        "rtol": float(tolerance.rtol),
+        "atol": float(tolerance.atol),
         "ulps": tolerance.ulps,
     }
 

@@ -188,7 +188,15 @@ def node_key(
     # readers receive it in KernelContext and receipts expose it. Keeping it in
     # the producer key prevents stale cached evidence when the declaration moves.
     numeric_facts = (
-        {} if kernel_tolerance is None else {"tolerance": normative(kernel_tolerance)}
+        {}
+        if kernel_tolerance is None
+        else {
+            "tolerance": {
+                "rtol": float(kernel_tolerance.rtol),
+                "atol": float(kernel_tolerance.atol),
+                "ulps": kernel_tolerance.ulps,
+            }
+        }
     )
     return _hash_parts(
         "node",

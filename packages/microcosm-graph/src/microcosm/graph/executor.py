@@ -96,8 +96,8 @@ def _capabilities_payload(capabilities: Capabilities) -> dict[str, object]:
             None
             if tolerance is None
             else {
-                "rtol": tolerance.rtol,
-                "atol": tolerance.atol,
+                "rtol": float(tolerance.rtol),
+                "atol": float(tolerance.atol),
                 "ulps": tolerance.ulps,
             }
         ),

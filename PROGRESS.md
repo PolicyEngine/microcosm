@@ -49,6 +49,9 @@ verification remain. No network, push, or frozen-interface edits are in scope.
   to the incumbent structural holder in both key construction and
   `KernelContext.tolerances`, matching compilation's self-dependency exception.
   Keys, executor, and C5 checks report `38 passed in 1.79s`.
+- Normalized tolerance `rtol`/`atol` values to floats in keys and both receipt
+  writers, making legal integer-valued declarations canonical across manifest
+  round trips. Manifest, key, and C5 checks report `34 passed in 0.87s`.
 - Implemented D6 partitioned mass accounting: the ledger computes effective
   person mass per partition and stratum (including group-to-person broadcast),
   `conserve` rejects the first changed partition by value, executor-authored
