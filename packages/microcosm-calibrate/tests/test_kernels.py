@@ -161,7 +161,7 @@ def test_calibrate_adam_declares_its_honest_capabilities() -> None:
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
         seed_source=SeedSource.NONE,
-        structural=StructuralDelta.NONE,
+        structural=StructuralDelta.REWEIGHT,
         consumes_se=False,
         dependencies=("numpy", "pandas", "scipy", "torch"),
     )

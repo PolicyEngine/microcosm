@@ -494,7 +494,11 @@ class ReleaseTier(ToyKernel):
             if column != id_column("release")
             for value in table[column]
         ]
-        certified = bool(verdicts) and all(verdict == "pass" for verdict in verdicts)
+        # The executor certifies when every ancestral gate passed or did not
+        # apply; a kernel that disagreed with that derivation would be rejected.
+        certified = bool(verdicts) and all(
+            verdict in ("pass", "not_applicable") for verdict in verdicts
+        )
         tier = "certified" if certified else "evidence"
         return KernelResult(
             columns={
@@ -582,6 +586,15 @@ class Raises(ToyKernel):
         raise RuntimeError(self.MESSAGE)
 
 
+class GateRaises(ToyKernel):
+    """A gate that fails by exception. Its role makes that a failed verdict."""
+
+    MESSAGE = "toy gate exploded on purpose"
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        raise RuntimeError(self.MESSAGE)
+
+
 class CountsAndSucceeds(ToyKernel):
     """A do-nothing deterministic kernel whose only job is to be counted."""
 
@@ -663,6 +676,10 @@ def toy_registry(*, variants: Mapping[str, str] | None = None) -> KernelRegistry
         MutatesItsInput("bad.mutate@1", _DETERMINISTIC),
         WritesIntoAbsentCell("bad.absent@1", _DETERMINISTIC),
         Raises("bad.raise@1", _DETERMINISTIC),
+        GateRaises(
+            "bad.gate_raise@1",
+            Capabilities(determinism=Determinism.DETERMINISTIC, role=KernelRole.GATE),
+        ),
     )
     for kernel in kernels:
         kernel.variant = chosen.get(kernel.ref, kernel.variant)

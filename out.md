@@ -1,203 +1,119 @@
-# Lane D: release semantics, manifest persistence, and H1 fixtures
+# Armenia country package final report (#814)
 
-Date: 2026-09-01
+Date: 2026-08-28
 
-Branch: `node-graph-release`
-
-Checkout: `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/node-graph/release/repo`
+Branch: `armenia-country-package-814`
 
 ## Outcome
 
-The runtime, persistence, serialization, and deterministic real-kernel fixture
-work possible without contradicting the frozen interfaces or unowned fixtures
-is implemented and committed. F2, both F3 cases, and F5 are green; the
-sanctioned flip tool removed exactly those four passing markers. The graph
-package finishes with **175 passed and 4 xfailed**.
+The Armenia package is complete as a schema-valid, spec-only, engine-free
+greenfield contract. It is not represented as an executable build: the exact
+`populace-us` artifact, Armenian facts, generated cell bindings, community
+distribution, gate policy, and shared runtime kernels remain explicit
+prerequisites.
 
-The requested endpoint of only H2/H3 remaining xfailed is not honest on the
-checked-in acceptance fixtures. F4 and H1 contain independent contradictions
-with the frozen interfaces and the assignment's explicit rulings. Their exact
-corrections are under “Interface change requests” below. I did not weaken role,
-tier, numeric-capability, graph-deserialization, or population-version semantics
-to manufacture two false greens.
+The closed `am/` inventory mirrors Belgium's six typed resources and five
+generation-zero JSON projections. It declares:
 
-`decl.py` and `kernel.py` are unchanged from `origin/node-graph`. No network,
-push, PR, release, or publication operation occurred.
+- a two-stage load of a to-be-authenticated public `populace-us` artifact and
+  target-derived marz assignment; every record remains a US donor support
+  record and is never described as Armenian microdata;
+- a 2022-census-vintage community spine constrained to the assigned marz, with
+  10 marzes plus Yerevan and 71 consolidated communities documented but no
+  invented code roster;
+- eight Ledger-only, count/indicator calibration authoring contracts spanning
+  demography, household structure, consumption, labour, earnings, pensions,
+  and family benefits;
+- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
+  cell-pinned Ledger references and direct/pre-built candidate bindings before
+  runtime activation;
+- wage/payment, raw-income diagnostic, and national-accounts facts outside the
+  solver manifest until their validation role or AMD-compatible pre-built bridge
+  is enforceable;
+- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
+  support, weight-audit, ESS, and ratio gate declarations, plus active
+  release-blocking reference-coverage/support/output checks; and
+- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
+  dissemination stated and exact ArmStat/donor licence text left as a mandatory
+  verification item.
 
-## Implementation by file
+`HARVEST.md` has exactly one solver worklist row per live target-reference key,
+plus separate deferred validation/amount, geography, source-authentication, and
+external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
+permanent survey tax-benefit holdouts, the amount/currency boundary,
+`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
 
-- `packages/microcosm-graph/src/microcosm/graph/executor.py`
-  - Validates role-gate outcomes against `GATE_OUTCOMES`.
-  - Converts only role-gate exceptions into failed string verdict artifacts and
-    exception evidence; non-gate exceptions retain abort behavior.
-  - Derives a release tier from transitive role-gate ancestry, validates the
-    release kernel's owned tier, and records the derived tier and ancestry.
-  - Overlays the decision-dependent release outcome without putting decisions
-    into node keys, artifacts, cached results, or the derived tier.
-- `packages/microcosm-graph/src/microcosm/graph/manifest.py`
-  - Adds canonical `save`, `load`, and `load_certified` persistence with schema
-    version 1, manifest key, content-addressed body, tier, known failures,
-    decisions, complete portable node receipts, and artifact identities.
-  - Rederives the release tier from the recorded gate receipts, recomputes known
-    failures, validates every duplicated top-level projection and the manifest
-    key, and confirms every column/frame/weight/opaque artifact exists.
-  - Converts malformed persisted data, including noncanonical body values, to a
-    `StoreCorruptError` whose message identifies the claimed manifest key.
-- `packages/microcosm-graph/src/microcosm/graph/serialize.py`
-  - Adds canonical, lossless `graph_to_json(graph) -> str` and
-    `graph_from_json(text) -> Graph` for the frozen declarations. Enums use their
-    values, parameters are JSON values, and declaration tuples use JSON arrays
-    and are restored as tuples.
-- `packages/microcosm-graph/src/microcosm/graph/__init__.py`
-  - Exports only `graph_to_json` and `graph_from_json`; the public `Graph` remains
-    the frozen declaration class.
-- `packages/microcosm-graph/tests/test_graph_executor.py`
-  - Covers all five gate outcomes, gate exception evidence, non-gate aborts,
-    transitive ancestry, tier disagreement, and decision/cache invariance.
-- `packages/microcosm-graph/tests/test_graph_manifest.py`
-  - Covers persistence, every duplicated-field mismatch, artifact existence,
-    certified/unreached loading, failed-gate tier rederivation, noncanonical
-    body errors, and explicit rejected-node accounting. All 24 tests pass.
-- `packages/microcosm-graph/tests/test_graph_serialize.py`
-  - Covers canonical round-trip and malformed declarations, plus an honest H1
-    proxy that validates real kernel pins and direct bytes. Fit and simulate run
-    through the executor; calibration is checked at the real wrapper's weight
-    result boundary pending the population-contract ruling below.
-- `packages/microcosm-graph/tests/fixtures/parity/kernels/**`
-  - Commits `graph.json`, `inputs.csv`, `direct.csv`, and `pins.json` for
-    `fit.qrf`, `calibrate`, and `simulate`, with producer provenance and ignored
-    local `_store/` directories.
-- `tools/graph_parity_fixtures.py`
-  - Generates all three fixture cases from real `QRF_PARAM_KERNEL`,
-    `CALIBRATE_ADAM`, and `SimulateRulesKernel` bindings.
-  - Defines the importable fixture CREATE kernel and pure-Python rules stub.
-    The test-accessible stub is
-    `tools.graph_parity_fixtures.ParityRulesEngine`; the executable registry is
-    `tools.graph_parity_fixtures.parity_registry()`.
-- `PROGRESS.md`
-  - Preserves the shared historical ledger and adds the committed Lane D state,
-    completed work, evidence, and next owner actions.
-- Acceptance marker files
-  - `tools/graph_acceptance_flip.py` was the only writer. It removed F2, F3,
-    F5, and replay-F3, then a final audit reported `no strict xpass`.
+Package identity after review:
 
-## Exact gate and release rules
-
-1. A node is a gate only when its registered kernel has
-   `Capabilities.role == KernelRole.GATE`.
-2. A role-gate receipt outcome must be exactly one of `pass`, `fail`,
-   `evidence_absent`, `not_applicable`, or `unreached`; any other value rejects
-   the node.
-3. An exception from a role-gate kernel produces `outcome="fail"`, writes
-   `"fail"` to every declared string verdict cell, records exception type and
-   message under `evidence`, and continues. An exception from a compute or
-   release kernel rejects the node and aborts the run.
-4. A release's gate set is every transitive predecessor whose registered role
-   is `GATE`. The tier is `certified` iff every such outcome is `pass` or
-   `not_applicable`; otherwise it is `evidence`. Thus `fail`,
-   `evidence_absent`, and `unreached` block certification. An empty gate set is
-   vacuously certified.
-5. A release must own exactly one string `tier` column. Every owned value must
-   equal the derived tier; disagreement raises `NodeRejectedError`. The
-   release receipt's `tier` is always the executor-derived value.
-6. `params["requires_decisions"]` must be a tuple of unique nonempty decision
-   names. If any name is absent, the release outcome is `unreached`; otherwise
-   it is `pass` for a certified tier and `fail` for an evidence tier.
-7. Decisions affect the run manifest and release receipt outcome only. They do
-   not affect any node key, artifact, cached release result, or derived tier.
-
-## Exact manifest rules
-
-- `save(path)` writes canonical JSON with integer `schema_version=1`, the
-  content-addressed manifest `key`, derived `tier` (or null without a release),
-  sorted `known_failures`, decisions, the content-addressed body, portable node
-  receipts, and run metadata.
-- The body contains sorted node keys and canonically sorted decisions. The
-  manifest key is recomputed from that body.
-- Tier is rederived from the release receipt's unique role-gate ancestry and
-  the corresponding gate receipts; the release receipt's stored tier must
-  agree. Gate outcomes are revalidated against the closed set.
-- `known_failures` is the sorted union of role-gate ids whose outcome is not
-  `pass`/`not_applicable` and nodes explicitly marked rejected.
-- `load(path, store)` requires every persisted top-level field, checks the body,
-  key, tier, known failures, decisions, and portable provenance, then checks
-  each referenced artifact in the store with its declared kind. Missing
-  artifacts raise `StoreMissError`; malformed or inconsistent persistence
-  raises key-bearing `StoreCorruptError`.
-- `load_certified` first refuses a release outcome of `unreached`, then refuses
-  any tier other than `certified` with an evidence-tier error. A successful
-  load preserves the saved manifest key.
-
-## H1 fixture generation
-
-Standard command:
-
-```sh
-uv run python tools/graph_parity_fixtures.py
-```
-
-The sandbox's prebuilt offline environment was invoked as:
-
-```sh
-UV_CACHE_DIR=/private/tmp/node-graph-release-uv-cache \
-  uv run --no-sync python tools/graph_parity_fixtures.py
-```
-
-`fit.qrf` pins seed 947 and the real parameter-seeded QRF adapter;
-`calibrate` pins seed 0 and the real Adam adapter's weight result; `simulate`
-pins the real rules adapter bound to `ParityRulesEngine`. Running the generator
-a second time changed no tracked byte (`git status --porcelain` was empty).
+- CountrySpec fingerprint:
+  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
+- Typed spec SHA-256:
+  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
 
 ## Verification
 
-- Owned-file format check: `8 files already formatted`.
-- Repository Ruff: `All checks passed!`.
-- Graph package: **175 passed, 4 xfailed, 179 collected**.
-  Remaining xfails are F4, H1, H2, and H3.
-- Acceptance burndown: **green 33; red 4 (F4 H1 H2 H3); missing 0;
-  `verification=ok`**.
-- CI inventory: `tracked_test_files=345`; `verification=ok`.
-- Real kernel regressions: **15 passed, 1 skipped**.
-- Frozen-interface diff for `decl.py` and `kernel.py`: empty.
-- `git diff --check origin/node-graph..HEAD`: clean.
-- The checkout was clean before this report was written.
+All commands ran offline. The package-wide command used the exact lock-required
+`policyengine-us==1.819.0` already present in the local uv cache, so the two
+engine-only test files ran inside the same aggregate rather than failing for a
+missing optional dependency.
 
-## Interface change requests
+Exact requested package-wide command:
 
-1. **F4 toy fixture correction (no frozen-interface change).** The checked-in
-   `ReleaseTier` certifies only an all-`pass` input, but the ruling says
-   `not_applicable` also certifies and requires executor rejection on a kernel
-   disagreement. Change that predicate to accept both certifying outcomes.
-   Separately, F4 replaces the gate kernel with `bad.raise@1`, which the toy
-   registry declares as role `COMPUTE`; the ruling requires compute exceptions
-   to abort. Add a distinct throwing kernel registered as role `GATE` and use
-   it in F4, preserving `bad.raise@1` for the non-gate abort contract.
-2. **H1 acceptance consumer correction (no frozen-interface change).** H1 calls
-   `Graph(**json.loads(graph.json))`, which cannot construct nested frozen
-   declarations from JSON dictionaries. It must call `graph_from_json`.
-   It also passes `toy_registry()`, which contains neither the fixture source
-   nor any real parity kernel; it must use `parity_registry()`. Assert the real
-   per-kernel numeric capability (`fit.qrf@1` is deliberately
-   `tolerance_bound`, while calibrate/simulate are bitwise), validate the pin's
-   ref/hash/dependencies, and compare calibration through `NodeReceipt.weight_key`
-   rather than iterating only column artifacts.
-3. **Calibration population-version ruling.** `CALIBRATE_ADAM` declares
-   `StructuralDelta.NONE` while requiring and returning a `WeightTransition`.
-   The integrated population runtime currently refuses that nonstructural
-   weight mutation; allowing it as-is would create implicit ordering with no
-   new population version, while declaring the fixture node `REWEIGHT`
-   conflicts with the real kernel capability. Choose and authorize one coherent
-   contract: make the calibration adapter a structural `REWEIGHT` kernel and
-   declare its base, or
-   amend compiler/population semantics to give nonstructural weight transitions
-   explicit version/dependency behavior. Until then, executor-level calibration
-   parity cannot be asserted honestly.
+```sh
+UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+```
 
-No change to the frozen `decl.py` or `kernel.py` is requested for the completed
-F2/F3/F5 behavior itself.
+Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
+seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
+and PolicyEngine-US runtime warnings; none is Armenia-specific.
 
-## Local handoff
+Additional checks:
 
-- Branch: `node-graph-release`
-- Path: `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/node-graph/release/repo`
-- Push status: not pushed, as required.
+- Focused package/golden/compiler suite:
+  `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
+  — **101 passed** in 29.82 seconds.
+- Authoritative `shared-spec` CI group:
+  `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
+  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
+- `ruff check .` — **passed**.
+- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
+  files tracked.
+- `git diff --check` — **passed**.
+
+## Deviations from Belgium and why
+
+1. Armenia consumes a pre-built public US donor pool instead of native,
+   restricted SILC. No `support_spine.json` is present because the current
+   vocabulary describes raw ASEC pool construction, not an existing artifact.
+2. Armenia is engine-free. No target, gate, or release file requires
+   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
+   through the Axiom adapter.
+3. Marz is target-assigned before community cloning. The clone factor is the
+   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
+   wait for the 71-to-11 roster and within-marz support evidence.
+4. There is no incumbent, so parity/export/target-surface gates are absent.
+   National accounts back a deferred macro-realism band; CEQ and World Bank
+   estimates remain documentation-only band candidates until harvested.
+5. The live solver manifest contains eight count/indicator series contracts,
+   not guessed scalar cells or AMD amount targets. Those series will expand to
+   the reviewed cell-level profile after Chronicle harvest; the eventual
+   10–16-margin selection is not fabricated in this package.
+
+## Top five maintainer questions
+
+1. Which immutable `populace-us` revision/file, hash, licence, and column
+   inventory certify the donor input?
+2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
+   the 2024 profile, and what generated cell-reference/binding artifact owns
+   their fanout?
+3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
+   donor consumption bands and any future amount rows conceptually comparable?
+4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
+   weight-ratio thresholds—and which shared evaluators—activate the deferred
+   gate declarations?
+5. What is the authoritative 2022 marz/community roster and assignment table,
+   and when will the shared geography/source-coverage runtimes land under
+   `populace#263/#265`?
+
+No network fetch, push, PR, artifact build, release, or publication was
+performed. The repository-root `PROGRESS.md` was not touched.

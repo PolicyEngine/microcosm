@@ -213,8 +213,9 @@ class WeightTransition:
 
     Attributes:
         entity: The entity whose explicit weights change.
-        to_kind: The resulting kind; must be the next kind after the
-            current one in :data:`WEIGHT_KINDS`.
+        to_kind: The resulting kind; must come later than the current kind
+            in :data:`WEIGHT_KINDS` (design may move straight to calibrated;
+            no transition moves backwards).
         mass: ``conserve`` (total and per-stratum mass unchanged), ``free``
             (any mass, recorded), or ``declared`` (the kernel's receipt
             states the target mass and the executor checks it).
@@ -325,6 +326,21 @@ class Node:
                 )
         elif self.base is not None:
             raise GraphError(f"Node {self.id!r}: only structural nodes have a base.")
+        if self.weights is not None and self.structural is not StructuralDelta.REWEIGHT:
+            raise GraphError(
+                f"Node {self.id!r}: a weight transition changes the population "
+                "every later node reads, so it is a REWEIGHT node with a base."
+            )
+        if self.structural is StructuralDelta.REWEIGHT:
+            if self.weights is None:
+                raise GraphError(
+                    f"Node {self.id!r}: a REWEIGHT node declares its WeightTransition."
+                )
+            if self.mass != self.weights.mass:
+                raise GraphError(
+                    f"Node {self.id!r}: mass policy {self.mass!r} disagrees with its "
+                    f"weight transition's {self.weights.mass!r}."
+                )
         declared_inputs = {(s.entity, c) for s in self.inputs for c in s.columns}
         for s in self.inputs:
             if s.rows != ROWS_ALL and (s.entity, s.rows) not in declared_inputs:

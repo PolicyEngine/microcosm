@@ -280,35 +280,57 @@ def test_weight_transition_is_immediate_explicit_and_records_mass() -> None:
 
 def test_weight_transition_rejects_skips_and_inherited_weights() -> None:
     population = _population()
-    skip = Node(
-        "skip",
+    # Forward moves are legal, including design straight to calibrated (the
+    # Frame kernel's rule; interface amendment 6); backward moves are not.
+    straight = Node(
+        "straight",
         "test@1",
         structural=StructuralDelta.REWEIGHT,
         base="source",
         weights=WeightTransition("household", "calibrated", mass="free"),
         mass="free",
     )
-    with pytest.raises(PopulationError, match="must be immediate"):
+    calibrated = patch(
+        population,
+        straight,
+        KernelResult(
+            weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.CALIBRATED),
+            receipt=_mass_receipt(
+                policy="free",
+                before=7.0,
+                after=14.0,
+                stratum_before={"a": 2.0, "b": 5.0},
+                stratum_after={"a": 4.0, "b": 10.0},
+            ),
+        ),
+    )
+    assert calibrated.frame.weights_for("household").kind is WeightKind.CALIBRATED
+
+    backward = Node(
+        "backward",
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="straight",
+        weights=WeightTransition("household", "importance", mass="free"),
+        mass="free",
+    )
+    with pytest.raises(PopulationError, match="must move forward"):
         patch(
-            population,
-            skip,
+            calibrated,
+            backward,
             KernelResult(
-                weights=Weights(np.array([1.0, 2.0, 3.0]), WeightKind.CALIBRATED)
+                weights=Weights(np.array([1.0, 2.0, 3.0]), WeightKind.IMPORTANCE)
             ),
         )
 
-    ordinary = Node(
-        "ordinary_weights",
-        "test@1",
-        weights=WeightTransition("household", "importance", mass="free"),
-    )
-    with pytest.raises(PopulationError, match="without a structural"):
-        patch(
-            population,
-            ordinary,
-            KernelResult(
-                weights=Weights(np.array([2.0, 4.0, 6.0]), WeightKind.IMPORTANCE)
-            ),
+    # A weight transition on an ordinary node is refused at declaration.
+    from microcosm.graph import GraphError
+
+    with pytest.raises(GraphError, match="REWEIGHT node with a base"):
+        Node(
+            "ordinary_weights",
+            "test@1",
+            weights=WeightTransition("household", "importance", mass="free"),
         )
 
     inherited = Node(
@@ -469,6 +491,7 @@ def test_structural_nodes_cannot_rewrite_carried_cell_storage() -> None:
         "test@1",
         structural=StructuralDelta.REWEIGHT,
         base="source",
+        weights=WeightTransition("household", "importance", mass="free"),
         mass="free",
     )
     with pytest.raises(PopulationError, match="changed carried storage"):
@@ -642,12 +665,17 @@ def test_reweight_can_synthesize_frame_but_must_not_change_ids() -> None:
         {"household": population.frame.weights_for("household")},
         population.frame.strata.iloc[::-1],
     )
-    no_transition = Node(
-        "bad_reweight",
-        "test@1",
-        structural=StructuralDelta.REWEIGHT,
-        base="source",
-        mass="free",
-    )
+    # A REWEIGHT node without a transition is refused at declaration
+    # (interface amendment 6), before any population is involved.
+    from microcosm.graph import GraphError
+
+    with pytest.raises(GraphError, match="declares its WeightTransition"):
+        Node(
+            "bad_reweight",
+            "test@1",
+            structural=StructuralDelta.REWEIGHT,
+            base="source",
+            mass="free",
+        )
     with pytest.raises(PopulationError, match="changed 'person' ids"):
-        patch(population, no_transition, KernelResult(frame=reordered))
+        patch(population, node, KernelResult(frame=reordered))

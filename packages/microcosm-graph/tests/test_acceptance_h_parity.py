@@ -54,6 +54,21 @@ US_POST_TRANSFER_PARITY = PARITY / "us_post_transfer"
 #: donors and draws on recipients in one node, so there is no separate draw.
 WRAPPED_KERNELS = ("fit.qrf", "calibrate", "simulate")
 
+#: What each wrapper honestly claims about its numbers. The forest stack does
+#: not promise cross-platform bit stability, so ``fit.qrf@1`` says so; parity
+#: in the locked environment is still asserted byte for byte below.
+NUMERIC_CLAIMS = {
+    "fit.qrf": "tolerance_bound",
+    "calibrate": "bitwise",
+    "simulate": "bitwise",
+}
+
+
+def _assert_same_bytes(actual, expected) -> None:
+    assert actual.dtype == expected.dtype
+    assert actual.to_numpy().tobytes() == expected.to_numpy().tobytes()
+    assert np.array_equal(actual.isna().to_numpy(), expected.isna().to_numpy())
+
 
 def _require(path: Path, produced_by: str) -> Path:
     """Fail with the fixture's path and its owner, never with a bare error."""
@@ -65,8 +80,7 @@ def _require(path: Path, produced_by: str) -> Path:
     return path
 
 
-@pytest.mark.xfail(strict=True, reason="charter H1: awaiting fixture from kernel lane")
-def test_h1_kernel_parity() -> None:
+def test_h1_kernel_parity(tmp_path: Path) -> None:
     """A wrapped legacy kernel is byte-identical to the direct call.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/kernels/<name>/``
@@ -76,41 +90,58 @@ def test_h1_kernel_parity() -> None:
     ``microcosm-calibrate``, and the ``RulesEngine`` adapter; the lane that
     writes them produces these fixtures at the same pinned seed.
     """
+    from microcosm.graph import ContentStore, compile_graph, graph_from_json, run_graph
+    from tools.graph_parity_fixtures import parity_registry
+
     _require(KERNEL_PARITY, "the kernel-wrapper lane (#378 step 3)")
+    registry = parity_registry()
     for name in WRAPPED_KERNELS:
         case = _require(KERNEL_PARITY / name, "the kernel-wrapper lane")
         pins = json.loads((case / "pins.json").read_text())
         assert set(pins) >= {"seed", "kernel", "implementation_hash", "dependencies"}
+        kernel = registry.get(pins["kernel"])
+        assert kernel.implementation_hash() == pins["implementation_hash"]
+        assert set(pins["dependencies"]) == set(kernel.capabilities.dependencies)
 
-        from microcosm.graph import ContentStore, Graph, compile_graph, run_graph
-
-        declaration = json.loads((case / "graph.json").read_text())
-        store = ContentStore(case / "_store")
+        store = ContentStore(tmp_path / name)
         manifest = run_graph(
-            compile_graph(Graph(**declaration)),
+            compile_graph(graph_from_json((case / "graph.json").read_text())),
             sources={"fixture": case},
             store=store,
-            kernels=toy.toy_registry(),
+            kernels=registry,
             resume="forbid",
             decisions=(),
         )
         node = manifest.nodes[pins["node"]]
-        assert node.receipt["capabilities"]["numeric"] == "bitwise"
+        assert node.receipt["capabilities"]["numeric"] == NUMERIC_CLAIMS[name]
+        # A structural node re-keys every carried column as an artifact of its
+        # own; the direct call produced only what direct.csv holds, so those
+        # are the cells compared. A weight transition is compared through the
+        # weight artifact under the ``<entity>.weights`` column.
+        direct = _direct_table(case)
+        compared = 0
         for cell, key in node.artifacts.items():
-            through_the_graph = store.load_column(key)
-            direct = _direct_column(case, cell)
-            assert through_the_graph.dtype == direct.dtype
-            assert through_the_graph.to_numpy().tobytes() == direct.to_numpy().tobytes()
-            assert np.array_equal(
-                through_the_graph.isna().to_numpy(), direct.isna().to_numpy()
+            label = f"{cell[0]}.{cell[1]}"
+            if label in direct.columns:
+                _assert_same_bytes(store.load_column(key), direct[label])
+                compared += 1
+        if node.weight_key is not None:
+            entity = (
+                graph_from_json((case / "graph.json").read_text())
+                .node(pins["node"])
+                .weights.entity
             )
+            _assert_same_bytes(
+                store.load_column(node.weight_key), direct[f"{entity}.weights"]
+            )
+            compared += 1
+        assert compared, f"{name}: the fixture exposed nothing to compare"
 
 
-def _direct_column(case: Path, cell: tuple[str, str]):
+def _direct_table(case: Path):
     import pandas as pd
 
-    table = pd.read_csv(case / "direct.csv")
-    return table[f"{cell[0]}.{cell[1]}"]
+    return pd.read_csv(case / "direct.csv", float_precision="round_trip")
 
 
 @pytest.mark.xfail(strict=True, reason="charter H2: awaiting fixture from UK lane")

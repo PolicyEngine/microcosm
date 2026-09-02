@@ -58,6 +58,7 @@ TARGET_PARAMS = (
 CALIBRATE_PARAMS = {
     "targets": TARGET_PARAMS,
     "max_weight_ratio": 2.0,
+    "weight_anchor": "design",
     "epochs": 24,
     "learning_rate": 0.03,
     "mass": "conserve",
@@ -203,9 +204,11 @@ def _frame_for_case(case: str, table: pd.DataFrame) -> Frame:
             {"person": person, "household": household},
             PARITY_SCHEMA,
             {
+                # Design weights: the fixture calibrates them directly, as the
+                # UK pipeline does, and the executor's cap is anchored to them.
                 "household": Weights(
                     table["weight"].to_numpy(dtype=np.float64),
-                    WeightKind.IMPORTANCE,
+                    WeightKind.DESIGN,
                 )
             },
         )
@@ -331,13 +334,17 @@ def _calibrate_case() -> tuple[Graph, pd.DataFrame, pd.DataFrame, object, int]:
             Owned("household", "eligible", "float64"),
         ),
     )
+    # A weight transition is a new population version (interface amendment
+    # 6), so the calibration node is structural and names its base.
     node = Node(
         "calibrate",
         CALIBRATE_ADAM.ref,
         inputs=(Slice("household", ("income", "eligible")),),
         params=CALIBRATE_PARAMS,
-        population="source",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
         weights=WeightTransition("household", "calibrated", mass="conserve"),
+        mass="conserve",
     )
     frame = _frame_for_case("calibrate", table)
     targets = TargetSet(

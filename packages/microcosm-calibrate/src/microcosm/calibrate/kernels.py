@@ -40,7 +40,19 @@ from microcosm.graph import (
 __all__ = ["CALIBRATE_ADAM", "CalibrateAdamKernel"]
 
 
-_PARAMS = frozenset({"epochs", "learning_rate", "mass", "max_weight_ratio", "targets"})
+_PARAMS = frozenset(
+    {
+        "epochs",
+        "learning_rate",
+        "mass",
+        "max_weight_ratio",
+        "targets",
+        # Which weights the cap is measured against. The executor enforces the
+        # anchor (charter D3); the kernel records it so the receipt says what
+        # the cap meant.
+        "weight_anchor",
+    }
+)
 
 
 def _dummy_group_columns(entity: str, columns: pd.Index) -> tuple[str, str, str]:
@@ -155,7 +167,10 @@ class CalibrateAdamKernel(KernelBase):
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
         seed_source=SeedSource.NONE,
-        structural=StructuralDelta.NONE,
+        # A weight transition is a new population version: every later node
+        # reads the calibrated weights, so the node that produces them is
+        # structural (charter D1; interface amendment 6).
+        structural=StructuralDelta.REWEIGHT,
         consumes_se=False,
         dependencies=("numpy", "pandas", "scipy", "torch"),
     )

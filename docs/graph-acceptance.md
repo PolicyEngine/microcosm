@@ -170,6 +170,22 @@ Amendments so far (each re-locked):
    `StoreUnavailableError`, `StoreMissError`.
 4. **Decisions and keys** (F5, above): decisions live in the manifest, not
    in any key.
+5. **Row masks are typed at compile time.** Every column's dtype is declared
+   by its owner, so `compile_graph` refuses a row mask whose declared dtype
+   is not `bool` or `boolean` (`MASK_DTYPES`); nulls inside a nullable mask
+   are a run-time rejection. Raised by the runtime lane for D4; adopted
+   2026-09-01.
+6. **A weight transition is a REWEIGHT node.** Changing weights changes the
+   population every later node reads, so `Node.weights` is legal only on a
+   `REWEIGHT` node with a `base`, a `REWEIGHT` node must declare its
+   transition, and the node's mass policy equals the transition's.
+   `calibrate.adam@1` is therefore a structural kernel. Raised by the
+   release lane; adopted 2026-09-01.
+7. **Gate exceptions are verdicts.** A kernel whose role is `gate` and which
+   raises produces outcome `fail` with the exception as evidence, and the
+   run continues; a compute or release kernel that raises still aborts the
+   run. `certified` requires every ancestral gate to be `pass` or
+   `not_applicable`.
 
 ## Ownership
 

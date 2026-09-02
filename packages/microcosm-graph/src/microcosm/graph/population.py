@@ -537,25 +537,26 @@ def _apply_weight_transition(
             f"{transition.entity!r}; explicit weights are required."
         )
     old = population.frame.weights_for(transition.entity)
-    expected_position = _WEIGHT_ORDER.index(old.kind) + 1
-    if expected_position >= len(_WEIGHT_ORDER):
-        raise PopulationError(
-            f"Node {node.id!r} cannot transition terminal {old.kind.value!r} weights."
-        )
-    expected_kind = _WEIGHT_ORDER[expected_position]
     declared_kind = WeightKind(transition.to_kind)
-    if declared_kind is not expected_kind or result.weights.kind is not expected_kind:
+    # Forward moves only, matching the Frame kernel's own rule: design may go
+    # straight to calibrated (the UK pipeline calibrates design weights), and
+    # nothing moves backwards or stays in place.
+    if _WEIGHT_ORDER.index(declared_kind) <= _WEIGHT_ORDER.index(old.kind):
         raise PopulationError(
-            f"Node {node.id!r} weight transition must be immediate: "
-            f"{old.kind.value!r} -> {expected_kind.value!r}; declaration/result "
-            f"requested {transition.to_kind!r}/{result.weights.kind.value!r}."
+            f"Node {node.id!r} weight transition must move forward: "
+            f"{old.kind.value!r} -> {transition.to_kind!r} does not."
+        )
+    if result.weights.kind is not declared_kind:
+        raise PopulationError(
+            f"Node {node.id!r} declared {transition.to_kind!r} weights but the "
+            f"kernel returned {result.weights.kind.value!r}."
         )
 
     try:
         current = frame.weights_for(transition.entity)
     except ValueError:
         current = None
-    if current is not None and current.kind is expected_kind:
+    if current is not None and current.kind is declared_kind:
         if not np.array_equal(current.values, result.weights.values):
             raise PopulationError(
                 f"Node {node.id!r} returned a Frame and weights with different values."

@@ -128,7 +128,6 @@ def test_f3_the_one_field_flip_is_impossible(tmp_path: Path) -> None:
         RunManifest.load(path, store=red.store)
 
 
-@pytest.mark.xfail(strict=True, reason="charter F4: pending")
 def test_f4_five_outcomes_and_no_accidental_pass(tmp_path: Path) -> None:
     """The outcome set is closed, each member is reachable, and an exception
     inside a gate is a failure carrying the exception as its evidence."""
@@ -166,7 +165,7 @@ def test_f4_five_outcomes_and_no_accidental_pass(tmp_path: Path) -> None:
     assert unreached.manifest.nodes["release"].receipt["outcome"] == "unreached"
 
     exploding = toy.run_toy(
-        toy.replace_node(toy.full_graph(), toy.gate_node(kernel="bad.raise@1")),
+        toy.replace_node(toy.full_graph(), toy.gate_node(kernel="bad.gate_raise@1")),
         tmp_path / "exploding",
     )
     receipt = exploding.manifest.nodes["gate_tax"].receipt
