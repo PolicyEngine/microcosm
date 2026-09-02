@@ -5,9 +5,16 @@ Branch: `acceptance-11-13`
 
 ## State
 
-In progress. B6 and C5 are committed; D6 is committed-red-ready and has been
-proved without its marker. Full verification and the final report remain.
-This lane owns acceptance tests only; runtime modules remain untouched.
+Acceptance work complete and committed. B6, C5, and D6 are present as strict
+red charter tests and fail without their markers at the intended unimplemented
+runtime boundaries. The graph suite, Ruff checks, and CI-group verification
+pass. Runtime modules remain untouched.
+
+One requested verification is externally blocked: the current burndown tool
+unconditionally treats every per-file marker increase against `origin/main` as
+a re-red. The three newly mandated markers therefore produce three required
+`0 -> 1` increases even though coverage reports `missing 0`. The tests-only
+ownership rule prevents changing that tool; the exact output is in `out.md`.
 
 ## Done
 
@@ -33,7 +40,17 @@ This lane owns acceptance tests only; runtime modules remain untouched.
 - Updated the acceptance burndown and explainer test expectations from the
   inherited all-green state to exactly B6/C5/D6 red. The first full graph run
   exposed only those two stale bookkeeping assertions.
+- Verified the full graph package: 203 passed and 3 xfailed.
+- Verified Ruff lint and formatting plus CI test-group ownership.
+- Verified the acceptance inventory itself is complete: 37 green, 3 red, and
+  0 missing properties.
+- Captured the exact unmarked B6/C5/D6 failures and implementation-facing
+  receipt shapes in `out.md`.
 
 ## Next
 
-- Run the full requested verification suite and write `out.md`.
+- The dispatcher or ratchet owner must reconcile the new-charter exception
+  with the per-file `origin/main` ratchet, then rerun
+  `tools/graph_acceptance_burndown.py --verify --baseline origin/main`.
+- The executor lane can flip each strict marker after implementing B6, C5,
+  and D6 against the public behaviours fixed by these tests.

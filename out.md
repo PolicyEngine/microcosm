@@ -1,119 +1,200 @@
-# Armenia country package final report (#814)
+# Graph amendments 11–13 acceptance report
 
-Date: 2026-08-28
+Date: 2026-09-02
 
-Branch: `armenia-country-package-814`
+Branch: `acceptance-11-13`
+
+Acceptance implementation SHA: `721c5d4adf146d46e0f1107001872f3329571e53`
+
+Base: `graph-amendments-11-13` at
+`416bfab5747a6f6c29bdb3b16f1cb1d21f3412a8`
 
 ## Outcome
 
-The Armenia package is complete as a schema-valid, spec-only, engine-free
-greenfield contract. It is not represented as an executable build: the exact
-`populace-us` artifact, Armenian facts, generated cell bindings, community
-distribution, gate policy, and shared runtime kernels remain explicit
-prerequisites.
+The acceptance lane now contains exactly three new strict-red charter tests:
 
-The closed `am/` inventory mirrors Belgium's six typed resources and five
-generation-zero JSON projections. It declares:
+- B6, `test_b6_entrants_are_declared`, specifies declared null-lineage
+  entrants, complete carried-column materialization, copy/entrant lineage
+  receipts, undeclared-entrant refusal, incomplete entrant refusal, and the
+  declaration-time `entrants=True`/`mass="conserve"` conflict.
+- C5, `test_c5_tolerance_is_declared`, specifies an exact tolerance in the
+  producing receipt, coordinate-keyed propagation to a reading gate, `None`
+  for bitwise outputs, and both declaration-time capability refusals.
+- D6, `test_d6_mass_is_partitioned`, specifies partition-local conserve
+  refusal, a partitioned free-policy mass ledger with independently calculated
+  expectations, and compile-time refusal when CREATE omits the partition
+  column.
 
-- a two-stage load of a to-be-authenticated public `populace-us` artifact and
-  target-derived marz assignment; every record remains a US donor support
-  record and is never described as Armenian microdata;
-- a 2022-census-vintage community spine constrained to the assigned marz, with
-  10 marzes plus Yerevan and 71 consolidated communities documented but no
-  invented code roster;
-- eight Ledger-only, count/indicator calibration authoring contracts spanning
-  demography, household structure, consumption, labour, earnings, pensions,
-  and family benefits;
-- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
-  cell-pinned Ledger references and direct/pre-built candidate bindings before
-  runtime activation;
-- wage/payment, raw-income diagnostic, and national-accounts facts outside the
-  solver manifest until their validation role or AMD-compatible pre-built bridge
-  is enforceable;
-- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
-  support, weight-audit, ESS, and ratio gate declarations, plus active
-  release-blocking reference-coverage/support/output checks; and
-- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
-  dissemination stated and exact ArmStat/donor licence text left as a mandatory
-  verification item.
+The tests and toy kernels use public graph declarations, `run_graph` through
+the toy harness, manifests, receipts, and public errors. No runtime module was
+edited.
 
-`HARVEST.md` has exactly one solver worklist row per live target-reference key,
-plus separate deferred validation/amount, geography, source-authentication, and
-external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
-permanent survey tax-benefit holdouts, the amount/currency boundary,
-`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
+The marker lines use the flip tool's exact one-line form:
 
-Package identity after review:
+```text
+@pytest.mark.xfail(strict=True, reason="charter B6: entrant execution pending")
+@pytest.mark.xfail(strict=True, reason="charter C5: tolerance propagation pending")
+@pytest.mark.xfail(strict=True, reason="charter D6: partitioned mass pending")
+```
 
-- CountrySpec fingerprint:
-  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
-- Typed spec SHA-256:
-  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
+## Public shapes fixed for the implementation lane
+
+B6 preserves the existing entity-keyed lineage receipt. Each entry remains a
+`(new_id, source_id)` pair; an entrant is distinguished by a null source. The
+positive fixture admits a household entrant and carries every household column
+through the existing `materialized_expand_outputs` mechanism. Its new person
+is a copy assigned to that household, avoiding an invented entrant-stratum
+channel that is absent from the frozen `KernelResult` interface.
+
+C5 expects this JSON-safe capability representation in the producer receipt
+and in gate evidence:
+
+```json
+{"rtol": 0.000001, "atol": 0.0, "ulps": 0}
+```
+
+The gate obtains it from
+`context.tolerances[("person", "bounded_value")]`; a bitwise owner's coordinate
+maps to `None`.
+
+D6 retains the existing flat mass fields and adds a backward-compatible
+`receipt["mass"]["partition"]` block:
+
+```text
+entity: "person"
+column: "period"
+stratum_before: {"2024": {<stratum>: <mass>}, "2025": {...}}
+stratum_after:  {"2024": {<stratum>: <mass>}, "2025": {...}}
+```
+
+Partition keys are the JSON-string form of the partition value; the next level
+is stratum. The test independently computes each expected cell from the source
+CSV, household design weights, and person-to-household relation.
+
+## Honest RED evidence
+
+Each test was rerun with `--runxfail`, which disables its marker without
+editing the test. All three fail at the intended absent feature.
+
+### B6
+
+```text
+FAILED packages/microcosm-graph/tests/test_acceptance_b_ownership.py::test_b6_entrants_are_declared
+E microcosm.graph.errors.NodeRejectedError: EXPAND node 'scheduled_entries' returned malformed lineage: EXPAND lineage id <NA> is not a JSON scalar.
+1 failed in 0.44s
+```
+
+This is the current executor's refusal of the amendment's null-lineage entrant
+sentinel, before the positive path can run.
+
+### C5
+
+```text
+FAILED packages/microcosm-graph/tests/test_acceptance_c_seeds.py::test_c5_tolerance_is_declared
+E KeyError: 'tolerance'
+1 failed in 0.41s
+```
+
+The tolerant producer runs, but its capabilities receipt does not yet record
+the declared bound.
+
+### D6
+
+```text
+FAILED packages/microcosm-graph/tests/test_acceptance_d_weights.py::test_d6_mass_is_partitioned
+E assert '2024' in "Node 'period_conserve' patch rejected: Node 'period_conserve' mass='conserve' changed stratum 'rural': 206741.316 -> 164718.2845."
+1 failed in 0.42s
+```
+
+The current conserve check sees the global stratum change but does not yet
+identify or enforce the amended partition value.
 
 ## Verification
 
-All commands ran offline. The package-wide command used the exact lock-required
-`policyengine-us==1.819.0` already present in the local uv cache, so the two
-engine-only test files ran inside the same aggregate rather than failing for a
-missing optional dependency.
+All commands ran offline. The locked environment was synced with the warm
+local artifacts and the existing workspace virtual environment.
 
-Exact requested package-wide command:
+Requested full graph command:
 
-```sh
-UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+```text
+uv run pytest packages/microcosm-graph -q -p no:warnings
+...x...x...x... [100%]
+exit 0
 ```
 
-Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
-seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
-and PolicyEngine-US runtime warnings; none is Armenia-specific.
+Because the repository already supplies `-q` in `addopts`, the requested
+second `-q` suppresses pytest's count line. A supplemental equivalent run with
+only one quiet flag reported:
 
-Additional checks:
+```text
+203 passed, 3 xfailed in 86.14s (0:01:26)
+```
 
-- Focused package/golden/compiler suite:
-  `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
-  — **101 passed** in 29.82 seconds.
-- Authoritative `shared-spec` CI group:
-  `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
-  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
-- `ruff check .` — **passed**.
-- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
-  files tracked.
-- `git diff --check` — **passed**.
+Other requested checks:
 
-## Deviations from Belgium and why
+```text
+uv run ruff check .
+All checks passed!
 
-1. Armenia consumes a pre-built public US donor pool instead of native,
-   restricted SILC. No `support_spine.json` is present because the current
-   vocabulary describes raw ASEC pool construction, not an existing artifact.
-2. Armenia is engine-free. No target, gate, or release file requires
-   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
-   through the Axiom adapter.
-3. Marz is target-assigned before community cloning. The clone factor is the
-   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
-   wait for the 71-to-11 roster and within-marz support evidence.
-4. There is no incumbent, so parity/export/target-surface gates are absent.
-   National accounts back a deferred macro-realism band; CEQ and World Bank
-   estimates remain documentation-only band candidates until harvested.
-5. The live solver manifest contains eight count/indicator series contracts,
-   not guessed scalar cells or AMD amount targets. Those series will expand to
-   the reviewed cell-level profile after Chronicle harvest; the eventual
-   10–16-margin selection is not fabricated in this package.
+uv run ruff format --check <six touched Python files>
+6 files already formatted
 
-## Top five maintainer questions
+uv run python tools/ci_test_groups.py --verify
+tracked_test_files=353
+verification=ok
 
-1. Which immutable `populace-us` revision/file, hash, licence, and column
-   inventory certify the donor input?
-2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
-   the 2024 profile, and what generated cell-reference/binding artifact owns
-   their fanout?
-3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
-   donor consumption bands and any future amount rows conceptually comparable?
-4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
-   weight-ratio thresholds—and which shared evaluators—activate the deferred
-   gate declarations?
-5. What is the authoritative 2022 marz/community roster and assignment table,
-   and when will the shared geography/source-coverage runtimes land under
-   `populace#263/#265`?
+git diff --check
+exit 0
+```
 
-No network fetch, push, PR, artifact build, release, or publication was
-performed. The repository-root `PROGRESS.md` was not touched.
+## Burndown ratchet incompatibility
+
+The requested command does not pass, for a direct conflict between the new
+charter-marker requirement and the current baseline algorithm:
+
+```text
+uv run python tools/graph_acceptance_burndown.py --verify --baseline origin/main
+
+group   markers  properties
+B             1  B6
+C             1  C5
+D             1  D6
+total         3
+
+green     37  A1 A2 A3 A4 A5 A6 A7 B1 B2 B3 B4 B5 C1 C2 C3 C4 D1 D2 D3 D4 D5 E1 E2 E3 E4 E5 F1 F2 F3 F4 F5 G1 G2 G3 H1 H2 H3
+red        3  B6 C5 D6
+missing    0  none
+
+baseline=origin/main
+  rose   packages/microcosm-graph/tests/test_acceptance_b_ownership.py: 0 -> 1
+  rose   packages/microcosm-graph/tests/test_acceptance_c_seeds.py: 0 -> 1
+  rose   packages/microcosm-graph/tests/test_acceptance_d_weights.py: 0 -> 1
+
+error: packages/microcosm-graph/tests/test_acceptance_b_ownership.py re-reds 1 property (0 -> 1)
+error: packages/microcosm-graph/tests/test_acceptance_c_seeds.py re-reds 1 property (0 -> 1)
+error: packages/microcosm-graph/tests/test_acceptance_d_weights.py re-reds 1 property (0 -> 1)
+verification=failed
+```
+
+The inventory half is satisfied: all amended properties are found and
+`missing 0`. The ratchet then unconditionally rejects any file whose marker
+count exceeds `origin/main`; that baseline has zero markers in all three target
+files. Thus the three required markers are exactly the three rejected `0 -> 1`
+increases. Making this command green would require changing the tool/baseline
+or omitting/obscuring a required marker. Both are outside this tests-only lane
+and the latter would violate the charter and flip-tool contract. The dispatcher
+or ratchet owner needs to add the explicit new-charter allowance or choose an
+amended baseline before rerunning this command.
+
+## Commits
+
+```text
+d581cc66 Start graph amendments acceptance journal
+e3921cad Add red B6 entrant acceptance contract
+5a63745a Add red C5 tolerance acceptance contract
+64c7c0d1 Add red D6 partitioned mass acceptance contract
+721c5d4a Track three amended charter properties as red
+```
+
+No network access, push, runtime edit, or destructive repository operation was
+performed.
