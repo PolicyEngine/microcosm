@@ -470,14 +470,17 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "notes": (
             "The pinned feed record-set spec "
             "uk.local_geography.council_tax_stock.by_local_authority.v1 "
-            "supplies 2,541 active band cells: bands B-G cover all 318 "
-            "England/Wales crosswalk authorities, band A covers 317 because "
-            "E09000001 is suppressed, and band H covers 316 because "
-            "W06000019 and W06000024 are absent. Scotland's 32 authorities "
-            "have no VOA band-count rows and Northern Ireland's 11 LGDs use "
-            "domestic rates; all 347 absent cells are signed deferrals. The "
-            "feed has no comparable 2025 LA net series across the roster, so "
-            "council_tax/net is not declared."
+            "supplies 2,541 locally compilable band cells. After the A13 "
+            "cross-grain ruling, 2,367 English cells bind: bands B-H cover "
+            "all 296 English crosswalk authorities and band A covers 295 "
+            "because E09000001 is suppressed. All 176 Welsh A-H cells are "
+            "signed deferred because the feed has no Wales country-level "
+            "stock-by-band parent control; 174 have local facts and the two "
+            "Band H cells W06000019 and W06000024 are absent. Scotland's 32 "
+            "authorities have no VOA band-count rows and Northern Ireland's "
+            "11 LGDs use domestic rates; all 521 excluded cells are signed "
+            "deferrals. The feed has no comparable 2025 LA net series across "
+            "the roster, so council_tax/net is not declared."
         ),
     },
 )
@@ -679,10 +682,12 @@ _SCOPE_NOTE = (
 _DOCTRINE: dict[str, Any] = {
     "masked_missing": {
         "rule": (
-            "A missing local target is represented at compile time by an "
-            "AreaSignedDeferral carrying a signed reason and explicit area ids. "
-            "Unsigned absence raises, and a deferral becomes stale and raises "
-            "as soon as the pinned feed can compile that cell."
+            "A local target excluded at compile time is represented by an "
+            "AreaSignedDeferral carrying a signed reason and explicit area "
+            "ids. Unsigned absence raises, and a missing-data deferral becomes "
+            "stale and raises as soon as the pinned feed can compile that "
+            "cell. A separate adjudication may defer a compilable lower-grain "
+            "fact only through the explicit defer_if_compiles opt-in."
         ),
         "enforcement_point": (
             "Both refusals fire inside the reference compiler, which runs only "
@@ -731,7 +736,8 @@ _DOCTRINE: dict[str, Any] = {
         "every_target_accounted": (
             "The local target compiler requires a compiled reference or an "
             "AreaSignedDeferral for every metric-by-area cell; unsigned and "
-            "stale deferrals raise."
+            "stale missing-data deferrals raise, while a separately "
+            "adjudicated compilable deferral requires an explicit opt-in."
         ),
         "missing_cells_masked_deliberately": (
             "AreaSignedDeferral is the deliberate compile-time mask; the solve "

@@ -29,14 +29,14 @@ def _membership() -> dict:
 def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:
     membership = _membership()
     expected_active = {
-        "a": 317,
-        "b": 318,
-        "c": 318,
-        "d": 318,
-        "e": 318,
-        "f": 318,
-        "g": 318,
-        "h": 316,
+        "a": 295,
+        "b": 296,
+        "c": 296,
+        "d": 296,
+        "e": 296,
+        "f": 296,
+        "g": 296,
+        "h": 296,
     }
     for band, active_count in expected_active.items():
         target_id = f"voa.council_tax_stock.by_area.band_{band}"
@@ -65,13 +65,27 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     assert by_reason["council_tax_city_of_london_band_a_suppressed"][0]["area_ids"] == [
         "E09000001"
     ]
-    assert by_reason["council_tax_wales_band_h_absent"][0]["area_ids"] == [
-        "W06000019",
-        "W06000024",
-    ]
+    wales = by_reason["council_tax_wales_country_control_absent"]
+    expected_wales = tuple(
+        area_id
+        for area_id in _crosswalk()["levels"]["local_authority"]["area_ids"]
+        if area_id.startswith("W")
+    )
+    assert len(wales) == 8
+    assert {row["target_id"] for row in wales} == {
+        f"voa.council_tax_stock.by_area.band_{band}" for band in "abcdefgh"
+    }
+    assert {tuple(row["area_ids"]) for row in wales} == {expected_wales}
+    assert len(expected_wales) == 22
+    assert {row["defer_if_compiles"] for row in wales} == {True}
+    assert {
+        "no Wales country-level council-tax stock-by-band fact" in row["rationale"]
+        for row in wales
+    } == {True}
+    assert "council_tax_wales_band_h_absent" not in by_reason
 
 
-def test_council_tax_activation_adds_2541_references() -> None:
+def test_council_tax_activation_adds_2367_references() -> None:
     membership = _membership()
     active = 0
     for band in "abcdefgh":
@@ -80,7 +94,7 @@ def test_council_tax_activation_adds_2541_references() -> None:
             "local_authority"
         ]["candidates"]
         active += sum(row["status"] == "active" for row in candidates)
-    assert active == 2_541
+    assert active == 2_367
 
 
 def test_declared_deferral_roster_matching_no_crosswalk_area_refuses() -> None:
@@ -97,6 +111,7 @@ def test_declared_deferral_roster_matching_no_crosswalk_area_refuses() -> None:
     [
         ("S", 32, "Scottish"),
         ("N", 11, "Northern Ireland"),
+        ("W", 22, "Welsh"),
     ],
 )
 def test_council_tax_country_masks_refuse_roster_count_drift(

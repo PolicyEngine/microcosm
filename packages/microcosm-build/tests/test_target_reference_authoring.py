@@ -208,6 +208,44 @@ def test_author_area_target_references_refuses_stale_signing() -> None:
         )
 
 
+def test_author_area_target_references_records_signed_compilable_deferral() -> None:
+    contract = _single_age_contract()
+    facts = [
+        _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-age-0"),
+    ]
+
+    authored = author_area_target_references(
+        contract,
+        facts,
+        _area_config(
+            areas=("A1",),
+            value_operation_by_target_id={"ons.age.0_10": "sum"},
+            area_signed_deferrals=(
+                AreaSignedDeferral(
+                    target_id="ons.age.0_10",
+                    geography_level="constituency",
+                    reason_id="separate_adjudication",
+                    rationale=(
+                        "The local fact compiles but a separately adjudicated "
+                        "constraint prevents it from binding."
+                    ),
+                    area_ids=("A1",),
+                    defer_if_compiles=True,
+                ),
+            ),
+        ),
+    )
+
+    assert authored.references == ()
+    assert authored.status_counts == {"signed_deferred": 1}
+    candidate = _candidate(authored.membership_report, "ons.age.0_10", "A1")
+    assert candidate["status"] == "signed_deferred"
+    assert candidate["signed_reason_id"] == "separate_adjudication"
+    assert (
+        authored.membership_report["signed_deferrals"][0]["defer_if_compiles"] is True
+    )
+
+
 def test_author_area_target_references_refuses_signed_area_outside_roster() -> None:
     contract = _single_age_contract()
 
@@ -252,7 +290,8 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
         encoding="utf-8",
     )
     # The council-tax country masks refuse a local-authority roster that does
-    # not carry the declared 32 Scottish and 11 Northern Irish authorities
+    # not carry the declared 32 Scottish, 11 Northern Irish, and 22 Welsh
+    # authorities
     # (covered by test_council_tax_country_masks_refuse_roster_count_drift).
     # This test is about the *contract* refusal, so give it a roster those
     # masks accept and let the missing target id be what fails.
@@ -264,6 +303,7 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
                     "local_authority": {
                         "area_ids": [f"S{index:08d}" for index in range(32)]
                         + [f"N{index:08d}" for index in range(11)]
+                        + [f"W{index:08d}" for index in range(22)]
                     },
                 }
             }
