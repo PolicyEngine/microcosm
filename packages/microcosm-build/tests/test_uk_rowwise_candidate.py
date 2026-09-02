@@ -1182,6 +1182,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     f001 = json.loads((f001_out / builder.MANIFEST_FILENAME).read_text())
     assert f001["rung_surface"]["dropped_cells"] > 0
+    assert f001["rung_surface"]["dropped_unreachable_cells"] >= 0
+    assert isinstance(f001["rung_surface"]["dropped_unreachable_by_grain"], dict)
     assert f001["rung_surface"]["dropped_by_grain"]["constituency"] >= 1
     assert f001["rung_surface"]["dropped_by_grain"]["la"] >= 1
     assert "uk_local_area_support" in f001["failing_gate_ids"]

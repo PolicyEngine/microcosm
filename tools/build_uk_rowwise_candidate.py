@@ -1236,7 +1236,44 @@ def _build_joint_problem(
     dropped = surface.loc[~covered_mask]
     if sample_fraction < 1.0:
         surface = surface.loc[covered_mask].reset_index(drop=True)
+    # Below f100 a covered area can still carry a nonzero cell with no metric
+    # support in the sample (no self-employed household among three drawn
+    # rows). The builder refuses such a cell at every rung; at development
+    # rungs the cell is dropped here and receipted instead. f100 stays strict.
+    unreachable = surface.iloc[0:0]
+    if sample_fraction < 1.0 and len(surface):
+        nonzero_by_grain = {
+            grain: (metrics[grain] != 0).groupby(assigned[grain]).sum()
+            for grain in metrics
+        }
+        unreachable_mask = pd.Series(
+            [
+                float(row.value) != 0.0
+                and str(row.metric) in nonzero_by_grain[str(row.area_type)].columns
+                and str(row.area_code) in nonzero_by_grain[str(row.area_type)].index
+                and int(
+                    nonzero_by_grain[str(row.area_type)].loc[
+                        str(row.area_code), str(row.metric)
+                    ]
+                )
+                == 0
+                for row in surface.itertuples(index=False)
+            ],
+            index=surface.index,
+            dtype=bool,
+        )
+        unreachable = surface.loc[unreachable_mask]
+        surface = surface.loc[~unreachable_mask].reset_index(drop=True)
     rung_surface = {
+        "dropped_unreachable_cells": int(len(unreachable)),
+        "dropped_unreachable_by_grain": {
+            str(key): int(value)
+            for key, value in unreachable.groupby("area_type").size().items()
+        },
+        "dropped_unreachable_by_family": {
+            str(key): int(value)
+            for key, value in unreachable.groupby("family").size().items()
+        },
         "fraction": float(sample_fraction),
         "dropped_cells": int(len(dropped) if sample_fraction < 1.0 else 0),
         "dropped_by_grain": (
