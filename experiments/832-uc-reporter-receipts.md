@@ -107,9 +107,10 @@ I1-bounded signatures from the built artifact:
 - **`would_claim_uc` (benunit)**: the reporter set feeding the coherence OR-refresh shrank,
   so the flag count fell by 804 records to a candidate share of **0.548741** — 0.001951
   **below** the incumbent's 0.550692, inside the whole-spine ±0.02 acceptance band. The
-  #828-era lift signature (candidate above, bounded at 0.0553) no longer describes the
-  measured direction; its disposition (retire as in-band, or re-sign below) is an
-  adjudication recorded on PR #835.
+  #828-era lift signature (candidate above, bounded at 0.0553) no longer described the
+  measured direction and was **retired** on 2026-09-02 (María's ruling on PR #835): an
+  in-band difference carries no signature, so a future out-of-band move in either
+  direction is flagged as unsigned.
 - Whole-spine twin compare vs spine-l: exactly four stage-owned columns differ
   (`universal_credit_reported`, `frs_benunit_capital`, `uc_reported_capital`,
   `would_claim_uc`); every other column is byte-identical, and the base-FRS channel shows

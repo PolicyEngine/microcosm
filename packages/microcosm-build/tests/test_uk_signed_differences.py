@@ -97,7 +97,7 @@ class TestCommittedRegister:
         assert register.differences
         assert register.scope_note
 
-    def test_uc_capital_entries_pin_new_exports_and_monotone_claim_lift(self) -> None:
+    def test_uc_capital_entries_pin_new_exports_and_retired_claim_lift(self) -> None:
         register = load_uk_spine_swap_signed_differences()
 
         for column, identifier in {
@@ -113,37 +113,20 @@ class TestCommittedRegister:
             assert entry is not None
             assert entry.id == identifier
 
-        claim = register.matching(
-            surface="nonzero_shares",
-            column="would_claim_uc",
-            expectation="column_differs",
-            entity="benunit",
+        # Retired 2026-09-02 on the spine-m actuals (Part F of the #832
+        # receipts): the reporter redraw's demotions outweigh #828's OR-refresh
+        # lift, leaving would_claim_uc 0.001951 below the incumbent — inside the
+        # whole-spine acceptance band, where the register's doctrine signs
+        # nothing. An unsigned would_claim_uc divergence is a defect again.
+        assert (
+            register.matching(
+                surface="nonzero_shares",
+                column="would_claim_uc",
+                expectation="column_differs",
+                entity="benunit",
+            )
+            is None
         )
-        assert claim is not None
-        assert claim.id == "uc-reporter-claim-refresh-lift"
-        assert claim.quantitative == {
-            "shares": {
-                "would_claim_uc": {
-                    "incumbent_share": 0.550692,
-                    "direction": "candidate_above",
-                    "max_abs_delta": 0.0553,
-                }
-            },
-            "magnitude_provenance": (
-                "I1 screen-sizing bound from "
-                "experiments/832-uc-reporter-receipts.md Part A: 33,794 "
-                "stage-7 true flags plus at most 3,299 screened-SPI "
-                "drawn-reporter flips among 61,211 benunits implies share "
-                "<= 0.605986; max_abs_delta is rounded up at 1e-4 grain. "
-                "The model-expected share was about 0.573. I5 actual (Part F, "
-                "spine-m): 0.548741, i.e. 0.001951 BELOW the incumbent and inside "
-                "the whole-spine acceptance band, because the redraw's demotions "
-                "outweigh the OR-refresh lift; the signed direction no longer "
-                "describes the measured artifact, and this entry's disposition "
-                "(retire as in-band, or re-sign below) is the adjudication "
-                "recorded on PR #835."
-            ),
-        }
 
         reporter = register.matching(
             surface="nonzero_shares",

@@ -629,3 +629,13 @@ def test_landing_invariants_refuse_base_writes_and_double_landings() -> None:
         _assert_landing_invariants(
             double_landed, benunit, spi=spi, draws=draws, base_before=base_before
         )
+
+    # The sum-equals-draw branch is a consistency check between the write and
+    # the draws that fed it, not an oracle — so it needs its own failing path:
+    # one positive row (the one-row check passes) carrying the wrong total.
+    wrong_total = person.copy()
+    wrong_total.loc[1, UC_REPORTER_REDRAW_OUTPUT] = 200.0
+    with pytest.raises(RuntimeError, match="disagree with the draws"):
+        _assert_landing_invariants(
+            wrong_total, benunit, spi=spi, draws=draws, base_before=base_before
+        )

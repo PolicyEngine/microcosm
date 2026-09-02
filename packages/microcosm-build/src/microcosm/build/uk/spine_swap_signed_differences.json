@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats any difference beyond the #723 acceptance band that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The thirty beyond-band divergences measured or structurally expected against the re-pinned 1.56.16 reference are signed below, each scoped to the divergence actually observed rather than carried across on its prose classification, and each deliberately split so that no entry covers both columns where the spine is closer to its donor and columns where the incumbent is: the direction of the evidence is part of what is being signed. Donor figures quoted as magnitude evidence are survey-weighted shares and population means computed on each stage's own committed cleaning function over its own pinned donor tab, which is the convention that reproduces the E6 acceptance receipt's education figure exactly. The incumbent side of every figure is measured on the pinned 1.56.16 artifact itself (sha256 e433e532), not on a local rebuild: an earlier pass read the 1.56.14 published artifact, whose shares differ by up to 0.0045 and which flipped one verdict.",
+ "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats any difference beyond the #723 acceptance band that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The twenty-nine beyond-band divergences measured or structurally expected against the re-pinned 1.56.16 reference are signed below, each scoped to the divergence actually observed rather than carried across on its prose classification, and each deliberately split so that no entry covers both columns where the spine is closer to its donor and columns where the incumbent is: the direction of the evidence is part of what is being signed. Donor figures quoted as magnitude evidence are survey-weighted shares and population means computed on each stage's own committed cleaning function over its own pinned donor tab, which is the convention that reproduces the E6 acceptance receipt's education figure exactly. The incumbent side of every figure is measured on the pinned 1.56.16 artifact itself (sha256 e433e532), not on a local rebuild: an earlier pass read the 1.56.14 published artifact, whose shares differ by up to 0.0045 and which flipped one verdict.",
  "differences": [
   {
    "id": "scottish-water-incumbent-nan-zeroing",
@@ -510,34 +510,6 @@
    }
   },
   {
-   "id": "uc-reporter-claim-refresh-lift",
-   "class": "mechanism_change",
-   "scope": {
-    "surface": "nonzero_shares",
-    "columns": [
-     "would_claim_uc"
-    ],
-    "entities": [
-     "benunit"
-    ]
-   },
-   "expectation": "column_differs",
-   "magnitude_evidence": "The refresh remains monotone: it ORs the final post-redraw reporter anchor into would_claim_uc and never turns an existing true value false. Against the incumbent's 0.550692 unweighted nonzero share, the stage-7 flag starts with 33,794 true values among 61,211 benunits and at most all 3,299 screened SPI benefit units can add reporter flips, bounding the candidate share at 0.605986 and the absolute delta at 0.0553. The benefit-unit model is expected to produce a share of about 0.573, well inside that deliberately conservative screen-sized bound.",
-   "evidence": "experiments/832-uc-reporter-receipts.md#part-a--screen-sizing",
-   "adjudicator": "juaristi22",
-   "adjudicated_on": "2026-09-01",
-   "quantitative": {
-    "shares": {
-     "would_claim_uc": {
-      "incumbent_share": 0.550692,
-      "direction": "candidate_above",
-      "max_abs_delta": 0.0553
-     }
-    },
-    "magnitude_provenance": "I1 screen-sizing bound from experiments/832-uc-reporter-receipts.md Part A: 33,794 stage-7 true flags plus at most 3,299 screened-SPI drawn-reporter flips among 61,211 benunits implies share <= 0.605986; max_abs_delta is rounded up at 1e-4 grain. The model-expected share was about 0.573. I5 actual (Part F, spine-m): 0.548741, i.e. 0.001951 BELOW the incumbent and inside the whole-spine acceptance band, because the redraw's demotions outweigh the OR-refresh lift; the signed direction no longer describes the measured artifact, and this entry's disposition (retire as in-band, or re-sign below) is the adjudication recorded on PR #835."
-   }
-  },
-  {
    "id": "uc-reporter-benefit-unit-redraw-incidence",
    "class": "qrf_implementation",
    "scope": {
@@ -550,7 +522,7 @@
     ]
    },
    "expectation": "column_differs",
-   "magnitude_evidence": "The benefit-unit redraw replaces independent person-grain SPI receipt draws and lands each positive benefit-unit amount on exactly one adult, while the base channel stays byte-unchanged. Against the incumbent universal_credit_reported share of 0.057359, the 4,428 base-channel reporter persons among 113,649 people remain fixed; the spine-m twin build (Part F) measures 5,730 nonzero reporter records, a candidate share of 0.050418, so the candidate sits below by 0.006941. The I1 structural range [0.038962, 0.067990] bounded the draw before it was made; its above-side half needs a 100% reporter draw on the 3,299 screened SPI units, which the roughly 46% base rate and the built artifact both exclude. The signature therefore covers the below side to the structural floor (0.0184) and leaves the above side unsigned on evidence, not by omission.",
+   "magnitude_evidence": "The benefit-unit redraw replaces independent person-grain SPI receipt draws and lands each positive benefit-unit amount on exactly one adult, while the base channel stays byte-unchanged. Against the incumbent universal_credit_reported share of 0.057359, the 4,428 base-channel reporter persons among 113,649 people remain fixed; the spine-m twin build (Part F) measures 5,730 nonzero reporter records, a candidate share of 0.050418, so the candidate sits below by 0.006941. The I1 structural range [0.038962, 0.067990] bounded the draw before it was made; crossing the incumbent needs about 2,091 of the 3,299 screened SPI units to draw as reporters (0.057359 x 113,649 is about 6,519 reporter persons, less the fixed 4,428), roughly 63%, which the roughly 46% base rate and the measured 1,302 (39.5%) both sit well below. The signature therefore covers the below side to the structural floor (0.0184) and leaves the above side unsigned on evidence, not by omission.",
    "evidence": "experiments/832-uc-reporter-receipts.md#part-f--spine-m-actuals-for-the-signed-differences",
    "adjudicator": "juaristi22",
    "adjudicated_on": "2026-09-01",
