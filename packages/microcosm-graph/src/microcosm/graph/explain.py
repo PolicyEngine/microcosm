@@ -890,7 +890,7 @@ def _numeric_sequence(value: object) -> list[float]:
 
 
 def _receipt_ratios(receipt: NodeReceipt) -> tuple[list[float], list[float]]:
-    for name in ("weight_ratios", "ratios", "ratio_distribution"):
+    for name in ("weight_ratios", "ratio_distribution"):
         raw = receipt.receipt.get(name)
         if isinstance(raw, Mapping):
             before = _numeric_sequence(raw.get("before"))

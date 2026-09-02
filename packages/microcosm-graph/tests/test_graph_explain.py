@@ -208,6 +208,56 @@ def test_calibration_view_uses_targets_ratios_and_mass(explanation) -> None:
     assert "urban" in rendered
 
 
+def test_calibration_view_reads_adam_diagnostics(tmp_path: Path) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    targets = (
+        ("income", "income", None, 390.0, 7.25),
+        ("eligible_income", "income", "eligible", 240.0, 3.0),
+    )
+    calibrate = replace(
+        run.compiled.graph.node("calibrated"),
+        kernel="calibrate.adam@1",
+        params={
+            "targets": targets,
+            "epochs": 24,
+            "learning_rate": 0.03,
+            "mass": "declared",
+            "max_weight_ratio": 5.0,
+            "weight_anchor": "design",
+        },
+    )
+    compiled = graph_api.compile_graph(toy.replace_node(run.compiled.graph, calibrate))
+    old_receipt = run.manifest.nodes["calibrated"]
+    adam_receipt = replace(
+        old_receipt,
+        kernel_ref="calibrate.adam@1",
+        receipt={
+            "declared_targets": targets,
+            "diagnostics": {
+                "targets": (
+                    {"target_name": "income", "final_estimate": 392.5},
+                    {"target_name": "eligible_income", "final_estimate": 239.0},
+                )
+            },
+        },
+    )
+    manifest = replace(
+        run.manifest,
+        nodes={**dict(run.manifest.nodes), "calibrated": adam_receipt},
+    )
+
+    rendered = explain_html(compiled, manifest)
+
+    assert "calibrate.adam@1" in rendered
+    assert "eligible_income" in rendered
+    assert "eligible" in rendered
+    assert "392.5" in rendered
+    assert "239" in rendered
+    assert ">2.5<" in rendered
+    assert ">-1<" in rendered
+    assert ">7.25<" in rendered
+
+
 def test_four_passing_replay_panels_are_step_through_views(explanation) -> None:
     _run, _charter, rendered = explanation
     for identifier, title in (
