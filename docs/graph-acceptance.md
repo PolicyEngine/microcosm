@@ -215,10 +215,12 @@ pull request reviewed by the Fable main.
   suite (as its own lane), the visuals, and both country migrations.
 - **María:** human review of the visual and interactive artifacts (group
   V), starting with the calibration view (V3), plus UK domain review of H2
-  when it lands.
+  (open: H2 landed on `main` in #836 and awaits that review).
 - **Max:** the rulings in the review's "Decisions that are yours" as they
-  come due, and the `node-graph → main` merge.
+  come due, and the `node-graph → main` merge (done: #836, 2026-09-02).
 
-Branch: `node-graph`, off `origin/main` at `4c6cc58c`. Work lands as pull
-requests into `node-graph`; `node-graph` merges to `main` when the suite has
-zero `xfail` markers and H1–H2 are green.
+Branch history: `node-graph` was cut from `origin/main` at `4c6cc58c`; work
+landed as pull requests into `node-graph`, and `node-graph` merged into
+`main` in #836 on 2026-09-02 once the suite had zero `xfail` markers and
+H1–H3 were green. Amendments to this charter now land as pull requests
+into `main`.
