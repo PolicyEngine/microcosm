@@ -1,0 +1,96 @@
+# First calibrated rowwise UK local candidate — receipts (#762, #495 increment 6)
+
+Plan: `repos/uk-762-rowwise-candidate-plan.md` (approved 2026-09-02). Machinery: PR #852 (PR A). Registers, deferrals and these receipts: PR B (`uk-rowwise-candidate-762-b`). Spine of record: spine-m. Every run below is the **joint solve**: local register cells + ladder census household rows + the activated national families as rows of one matrix over the K-cloned spine, engine resolved on every cloned row, one `calibrate()` call under the local doctrine.
+
+## R0 — identity
+
+| item | value |
+|---|---|
+| spine | `spine-m.h5` (`data/ukds/acceptance/spine-m-832/`), sha256 `fb053cd2157702969c6e055278b5d5c10fbcc389d5c06eb80f6a3b345570713a`, 154,942,842 bytes, 52,846 households, `importance` weights, mass 29,247,433.0; sidecar + 14/14 spine gates bound |
+| ladder | `uk_oa_ladder_2021.npz`, sha256 `9c6d56b90d2e975d750106b175020a54c5ec6acf42ef8909d304a9d7fc3868a7`, `matches_local_area_crosswalk_pin: true` |
+| ledger facts | chronicle consumer artifact `1cab809`, facts sha256 `226358e73e7c449e71a3f6dc91a72e8e3941e0f14265943d81c990edb21c2a6c`, manifest `aadc0105…`; 107,550 rows |
+| survey / calibration year | 2024 (FRS 2024-25) / **2025** |
+| registers in force | `local_binding_adjudications.json`: 6 fences (2026-09-02 → 2026-12-02; census fence to 2026-11-30); `local_area_support_exclusions.json`: E06000053, E09000001 |
+| surface | 19,444 active local register cells (19,618 − 174 Welsh council-tax cells signed-deferred, A13) + 1,011 ladder household rows + 364 activated national references |
+| code | PR A `1ddb0e27` / PR B `effdc6e8` (this document's runs; later runs cite their own pins) |
+
+## R1 — f100 dry-run K sweep (2026-09-02, ninth attempt completed)
+
+No engine, no solve, no write. 81 s, 5.0 GB peak RSS through pins, both registry compiles, the K=4 clone, surface assembly, cross-grain reconciliation and the sweep.
+
+Matrix at K=4: **20,819 rows × 211,384 households** (20,455 local incl. ladder; 364 national).
+
+| K | constituency min rows / ESS / sources | LA min rows / ESS / sources |
+|--:|---|---|
+| 1 | 28 / 15.3 / 28 | 1 / 1.0 / 1 |
+| 2 | 42 / 28.8 / 42 | 3 / 2.4 / 3 |
+| 4 | 101 / 86.4 / 97 | 7 / 6.8 / 7 |
+
+Identical to the #761 tables (spine-i, spine-k): the assignment surface is value-column-independent and the roster/region/weight inputs are preserved on spine-m.
+
+Cross-grain receipt (39 groups in force):
+- 8 age-band bridges at both grains, factor 1.0000 (ONS by-area sums equal the UK totals).
+- UC caseload bridge: by-area UC counts rescale ×1.0276 at both grains (2025-05 area facts → 2025-12 caseload).
+- 12 constituency-over-LA exact matches (HMRC amounts, age bands, UC count): LA cells rescale to constituency sums, factors 0.992–1.022.
+- England council-tax controls (8 bands) over 296 LAs, factors within 0.1 % of one; Scotland's 8 controls: licensed empty legs (every Scottish LA cell signed-deferred); Wales: no rows (A13).
+- Household-composition partition bridge **unbound** (three cells are #791 reviewed exclusions) → census households bind as published, 2021/22 vintage (A11, published to #736).
+- 15 fan-out national targets receipted as distributions, not controls.
+
+Vintages behind the 2025 period: UC 2025-05 (3,510 cells), HMRC tax-year 2023 (4,035), age mid-2024 (8,088), tenure 2021 (1,316) / 2022 (128), council tax 2025 (no hold).
+
+## R2 — f001 smoke (K=4, 1 %, sample seed 578; 2026-09-02)
+
+Machinery end to end on the licensed spine: sample 52,846 → 501 households (156 source families; mass renormalized ×105.29 to the full total), clone ×4 → 2,004 households / 4,352 persons / 2,496 benunits, engine resolved on the cloned frame (46 national inputs, 18 + 30 local metrics), surface restricted for the rung (1,223 cells whose area drew no rows; 10,429 covered cells with zero metric support), **9,167 targets × 2,004 households** (7,854 register + 949 ladder + 364 national), one solve (uniform, 512 epochs), battery run with ladder-only enforcement, 5-fold rotated holdout, atomic bundle, Logbook row chained on the `uk/local` tail.
+
+| measure | value |
+|---|---|
+| wall / peak RSS | 101 s / 3.1 GB |
+| loss initial → final | 1.375 → 0.418 |
+| median / max abs relative error | 0.347 / 926 |
+| past-cap (all rows) | 147 at init, 8 at final, 139 escaped, 0 pushed out |
+| realized max weight ratio vs design | 6.29 (bound 100) |
+| calibration mass change | 29,247,433 → 14,385,130 (×0.492, free mass) |
+| holdout fold losses | 0.676, 0.641, 0.679, 0.674, 0.659 |
+| gates | ladder passed; area_support / target_fit / per_family_fit failed (recorded, not enforced below f100); weight_ess, weight_ratio passed |
+| releasable | false (rung) |
+
+A 1 % rung has no fit meaning; it establishes that every stage runs on the real spine and sizes the cost. Support-limited-miss diagnostic ran (constituency: 2,411 failing cells, 14 % in the bottom-ESS decile, Spearman −0.04).
+
+## R3 — f010 development rung (K=4, 10 %, sample seed 578; 2026-09-02)
+
+Sample 52,846 → 5,247 households (1,622 source families; mass renormalized ×10.07), clone ×4 → 20,988 households / 45,248 persons / 24,680 benunits; rung surface: 22 cells whose area drew no rows, 1,848 covered cells with zero metric support dropped; **18,585 targets × 20,988 households** (17,575 register + 1,010 ladder + 364 national).
+
+| measure | value |
+|---|---|
+| wall / peak RSS | 214 s / 4.3 GB (f001: 101 s / 3.1 GB) |
+| loss initial → final | 0.524 → 0.139 |
+| median / max abs relative error | 0.032 / 249 (City of London band H) |
+| past-cap (all rows) | 46 at init, 16 at final, 30 escaped, 0 pushed out |
+| realized max weight ratio vs design | 57.3 (bound 100) |
+| calibration mass change | 29,247,433 → 28,165,560 (×0.963, free mass) |
+| holdout fold losses | 0.431, 0.436, 0.422, 0.442, 0.471 |
+| local fit within 10 % / 25 % | age 69 % / 82 % (7,985 cells); census households 85 % / 98 % (1,010); council tax 72 % / 84 % (1,893) |
+| gates | ladder, per_family_fit, weight_ess, weight_ratio passed; area_support and target_fit failed (recorded, not enforced below f100) |
+| support-limited misses | constituency: 1,704 failing cells, Spearman(worst error, ESS) −0.38; LA: 1,577, −0.50 |
+| releasable | false (rung) |
+
+Sizing for f100 from f001 → f010: about +1.2 GB per 19k cloned rows on top of a 3 GB base → ≈ 16 GB peak at 211,384 rows; wall scales with the engine run and the five holdout solves.
+
+## R4 — f100 at the ruled K=4: refused on support (2026-09-02, attempt `ff0faa2d`, Logbook row `219cb604…`, disposition failed)
+
+Sampling none (f100), clone ×4 → 211,384 households, engine resolved on every cloned row in one block (154 s to the refusal, **7.6 GB** peak RSS — the f001 → f010 extrapolation of 16 GB was pessimistic). The strict f100 builder refused: **172 cells with a nonzero target and zero household support**, all in the UC child-band family (`uc_hh_2_children` in the listed examples: E14001084, E14001107, E14001156, E14001318, S14000027 — Na h-Eileanan an Iar, the smallest constituency at 101 rows). A UC benefit unit with exactly two children is ~2 % of cloned rows, so a 101-row constituency has ~13 % odds of carrying none; the miss is support-limited by construction, which is the D7 trigger: "if Run U shows misses concentrated where ESS is lowest, a K=10 run under the identical doctrine is the measured comparison". K=10 (≈ 250 rows in the smallest constituency) should leave only a handful of such cells; those that remain are target-side work (signed deferral of the specific zero-support cells) rather than a clone multiplier.
+
+Consequence for the K ruling (A4): K=4 cannot bind the full UC child-band surface at f100; the K=10 measurement below is the evidence for re-adjudicating the declared `--n-clones`.
+
+## R5 — f100 at K=10 (the D7 escalation measurement; 2026-09-02, attempt chained on R4's failed row)
+
+Clone ×10 → 528,460 households; engine resolved per clone block (`--engine-blocks 10`, each block a declared subset of the cloned mass); **192 s to the refusal, 9.9 GB peak RSS**. The strict f100 builder refused **86 cells**, all at local-authority grain: 84 × `council_tax/band_h` (84 of the 296 active band-H authorities), plus Isles of Scilly `age/0_10` and `council_tax/band_f`. **Every constituency-grain cell is supported at K=10** — the 172 UC child-band cells unreachable at K=4 are gone.
+
+Why band H is not a clone-count problem: spine-m carries **170 band-H households, from 49 raw FRS households** (London 13, Wales 11, South East 8, Scotland 6, West Midlands 4, South West 3, East of England 3, East Midlands 1); 49 sources cannot populate 296 authorities at any affordable K. The Scilly cells are the A4 support-exclusion area (7 rows at K=4, 17 at K=10) carrying 30 metrics.
+
+| K | wall to refusal / peak | unreachable nonzero cells | where |
+|--:|---|--:|---|
+| 4 | 154 s / 7.6 GB | 172 | constituency UC child bands (small constituencies) |
+| 10 | 192 s / 9.9 GB (10 engine blocks) | 86 | LA: band H × 84, Scilly × 2 |
+
+Proposed dispositions (A14, María): K=10 for the first candidate (measured); sign a deferral for the 296 band-H LA cells (`voa.council_tax_stock.by_area.band_h`, spine support 49 raw sources); amend A4 so the two support-excluded authorities' cells are signed-deferred as well (they stay in the solve through the other families' rows; their own cells are unsupported by the exclusion's own evidence).

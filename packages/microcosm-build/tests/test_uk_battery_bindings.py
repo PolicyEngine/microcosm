@@ -1000,14 +1000,14 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 19_444
+        assert result.details["candidate_targets"] == 19_105
         assert result.details["reference_targets"] == 22_530
-        # 2,075 signed area deferrals from the membership file plus the 1,011
+        # 2,414 signed area deferrals from the membership file plus the 1,011
         # ladder-derived households@area rows: census_households binds from the
         # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
         # in-code default surface excludes it by rule rather than by absence.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 2_075 + 1_011
+        assert len(exclusions) == 2_414 + 1_011
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -1081,6 +1081,15 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
         "local_authority/E09000001",
     }
     assert committed.details["excluded_area_count"] == 2
+    exclusions = battery_bindings.load_uk_reviewed_exclusion_register(
+        None,
+        resource="local_area_support_exclusions.json",
+    )
+    a14_suffix = (
+        " Per microcosm#762 A14 the authority's own local-authority cells are "
+        "signed-deferred (`local_authority_support_floor_excluded`)."
+    )
+    assert all(record.reason.endswith(a14_suffix) for record in exclusions.values())
 
     monkeypatch.setattr(
         battery_bindings,

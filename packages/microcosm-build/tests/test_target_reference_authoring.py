@@ -290,8 +290,8 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
         encoding="utf-8",
     )
     # The council-tax country masks refuse a local-authority roster that does
-    # not carry the declared 32 Scottish, 11 Northern Irish, and 22 Welsh
-    # authorities
+    # not carry the declared 32 Scottish, 11 Northern Irish, 22 Welsh, and
+    # 296 English authorities
     # (covered by test_council_tax_country_masks_refuse_roster_count_drift).
     # This test is about the *contract* refusal, so give it a roster those
     # masks accept and let the missing target id be what fails.
@@ -304,6 +304,8 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
                         "area_ids": [f"S{index:08d}" for index in range(32)]
                         + [f"N{index:08d}" for index in range(11)]
                         + [f"W{index:08d}" for index in range(22)]
+                        + [f"E{index:08d}" for index in range(294)]
+                        + ["E06000053", "E09000001"]
                     },
                 }
             }

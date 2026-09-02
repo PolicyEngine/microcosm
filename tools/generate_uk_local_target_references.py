@@ -177,6 +177,9 @@ def _area_signed_deferrals(
     scottish_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "S"
     )
+    english_local_authorities = tuple(
+        area_id for area_id in local_authority_ids if area_id[:1] == "E"
+    )
     welsh_local_authorities = tuple(
         area_id for area_id in local_authority_ids if area_id[:1] == "W"
     )
@@ -195,9 +198,15 @@ def _area_signed_deferrals(
             "Welsh council-tax deferral mask expected 22 crosswalk local "
             f"authorities; measured {len(welsh_local_authorities)}."
         )
+    if len(english_local_authorities) != 296:
+        raise ValueError(
+            "English council-tax Band H deferral mask expected 296 crosswalk "
+            f"local authorities; measured {len(english_local_authorities)}."
+        )
     council_tax_ni_area_ids = ni_local_authorities
     council_tax_scotland_area_ids = scottish_local_authorities
     council_tax_city_band_a_area_ids = ("E09000001",)
+    support_floor_excluded_area_ids = ("E06000053", "E09000001")
     pipr_lad_absent_area_ids = (
         "E06000053",
         "E08000016",
@@ -211,6 +220,7 @@ def _area_signed_deferrals(
     )
     spi_la_measure_gap_area_ids = ("E06000027", "E06000053")
     deferrals: list[AreaSignedDeferral] = []
+    declared_area_keys: set[tuple[str, str, str]] = set()
 
     def add(
         *,
@@ -221,6 +231,7 @@ def _area_signed_deferrals(
         area_ids: tuple[str, ...],
         allow_empty: bool = False,
         defer_if_compiles: bool = False,
+        skip_declared: bool = False,
     ) -> None:
         if target_id not in target_ids:
             raise ValueError(
@@ -228,7 +239,15 @@ def _area_signed_deferrals(
                 "local contract."
             )
         roster = set(areas.get(geography_level, ()))
-        matched_area_ids = tuple(area_id for area_id in area_ids if area_id in roster)
+        matched_area_ids = tuple(
+            area_id
+            for area_id in area_ids
+            if area_id in roster
+            and (
+                not skip_declared
+                or (target_id, geography_level, area_id) not in declared_area_keys
+            )
+        )
         if not matched_area_ids:
             if allow_empty:
                 return
@@ -249,6 +268,9 @@ def _area_signed_deferrals(
                 area_ids=matched_area_ids,
                 defer_if_compiles=defer_if_compiles,
             )
+        )
+        declared_area_keys.update(
+            (target_id, geography_level, area_id) for area_id in matched_area_ids
         )
 
     add(
@@ -354,6 +376,21 @@ def _area_signed_deferrals(
             defer_if_compiles=True,
         )
     add(
+        target_id="voa.council_tax_stock.by_area.band_h",
+        geography_level="local_authority",
+        reason_id="council_tax_band_h_spine_support_absent",
+        rationale=(
+            "Spine-m carries 170 band-H households from 49 raw FRS households "
+            "(London 13, Wales 11, South East 8, Scotland 6, West Midlands 4, "
+            "South West 3, East of England 3, East Midlands 1). At the ruled "
+            "K=10, 84 of 296 authorities draw no band-H household, so the "
+            "family cannot bind at local-authority grain until a spine vintage "
+            "carries broader band-H support (microcosm#762 A14)."
+        ),
+        area_ids=english_local_authorities,
+        defer_if_compiles=True,
+    )
+    add(
         target_id="voa.council_tax_stock.by_area.band_a",
         geography_level="local_authority",
         reason_id="council_tax_city_of_london_band_a_suppressed",
@@ -392,6 +429,28 @@ def _area_signed_deferrals(
         rationale="The pinned feed's 348 PIPR facts at 2026-06 contain zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
         area_ids=ni_local_authorities,
     )
+    for target in contract.get("targets", ()):
+        if "local_authority" not in target.get("geography_levels", ()):
+            continue
+        add(
+            target_id=str(target["target_id"]),
+            geography_level="local_authority",
+            reason_id="local_authority_support_floor_excluded",
+            rationale=(
+                "E06000053 and E09000001 are reviewed exclusions of the "
+                "local-authority support floor (uk/local_area_support_"
+                "exclusions.json, microcosm#762 A4): respectively 7 and 14 "
+                "positive-weight rows at K=4, and 17 and 49 at K=10. Their own "
+                "local-authority cells are signed-deferred on the same "
+                "evidence; their rows stay in the solve through the "
+                "constituency families and the national rows (A14 amendment "
+                "to A4)."
+            ),
+            area_ids=support_floor_excluded_area_ids,
+            allow_empty=True,
+            defer_if_compiles=True,
+            skip_declared=True,
+        )
     return deferrals
 
 
