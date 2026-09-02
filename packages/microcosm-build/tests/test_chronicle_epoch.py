@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +23,7 @@ from microcosm.build.chronicle_epoch import (
     CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
     CHRONICLE_EPOCH,
     EPOCHS,
+    FACT_KEY_FIELDS,
     LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
     LEDGER_EPOCH,
@@ -328,17 +330,99 @@ def test_per_row_schema_id_is_accepted_in_either_era(
     assert artifact.facts[0]["schema_version"] == row_schema_version
 
 
-def test_per_row_schema_id_is_optional_but_validated_when_present(tmp_path) -> None:
-    # Chronicle-published rows have never carried one; demanding it would
-    # reject every real feed.
+def test_per_row_schema_id_is_optional(tmp_path) -> None:
+    # A row that declares no schema id must not acquire one: the loader
+    # reports what was published, and never fabricates the field.
     bare = tmp_path / "bare.jsonl"
     bare.write_text(json.dumps(_fact_row(), sort_keys=True) + "\n")
     assert "schema_version" not in load_ledger_consumer_artifact(bare).facts[0]
 
-    wrong = tmp_path / "wrong.jsonl"
-    wrong.write_text(
-        json.dumps(_fact_row(schema_version="ledger.consumer_fact.v99"), sort_keys=True)
-        + "\n"
+
+def test_per_row_schema_id_outside_both_eras_still_loads(tmp_path) -> None:
+    """Dual acceptance widens what loads; it must not narrow it.
+
+    Real feeds stamp rows from namespaces that are neither era. The pinned US
+    fiscal-refresh feed ``consumer_facts_buildn_v9_4.jsonl`` declares
+    ``arch.consumer_fact.v1`` on the overwhelming majority of its rows and
+    ``ledger.consumer_fact.v1`` on the rest, and it loads through this loader
+    on the release path. A consumer that gated the per-row id against the two
+    ids chronicle#143 names would fail the build closed on its own pinned
+    input — so the id is carried and reported, never gated.
+    """
+    facts_path = tmp_path / "consumer_facts.jsonl"
+    rows = [
+        _fact_row(schema_version="arch.consumer_fact.v1"),
+        _fact_row(schema_version=LEDGER_CONSUMER_FACT_SCHEMA_VERSION),
+        _chronicle_fact_row(schema_version=CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION),
+        _fact_row(schema_version="ledger.consumer_fact.v99"),
+    ]
+    facts_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
     )
-    with pytest.raises(ValueError, match="unsupported schema_version"):
-        load_ledger_consumer_artifact(wrong)
+
+    artifact = load_ledger_consumer_artifact(facts_path)
+
+    assert artifact.fact_row_count == len(rows)
+    assert artifact.fact_schema_versions == (
+        "arch.consumer_fact.v1",
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+        "ledger.consumer_fact.v99",
+    )
+    # The unrecognized ids are reported verbatim in provenance, so a release
+    # manifest still witnesses exactly what it consumed.
+    assert artifact.provenance()["fact_schema_versions"] == [
+        "arch.consumer_fact.v1",
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+        "ledger.consumer_fact.v99",
+    ]
+
+
+def test_every_published_key_field_is_witnessed_for_its_epoch() -> None:
+    """Epoch witnessing covers every Chronicle key a published row carries.
+
+    The captured feed fixture carries nine single-key fields and two key
+    lists, not just the four identifiers targets resolve by. Chronicle's
+    cutover moves families independently — the spec declares ``v3`` only for
+    the aggregate and semantic families — so a row can straddle it: ledger-era
+    aggregate key, chronicle-era source-release key. Reading only the
+    resolution set would report that row as pure ledger-era.
+    """
+    for field in (
+        "observed_measure_key",
+        "source_release_key",
+        "source_series_key",
+        "universe_constraint_set_key",
+    ):
+        straddling = _fact_row(**{field: f"chronicle.{field[:-4]}.v3:straddle"})
+
+        assert row_fact_key_epochs(straddling) == frozenset(
+            {LEDGER_EPOCH, CHRONICLE_EPOCH}
+        ), field
+
+    row_keys = _fact_row()
+    row_keys["lineage"] = dict(row_keys["lineage"])
+    row_keys["lineage"]["source_row_keys"] = ["chronicle.source_row.v3:row"]
+
+    assert row_fact_key_epochs(row_keys) == frozenset({LEDGER_EPOCH, CHRONICLE_EPOCH})
+
+
+def test_witnessed_key_fields_match_the_captured_feed() -> None:
+    """The inventory is grounded in a real feed, not in a guess.
+
+    Every ``*_key`` field the captured UK feed rows carry is either witnessed
+    for its epoch or is a plain source identifier rather than a Chronicle key.
+    """
+    fixture = Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
+    rows = [json.loads(line) for line in fixture.read_text().splitlines() if line]
+    assert rows
+
+    for row in rows:
+        for field, value in row.items():
+            if not field.endswith("_key") or not isinstance(value, str):
+                continue
+            assert field in FACT_KEY_FIELDS, field
+            assert is_chronicle_fact_key(value), (field, value)
+
+    assert feed_fact_key_epochs(rows) == (LEDGER_EPOCH,)

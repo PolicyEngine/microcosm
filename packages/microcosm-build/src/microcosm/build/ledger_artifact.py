@@ -17,9 +17,16 @@ membership in :data:`ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS`, never for
 equality with one era, so an artifact published after Chronicle's rename
 cutover loads here without a code change — see
 :mod:`microcosm.build.chronicle_epoch` and PolicyEngine/chronicle#143. The
-observed id, its epoch, and the fact-key epochs present in the feed are all
-recorded in :meth:`LedgerConsumerArtifact.provenance`, so a release manifest
-witnesses which era it actually consumed rather than which era it assumed.
+observed id, its epoch, the fact-key epochs present in the feed, and the
+per-row schema ids the rows themselves declare are all recorded in
+:meth:`LedgerConsumerArtifact.provenance`, so a release manifest witnesses
+which era it actually consumed rather than which era it assumed.
+
+Acceptance widened here; nothing narrowed. Only the *manifest* schema id is
+gated, and only against the two ids chronicle#143 declares. Row-level ids and
+fact keys are carried as published — real feeds mint rows in namespaces that
+belong to neither era, and a consumer that rejected them would fail closed on
+data that has always loaded.
 """
 
 from __future__ import annotations
@@ -36,10 +43,8 @@ from microcosm.build.chronicle_epoch import (
     LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     consumer_artifact_schema_epoch,
     describe_accepted_consumer_artifact_schema_versions,
-    describe_accepted_consumer_fact_schema_versions,
     feed_fact_key_epochs,
     is_accepted_consumer_artifact_schema_version,
-    is_accepted_consumer_fact_schema_version,
 )
 
 __all__ = [
@@ -111,6 +116,21 @@ class LedgerConsumerArtifact:
         """
         return feed_fact_key_epochs(self.facts)
 
+    @property
+    def fact_schema_versions(self) -> tuple[str, ...]:
+        """Distinct per-row ``schema_version`` values in the feed, sorted.
+
+        Reported verbatim and never gated on — see :func:`_load_fact_rows`.
+        Empty when no row declares one; more than one entry when a feed mixes
+        producers, which the pinned US fiscal-refresh feed already does.
+        """
+        observed = {
+            str(row["schema_version"])
+            for row in self.facts
+            if isinstance(row, dict) and row.get("schema_version") is not None
+        }
+        return tuple(sorted(observed))
+
     def provenance(self) -> dict[str, Any]:
         """Chronicle-artifact identity block for build and release manifests.
 
@@ -140,6 +160,7 @@ class LedgerConsumerArtifact:
             payload["manifest_sha256"] = None
         payload["schema_epoch"] = self.schema_epoch
         payload["fact_key_epochs"] = list(self.fact_key_epochs)
+        payload["fact_schema_versions"] = list(self.fact_schema_versions)
         return payload
 
 
@@ -286,19 +307,14 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
                     f"Invalid Chronicle facts JSONL row {line_number}: expected "
                     f"object, got {type(row).__name__}."
                 )
-            # Chronicle-published rows have never carried a per-row schema id;
-            # only Microcosm-minted feeds stamp one. Validate it when it is
-            # there — against both eras — and never demand it when it is not.
-            row_schema_version = row.get("schema_version")
-            if row_schema_version is not None and (
-                not is_accepted_consumer_fact_schema_version(row_schema_version)
-            ):
-                raise ValueError(
-                    f"Chronicle facts JSONL row {line_number} declares "
-                    f"unsupported schema_version {row_schema_version!r}; "
-                    "expected one of "
-                    f"{describe_accepted_consumer_fact_schema_versions()}."
-                )
+            # A per-row ``schema_version`` is carried, never gated on. Real
+            # feeds stamp ids from namespaces that are neither era: the pinned
+            # US fiscal-refresh feed (consumer_facts_buildn_v9_4.jsonl) mixes
+            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1'. Rejecting
+            # an unrecognized id would fail the build closed on its own pinned
+            # input, and rejecting is not what dual acceptance asks for. The
+            # observed ids are reported through
+            # :attr:`LedgerConsumerArtifact.fact_schema_versions` instead.
             assertion = row.get("assertion", DEFAULT_LEDGER_ASSERTION)
             if assertion not in ALLOWED_LEDGER_ASSERTIONS:
                 raise ValueError(

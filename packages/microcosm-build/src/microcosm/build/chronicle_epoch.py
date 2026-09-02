@@ -122,18 +122,31 @@ LEDGER_FACT_KEY_DOMAINS: Mapping[str, str] = {
     "concept_alignment": "ledger.concept_alignment.v2",
 }
 
-#: Consumer-fact row fields that carry a single Chronicle key, in the order
-#: :mod:`microcosm.build.ledger_targets` resolves them.
+#: Consumer-fact row fields that carry a single Chronicle key. The first four
+#: are the identifiers :mod:`microcosm.build.ledger_targets` resolves a fact
+#: by; the rest are the remaining single-key fields published rows carry, all
+#: of them observed on the captured feed in
+#: ``tests/fixtures/uk_target_reference_feed_rows.jsonl``. The list is for
+#: *witnessing* epochs, so it is deliberately wider than the resolution set: a
+#: row whose aggregate key is still ledger-era but whose source-release key has
+#: crossed the cutover must report both epochs, not one.
 FACT_KEY_FIELDS: tuple[str, ...] = (
     "aggregate_fact_key",
     "semantic_fact_key",
     "fact_key",
     "legacy_fact_key",
     "dimension_set_key",
+    "observed_measure_key",
+    "source_release_key",
+    "source_series_key",
+    "universe_constraint_set_key",
 )
 
 #: Row fields carrying a *list* of Chronicle keys.
-_FACT_KEY_LIST_PATHS: tuple[tuple[str, ...], ...] = (("lineage", "source_cell_keys"),)
+_FACT_KEY_LIST_PATHS: tuple[tuple[str, ...], ...] = (
+    ("lineage", "source_cell_keys"),
+    ("lineage", "source_row_keys"),
+)
 
 #: Nested single-key paths.
 _FACT_KEY_NESTED_PATHS: tuple[tuple[str, ...], ...] = (
