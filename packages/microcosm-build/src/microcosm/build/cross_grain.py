@@ -71,6 +71,7 @@ def detect_cross_grain_inconsistencies(
     rule: CrossGrainRule,
     *,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[CrossGrainInconsistency, ...]:
     """Detect exact-signature and explicitly bridged cross-grain groups.
 
@@ -86,6 +87,7 @@ def detect_cross_grain_inconsistencies(
 
     columns = _surface_columns(local_frame)
     _validate_rule(rule)
+    _validate_licensed_empty_legs(licensed_empty_legs)
     bound = tuple(str(target_id) for target_id in bound_higher_targets)
     _require_unique_nonblank(bound, label="bound_higher_targets")
     unknown = sorted(set(bound) - set(contract_signatures))
@@ -218,21 +220,31 @@ def detect_cross_grain_inconsistencies(
     return tuple(sorted(inconsistencies, key=lambda group: group.inconsistency_id))
 
 
-def reconcile_cross_grain_surface(
+def _reconcile_cross_grain_surface_with_control_receipts(
     local_frame: pd.DataFrame,
     groups: Iterable[CrossGrainInconsistency],
     rule: CrossGrainRule,
-) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    *,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[
+    pd.DataFrame,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
     """Return a copied surface with every detected lower grain rescaled."""
 
     columns = _surface_columns(local_frame)
     _validate_rule(rule)
+    _validate_licensed_empty_legs(licensed_empty_legs)
     materialized_groups = tuple(groups)
     _assert_compatible_overlapping_groups(
         local_frame, materialized_groups, columns, rule
     )
     reconciled = local_frame.copy(deep=True)
     receipts: list[dict[str, Any]] = []
+    empty_legs_licensed: list[dict[str, Any]] = []
+    controls_without_lower_rows: list[dict[str, Any]] = []
     for group in materialized_groups:
         controls = _winning_controls(reconciled, group, columns, rule)
         lower_by_leg: dict[str, list[int]] = {}
@@ -246,6 +258,14 @@ def reconcile_cross_grain_surface(
                 )
             lower_by_leg.setdefault(leg, []).append(position)
 
+        lower_target_ids = tuple(
+            sorted(
+                {
+                    str(reconciled.iloc[position][columns["target_id"]])
+                    for position in group.lower_positions
+                }
+            )
+        )
         assigned_controls: dict[str, dict[str, Any]] = {}
         for control in controls:
             for leg in control["covered_legs"]:
@@ -271,6 +291,52 @@ def reconcile_cross_grain_surface(
                 f"unparented lower-grain leg(s) {unparented}."
             )
 
+        populated_controls: list[dict[str, Any]] = []
+        for control in controls:
+            positions = [
+                position
+                for leg in control["covered_legs"]
+                for position in lower_by_leg.get(leg, ())
+            ]
+            if positions:
+                populated_controls.append(control)
+                continue
+            for leg in control["covered_legs"]:
+                unlicensed = [
+                    target_id
+                    for target_id in lower_target_ids
+                    if leg
+                    not in _licensed_legs_for_target(
+                        target_id,
+                        licensed_empty_legs,
+                    )
+                ]
+                if unlicensed:
+                    raise ValueError(
+                        f"cross-grain inconsistency {group.inconsistency_id!r} "
+                        f"has an empty leg {leg!r} for parent geography "
+                        f"{control['parent_geography_id']!r}; the leg lacks a "
+                        f"licence for lower target(s) {unlicensed}."
+                    )
+                empty_legs_licensed.append(
+                    {
+                        "inconsistency_id": group.inconsistency_id,
+                        "parent_geography_id": str(control["parent_geography_id"]),
+                        "leg": leg,
+                        "lower_target_ids": list(lower_target_ids),
+                    }
+                )
+            controls_without_lower_rows.append(
+                {
+                    "inconsistency_id": group.inconsistency_id,
+                    "parent_geography_id": str(control["parent_geography_id"]),
+                    "covered_legs": list(control["covered_legs"]),
+                    "higher_target_ids": list(control["higher_target_ids"]),
+                    "lower_target_ids": list(lower_target_ids),
+                }
+            )
+        controls = populated_controls
+
         leg_receipts: list[dict[str, Any]] = []
         used_controls: set[tuple[str, tuple[str, ...]]] = set()
         for control in controls:
@@ -286,12 +352,6 @@ def reconcile_cross_grain_surface(
                 for leg in control["covered_legs"]
                 for position in lower_by_leg.get(leg, ())
             ]
-            if not positions:
-                raise ValueError(
-                    f"cross-grain inconsistency {group.inconsistency_id!r} "
-                    f"has an empty leg for parent geography "
-                    f"{control['parent_geography_id']!r}."
-                )
             raw_values = reconciled.iloc[positions][columns["value"]].to_numpy(
                 dtype=np.float64
             )
@@ -375,6 +435,29 @@ def reconcile_cross_grain_surface(
                 "legs": leg_receipts,
             }
         )
+    return (
+        reconciled,
+        receipts,
+        empty_legs_licensed,
+        controls_without_lower_rows,
+    )
+
+
+def reconcile_cross_grain_surface(
+    local_frame: pd.DataFrame,
+    groups: Iterable[CrossGrainInconsistency],
+    rule: CrossGrainRule,
+    *,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    """Return a copied surface with every detected lower grain rescaled."""
+
+    reconciled, receipts, _, _ = _reconcile_cross_grain_surface_with_control_receipts(
+        local_frame,
+        groups,
+        rule,
+        licensed_empty_legs=licensed_empty_legs,
+    )
     return reconciled, receipts
 
 
@@ -385,6 +468,7 @@ def apply_cross_grain_reconciliation(
     rule: CrossGrainRule,
     *,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Detect, reconcile, and return the always-present pass receipt."""
 
@@ -395,20 +479,31 @@ def apply_cross_grain_reconciliation(
         contract_signatures,
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        licensed_empty_legs=licensed_empty_legs,
     )
     unbound_bridges = _reviewed_unbound_bridges(
         set(bound),
         rule,
         reviewed_unbound_higher_targets,
     )
-    reconciled, group_receipts = reconcile_cross_grain_surface(
-        local_frame, groups, rule
+    (
+        reconciled,
+        group_receipts,
+        empty_legs_licensed,
+        controls_without_lower_rows,
+    ) = _reconcile_cross_grain_surface_with_control_receipts(
+        local_frame,
+        groups,
+        rule,
+        licensed_empty_legs=licensed_empty_legs,
     )
     receipt = {
         "bound_higher_targets": list(bound),
         "inconsistencies_in_force": [group.inconsistency_id for group in groups],
         "groups": group_receipts,
         "unbound_bridges": unbound_bridges,
+        "empty_legs_licensed": empty_legs_licensed,
+        "controls_without_lower_rows": controls_without_lower_rows,
         "absence": (
             None
             if groups
@@ -592,6 +687,39 @@ def _contract_target_id(side: str) -> str | None:
     if side.startswith("external:"):
         return None
     return side.removeprefix("contract:")
+
+
+def _validate_licensed_empty_legs(
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None,
+) -> None:
+    if licensed_empty_legs is None:
+        return
+    if not isinstance(licensed_empty_legs, Mapping):
+        raise TypeError("licensed_empty_legs must be a mapping.")
+    for target_id, legs in licensed_empty_legs.items():
+        if not isinstance(target_id, str) or not target_id.strip():
+            raise ValueError("licensed_empty_legs target ids must be nonblank strings.")
+        if not isinstance(legs, frozenset):
+            raise TypeError(f"licensed_empty_legs[{target_id!r}] must be a frozenset.")
+        if any(not isinstance(leg, str) or not leg.strip() for leg in legs):
+            raise ValueError(
+                f"licensed_empty_legs[{target_id!r}] must contain nonblank strings."
+            )
+
+
+def _licensed_legs_for_target(
+    target_id: str,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None,
+) -> frozenset[str]:
+    if licensed_empty_legs is None:
+        return frozenset()
+    canonical = _contract_target_id(target_id)
+    aliases = {target_id}
+    if canonical is not None:
+        aliases.update((canonical, f"contract:{canonical}"))
+    return frozenset(
+        leg for alias in aliases for leg in licensed_empty_legs.get(alias, frozenset())
+    )
 
 
 def _inconsistency_identity(

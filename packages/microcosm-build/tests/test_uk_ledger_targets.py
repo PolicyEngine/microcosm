@@ -12,6 +12,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
     UK_CROSS_GRAIN_RULE,
     _spec_geography,
+    _uk_licensed_empty_legs_from_membership,
     align_uk_local_registry_parity_fixture,
     apply_uk_cross_grain_reconciliation,
     compile_uk_local_target_registry,
@@ -1020,6 +1021,30 @@ def test_uk_age_bridge_rescales_constituency_and_la_to_uk_control():
         assert leg["leg"] == "England+Wales+Scotland+Northern Ireland"
         assert leg["new_total"] == pytest.approx(100.0)
         assert leg["declared_factor"] == pytest.approx(1.0, abs=2e-5)
+
+
+def test_uk_empty_leg_licences_require_complete_signed_deferral_coverage():
+    membership = {
+        "areas_by_geography_level": {
+            "local_authority": ["E06000001", "S12000005", "S12000006"],
+        },
+        "signed_deferrals": [
+            {
+                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "geography_level": "local_authority",
+                "area_ids": ["S12000005", "S12000006"],
+            },
+            {
+                "target_id": "voa.council_tax_stock.by_area.band_b",
+                "geography_level": "local_authority",
+                "area_ids": ["S12000005"],
+            },
+        ],
+    }
+
+    assert _uk_licensed_empty_legs_from_membership(membership) == {
+        "voa.council_tax_stock.by_area.band_a": frozenset({"Scotland"}),
+    }
 
 
 def test_committed_contract_detects_exact_uc_payment_partition():

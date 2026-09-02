@@ -53,6 +53,7 @@ class UKLedgerTargetCompilation:
 
 
 LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE = "local_registry_parity_fixture_2025.json"
+UK_LOCAL_TARGET_REFERENCE_MEMBERSHIP_RESOURCE = "local_target_reference_membership.json"
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
 UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
@@ -282,6 +283,93 @@ def load_uk_local_area_crosswalk() -> dict[str, Any]:
         .joinpath("local_area_crosswalk.json")
         .read_text(encoding="utf-8")
     )
+
+
+def load_uk_local_target_reference_membership() -> dict[str, Any]:
+    """Load the committed local target membership and signed deferrals."""
+
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(UK_LOCAL_TARGET_REFERENCE_MEMBERSHIP_RESOURCE)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _uk_licensed_empty_legs_from_membership(
+    membership: Mapping[str, Any],
+) -> dict[str, frozenset[str]]:
+    """Derive wholly deferred target legs from committed membership rosters."""
+
+    areas_by_level = membership.get("areas_by_geography_level")
+    if not isinstance(areas_by_level, Mapping):
+        raise ValueError(
+            "UK local target membership must expose areas_by_geography_level."
+        )
+    roster_by_level_leg: dict[tuple[str, str], set[str]] = {}
+    for geography_level, raw_area_ids in areas_by_level.items():
+        if not isinstance(raw_area_ids, (list, tuple)):
+            raise ValueError(
+                f"UK local target membership roster {geography_level!r} must be a list."
+            )
+        for raw_area_id in raw_area_ids:
+            area_id = str(raw_area_id).strip()
+            if not area_id:
+                raise ValueError(
+                    "UK local target membership rosters must not contain blank "
+                    "area ids."
+                )
+            leg = _uk_cross_grain_leg_of_area(area_id)
+            roster_by_level_leg.setdefault((str(geography_level), leg), set()).add(
+                area_id
+            )
+
+    signed_deferrals = membership.get("signed_deferrals", ())
+    if not isinstance(signed_deferrals, (list, tuple)):
+        raise ValueError("UK local target membership signed_deferrals must be a list.")
+    deferred_by_target_level_leg: dict[tuple[str, str, str], set[str]] = {}
+    for deferral in signed_deferrals:
+        if not isinstance(deferral, Mapping):
+            raise ValueError(
+                "UK local target membership signed deferrals must be mappings."
+            )
+        target_id = str(deferral.get("target_id", "")).strip()
+        geography_level = str(deferral.get("geography_level", "")).strip()
+        raw_area_ids = deferral.get("area_ids")
+        if (
+            not target_id
+            or not geography_level
+            or not isinstance(raw_area_ids, (list, tuple))
+        ):
+            raise ValueError(
+                "UK local target membership signed deferrals must name a "
+                "target_id, geography_level, and area_ids list."
+            )
+        for raw_area_id in raw_area_ids:
+            area_id = str(raw_area_id).strip()
+            leg = _uk_cross_grain_leg_of_area(area_id)
+            roster = roster_by_level_leg.get((geography_level, leg), set())
+            if area_id not in roster:
+                raise ValueError(
+                    "UK local target membership signed deferral area "
+                    f"{area_id!r} is absent from the {geography_level!r} roster."
+                )
+            deferred_by_target_level_leg.setdefault(
+                (target_id, geography_level, leg), set()
+            ).add(area_id)
+
+    licensed: dict[str, set[str]] = {}
+    for (
+        target_id,
+        geography_level,
+        leg,
+    ), deferred in deferred_by_target_level_leg.items():
+        roster = roster_by_level_leg[(geography_level, leg)]
+        if roster and deferred == roster:
+            licensed.setdefault(target_id, set()).add(leg)
+    return {
+        target_id: frozenset(sorted(legs))
+        for target_id, legs in sorted(licensed.items())
+    }
 
 
 def compile_uk_local_target_registry(
@@ -769,6 +857,7 @@ def apply_uk_cross_grain_reconciliation(
     bound_higher_targets: Iterable[str],
     *,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
@@ -777,12 +866,20 @@ def apply_uk_cross_grain_reconciliation(
     cannot be bypassed.
     """
 
+    licences = (
+        _uk_licensed_empty_legs_from_membership(
+            load_uk_local_target_reference_membership()
+        )
+        if licensed_empty_legs is None
+        else licensed_empty_legs
+    )
     return apply_cross_grain_reconciliation(
         local_frame,
         bound_higher_targets,
         _uk_contract_targets(national_only=False),
         UK_CROSS_GRAIN_RULE,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        licensed_empty_legs=licences,
     )
 
 
@@ -793,6 +890,7 @@ def uk_local_target_surface(
     bound_national_target_ids: Iterable[str],
     period: int | str,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface."""
 
@@ -960,6 +1058,7 @@ def uk_local_target_surface(
         reconciliation[["grain", "geography_id", "target_id", "value"]],
         bound_control_ids,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        licensed_empty_legs=licensed_empty_legs,
     )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):

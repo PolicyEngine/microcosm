@@ -217,6 +217,8 @@ def test_absence_receipt_exists_when_no_higher_target_is_bound():
         "inconsistencies_in_force": [],
         "groups": [],
         "unbound_bridges": [],
+        "empty_legs_licensed": [],
+        "controls_without_lower_rows": [],
         "absence": "No cross-grain inconsistencies are in force on this surface.",
     }
 
@@ -386,8 +388,122 @@ def test_unparented_and_empty_legs_are_refused():
         ],
         columns=["grain", "geography_id", "target_id", "value"],
     )
-    with pytest.raises(ValueError, match="empty leg"):
+    with pytest.raises(ValueError, match="empty leg.*lacks a licence"):
         apply_cross_grain_reconciliation(empty, ("national",), signatures, _rule())
+
+
+def test_empty_leg_licensed_for_every_lower_target_is_receipted_and_skipped():
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("country", "S", "national", 50.0),
+            ("constituency", "E1", "local_a", 40.0),
+            ("constituency", "E2", "local_b", 60.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    signatures = {
+        target_id: _signature() for target_id in ("national", "local_a", "local_b")
+    }
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        signatures,
+        _rule(),
+        licensed_empty_legs={
+            "local_a": frozenset({"S"}),
+            "local_b": frozenset({"S"}),
+        },
+    )
+
+    assert reconciled["value"].tolist() == [100.0, 50.0, 40.0, 60.0]
+    inconsistency_id = receipt["groups"][0]["inconsistency_id"]
+    assert receipt["empty_legs_licensed"] == [
+        {
+            "inconsistency_id": inconsistency_id,
+            "parent_geography_id": "S",
+            "leg": "S",
+            "lower_target_ids": ["local_a", "local_b"],
+        }
+    ]
+    assert receipt["controls_without_lower_rows"] == [
+        {
+            "inconsistency_id": inconsistency_id,
+            "parent_geography_id": "S",
+            "covered_legs": ["S"],
+            "higher_target_ids": ["national"],
+            "lower_target_ids": ["local_a", "local_b"],
+        }
+    ]
+    assert receipt["groups"][0]["legs"][0]["leg"] == "E"
+
+
+def test_empty_leg_licensed_for_only_one_lower_target_is_refused():
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("country", "S", "national", 50.0),
+            ("constituency", "E1", "local_a", 40.0),
+            ("constituency", "E2", "local_b", 60.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    signatures = {
+        target_id: _signature() for target_id in ("national", "local_a", "local_b")
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"empty leg.*S.*lacks a licence.*local_b",
+    ):
+        apply_cross_grain_reconciliation(
+            surface,
+            ("national",),
+            signatures,
+            _rule(),
+            licensed_empty_legs={"local_a": frozenset({"S"})},
+        )
+
+
+def test_control_with_no_populated_legs_is_receipted_and_dropped():
+    surface = pd.DataFrame(
+        [
+            ("country", "E", "national", 100.0),
+            ("country", "S", "national", 50.0),
+            ("constituency", "E1", "local", 100.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        {"national": _signature(), "local": _signature()},
+        _rule(),
+        licensed_empty_legs={"local": frozenset({"S"})},
+    )
+
+    assert reconciled["value"].tolist() == [100.0, 50.0, 100.0]
+    inconsistency_id = receipt["groups"][0]["inconsistency_id"]
+    assert receipt["empty_legs_licensed"] == [
+        {
+            "inconsistency_id": inconsistency_id,
+            "parent_geography_id": "S",
+            "leg": "S",
+            "lower_target_ids": ["local"],
+        }
+    ]
+    assert receipt["controls_without_lower_rows"] == [
+        {
+            "inconsistency_id": inconsistency_id,
+            "parent_geography_id": "S",
+            "covered_legs": ["S"],
+            "higher_target_ids": ["national"],
+            "lower_target_ids": ["local"],
+        }
+    ]
+    assert receipt["groups"][0]["legs"][0]["parent_geography_id"] == "E"
 
 
 def test_two_different_controls_at_same_grain_are_refused():

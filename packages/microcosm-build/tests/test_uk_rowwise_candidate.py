@@ -391,6 +391,8 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert cross_grain["bound_higher_targets"] == []
     assert cross_grain["inconsistencies_in_force"] == []
     assert cross_grain["groups"] == []
+    assert cross_grain["empty_legs_licensed"] == []
+    assert cross_grain["controls_without_lower_rows"] == []
     assert cross_grain["absence"]
     assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert manifest["gate"]["passed"] is True
@@ -557,6 +559,8 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert cross_grain["bound_higher_targets"] == []
     assert cross_grain["inconsistencies_in_force"] == []
     assert cross_grain["groups"] == []
+    assert cross_grain["empty_legs_licensed"] == []
+    assert cross_grain["controls_without_lower_rows"] == []
     assert cross_grain["absence"]
     assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert plan["shapes"]["person"][0] == 24
@@ -1081,6 +1085,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     dry_plan = json.loads(capsys.readouterr().out)
     dry_unbound = dry_plan["cross_grain"]["unbound_bridges"]
+    assert dry_plan["cross_grain"]["empty_legs_licensed"] == []
+    assert dry_plan["cross_grain"]["controls_without_lower_rows"] == []
     assert [entry["bridge_id"] for entry in dry_unbound] == [household_bridge.bridge_id]
     assert dry_unbound[0]["missing"] == sorted(reviewed_missing)
     dry_fanout = dry_plan["cross_grain"]["fanout_targets_not_controls"]
@@ -1130,6 +1136,10 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert f100["solve"]["measure_resolution"]["mode"] == "stub"
     assert f100["cross_grain"]["unbound_bridges"] == dry_unbound
     assert f100["solve"]["cross_grain"]["unbound_bridges"] == dry_unbound
+    assert f100["cross_grain"]["empty_legs_licensed"] == []
+    assert f100["solve"]["cross_grain"]["empty_legs_licensed"] == []
+    assert f100["cross_grain"]["controls_without_lower_rows"] == []
+    assert f100["solve"]["cross_grain"]["controls_without_lower_rows"] == []
     assert f100["cross_grain"]["fanout_targets_not_controls"] == dry_fanout
     assert f100["solve"]["cross_grain"]["fanout_targets_not_controls"] == dry_fanout
     assert "fanout_controls_summed" not in f100["cross_grain"]
