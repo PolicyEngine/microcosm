@@ -174,3 +174,32 @@ def test_logbook_remote_config_reads_both_eras(monkeypatch) -> None:
             "logbook-jwt",
             "project-api-key",
         )
+
+
+def test_the_module_import_binds_the_module_not_the_reader() -> None:
+    """``import microcosm.build.logbook_env as env`` must give the module.
+
+    The reader function shares its module's name. Re-exporting it from the
+    package barrel bound the function to ``microcosm.build.logbook_env``, and
+    ``import a.b as c`` returns the *attribute* when one exists — so the
+    submodule import silently handed back a callable, and every
+    ``env.LOGBOOK_URL_ENV`` after it raised ``AttributeError``. The barrel
+    therefore does not re-export the function; callers import it from here.
+    """
+    import types
+
+    import microcosm.build
+    import microcosm.build.logbook_env as env
+
+    assert isinstance(env, types.ModuleType)
+    assert env.__name__ == "microcosm.build.logbook_env"
+    assert env.LOGBOOK_URL_ENV == LOGBOOK_URL_ENV
+    assert callable(env.logbook_env)
+    # The package attribute is the module too: `from microcosm.build import
+    # logbook_env` and the submodule import must not disagree about what the
+    # name means.
+    assert microcosm.build.logbook_env is env
+    assert "logbook_env" not in microcosm.build.__all__
+    # The non-colliding helper is still re-exported, so removing the shadow
+    # did not quietly shrink the barrel further than it had to.
+    assert microcosm.build.logbook_env_names is logbook_env_names
