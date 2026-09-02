@@ -38,6 +38,11 @@ against that fix.
 - Fixed warm replay for non-`int64` person IDs by rehydrating JSON receipt IDs
   through the base ID dtype, matching lineage restoration. The new `int32`
   regression passes as part of `30 passed in 0.73s` for population tests.
+- Made cached entrant-label attestation type-strict so JSON-distinct labels such
+  as `1`, `1.0`, and `true` cannot substitute for one another, with bool/float
+  tamper regressions. Also limited entrant-triggered mass authorship to declared
+  entrant EXPAND nodes so unrelated receipts cannot activate it. The affected
+  focused suites report `61 passed in 2.02s`.
 
 ## Next
 

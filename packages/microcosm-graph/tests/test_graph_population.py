@@ -678,6 +678,41 @@ def test_cached_entrant_strata_rehydrate_the_base_id_dtype() -> None:
     pd.testing.assert_series_equal(cached.frame.strata, expanded.frame.strata)
 
 
+@pytest.mark.parametrize("changed_label", [True, 1.0], ids=["bool", "float"])
+def test_cached_entrant_strata_preserve_label_type(changed_label: object) -> None:
+    population = _population()
+    node = _entrant_person_expand_node()
+    result = _entrant_person_expand_result(
+        pd.Series([1], index=pd.Index([5], dtype="int64"), dtype=object)
+    )
+    expanded = patch(population, node, result)
+    changed_strata = expanded.frame.strata.copy()
+    changed_strata.iloc[-1] = changed_label
+    changed_frame = _replace_person_table(
+        expanded.frame,
+        expanded.frame.table("person").copy(),
+        changed_strata,
+    )
+    assert result.expand is not None
+    receipt = {
+        "expand": expand_lineage_receipt(result.expand),
+        "entrant_strata": entrant_strata_receipt(
+            population.frame, node, result.expand, result.strata
+        ),
+    }
+
+    with pytest.raises(PopulationError, match="label type"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=changed_frame,
+                weights=result.weights,
+                receipt=receipt,
+            ),
+        )
+
+
 @pytest.mark.parametrize(
     "strata",
     [

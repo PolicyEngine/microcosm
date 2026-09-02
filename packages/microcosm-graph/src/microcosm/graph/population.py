@@ -587,9 +587,11 @@ def _assert_cached_expand_strata(
         raise PopulationError(f"Cached EXPAND node {node.id!r} reordered person ids.")
     entrant_strata = _cached_entrant_strata(before, node, lineage, receipt)
     expected = before.strata.astype(object).tolist()
+    entrant_positions: list[int] = []
     for target, source in zip(person_lineage.index, person_lineage.array, strict=True):
         if pd.isna(source):
             assert entrant_strata is not None
+            entrant_positions.append(len(expected))
             expected.append(entrant_strata.loc[target])
             continue
         source_position = before_ids.get_loc(source)
@@ -600,6 +602,14 @@ def _assert_cached_expand_strata(
             f"Cached EXPAND node {node.id!r} strata disagree with its lineage "
             "and entrant-strata receipt."
         )
+    for position in entrant_positions:
+        actual_label = _stratum_json_scalar(actual.iloc[position])
+        expected_label = _stratum_json_scalar(expected[position])
+        if type(actual_label) is not type(expected_label):
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} entrant stratum label type "
+                "disagrees with its receipt."
+            )
 
 
 def _expand_lineage_from_receipt(
