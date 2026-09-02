@@ -196,6 +196,18 @@ extension, not a rewrite (the kernel must grow these hooks before then).
 4. **Stage manifests are load-bearing.** Every pipeline stage reads/writes a
    versioned artifact with invariant checks; A/B experiments re-run one stage
    against cached upstreams, not whole builds.
+5. **Build graphs have no anonymous roots.** Every raw microdata input a
+   country manifest declares carries the SHA-256 of the exact file a stage
+   reads and a `chronicle_artifact` reference to the one Chronicle
+   registration that witnesses it — publisher, vintage, checksum, licence,
+   and an access class from `{public, licensed, restricted}`. Chronicle
+   archives bytes only for redistributable public-use files; licensed and
+   restricted releases are registered hash-only, so the identity is shared
+   without the bytes ever leaving the environment that is allowed to hold
+   them. The build gate is fail-closed: bytes that do not match the pin stop
+   the run. Roots that cannot be pinned yet live, one reviewed row each, in
+   `microcosm/build/microdata_pins_pending.json`, whose row count is a
+   ratchet that may only fall.
 
 ## Naming
 

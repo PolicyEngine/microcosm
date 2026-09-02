@@ -28,6 +28,14 @@
           "doi": "10.5255/UKDA-SN-9422-1",
           "filename": "put2223uk.tab",
           "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+          "chronicle_artifact": {
+            "source_id": "hmrc",
+            "package_id": "hmrc-spi-public-use-tape-2022-23",
+            "year": 2022,
+            "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+            "filename": "put2223uk.tab",
+            "access": "restricted"
+          },
           "size_bytes": 141323762,
           "reviewed_source": "PolicyEngine licensed copy from policyengine/policyengine-uk-data-private on Hugging Face, spi_2022_23.zip",
           "access": "private_local_input",

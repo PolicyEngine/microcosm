@@ -63,6 +63,10 @@ from microcosm.build.gates import (
     target_profile_coverage_gate,
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.source_manifest import (
+    packaged_microdata_pin_allowlist,
+    resolved_chronicle_registrations,
+)
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
 from microcosm.build.us_runtime import (
@@ -1794,6 +1798,36 @@ def _copy_base_h5_for_local_audit(
         )
     shutil.copy2(source, destination)
     return destination
+
+
+def _microdata_registration_receipt() -> dict[str, object]:
+    """The build's raw-microdata root identity, as a release-manifest block.
+
+    ``chronicle_artifacts`` are the registrations the US source manifest
+    resolves to — each one a witnessed statement that a named publisher release
+    with that SHA-256 is what this build started from. ``pending`` mirrors the
+    reviewed allowlist rows for the roots no registration witnesses yet, so a
+    reader of the manifest sees the unwitnessed roots without having to know the
+    allowlist exists (microcosm#848).
+    """
+
+    allowlist = packaged_microdata_pin_allowlist()
+    return {
+        "chronicle_artifacts": [
+            reference.to_payload()
+            for reference in resolved_chronicle_registrations(US_SOURCE_MANIFEST)
+        ],
+        "pending": [
+            {
+                "stage": row.stage,
+                "locator": row.locator,
+                "reason": row.reason,
+                "issue": row.issue,
+            }
+            for row in allowlist.for_country("us")
+        ],
+        "pending_baseline_count": allowlist.baseline_count,
+    }
 
 
 def _runtime_versions() -> dict[str, str]:
@@ -7629,6 +7663,11 @@ def _build_manifests(
         "runtime": runtime,
         "timing": timing_payload,
         "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
+        # Root identity (microcosm#848): the Chronicle registrations that
+        # witness this build's raw microdata roots, and the roots no
+        # registration witnesses yet, next to the Chronicle consumer-artifact
+        # pin above.
+        "microdata_registrations": _microdata_registration_receipt(),
         **(
             {"exact_k_ladder": dict(exact_k_ladder)}
             if exact_k_ladder is not None

@@ -38,6 +38,11 @@ from microcosm.build.logbook_adoption import (
     write_error_receipt,
 )
 from microcosm.build.plan import StageRecord
+from microcosm.build.source_manifest import MICRODATA_ARTIFACT_KINDS
+from microcosm.build.source_runtime import (
+    verified_chronicle_registrations,
+    verify_microdata_files,
+)
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
@@ -337,6 +342,54 @@ def _stage_artifact_pins(stage) -> dict[str, dict[str, object]]:
     }
 
 
+#: Which caller-supplied path carries each private microdata role. FRS tabs
+#: come out of ``--frs-raw-dir`` by table name; every other licensed root
+#: arrives as its own flag, so the root-identity gate can name the file it
+#: hashed when a pin fails.
+_PRIVATE_ROLE_ARGUMENTS = {
+    "was_qrf_donor": "was_tab",
+    "was_bridge_donor": "was_tab",
+    "lcfs_household_tab": "lcfs_hh_tab",
+    "lcfs_person_tab": "lcfs_person_tab",
+    "etb_household_tab": "etb_tab",
+    "qrf_donor": "spi_tab",
+}
+
+
+def _microdata_files(stages, args) -> dict[str, Path]:
+    """Map manifest microdata keys to the local files this run was handed.
+
+    Keys are what :func:`verify_microdata_files` resolves against: a tab's
+    locator for FRS tables, and the declared ``filename`` for caller-supplied
+    private inputs, whose locator is the placeholder
+    ``"caller-supplied local input"``.
+    """
+
+    files: dict[str, Path] = {}
+    for stage in stages:
+        for artifact in stage.artifacts:
+            if artifact.get("kind") not in MICRODATA_ARTIFACT_KINDS:
+                continue
+            table = artifact.get("table")
+            if table is not None:
+                locator = str(artifact["locator"])
+                files[locator] = args.frs_raw_dir / locator
+                continue
+            role = str(artifact.get("role") or "")
+            attribute = _PRIVATE_ROLE_ARGUMENTS.get(role)
+            if attribute is None:
+                raise ValueError(
+                    f"stage {stage.stage!r} declares private microdata role "
+                    f"{role!r} with no caller-supplied path; the root-identity "
+                    "gate cannot verify it."
+                )
+            supplied = getattr(args, attribute)
+            if supplied is None:
+                continue
+            files[str(artifact["filename"])] = supplied
+    return files
+
+
 def _resource_pins(stages, spec) -> dict[str, str]:
     """Country-package resources the selected stages declare as inputs.
 
@@ -564,6 +617,7 @@ def _build_sidecar(
     artifact_pins,
     resource_pins: dict[str, str],
     input_artifact_pins: dict[str, dict[str, object]],
+    microdata_registrations: list[dict[str, object]],
     hmrc_replay: dict[str, object],
     stochastic_contract_sha256: str,
     frs_vintage: str,
@@ -583,6 +637,9 @@ def _build_sidecar(
         "artifact_pins": artifact_pins,
         "resource_pins": resource_pins,
         "input_artifact_pins": input_artifact_pins,
+        # Root identity (microcosm#848): the Chronicle registrations behind the
+        # raw microdata files this run hashed and accepted.
+        "microdata_registrations": microdata_registrations,
         "hmrc_replay": hmrc_replay,
         "stage_artifact_pins": {
             stage.stage: _stage_artifact_pins(stage) for stage in stages
@@ -1060,6 +1117,19 @@ def main(argv: list[str] | None = None) -> int:
         state.input_pins_digest = role_pins_digest(
             _role_pins({**artifact_pins, **input_artifact_pins})
         )
+        # Root identity (microcosm#848): hash every raw microdata file this run
+        # was handed and refuse to continue unless the bytes are the ones the
+        # manifest pins and a Chronicle registration witnesses. This runs before
+        # any stage reads a table, so a wrong vintage or a corrupted download
+        # cannot reach a build artifact.
+        microdata_verifications = verify_microdata_files(
+            spec.sources, _microdata_files(stages, args)
+        )
+        microdata_registrations = [
+            reference.to_payload()
+            for reference in verified_chronicle_registrations(microdata_verifications)
+        ]
+        append_phase(state, "microdata_identity_verified")
         run_config = {
             "pipeline": _PIPELINE,
             "stages": list(stage_names),
@@ -1345,6 +1415,7 @@ def main(argv: list[str] | None = None) -> int:
             artifact_pins=artifact_pins,
             resource_pins=resource_pins,
             input_artifact_pins=input_artifact_pins,
+            microdata_registrations=microdata_registrations,
             hmrc_replay=replay_binding,
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
             frs_vintage=frs_release.vintage,

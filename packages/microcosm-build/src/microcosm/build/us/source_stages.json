@@ -739,6 +739,14 @@
           "vintage": "2023 ASEC / 2022 income reference year",
           "locator": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
           "sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+          "chronicle_artifact": {
+            "source_id": "census_cps",
+            "package_id": "census-cps-asec-2023",
+            "year": 2023,
+            "sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+            "filename": "asecpub23csv.zip",
+            "access": "public"
+          },
           "size_bytes": 150165063,
           "member": "pppub23.csv",
           "member_size_bytes": 281065733,
@@ -866,6 +874,14 @@
           "locator": "https://www.federalreserve.gov/econres/files/scfp2022s.zip",
           "member": "rscfp2022.dta",
           "sha256": "3bb4d890ae2463ff6039ec7692e375f544dd98a55a37ca2cb2340354b9cc9d80",
+          "chronicle_artifact": {
+            "source_id": "federal_reserve",
+            "package_id": "federal-reserve-scf-2022-summary-extract",
+            "year": 2022,
+            "sha256": "3bb4d890ae2463ff6039ec7692e375f544dd98a55a37ca2cb2340354b9cc9d80",
+            "filename": "scfp2022s.zip",
+            "access": "public"
+          },
           "member_sha256": "6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1"
         },
         {

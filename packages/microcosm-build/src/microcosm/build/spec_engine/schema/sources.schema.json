@@ -68,6 +68,63 @@
   }
  },
  "$defs": {
+  "chronicle_artifact": {
+   "type": "object",
+   "description": "The single Chronicle registration that witnesses the exact bytes this entry pins.  Only public registrations archive the bytes, at raw/{source_id}/{package_id}/{year}/{sha256}/{filename}; licensed and restricted registrations record identity alone.",
+   "additionalProperties": false,
+   "required": [
+    "access",
+    "package_id",
+    "sha256",
+    "source_id",
+    "year"
+   ],
+   "properties": {
+    "source_id": {
+     "type": "string",
+     "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+    },
+    "package_id": {
+     "type": "string",
+     "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+    },
+    "year": {
+     "type": "integer"
+    },
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256"
+    },
+    "filename": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "operational"
+    },
+    "access": {
+     "enum": [
+      "public",
+      "licensed",
+      "restricted"
+     ],
+     "x-spec-surface": "operational"
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "access": {
+        "const": "public"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "filename"
+      ]
+     }
+    }
+   ]
+  },
   "stage_asset": {
    "type": "object",
    "additionalProperties": false,
@@ -4149,6 +4206,9 @@
       },
       "vintage": {
        "type": "string"
+      },
+      "chronicle_artifact": {
+       "$ref": "#/$defs/chronicle_artifact"
       }
      },
      "required": [
@@ -4261,6 +4321,9 @@
       },
       "vintage": {
        "type": "string"
+      },
+      "chronicle_artifact": {
+       "$ref": "#/$defs/chronicle_artifact"
       }
      },
      "required": [
@@ -4649,6 +4712,12 @@
       },
       "vintage": {
        "type": "string"
+      },
+      "chronicle_artifact": {
+       "$ref": "#/$defs/chronicle_artifact"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
       }
      },
      "required": [
@@ -5247,6 +5316,9 @@
       },
       "vintage": {
        "type": "string"
+      },
+      "chronicle_artifact": {
+       "$ref": "#/$defs/chronicle_artifact"
       }
      },
      "required": [
@@ -5385,6 +5457,9 @@
       },
       "doi": {
        "type": "string"
+      },
+      "chronicle_artifact": {
+       "$ref": "#/$defs/chronicle_artifact"
       }
      }
     },
@@ -7366,6 +7441,9 @@
       },
       "vintage": {
        "type": "string"
+      },
+      "chronicle_artifact": {
+       "$ref": "#/$defs/chronicle_artifact"
       }
      }
     },
