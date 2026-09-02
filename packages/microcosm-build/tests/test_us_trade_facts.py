@@ -9,8 +9,8 @@ import pytest
 
 from microcosm.build.chronicle_epoch import (
     CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION,
-    LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+    MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION,
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
@@ -841,7 +841,9 @@ def test_minted_artifact_declares_the_ledger_era_id_and_loads_under_either(tmp_p
         retrieval_manifest=_manifest_entries(),
         generator=default_generator_block(months=("2026-01", "2026-02")),
     )
-    assert default_manifest["schema_version"] == LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION
+    assert (
+        default_manifest["schema_version"] == MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
+    )
     # Every row's key stays in Microcosm's own frozen namespace, outside both
     # Chronicle eras, so the cutover cannot re-identify them (microcosm#639).
     assert all(

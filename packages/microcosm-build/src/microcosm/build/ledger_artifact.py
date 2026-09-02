@@ -12,21 +12,28 @@ Like the rest of Microcosm's Chronicle consumption, this module is duck-typed
 against the published artifact contract (stdlib only); it does not import the
 Chronicle implementation package.
 
-**Both eras load.** The manifest's ``schema_version`` is checked for
-membership in :data:`ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS`, never for
-equality with one era, so an artifact published after Chronicle's rename
+**Every declared era loads.** The manifest's ``schema_version`` is checked
+for membership in :data:`ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS`, never
+for equality with one era, so an artifact published after Chronicle's rename
 cutover loads here without a code change — see
-:mod:`microcosm.build.chronicle_epoch` and PolicyEngine/chronicle#143. The
-observed id, its epoch, the fact-key epochs present in the feed, and the
+:mod:`microcosm.build.chronicle_epoch` and PolicyEngine/chronicle#143. Three
+spellings are accepted, not two: Microcosm's own minted
+``policyengine_ledger.consumer_artifact.v1``, the
+``policyengine_ledger.consumer_artifact.v2`` Chronicle's ``main`` emits
+today, and the chronicle-era
+``policyengine_chronicle.consumer_artifact.v3`` successor.
+
+The observed id, its epoch, the fact-key epochs present in the feed, any
+Chronicle-namespace key domain the declaration table does not carry, and the
 per-row schema ids the rows themselves declare are all recorded in
 :meth:`LedgerConsumerArtifact.provenance`, so a release manifest witnesses
 which era it actually consumed rather than which era it assumed.
 
 Acceptance widened here; nothing narrowed. Only the *manifest* schema id is
-gated, and only against the two ids chronicle#143 declares. Row-level ids and
-fact keys are carried as published — real feeds mint rows in namespaces that
-belong to neither era, and a consumer that rejected them would fail closed on
-data that has always loaded.
+gated, and only against the declared ids. Row-level ids and fact keys are
+carried as published — real feeds mint rows in namespaces that belong to
+neither era, and a consumer that rejected them would fail closed on data that
+has always loaded.
 """
 
 from __future__ import annotations
@@ -40,10 +47,11 @@ from typing import Any
 
 from microcosm.build.chronicle_epoch import (
     ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
-    LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     consumer_artifact_schema_epoch,
     describe_accepted_consumer_artifact_schema_versions,
     feed_fact_key_epochs,
+    feed_undeclared_fact_key_domains,
     is_accepted_consumer_artifact_schema_version,
 )
 
@@ -58,9 +66,11 @@ __all__ = [
     "resolve_ledger_artifact",
 ]
 
-#: The era Microcosm's own minted artifacts still declare. Frozen at v1 by
-#: microcosm#639; loading is governed by the accepted *set*, not by this.
-CONSUMER_ARTIFACT_SCHEMA_VERSION = LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION
+#: The id Microcosm's own minted artifacts still declare. Frozen at v1 by
+#: microcosm#639; loading is governed by the accepted *set*, not by this. It
+#: is deliberately *not* the id Chronicle emits — Chronicle's ``main`` stamps
+#: ``policyengine_ledger.consumer_artifact.v2``, which the set also accepts.
+CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
 
@@ -108,13 +118,25 @@ class LedgerConsumerArtifact:
 
     @property
     def fact_key_epochs(self) -> tuple[str, ...]:
-        """Chronicle epochs observed across the feed's fact keys.
+        """Epoch labels observed across the feed's Chronicle fact keys.
 
         Empty when the feed carries only Microcosm-minted keys, and both
         epochs when a cutover-window feed mixes ledger-era history with
-        chronicle-era rows.
+        chronicle-era rows. A Chronicle-namespace key whose exact spelling is
+        undeclared appears as ``"undeclared"`` — reported, never folded into
+        an era it was not declared for.
         """
         return feed_fact_key_epochs(self.facts)
+
+    @property
+    def undeclared_fact_key_domains(self) -> tuple[str, ...]:
+        """Chronicle-namespace key domains the declaration table lacks.
+
+        Normally empty. A non-empty tuple means the feed carried a spelling
+        this build was not told about, and names it, so the manifest says
+        *what* went unrecognised instead of only that something did.
+        """
+        return feed_undeclared_fact_key_domains(self.facts)
 
     @property
     def fact_schema_versions(self) -> tuple[str, ...]:
@@ -134,9 +156,11 @@ class LedgerConsumerArtifact:
     def provenance(self) -> dict[str, Any]:
         """Chronicle-artifact identity block for build and release manifests.
 
-        Records the schema id as *observed*, plus the epoch it belongs to and
-        the epochs of the fact keys in the feed, so a manifest witnesses which
-        era of Chronicle actually resolved its targets.
+        Records the schema id as *observed*, plus the epoch it belongs to,
+        the epoch labels of the fact keys in the feed, and any undeclared
+        Chronicle-namespace domain among them, so a manifest witnesses which
+        era of Chronicle actually resolved its targets — and says so when the
+        feed carried a spelling this build did not declare.
         """
         payload: dict[str, Any] = {
             "path_name": self.path.name,
@@ -160,6 +184,7 @@ class LedgerConsumerArtifact:
             payload["manifest_sha256"] = None
         payload["schema_epoch"] = self.schema_epoch
         payload["fact_key_epochs"] = list(self.fact_key_epochs)
+        payload["undeclared_fact_key_domains"] = list(self.undeclared_fact_key_domains)
         payload["fact_schema_versions"] = list(self.fact_schema_versions)
         return payload
 
@@ -203,8 +228,11 @@ def load_ledger_consumer_artifact(
             )
         schema_version = manifest.get("schema_version")
         # Membership, not equality: ledger-era and chronicle-era artifacts are
-        # the same contract under two names, and both must load through the
-        # rename cutover (chronicle#143).
+        # the same contract under different names, and all of them must load
+        # through the rename cutover (chronicle#143). The predicate is total
+        # over JSON — a manifest whose schema_version is a list or an object
+        # is unsupported, and must say so with this message rather than
+        # escaping as a TypeError from a membership test.
         if not is_accepted_consumer_artifact_schema_version(schema_version):
             raise ValueError(
                 "Unsupported Chronicle consumer artifact schema_version "

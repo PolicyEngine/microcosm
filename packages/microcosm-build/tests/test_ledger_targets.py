@@ -2957,7 +2957,7 @@ def test__given_mixed_epoch_fact_feed__then_both_eras_compile_to_targets() -> No
         semantic_fact_key="chronicle.semantic_fact.v3:def456",
         lineage={
             "source_record_id": "irs_soi.ty2024.table_1_1.all.adjusted_gross_income",
-            "source_cell_keys": ["chronicle.source_cell.v3:cell"],
+            "source_cell_keys": ["chronicle.source_cell.v2:cell"],
             "source_row_keys": [],
         },
     )

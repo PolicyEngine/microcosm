@@ -50,8 +50,8 @@ import pandas as pd
 
 from microcosm.build.chronicle_epoch import (
     ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
-    LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+    MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     describe_accepted_consumer_artifact_schema_versions,
     is_accepted_consumer_artifact_schema_version,
 )
@@ -161,7 +161,7 @@ CENSUS_API_SOURCE_LEG = FactSourceLeg(
 #: whose epoch they could inherit. Chronicle's own cutover moves what Chronicle
 #: emits, not what Microcosm mints. Acceptance is the separate, dual-era
 #: question, and it lives in :mod:`microcosm.build.chronicle_epoch`.
-CONSUMER_ARTIFACT_SCHEMA_VERSION = LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION
+CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
 _FACT_SCHEMA_VERSION = LEDGER_CONSUMER_FACT_SCHEMA_VERSION
 #: Microcosm's own key namespace: outside both Chronicle eras by construction,
 #: so these keys can never collide with or impersonate Chronicle-built keys —
@@ -618,8 +618,8 @@ def write_consumer_artifact(
     which re-hashes the fact file against ``manifest.facts_sha256``.
 
     ``schema_version`` defaults to the ledger-era id these artifacts have
-    always declared and is validated for membership in both eras, so the
-    chronicle-era cutover is a caller decision rather than an edit here.
+    always declared and is validated for membership in the declared set, so
+    the chronicle-era cutover is a caller decision rather than an edit here.
     """
     if not fact_rows:
         raise ValueError("Refusing to write an empty consumer artifact.")
