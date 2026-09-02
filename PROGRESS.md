@@ -22,11 +22,13 @@ worktree remains untouched.
   real FRS root and SPI support transforms, rejects person-mass conservation at
   the executor's tolerance, and checks exact household mass plus its mass-log
   receipt. Added the required one-line changelog fragment.
+- Temporarily changed the live graph declaration to `mass="conserve"` and ran
+  the fixture-backed driver test. It failed at the intended executor check:
+  `272.7 -> 272.43` in stratum `default` (1 failed, 1 warning in 27.15s).
+  Restored `mass="declared"`; the production graph source has no residual diff.
 
 ## Next
 
-- Capture the deliberate `mass="conserve"` driver-path failure and restore the
-  declared policy.
 - Run all requested verification and write `out.md`.
 
 ---
