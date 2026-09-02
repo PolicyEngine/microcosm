@@ -6,8 +6,22 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_EXCLUSIONS,
+    UK_SPINE_STRUCTURAL_STAGES,
+    uk_registry,
+    uk_spine_graph,
+)
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
-from microcosm.graph import KernelResult, Node, StructuralDelta
+from microcosm.graph import (
+    KernelResult,
+    Node,
+    StructuralDelta,
+    compile_graph,
+    graph_from_json,
+    graph_to_json,
+)
 from microcosm.graph.population import Population, PopulationError, patch
 
 
@@ -141,3 +155,67 @@ def test_uk_expand_contract_carries_cells_links_weights_and_design_lineage() -> 
 def test_uk_expand_contract_rejects_unknown_source_ids() -> None:
     with pytest.raises(PopulationError, match="unknown 'person' source ids"):
         patch(_expand_population(), _expand_node(), _expand_result(bad_source=True))
+
+
+def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    expected = tuple(
+        stage.stage
+        for stage in spec.sources.stages
+        if stage.stage not in UK_SPINE_EXCLUSIONS
+    )
+    graph = uk_spine_graph(spec)
+    ids = {node.id for node in graph.nodes}
+
+    assert len(expected) == 26
+    assert UK_SPINE_EXCLUSIONS == {
+        "frs_hmrc_retained_leaves",
+        "hmrc_spi_income",
+    }
+    assert set(expected) <= ids
+    assert not (UK_SPINE_EXCLUSIONS & ids)
+    assert {
+        node.id for node in graph.nodes if node.structural is StructuralDelta.EXPAND
+    } == UK_SPINE_STRUCTURAL_STAGES
+
+
+def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    expected = tuple(
+        stage.stage
+        for stage in spec.sources.stages
+        if stage.stage not in UK_SPINE_EXCLUSIONS
+    )
+    compiled = compile_graph(uk_spine_graph(spec))
+    stage_order = tuple(node_id for node_id in compiled.order if node_id in expected)
+
+    assert stage_order == expected
+    assert all(
+        set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
+        for index, node_id in enumerate(compiled.order)
+    )
+    assert all(
+        compiled.graph.node(node_id).inputs
+        for node_id in expected[1:]
+        if node_id not in UK_SPINE_STRUCTURAL_STAGES
+    )
+
+
+def test_uk_registry_covers_every_kernel_ref_and_hashes_stage_modules() -> None:
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+
+    assert set(registry.refs()) == {node.kernel for node in graph.nodes}
+    assert registry.implementation_hash(
+        "uk.stage.frs_employment@1"
+    ) != registry.implementation_hash("uk.stage.frs_council_tax@1")
+
+
+def test_uk_graph_json_round_trip_is_canonical() -> None:
+    graph = uk_spine_graph()
+    serialized = graph_to_json(graph)
+
+    assert graph_from_json(serialized) == graph
+    assert graph_to_json(graph_from_json(serialized)) == serialized
