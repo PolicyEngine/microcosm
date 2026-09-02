@@ -15,7 +15,9 @@ from microcosm.graph import (
     Capabilities,
     Determinism,
     Graph,
+    KernelBase,
     KernelContext,
+    KernelRegistry,
     Node,
     Numeric,
     Owned,
@@ -117,3 +119,39 @@ def test_entrants_and_mass_partition_round_trip_through_canonical_json() -> None
     plain_text = graph_to_json(plain)
     assert "entrants" not in plain_text and "mass_partition" not in plain_text
     assert graph_from_json(plain_text) == plain
+
+
+def test_capabilities_reject_look_alike_fields_and_registration_needs_the_real_thing() -> (
+    None
+):
+    """A string spelling an enum member is not the member (review of #851, finding 5)."""
+    with pytest.raises(TypeError, match="Capabilities.numeric must be a Numeric"):
+        Capabilities(determinism=Determinism.DETERMINISTIC, numeric="tolerance_bound")  # type: ignore[arg-type]
+    with pytest.raises(
+        TypeError, match="Capabilities.determinism must be a Determinism"
+    ):
+        Capabilities(determinism="deterministic")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="consumes_se must be a boolean"):
+        Capabilities(determinism=Determinism.DETERMINISTIC, consumes_se=1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="dependencies must be a tuple"):
+        Capabilities(determinism=Determinism.DETERMINISTIC, dependencies=["numpy"])  # type: ignore[arg-type]
+
+    class LookAlike:
+        determinism = Determinism.DETERMINISTIC
+        numeric = "tolerance_bound"
+        seed_source = "none"
+        structural = "none"
+        role = "compute"
+        consumes_se = False
+        dependencies = ()
+        tolerance = None
+
+    class Impostor(KernelBase):
+        ref = "impostor@1"
+        capabilities = LookAlike()  # type: ignore[assignment]
+
+        def run(self, context):  # pragma: no cover - never reached
+            raise AssertionError
+
+    with pytest.raises(TypeError, match="must carry a Capabilities instance"):
+        KernelRegistry().register(Impostor())
