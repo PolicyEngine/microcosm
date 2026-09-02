@@ -7,11 +7,15 @@ they are extending. Logbook validates and hashes the receipt, durably writes
 a best-effort Supabase REST insert.
 
 Remote availability is never part of build correctness. If either
-``POPULACE_LEDGER_URL`` or ``POPULACE_LEDGER_KEY`` is absent, the validated row
-stays in spool-only mode without error. Network and HTTP failures are returned
-as receipt data and never raised. Local validation and durable-spool failures
+``CHRONICLE_URL`` or ``CHRONICLE_KEY`` is absent, the validated row stays in
+spool-only mode without error. Network and HTTP failures are returned as
+receipt data and never raised. Local validation and durable-spool failures
 remain fatal: callers must not claim an attempt was recorded if its local row
 was invalid or could not be persisted.
+
+The ledger-era spellings (``POPULACE_LEDGER_URL``, ``POPULACE_LEDGER_KEY``,
+``POPULACE_LEDGER_API_KEY``) are still honored for the chronicle#143 dual-read
+window and warn once per process; see :mod:`microcosm.build.chronicle_env`.
 
 The caller owns chain coordination and must provide ``prev_row_digest`` for
 the ledger head it extends. The row digest is
@@ -28,7 +32,7 @@ distinct read-only exporter credential.
 
 The Supabase key must identify the migration's ``logbook_writer`` role, not
 the service role. Hosted Supabase projects should additionally provide the
-project gateway key as ``POPULACE_LEDGER_API_KEY``; single-key deployments may
+project gateway key as ``CHRONICLE_API_KEY``; single-key deployments may
 omit it. The ``logbook`` schema must also be enabled in the hosted project's
 PostgREST exposed-schema setting. The US stacked driver and the three UK
 drivers record through this seam; this module remains driver-agnostic.
@@ -55,6 +59,14 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+from microcosm.build.chronicle_env import (
+    CHRONICLE_API_KEY_ENV,
+    CHRONICLE_KEY_ENV,
+    CHRONICLE_URL_ENV,
+    LEGACY_API_KEY_ENV,
+    chronicle_env,
+)
 
 __all__ = [
     "BUILD_DISPOSITIONS",
@@ -91,7 +103,11 @@ BUILD_DISPOSITIONS = frozenset(
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
 LOGBOOK_RUNGS = frozenset({"f001", "f004", "f010", "f025", "f100"})
-LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
+#: Ledger-era name for the project gateway key, kept because callers and
+#: operator runbooks still name it. Reads go through
+#: :func:`microcosm.build.chronicle_env.chronicle_env`, which prefers
+#: ``CHRONICLE_API_KEY`` and warns once when it falls back to this one.
+LEDGER_API_KEY_ENV = LEGACY_API_KEY_ENV
 LOGBOOK_ROW_FIELDS = frozenset(
     {
         "build_id",
@@ -820,11 +836,11 @@ def urlopen(request: Request, *, timeout: float) -> Any:
 
 
 def _remote_config() -> tuple[str, str, str] | None:
-    url = os.environ.get("POPULACE_LEDGER_URL")
-    key = os.environ.get("POPULACE_LEDGER_KEY")
+    url = chronicle_env(CHRONICLE_URL_ENV)
+    key = chronicle_env(CHRONICLE_KEY_ENV)
     if not url or not key:
         return None
-    api_key = os.environ.get(LEDGER_API_KEY_ENV) or key
+    api_key = chronicle_env(CHRONICLE_API_KEY_ENV) or key
     return url, key, api_key
 
 

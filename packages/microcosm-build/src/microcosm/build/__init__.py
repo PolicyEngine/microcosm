@@ -49,6 +49,21 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
+from microcosm.build.chronicle_env import (  # noqa: E402 - after the compat gate
+    chronicle_env,
+    chronicle_env_names,
+)
+from microcosm.build.chronicle_epoch import (  # noqa: E402 - after the compat gate
+    ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
+    ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS,
+    CHRONICLE_EPOCH,
+    EPOCHS,
+    LEDGER_EPOCH,
+    fact_key_epoch,
+    feed_fact_key_epochs,
+    is_chronicle_fact_key,
+    parse_fact_key,
+)
 from microcosm.build.country_spec import (  # noqa: E402 - after the compat gate
     CountryResourceRow,
     CountrySpec,
@@ -196,6 +211,11 @@ __all__ = [
     "StagingTelemetry",
     "TargetCoverageRequirement",
     "TargetFitRequirement",
+    "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",
+    "ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS",
+    "CHRONICLE_EPOCH",
+    "EPOCHS",
+    "LEDGER_EPOCH",
     "LedgerConsumerArtifact",
     "LedgerTargetMapping",
     "LedgerTargetSelection",
@@ -204,6 +224,12 @@ __all__ = [
     "MonetaryTargetProfile",
     "PreparedMonetaryMeasure",
     "add_ledger_artifact_args",
+    "chronicle_env",
+    "chronicle_env_names",
+    "fact_key_epoch",
+    "feed_fact_key_epochs",
+    "is_chronicle_fact_key",
+    "parse_fact_key",
     "aggregate_admin_gate",
     "area_support_gate",
     "column_implication_gate",

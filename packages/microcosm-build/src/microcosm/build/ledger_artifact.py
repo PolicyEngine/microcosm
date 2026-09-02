@@ -1,16 +1,25 @@
-"""Pinned loading for PolicyEngine Ledger consumer artifacts.
+"""Pinned loading for PolicyEngine Chronicle consumer artifacts.
 
-Ledger publishes consumer artifacts: a directory with ``manifest.json``
-(schema version, content hashes, embedded profile hashes),
+Chronicle (formerly Ledger) publishes consumer artifacts: a directory with
+``manifest.json`` (schema version, content hashes, embedded profile hashes),
 ``consumer_facts.jsonl``, per-profile JSON, and coverage diagnostics. A
 Microcosm build should consume facts through this loader so the release
-manifest can record exactly which Ledger data resolved its target values
+manifest can record exactly which Chronicle data resolved its target values
 (PolicyEngine/microcosm#160, #271) and so tampered or mismatched feeds fail
 before they calibrate anything.
 
-Like the rest of Microcosm's Ledger consumption, this module is duck-typed
-against the published artifact contract (stdlib only); it does not import
-the Ledger implementation package.
+Like the rest of Microcosm's Chronicle consumption, this module is duck-typed
+against the published artifact contract (stdlib only); it does not import the
+Chronicle implementation package.
+
+**Both eras load.** The manifest's ``schema_version`` is checked for
+membership in :data:`ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS`, never for
+equality with one era, so an artifact published after Chronicle's rename
+cutover loads here without a code change — see
+:mod:`microcosm.build.chronicle_epoch` and PolicyEngine/chronicle#143. The
+observed id, its epoch, and the fact-key epochs present in the feed are all
+recorded in :meth:`LedgerConsumerArtifact.provenance`, so a release manifest
+witnesses which era it actually consumed rather than which era it assumed.
 """
 
 from __future__ import annotations
@@ -22,7 +31,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.chronicle_epoch import (
+    ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
+    LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    consumer_artifact_schema_epoch,
+    describe_accepted_consumer_artifact_schema_versions,
+    describe_accepted_consumer_fact_schema_versions,
+    feed_fact_key_epochs,
+    is_accepted_consumer_artifact_schema_version,
+    is_accepted_consumer_fact_schema_version,
+)
+
 __all__ = [
+    "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",
     "ALLOWED_LEDGER_ASSERTIONS",
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "DEFAULT_LEDGER_ASSERTION",
@@ -32,21 +53,28 @@ __all__ = [
     "resolve_ledger_artifact",
 ]
 
-CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v1"
+#: The era Microcosm's own minted artifacts still declare. Frozen at v1 by
+#: microcosm#639; loading is governed by the accepted *set*, not by this.
+CONSUMER_ARTIFACT_SCHEMA_VERSION = LEDGER_CONSUMER_ARTIFACT_SCHEMA_VERSION
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
 
 
 @dataclass(frozen=True)
 class LedgerConsumerArtifact:
-    """A loaded, hash-verified Ledger consumer fact feed.
+    """A loaded, hash-verified Chronicle consumer fact feed.
 
     ``manifest`` and ``manifest_sha256`` are ``None`` when the feed was a
     bare ``consumer_facts.jsonl`` file rather than an artifact directory;
     bare feeds are still content-addressed by ``facts_sha256`` so builds can
-    pin them, but they carry no Ledger-side provenance. Rows are exactly as
+    pin them, but they carry no Chronicle-side provenance. Rows are exactly as
     published: an ``assertion`` field is validated when present and never
     fabricated when absent (missing means observation-by-default to readers).
+
+    The class name is ledger-era and stays: renaming an exported symbol
+    Microcosm's tools and experiments import buys nothing the alias in
+    :mod:`microcosm.build` does not, and chronicle#143 migrates identities,
+    not vocabulary.
     """
 
     path: Path
@@ -60,8 +88,36 @@ class LedgerConsumerArtifact:
         """Number of consumer fact rows in the feed."""
         return len(self.facts)
 
+    @property
+    def schema_version(self) -> str | None:
+        """The schema id this feed actually declared, verbatim."""
+        if self.manifest is None:
+            return None
+        schema_version = self.manifest.get("schema_version")
+        return None if schema_version is None else str(schema_version)
+
+    @property
+    def schema_epoch(self) -> str | None:
+        """``"ledger"`` or ``"chronicle"`` for the declared schema id."""
+        return consumer_artifact_schema_epoch(self.schema_version)
+
+    @property
+    def fact_key_epochs(self) -> tuple[str, ...]:
+        """Chronicle epochs observed across the feed's fact keys.
+
+        Empty when the feed carries only Microcosm-minted keys, and both
+        epochs when a cutover-window feed mixes ledger-era history with
+        chronicle-era rows.
+        """
+        return feed_fact_key_epochs(self.facts)
+
     def provenance(self) -> dict[str, Any]:
-        """Ledger-artifact identity block for build and release manifests."""
+        """Chronicle-artifact identity block for build and release manifests.
+
+        Records the schema id as *observed*, plus the epoch it belongs to and
+        the epochs of the fact keys in the feed, so a manifest witnesses which
+        era of Chronicle actually resolved its targets.
+        """
         payload: dict[str, Any] = {
             "path_name": self.path.name,
             "fact_row_count": self.fact_row_count,
@@ -82,6 +138,8 @@ class LedgerConsumerArtifact:
         else:
             payload["schema_version"] = None
             payload["manifest_sha256"] = None
+        payload["schema_epoch"] = self.schema_epoch
+        payload["fact_key_epochs"] = list(self.fact_key_epochs)
         return payload
 
 
@@ -123,11 +181,14 @@ def load_ledger_consumer_artifact(
                 f"Ledger consumer artifact manifest must be an object: {manifest_path}"
             )
         schema_version = manifest.get("schema_version")
-        if schema_version != CONSUMER_ARTIFACT_SCHEMA_VERSION:
+        # Membership, not equality: ledger-era and chronicle-era artifacts are
+        # the same contract under two names, and both must load through the
+        # rename cutover (chronicle#143).
+        if not is_accepted_consumer_artifact_schema_version(schema_version):
             raise ValueError(
-                "Unsupported Ledger consumer artifact schema_version "
-                f"{schema_version!r}; expected "
-                f"{CONSUMER_ARTIFACT_SCHEMA_VERSION!r}."
+                "Unsupported Chronicle consumer artifact schema_version "
+                f"{schema_version!r}; expected one of "
+                f"{describe_accepted_consumer_artifact_schema_versions()}."
             )
     else:
         facts_path = artifact_path
@@ -222,8 +283,21 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
                 ) from exc
             if not isinstance(row, dict):
                 raise ValueError(
-                    f"Invalid Ledger facts JSONL row {line_number}: expected "
+                    f"Invalid Chronicle facts JSONL row {line_number}: expected "
                     f"object, got {type(row).__name__}."
+                )
+            # Chronicle-published rows have never carried a per-row schema id;
+            # only Microcosm-minted feeds stamp one. Validate it when it is
+            # there — against both eras — and never demand it when it is not.
+            row_schema_version = row.get("schema_version")
+            if row_schema_version is not None and (
+                not is_accepted_consumer_fact_schema_version(row_schema_version)
+            ):
+                raise ValueError(
+                    f"Chronicle facts JSONL row {line_number} declares "
+                    f"unsupported schema_version {row_schema_version!r}; "
+                    "expected one of "
+                    f"{describe_accepted_consumer_fact_schema_versions()}."
                 )
             assertion = row.get("assertion", DEFAULT_LEDGER_ASSERTION)
             if assertion not in ALLOWED_LEDGER_ASSERTIONS:

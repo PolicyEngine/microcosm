@@ -159,6 +159,16 @@ LEDGER_HMRC_BANDS: dict[str, str] = {
     "greater_than_10m": "Greater_than_£10m",
 }
 
+# Chronicle-era spellings of the three band maps above. These identifiers only
+# look like environment variables to a grep — they are plain support-layout
+# data, so they take aliases rather than the dual-read window in
+# :mod:`microcosm.build.chronicle_env`. The ledger-era names stay: they are what
+# the generator below imports, and the value ids they translate are published
+# Chronicle ids, unaffected by the rename.
+CHRONICLE_ONS_TURNOVER_BANDS = LEDGER_ONS_TURNOVER_BANDS
+CHRONICLE_ONS_EMPLOYMENT_BANDS = LEDGER_ONS_EMPLOYMENT_BANDS
+CHRONICLE_HMRC_BANDS = LEDGER_HMRC_BANDS
+
 HMRC_BAND_COLUMNS: tuple[str, ...] = (
     "Negative_or_Zero",
     "£1_to_Threshold",
