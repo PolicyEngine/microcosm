@@ -2,7 +2,7 @@
 
 ## State
 
-Active on `node-graph-release` in the required local clone. Baseline is green with the expected eight acceptance `xfail` markers; contract inspection is next.
+Active on `node-graph-release` in the required local clone. Baseline and contract inspection are complete. The strict Fable rulings are implementable in the owned runtime files, but the frozen acceptance fixtures contain role/tier and H1 integration contradictions that cannot be resolved without changing an unowned test fixture or weakening the rulings.
 
 ## Done
 
@@ -11,11 +11,16 @@ Active on `node-graph-release` in the required local clone. Baseline is green wi
 - Preserved the integrated branch's historical progress ledger below.
 - Reused the existing offline environment inside the sandbox and confirmed the package baseline passes.
 - Recorded the starting burndown: 30 green properties, 7 red properties, and 8 markers (`F3` has two cases).
+- Read the charter, frozen declarations/protocol, exact F/H/replay tests, toy kernels, executor, and manifest in the required order.
+- Audited the executor and manifest blast radius directly from source after confirming this clone has no current GitNexus index.
+- Identified two F4 fixture conflicts: `bad.raise@1` advertises `compute`, not `gate`, and the toy release answers `evidence` for `not_applicable` although the ruling derives `certified` and requires disagreement rejection.
+- Identified H1 fixture-contract conflicts: the test bypasses `graph_from_json`, supplies no real kernels or usable fixture-source CREATE kernel, asserts QRF is `bitwise` despite its frozen `tolerance_bound` capability, and only compares columns although calibration emits weights.
 
 ## Next
 
-- Read the acceptance contract and frozen interfaces in the required order.
-- Implement and verify gate/release semantics, manifest persistence, and H1 parity fixtures in coherent commits.
+- Implement and verify the strict gate/release and manifest semantics that fit the owned-file boundary.
+- Resolve whether the unowned acceptance fixture may receive a separate corrective change; without that authority F4 and H1 cannot honestly turn green.
+- Implement canonical graph serialization and deterministic real-kernel fixture generation independently of the broken H1 consumer.
 
 # ACS predictor release join
 
