@@ -440,12 +440,17 @@ def _latent_attribute_realization_gate(
 ) -> GateResult:
     """Check a latent-attribute stage's realization receipt.
 
-    The receipt carries, per cell, the declared ``target`` share, the weighted
-    ``realized`` share, the producer's ``tolerance`` and the unweighted ``rows``
-    behind it. The gate owns the pass rule: it recomputes the binomial
-    tolerance from ``target`` and ``rows`` (three sigma, floored at one row's
-    worth, capped at one) and holds the cell to the tighter of the producer's
-    figure and its own, so a widened producer tolerance cannot pass silently.
+    The receipt carries, per cell, the declared ``target`` share, the
+    **unweighted** ``realized`` share over the ``rows`` behind it, and the
+    producer's ``tolerance``. Identity-keyed draws give every unit the same
+    probability regardless of its weight, so the unweighted share is the
+    statistic that tests the mechanism; the weighted share (``realized_weighted``,
+    informational) carries the frame's weight variance on top and is what the
+    engine round-trip compares with the publisher. The gate owns the pass rule:
+    it recomputes the binomial band from ``target`` and ``rows`` at
+    :data:`LATENT_ATTRIBUTE_SIGMA` (floored at one row's worth, capped at one)
+    and holds the cell to the tighter of the producer's figure and its own, so
+    a widened producer tolerance cannot pass silently.
     """
 
     check = "latent_attribute_realization"
@@ -512,7 +517,25 @@ def _latent_attribute_realization_gate(
     )
 
 
-def _binomial_tolerance(*, target: float, rows: int) -> float:
-    """Three-sigma binomial band for a share realized over ``rows`` draws."""
+#: Sigma multiple for the per-cell binomial band. A latent-attribute receipt
+#: holds ~30 cells (regions, bands, combinations) per build; three sigma would
+#: false-alarm on roughly one build in twelve, four sigma on one in five hundred.
+LATENT_ATTRIBUTE_SIGMA = 4.0
 
-    return min(1.0, max(1.0 / rows, 3.0 * math.sqrt(target * (1.0 - target) / rows)))
+
+def latent_attribute_tolerance(*, target: float, rows: int) -> float:
+    """Binomial band for a share realized over ``rows`` identity-keyed draws."""
+
+    if rows <= 0:
+        return 1.0
+    return min(
+        1.0,
+        max(
+            1.0 / rows,
+            LATENT_ATTRIBUTE_SIGMA * math.sqrt(target * (1.0 - target) / rows),
+        ),
+    )
+
+
+def _binomial_tolerance(*, target: float, rows: int) -> float:
+    return latent_attribute_tolerance(target=target, rows=rows)

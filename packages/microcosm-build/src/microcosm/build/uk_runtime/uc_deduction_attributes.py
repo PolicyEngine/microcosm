@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.stage_health import latent_attribute_tolerance
 from microcosm.frame import Frame
 
 UC_DEDUCTION_STAGE_NAME = "uc_deduction_attributes"
@@ -452,7 +453,6 @@ def _incidence_receipt(
             target=target,
             selected=assigned[cell],
             weights=weights[cell],
-            rows=int(cell.sum()),
         )
     return receipt
 
@@ -465,48 +465,56 @@ def _categorical_receipt(
     target_weights: Sequence[float],
     weights: np.ndarray,
 ) -> dict[str, Mapping[str, float | int]]:
-    selected_rows = int(selected.sum())
     targets = np.asarray(target_weights, dtype=np.float64)
     targets = targets / targets.sum()
-    denominator = float(weights[selected].sum())
     receipt: dict[str, Mapping[str, float | int]] = {}
     for name, target in zip(names, targets, strict=True):
-        realized = (
-            float(weights[selected & (assignments == name)].sum()) / denominator
-            if denominator > 0.0
-            else 0.0
+        receipt[str(name)] = _realization_row(
+            target=float(target),
+            selected=(assignments == name),
+            weights=weights,
+            population=selected,
         )
-        receipt[str(name)] = {
-            "target": float(target),
-            "realized": realized,
-            "tolerance": _realization_tolerance(float(target), selected_rows),
-            "rows": selected_rows,
-        }
     return receipt
 
 
 def _realization_row(
-    *, target: float, selected: np.ndarray, weights: np.ndarray, rows: int
+    *,
+    target: float,
+    selected: np.ndarray,
+    weights: np.ndarray,
+    population: np.ndarray | None = None,
 ) -> Mapping[str, float | int]:
-    denominator = float(weights.sum())
-    realized = (
-        float(weights[selected].sum()) / denominator if denominator > 0.0 else 0.0
+    """One receipt cell: the unweighted realization is gated, the weighted one reported.
+
+    ``population`` restricts the denominator (the assigned units for band and
+    combination cells); ``selected`` marks the units counted in the numerator.
+    Identity-keyed draws give every unit the same probability whatever its
+    weight, so the unweighted share is the mechanism's own statistic and takes
+    the binomial band over ``rows``; the weighted share adds the frame's weight
+    variance (its effective sample size is reported alongside) and is the
+    figure the engine round-trip compares with the publisher.
+    """
+
+    if population is None:
+        population = np.ones(selected.shape, dtype=bool)
+    numerator = selected & population
+    rows = int(population.sum())
+    realized = float(numerator.sum()) / rows if rows > 0 else 0.0
+    weight_total = float(weights[population].sum())
+    realized_weighted = (
+        float(weights[numerator].sum()) / weight_total if weight_total > 0.0 else 0.0
     )
+    squares = float((weights[population] ** 2).sum())
+    effective_rows = (weight_total**2 / squares) if squares > 0.0 else 0.0
     return {
         "target": target,
         "realized": realized,
-        "tolerance": _realization_tolerance(target, rows),
+        "tolerance": latent_attribute_tolerance(target=target, rows=rows),
         "rows": rows,
+        "realized_weighted": realized_weighted,
+        "weighted_effective_rows": effective_rows,
     }
-
-
-def _realization_tolerance(target: float, rows: int) -> float:
-    if rows <= 0:
-        return 1.0
-    return min(
-        1.0,
-        max(1.0 / rows, 3.0 * np.sqrt(target * (1.0 - target) / rows)),
-    )
 
 
 def _latent_shares(resource: Mapping[str, Any]) -> tuple[float, ...]:
