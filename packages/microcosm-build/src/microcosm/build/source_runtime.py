@@ -263,6 +263,18 @@ def verify_microdata_files(
                 f"{key!r} names no hash-pinned microdata artifact in this "
                 f"manifest; pinned keys are {sorted(by_key)}."
             )
+        pinned = {entry.sha256 for entry in matches}
+        if len(pinned) > 1:
+            # The placeholder locator "caller-supplied local input" is shared by
+            # every private root, so it names several distinct files. One file
+            # cannot satisfy several pins; the caller must key by filename.
+            raise MicrodataIdentityError(
+                f"{key!r} is ambiguous: it names "
+                f"{len(matches)} microdata artifacts pinned to "
+                f"{len(pinned)} different files "
+                f"({sorted(entry.locator for entry in matches)}). Supply the "
+                "declared filename instead."
+            )
         path = Path(files[key])
         if not path.is_file():
             raise MicrodataIdentityError(

@@ -391,6 +391,20 @@ class TestFailClosedGate:
 
         assert [check.matched for check in verifications] == [True]
 
+    def test_the_shared_placeholder_locator_is_refused_as_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        # "caller-supplied local input" is the locator of every UK private
+        # root, so it names several distinct files; one file cannot satisfy
+        # several pins and the gate must say so rather than pick one.
+        path = tmp_path / "something.tab"
+        path.write_bytes(b"x")
+
+        with pytest.raises(MicrodataIdentityError, match="is ambiguous"):
+            verify_microdata_files(
+                _manifest("uk"), {"caller-supplied local input": path}
+            )
+
     def test_the_uk_manifest_gate_accepts_the_real_pins(self, tmp_path: Path) -> None:
         # Every UK root is hash-pinned, so a synthetic file whose bytes hash to
         # a declared pin is impossible to fabricate; instead assert the gate
