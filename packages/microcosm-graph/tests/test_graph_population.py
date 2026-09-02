@@ -586,6 +586,62 @@ def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> 
     assert cached.mass_ledger == expanded.mass_ledger
 
 
+def test_cached_expand_requires_exact_lineage_id_sequence() -> None:
+    population = _population()
+    node = Node(
+        "cached_midpoint",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+    )
+    before = population.frame
+    person = before.table("person")
+    household = before.table("household")
+    added_person = person.iloc[[0]].copy()
+    added_person["person_id"] = np.array([5], dtype=np.int64)
+    added_person["person_household_id"] = np.array([15], dtype=np.int64)
+    final_person = pd.concat([person, added_person], ignore_index=True)
+    added_household = household.iloc[[0]].copy()
+    added_household["household_id"] = np.array([15], dtype=np.int64)
+    final_household = (
+        pd.concat([household, added_household], ignore_index=True)
+        .sort_values("household_id")
+        .reset_index(drop=True)
+    )
+    final_weights = Weights(
+        np.array([1.0, 1.0, 2.0, 3.0], dtype=np.float64), WeightKind.DESIGN
+    )
+    cached_frame = Frame(
+        {"person": final_person, "household": final_household},
+        before.schema,
+        {"household": final_weights},
+        pd.concat([before.strata, before.strata.iloc[[0]]], ignore_index=True),
+    )
+    lineage = {
+        "person": pd.Series([1], index=pd.Index([5], name="person_id"), dtype="int64"),
+        "household": pd.Series(
+            [10], index=pd.Index([15], name="household_id"), dtype="int64"
+        ),
+    }
+
+    with pytest.raises(PopulationError, match="final 'household' ids"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=cached_frame,
+                weights=final_weights,
+                receipt={"expand": expand_lineage_receipt(lineage)},
+            ),
+        )
+
+
 def test_entrant_person_strata_materialize_and_attest_cached_replay() -> None:
     population = _population()
     node = _entrant_person_expand_node()

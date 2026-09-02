@@ -52,6 +52,12 @@ or `_toy.py` edit is authorized.
 - Located the three follow-ups: QRF wording plus its source-hash pin, rejection
   of an undeclared `mass.partition` receipt, and signed-zero normalization in
   tolerance key data. The four allowed runtime test modules pass at baseline.
+- Finding 1 implemented: entity-ID coordinates are forbidden in
+  `expand_cells`, cold materialization rechecks exact final IDs after overlays,
+  and cached replay requires the exact incumbent-plus-lineage target sequence.
+  Regression coverage includes a malicious ID/membership overlay run twice
+  against one store and a legacy warm frame with a sorted but non-normative
+  inserted group ID.
 
 ## Next
 

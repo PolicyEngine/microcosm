@@ -889,6 +889,70 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     assert claim_kernel.calls == 1
 
 
+def test_expand_id_overlay_is_rejected_without_committing_cache(tmp_path: Path) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def replace_lineage_id(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1], index=pd.Index([4], name="person_id"), dtype="int64"
+                ),
+                "household": pd.Series(
+                    [10], index=pd.Index([30], name="household_id"), dtype="int64"
+                ),
+            },
+            columns={
+                ("person", "person_household_id"): pd.Series(
+                    [10, 10, 20, 40],
+                    index=pd.Index([1, 2, 3, 4], name="person_id"),
+                    dtype="int64",
+                ),
+                ("household", "household_id"): pd.Series(
+                    [10, 20, 40],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            weights=Weights(
+                np.array([1.0, 2.0, 1.0], dtype=np.float64), WeightKind.DESIGN
+            ),
+        )
+
+    expand = Node(
+        "replace_lineage_id",
+        "bad.expand@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": (
+                ("person", "person_household_id", "int64"),
+                ("household", "household_id", "int64"),
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+    )
+    kernel = _Kernel(
+        expand.kernel,
+        Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND),
+        replace_lineage_id,
+    )
+    registry = _registry(extra=kernel)
+    graph = Graph("toy", (SOURCE,), (CREATE, expand))
+    store = ContentStore(tmp_path / "store")
+
+    for _ in range(2):
+        with pytest.raises(NodeRejected, match="cannot overlay entity id column"):
+            _run(graph, source, store, registry)
+        if kernel.calls == 1:
+            first_store_bytes = _object_bytes(store)
+        else:
+            assert _object_bytes(store) == first_store_bytes
+    assert kernel.calls == 2
+
+
 def test_create_rejects_undeclared_frame_columns(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 
