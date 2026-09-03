@@ -273,3 +273,20 @@ Readings:
 6. Remaining diagnostic misses: 40 local cells past 25 %, led by the Kensington / Westminster / Cities of London self-employment amounts (−95 %; the frame carries a twelfth of HMRC's amount there; adjudicated under `hmrc_spi_frame_model_proxy`) and Glasgow social rent (+46 %). The `weight_ratio` diagnostic (max/median 398 against 100) stays red by construction of the design weights.
 
 Artifact: `data/ukds/acceptance/762-rowwise-candidate/spine-m/f100-k15-RC/microcosm_uk_2025_local.h5` (792,690 rows) with its manifest, gate report, diagnostics and Logbook row (disposition `iterating`). Not published; the release contract, scoring against the incumbent and the shippable attestation are the next items.
+
+## R14 — Scoring the release candidate against the incumbent on the frozen local surface (2026-09-03)
+
+Incumbent side extracted with `tools/extract_uk_local_incumbent_surface.py` from the private-repo snapshot `7b0a06f0` (`enhanced_frs_2024_25.h5`, the two wide weight tables, the 2024 constituency and 2021 local-authority rosters; period 2025; policyengine-uk 2.92.1 metrics on the incumbent's 52,846 households; 32 s): `incumbent_local_weights.csv` sha 678b77c8b54a6515…, `incumbent_household_metrics.csv` sha a06ef3cd8211a68d…. Register: the 19,105 active local references compiled from the pinned Ledger artifact at 2025 (`scoring_registry_compiled.json`, version f66248d3bbd6, sha 73b344b15fc20b46…). Candidate side: R13's schema-6 diagnostics. Output `score_vs_incumbent.json` sha 9365f1cc227dae3a….
+
+The incumbent ships 360 local authorities against the register's 361 — Northern Ireland's `N09000011` has no weight column — so the scorer now receipts `incumbent_missing_areas` and scores those rows candidate-only instead of refusing (a fitted row the incumbent cannot estimate is not a row disappearing): 19,089 rows compared, 16 candidate-only.
+
+| on the 19,089 compared rows | candidate (R13) | incumbent |
+|---|---|---|
+| capped relative-error loss (cap 10) | **0.0146** | 0.181 |
+| within 10 % / 25 % | **98.0 % / 99.8 %** | 60.4 % / 82.4 % |
+| median abs relative error | **0.0083** | 0.0709 |
+| head-to-head target wins | **16,973** | 2,116 (0 ties) |
+| wins by source family, candidate / incumbent | population 7,076 / 988 · HMRC 3,840 / 187 · UC 3,449 / 59 · council tax 1,318 / 740 · housing 1,290 / 142 | |
+| candidate holdout on unseen rows (R13) | 0.204 | not measurable |
+
+Reading, with the caveat that matters: the candidate is scored **in-sample** on rows it fitted, while the incumbent is scored on our 2025 register, not on the surface it was calibrated to. The like-for-like number is the candidate's holdout: on rows it never saw the candidate's loss (0.204) is about the incumbent's in-sample loss on our register (0.181). The candidate therefore fits the published 2025 local surface far better than the incumbent, and generalizes to untargeted cells roughly as well as the incumbent fits targeted ones. Council tax is where the incumbent stays closest (740 of 2,058 wins), consistent with R13's remaining band misses.
