@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.release_gate_preflight as preflight_module
 from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
 from microcosm.build.us_runtime.release_gate_preflight import (
@@ -740,8 +741,7 @@ def test__report__carried_red_pool_is_prominent_but_non_blocking(tmp_path) -> No
     assert "Human publication decision required" in rendered
     assert f"Gates JSON SHA-256: {gates_sha256}" in rendered
     assert all(
-        f"[{failure['gate']}] {failure['message']}" in rendered
-        for failure in failures
+        f"[{failure['gate']}] {failure['message']}" in rendered for failure in failures
     )
     assert report.to_dict()["base_pool"] == base_pool
 
@@ -859,6 +859,60 @@ def test__preflight_base__refuses_actual_red_sidecar_without_opt_in(
             base_h5,
             allow_gate_failed_base_pool=False,
         )
+
+
+def test__cli__denied_pool_refuses_gate_failed_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cli = _load_preflight_cli()
+    base_h5 = tmp_path / "pool.h5"
+    base_h5.write_bytes(b"pool identity comes from its sibling manifest")
+    manifest_path = base_h5.with_suffix(".manifest.json")
+    run_id = "denied-preflight-publication"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": h5_io.US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "status": "gate_failed",
+                "simulation_ready": False,
+                "publication_run_id": run_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+    reason = "fixture pool is excluded from release preflight"
+    reference = "microcosm#856; preflight-fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                release_id="fixture-preflight-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+
+    with pytest.raises(ValueError) as error:
+        cli.main(
+            [
+                "--base-h5",
+                str(base_h5),
+                "--selection-source-manifest",
+                str(tmp_path / "unused-selection.json"),
+                "--allow-gate-failed-base-pool",
+            ]
+        )
+
+    message = str(error.value)
+    assert run_id in message
+    assert reason in message
+    assert reference in message
 
 
 def test__preflight_base__refuses_bare_stamped_pool_before_generic_load(
@@ -988,13 +1042,14 @@ def test__cli__carried_red_battery_does_not_change_existing_preflight_exit(
         f"remains {expected_exit}."
     )
     assert payload["exit_code"] == expected_exit
-    assert payload["carried_base_pool_agreement_battery"][
-        "affects_exit_code"
-    ] is False
+    assert payload["carried_base_pool_agreement_battery"]["affects_exit_code"] is False
     assert payload["carried_base_pool_agreement_battery"]["failures"] == failures
-    assert payload["carried_base_pool_agreement_battery"][
-        "agreement_gate_reference"
-    ]["verdict"]["passed"] is False
+    assert (
+        payload["carried_base_pool_agreement_battery"]["agreement_gate_reference"][
+            "verdict"
+        ]["passed"]
+        is False
+    )
     assert captured["allow_gate_failed_base_pool"] is True
 
 

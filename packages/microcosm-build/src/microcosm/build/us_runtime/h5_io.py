@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -52,6 +53,8 @@ from microcosm.frame.units import US_SCHEMA
 __all__ = [
     "AuthenticatedPoolH5",
     "AuthenticatedPoolH5MismatchError",
+    "DENIED_POOL_PUBLICATIONS",
+    "DeniedPoolPublication",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
@@ -303,14 +306,8 @@ def _validated_stacked_sampling_manifest_binding(
         ("sampling.sample_fraction", sampling_fraction),
         ("stack_manifest.sample_fraction", stack_fraction),
     ):
-        if (
-            type(value) is not float
-            or not np.isfinite(value)
-            or not 0.0 < value <= 1.0
-        ):
-            raise ValueError(
-                f"{label} {location} must be a finite float in (0, 1]."
-            )
+        if type(value) is not float or not np.isfinite(value) or not 0.0 < value <= 1.0:
+            raise ValueError(f"{label} {location} must be a finite float in (0, 1].")
     if sampling_fraction != stack_fraction:
         raise ValueError(
             f"{label} sampling.sample_fraction differs from "
@@ -413,6 +410,40 @@ def _validated_stacked_sampling_manifest_binding(
 
 class AuthenticatedPoolH5MismatchError(RuntimeError):
     """A pool H5 no longer matches the bytes authenticated by its manifest."""
+
+
+@dataclass(frozen=True)
+class DeniedPoolPublication:
+    """One source-coded pool identity excluded from readiness and release."""
+
+    manifest_sha256: str
+    pool_h5_sha256: str
+    release_id: str
+    reason: str
+    reference: str
+
+
+DENIED_POOL_PUBLICATIONS: Mapping[str, DeniedPoolPublication] = MappingProxyType(
+    {
+        "2ab3f5a136bf4033be876bf150a6fbb4": DeniedPoolPublication(
+            manifest_sha256=(
+                "2a06fc2b1b73b006bb1bae7d13daeef813a4645c989374408eceaed0ef321cbd"
+            ),
+            pool_h5_sha256=(
+                "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
+            ),
+            release_id=(
+                "populace-us-2024-stacked-f025-s578-asec42213-acs382903-"
+                "20260831T162338Z-e14b24e8"
+            ),
+            reason=(
+                "candidate-26 is gate_failed on its terminal by-origin battery "
+                "and is excluded from the certifiable dense line by decision"
+            ),
+            reference="microcosm#856; plan gate 20260902-220844-plan-532dab66",
+        )
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -617,10 +648,10 @@ def us_multispine_pool_release_receipt(
         )
         gate_passed = gate.get("passed")
         gate_failures = gate.get("failures")
-        if type(gate_passed) is not bool or not isinstance(
-            gate_failures, list
-        ) or not all(
-            isinstance(failure, str) for failure in gate_failures
+        if (
+            type(gate_passed) is not bool
+            or not isinstance(gate_failures, list)
+            or not all(isinstance(failure, str) for failure in gate_failures)
         ):
             raise ValueError(
                 f"Authenticated US multispine pool gate {gate_name!r} has an "
@@ -737,6 +768,7 @@ def _load_authenticated_us_multispine_pool_manifest(
     *,
     expected_manifest_sha256: str | None = None,
     allow_terminal_gate_failure: bool = False,
+    scoring_only: bool = False,
 ) -> tuple[dict[str, object], AuthenticatedPoolH5]:
     """Return a validated manifest and its authenticated pool-H5 identity.
 
@@ -752,6 +784,32 @@ def _load_authenticated_us_multispine_pool_manifest(
         label="pool manifest",
         expected_sha256=expected_manifest_sha256,
     )
+    if not scoring_only:
+        manifest_run_id = manifest.get("publication_run_id")
+        pool_h5_block = manifest.get("pool_h5")
+        manifest_pool_h5_sha256 = (
+            pool_h5_block.get("sha256") if isinstance(pool_h5_block, Mapping) else None
+        )
+        for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+            # Three independent identities, so a re-serialized manifest, a
+            # renamed publication, or a repackaged H5 is still refused.
+            match = None
+            if manifest_run_id == denied_run_id:
+                match = "publication_run_id"
+            elif manifest_sha256 == denied_publication.manifest_sha256:
+                match = "manifest SHA-256"
+            elif manifest_pool_h5_sha256 == denied_publication.pool_h5_sha256:
+                match = "pool H5 SHA-256"
+            if match is not None:
+                raise ValueError(
+                    f"US multispine pool publication {denied_run_id!r} matched "
+                    f"the sealed deny-list by {match} and is refused for "
+                    "readiness and release; manifest presented "
+                    f"publication_run_id={manifest_run_id!r}, release_id="
+                    f"{denied_publication.release_id!r}. Reason: "
+                    f"{denied_publication.reason}. Reference: "
+                    f"{denied_publication.reference}."
+                )
     if manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND:
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
@@ -1633,6 +1691,7 @@ def load_authenticated_us_multispine_pool_for_scoring(
         path,
         expected_manifest_sha256=expected_manifest_sha256,
         require_simulation_ready=False,
+        scoring_only=True,
     )
 
 
@@ -1668,6 +1727,7 @@ def _load_us_multispine_pool(
     *,
     expected_manifest_sha256: str | None,
     require_simulation_ready: bool,
+    scoring_only: bool = False,
 ) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
     """Shared authenticated H5 reconstruction for readiness and scoring."""
 
@@ -1676,6 +1736,7 @@ def _load_us_multispine_pool(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
         allow_terminal_gate_failure=not require_simulation_ready,
+        scoring_only=scoring_only,
     )
     agreement_gate = _mapping(
         manifest.get("agreement_gate"),

@@ -791,6 +791,42 @@ def _write_ready_pool(
     return manifest_path
 
 
+def _write_gate_failed_pool(tmp_path: Path) -> Path:
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    failed_gate = {
+        "passed": False,
+        "gates": {
+            "us_spine_agreement": {
+                "passed": False,
+                "failures": ["fixture terminal failure"],
+                "details": {"fixture": False},
+            }
+        },
+    }
+    manifest.update(
+        {
+            "status": "gate_failed",
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics.update(
+        {
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest_path
+
+
 def _canonical_late_calibration_owner_receipt(
     spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
 ) -> dict[str, object]:
@@ -1446,10 +1482,11 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
         transition_authority["sha256"]
         == manifest["late_producer_transition_authority_sha256"]
     )
-    assert stacked_spine_module._json_ready(
-        frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
-    ) == (
-        manifest["stack_manifest"]
+    assert (
+        stacked_spine_module._json_ready(
+            frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+        )
+        == (manifest["stack_manifest"])
     )
 
 
@@ -1465,12 +1502,10 @@ def test_ready_stacked_pool_loader_restores_sampled_rung_manifest(
 
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
-    stack_manifest = frame.metadata[
-        stacked_spine_module.STACKED_SPINE_MANIFEST_KEY
-    ]
-    assert stacked_spine_module._json_ready(stack_manifest) == manifest[
-        "stack_manifest"
-    ]
+    stack_manifest = frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+    assert (
+        stacked_spine_module._json_ready(stack_manifest) == manifest["stack_manifest"]
+    )
     assert stack_manifest["version"] == 4
     assert stack_manifest["sample_fraction"] == 0.25
 
@@ -1665,38 +1700,7 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
-    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    failed_gate = {
-        "passed": False,
-        "gates": {
-            "us_spine_agreement": {
-                "passed": False,
-                "failures": ["fixture terminal failure"],
-                "details": {"fixture": False},
-            }
-        },
-    }
-    manifest.update(
-        {
-            "status": "gate_failed",
-            "simulation_ready": False,
-            "agreement_gate": failed_gate,
-            "terminal_gates": failed_gate,
-        }
-    )
-    diagnostics.update(
-        {
-            "simulation_ready": False,
-            "agreement_gate": failed_gate,
-            "terminal_gates": failed_gate,
-        }
-    )
-    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
-    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path = _write_gate_failed_pool(tmp_path)
 
     with pytest.raises(ValueError, match="not simulation-ready"):
         load_simulation_ready_us_multispine_pool(manifest_path)
@@ -1744,8 +1748,192 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
                 "message": "fixture terminal failure",
             }
         ],
-        "verdict": failed_gate,
+        "verdict": loaded_manifest["agreement_gate"],
     }
+
+
+def test_denied_gate_failed_pool_is_available_only_for_scoring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["publication_run_id"]
+    reason = "fixture pool is excluded from the certifiable line"
+    reference = "microcosm#856; fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                release_id="fixture-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+
+    frame, loaded_manifest, _ = load_authenticated_us_multispine_pool_for_scoring(
+        manifest_path
+    )
+    assert frame.n("household") == 3
+    assert loaded_manifest["status"] == "gate_failed"
+
+    refused_loaders = (
+        (
+            "manifest-only",
+            lambda: h5_io.load_simulation_ready_us_multispine_pool_manifest(
+                manifest_path
+            ),
+        ),
+        (
+            "simulation-ready",
+            lambda: load_simulation_ready_us_multispine_pool(manifest_path),
+        ),
+        (
+            "release-strict",
+            lambda: load_authenticated_us_multispine_pool_for_release(
+                manifest_path,
+                allow_terminal_gate_failure=False,
+            ),
+        ),
+        (
+            "release-opt-in",
+            lambda: load_authenticated_us_multispine_pool_for_release(
+                manifest_path,
+                allow_terminal_gate_failure=True,
+            ),
+        ),
+    )
+    for loader_name, loader in refused_loaders:
+        with pytest.raises(ValueError) as error:
+            loader()
+        message = str(error.value)
+        assert run_id in message, loader_name
+        assert reason in message, loader_name
+        assert reference in message, loader_name
+
+
+def test_pool_deny_list_matches_manifest_sha256_without_matching_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "sha-only.manifest.json"
+    observed_run_id = "different-observed-publication"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "publication_run_id": observed_run_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+    denied_run_id = "sha-matched-denied-publication"
+    reason = "fixture manifest digest is excluded"
+    reference = "microcosm#856; sha-fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            denied_run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256=_sha256(manifest_path),
+                pool_h5_sha256="1" * 64,
+                release_id="fixture-sha-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+    assert observed_run_id != denied_run_id
+
+    with pytest.raises(ValueError) as error:
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+    message = str(error.value)
+    assert observed_run_id in message
+    assert denied_run_id in message
+    assert reason in message
+    assert reference in message
+
+
+def test_pool_deny_list_contains_candidate_26_identity() -> None:
+    denied = h5_io.DENIED_POOL_PUBLICATIONS["2ab3f5a136bf4033be876bf150a6fbb4"]
+    assert denied.manifest_sha256 == (
+        "2a06fc2b1b73b006bb1bae7d13daeef813a4645c989374408eceaed0ef321cbd"
+    )
+    assert denied.release_id == (
+        "populace-us-2024-stacked-f025-s578-asec42213-acs382903-"
+        "20260831T162338Z-e14b24e8"
+    )
+    assert denied.pool_h5_sha256 == (
+        "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
+    )
+    assert "\n" not in denied.reason
+    assert denied.reference == (
+        "microcosm#856; plan gate 20260902-220844-plan-532dab66"
+    )
+
+
+def test_pool_deny_list_matches_pool_h5_sha256_without_other_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A repackaged manifest around the same H5 bytes is still refused."""
+    manifest_path = tmp_path / "h5-only.manifest.json"
+    denied_h5 = "a" * 64
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "publication_run_id": "repackaged-publication",
+                "pool_h5": {"sha256": denied_h5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "h5-matched-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                release_id="fixture-h5-release",
+                reason="fixture H5 bytes are excluded",
+                reference="microcosm#856; h5-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="pool H5 SHA-256"):
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+
+def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:
+    """The deny-list's only exception must stay a scoring-only ingress.
+
+    Every non-test source file that names the scoring loader is listed here;
+    a release builder, preflight, or pool tool that started calling it would
+    reopen the release ingress the deny-list closes.
+    """
+    root = Path(__file__).resolve().parents[3]
+    name = "load_authenticated_us_multispine_pool_for_scoring"
+    allowed = {
+        "packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py",
+        "tools/score_us_release_head_to_head.py",
+    }
+    found = set()
+    for folder in ("tools", "packages/microcosm-build/src"):
+        for path in sorted((root / folder).rglob("*.py")):
+            if name in path.read_text(encoding="utf-8"):
+                found.add(path.relative_to(root).as_posix())
+    assert found == allowed
 
 
 def test_gate_failed_release_opt_in_is_rejected_for_a_ready_pool(
