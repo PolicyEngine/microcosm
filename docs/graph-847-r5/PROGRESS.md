@@ -3,8 +3,10 @@
 ## State
 
 All ten findings are implemented on the standalone `fix-847-r5` lane, with the
-frozen interface unchanged. Final verification is in progress; the lane report
-follows it.
+frozen interface unchanged. Final verification is complete: all four
+non-pytest gates pass, while the full graph-plus-fit suite has one
+starting-SHA/frozen-test contradiction described below. The lane report is
+`docs/graph-847-r5/out.md`.
 
 ## Done
 
@@ -122,9 +124,16 @@ follows it.
   set and omits the already-locked `numerics` field. The same contradiction is
   present at the pinned starting SHA; the prohibited test and frozen kernel
   remain unchanged while the remaining audit and rerun proceed.
+- The complete required verification block was rerun after the final hardening.
+  Ruff lint passed, Ruff reported all 52 files formatted, the acceptance
+  burndown reported 41 green/0 red/0 missing with `verification=ok`, and CI
+  grouping reported 354 tracked test files with `verification=ok`. The exact
+  required pytest command exited 1 after collecting 432 cases: 429 passed, 2
+  skipped, and only the unchanged acceptance-B field-set assertion failed.
 
 ## Next
 
-- Finish the parallel code audit, rerun the complete required verification
-  block after the final ratchet hardening, and write the lane report to the
-  requested output file.
+- Reconcile the frozen acceptance-B assertion with amendment 17 under explicit
+  authority to edit that test. No permitted implementation change can make its
+  eight-field expectation and the locked nine-field `KernelContext` contract
+  true simultaneously.
