@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
+import pandas as pd
 import pytest
 
 import microcosm.build.logbook as logbook_module
@@ -81,6 +82,37 @@ def _write_config(tmp_path: Path, payload: dict[str, object]) -> Path:
     path = tmp_path / "config.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+def _write_packaged_release(
+    out: Path,
+    *,
+    release_id: str,
+    household_count: int,
+) -> None:
+    artifact_root = out / "artifacts"
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    dataset_path = artifact_root / "populace_us_2024.h5"
+    pd.DataFrame(
+        {"household_id": range(household_count)},
+    ).to_hdf(dataset_path, key="household", format="table")
+    release_dir = out / "releases" / release_id
+    release_dir.mkdir(parents=True, exist_ok=True)
+    (release_dir / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "build": {"build_id": release_id},
+                "default_datasets": {"national": "populace_us_2024"},
+                "artifacts": {
+                    "populace_us_2024": {
+                        "kind": "microdata",
+                        "path": dataset_path.name,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_config_requires_explicit_seed_and_ratified_k(tmp_path: Path) -> None:
@@ -297,7 +329,11 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
 
     def fake_builder(argv):
         captured.extend(argv)
-        return None
+        _write_packaged_release(
+            tmp_path / "out",
+            release_id="populace-us-2024-k8-fixture",
+            household_count=8,
+        )
 
     result = launcher.launch(
         pool_manifest=manifest,
@@ -337,6 +373,7 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     rows = load_spool_rows(tmp_path / "out" / "logbook-spool")
     assert len(rows) == 1
     assert rows[0].rung is None
+    assert rows[0].pipeline == "us-exact-k-release"
     assert rows[0].requested_k == 8
     assert rows[0].realized_k == 8
     assert rows[0].record_unit == "household"
@@ -379,7 +416,11 @@ def test_reduced_build_records_numeric_cardinality(
         pool_manifest=manifest,
         config_path=config_path,
         out=tmp_path / "out",
-        release_builder=lambda _argv: None,
+        release_builder=lambda _argv: _write_packaged_release(
+            tmp_path / "out",
+            release_id="populace-us-2024-k20000-fixture",
+            household_count=20_000,
+        ),
     )
 
     row = load_spool_rows(tmp_path / "out" / "logbook-spool")[0]
@@ -467,6 +508,101 @@ def test_failure_after_numeric_resolution_retains_request_without_membership(
     family_records = load_family_spool(tmp_path / "out" / "logbook-spool")
     assert len(family_records.families) == 1
     assert family_records.family_members == ()
+    error_receipt = json.loads(
+        (
+            tmp_path / "out/logbook-receipts/populace-us-2024-k20000-fixture/error.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert error_receipt["gate_verdicts"]["exact_k_build"]["verdict"] == "error"
+    assert error_receipt["phases_reached"][-1] == "error"
+
+
+def test_packaged_household_count_must_match_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (8, {}),
+    )
+
+    with pytest.raises(
+        launcher.ExactKRealizedCountMismatchError,
+        match="requested=8, realized=7",
+    ):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=lambda _argv: _write_packaged_release(
+                tmp_path / "out",
+                release_id="populace-us-2024-k8-fixture",
+                household_count=7,
+            ),
+        )
+
+    row = load_spool_rows(tmp_path / "out" / "logbook-spool")[0]
+    assert row.disposition == "failed"
+    assert (row.requested_k, row.realized_k) == (8, None)
+    assert "packaged_cardinality_verified" not in row.phases_reached
+
+
+def test_release_id_cannot_overwrite_prior_failure_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (8, {}),
+    )
+
+    def fail_builder(_argv):
+        raise RuntimeError("original failure")
+
+    with pytest.raises(RuntimeError, match="original failure"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=fail_builder,
+        )
+    receipt_path = (
+        tmp_path / "out/logbook-receipts/populace-us-2024-k8-fixture/error.json"
+    )
+    original_receipt = receipt_path.read_bytes()
+    second_builder_called = False
+
+    def second_builder(_argv):
+        nonlocal second_builder_called
+        second_builder_called = True
+
+    with pytest.raises(FileExistsError, match="release ids are single-use"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=second_builder,
+        )
+
+    assert second_builder_called is False
+    assert receipt_path.read_bytes() == original_receipt
+    assert len(load_spool_rows(tmp_path / "out" / "logbook-spool")) == 1
 
 
 def test_matching_family_retry_is_accepted_and_mismatched_source_is_rejected(
@@ -501,7 +637,11 @@ def test_matching_family_retry_is_accepted_and_mismatched_source_is_rejected(
         pool_manifest=manifest,
         config_path=config_path,
         out=matching_out,
-        release_builder=lambda _argv: None,
+        release_builder=lambda _argv: _write_packaged_release(
+            matching_out,
+            release_id="populace-us-2024-k8-fixture",
+            household_count=8,
+        ),
     )
     assert len(load_family_spool(matching_out / "logbook-spool").families) == 1
 
@@ -581,7 +721,11 @@ def test_exact_k_spools_all_records_before_dependency_ordered_remote_delivery(
         pool_manifest=manifest,
         config_path=config_path,
         out=tmp_path / "out",
-        release_builder=lambda _argv: None,
+        release_builder=lambda _argv: _write_packaged_release(
+            tmp_path / "out",
+            release_id="populace-us-2024-k8-fixture",
+            household_count=8,
+        ),
     )
 
     assert posted_paths == [

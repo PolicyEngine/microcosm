@@ -32,6 +32,9 @@ CHAIN_SCOPE_MIGRATION = (
 FAMILY_MODEL_MIGRATION = (
     ROOT / "supabase/migrations/20260830000000_logbook_family_model.sql"
 )
+EXACT_K_PIPELINE_MIGRATION = (
+    ROOT / "supabase/migrations/20260904000000_logbook_us_exact_k_pipeline.sql"
+)
 ROW_VERSION_FIXTURES = (
     ROOT / "packages/microcosm-build/tests/fixtures/logbook_row_versions.json"
 )
@@ -231,6 +234,15 @@ def test_logbook_chain_scope_migration_contract() -> None:
     assert "not in the ratified scope list" in sql
     assert "DROP INDEX IF EXISTS logbook.builds_unique_predecessor" not in sql
     assert "CREATE UNIQUE INDEX builds_unique_predecessor" not in sql
+
+
+def test_logbook_exact_k_pipeline_migration_contract() -> None:
+    sql = EXACT_K_PIPELINE_MIGRATION.read_text(encoding="utf-8")
+
+    assert "CREATE OR REPLACE FUNCTION logbook.chain_scope" in sql
+    assert "'us-exact-k-release'" in sql
+    assert "THEN 'us'" in sql
+    assert "CREATE OR REPLACE FUNCTION logbook.scope_declared" not in sql
 
 
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:

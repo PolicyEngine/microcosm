@@ -685,7 +685,7 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     assert query["limit"] == [str(cli.REMOTE_PAGE_SIZE)]
     assert query["offset"] == ["0"]
     assert query["pipeline"] == [
-        'in.("us-2024-release","us-pool-inc2","us-stacked-pool")'
+        'in.("us-2024-release","us-exact-k-release","us-pool-inc2","us-stacked-pool")'
     ]
 
 
@@ -761,7 +761,8 @@ def test_cli_remote_family_export_filters_each_table_by_stored_scope(
         table = urlparse(request.full_url).path.rsplit("/", 1)[-1]
         if table == "builds":
             assert query["pipeline"] == [
-                'in.("us-2024-release","us-pool-inc2","us-stacked-pool")'
+                'in.("us-2024-release","us-exact-k-release","us-pool-inc2",'
+                '"us-stacked-pool")'
             ]
         else:
             assert query["chain_scope"] == ["eq.us"]
@@ -929,6 +930,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
     ("pipeline", "scope"),
     [
         ("us-2024-release", "us"),
+        ("us-exact-k-release", "us"),
         ("us-pool-inc2", "us"),
         ("us-stacked-pool", "us"),
         ("uk-frs-staging", "uk/frs"),

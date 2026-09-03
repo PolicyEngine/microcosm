@@ -16,11 +16,12 @@ logbook-spool/<country>/<dataset>/  # committed spool mirror, same shape
 ```
 
 One file is one chain scope. The grandfathered `logbook/us.jsonl` file spans
-three US pipelines (`us-2024-release`, `us-pool-inc2`,
-`us-stacked-pool`) because it predates this split and its rows already link
-across those names. It can never be divided retroactively: the predecessor is
-part of each row digest, so moving a row to a different root would recompute
-the digest and destroy the evidence the chain exists to preserve.
+the historical `us-2024-release`, `us-pool-inc2`, and `us-stacked-pool`
+pipelines because it predates this split and its rows already link across those
+names. The dedicated `us-exact-k-release` pipeline also appends to this existing
+US sequence. It can never be divided retroactively: the predecessor is part of
+each row digest, so moving a row to a different root would recompute the digest
+and destroy the evidence the sequence exists to preserve.
 
 Every new archive uses `logbook/<country>/<dataset>.jsonl`. The dataset token
 names the line's base data, not an epic and not a build mechanism: `frs` is
@@ -206,13 +207,14 @@ field, not supplied as a mutable column.
 The database keeps `builds_unique_predecessor` global because two rows
 claiming one predecessor is a fork wherever it happens. Genesis, tail
 discovery, and advisory locking are scoped: `logbook.chain_scope(pipeline)`
-maps the three legacy US pipeline names to `us`, and maps new pipelines like
-`uk-frs-staging` or `uk-local-rowwise` to `uk/frs` and `uk/local`;
+maps the three historical US pipeline names and `us-exact-k-release` to `us`,
+and maps new pipelines like `uk-frs-staging` or `uk-local-rowwise` to `uk/frs`
+and `uk/local`;
 `logbook.scope_declared` then refuses any scope outside the ratified list. The per-scope advisory lock lets independent scopes append
 concurrently while appends within one scope still serialize.
 
 Remote export reads one scope at a time. For `logbook/us.jsonl`, it requests
-only the grandfathered US pipelines; for `logbook/<country>/<dataset>.jsonl`,
+only the four declared US pipelines; for `logbook/<country>/<dataset>.jsonl`,
 it requests matching `<country>-<dataset>-*` pipelines and then verifies the
 scope again client-side before ordering the chain.
 

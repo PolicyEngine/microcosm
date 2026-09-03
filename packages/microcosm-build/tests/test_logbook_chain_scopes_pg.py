@@ -33,6 +33,9 @@ MIGRATIONS = ROOT / "supabase/migrations"
 CHAIN_SCOPES_MIGRATION = MIGRATIONS / "20260818000000_logbook_chain_scopes.sql"
 UK_LOCAL_SCOPE_MIGRATION = MIGRATIONS / "20260829000000_logbook_uk_local_scope.sql"
 FAMILY_MIGRATION = MIGRATIONS / "20260830000000_logbook_family_model.sql"
+EXACT_K_PIPELINE_MIGRATION = (
+    MIGRATIONS / "20260904000000_logbook_us_exact_k_pipeline.sql"
+)
 ROWS = ROOT / "logbook/us.jsonl"
 ROW_VERSION_FIXTURES = (
     ROOT / "packages/microcosm-build/tests/fixtures/logbook_row_versions.json"
@@ -323,6 +326,15 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
     # can be exercised in the harness.
     _execute(connection, "CREATE ROLE anon NOLOGIN;")
     _apply_sql(connection, FAMILY_MIGRATION.read_text(encoding="utf-8"))
+    _apply_sql(connection, EXACT_K_PIPELINE_MIGRATION.read_text(encoding="utf-8"))
+
+    assert (
+        _fetchone(
+            connection,
+            "SELECT logbook.chain_scope('us-exact-k-release');",
+        )[0]
+        == "us"
+    )
 
     assert [
         row[0]

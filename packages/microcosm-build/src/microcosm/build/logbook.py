@@ -103,6 +103,7 @@ _PIPELINE_SCOPE_PATTERN = re.compile(
 LOGBOOK_RUNGS = frozenset({"f001", "f004", "f010", "f025", "f100"})
 LEGACY_US_PIPELINES = (
     "us-2024-release",
+    "us-exact-k-release",
     "us-pool-inc2",
     "us-stacked-pool",
 )
