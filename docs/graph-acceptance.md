@@ -263,6 +263,20 @@ Amendments so far (each re-locked):
     says so in its evidence. Raised by the #847 gate review; adopted
     2026-09-03.
 
+17. **Numeric scope per input coordinate.** `KernelContext.numerics` maps
+    each declared input coordinate to a `NumericScope`: the loosest
+    `Numeric` class among its writers (`bitwise` < `platform_bitwise` <
+    `tolerance_bound`), the loosest declared `Tolerance` among the
+    bounded writers, and the platform fingerprint the contract holds on.
+    A platform-bitwise writer never disappears into a bound: it sets
+    `platform`, so a sole platform-bitwise writer reaches a gate as
+    `platform_bitwise` rather than as `None`, and a bounded writer mixed
+    with one yields a bound that holds on that platform only.
+    `KernelContext.tolerances` stays as the projection of `numerics`. A
+    gate that compares across platforms must consult the scope and refuse
+    or evidence a platform-scoped input (amendment 16). Raised by the
+    #847 gate review (round 3); adopted 2026-09-03.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

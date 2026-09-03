@@ -226,6 +226,51 @@ class Capabilities:
 
 
 @dataclass(frozen=True)
+class NumericScope:
+    """The numeric contract a gate may hold one input coordinate to.
+
+    The executor derives it from the coordinate's writers under the
+    loosest-writer rule, ordered ``bitwise`` < ``platform_bitwise`` <
+    ``tolerance_bound``. A platform-bitwise writer never disappears into
+    a bound: it leaves ``platform`` set, which says the contract holds on
+    that platform only and that a cross-platform comparison has no bound
+    (amendment 17).
+
+    Attributes:
+        numeric: The loosest :class:`Numeric` class among the writers.
+        tolerance: The loosest declared :class:`Tolerance` among the
+            ``tolerance_bound`` writers; ``None`` for the other classes.
+        platform: The platform fingerprint the contract holds on, or
+            ``None`` when it holds on every platform. Required when
+            ``numeric`` is ``platform_bitwise``; permitted on
+            ``tolerance_bound`` when a platform-bitwise writer contributed;
+            forbidden on ``bitwise``.
+    """
+
+    numeric: Numeric = Numeric.BITWISE
+    tolerance: Tolerance | None = None
+    platform: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.numeric, Numeric):
+            raise ValueError("NumericScope.numeric must be a Numeric.")
+        if self.tolerance is not None and not isinstance(self.tolerance, Tolerance):
+            raise ValueError("NumericScope.tolerance must be a Tolerance or None.")
+        if self.platform is not None and (
+            not isinstance(self.platform, str) or not self.platform
+        ):
+            raise ValueError("NumericScope.platform must be a non-empty str or None.")
+        if self.numeric is Numeric.TOLERANCE_BOUND and self.tolerance is None:
+            raise ValueError("A tolerance_bound scope must carry its Tolerance.")
+        if self.numeric is not Numeric.TOLERANCE_BOUND and self.tolerance is not None:
+            raise ValueError(f"A {self.numeric.value} scope carries no Tolerance.")
+        if self.numeric is Numeric.PLATFORM_BITWISE and self.platform is None:
+            raise ValueError("A platform_bitwise scope must name its platform.")
+        if self.numeric is Numeric.BITWISE and self.platform is not None:
+            raise ValueError("A bitwise scope holds on every platform.")
+
+
+@dataclass(frozen=True)
 class KernelContext:
     """Everything a kernel may read. Nothing here is writable.
 
@@ -248,6 +293,11 @@ class KernelContext:
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.
+        numerics: ``(entity, column)`` of each declared input column to
+            its :class:`NumericScope`; ``tolerances`` is its projection
+            (``numerics[c].tolerance == tolerances[c]``). A gate that
+            compares across platforms consults the scope's ``platform``
+            (amendment 17).
     """
 
     node: Node
@@ -258,6 +308,7 @@ class KernelContext:
     rng: np.random.Generator
     sources: Mapping[str, Path] = field(default_factory=dict)
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
+    numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,8 @@ tolerances; and the two new declaration fields round-trip through JSON.
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -20,6 +22,7 @@ from microcosm.graph import (
     KernelRegistry,
     Node,
     Numeric,
+    NumericScope,
     Owned,
     SourceRef,
     StructuralDelta,
@@ -166,3 +169,43 @@ def test_platform_bitwise_forbids_a_tolerance_like_bitwise() -> None:
             numeric=Numeric.PLATFORM_BITWISE,
             tolerance=Tolerance(rtol=1e-6),
         )
+
+
+def test_numeric_scope_validates_class_tolerance_and_platform() -> None:
+    """Amendment 17: a scope carries exactly the fields its class permits."""
+    assert NumericScope().numeric is Numeric.BITWISE
+    bound = Tolerance(rtol=1e-6)
+    NumericScope(numeric=Numeric.TOLERANCE_BOUND, tolerance=bound)
+    NumericScope(
+        numeric=Numeric.TOLERANCE_BOUND, tolerance=bound, platform="arm64/darwin/py3.13"
+    )
+    NumericScope(numeric=Numeric.PLATFORM_BITWISE, platform="arm64/darwin/py3.13")
+    with pytest.raises(ValueError, match="must carry its Tolerance"):
+        NumericScope(numeric=Numeric.TOLERANCE_BOUND)
+    with pytest.raises(ValueError, match="carries no Tolerance"):
+        NumericScope(numeric=Numeric.PLATFORM_BITWISE, platform="x", tolerance=bound)
+    with pytest.raises(ValueError, match="must name its platform"):
+        NumericScope(numeric=Numeric.PLATFORM_BITWISE)
+    with pytest.raises(ValueError, match="every platform"):
+        NumericScope(platform="arm64/darwin/py3.13")
+
+
+def test_context_numerics_default_empty_and_carry_scopes() -> None:
+    """Amendment 17: ``numerics`` defaults empty and rides at the end of the context."""
+    fields = [f.name for f in dataclasses.fields(KernelContext)]
+    assert fields[-2:] == ["tolerances", "numerics"]
+    scope = NumericScope(
+        numeric=Numeric.PLATFORM_BITWISE, platform="arm64/darwin/py3.13"
+    )
+    context = KernelContext(
+        node=Node("gate", "gate.check@1"),
+        tables={},
+        weights={},
+        strata=pd.Series(dtype="int64"),
+        params={},
+        rng=np.random.default_rng(0),
+        tolerances={("person", "income"): None},
+        numerics={("person", "income"): scope},
+    )
+    assert context.numerics[("person", "income")] is scope
+    assert context.tolerances[("person", "income")] is None

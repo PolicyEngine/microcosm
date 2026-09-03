@@ -47,6 +47,7 @@ from .kernel import (
     KernelRole,
     Numeric,
     SeedSource,
+    NumericScope,
     Tolerance,
     source_hash,
 )
@@ -91,6 +92,7 @@ __all__ = [
     "RunManifest",
     "SOURCE_CODECS",
     "SeedSource",
+    "NumericScope",
     "Tolerance",
     "Slice",
     "SourceCodec",
