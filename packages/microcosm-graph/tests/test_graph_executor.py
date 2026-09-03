@@ -1284,6 +1284,111 @@ def test_entrant_expand_rejects_mutated_copied_carried_values(
     assert calls[claim.kernel] == 0
 
 
+def test_expand_allows_copied_value_declared_as_same_version_rewrite(
+    tmp_path: Path,
+) -> None:
+    def copy_with_rewritten_income(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        person_ids = pd.Index(person["person_id"], name="person_id")
+        source_id = int(person_ids[0])
+        copy_id = int(person_ids.max()) + 1
+        target_ids = person_ids.append(
+            pd.Index([copy_id], dtype="int64", name="person_id")
+        )
+        income = pd.concat(
+            [
+                person["income"].reset_index(drop=True),
+                pd.Series([float(person["income"].iloc[0]) + 1.0]),
+            ],
+            ignore_index=True,
+        )
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [source_id],
+                    index=pd.Index([copy_id], dtype="int64", name="person_id"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    [],
+                    index=pd.Index([], dtype="int64", name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            columns={
+                ("person", "income"): pd.Series(
+                    income.array, index=target_ids, dtype="float64"
+                )
+            },
+            weights=context.weights["household"],
+        )
+
+    def claim_rewritten_income(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            columns={
+                ("person", "income"): pd.Series(
+                    person["income"].array.copy(),
+                    index=pd.Index(person["person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            }
+        )
+
+    expand = Node(
+        "copy_rewritten_income",
+        "copy.rewritten_income@1",
+        inputs=(
+            Slice("person", ("income",)),
+            Slice("household", ("size",)),
+        ),
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": (("person", "income", "float64"),),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+    )
+    claim = Node(
+        "claim_rewritten_income",
+        "claim.rewritten_income@1",
+        outputs=(Owned("person", "income", "float64", rewrite=True),),
+        population=expand.id,
+    )
+    registry = _registry()
+    registry.register(
+        _Kernel(
+            expand.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                structural=StructuralDelta.EXPAND,
+            ),
+            copy_with_rewritten_income,
+        )
+    )
+    registry.register(
+        _Kernel(
+            claim.kernel,
+            Capabilities(Determinism.DETERMINISTIC),
+            claim_rewritten_income,
+        )
+    )
+    graph = Graph("toy", (SOURCE,), (CREATE, expand, claim))
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+
+    cold = _run(graph, source, store, registry, resume="forbid")
+    warm = _run(graph, source, store, registry)
+
+    for run in (cold, warm):
+        assert run.population(expand.id).table("person")["income"].iloc[-1] == 1.0
+    assert not cold.nodes[expand.id].hit
+    assert warm.nodes[expand.id].hit
+    assert warm.nodes[claim.id].hit
+
+
 def test_group_entrant_expand_manifest_json_carries_mass_record(
     tmp_path: Path,
 ) -> None:

@@ -416,6 +416,40 @@ def _materialized_expand_coordinates(node: Node) -> frozenset[tuple[str, str]]:
     return frozenset(materialized)
 
 
+def _expand_rewrite_coordinates(
+    compiled: CompiledGraph, node: Node
+) -> frozenset[tuple[str, str]]:
+    """Return overlays an EXPAND's full-cell same-version claimant rewrites."""
+
+    if node.structural is not StructuralDelta.EXPAND:
+        return frozenset()
+    raw_cells = node.params.get("expand_cells", ())
+    if not isinstance(raw_cells, tuple):
+        return frozenset()
+    overlay_coordinates = {
+        (entry[0], entry[1])
+        for entry in raw_cells
+        if isinstance(entry, tuple)
+        and len(entry) == 3
+        and isinstance(entry[0], str)
+        and isinstance(entry[1], str)
+    }
+    rewrites: set[tuple[str, str]] = set()
+    for (version, entity, column), owner_id in compiled.owners.items():
+        coordinate = (entity, column)
+        if version != node.id or coordinate not in overlay_coordinates:
+            continue
+        owner = compiled.graph.node(owner_id)
+        output = next(
+            candidate
+            for candidate in owner.outputs
+            if (candidate.entity, candidate.column) == coordinate
+        )
+        if output.rewrite and output.rows == ROWS_ALL:
+            rewrites.add(coordinate)
+    return frozenset(rewrites)
+
+
 def _project_context(
     node: Node,
     population: Population | None,
@@ -1087,6 +1121,7 @@ def _apply_result(
     *,
     cache_hit: bool = False,
     mass_partition: tuple[str, str] | None = None,
+    rewrite_coordinates: frozenset[tuple[str, str]] = frozenset(),
 ) -> Population:
     if (
         mass_partition is not None
@@ -1111,7 +1146,11 @@ def _apply_result(
     ):
         try:
             return restore_cached_expand(
-                population, node, result, mass_partition=mass_partition
+                population,
+                node,
+                result,
+                mass_partition=mass_partition,
+                rewrite_coordinates=rewrite_coordinates,
             )
         except (TypeError, ValueError) as error:
             raise NodeRejected(
@@ -1145,7 +1184,13 @@ def _apply_result(
             receipt=result.receipt,
         )
     try:
-        return patch(population, node, result, mass_partition=mass_partition)
+        return patch(
+            population,
+            node,
+            result,
+            mass_partition=mass_partition,
+            rewrite_coordinates=rewrite_coordinates,
+        )
     except NodeRejected:
         raise
     except (TypeError, ValueError) as error:
@@ -1818,6 +1863,7 @@ def run_graph(
             incumbent,
             cache_hit=hit,
             mass_partition=compiled.graph.mass_partition,
+            rewrite_coordinates=_expand_rewrite_coordinates(compiled, node),
         )
         if node.structural not in {
             StructuralDelta.NONE,
