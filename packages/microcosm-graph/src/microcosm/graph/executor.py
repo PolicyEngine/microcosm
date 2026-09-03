@@ -696,6 +696,53 @@ def _parse_expand_writes(
     return MappingProxyType(parsed)
 
 
+def _validate_materialized_expand_outputs(
+    compiled: CompiledGraph,
+    node: Node,
+    population: Population | None,
+    receipts: Mapping[str, NodeReceipt],
+) -> None:
+    """Bind the no-Slice materialization bridge to its immediate EXPAND."""
+
+    if "materialized_expand_outputs" not in node.params:
+        return
+    materialized = _materialized_expand_coordinates(node)
+    if population is None:
+        raise NodeRejected(
+            f"Node {node.id!r} uses materialized_expand_outputs without an "
+            "incumbent population; an immediate EXPAND population is required."
+        )
+    holder = compiled.graph.node(population.version)
+    if holder.structural is not StructuralDelta.EXPAND:
+        raise NodeRejected(
+            f"Node {node.id!r} uses materialized_expand_outputs on population "
+            f"version {population.version!r}, whose holder is {holder.structural.name}; "
+            "an immediate EXPAND population is required."
+        )
+    holder_receipt = receipts.get(holder.id)
+    if holder_receipt is None:  # compiled population ancestry should prevent this
+        raise NodeRejected(
+            f"Node {node.id!r} cannot validate materialized_expand_outputs: "
+            f"EXPAND population version {holder.id!r} has no runtime receipt."
+        )
+    try:
+        expand_writes = _parse_expand_writes(
+            holder, holder_receipt.receipt.get("expand_writes")
+        )
+    except ValueError as error:  # executor-authored receipts cannot be malformed
+        raise NodeRejected(
+            f"Node {node.id!r} cannot validate materialized_expand_outputs for "
+            f"EXPAND population version {holder.id!r}: {error}"
+        ) from error
+    for entity, column in sorted(materialized):
+        if (entity, column) not in expand_writes:
+            raise NodeRejected(
+                f"Node {node.id!r} names materialized EXPAND output "
+                f"{entity}.{column}, but EXPAND population version {holder.id!r} "
+                "did not materialize that coordinate."
+            )
+
+
 def _writers_of(
     compiled: CompiledGraph,
     version: str,
@@ -1813,6 +1860,7 @@ def run_graph(
             assert node.base is not None
             incumbent = populations[node.base]
         _validate_population_declaration(node, incumbent)
+        _validate_materialized_expand_outputs(compiled, node, incumbent, receipts)
         input_writers = _input_writers(compiled, node_id, receipts=receipts)
         input_tolerances = _input_tolerances(
             compiled, node_id, kernels, writers=input_writers
