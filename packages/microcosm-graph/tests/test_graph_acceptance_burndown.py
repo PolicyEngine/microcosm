@@ -524,6 +524,18 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "unrecognized decorator 'unittest.skipUnless'",
         ),
         (
+            "import unittest\n\n\ndef test_a1_one() -> None:\n    raise unittest.SkipTest('hidden')\n",
+            "runtime unittest.SkipTest() suppresses",
+        ),
+        (
+            "import unittest\n\n\ndef test_a1_one() -> None:\n    raise unittest.SkipTest\n",
+            "references unittest.SkipTest",
+        ),
+        (
+            "from unittest import SkipTest\n\n\ndef test_a1_one() -> None:\n    raise SkipTest('hidden')\n",
+            "importing unittest SkipTest",
+        ),
+        (
             "import pytest\n\n\nclass TestA:\n    def test_a1_one(self) -> None:\n        assert False\n",
             "tests must be module-level functions",
         ),
@@ -582,6 +594,17 @@ def test_the_allowed_marks_are_not_suppressions() -> None:
         '@pytest.mark.requires_uk\n@pytest.mark.parametrize("x", [1, 2])\n'
         '@pytest.mark.xfail(strict=True, reason="charter A1: pending")\n'
         "def test_a1_one(x) -> None:\n    assert False\n"
+    )
+    assert burndown.suppressions_in(source, "sample.py") == ()
+
+
+def test_the_literal_toy_module_loader_is_not_a_suppression() -> None:
+    source = (
+        "import sys\n\n"
+        "if '_toy' not in sys.modules:\n"
+        "    sys.modules['_toy'] = object()\n"
+        "toy = sys.modules['_toy']\n\n\n"
+        "def test_a1_one() -> None:\n    assert toy is not None\n"
     )
     assert burndown.suppressions_in(source, "sample.py") == ()
 

@@ -124,11 +124,15 @@ SUPPRESSING_CALLS = frozenset(
         "pytest.xfail",
         "pytest.skip",
         "pytest.importorskip",
+        "unittest.SkipTest",
+        "unittest.case.SkipTest",
+        "SkipTest",
         "xfail",
         "skip",
     }
 )
 PYTEST_SUPPRESSORS = frozenset({"pytest.xfail", "pytest.skip", "pytest.importorskip"})
+UNITTEST_SUPPRESSORS = frozenset({"unittest.SkipTest", "unittest.case.SkipTest"})
 SAFE_PYTEST_CALLS = frozenset({"pytest.approx", "pytest.fail", "pytest.raises"})
 DYNAMIC_NAMESPACE_REFERENCES = frozenset(
     {
@@ -149,7 +153,6 @@ DYNAMIC_NAMESPACE_REFERENCES = frozenset(
         "builtins.setattr",
         "builtins.__import__",
         "importlib.import_module",
-        "sys.modules",
     }
 )
 
@@ -211,6 +214,24 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
             and parent.func is child
             and dotted(child) in SAFE_PYTEST_CALLS
         )
+
+    def unsafe_sys_modules_reference(node: ast.expr) -> bool:
+        """Allow only the suite's literal ``_toy`` module-loader accesses."""
+
+        if dotted(node) != "sys.modules":
+            return False
+        parent = parents.get(node)
+        if isinstance(parent, ast.Subscript) and parent.value is node:
+            return not (
+                isinstance(parent.slice, ast.Constant) and parent.slice.value == "_toy"
+            )
+        if isinstance(parent, ast.Compare):
+            operands = (parent.left, *parent.comparators)
+            return not any(
+                isinstance(operand, ast.Constant) and operand.value == "_toy"
+                for operand in operands
+            )
+        return True
 
     class ModuleBindingScan(ast.NodeVisitor):
         """Find bindings executed in the module namespace, not function bodies."""
@@ -328,6 +349,15 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
                 "import pytest itself"
             )
         if (
+            isinstance(node, ast.ImportFrom)
+            and (node.module or "").startswith("unittest")
+            and any(alias.name == "SkipTest" for alias in node.names)
+        ):
+            problems.append(
+                f"{file}: importing unittest SkipTest directly or under an alias "
+                "is not allowed"
+            )
+        if (
             isinstance(node, ast.Call)
             and dotted(node.func).endswith("param")
             and any(keyword.arg == "marks" for keyword in node.keywords)
@@ -339,6 +369,16 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
         if isinstance(node, ast.Attribute) and dotted(node) in PYTEST_SUPPRESSORS:
             problems.append(
                 f"{file}: references {dotted(node)}, whose result could be aliased"
+            )
+        if (
+            isinstance(node, ast.Attribute) and dotted(node) in UNITTEST_SUPPRESSORS
+        ) or (
+            isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node.id == "SkipTest"
+        ):
+            problems.append(
+                f"{file}: references {dotted(node)}, which suppresses a test result"
             )
         if (
             isinstance(node, ast.Name)
@@ -355,7 +395,10 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
         if (
             isinstance(node, ast.Name | ast.Attribute)
             and isinstance(node.ctx, ast.Load)
-            and dynamic_name in DYNAMIC_NAMESPACE_REFERENCES
+            and (
+                dynamic_name in DYNAMIC_NAMESPACE_REFERENCES
+                or unsafe_sys_modules_reference(node)
+            )
         ):
             problems.append(
                 f"{file}: dynamic module namespace access through "

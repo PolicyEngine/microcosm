@@ -108,9 +108,15 @@ follows it.
 - A final read-only adversarial audit found that mutating
   `sys.modules[__name__].__dict__` through `update` or `setdefault` could still
   install an imported `pytestmark` without a scanner finding. Both variants
-  reproduced as empty suppression results; any access to `sys.modules` now
-  fails closed as a dynamic module namespace, and the focused parametrized
-  regressions pass.
+  reproduced as empty suppression results. Nonliteral/current-module
+  `sys.modules` access now fails closed while the acceptance suite's existing
+  literal `_toy` loader remains allowed; the focused parametrized regressions
+  and actual burndown verification pass.
+- The same audit found direct and imported `unittest.SkipTest` runtime raises
+  were honored by pytest but produced empty suppression results. The scanner
+  now rejects the public and `unittest.case` runtime spellings plus every
+  direct-import alias, including raising the exception class without calling
+  it; all three new regression cases pass.
 - The first full required graph-plus-fit run reached 100% with one failure:
   frozen acceptance B still asserts the pre-amendment-17 `KernelContext` field
   set and omits the already-locked `numerics` field. The same contradiction is
