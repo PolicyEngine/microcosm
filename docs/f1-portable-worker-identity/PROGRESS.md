@@ -94,6 +94,10 @@ focused green; documentation and full verification are in progress on
   review: the authenticated pool's worker schema/digest/audit receipt is now
   required in `exact_k_ladder.pool` and therefore survives into both build and
   release manifests.
+- Corrected installed-wheel source discovery so only the `microcosm` namespace
+  roots are treated as internal code; neighboring site-packages remain in the
+  installed RECORD closure. The source and external-import closure now come
+  from one read rather than two potentially different filesystem snapshots.
 
 ## Next
 

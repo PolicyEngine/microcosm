@@ -4247,6 +4247,43 @@ def test_worker_transitive_source_identity_includes_package_initializers(
     assert imports_after != imports_before
 
 
+def test_worker_source_index_stays_inside_installed_namespace_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    site_packages = tmp_path / "site-packages"
+    namespace_root = site_packages / "microcosm"
+    worker_source = namespace_root / "build" / "us_runtime" / "puf_qrf_worker.py"
+    neighboring_package = site_packages / "packaging" / "__init__.py"
+    worker_source.parent.mkdir(parents=True)
+    neighboring_package.parent.mkdir(parents=True)
+    worker_source.write_text("import packaging\n", encoding="utf-8")
+    neighboring_package.write_text("NEIGHBOR = True\n", encoding="utf-8")
+    monkeypatch.setattr(
+        worker_identity_module.importlib.util,
+        "find_spec",
+        lambda name: (
+            SimpleNamespace(submodule_search_locations=(namespace_root,))
+            if name == "microcosm"
+            else None
+        ),
+    )
+
+    index = worker_identity_module._module_source_index()
+
+    assert index == {
+        worker_identity_module.PRIMARY_QRF_WORKER_MODULE: worker_source.resolve()
+    }
+    internal, external = worker_identity_module._source_imports(
+        worker_identity_module.PRIMARY_QRF_WORKER_MODULE,
+        worker_source,
+        worker_source.read_bytes(),
+        index=index,
+    )
+    assert internal == set()
+    assert external == {"packaging"}
+
+
 def test_worker_transitive_source_identity_binds_imported_package_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

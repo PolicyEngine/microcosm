@@ -200,17 +200,14 @@ def _module_source_index() -> dict[str, Path]:
         raise RuntimeError("Cannot locate installed microcosm source packages.")
     # These are the namespace roots the running interpreter will actually use;
     # a convenient checkout found via CWD must never substitute different code.
-    source_roots = sorted(
-        {
-            Path(location).resolve().parent
-            for location in namespace.submodule_search_locations
-        }
+    namespace_roots = sorted(
+        {Path(location).resolve() for location in namespace.submodule_search_locations}
     )
     result: dict[str, Path] = {}
-    for source_root in source_roots:
-        for source in sorted(source_root.rglob("*.py")):
-            relative = source.relative_to(source_root)
-            parts = list(relative.with_suffix("").parts)
+    for namespace_root in namespace_roots:
+        for source in sorted(namespace_root.rglob("*.py")):
+            relative = source.relative_to(namespace_root)
+            parts = ["microcosm", *relative.with_suffix("").parts]
             if parts[-1] == "__init__":
                 parts.pop()
             if not parts:
@@ -408,7 +405,9 @@ def _record_hash_hex(value: str, *, boundary: str) -> str:
     return decoded.hex()
 
 
-def _installed_distributions_record_sha256() -> str:
+def _installed_distributions_record_sha256(
+    external_roots: Sequence[str],
+) -> str:
     by_name: dict[str, metadata.Distribution] = {}
     package_to_distributions = metadata.packages_distributions()
     for distribution in metadata.distributions():
@@ -416,7 +415,6 @@ def _installed_distributions_record_sha256() -> str:
         if raw_name:
             by_name[canonicalize_name(raw_name)] = distribution
 
-    _, _, external_roots = _worker_source_identity()
     pending: set[str] = set()
     unavailable_roots: list[str] = []
     resolved_roots: list[tuple[str, tuple[str, ...], tuple[Path, ...]]] = []
@@ -677,8 +675,8 @@ def primary_qrf_worker_semantic_identity(
         }:
             raise ValueError("Primary-QRF worker lock is not approved.")
     executable = Path(sys.executable)
-    module_sha256, imports_sha256, _ = _worker_source_identity()
-    record_sha256 = _installed_distributions_record_sha256()
+    module_sha256, imports_sha256, external_roots = _worker_source_identity()
+    record_sha256 = _installed_distributions_record_sha256(external_roots)
     environment_code_sha256 = _canonical_sha256(
         {
             "worker_module_source_sha256": module_sha256,
