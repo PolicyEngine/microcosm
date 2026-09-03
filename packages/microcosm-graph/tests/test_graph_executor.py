@@ -1284,6 +1284,48 @@ def test_entrant_expand_rejects_mutated_copied_carried_values(
     assert calls[claim.kernel] == 0
 
 
+def test_group_entrant_expand_manifest_json_carries_mass_record(
+    tmp_path: Path,
+) -> None:
+    expand, claim = toy.entrant_expand_node()
+    graph = toy.small_graph(nodes=(toy.CREATE, expand, claim))
+    sources = {"survey": toy.copy_source(tmp_path / "source")}
+    registry = toy.toy_registry()
+    store = ContentStore(tmp_path / "store")
+    cold = toy.run_toy(
+        graph,
+        tmp_path / "cold",
+        sources=sources,
+        registry=registry,
+        store=store,
+    )
+    warm = toy.run_toy(
+        graph,
+        tmp_path / "warm",
+        sources=sources,
+        registry=registry,
+        store=store,
+    )
+
+    for run in (cold, warm):
+        ledger = run.manifest.mass_ledger(expand.id)[-1]
+        document = json.loads(run.manifest.to_json())
+        mass = document["nodes"][expand.id]["receipt"]["mass"]
+        assert mass == {
+            "policy": ledger.policy,
+            "before": ledger.before_total,
+            "after": ledger.after_total,
+            "stratum_before": {
+                str(key): value for key, value in ledger.before_by_stratum
+            },
+            "stratum_after": {
+                str(key): value for key, value in ledger.after_by_stratum
+            },
+        }
+        assert mass["after"] - mass["before"] == 125.0
+    assert warm.manifest.nodes[expand.id].hit
+
+
 def test_expand_id_overlay_is_rejected_without_committing_cache(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 
