@@ -192,19 +192,29 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         # own; the direct call produced only what direct.csv holds, so those
         # are the cells compared. A weight transition is compared through the
         # weight artifact under the ``<entity>.weights`` column.
-        direct = _direct_table(case)
-        # A platform-bitwise kernel's bytes are asserted only on the platform
-        # that produced the pins (amendment 16); elsewhere the property that
-        # holds is identity partitioning: the node key carries the platform,
-        # so a shared store can never serve the pinned platform's artifact.
-        off_platform = (
-            pins["numeric"] == "platform_bitwise"
-            and pins["platform"] != platform_fingerprint()
+        # A platform-bitwise kernel's bytes are asserted on every platform
+        # that carries a pin: the authoring platform and each CI platform
+        # (amendment 16). Elsewhere the property that holds is identity
+        # partitioning: the node key carries the platform, so the local key
+        # differs from every pinned platform's key and a shared store can
+        # never serve another platform's artifact.
+        platforms = dict(pins.get("platforms", {}))
+        platforms.setdefault(
+            pins["platform"], {"node_key": pins["node_key"], "direct": "direct.csv"}
         )
+        local = platforms.get(platform_fingerprint())
+        off_platform = pins["numeric"] == "platform_bitwise" and local is None
         if off_platform:
-            assert node.key != pins["node_key"]
+            assert node.key not in {entry["node_key"] for entry in platforms.values()}
+            direct = _direct_table(case)
         else:
-            assert node.key == pins["node_key"]
+            pinned = (
+                local
+                if pins["numeric"] == "platform_bitwise"
+                else platforms[pins["platform"]]
+            )
+            assert node.key == pinned["node_key"]
+            direct = _direct_table(case, pinned["direct"])
         exposed = 0
         for cell, key in node.artifacts.items():
             label = f"{cell[0]}.{cell[1]}"
@@ -226,10 +236,10 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         assert exposed, f"{name}: the fixture exposed nothing to compare"
 
 
-def _direct_table(case: Path):
+def _direct_table(case: Path, name: str = "direct.csv"):
     import pandas as pd
 
-    return pd.read_csv(case / "direct.csv", float_precision="round_trip")
+    return pd.read_csv(case / name, float_precision="round_trip")
 
 
 @pytest.mark.requires_uk

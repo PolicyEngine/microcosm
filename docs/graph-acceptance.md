@@ -45,7 +45,7 @@ its owner.
 | B3 | **Storage-preserving patch.** Patching owned positions preserves the incumbent column's dtype (nullable `boolean` stays nullable `boolean`; float bits including negative zero survive) and leaves every non-owned position byte-identical. This is the WIC guard, made structural. | leg 2 §3.3 | same |
 | B4 | **Inputs are immutable.** A kernel receives read-only views; an in-place write raises inside the kernel and the node fails. | leg 1 finding 5 | same |
 | B5 | **Null means absence.** A node declares each owned cell as *produced* or *absent*. A kernel writing a non-null value into an absent-declared cell is rejected. | `DESIGN.md:128-134` | same |
-| B6 | **Entrants are declared.** An `EXPAND` node with `entrants=True` may return rows with null lineage; the executor requires the kernel to materialize every carried column for such a row (dtype-checked), records them as entrants rather than copies in the lineage receipt, and refuses null lineage on a node without the declaration. `entrants=True` with `mass='conserve'` is a compile error. | Dynamics: immigrant cohorts (microcosm-dynamics#412, #218) | Max's session; amendment 11 |
+| B6 | **Entrants are declared.** An `EXPAND` node with `entrants=True` may return rows with null lineage; the executor requires the kernel to materialize every carried column for such a row (dtype-checked), records them as entrants rather than copies in the lineage receipt, and refuses null lineage on a node without the declaration. `entrants=True` with `mass='conserve'` is a compile error. An entrant needs a design anchor: it is admitted only while the weighted entity still carries `design` weights, and its admitted weight becomes that anchor; after any reweight the executor refuses entrant rows on that entity, because a derived weight has no design origin to record (ruled 2026-09-03, #847 gate round 3). | Dynamics: immigrant cohorts (microcosm-dynamics#412, #218) | Max's session; amendment 11 |
 | B7 | **Entrant persons carry their stratum.** An entrant row on the person entity takes its stratum from `KernelResult.strata` (indexed by its new id); an entrant person absent from it, a label for a copied or incumbent person, or a label for an unknown id rejects the node. Entrant persons join incumbent or entrant groups through the materialized membership columns, and the mass ledger counts them from the node that admits them. | Dynamics: immigrant cohorts are persons (microcosm-dynamics#412, #218) | Max's session; amendment 14 |
 
 ## C. Seeds and factorization
@@ -114,7 +114,7 @@ hand-drawn, so they stay true as the code moves.
 
 | Id | Property | Closes | Owner |
 |---|---|---|---|
-| H1 | **Kernel parity.** Each wrapped legacy kernel (QRF fit and draw via `microcosm-fit`, calibrate via `microcosm-calibrate`, simulate via a `RulesEngine`) produces byte-identical output to the direct call on a pinned fixture and seed. | #378 step 3 | Max's session |
+| H1 | **Kernel parity.** Each wrapped legacy kernel (QRF fit and draw via `microcosm-fit`, calibrate via `microcosm-calibrate`, simulate via a `RulesEngine`) produces byte-identical output to the direct call on a pinned fixture and seed. A platform-bitwise kernel (amendment 16) is byte-identical within a platform: its fixture carries one pin per platform CI runs on plus the authoring platform, bytes are asserted on each of those, and on any other platform the node key must differ from every pinned key (identity partitioning). | #378 step 3 | Max's session |
 | H2 | **UK spine parity.** The UK 26-stage spine expressed as a graph reproduces the current spine's `uk_frame_content_identity` on the fixture. Both sides run all 26 transforms from the fixture's raw tables in the test's own process, the graph through a CREATE kernel bound to the root transform, and nothing is pinned: the root transform's household weights differ by one ulp between machines (2026-09-02: two of 135 households on x86 versus this Mac), which the LCFS raking and every weight split then inherit. Stage order is derived from declared `consumes`; the hand-maintained `_STAGE_NAMES` tuple is deleted. | F12, F8 | María |
 | H3 | **US post-transfer parity.** The stacked spine's derive → seed → simulate subgraph reproduces a pinned fixture output. | #378 step 3 | Max's session, later |
 
@@ -209,9 +209,13 @@ Amendments so far (each re-locked):
     kernel add rows that copy no base row: their lineage is null, the
     kernel materializes every carried column for them, the executor
     records them as entrants, and the node's mass policy cannot be
-    `conserve`. Raised by the dynamics program (immigrant cohorts through
-    the scheduled-entries seam, microcosm-dynamics#412 / #218); Max ruled
-    go 2026-09-02; adopted 2026-09-02.
+    `conserve`. An entrant is admitted only while the weighted entity
+    carries `design` weights (its admitted weight is its design anchor);
+    after a reweight the executor refuses entrant rows on that entity,
+    since a derived weight has no design origin to record. Raised by the
+    dynamics program (immigrant cohorts through the scheduled-entries seam,
+    microcosm-dynamics#412 / #218); Max ruled go 2026-09-02; adopted
+    2026-09-02; the design-anchor rule was stated 2026-09-03.
 12. **Mass is partitioned.** `Graph.mass_partition = (entity, column)`
     partitions mass accounting (per stratum within each partition value;
     `conserve` per partition). Every `CREATE` node declares the column

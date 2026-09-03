@@ -2385,6 +2385,126 @@ def test_corrupt_cache_and_unavailable_codec_abort_before_recompute(
     assert sum(_calls(isolated_registry).values()) == 0
 
 
+def test_entrants_need_a_design_anchor_after_a_reweight(tmp_path: Path) -> None:
+    """B6 / amendment 11: an entrant is admitted only while weights are design."""
+
+    source = _source_path(tmp_path / "source")
+
+    def reweight(context: KernelContext) -> KernelResult:
+        before = context.weights["household"].values
+        return KernelResult(
+            weights=Weights(before * 2, WeightKind.IMPORTANCE),
+            receipt={
+                "mass": {
+                    "policy": "free",
+                    "before": 4.0,
+                    "after": 8.0,
+                    "stratum_before": {"a": 2.0, "b": 2.0},
+                    "stratum_after": {"a": 4.0, "b": 4.0},
+                }
+            },
+        )
+
+    def admit(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1], index=pd.Index([4], name="person_id"), dtype="int64"
+                ),
+                "household": pd.Series(
+                    [pd.NA], index=pd.Index([30], name="household_id"), dtype="Int64"
+                ),
+            },
+            columns={
+                ("person", "person_household_id"): pd.Series(
+                    [10, 10, 20, 30],
+                    index=pd.Index([1, 2, 3, 4], name="person_id"),
+                    dtype="int64",
+                ),
+                ("household", "size"): pd.Series(
+                    [2, 1, 1],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            weights=Weights(
+                np.array([2.0, 4.0, 1.0], dtype=np.float64), WeightKind.IMPORTANCE
+            ),
+        )
+
+    pool = Node(
+        "pool",
+        "reweight@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="survey",
+        inputs=(Slice("household", ("size",)),),
+        weights=WeightTransition("household", "importance", mass="free"),
+        mass="free",
+    )
+    entrant = Node(
+        "admit_household",
+        "admit@1",
+        structural=StructuralDelta.EXPAND,
+        base=pool.id,
+        params={
+            "expand_cells": (
+                ("person", "person_household_id", "int64"),
+                ("household", "size", "int64"),
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="free",
+        entrants=True,
+    )
+    registry = _registry(
+        extra=_Kernel(
+            pool.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC, structural=StructuralDelta.REWEIGHT
+            ),
+            reweight,
+        )
+    )
+    registry.register(
+        _Kernel(
+            entrant.kernel,
+            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND),
+            admit,
+        )
+    )
+
+    def claim_size(context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "size"): pd.Series(
+                    household["size"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="int64",
+                )
+            }
+        )
+
+    claim = Node(
+        "claim_size",
+        "claim@1",
+        outputs=(Owned("household", "size", "int64"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=entrant.id,
+    )
+    registry.register(
+        _Kernel(claim.kernel, Capabilities(Determinism.DETERMINISTIC), claim_size)
+    )
+    with pytest.raises(NodeRejected, match=r"cannot anchor new 'household' ids"):
+        _run(
+            Graph("toy", (SOURCE,), (CREATE, pool, entrant, claim)),
+            source,
+            ContentStore(tmp_path / "store"),
+            registry,
+        )
+
+
 def test_structural_reweight_uses_explicit_kind_and_mass_receipt(
     tmp_path: Path,
 ) -> None:
