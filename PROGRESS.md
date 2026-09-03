@@ -2,7 +2,7 @@
 
 ## State
 
-F2 is implemented and focused-green; F3 is next. Work remains in progress on
+F2 and F3 are implemented and focused-green; F4 is next. Work remains in progress on
 branch `fix-847-r2`, based exactly on dispatched head
 `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
 first and failed because the mandated no-network environment cannot resolve
@@ -32,10 +32,26 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
   `unreached` reason, and serialization never invents the absent bound.
 - Captured the F2 red state with the two named pytest nodes (both failed), then
   passed those nodes plus the manifest, explain/view, F-gate, and replay suites.
+- F3: replaced single-producer tolerance lookup with causal per-coordinate
+  writer chains spanning the producer, entrant EXPAND materializers, rewrites,
+  and claimants; readers receive the componentwise-loosest declared bound and
+  claimants now receive their claimed coordinates in `KernelContext`.
+- Recorded dotted-coordinate `tolerance_writers` maps in receipt capabilities
+  and in evidence that reports a tolerance, including mass-partition columns;
+  cold and warm-cache provenance agree.
+- Kept the upstream chain for masked owners that only write selected rows, and
+  refined entrant EXPAND attribution from each run's lineage so a declaration
+  with no actual entrant rows cannot invent a writer.
+- Made writer provenance part of cache validation: pre-contract receipts are
+  named misses, `resume='require'` refuses them before kernel execution, and
+  `resume='auto'` recomputes and atomically replaces the stale node object.
+- Captured all four F3 regression cases red, then passed the parametrized
+  producer/EXPAND/claimant test, partition and masked-writer tests, stale-cache
+  migration test, full executor suite, and C5 acceptance suite (46 tests).
 
 ## Next
 
-- Implement and regression-test F3, F4, F5, F7, and F10 as one commit per
+- Implement and regression-test F4, F5, F7, and F10 as one commit per
   finding, maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
 

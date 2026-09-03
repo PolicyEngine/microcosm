@@ -386,6 +386,36 @@ def _structural_columns(frame: Frame, entity: str) -> list[str]:
     return columns
 
 
+def _materialized_expand_coordinates(node: Node) -> frozenset[tuple[str, str]]:
+    """Return and validate the carried EXPAND cells an ordinary node claims."""
+
+    raw_materialized = node.params.get("materialized_expand_outputs", ())
+    if not isinstance(raw_materialized, tuple) or any(
+        not isinstance(value, str) or "." not in value for value in raw_materialized
+    ):
+        raise NodeRejected(
+            f"Node {node.id!r} params['materialized_expand_outputs'] must be a "
+            "tuple of 'entity.column' strings."
+        )
+    materialized: set[tuple[str, str]] = set()
+    owned_by_coordinate = {
+        (output.entity, output.column): output for output in node.outputs
+    }
+    for value in raw_materialized:
+        entity, column = value.split(".", 1)
+        coordinate = (entity, column)
+        output = owned_by_coordinate.get(coordinate)
+        if output is None or output.rewrite:
+            raise NodeRejected(
+                f"Node {node.id!r} materialized EXPAND output {value!r} must be "
+                "one of its non-rewrite owned cells."
+            )
+        materialized.add(coordinate)
+    if len(materialized) != len(raw_materialized):
+        raise NodeRejected(f"Node {node.id!r} repeats a materialized EXPAND output.")
+    return frozenset(materialized)
+
+
 def _project_context(
     node: Node,
     population: Population | None,
@@ -411,35 +441,15 @@ def _project_context(
     for slice_ in node.inputs:
         slices.setdefault(slice_.entity, []).append(slice_)
 
-    raw_materialized = node.params.get("materialized_expand_outputs", ())
-    if not isinstance(raw_materialized, tuple) or any(
-        not isinstance(value, str) or "." not in value for value in raw_materialized
-    ):
-        raise NodeRejected(
-            f"Node {node.id!r} params['materialized_expand_outputs'] must be a "
-            "tuple of 'entity.column' strings."
-        )
-    materialized: set[tuple[str, str]] = set()
-    owned_by_coordinate = {
-        (output.entity, output.column): output for output in node.outputs
-    }
-    for value in raw_materialized:
-        entity, column = value.split(".", 1)
+    materialized = _materialized_expand_coordinates(node)
+    for entity, column in materialized:
         coordinate = (entity, column)
-        output = owned_by_coordinate.get(coordinate)
-        if output is None or output.rewrite:
-            raise NodeRejected(
-                f"Node {node.id!r} materialized EXPAND output {value!r} must be "
-                "one of its non-rewrite owned cells."
-            )
         if population.owners.get(coordinate) != population.version:
             raise NodeRejected(
-                f"Node {node.id!r} materialized EXPAND output {value!r} was not "
+                f"Node {node.id!r} materialized EXPAND output "
+                f"{entity}.{column!s} was not "
                 f"installed by population version {population.version!r}."
             )
-        materialized.add(coordinate)
-    if len(materialized) != len(raw_materialized):
-        raise NodeRejected(f"Node {node.id!r} repeats a materialized EXPAND output.")
 
     tables: dict[str, pd.DataFrame] = {}
     entity_masks: dict[str, np.ndarray] = {}
@@ -521,8 +531,43 @@ def _input_tolerances(
     compiled: CompiledGraph,
     node_id: str,
     kernels: KernelRegistry,
+    *,
+    writers: Mapping[tuple[str, str], tuple[str, ...]] | None = None,
 ) -> Mapping[tuple[str, str], Tolerance | None]:
-    """Resolve explicit inputs and rewrite incumbents as compilation does."""
+    """Resolve each read coordinate to the loosest tolerance of its writers."""
+
+    writer_map = _input_writers(compiled, node_id) if writers is None else writers
+    resolved: dict[tuple[str, str], Tolerance | None] = {}
+    for coordinate, writer_ids in writer_map.items():
+        bounds = [
+            tolerance
+            for writer_id in writer_ids
+            if (
+                tolerance := kernels.get(
+                    compiled.graph.node(writer_id).kernel
+                ).capabilities.tolerance
+            )
+            is not None
+        ]
+        resolved[coordinate] = (
+            None
+            if not bounds
+            else Tolerance(
+                rtol=max(bound.rtol for bound in bounds),
+                atol=max(bound.atol for bound in bounds),
+                ulps=max(bound.ulps for bound in bounds),
+            )
+        )
+    return MappingProxyType(resolved)
+
+
+def _input_writers(
+    compiled: CompiledGraph,
+    node_id: str,
+    *,
+    receipts: Mapping[str, NodeReceipt] | None = None,
+) -> Mapping[tuple[str, str], tuple[str, ...]]:
+    """Return causal writer lists for explicit, rewrite, and claim reads."""
 
     node = compiled.graph.node(node_id)
     if node.structural is StructuralDelta.CREATE:
@@ -533,48 +578,121 @@ def _input_tolerances(
         else node.base
     )
     assert input_version is not None
-    rewritten = {
+    coordinates = {
         (owned.entity, owned.column) for owned in node.outputs if owned.rewrite
     }
-    coordinates = rewritten | {
+    coordinates.update(_materialized_expand_coordinates(node))
+    coordinates.update(
         (slice_.entity, column) for slice_ in node.inputs for column in slice_.columns
-    }
-    resolved: dict[tuple[str, str], Tolerance | None] = {}
+    )
+    writers: dict[tuple[str, str], tuple[str, ...]] = {}
     for coordinate in sorted(coordinates):
         entity, column = coordinate
-        if coordinate in rewritten:
-            # The incumbent a rewrite receives was produced somewhere in the
-            # version's base chain, never in the version the rewrite opens.
-            start = (
-                compiled.graph.node(input_version).base
-                if node.structural is StructuralDelta.NONE
-                else input_version
-            )
-        else:
-            start = input_version
-        assert start is not None
-        producer = compiled.graph.node(_producer_of(compiled, start, entity, column))
-        resolved[coordinate] = kernels.get(producer.kernel).capabilities.tolerance
-    return MappingProxyType(resolved)
+        writers[coordinate] = _writers_of(
+            compiled,
+            input_version,
+            entity,
+            column,
+            exclude_node=node.id,
+            receipts=receipts,
+        )
+    return MappingProxyType(writers)
 
 
-def _producer_of(
-    compiled: CompiledGraph, version: str, entity: str, column: str
-) -> str:
-    """The node whose kernel wrote ``entity.column`` as seen from ``version``.
+def _expand_writer_coordinates(node: Node) -> frozenset[tuple[str, str]]:
+    """Coordinates an entrant EXPAND declares it will materialize."""
 
-    A structural version carries the columns it does not own from its base,
-    so the tolerance a reader sees is the producer's, not the carrier's: a
-    bitwise ``FILTER`` in between neither tightens nor erases it (C5).
+    if node.structural is not StructuralDelta.EXPAND or not node.entrants:
+        return frozenset()
+    raw_cells = node.params.get("expand_cells", ())
+    if not isinstance(raw_cells, tuple):
+        return frozenset()
+    return frozenset(
+        (entry[0], entry[1])
+        for entry in raw_cells
+        if isinstance(entry, tuple)
+        and len(entry) == 3
+        and isinstance(entry[0], str)
+        and isinstance(entry[1], str)
+    )
+
+
+def _writers_of(
+    compiled: CompiledGraph,
+    version: str,
+    entity: str,
+    column: str,
+    *,
+    exclude_node: str | None = None,
+    receipts: Mapping[str, NodeReceipt] | None = None,
+) -> tuple[str, ...]:
+    """All nodes that wrote rows of ``entity.column`` as seen from ``version``.
+
+    The result is in causal order: the originating producer, entrant EXPAND
+    materializers, rewrites, and materialization claimants. Structural nodes
+    that only carry the coordinate do not appear.
     """
+
+    coordinate = (entity, column)
+    newest_first: list[str] = []
+
+    def add(writer_id: str) -> None:
+        if writer_id != exclude_node and writer_id not in newest_first:
+            newest_first.append(writer_id)
+
     while True:
-        owner = compiled.owners.get((version, entity, column))
-        if owner is not None:
-            return owner
         holder = compiled.graph.node(version)
+        owner_id = compiled.owners.get((version, entity, column))
+        if owner_id is not None:
+            owner = compiled.graph.node(owner_id)
+            output = next(
+                owned
+                for owned in owner.outputs
+                if (owned.entity, owned.column) == coordinate
+            )
+            inherited = (
+                output.rewrite
+                or output.rows != ROWS_ALL
+                or coordinate in _materialized_expand_coordinates(owner)
+            )
+            add(owner_id)
+            if not inherited:
+                break
+
+        if _expand_wrote_entrant_rows(holder, coordinate, receipts):
+            add(holder.id)
         if holder.structural is StructuralDelta.CREATE or holder.base is None:
-            return version
+            break
         version = holder.base
+    return tuple(reversed(newest_first))
+
+
+def _expand_wrote_entrant_rows(
+    node: Node,
+    coordinate: tuple[str, str],
+    receipts: Mapping[str, NodeReceipt] | None,
+) -> bool:
+    """Whether this EXPAND actually materialized entrant rows for a cell."""
+
+    if coordinate not in _expand_writer_coordinates(node):
+        return False
+    if receipts is None:
+        # Static callers have no runtime lineage with which to refine the
+        # entrant declaration.
+        return True
+    node_receipt = receipts.get(node.id)
+    if node_receipt is None:
+        return False
+    raw_expand = node_receipt.receipt.get("expand")
+    if not isinstance(raw_expand, Mapping):
+        return False
+    entries = raw_expand.get(coordinate[0])
+    if not isinstance(entries, tuple | list):
+        return False
+    return any(
+        isinstance(entry, tuple | list) and len(entry) == 2 and entry[1] is None
+        for entry in entries
+    )
 
 
 def _validate_series(
@@ -1252,6 +1370,65 @@ def _load_record(
     )
 
 
+def _tolerance_writer_payload(
+    writers: Mapping[tuple[str, str], tuple[str, ...]],
+) -> dict[str, list[str]]:
+    return {
+        f"{entity}.{column}": list(writer_ids)
+        for (entity, column), writer_ids in writers.items()
+    }
+
+
+def _require_tolerance_writer_receipt(
+    node: Node,
+    record: Mapping[str, object],
+    writers: Mapping[tuple[str, str], tuple[str, ...]],
+    *,
+    exact: bool,
+) -> None:
+    """Reject cache receipts predating or disagreeing with writer provenance."""
+
+    expected = _tolerance_writer_payload(writers)
+    if not expected:
+        return
+    raw_receipt = record.get("receipt")
+    if not isinstance(raw_receipt, Mapping):
+        raise StoreCorrupt(f"Cached node {node.id!r} receipt is malformed.")
+    raw_capabilities = raw_receipt.get("capabilities")
+    actual = (
+        raw_capabilities.get("tolerance_writers")
+        if isinstance(raw_capabilities, Mapping)
+        else None
+    )
+    expected_coordinates = set(expected)
+    matches = (
+        actual == expected
+        if exact
+        else (isinstance(actual, Mapping) and set(actual) == expected_coordinates)
+    )
+    if not matches:
+        raise StoreMiss(
+            f"Cached node {node.id!r} has stale tolerance_writers provenance."
+        )
+
+    evidence = raw_receipt.get("evidence")
+    if isinstance(evidence, Mapping) and "tolerance" in evidence:
+        evidence_writers = evidence.get("tolerance_writers")
+        evidence_matches = (
+            evidence_writers == expected
+            if exact
+            else (
+                isinstance(evidence_writers, Mapping)
+                and set(evidence_writers) == expected_coordinates
+            )
+        )
+        if not evidence_matches:
+            raise StoreMiss(
+                f"Cached node {node.id!r} has stale evidence "
+                "tolerance_writers provenance."
+            )
+
+
 def _preflight_record(store: ContentStore, record: Mapping[str, object]) -> None:
     for entry in _record_entries(record, "columns"):
         store.load_column(str(entry.get("key")))
@@ -1469,6 +1646,12 @@ def _preflight_require(
                 kernel_impl_hash=implementations[node_id],
                 capabilities=kernels.get(node.kernel).capabilities,
             )
+            _require_tolerance_writer_receipt(
+                node,
+                record,
+                _input_writers(compiled, node_id),
+                exact=False,
+            )
             _preflight_record(store, record)
         except StoreMiss:
             missing.append(node_id)
@@ -1530,8 +1713,14 @@ def run_graph(
             assert node.base is not None
             incumbent = populations[node.base]
         _validate_population_declaration(node, incumbent)
+        input_writers = _input_writers(compiled, node_id, receipts=receipts)
+        input_tolerances = _input_tolerances(
+            compiled, node_id, kernels, writers=input_writers
+        )
+        tolerance_writers = _tolerance_writer_payload(input_writers)
 
         hit = False
+        replace_stale_record = False
         result: KernelResult | None = None
         record: dict[str, object] | None = None
         manifest_artifacts: dict[tuple[str, str], str] = {}
@@ -1544,6 +1733,15 @@ def run_graph(
                     kernel_impl_hash=implementation,
                     capabilities=kernel.capabilities,
                 )
+                try:
+                    _require_tolerance_writer_receipt(
+                        node, record, input_writers, exact=True
+                    )
+                except StoreMiss:
+                    # This key predates the writer-provenance contract or was
+                    # produced for different runtime entrant lineage.
+                    replace_stale_record = True
+                    raise
                 result, manifest_artifacts = _load_cached_result(
                     store, node, incumbent, record
                 )
@@ -1558,7 +1756,7 @@ def run_graph(
                 incumbent,
                 key=key,
                 sources=source_paths,
-                tolerances=_input_tolerances(compiled, node_id, kernels),
+                tolerances=input_tolerances,
             )
             before = _context_digest(context)
             try:
@@ -1600,9 +1798,20 @@ def run_graph(
                 "pass" if derived_tier == "certified" else "fail"
             )
             normalized_receipt["gate_ancestry"] = list(gate_ids)
-        normalized_receipt["capabilities"] = _capabilities_projection(
-            kernel.capabilities
-        )
+        receipt_capabilities = _capabilities_projection(kernel.capabilities)
+        if tolerance_writers:
+            receipt_capabilities["tolerance_writers"] = tolerance_writers
+        normalized_receipt["capabilities"] = receipt_capabilities
+        evidence = normalized_receipt.get("evidence")
+        if (
+            tolerance_writers
+            and isinstance(evidence, Mapping)
+            and "tolerance" in evidence
+        ):
+            normalized_receipt["evidence"] = {
+                **evidence,
+                "tolerance_writers": tolerance_writers,
+            }
         updated = _apply_result(
             node,
             result,
@@ -1654,7 +1863,7 @@ def run_graph(
                 population=updated,
                 receipt=cache_receipt,
                 opaque_artifacts=opaque,
-                verify_existing=resume != "forbid",
+                verify_existing=(resume != "forbid" and not replace_stale_record),
             )
 
         assert record is not None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -763,6 +764,112 @@ def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
     ]
 
 
+def test_masked_writer_preserves_upstream_tolerance_provenance(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    producer_tolerance = Tolerance(rtol=1e-5)
+
+    def keep_all(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            keep=pd.Series(True, index=person["person_id"], dtype="bool")
+        )
+
+    def patch_selected(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        selected = person["selected"].to_numpy(dtype=np.bool_)
+        ids = person.loc[selected, "person_id"]
+        return KernelResult(
+            columns={
+                ("person", "income"): pd.Series(
+                    np.array([10.0, 30.0], dtype=np.float64),
+                    index=pd.Index(ids, name="person_id"),
+                    dtype="float64",
+                )
+            }
+        )
+
+    def audit_income(context: KernelContext) -> KernelResult:
+        assert context.tolerances == {("person", "income"): producer_tolerance}
+        return KernelResult(
+            receipt={
+                "outcome": "pass",
+                "evidence": {"tolerance": {"rtol": 1e-5, "atol": 0.0, "ulps": 0}},
+            }
+        )
+
+    create = replace(CREATE, kernel="masked.source@1")
+    boundary = Node(
+        "masked_boundary",
+        "masked.filter@1",
+        inputs=(Slice("person", ("selected",)),),
+        structural=StructuralDelta.FILTER,
+        base=create.id,
+        mass="free",
+    )
+    masked = Node(
+        "masked_income",
+        "masked.writer@1",
+        inputs=(Slice("person", ("selected",)),),
+        outputs=(Owned("person", "income", "float64", rows="selected"),),
+        population=boundary.id,
+    )
+    reader = Node(
+        "audit_masked_income",
+        "masked.gate@1",
+        inputs=(Slice("person", ("income",)),),
+        population=boundary.id,
+    )
+    registry = _registry()
+    for kernel in (
+        _Kernel(
+            create.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                numeric=Numeric.TOLERANCE_BOUND,
+                structural=StructuralDelta.CREATE,
+                tolerance=producer_tolerance,
+            ),
+            _source,
+        ),
+        _Kernel(
+            boundary.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                structural=StructuralDelta.FILTER,
+            ),
+            keep_all,
+        ),
+        _Kernel(
+            masked.kernel,
+            Capabilities(Determinism.DETERMINISTIC),
+            patch_selected,
+        ),
+        _Kernel(
+            reader.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                role=KernelRole.GATE,
+            ),
+            audit_income,
+        ),
+    ):
+        registry.register(kernel)
+
+    manifest = _run(
+        Graph("toy", (SOURCE,), (create, boundary, masked, reader)),
+        source,
+        ContentStore(tmp_path / "store"),
+        registry,
+    )
+    receipt = json.loads(manifest.to_json())["nodes"][reader.id]["receipt"]
+    assert receipt["outcome"] == "pass"
+    assert receipt["evidence"]["tolerance_writers"] == {
+        "person.income": [create.id, masked.id]
+    }
+
+
 def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 
@@ -802,6 +909,217 @@ def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None
     assert manifest.mass_ledger("selected")[-1].operation == "filter"
 
 
+@pytest.mark.parametrize(
+    (
+        "producer_tolerance",
+        "expand_tolerance",
+        "claim_tolerance",
+        "claim_expected",
+        "reader_expected",
+    ),
+    [
+        (
+            Tolerance(rtol=1e-6),
+            None,
+            None,
+            Tolerance(rtol=1e-6),
+            Tolerance(rtol=1e-6),
+        ),
+        (
+            None,
+            Tolerance(atol=2e-6),
+            Tolerance(ulps=3),
+            Tolerance(atol=2e-6),
+            Tolerance(atol=2e-6, ulps=3),
+        ),
+        (
+            Tolerance(rtol=1e-6),
+            Tolerance(atol=2e-6),
+            Tolerance(ulps=3),
+            Tolerance(rtol=1e-6, atol=2e-6),
+            Tolerance(rtol=1e-6, atol=2e-6, ulps=3),
+        ),
+    ],
+    ids=("producer-bound", "expand-and-claim-bound", "componentwise-maximum"),
+)
+def test_entrant_expand_aggregates_all_coordinate_writer_tolerances(
+    tmp_path: Path,
+    producer_tolerance: Tolerance | None,
+    expand_tolerance: Tolerance | None,
+    claim_tolerance: Tolerance | None,
+    claim_expected: Tolerance,
+    reader_expected: Tolerance,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def capabilities(
+        *,
+        structural: StructuralDelta = StructuralDelta.NONE,
+        tolerance: Tolerance | None = None,
+        role: KernelRole = KernelRole.COMPUTE,
+    ) -> Capabilities:
+        if tolerance is None:
+            return Capabilities(
+                Determinism.DETERMINISTIC,
+                structural=structural,
+                role=role,
+            )
+        return Capabilities(
+            Determinism.DETERMINISTIC,
+            numeric=Numeric.TOLERANCE_BOUND,
+            structural=structural,
+            role=role,
+            tolerance=tolerance,
+        )
+
+    def expand_household(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1], index=pd.Index([4], name="person_id"), dtype="int64"
+                ),
+                "household": pd.Series(
+                    [pd.NA],
+                    index=pd.Index([30], name="household_id"),
+                    dtype="Int64",
+                ),
+            },
+            columns={
+                ("person", "person_household_id"): pd.Series(
+                    [10, 10, 20, 30],
+                    index=pd.Index([1, 2, 3, 4], name="person_id"),
+                    dtype="int64",
+                ),
+                ("household", "size"): pd.Series(
+                    [2, 1, 1],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            weights=Weights(
+                np.array([1.0, 2.0, 1.0], dtype=np.float64), WeightKind.DESIGN
+            ),
+        )
+
+    def claim_size(context: KernelContext) -> KernelResult:
+        assert context.tolerances == {("household", "size"): claim_expected}
+        household = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "size"): pd.Series(
+                    household["size"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="int64",
+                )
+            }
+        )
+
+    def report_tolerance(context: KernelContext) -> KernelResult:
+        assert context.tolerances == {("household", "size"): reader_expected}
+        tolerance_payload = {
+            "rtol": reader_expected.rtol,
+            "atol": reader_expected.atol,
+            "ulps": reader_expected.ulps,
+        }
+        household = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "tolerance_verdict"): pd.Series(
+                    ["pass"] * len(household),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="string",
+                )
+            },
+            receipt={
+                "outcome": "pass",
+                "evidence": {"tolerance": tolerance_payload},
+            },
+        )
+
+    create = replace(CREATE, kernel="writer.source@1")
+    expand = Node(
+        "admit_household",
+        "writer.expand@1",
+        structural=StructuralDelta.EXPAND,
+        base=create.id,
+        params={
+            "expand_cells": (
+                ("person", "person_household_id", "int64"),
+                ("household", "size", "int64"),
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+    claim = Node(
+        "claim_size",
+        "writer.claim@1",
+        outputs=(Owned("household", "size", "int64"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=expand.id,
+    )
+    reader = Node(
+        "report_tolerance",
+        "writer.gate@1",
+        inputs=(Slice("household", ("size",)),),
+        outputs=(Owned("household", "tolerance_verdict", "string"),),
+        population=expand.id,
+    )
+    registry = _registry()
+    for kernel in (
+        _Kernel(
+            create.kernel,
+            capabilities(
+                structural=StructuralDelta.CREATE,
+                tolerance=producer_tolerance,
+            ),
+            _source,
+        ),
+        _Kernel(
+            expand.kernel,
+            capabilities(
+                structural=StructuralDelta.EXPAND,
+                tolerance=expand_tolerance,
+            ),
+            expand_household,
+        ),
+        _Kernel(
+            claim.kernel,
+            capabilities(tolerance=claim_tolerance),
+            claim_size,
+        ),
+        _Kernel(
+            reader.kernel,
+            capabilities(role=KernelRole.GATE),
+            report_tolerance,
+        ),
+    ):
+        registry.register(kernel)
+
+    manifest = _run(
+        Graph("toy", (SOURCE,), (create, expand, claim, reader)),
+        source,
+        ContentStore(tmp_path / "store"),
+        registry,
+    )
+    document = json.loads(manifest.to_json())
+    claim_receipt = document["nodes"][claim.id]["receipt"]
+    assert claim_receipt["capabilities"]["tolerance_writers"] == {
+        "household.size": [create.id, expand.id]
+    }
+    reader_receipt = document["nodes"][reader.id]["receipt"]
+    assert reader_receipt["evidence"]["tolerance"] == {
+        "rtol": reader_expected.rtol,
+        "atol": reader_expected.atol,
+        "ulps": reader_expected.ulps,
+    }
+    assert reader_receipt["evidence"]["tolerance_writers"] == {
+        "household.size": [create.id, expand.id, claim.id]
+    }
+
+
 def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     tmp_path: Path,
 ) -> None:
@@ -835,6 +1153,7 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
         )
 
     def claim(context: KernelContext) -> KernelResult:
+        assert context.tolerances == {("household", "is_clone"): None}
         household = context.tables["household"]
         assert set(household) == {"household_id", "is_clone"}
         return KernelResult(
@@ -857,7 +1176,8 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
             "expand_weight_entity": "household",
             "expand_weight_kind": "importance",
         },
-        mass="conserve",
+        mass="free",
+        entrants=True,
     )
     claim_clone = Node(
         "claim_clone",
@@ -868,7 +1188,12 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     )
     expand_kernel = _Kernel(
         clone.kernel,
-        Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND),
+        Capabilities(
+            Determinism.DETERMINISTIC,
+            numeric=Numeric.TOLERANCE_BOUND,
+            structural=StructuralDelta.EXPAND,
+            tolerance=Tolerance(atol=9e-6),
+        ),
         expand,
     )
     claim_kernel = _Kernel(
@@ -886,6 +1211,9 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     assert dict(cold.nodes[clone.id].receipt["expand"]) == {
         "household": ((30, 10),),
         "person": ((4, 1), (5, 2)),
+    }
+    assert cold.nodes[claim_clone.id].receipt["capabilities"]["tolerance_writers"] == {
+        "household.is_clone": ()
     }
     assert cold.population(clone.id).table("person")[
         "person_household_id"
@@ -1043,6 +1371,17 @@ def test_partitioned_graph_accepts_structural_entrant_partition_values(
 
         return run
 
+    partition_tolerance = Tolerance(atol=4e-6)
+
+    def audit_period(context: KernelContext) -> KernelResult:
+        assert context.tolerances == {("household", "period"): partition_tolerance}
+        return KernelResult(
+            receipt={
+                "outcome": "pass",
+                "evidence": {"tolerance": {"rtol": 0.0, "atol": 4e-6, "ulps": 0}},
+            }
+        )
+
     create = replace(
         CREATE,
         kernel="partition.source@1",
@@ -1072,6 +1411,12 @@ def test_partitioned_graph_accepts_structural_entrant_partition_values(
         params={"materialized_expand_outputs": ("household.size",)},
         population=expand.id,
     )
+    period_gate = Node(
+        "audit_period",
+        "gate.partition-tolerance@1",
+        inputs=(Slice("household", ("period",)),),
+        population=expand.id,
+    )
     kernels = (
         _Kernel(
             create.kernel,
@@ -1080,13 +1425,26 @@ def test_partitioned_graph_accepts_structural_entrant_partition_values(
         ),
         _Kernel(
             expand.kernel,
-            Capabilities(Determinism.DETERMINISTIC, structural=StructuralDelta.EXPAND),
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                numeric=Numeric.TOLERANCE_BOUND,
+                structural=StructuralDelta.EXPAND,
+                tolerance=partition_tolerance,
+            ),
             admit_household,
         ),
         _Kernel(
             claim_size.kernel,
             Capabilities(Determinism.DETERMINISTIC),
             pass_through("size"),
+        ),
+        _Kernel(
+            period_gate.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                role=KernelRole.GATE,
+            ),
+            audit_period,
         ),
     )
 
@@ -1099,7 +1457,7 @@ def test_partitioned_graph_accepts_structural_entrant_partition_values(
     graph = Graph(
         "toy",
         (SOURCE,),
-        (create, expand, claim_size),
+        (create, expand, claim_size, period_gate),
         mass_partition=("household", "period"),
     )
     store = ContentStore(tmp_path / "store")
@@ -1115,8 +1473,17 @@ def test_partitioned_graph_accepts_structural_entrant_partition_values(
         ]
         partition = manifest.nodes[expand.id].receipt["mass"]["partition"]  # type: ignore[index]
         assert (partition["entity"], partition["column"]) == ("household", "period")
+        document = json.loads(manifest.to_json())
+        period_receipt = document["nodes"][period_gate.id]["receipt"]
+        assert period_receipt["capabilities"]["tolerance_writers"] == {
+            "household.period": [create.id, expand.id]
+        }
+        assert period_receipt["evidence"]["tolerance_writers"] == {
+            "household.period": [create.id, expand.id]
+        }
     assert warm.nodes[expand.id].hit
     assert warm.nodes[claim_size.id].hit
+    assert warm.nodes[period_gate.id].hit
 
     claim_period = Node(
         "claim_period",
@@ -1543,6 +1910,44 @@ def test_gate_outcome_is_closed_and_gate_exceptions_become_failures(
             ContentStore(tmp_path / "compute"),
             compute_registry,
         )
+
+
+def test_cache_misses_receipt_without_tolerance_writer_provenance(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _graph(leaf=False)
+    registry = _registry()
+    cold = _run(graph, source, store, registry)
+
+    node = graph.node("a")
+    kernel = registry.get(node.kernel)
+    assert isinstance(kernel, _Kernel)
+    assert kernel.calls == 1
+    key = cold.nodes[node.id].key
+    record_key = graph_executor._cache_record_key(key)
+    record = store.load_json(record_key)
+    raw_receipt = record["receipt"]
+    assert isinstance(raw_receipt, dict)
+    receipt_capabilities = raw_receipt["capabilities"]
+    assert isinstance(receipt_capabilities, dict)
+    assert receipt_capabilities.pop("tolerance_writers") == {"person.age": ["survey"]}
+    store.put_json(record_key, record, node_key=key, verify_existing=False)
+
+    with pytest.raises(StoreMiss, match=r"cache misses.*'a'"):
+        _run(graph, source, store, registry, resume="require")
+    assert kernel.calls == 1
+
+    warm = _run(graph, source, store, registry)
+    assert not warm.nodes[node.id].hit
+    assert kernel.calls == 2
+    repaired = store.load_json(record_key)
+    repaired_receipt = repaired["receipt"]
+    assert isinstance(repaired_receipt, dict)
+    repaired_capabilities = repaired_receipt["capabilities"]
+    assert isinstance(repaired_capabilities, dict)
+    assert repaired_capabilities["tolerance_writers"] == {"person.age": ["survey"]}
 
 
 def test_cache_load_misses_when_stored_capabilities_disagree(
