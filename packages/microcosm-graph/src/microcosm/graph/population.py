@@ -2095,6 +2095,7 @@ def _mass_record(
             dict(before_pairs),
             dict(after_pairs),
             label=f"Node {node.id!r} mass='conserve'",
+            missing_as_zero=True,
         )
 
     receipt_mass = result.receipt.get("mass")
@@ -2335,6 +2336,7 @@ def _assert_partition_mass_mapping(
             before.get(partition, {}),
             after.get(partition, {}),
             label=f"{label} partition {_receipt_key(partition)!r}",
+            missing_as_zero=True,
         )
 
 
@@ -2372,19 +2374,30 @@ def _receipt_mass_mapping(
 
 
 def _assert_mass_mapping(
-    expected: Mapping[object, float], observed: Mapping[object, float], *, label: str
+    expected: Mapping[object, float],
+    observed: Mapping[object, float],
+    *,
+    label: str,
+    missing_as_zero: bool = False,
 ) -> None:
-    if set(expected) != set(observed):
+    expected_keys = set(expected)
+    observed_keys = set(observed)
+    if not missing_as_zero and expected_keys != observed_keys:
         raise PopulationError(
             f"{label} changed strata: expected {list(expected)}, got {list(observed)}."
         )
-    for stratum in expected:
-        if not np.isclose(
-            expected[stratum], observed[stratum], rtol=_MASS_RTOL, atol=0.0
-        ):
+    strata = (
+        sorted(expected_keys | observed_keys, key=_receipt_key)
+        if missing_as_zero
+        else expected
+    )
+    for stratum in strata:
+        expected_mass = expected.get(stratum, 0.0)
+        observed_mass = observed.get(stratum, 0.0)
+        if not np.isclose(expected_mass, observed_mass, rtol=_MASS_RTOL, atol=0.0):
             raise PopulationError(
-                f"{label} changed stratum {stratum!r}: {expected[stratum]!r} -> "
-                f"{observed[stratum]!r}."
+                f"{label} changed stratum {stratum!r}: {expected_mass!r} -> "
+                f"{observed_mass!r}."
             )
 
 

@@ -453,6 +453,49 @@ def test_filter_requires_subset_ids_and_records_free_mass() -> None:
         patch(population, conserve, KernelResult(frame=filtered))
 
 
+def test_filter_conserve_allows_removed_zero_mass_partition_support() -> None:
+    base = _frame()
+    person = base.table("person").copy()
+    person["period"] = pd.Series(["zero", "zero", "kept", "kept"], dtype="string")
+    frame = Frame(
+        {"person": person, "household": base.table("household").copy()},
+        base.schema,
+        {
+            "household": Weights(
+                np.array([0.0, 2.0, 3.0], dtype=np.float64), WeightKind.DESIGN
+            )
+        },
+        base.strata,
+    )
+    population = Population.from_frame(frame, "source")
+    filtered = frame.select(np.array([False, False, True, True], dtype=np.bool_))
+    node = Node(
+        "filter_zero_support",
+        "test@1",
+        structural=StructuralDelta.FILTER,
+        base="source",
+        mass="conserve",
+    )
+
+    updated = patch(
+        population,
+        node,
+        KernelResult(frame=filtered),
+        mass_partition=("person", "period"),
+    )
+
+    record = updated.mass_ledger[-1]
+    assert dict(record.before_by_stratum) == {"a": 0.0, "b": 5.0}
+    assert dict(record.after_by_stratum) == {"b": 5.0}
+    assert {
+        partition: dict(strata)
+        for partition, strata in record.before_partitions.items()
+    } == {"kept": {"b": 5.0}, "zero": {"a": 0.0}}
+    assert {
+        partition: dict(strata) for partition, strata in record.after_partitions.items()
+    } == {"kept": {"b": 5.0}}
+
+
 def test_expand_must_retain_every_original_id() -> None:
     population = _population()
     filtered = population.frame.select(
