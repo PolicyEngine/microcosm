@@ -719,10 +719,12 @@ def _validate_expand_lineage(
         source_is_null = lineage.isna().to_numpy(dtype=np.bool_, copy=False)
         nullable_sources = bool(source_is_null.any())
         nullable_source_dtype = getattr(lineage.dtype, "numpy_dtype", None)
+        # A declared-entrants node may always carry a nullable id dtype, even
+        # on a run that admits no entrant; only its numpy dtype must match.
         if targets.dtype != source_ids.dtype or (
             lineage.dtype != source_ids.dtype
             and not (
-                nullable_sources
+                (nullable_sources or node.entrants)
                 and nullable_source_dtype is not None
                 and np.dtype(nullable_source_dtype) == np.dtype(source_ids.dtype)
             )
@@ -1703,6 +1705,22 @@ def _assert_expand_weights(
         raise PopulationError(
             f"EXPAND node {node.id!r} declares unknown weight kind {raw_kind!r}."
         ) from error
+    try:
+        current = population.frame.weights_for(entity)
+    except ValueError:
+        current = None
+    # Weight kinds only move forward (amendment 6); an EXPAND may carry its
+    # base's kind or advance it, never regress it, so a reweighted base can
+    # never be re-declared design to smuggle entrants past the design anchor.
+    forward = (WeightKind.DESIGN, WeightKind.IMPORTANCE, WeightKind.CALIBRATED)
+    if current is not None and forward.index(declared_kind) < forward.index(
+        current.kind
+    ):
+        raise PopulationError(
+            f"EXPAND node {node.id!r} cannot regress {entity!r} weights from "
+            f"{current.kind.value!r} to {raw_kind!r}; weight kinds only move "
+            "forward, and entrants need a design base."
+        )
     assert result.weights is not None
     if result.weights.kind is not declared_kind:
         raise PopulationError(

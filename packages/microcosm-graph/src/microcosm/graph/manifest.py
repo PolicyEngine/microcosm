@@ -37,10 +37,6 @@ _SCHEMA_VERSION = 2
 _LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
-_FRAME_PUBLIC_ATTRIBUTES = frozenset(
-    name for name in dir(Frame) if not name.startswith("_")
-)
-
 
 class PopulationView(Frame):
     """Zero-copy manifest view with entity-name table access.
@@ -50,9 +46,9 @@ class PopulationView(Frame):
     (for example, ``view.household`` is equivalent to
     ``view.entity("household")``). If an entity name collides with a public
     :class:`Frame` attribute such as ``metadata``, shorthand attribute access
-    raises :class:`AttributeError` with guidance instead of returning the
-    unrelated frame member. :meth:`entity` is the reliable accessor for every
-    entity name. The source Frame keeps its original type.
+    returns the Frame member, exactly as it would on a plain Frame; the
+    entity stays reachable through :meth:`entity`, which is the reliable
+    accessor for every entity name. The source Frame keeps its original type.
     """
 
     __slots__ = ()
