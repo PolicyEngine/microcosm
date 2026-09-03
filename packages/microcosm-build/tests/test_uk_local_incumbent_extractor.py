@@ -7,6 +7,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+import pytest
 
 
 def _tool_module():
@@ -25,6 +26,7 @@ def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    pytest.importorskip("tables")
     tool = _tool_module()
     incumbent = tmp_path / "incumbent.h5"
     with pd.HDFStore(incumbent, mode="w") as store:

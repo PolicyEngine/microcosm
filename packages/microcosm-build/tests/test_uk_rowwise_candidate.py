@@ -727,6 +727,7 @@ def test_candidate_engine_surface_reuses_one_resolver(
     monkeypatch,
     tmp_path,
 ) -> None:
+    pytest.importorskip("tables")
     builder = _load_builder_module()
     input_h5 = tmp_path / "staging.h5"
     _write_staging_h5(input_h5)
@@ -784,6 +785,7 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
     monkeypatch,
     tmp_path,
 ) -> None:
+    pytest.importorskip("tables")
     builder = _load_builder_module()
     input_h5 = tmp_path / "staging.h5"
     ladder_path = tmp_path / "ladder.npz"
