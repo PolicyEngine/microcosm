@@ -174,9 +174,16 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
                 "an acceptance file"
             )
     for node in tree.body:
-        if isinstance(node, ast.Assign) and any(
+        assigned_targets: tuple[ast.expr, ...] = ()
+        if isinstance(node, ast.Assign):
+            assigned_targets = tuple(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            assigned_targets = (node.target,)
+        elif isinstance(node, ast.AugAssign):
+            assigned_targets = (node.target,)
+        if any(
             isinstance(target, ast.Name) and target.id == "pytestmark"
-            for target in node.targets
+            for target in assigned_targets
         ):
             problems.append(f"{file}: module-level pytestmark is not allowed")
         if isinstance(node, ast.ClassDef):
@@ -188,6 +195,22 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
             for decorator in node.decorator_list:
                 name = mark_name(decorator)
                 if name is None:
+                    # Pytest and unittest both honor arbitrary decorator
+                    # aliases on collected tests. If the spelling is not a
+                    # direct ``pytest.mark.<name>`` expression, the static
+                    # scanner cannot prove that it is non-suppressing, so the
+                    # acceptance ratchet must fail closed.
+                    if node.name.startswith("test_"):
+                        target = (
+                            decorator.func
+                            if isinstance(decorator, ast.Call)
+                            else decorator
+                        )
+                        spelling = dotted(target) or type(target).__name__
+                        problems.append(
+                            f"{file}::{node.name} carries unrecognized decorator "
+                            f"{spelling!r}, which the ratchet cannot prove safe"
+                        )
                     continue
                 if name not in ALLOWED_MARKS:
                     problems.append(

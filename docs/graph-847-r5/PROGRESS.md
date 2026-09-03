@@ -22,6 +22,12 @@ change has been made yet.
 - Confirmed amendment 17's `NumericScope` interface already exists in frozen
   `kernel.py`, while executor context construction still supplies only the old
   tolerance projection.
+- Reproduced finding 3 with five red parametrized cases: annotated
+  `pytestmark`, an assigned skip alias, and all three `unittest.skip*`
+  decorators returned no suppression problem. The scanner now rejects every
+  decorator on a collected test that it cannot prove is an allowed direct
+  pytest mark, and recognizes annotated/augmented module `pytestmark`
+  assignments. The complete burndown-tool unit file and focused Ruff pass.
 
 ## Next
 

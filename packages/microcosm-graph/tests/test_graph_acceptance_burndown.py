@@ -416,12 +416,32 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "module-level pytestmark",
         ),
         (
+            "import pytest\n\npytestmark: list = [pytest.mark.skip]\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
             "import pytest\n\n\n@pytest.mark.skip\ndef test_a1_one() -> None:\n    assert False\n",
             "carries mark 'skip'",
         ),
         (
+            "import pytest\n\nskip = pytest.mark.skip\n\n\n@skip\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'skip'",
+        ),
+        (
             'import pytest\n\n\n@pytest.mark.skipif(True, reason="x")\ndef test_a1_one() -> None:\n    assert False\n',
             "carries mark 'skipif'",
+        ),
+        (
+            "import unittest\n\n\n@unittest.skip('x')\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'unittest.skip'",
+        ),
+        (
+            "import unittest\n\n\n@unittest.skipIf(True, 'x')\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'unittest.skipIf'",
+        ),
+        (
+            "import unittest\n\n\n@unittest.skipUnless(False, 'x')\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'unittest.skipUnless'",
         ),
         (
             "import pytest\n\n\nclass TestA:\n    def test_a1_one(self) -> None:\n        assert False\n",
