@@ -54,6 +54,7 @@ and reuses the release tool's own register and engine input-variable surface.
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -67,6 +68,7 @@ from microcosm.build.gates import input_mass_parity_gate
 from microcosm.build.us_runtime.h5_io import (
     identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_release,
+    refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
@@ -201,18 +203,17 @@ class PreflightReport:
         lines: list[str] = []
         if self.base_pool is not None:
             agreement = self.base_pool.get("agreement_gate_reference")
-            if isinstance(agreement, Mapping) and agreement.get(
-                "battery_status"
-            ) == "red":
+            if (
+                isinstance(agreement, Mapping)
+                and agreement.get("battery_status") == "red"
+            ):
                 failure_count = agreement.get("failure_count")
                 lines.extend(
                     [
                         "!" * 72,
-                        "BASE POOL BATTERY: RED — "
-                        f"{failure_count} FAILURES",
+                        f"BASE POOL BATTERY: RED — {failure_count} FAILURES",
                         "Authenticated opt-in: --allow-gate-failed-base-pool",
-                        "Gates JSON SHA-256: "
-                        f"{agreement.get('gates_json_sha256')}",
+                        f"Gates JSON SHA-256: {agreement.get('gates_json_sha256')}",
                         "Human publication decision required; this evidence "
                         "does not determine the preflight exit code.",
                     ]
@@ -222,8 +223,7 @@ class PreflightReport:
                     for failure in failures:
                         if isinstance(failure, Mapping):
                             lines.append(
-                                f"  [{failure.get('gate')}] "
-                                f"{failure.get('message')}"
+                                f"  [{failure.get('gate')}] {failure.get('message')}"
                             )
                 lines.append("!" * 72)
         badge = {
@@ -971,6 +971,16 @@ def run_preflight(
     )
 
 
+def _file_sha256(path: Path) -> str:
+    """Stream a file's SHA-256 (a pool H5 is gigabytes)."""
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _load_preflight_base(
     base_h5: Path,
     *,
@@ -987,6 +997,12 @@ def _load_preflight_base(
                 "--allow-gate-failed-base-pool was set, but --base-h5 does not "
                 "identify as a US multispine pool."
             )
+        # A denied pool whose sidecar and metadata row were stripped lands
+        # here; its bytes are still its identity.
+        refuse_denied_pool_h5_digest(
+            _file_sha256(base_h5),
+            consumer="US release-gate preflight --base-h5 (generic path)",
+        )
         return load_us_frame(base_h5), None, None
 
     frame, manifest, authenticated_pool_h5 = (

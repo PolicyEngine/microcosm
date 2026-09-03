@@ -915,6 +915,42 @@ def test__cli__denied_pool_refuses_gate_failed_opt_in(
     assert reference in message
 
 
+def test__preflight_base__refuses_denied_pool_bytes_on_generic_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A denied pool stripped of its sidecar and metadata is still its bytes."""
+    import hashlib
+
+    from microcosm.build.us_runtime import release_gate_preflight
+
+    base_h5 = tmp_path / "stripped.h5"
+    base_h5.write_bytes(b"not a real h5; identity comes from the bytes alone")
+    denied_h5 = hashlib.sha256(base_h5.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded from preflight",
+                reference="microcosm#856; stripped-preflight-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError) as error:
+        release_gate_preflight._load_preflight_base(
+            base_h5, allow_gate_failed_base_pool=False
+        )
+    message = str(error.value)
+    assert "generic path" in message
+    assert "stripped-denied-publication" in message
+    assert "even without pool identity metadata" in message
+
+
 def test__preflight_base__refuses_bare_stamped_pool_before_generic_load(
     monkeypatch, tmp_path
 ) -> None:

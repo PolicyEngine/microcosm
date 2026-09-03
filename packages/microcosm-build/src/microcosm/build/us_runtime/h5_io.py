@@ -55,6 +55,7 @@ __all__ = [
     "AuthenticatedPoolH5MismatchError",
     "DENIED_POOL_PUBLICATIONS",
     "DeniedPoolPublication",
+    "refuse_denied_pool_h5_digest",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
@@ -444,6 +445,26 @@ DENIED_POOL_PUBLICATIONS: Mapping[str, DeniedPoolPublication] = MappingProxyType
         )
     }
 )
+
+
+def refuse_denied_pool_h5_digest(sha256: str, *, consumer: str) -> None:
+    """Refuse an H5 whose bytes are a denied publication's pool, however presented.
+
+    A pool whose sidecar manifest and artifact-metadata row were stripped no
+    longer identifies as a pool and would otherwise reach a consumer's generic
+    H5 path. The bytes are the identity that survives repackaging, so every
+    generic path hashes the file and asks here before using it.
+    """
+
+    for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+        if sha256 == denied_publication.pool_h5_sha256:
+            raise ValueError(
+                f"{consumer}: H5 bytes (SHA-256 {sha256}) are the pool of denied "
+                f"publication {denied_run_id!r} (release_id="
+                f"{denied_publication.release_id!r}) and are refused even without "
+                f"pool identity metadata. Reason: {denied_publication.reason}. "
+                f"Reference: {denied_publication.reference}."
+            )
 
 
 @dataclass(frozen=True)

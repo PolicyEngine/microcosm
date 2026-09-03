@@ -1915,6 +1915,34 @@ def test_pool_deny_list_matches_pool_h5_sha256_without_other_matches(
         h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
 
 
+def test_denied_pool_h5_digest_is_refused_on_generic_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripping the sidecar and metadata row must not reopen a generic path."""
+    denied_h5 = "b" * 64
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded",
+                reference="microcosm#856; stripped-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    h5_io.refuse_denied_pool_h5_digest("c" * 64, consumer="fixture consumer")
+    with pytest.raises(ValueError) as error:
+        h5_io.refuse_denied_pool_h5_digest(denied_h5, consumer="fixture consumer")
+    message = str(error.value)
+    assert "fixture consumer" in message
+    assert "stripped-denied-publication" in message
+    assert "even without pool identity metadata" in message
+
+
 def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:
     """The deny-list's only exception must stay a scoring-only ingress.
 

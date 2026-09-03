@@ -234,6 +234,7 @@ from microcosm.build.us_runtime.h5_io import (
     identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_release,
     load_simulation_ready_us_multispine_pool,
+    refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
@@ -1605,9 +1606,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             len(value) != 64
             or any(character not in "0123456789abcdef" for character in value)
         ):
-            parser.error(
-                f"{flag} must be exactly 64 lowercase hexadecimal characters."
-            )
+            parser.error(f"{flag} must be exactly 64 lowercase hexadecimal characters.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
             "--evidence-release is incompatible with --exact-k: ladder "
@@ -8693,6 +8692,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
         )
         if authenticated_pool_h5 is None:
             base_dataset_sha256 = _legacy_base_h5_sha256(base_h5)
+            # A denied pool with its identity stripped lands here; its bytes
+            # are still its identity.
+            refuse_denied_pool_h5_digest(
+                base_dataset_sha256,
+                consumer="US fiscal refresh release builder --base-h5 (generic path)",
+            )
         else:
             base_dataset_sha256 = authenticated_pool_h5.verified_digest(
                 consumer="builder base dataset identity"
