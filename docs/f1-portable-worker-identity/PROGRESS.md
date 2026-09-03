@@ -101,6 +101,8 @@ focused green; documentation and full verification are in progress on
 - Preserved the nested release-verdict regression beneath the new authenticated
   manifest-payload guard by rebinding only its synthetic capability; both
   parameterized cases pass while real mutated manifests still fail earlier.
+- Enforced absolute `sys_executable` and `sys_prefix` audit aliases while
+  retaining the unmodified raw `argv_template[0]` audit value.
 
 ## Next
 

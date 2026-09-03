@@ -4203,6 +4203,16 @@ def test_late_primary_worker_authentication_ignores_audit_alias_relocation() -> 
     assert worker["semantic_identity_sha256"] == original_semantic_sha256
 
 
+def test_late_primary_worker_audit_paths_must_be_absolute() -> None:
+    binding = _fixture_primary_execution_config_binding()
+    binding["qrf"]["worker_execution"]["audit_aliases"]["sys_executable"] = (
+        "relative/python"
+    )
+
+    with pytest.raises(ValueError, match="worker binding is malformed"):
+        _validate_fixture_primary_execution_config(binding)
+
+
 def test_late_primary_worker_authentication_rejects_rehashed_semantic_change() -> None:
     binding = _fixture_primary_execution_config_binding()
     worker = binding["qrf"]["worker_execution"]

@@ -720,7 +720,8 @@ def primary_qrf_worker_semantic_identity(
 def primary_qrf_worker_execution_binding() -> dict[str, object]:
     """Return semantic worker identity plus integrity-bound audit aliases."""
 
-    executable = Path(sys.executable)
+    raw_executable = sys.executable
+    executable = Path(raw_executable).absolute()
     semantic_identity = primary_qrf_worker_semantic_identity()
     result = {
         "schema_version": PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION,
@@ -728,8 +729,8 @@ def primary_qrf_worker_execution_binding() -> dict[str, object]:
         "semantic_identity_sha256": _canonical_sha256(semantic_identity),
         "audit_aliases": {
             "sys_executable": str(executable),
-            "sys_prefix": str(Path(sys.prefix)),
-            "argv_template_0": str(executable),
+            "sys_prefix": str(Path(sys.prefix).absolute()),
+            "argv_template_0": raw_executable,
         },
     }
     validate_primary_qrf_worker_execution_binding(
@@ -934,6 +935,8 @@ def validate_primary_qrf_worker_execution_binding(
     )
     for name, value in aliases.items():
         _require_string(value, boundary=f"{boundary} audit alias {name}")
+        if name in {"sys_executable", "sys_prefix"} and not Path(value).is_absolute():
+            raise ValueError(f"{boundary} audit alias {name} must be absolute.")
 
 
 def _validated_primary_qrf_worker_semantic_identity(
