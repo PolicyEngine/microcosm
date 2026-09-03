@@ -17,6 +17,8 @@ from microcosm.graph.kernel import Capabilities, Determinism, KernelRole, SeedSo
 from microcosm.graph.manifest import Decision, NodeReceipt, PopulationView, RunManifest
 from microcosm.graph.population import MassRecord
 
+MANIFEST_FIXTURES = Path(__file__).parent / "fixtures" / "manifests"
+
 
 def _capabilities(role: KernelRole = KernelRole.COMPUTE) -> Capabilities:
     return Capabilities(
@@ -314,7 +316,7 @@ def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) ->
     manifest.save(path)
 
     document = json.loads(path.read_text())
-    assert document["schema_version"] == 1
+    assert document["schema_version"] == 2
     assert document["key"] == manifest.key
     assert document["tier"] == "evidence"
     assert document["known_failures"] == ["gate"]
@@ -329,6 +331,44 @@ def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) ->
     assert restored.known_failures == ("gate",)
     with pytest.raises(graph_api.NodeRejectedError, match="evidence"):
         RunManifest.load_certified(path, store)
+
+
+def test_v1_tolerance_bound_manifest_loads_as_legacy_cache_miss(
+    tmp_path: Path,
+) -> None:
+    path = MANIFEST_FIXTURES / "v1_tolerance_bound_without_tolerance.json"
+    raw_capabilities = json.loads(path.read_text())["nodes"]["fit_qrf"]["capabilities"]
+    store = graph_api.ContentStore(tmp_path / "store")
+
+    manifest = RunManifest.load(path, store)
+    node = manifest.nodes["fit_qrf"]
+
+    assert node.hit is False
+    assert node.legacy_capabilities is True
+    assert set(node.capabilities) == set(raw_capabilities)
+    assert node.capabilities["numeric"] == "tolerance_bound"
+    assert tuple(node.capabilities["dependencies"]) == tuple(
+        raw_capabilities["dependencies"]
+    )
+    with pytest.raises(ValueError, match=r"legacy capabilities.*omit.*tolerance"):
+        replace(
+            node,
+            capabilities={**raw_capabilities, "tolerance": None},
+            legacy_capabilities=True,
+        )
+    with pytest.raises(
+        graph_api.NodeRejectedError,
+        match=r"unreached.*legacy_capabilities.*tolerance",
+    ):
+        RunManifest.load_certified(path, store)
+
+    emitted = json.loads(manifest.to_json())
+    emitted_node = emitted["nodes"]["fit_qrf"]
+    assert emitted["schema_version"] == 2
+    assert emitted_node["legacy_capabilities"] is True
+    assert emitted_node["capabilities"] == raw_capabilities
+    assert "tolerance" not in emitted_node["capabilities"]
+    assert RunManifest.from_json(manifest.to_json()).to_json() == manifest.to_json()
 
 
 def test_certified_loader_checks_unreached_before_tier(tmp_path: Path) -> None:

@@ -2,7 +2,8 @@
 
 ## State
 
-In progress on branch `fix-847-r2`, based exactly on dispatched head
+F2 is implemented and focused-green; F3 is next. Work remains in progress on
+branch `fix-847-r2`, based exactly on dispatched head
 `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
 first and failed because the mandated no-network environment cannot resolve
 GitHub; the local `origin/graph-amendments-11-13` ref matches the dispatched
@@ -25,10 +26,16 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Traced the executor, population, manifest, and explanation paths against all
   B/C/D acceptance tests and the toy graph fixtures; regression coverage will
   live only in ordinary graph test modules plus the permitted toy helper.
+- F2: bumped portable manifests to schema v2 while migrating v1 capability
+  mappings that omit `tolerance` as immutable raw `legacy_capabilities`; these
+  receipts are forced cache misses, certified loading reports an explicit
+  `unreached` reason, and serialization never invents the absent bound.
+- Captured the F2 red state with the two named pytest nodes (both failed), then
+  passed those nodes plus the manifest, explain/view, F-gate, and replay suites.
 
 ## Next
 
-- Implement and regression-test F2, F3, F4, F5, F7, and F10 as one commit per
+- Implement and regression-test F3, F4, F5, F7, and F10 as one commit per
   finding, maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
 
