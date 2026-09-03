@@ -95,6 +95,7 @@ __all__ = [
     "US_LATE_TRANSFER_TARGET_BANK_INPUT",
     "source_producer_name",
     "transfer_producer_name",
+    "legacy_us_late_producer_schedule_receipt",
     "us_late_producer_schedule_payload",
     "us_late_producer_schedule_receipt",
 ]
@@ -2141,3 +2142,34 @@ def us_late_producer_schedule_receipt() -> Mapping[str, object]:
             "status": "derived_and_import_validated",
         }
     )
+
+
+def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
+    """Reconstruct the exact schema-16 schedule for attested legacy scoring."""
+
+    receipt = json.loads(json.dumps(dict(us_late_producer_schedule_receipt())))
+    receipt["schema_version"] = 16
+    contract = receipt["execution_receipt_contract"]
+    contract["version"] = 3
+    contract["transition_authority"]["version"] = 1
+    payload = {
+        key: value
+        for key, value in receipt.items()
+        if key
+        not in {
+            "payload_sha256",
+            "producer_count",
+            "source_producer_count",
+            "transfer_group_count",
+            "transfer_target_count",
+            "status",
+        }
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    receipt["payload_sha256"] = hashlib.sha256(canonical).hexdigest()
+    return MappingProxyType(receipt)

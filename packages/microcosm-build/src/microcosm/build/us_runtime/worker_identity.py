@@ -12,7 +12,6 @@ import sys
 import sysconfig
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from functools import lru_cache
 from importlib import metadata
 from pathlib import Path, PurePosixPath
 
@@ -28,7 +27,9 @@ APPROVED_UV_LOCK_SHA256 = (
 LEGACY_CAMPAIGN_UV_LOCK_SHA256 = (
     "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
 )
-LEGACY_CAMPAIGN_TREE_SHA_PREFIX = "b8819b3f"
+# The plan and reproduced STOP record expose this exact, unambiguous campaign
+# identifier.  Do not accept arbitrary suffixes under the approved prefix.
+LEGACY_CAMPAIGN_TREE_SHA = "b8819b3f"
 LEGACY_WORKER_ATTESTATION_ARTIFACT_KIND = (
     "populace_us_worker_identity_compatibility_attestation"
 )
@@ -54,6 +55,10 @@ _PLAN_SIGNATURE = {
 _SEMANTIC_ENVIRONMENT_NAMES = (
     "POPULACE_FIT_N_JOBS",
     "POPULACE_FIT_PREDICT_WORKERS",
+)
+_TRANSITIVE_PACKAGE_RESOURCES = (
+    ("microcosm.build.us", "source_stages.json"),
+    ("microcosm.build.us", "support_spine.json"),
 )
 _ATTESTATION_KEYS = {
     "artifact_kind",
@@ -137,16 +142,6 @@ def _require_sha256(value: object, *, boundary: str) -> str:
     return value
 
 
-def _require_git_sha(value: object, *, boundary: str) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) != 40
-        or any(character not in _SHA256_ALPHABET for character in value)
-    ):
-        raise ValueError(f"{boundary} must be a full lowercase Git SHA.")
-    return value
-
-
 def _require_exact_keys(
     value: object,
     expected: set[str],
@@ -168,10 +163,18 @@ def _require_string(value: object, *, boundary: str, allow_empty: bool = False) 
     return value
 
 
-@lru_cache(maxsize=1)
 def _repository_root() -> Path | None:
-    candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
-    candidates.extend(Path(__file__).resolve().parents)
+    spec = importlib.util.find_spec(PRIMARY_QRF_WORKER_MODULE)
+    if spec is None or spec.origin is None:
+        raise RuntimeError(
+            f"Cannot resolve primary-QRF worker module {PRIMARY_QRF_WORKER_MODULE!r}."
+        )
+    worker_source = Path(spec.origin).resolve()
+    if not worker_source.is_file():
+        raise RuntimeError(
+            f"Primary-QRF worker source is not a readable file: {worker_source}."
+        )
+    candidates = [worker_source.parent, *worker_source.parents]
     for candidate in candidates:
         if (candidate / "uv.lock").is_file() and (candidate / "packages").is_dir():
             return candidate
@@ -191,21 +194,18 @@ def _approved_uv_lock_sha256() -> str:
     return observed
 
 
-@lru_cache(maxsize=1)
 def _module_source_index() -> dict[str, Path]:
-    root = _repository_root()
-    if root is not None:
-        source_roots = sorted((root / "packages").glob("*/src"))
-    else:
-        namespace = importlib.util.find_spec("microcosm")
-        if namespace is None or namespace.submodule_search_locations is None:
-            raise RuntimeError("Cannot locate installed microcosm source packages.")
-        source_roots = sorted(
-            {
-                Path(location).resolve().parent
-                for location in namespace.submodule_search_locations
-            }
-        )
+    namespace = importlib.util.find_spec("microcosm")
+    if namespace is None or namespace.submodule_search_locations is None:
+        raise RuntimeError("Cannot locate installed microcosm source packages.")
+    # These are the namespace roots the running interpreter will actually use;
+    # a convenient checkout found via CWD must never substitute different code.
+    source_roots = sorted(
+        {
+            Path(location).resolve().parent
+            for location in namespace.submodule_search_locations
+        }
+    )
     result: dict[str, Path] = {}
     for source_root in source_roots:
         for source in sorted(source_root.rglob("*.py")):
@@ -224,14 +224,19 @@ def _module_source_index() -> dict[str, Path]:
     return result
 
 
-def _source_imports(module_name: str, source: Path) -> tuple[set[str], set[str]]:
+def _source_imports(
+    module_name: str,
+    source: Path,
+    raw: bytes,
+    *,
+    index: Mapping[str, Path],
+) -> tuple[set[str], set[str]]:
     try:
-        tree = ast.parse(source.read_bytes(), filename=str(source))
-    except (OSError, SyntaxError) as error:
+        tree = ast.parse(raw, filename=str(source))
+    except SyntaxError as error:
         raise RuntimeError(
             f"Cannot parse worker dependency source {module_name!r}."
         ) from error
-    index = _module_source_index()
     package = (
         module_name if source.name == "__init__.py" else module_name.rpartition(".")[0]
     )
@@ -276,7 +281,59 @@ def _source_imports(module_name: str, source: Path) -> tuple[set[str], set[str]]
     return internal, external_roots
 
 
-@lru_cache(maxsize=1)
+def _with_package_initializers(
+    module_names: set[str],
+    *,
+    index: Mapping[str, Path],
+) -> set[str]:
+    """Include package initializers Python executes before imported modules."""
+
+    result = set(module_names)
+    for module_name in tuple(module_names):
+        parts = module_name.split(".")
+        for length in range(1, len(parts)):
+            package = ".".join(parts[:length])
+            source = index.get(package)
+            if source is not None and source.name == "__init__.py":
+                result.add(package)
+    return result
+
+
+def _worker_package_resource_rows() -> list[dict[str, str]]:
+    """Hash package data executed while importing the worker's package graph."""
+
+    rows: list[dict[str, str]] = []
+    for package, relative_path in _TRANSITIVE_PACKAGE_RESOURCES:
+        spec = importlib.util.find_spec(package)
+        locations = (
+            tuple(spec.submodule_search_locations or ()) if spec is not None else ()
+        )
+        candidates = [
+            Path(location).resolve() / relative_path
+            for location in locations
+            if (Path(location).resolve() / relative_path).is_file()
+        ]
+        if len(candidates) != 1:
+            raise RuntimeError(
+                "Primary-QRF worker package resource resolution is ambiguous: "
+                f"{package}:{relative_path}."
+            )
+        try:
+            raw = candidates[0].read_bytes()
+        except OSError as error:
+            raise RuntimeError(
+                "Cannot read primary-QRF worker package resource "
+                f"{package}:{relative_path}."
+            ) from error
+        rows.append(
+            {
+                "resource": f"{package}:{relative_path}",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+        )
+    return rows
+
+
 def _worker_source_identity() -> tuple[str, str, tuple[str, ...]]:
     index = _module_source_index()
     try:
@@ -285,8 +342,21 @@ def _worker_source_identity() -> tuple[str, str, tuple[str, ...]]:
         raise RuntimeError(
             f"Cannot locate primary-QRF worker module {PRIMARY_QRF_WORKER_MODULE!r}."
         ) from error
-    worker_sha256 = hashlib.sha256(worker_source.read_bytes()).hexdigest()
-    pending, external_roots = _source_imports(PRIMARY_QRF_WORKER_MODULE, worker_source)
+    try:
+        worker_raw = worker_source.read_bytes()
+    except OSError as error:
+        raise RuntimeError("Cannot read primary-QRF worker source.") from error
+    worker_sha256 = hashlib.sha256(worker_raw).hexdigest()
+    pending, external_roots = _source_imports(
+        PRIMARY_QRF_WORKER_MODULE,
+        worker_source,
+        worker_raw,
+        index=index,
+    )
+    pending = _with_package_initializers(
+        pending | {PRIMARY_QRF_WORKER_MODULE},
+        index=index,
+    )
     visited: set[str] = set()
     rows: list[dict[str, str]] = []
     while pending:
@@ -296,15 +366,27 @@ def _worker_source_identity() -> tuple[str, str, tuple[str, ...]]:
             continue
         visited.add(module_name)
         source = index[module_name]
+        try:
+            raw = source.read_bytes()
+        except OSError as error:
+            raise RuntimeError(
+                f"Cannot read worker dependency source {module_name!r}."
+            ) from error
         rows.append(
             {
                 "module": module_name,
-                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "sha256": hashlib.sha256(raw).hexdigest(),
             }
         )
-        imported, external = _source_imports(module_name, source)
-        pending.update(imported - visited)
+        imported, external = _source_imports(
+            module_name,
+            source,
+            raw,
+            index=index,
+        )
+        pending.update(_with_package_initializers(imported, index=index) - visited)
         external_roots.update(external)
+    rows.extend(_worker_package_resource_rows())
     return worker_sha256, _canonical_sha256(rows), tuple(sorted(external_roots))
 
 
@@ -326,7 +408,6 @@ def _record_hash_hex(value: str, *, boundary: str) -> str:
     return decoded.hex()
 
 
-@lru_cache(maxsize=1)
 def _installed_distributions_record_sha256() -> str:
     by_name: dict[str, metadata.Distribution] = {}
     package_to_distributions = metadata.packages_distributions()
@@ -338,12 +419,32 @@ def _installed_distributions_record_sha256() -> str:
     _, _, external_roots = _worker_source_identity()
     pending: set[str] = set()
     unavailable_roots: list[str] = []
+    resolved_roots: list[tuple[str, tuple[str, ...], tuple[Path, ...]]] = []
     for root in external_roots:
         names = package_to_distributions.get(root)
-        if not names:
+        spec = importlib.util.find_spec(root)
+        if spec is None:
             unavailable_roots.append(root)
             continue
-        pending.update(canonicalize_name(name) for name in names)
+        if not names:
+            raise RuntimeError(
+                "Primary-QRF worker import resolves outside installed "
+                f"distribution metadata: {root!r}."
+            )
+        locations: list[Path] = []
+        if spec.origin is not None:
+            locations.append(Path(spec.origin).resolve())
+        if spec.submodule_search_locations is not None:
+            locations.extend(
+                Path(location).resolve() for location in spec.submodule_search_locations
+            )
+        if not locations:
+            raise RuntimeError(
+                f"Primary-QRF worker import {root!r} has no resolved location."
+            )
+        canonical_names = tuple(sorted(canonicalize_name(name) for name in names))
+        resolved_roots.append((root, canonical_names, tuple(sorted(set(locations)))))
+        pending.update(canonical_names)
 
     selected: set[str] = set()
     while pending:
@@ -374,6 +475,7 @@ def _installed_distributions_record_sha256() -> str:
                 pending.add(dependency)
 
     distributions: list[dict[str, object]] = []
+    portable_paths_by_distribution: dict[str, set[Path]] = {}
     for name in sorted(selected):
         distribution = by_name[name]
         files = distribution.files
@@ -382,6 +484,7 @@ def _installed_distributions_record_sha256() -> str:
                 f"Primary-QRF worker distribution has no RECORD: {name}."
             )
         record_rows: list[dict[str, object]] = []
+        portable_paths: set[Path] = set()
         for entry in files:
             path = PurePosixPath(str(entry))
             if not _portable_record_path(path):
@@ -413,6 +516,7 @@ def _installed_distributions_record_sha256() -> str:
                     f"Primary-QRF worker installed file size differs from RECORD: "
                     f"{name}:{path}."
                 )
+            portable_paths.add(installed_path.resolve())
             record_rows.append(
                 {
                     "path": path.as_posix(),
@@ -420,6 +524,7 @@ def _installed_distributions_record_sha256() -> str:
                     "size": entry.size,
                 }
             )
+        portable_paths_by_distribution[name] = portable_paths
         distributions.append(
             {
                 "name": name,
@@ -427,6 +532,22 @@ def _installed_distributions_record_sha256() -> str:
                 "record_rows": record_rows,
             }
         )
+    for root, names, locations in resolved_roots:
+        recorded_paths = set().union(
+            *(portable_paths_by_distribution.get(name, set()) for name in names)
+        )
+        for location in locations:
+            if location.is_dir():
+                is_recorded = any(
+                    path.is_relative_to(location) for path in recorded_paths
+                )
+            else:
+                is_recorded = location in recorded_paths
+            if not is_recorded:
+                raise RuntimeError(
+                    "Primary-QRF worker import resolution is not authenticated "
+                    f"by its installed RECORD: {root!r} at {location}."
+                )
     return _canonical_sha256(
         {
             "distributions": distributions,
@@ -968,18 +1089,16 @@ def authenticate_legacy_worker_identity_attestation(
         attestation.get("sealed_pool_h5_sha256"),
         boundary=f"{boundary} sealed pool H5",
     )
-    if (
-        manifest_sha256 != sealed_manifest_sha256
-        or pool_sha256 != sealed_pool_h5_sha256
-    ):
+    if manifest_sha256 != sealed_manifest_sha256:
         raise ValueError(
-            f"{boundary}: worker identity attestation sealed digests changed."
+            f"{boundary}: worker identity attestation sealed manifest changed."
         )
-    campaign_tree_sha = _require_git_sha(
-        attestation.get("campaign_tree_sha"), boundary=f"{boundary} campaign tree"
-    )
-    if not campaign_tree_sha.startswith(LEGACY_CAMPAIGN_TREE_SHA_PREFIX):
+    if pool_sha256 != sealed_pool_h5_sha256:
+        raise ValueError(f"{boundary}: worker identity attestation sealed H5 changed.")
+    campaign_tree_sha = attestation.get("campaign_tree_sha")
+    if campaign_tree_sha != LEGACY_CAMPAIGN_TREE_SHA:
         raise ValueError(f"{boundary}: worker identity attestation campaign changed.")
+    assert isinstance(campaign_tree_sha, str)
     if attestation.get("uv_lock_sha256") != LEGACY_CAMPAIGN_UV_LOCK_SHA256:
         raise ValueError(f"{boundary}: worker identity attestation lock changed.")
     if attestation.get("recorded_worker_execution") != recorded_worker_execution:
@@ -1054,7 +1173,7 @@ def current_worker_execution_authentication_receipt(
 
 __all__ = [
     "APPROVED_UV_LOCK_SHA256",
-    "LEGACY_CAMPAIGN_TREE_SHA_PREFIX",
+    "LEGACY_CAMPAIGN_TREE_SHA",
     "LEGACY_CAMPAIGN_UV_LOCK_SHA256",
     "LEGACY_WORKER_PERMITTED_MISMATCHES",
     "LegacyWorkerIdentityAuthentication",

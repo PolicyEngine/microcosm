@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,7 @@ import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
+import microcosm.build.us_runtime.worker_identity as worker_identity_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -747,6 +750,22 @@ def _write_ready_pool(
         transition_authority = (
             stacked_spine_module._late_producer_transition_authority_receipt(dag)
         )
+        primary = next(
+            row
+            for row in dag["execution"]
+            if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+        )
+        config = primary["available_input_receipts"][
+            "tax_unit.@primary_puf_execution_config"
+        ]["binding"]
+        worker_execution_authentication = (
+            worker_identity_module.current_worker_execution_authentication_receipt(
+                config["qrf"]["worker_execution"],
+                manifest_schema_version=schema_version,
+                execution_config_schema_version=config["schema_version"],
+                boundary="stacked pool fixture worker",
+            )
+        )
         manifest.update(
             {
                 "pipeline": "us-stacked-pool",
@@ -780,8 +799,12 @@ def _write_ready_pool(
                         "stacked_post_puf_transfer": dag["post_puf_transfer"],
                     },
                 },
+                "worker_execution_authentication": (worker_execution_authentication),
             }
         )
+        diagnostics["worker_execution_authentication"] = worker_execution_authentication
+        diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+        manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
         manifest["pool_h5"]["materializer_version"] = (
             US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
         )
@@ -1285,8 +1308,7 @@ def _rewrite_as_legacy_relocated_worker_pool(
     config_receipt = available["tax_unit.@primary_puf_execution_config"]
     config = config_receipt["binding"]
     recorded_executable = (
-        "/Users/maxghenis/PolicyEngine/_worktrees/"
-        "microcosm-c26-build/.venv/bin/python"
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-c26-build/.venv/bin/python"
     )
     try:
         from microcosm.build.us_runtime import worker_identity
@@ -1344,8 +1366,8 @@ def _rewrite_as_legacy_relocated_worker_pool(
             evidence["sha256"] = _json_sha256(
                 {"alternatives": evidence["alternatives"]}
             )
-    primary["producer_receipt"]["primary_resource_receipts_sha256"] = (
-        _json_sha256(available)
+    primary["producer_receipt"]["primary_resource_receipts_sha256"] = _json_sha256(
+        available
     )
 
     schedule = dag["producer_schedule"]
@@ -1366,8 +1388,9 @@ def _rewrite_as_legacy_relocated_worker_pool(
         }
     }
     schedule["payload_sha256"] = _json_sha256(schedule_payload)
-    dag["post_puf_transfer"]["producer_schedule"] = json.loads(
-        json.dumps(schedule)
+    dag["post_puf_transfer"]["producer_schedule"] = json.loads(json.dumps(schedule))
+    dag["post_puf_transfer"]["authority"] = (
+        stacked_spine_module._legacy_stacked_authority_receipt()
     )
     dag["version"] = 3
     previous_sha256 = _json_sha256(
@@ -1383,11 +1406,14 @@ def _rewrite_as_legacy_relocated_worker_pool(
         row["producer_receipt_sha256"] = _json_sha256(row["producer_receipt"])
         row["previous_execution_sha256"] = previous_sha256
         row.pop("sha256", None)
-        row["sha256"] = _json_sha256(row)
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
         previous_sha256 = row["sha256"]
     dag["execution_chain_sha256"] = previous_sha256
     dag.pop("sha256", None)
-    dag["sha256"] = _json_sha256(dag)
+    dag["sha256"] = stacked_spine_module._canonical_sha256(dag)
+    manifest["stage_receipts"]["impute"]["stacked_post_puf_transfer"] = json.loads(
+        json.dumps(dag["post_puf_transfer"])
+    )
     transition_authority = {
         "authority_id": stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
         "version": 1,
@@ -1445,7 +1471,7 @@ def _write_legacy_worker_attestation(
         "sealed_pool_h5_sha256": (
             sealed_pool_h5_sha256 or manifest["pool_h5"]["sha256"]
         ),
-        "campaign_tree_sha": "1" * 40,
+        "campaign_tree_sha": "b8819b3f",
         "uv_lock_sha256": (
             "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
         ),
@@ -1463,6 +1489,88 @@ def _write_legacy_worker_attestation(
     attestation_path = manifest_path.with_name("worker-identity-attestation.json")
     attestation_path.write_text(json.dumps(attestation), encoding="utf-8")
     return attestation_path
+
+
+def _resign_worker_manifest(
+    manifest_path: Path,
+    mutate_worker: Callable[[dict[str, object]], None],
+    *,
+    current_worker_receipt: bool,
+) -> dict[str, object]:
+    """Re-hash the tiny fixture after a deliberate worker-binding mutation."""
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    impute = manifest["stage_receipts"]["impute"]
+    dag = impute["stacked_late_producer_dag"]
+    primary = next(
+        row
+        for row in dag["execution"]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+    available = primary["available_input_receipts"]
+    config_receipt = available["tax_unit.@primary_puf_execution_config"]
+    config = config_receipt["binding"]
+    worker = config["qrf"]["worker_execution"]
+    mutate_worker(worker)
+    config_receipt["binding_sha256"] = _json_sha256(config)
+    config_receipt_sha256 = _json_sha256(config_receipt)
+    for declared_input in primary["declared_inputs"]:
+        evidence = declared_input["evidence"]
+        changed = False
+        for alternative in evidence["alternatives"]:
+            for column in alternative:
+                if (
+                    column["entity"] == "tax_unit"
+                    and column["column"] == "@primary_puf_execution_config"
+                ):
+                    column["content_sha256"] = config_receipt_sha256
+                    changed = True
+        if changed:
+            evidence["sha256"] = _json_sha256(
+                {"alternatives": evidence["alternatives"]}
+            )
+    primary["producer_receipt"]["primary_resource_receipts_sha256"] = _json_sha256(
+        available
+    )
+    previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=dag["producer_schedule"]["payload_sha256"],
+        input_frame_sha256=dag["input_frame_sha256"],
+        receipt_schema_version=dag["version"],
+    )
+    for row in dag["execution"]:
+        row["input_surface_sha256"] = _json_sha256(row["declared_inputs"])
+        row["output_surface_sha256"] = _json_sha256(row["output_surface"])
+        row["producer_receipt_sha256"] = _json_sha256(row["producer_receipt"])
+        row["previous_execution_sha256"] = previous_sha256
+        row.pop("sha256", None)
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous_sha256 = row["sha256"]
+    dag["execution_chain_sha256"] = previous_sha256
+    dag.pop("sha256", None)
+    dag["sha256"] = stacked_spine_module._canonical_sha256(dag)
+    transition_authority = (
+        stacked_spine_module._late_producer_transition_authority_receipt(dag)
+    )
+    manifest["late_producer_transition_authority_sha256"] = transition_authority[
+        "sha256"
+    ]
+    if current_worker_receipt:
+        authentication = (
+            worker_identity_module.current_worker_execution_authentication_receipt(
+                worker,
+                manifest_schema_version=manifest["schema_version"],
+                execution_config_schema_version=config["schema_version"],
+                boundary="mutated stacked fixture worker",
+            )
+        )
+        manifest["worker_execution_authentication"] = authentication
+        diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+        diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        diagnostics["worker_execution_authentication"] = authentication
+        diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+        manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return worker
 
 
 def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
@@ -1661,7 +1769,7 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
-    assert manifest["schema_version"] == 9
+    assert manifest["schema_version"] == US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
     assert (
         manifest["pool_h5"]["materializer_version"]
         == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
@@ -1937,6 +2045,10 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
     assert receipt["status"] == "gate_failed"
     assert receipt["simulation_ready"] is False
     assert receipt["allow_gate_failed_base_pool"] is True
+    assert (
+        receipt["worker_execution_authentication"]
+        == loaded_manifest["worker_execution_authentication"]
+    )
     assert receipt["agreement_gate_reference"] == {
         "battery_status": "red",
         "passed": False,
@@ -1950,6 +2062,58 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         ],
         "verdict": loaded_manifest["agreement_gate"],
     }
+
+
+def test_current_worker_authentication_ignores_audit_alias_relocation(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    original = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_sha256 = original["pool_h5"]["sha256"]
+    relocated = "/relocated/worktree/.venv/bin/python"
+
+    worker = _resign_worker_manifest(
+        manifest_path,
+        lambda value: value.__setitem__(
+            "audit_aliases",
+            {
+                "sys_executable": relocated,
+                "sys_prefix": "/relocated/worktree/.venv",
+                "argv_template_0": relocated,
+            },
+        ),
+        current_worker_receipt=True,
+    )
+    frame, manifest, authenticated = load_simulation_ready_us_multispine_pool(
+        manifest_path
+    )
+
+    assert frame.n("household") == 3
+    assert authenticated.sha256 == pool_sha256
+    assert (
+        manifest["worker_execution_authentication"]["audit_aliases"]
+        == worker["audit_aliases"]
+    )
+
+
+def test_scoring_loader_rejects_semantic_worker_change(tmp_path: Path) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+
+    def mutate(worker: dict[str, object]) -> None:
+        semantic = worker["semantic_identity"]
+        semantic["interpreter"]["bytes_sha256"] = "0" * 64
+        worker["semantic_identity_sha256"] = _json_sha256(semantic)
+
+    _resign_worker_manifest(
+        manifest_path,
+        mutate,
+        current_worker_receipt=True,
+    )
+
+    with pytest.raises(ValueError, match="semantic worker identity changed"):
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
 
 
 def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
@@ -1973,12 +2137,10 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
     with pytest.raises(ValueError, match="requires.*compatibility attestation"):
         load_authenticated_us_multispine_pool_for_scoring(manifest_path)
 
-    frame, manifest, authenticated = (
-        load_authenticated_us_multispine_pool_for_scoring(
-            manifest_path,
-            expected_manifest_sha256=manifest_sha256,
-            worker_identity_attestation=attestation_path,
-        )
+    frame, manifest, authenticated = load_authenticated_us_multispine_pool_for_scoring(
+        manifest_path,
+        expected_manifest_sha256=manifest_sha256,
+        worker_identity_attestation=attestation_path,
     )
 
     expected_authentication = {
@@ -2000,6 +2162,13 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
     assert authenticated.manifest_sha256 == manifest_sha256
     assert manifest["worker_execution_authentication"] == expected_authentication
     assert authenticated.worker_execution_authentication == expected_authentication
+    assert _sha256(manifest_path) == manifest_sha256
+    with pytest.raises(ValueError, match="Scoring-only.*release receipt"):
+        us_multispine_pool_release_receipt(
+            manifest,
+            authenticated,
+            allow_gate_failed_base_pool=True,
+        )
 
 
 def test_scoring_loader_rejects_mismatched_legacy_worker_attestation(
@@ -2027,6 +2196,167 @@ def test_scoring_loader_rejects_mismatched_legacy_worker_attestation(
         )
 
 
+def test_legacy_manifest_cannot_supply_its_own_worker_authentication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["worker_execution_authentication"] = {"forged": True}
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="unauthenticated worker receipt"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            worker_identity_attestation=attestation_path,
+        )
+
+
+def test_legacy_worker_authentication_cannot_be_stripped_for_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+    _, manifest, authenticated = load_authenticated_us_multispine_pool_for_scoring(
+        manifest_path,
+        worker_identity_attestation=attestation_path,
+    )
+    stripped_manifest = json.loads(json.dumps(manifest))
+    stripped_manifest.pop("worker_execution_authentication")
+    stripped_manifest["schema_version"] = 4
+    stripped_authenticated = replace(
+        authenticated,
+        worker_execution_authentication=None,
+        _legacy_worker_authentication=None,
+    )
+
+    with pytest.raises(ValueError, match="manifest payload changed"):
+        us_multispine_pool_release_receipt(
+            stripped_manifest,
+            stripped_authenticated,
+            allow_gate_failed_base_pool=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "changed_field",
+    (
+        "manifest",
+        "purpose",
+        "plan_signature",
+        "campaign_tree",
+        "lock",
+        "transitive_environment_code",
+        "recorded_worker",
+        "semantic_digest",
+        "permitted_mismatches",
+    ),
+)
+def test_scoring_loader_rejects_changed_legacy_attestation_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_field: str,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    if changed_field == "manifest":
+        attestation["sealed_manifest_sha256"] = "0" * 64
+    elif changed_field == "purpose":
+        attestation["purpose"] = "release"
+    elif changed_field == "plan_signature":
+        attestation["plan_signature"]["gate"] = "unapproved"
+    elif changed_field == "campaign_tree":
+        attestation["campaign_tree_sha"] = "b8819b3f" + "1" * 32
+    elif changed_field == "lock":
+        attestation["uv_lock_sha256"] = "0" * 64
+    elif changed_field == "transitive_environment_code":
+        attestation["installed_transitive_environment_code_sha256"] = "0" * 64
+    elif changed_field == "recorded_worker":
+        attestation["recorded_worker_execution"]["module"] = "changed.worker"
+    elif changed_field == "semantic_digest":
+        attestation["semantic_identity_sha256"] = "0" * 64
+    else:
+        attestation["permitted_mismatches"] = ["interpreter.executable"]
+    attestation_path.write_text(json.dumps(attestation), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="attest|mismatch|campaign"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            worker_identity_attestation=attestation_path,
+        )
+
+
+@pytest.mark.parametrize("mismatch_count", (1, 3))
+def test_scoring_loader_requires_exact_legacy_alias_mismatch_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch_count: int,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    _recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+
+    def mutate(worker: dict[str, object]) -> None:
+        if mismatch_count == 1:
+            worker["argv_template"][0] = str(Path(sys.executable))
+        else:
+            worker["interpreter"]["resolved_executable"] = "/changed/python"
+
+    recorded_worker = _resign_worker_manifest(
+        manifest_path,
+        mutate,
+        current_worker_receipt=False,
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="mismatch set changed"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            worker_identity_attestation=attestation_path,
+        )
+
+
 def test_release_loader_ignores_legacy_worker_attestation_and_refuses(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2048,6 +2378,30 @@ def test_release_loader_ignores_legacy_worker_attestation_and_refuses(
         load_authenticated_us_multispine_pool_for_release(
             manifest_path,
             allow_terminal_gate_failure=True,
+        )
+
+
+def test_scoring_loader_refuses_ready_legacy_worker_even_with_attestation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="unsupported artifact binding"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            worker_identity_attestation=attestation_path,
         )
 
 
@@ -2835,6 +3189,7 @@ def test_ready_stacked_pool_cannot_be_stripped_into_legacy_shape(
         "terminal_gates",
         "operator_order",
         "stage_receipts",
+        "worker_execution_authentication",
     ):
         manifest.pop(field, None)
     diagnostics["schema_version"] = 4

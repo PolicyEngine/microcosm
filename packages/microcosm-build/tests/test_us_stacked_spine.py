@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,7 @@ import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_cal
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
 import microcosm.build.us_runtime.puf_support as puf_support_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
+import microcosm.build.us_runtime.worker_identity as worker_identity_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -4213,6 +4215,234 @@ def test_late_primary_worker_authentication_rejects_rehashed_semantic_change() -
         _validate_fixture_primary_execution_config(binding)
 
 
+def test_worker_transitive_source_identity_includes_package_initializers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker_source = tmp_path / "worker.py"
+    package_dir = tmp_path / "fixture" / "pkg"
+    package_dir.mkdir(parents=True)
+    package_init = package_dir / "__init__.py"
+    child_source = package_dir / "child.py"
+    worker_source.write_text("import fixture.pkg.child\n", encoding="utf-8")
+    package_init.write_text("PACKAGE_VALUE = 1\n", encoding="utf-8")
+    child_source.write_text("CHILD_VALUE = 1\n", encoding="utf-8")
+    source_index = {
+        worker_identity_module.PRIMARY_QRF_WORKER_MODULE: worker_source,
+        "fixture.pkg": package_init,
+        "fixture.pkg.child": child_source,
+    }
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_module_source_index",
+        lambda: source_index,
+    )
+
+    worker_before, imports_before, _ = worker_identity_module._worker_source_identity()
+    package_init.write_text("PACKAGE_VALUE = 2\n", encoding="utf-8")
+    worker_after, imports_after, _ = worker_identity_module._worker_source_identity()
+
+    assert worker_after == worker_before
+    assert imports_after != imports_before
+
+
+def test_worker_transitive_source_identity_binds_imported_package_resources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resource = tmp_path / "worker-resource.json"
+    resource.write_text('{"value": 1}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_TRANSITIVE_PACKAGE_RESOURCES",
+        (("fixture.package", resource.name),),
+    )
+    monkeypatch.setattr(
+        worker_identity_module.importlib.util,
+        "find_spec",
+        lambda package: SimpleNamespace(submodule_search_locations=(tmp_path,)),
+    )
+
+    before = worker_identity_module._canonical_sha256(
+        worker_identity_module._worker_package_resource_rows()
+    )
+    resource.write_text('{"value": 2}\n', encoding="utf-8")
+    after = worker_identity_module._canonical_sha256(
+        worker_identity_module._worker_package_resource_rows()
+    )
+
+    assert after != before
+
+
+@pytest.mark.parametrize(
+    "semantic_change",
+    (
+        "interpreter_bytes",
+        "implementation",
+        "version",
+        "abi",
+        "cache_tag",
+        "pyvenv_implementation",
+        "pyvenv_version",
+        "pyvenv_include_system",
+        "pyvenv_uv",
+        "worker_module",
+        "worker_source",
+        "transitive_source",
+        "argv_1",
+        "argv_2",
+        "argv_3",
+        "argv_4",
+        "argv_5",
+        "argv_6",
+        "uv_lock",
+        "distribution_record",
+        "environment_code",
+        "fit_jobs",
+        "predict_workers",
+    ),
+)
+def test_late_primary_worker_authentication_rejects_semantic_matrix(
+    semantic_change: str,
+) -> None:
+    binding = _fixture_primary_execution_config_binding()
+    worker = binding["qrf"]["worker_execution"]
+    semantic = worker["semantic_identity"]
+    refresh_environment_code = False
+    if semantic_change == "interpreter_bytes":
+        semantic["interpreter"]["bytes_sha256"] = "0" * 64
+    elif semantic_change == "implementation":
+        semantic["interpreter"]["implementation"] = "changed"
+    elif semantic_change == "version":
+        semantic["interpreter"]["version"] = [99, 0, 0]
+    elif semantic_change == "abi":
+        semantic["interpreter"]["abi"]["soabi"] = "changed"
+    elif semantic_change == "cache_tag":
+        semantic["interpreter"]["cache_tag"] = "changed"
+    elif semantic_change == "pyvenv_implementation":
+        semantic["interpreter"]["pyvenv_cfg"]["implementation"] = "changed"
+    elif semantic_change == "pyvenv_version":
+        semantic["interpreter"]["pyvenv_cfg"]["version"] = [99, 0, 0]
+    elif semantic_change == "pyvenv_include_system":
+        pyvenv = semantic["interpreter"]["pyvenv_cfg"]
+        pyvenv["include_system_site_packages"] = not pyvenv[
+            "include_system_site_packages"
+        ]
+    elif semantic_change == "pyvenv_uv":
+        semantic["interpreter"]["pyvenv_cfg"]["uv_version"] = "changed"
+    elif semantic_change == "worker_module":
+        semantic["worker_module"]["name"] = "changed.worker"
+    elif semantic_change == "worker_source":
+        semantic["worker_module"]["source_sha256"] = "0" * 64
+        refresh_environment_code = True
+    elif semantic_change == "transitive_source":
+        semantic["worker_module"]["transitive_imports_sha256"] = "0" * 64
+        refresh_environment_code = True
+    elif semantic_change.startswith("argv_"):
+        semantic["argv_template"][int(semantic_change.removeprefix("argv_"))] = (
+            "changed"
+        )
+    elif semantic_change == "uv_lock":
+        semantic["uv_lock_sha256"] = "0" * 64
+    elif semantic_change == "distribution_record":
+        semantic["installed_distributions_record_sha256"] = "0" * 64
+        refresh_environment_code = True
+    elif semantic_change == "environment_code":
+        semantic["transitive_environment_code_sha256"] = "0" * 64
+    elif semantic_change == "fit_jobs":
+        semantic["environment"]["semantic_controls"]["POPULACE_FIT_N_JOBS"][
+            "resolved"
+        ] = 1
+    else:
+        predict = semantic["environment"]["semantic_controls"][
+            "POPULACE_FIT_PREDICT_WORKERS"
+        ]
+        predict["resolved"] = int(predict["resolved"]) + 1
+    if refresh_environment_code:
+        semantic["transitive_environment_code_sha256"] = (
+            worker_identity_module._canonical_sha256(
+                {
+                    "worker_module_source_sha256": semantic["worker_module"][
+                        "source_sha256"
+                    ],
+                    "transitive_imports_sha256": semantic["worker_module"][
+                        "transitive_imports_sha256"
+                    ],
+                    "installed_distributions_record_sha256": semantic[
+                        "installed_distributions_record_sha256"
+                    ],
+                }
+            )
+        )
+    worker["semantic_identity_sha256"] = worker_identity_module._canonical_sha256(
+        semantic
+    )
+
+    with pytest.raises(ValueError, match="worker (binding|identity)"):
+        _validate_fixture_primary_execution_config(binding)
+
+
+def test_portable_worker_identity_does_not_mutate_origin_battery_receipt() -> None:
+    values = np.asarray([True, True, True, False, False, False], dtype=bool)
+    frame = _battery_frame({"has_esi": (values, values.copy())})
+    assert frame.n("household") == 12
+    surface = {"person": {"model_required_boolean": ("has_esi",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        metric_registry={
+            ("person", "model_required_boolean", "has_esi", 0): ("boolean_incidence")
+        },
+        support_profile=replace(
+            stacked_spine_module.CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE,
+            min_effective_support=5,
+        ),
+    )
+    before = stacked_spine_module._by_origin_battery_with_test_authority(
+        frame,
+        authority=authority,
+    )
+    before_receipt = stacked_spine_module._json_ready(
+        {
+            "name": before.name,
+            "passed": before.passed,
+            "failures": list(before.failures),
+            "details": before.details,
+        }
+    )
+
+    config = _fixture_primary_execution_config_binding()
+    config["qrf"]["worker_execution"]["audit_aliases"]["sys_prefix"] = (
+        "/relocated/worktree/.venv"
+    )
+    _validate_fixture_primary_execution_config(config)
+    after = stacked_spine_module._by_origin_battery_with_test_authority(
+        frame,
+        authority=authority,
+    )
+    after_receipt = stacked_spine_module._json_ready(
+        {
+            "name": after.name,
+            "passed": after.passed,
+            "failures": list(after.failures),
+            "details": after.details,
+        }
+    )
+
+    label = "person/model_required_boolean/has_esi[clone_0]"
+    comparison = after.details["comparisons"][label]
+    assert before_receipt == after_receipt
+    assert stacked_spine_module._canonical_sha256(before_receipt) == (
+        stacked_spine_module._canonical_sha256(after_receipt)
+    )
+    assert after.passed is True
+    assert after.failures == ()
+    assert comparison["status"] == "tested"
+    assert comparison["nonzero_rows"] == {"asec": 3, "acs": 3}
+    assert comparison["asec_incidence"] == 0.5
+    assert comparison["acs_incidence"] == 0.5
+    assert comparison["incidence_ratio_acs_over_asec"] == 1.0
+
+
 def test_legacy_worker_mismatch_paths_reproduce_sealed_stop_case() -> None:
     sealed_interpreter = (
         "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-c26-build/.venv/bin/python"
@@ -5563,9 +5793,9 @@ def _run_real_late_executor_fixture(
                 "residual_null_rows": 0,
             }
             if target == "is_pregnant":
-                pregnancy_policy = execution_contract[
-                    "structural_target_policies"
-                ]["is_pregnant"]
+                pregnancy_policy = execution_contract["structural_target_policies"][
+                    "is_pregnant"
+                ]
                 target_receipt["structural_policy"] = {
                     "policy_sha256": pregnancy_policy["sha256"],
                     "source_person_key": "person_source_id",
@@ -6477,7 +6707,9 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     )
 
 
-def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> None:
+def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> (
+    None
+):
     frame = _post_puf_transfer_fixture()
     person = frame.table("person").copy()
     recipient_rows = person[support_channel_column("person")].astype(str).eq("acs")
@@ -6506,9 +6738,7 @@ def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt()
         n_estimators=10,
     )
 
-    receipt = result.receipt["targets"][
-        "person/model_required_boolean/is_pregnant"
-    ]
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
     assert receipt["authorized_null_rows"] == 0
     assert receipt["imputed_rows"] == 0
     assert receipt["structural_policy"]["status"] == "verified"
@@ -6529,9 +6759,7 @@ def test_post_puf_transfer_refuses_invalid_pregnancy_source_producer() -> None:
         person["is_female"].astype(bool)
         & person["age"].between(15, 44, inclusive="both")
     )
-    donor_ineligible = ineligible & person[
-        support_clone_index_column("person")
-    ].eq(1)
+    donor_ineligible = ineligible & person[support_clone_index_column("person")].eq(1)
     person.loc[person.index[donor_ineligible][0], "is_pregnant"] = True
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person

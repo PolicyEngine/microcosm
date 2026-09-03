@@ -2,9 +2,9 @@
 
 ## State
 
-The portable worker identity core is implemented and focused green; the
-authenticated H5 boundary and remaining enclosing version mirrors are in
-progress on `f1-portable-worker-identity` from base
+The portable worker identity and authenticated H5/scoring boundary are
+implemented and focused green; the remaining generated/spec version mirrors
+are in progress on `f1-portable-worker-identity` from base
 `09abf2ad78e9af3c5314a4b303d42a75e30d49c4`.
 
 ## Done
@@ -36,11 +36,42 @@ progress on `f1-portable-worker-identity` from base
   producer receipt, transition authority, and stacked authority sources.
 - Green evidence: Ruff passed for the three implementation files and the three
   committed portable-identity regressions passed (`3 passed`).
+- Added the explicit schema-9, gate-failed, scoring-only compatibility path.
+  Its plan-bound attestation seals the manifest and H5 digests, the exact
+  plan-published campaign identifier and campaign lock, the installed
+  transitive environment/code identity, recorded worker, semantic worker, and
+  the exact two legacy alias mismatches. Neither readiness/release loader has
+  an attestation parameter.
+- Threaded the authenticated legacy context through both late-DAG validation
+  passes and reconstructed the frozen schema-4/config, registry-16,
+  receipt-3, transition-1, and authority-11 identities without weakening the
+  current validators.
+- Published current worker-authentication evidence in manifests, diagnostics,
+  authenticated H5 capabilities, release receipts, and head-to-head scorer
+  identity/loader receipts. Added the candidate-only scorer CLI attestation
+  argument and direct propagation coverage.
+- Kept deny-list refusal intact and made compatibility provenance impossible
+  to release-launder: schema 9, private legacy provenance, scoring-only receipt
+  fields, a changed returned manifest payload, and mismatched current receipts
+  each fail closed.
+- Hardened the semantic identity implementation so source discovery follows
+  the worker module actually resolved by the interpreter, every source and
+  installed RECORD byte is re-read at authentication time, direct external
+  imports must resolve into the hashed RECORD, package initializers are part of
+  the transitive closure, and worker-startup package resources are hashed.
+- Extended the regression surface with the 18-field semantic matrix, every
+  post-`argv[0]` position, exact legacy attestation/mismatch matrices,
+  release-laundering cases, scorer propagation/receipts, and the exact
+  non-mutating 12-household origin battery.
+- Latest green evidence: four source/resource/scorer unit cases passed; four
+  end-to-end current/legacy H5 authentication and release cases passed; the
+  12-case legacy attestation/laundering subset passed. Ruff check passed on the
+  edited Python boundary files.
 
 ## Next
 
-- Complete the enclosing resource-semantics, pool materializer, and manifest
-  version mirrors and implement the explicit scoring-only legacy attestation
-  through both late-DAG validation passes without changing release signatures.
-- Regenerate typed specifications, surface receipts, document the contract,
-  and run focused and required repository checks.
+- Update the semantic spec-engine and generator mirrors, retain only audit
+  aliases outside inventory identity, regenerate typed US specifications, and
+  update all enclosing version/hash fixtures.
+- Document the operator attestation/receipt contract, add the changelog, then
+  run focused, CI-group, and required repository checks.

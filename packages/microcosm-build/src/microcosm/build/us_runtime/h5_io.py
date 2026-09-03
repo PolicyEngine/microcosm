@@ -27,6 +27,7 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
+from microcosm.build.us_runtime import worker_identity as worker_identity_runtime
 from microcosm.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
@@ -92,6 +93,7 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
+# 10 binds the portable authenticated primary-QRF worker identity.
 # 9 binds the post-assembly household-geography assignment receipt and its
 # authenticated release-vintage authorities.
 # 8 binds the nullable-boolean-capable physical H5 materializer in both the
@@ -102,10 +104,11 @@ US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
 # authority and restores its immutable Frame-metadata anchor on H5 load.
 # Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
 # the published receipt is the one authorized by the generating transition.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 9
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 10
 US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION = 3
 """Version 3 atomically binds release CD provenance attrs; v2 added BooleanDtype."""
 _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
+_LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION = 9
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -158,6 +161,7 @@ _STACKED_ONLY_MANIFEST_FIELDS = frozenset(
         "late_producer_transition_authority_sha256",
         "stack_manifest",
         "terminal_gates",
+        "worker_execution_authentication",
     }
 )
 _REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
@@ -168,6 +172,7 @@ _REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
         "stack_manifest",
         "geography_assignment",
         "stage_receipts",
+        "worker_execution_authentication",
     }
 )
 
@@ -434,6 +439,17 @@ def _file_sha256_stream(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_json_sha256(value: object) -> str:
+    raw = json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 #: Version of the packaging-independent content identity. Version 2 hashes the
 #: sorted multiset of household weights with the household count: no ids, no
 #: optional columns, no row order, so relabelling ids or dropping provenance
@@ -563,7 +579,12 @@ class AuthenticatedPoolH5:
     size_bytes: int
     publication_run_id: str
     manifest_sha256: str
+    manifest_payload_sha256: str | None = None
     content_identity_sha256: str | None = None
+    worker_execution_authentication: Mapping[str, object] | None = None
+    _legacy_worker_authentication: (
+        worker_identity_runtime.LegacyWorkerIdentityAuthentication | None
+    ) = None
 
     def verified_digest(self, *, consumer: str) -> str:
         """Re-verify the pathname and return only the authenticated digest."""
@@ -703,6 +724,47 @@ def us_multispine_pool_release_receipt(
 ) -> dict[str, object]:
     """Build self-contained release evidence from an authenticated pool."""
 
+    if authenticated_pool_h5.manifest_payload_sha256 != _canonical_json_sha256(
+        manifest
+    ):
+        raise ValueError(
+            "Authenticated pool manifest payload changed before release receipt "
+            "construction."
+        )
+    worker_authentication = authenticated_pool_h5.worker_execution_authentication
+    manifest_schema_version = manifest.get("schema_version")
+    if (
+        manifest_schema_version == _LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION
+        or authenticated_pool_h5._legacy_worker_authentication is not None
+        or (
+            worker_authentication is not None
+            and (
+                worker_authentication.get("purpose") == "scoring_only"
+                or "compatibility_attestation_sha256" in worker_authentication
+            )
+        )
+    ):
+        raise ValueError(
+            "Scoring-only worker identity compatibility evidence cannot become "
+            "a release receipt."
+        )
+    manifest_worker_authentication = manifest.get("worker_execution_authentication")
+    if manifest_schema_version == US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION:
+        if (
+            worker_authentication is None
+            or manifest_worker_authentication != worker_authentication
+        ):
+            raise ValueError(
+                "Authenticated current worker identity evidence changed before "
+                "release receipt construction."
+            )
+    elif (
+        manifest_worker_authentication is not None or worker_authentication is not None
+    ):
+        raise ValueError(
+            "A non-current pool manifest carries unsupported worker identity evidence."
+        )
+
     # The scoring-only loader may authenticate a denied publication; nothing
     # it returns may become release evidence.
     for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
@@ -817,7 +879,7 @@ def us_multispine_pool_release_receipt(
             "valid SHA-256."
         )
 
-    return {
+    receipt = {
         "artifact_kind": US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
         "status": status,
         "simulation_ready": simulation_ready,
@@ -836,6 +898,11 @@ def us_multispine_pool_release_receipt(
             "verdict": dict(agreement_gate),
         },
     }
+    if worker_authentication is not None:
+        receipt["worker_execution_authentication"] = deepcopy(
+            dict(worker_authentication)
+        )
+    return receipt
 
 
 def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
@@ -901,12 +968,89 @@ def load_simulation_ready_us_multispine_pool_manifest(
     return manifest
 
 
+def _stacked_primary_execution_config(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> tuple[Mapping[str, object], object]:
+    """Return the signed primary execution config and nested worker binding."""
+
+    stage_receipts = _mapping(
+        manifest.get("stage_receipts"),
+        label=f"US stacked pool manifest {manifest_path}.stage_receipts",
+    )
+    impute = _mapping(
+        stage_receipts.get("impute"),
+        label=f"US stacked pool manifest {manifest_path}.stage_receipts.impute",
+    )
+    dag = _mapping(
+        impute.get("stacked_late_producer_dag"),
+        label=f"US stacked pool manifest {manifest_path} late-producer DAG",
+    )
+    execution = dag.get("execution")
+    if not isinstance(execution, list):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} has no execution rows."
+        )
+    primary_rows = [
+        row
+        for row in execution
+        if isinstance(row, Mapping) and row.get("producer") == "primary_puf_qrf"
+    ]
+    if len(primary_rows) != 1:
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} must carry exactly one "
+            "primary-QRF execution row."
+        )
+    available = _mapping(
+        primary_rows[0].get("available_input_receipts"),
+        label=f"US stacked pool manifest {manifest_path} primary resources",
+    )
+    receipt = _mapping(
+        available.get("tax_unit.@primary_puf_execution_config"),
+        label=f"US stacked pool manifest {manifest_path} primary config receipt",
+    )
+    config = _mapping(
+        receipt.get("binding"),
+        label=f"US stacked pool manifest {manifest_path} primary execution config",
+    )
+    qrf = _mapping(
+        config.get("qrf"),
+        label=f"US stacked pool manifest {manifest_path} primary QRF config",
+    )
+    return config, qrf.get("worker_execution")
+
+
+def _current_worker_execution_authentication(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> dict[str, object]:
+    """Derive current authentication evidence from the signed nested worker."""
+
+    config, worker = _stacked_primary_execution_config(
+        manifest, manifest_path=manifest_path
+    )
+    if config.get("schema_version") != 5:
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} primary execution-config "
+            "version changed."
+        )
+    return worker_identity_runtime.current_worker_execution_authentication_receipt(
+        worker,
+        manifest_schema_version=US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+        execution_config_schema_version=5,
+        boundary=f"US stacked pool manifest {manifest_path} primary-QRF worker",
+    )
+
+
 def _load_authenticated_us_multispine_pool_manifest(
     path: str | Path,
     *,
     expected_manifest_sha256: str | None = None,
     allow_terminal_gate_failure: bool = False,
     scoring_only: bool = False,
+    worker_identity_attestation: str | Path | None = None,
 ) -> tuple[dict[str, object], AuthenticatedPoolH5]:
     """Return a validated manifest and its authenticated pool-H5 identity.
 
@@ -965,16 +1109,71 @@ def _load_authenticated_us_multispine_pool_manifest(
         raise ValueError(
             f"US multispine pool manifest {manifest_path} is not simulation-ready."
         )
-    envelope = _validated_pool_manifest_envelope(
-        manifest,
-        manifest_path=manifest_path,
-    )
+    legacy_worker_authentication = None
+    if (
+        manifest.get("schema_version")
+        == _LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION
+    ):
+        if not scoring_only or not is_terminal_gate_failure:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} has an "
+                "unsupported artifact binding."
+            )
+        if "worker_execution_authentication" in manifest:
+            raise ValueError(
+                f"US legacy pool manifest {manifest_path} carries an "
+                "unauthenticated worker receipt."
+            )
+        if worker_identity_attestation is None:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} requires an "
+                "explicit compatibility attestation for legacy worker relocation."
+            )
+        config, recorded_worker = _stacked_primary_execution_config(
+            manifest, manifest_path=manifest_path
+        )
+        if config.get("schema_version") != 4:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} legacy primary "
+                "execution-config version changed."
+            )
+        declared_pool = _mapping(
+            manifest.get("pool_h5"),
+            label=f"US multispine pool manifest {manifest_path}.pool_h5",
+        )
+        legacy_worker_authentication = (
+            worker_identity_runtime.authenticate_legacy_worker_identity_attestation(
+                worker_identity_attestation,
+                sealed_manifest_sha256=manifest_sha256,
+                sealed_pool_h5_sha256=declared_pool.get("sha256"),
+                recorded_worker_execution=recorded_worker,
+                boundary=(
+                    f"US multispine pool manifest {manifest_path} compatibility "
+                    "attestation"
+                ),
+            )
+        )
+        envelope = "stacked"
+    else:
+        if worker_identity_attestation is not None:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} does not permit a "
+                "worker identity compatibility attestation."
+            )
+        envelope = _validated_pool_manifest_envelope(
+            manifest,
+            manifest_path=manifest_path,
+        )
     _validated_stacked_sampling_manifest_binding(
         manifest,
         manifest_path=manifest_path,
     )
     expected_schema_version = (
-        US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        (
+            _LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION
+            if legacy_worker_authentication is not None
+            else US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        )
         if envelope == "stacked"
         else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
     )
@@ -987,7 +1186,24 @@ def _load_authenticated_us_multispine_pool_manifest(
     _validate_stacked_late_dag_manifest_binding(
         manifest,
         manifest_path=manifest_path,
+        legacy_worker_authentication=legacy_worker_authentication,
     )
+    if legacy_worker_authentication is not None:
+        worker_execution_authentication = legacy_worker_authentication.receipt()
+    elif envelope == "stacked":
+        worker_execution_authentication = _current_worker_execution_authentication(
+            manifest,
+            manifest_path=manifest_path,
+        )
+        if manifest.get("worker_execution_authentication") != (
+            worker_execution_authentication
+        ):
+            raise ValueError(
+                f"US stacked pool manifest {manifest_path} worker execution "
+                "authentication receipt changed."
+            )
+    else:
+        worker_execution_authentication = None
     checkpoint_provenance = _mapping(
         manifest.get("stage_checkpoints"),
         label=f"US multispine pool manifest {manifest_path}.stage_checkpoints",
@@ -1124,6 +1340,21 @@ def _load_authenticated_us_multispine_pool_manifest(
             f"US multispine pool diagnostics {diagnostics_path} do not match "
             "the authenticated manifest publication."
         )
+    if envelope == "stacked":
+        diagnostics_worker_authentication = diagnostics.get(
+            "worker_execution_authentication"
+        )
+        if legacy_worker_authentication is not None:
+            if diagnostics_worker_authentication is not None:
+                raise ValueError(
+                    f"US legacy pool diagnostics {diagnostics_path} carry an "
+                    "unauthenticated worker receipt."
+                )
+        elif diagnostics_worker_authentication != worker_execution_authentication:
+            raise ValueError(
+                f"US stacked pool diagnostics {diagnostics_path} worker "
+                "authentication differs from its manifest."
+            )
     manifest_agreement_gate = _mapping(
         manifest.get("agreement_gate"),
         label=f"US multispine pool manifest {manifest_path}.agreement_gate",
@@ -1152,13 +1383,22 @@ def _load_authenticated_us_multispine_pool_manifest(
             consumer="authenticated US multispine pool manifest",
             how="authenticated H5",
         )
-    return manifest, AuthenticatedPoolH5(
+    returned_manifest = manifest
+    if legacy_worker_authentication is not None:
+        returned_manifest = deepcopy(manifest)
+        returned_manifest["worker_execution_authentication"] = (
+            worker_execution_authentication
+        )
+    return returned_manifest, AuthenticatedPoolH5(
         path=pool_path.resolve(),
         sha256=pool_sha256,
         size_bytes=pool_size_bytes,
         publication_run_id=publication_run_id,
         manifest_sha256=manifest_sha256,
+        manifest_payload_sha256=_canonical_json_sha256(returned_manifest),
         content_identity_sha256=content_identity,
+        worker_execution_authentication=worker_execution_authentication,
+        _legacy_worker_authentication=legacy_worker_authentication,
     )
 
 
@@ -1166,8 +1406,11 @@ def _validate_stacked_late_dag_manifest_binding(
     manifest: Mapping[str, object],
     *,
     manifest_path: Path,
+    legacy_worker_authentication: (
+        worker_identity_runtime.LegacyWorkerIdentityAuthentication | None
+    ) = None,
 ) -> None:
-    """Make schema-9 consumers authenticate geography and late-DAG proofs."""
+    """Make stacked consumers authenticate geography and late-DAG proofs."""
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
@@ -1199,10 +1442,12 @@ def _validate_stacked_late_dag_manifest_binding(
     validate_stacked_late_producer_receipt(
         dag,
         boundary=f"US stacked pool manifest {manifest_path}",
+        legacy_worker_authentication=legacy_worker_authentication,
     )
     _stacked_late_transition_binding(
         manifest,
         manifest_path=manifest_path,
+        legacy_worker_authentication=legacy_worker_authentication,
     )
     transfer_alias = impute.get("stacked_post_puf_transfer")
     source_chain = impute.get("source_operator_chain")
@@ -1752,6 +1997,9 @@ def _stacked_late_transition_binding(
     manifest: Mapping[str, object],
     *,
     manifest_path: Path,
+    legacy_worker_authentication: (
+        worker_identity_runtime.LegacyWorkerIdentityAuthentication | None
+    ) = None,
 ) -> tuple[Mapping[str, object], Mapping[str, object], str] | None:
     """Return the signed DAG, derived authority, and independent authority SHA."""
 
@@ -1821,6 +2069,7 @@ def load_authenticated_us_multispine_pool_for_scoring(
     path: str | Path,
     *,
     expected_manifest_sha256: str | None = None,
+    worker_identity_attestation: str | Path | None = None,
 ) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
     """Load authenticated pool evidence without promoting failed gates.
 
@@ -1838,6 +2087,7 @@ def load_authenticated_us_multispine_pool_for_scoring(
         expected_manifest_sha256=expected_manifest_sha256,
         require_simulation_ready=False,
         scoring_only=True,
+        worker_identity_attestation=worker_identity_attestation,
     )
 
 
@@ -1874,6 +2124,7 @@ def _load_us_multispine_pool(
     expected_manifest_sha256: str | None,
     require_simulation_ready: bool,
     scoring_only: bool = False,
+    worker_identity_attestation: str | Path | None = None,
 ) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
     """Shared authenticated H5 reconstruction for readiness and scoring."""
 
@@ -1883,6 +2134,7 @@ def _load_us_multispine_pool(
         expected_manifest_sha256=expected_manifest_sha256,
         allow_terminal_gate_failure=not require_simulation_ready,
         scoring_only=scoring_only,
+        worker_identity_attestation=worker_identity_attestation,
     )
     agreement_gate = _mapping(
         manifest.get("agreement_gate"),
@@ -1952,6 +2204,9 @@ def _load_us_multispine_pool(
     late_transition = _stacked_late_transition_binding(
         manifest,
         manifest_path=manifest_path,
+        legacy_worker_authentication=(
+            authenticated_pool_h5._legacy_worker_authentication
+        ),
     )
     frame_metadata: dict[str, object] = {}
     stack_manifest = _validated_stacked_sampling_manifest_binding(
@@ -1993,6 +2248,9 @@ def _load_us_multispine_pool(
             dag,
             boundary=f"US stacked pool H5 {pool_path}",
             expected_transition_authority_sha256=transition_authority_sha256,
+            legacy_worker_authentication=(
+                authenticated_pool_h5._legacy_worker_authentication
+            ),
         )
 
     provenance_counts = _mapping(
