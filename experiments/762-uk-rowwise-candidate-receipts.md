@@ -328,3 +328,28 @@ Pre-flight `--env` OK before launch; pre-flight `--candidate-dir` OK after: rele
 | gate report | `release_candidate: false`, not shippable | **`release_candidate: true`, shippable, signed** |
 
 Readings: A17 closes the tenure seam (owned outright 65.7 → 97.2 % within 10 %) with no cost elsewhere; households land 0.6 % under the FRS grossing; the holdout improves because the uprated tenure cells are consistent with the household rows the folds hold out; the land rows bind within 6 % once measured in a single block. Remaining national misses past 25 %: council-tax band D stock (+30 %), UC 5+-children households (−29 %), one SPI self-employment band (+27 %). The diagnostic `target_fit` gate lists 42 local cells past 25 % (council-tax bands and the Kensington/Westminster self-employment amounts). This is the artifact the dense line (`microcosm-uk-2024-25-dense`, A18) assembles from.
+
+## R17 — Release-candidate re-run on the fixed re-signer, and the first assembled dense release directory (2026-09-03 19:30 → 2026-09-04 00:10; PR B 0f5c1978)
+
+**Why a re-run.** Assembling the dense line from R16 stopped at one contract failure: the signed local gate report did not authenticate. `resign_uk_gate_report` (called by `finalize_uk_scoped_gate_report` for the local report and for the national seam report) signed with the Logbook's canonical JSON, which renders integral floats without the decimal (`50` for `50.0`), while the gate battery and every verifier use `json.dumps`'s form — so any report whose gate details carry an integral float (the local battery's ESS floor `50.0`) could not be verified. Fixed on PR B (0f5c1978: sign with the battery's canonical bytes; regression test finalizes a report carrying `50.0` and verifies it under the contract; the candidate pre-flight now runs the contract's report verification). Re-signing R16's report in place would have changed bytes under a recorded manifest, so the candidate was re-run end to end on the fixed code.
+
+**R17 is byte-identical to R16 in everything the solve produced.** Same seed, same inputs, same code apart from the signature: the household weights are equal element for element (max abs diff 0.0), the loss trajectory, every fit share, the holdout and the incumbent score are identical; only the build id, timestamps, the H5 provenance columns and the signature differ (H5 sha `c352448b…` vs `09166f9c…`). Wall 11,122 s, peak 11.1 GB; chain intact on R16's row; no warnings. Pre-flight `--env` OK before; pre-flight `--candidate-dir` OK after, now including the contract's own signature verification.
+
+| R17 (= R16) | |
+|---|---|
+| loss | 0.3030 → 0.01427 |
+| local within 10 %: age / census / HMRC / UC / tenure / council tax | 100 / 99.7 / 99.2 / 99.9 / 99.2 / 91.9 |
+| national within 10 % / 25 % (359 rows) | 94.7 / 99.2 |
+| max / median weight; ESS fraction; constituency ESS min / median | 400; 0.163; 63.8 / 220 |
+| households | 29,073,744 (FRS grossing 29,247,433; −0.6 %) |
+| holdout mean / worst (uncalibrated 0.304) | 0.1895 / 0.1991 |
+| vs incumbent, 19,089 rows: loss / wins | 0.0154 vs 0.1815 / 16,936 vs 2,153 |
+| gate report | `release_candidate: true`, `shippable: true`, signed and **contract-verified** |
+
+**The assembled dense release (A18).** `tools/assemble_uk_dense_release_dir.py` verified the hash join (every manifest output against its bytes, the spine against its pin, the gate report against the Logbook build id), re-ran the pre-flight, minted the cut tag **`microcosm-uk-2024-25-dense-20260903T192959Z-3bcacf74`** from the attempt id, cloned the H5 beside the run as `microcosm_uk_2025_dense.h5` (sha equal to the candidate's), staged `build_manifest.json`, `release_manifest.json` (`dataset_role: non_default_local_area`, `default_datasets: {}`, `is_default: false`, namespace `uk_dense`, six artifacts pinned to the cut tag in `policyengine/populace-uk-private`, 55 reviewed limitations: the two failing diagnostic gates, the 49 measure exclusions, the two micro-authority exclusions, the unbound composition bridge, the holdout), `calibration_diagnostics.json` (the run's, plus `households` and `n_targets`), `gate_summary.json` (both release-blocking gates passed; `target_fit` and `weight_ratio` recorded as diagnostic failures), `uk_source_coverage.json`, the signed `uk_local_gates.json`, `score_vs_incumbent.json`, `sha256sums.txt`; `microcosm.data.contract.validate_release_dir` passed; the directory was renamed into `data/ukds/acceptance/762-rowwise-candidate/releases/microcosm-uk-2024-25-dense/`; the pre-flight `--release-dir` check passed. **Nothing was published.** The printed human step is:
+
+```
+uv run python -m microcosm.data.publish_cli <releases>/microcosm-uk-2024-25-dense --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir> --no-latest --tag-name microcosm-uk-2024-25-dense-20260903T192959Z-3bcacf74
+```
+
+This closes the plan's I8: the machinery (PR A), the rulings and registers (PR B), the measured doctrine, the release candidate, the incumbent comparison and the contract-valid release directory all exist; what remains before any publication is María's review of both PRs and her go on the human step. I9 (the evaluator on the incumbent's target surface) and I10 (L0 sparsity) follow.
