@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the hermetic charter-H2 UK spine parity fixture.
 
-The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 27
+The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 28
 stages are the current production transform classes.  Private source files
 are replaced only through their supported parsed-input seams.  The bundle's
 ``fixture.json`` is deliberately data-only so the graph's unbound UK registry
@@ -99,6 +99,9 @@ from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.uc_deduction_attributes import (
+    UKUCDeductionAttributesStageTransform,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
@@ -123,11 +126,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 27
+UK_FIXTURE_STAGE_COUNT = 28
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 27-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 28-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -144,7 +147,7 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "person_support_channel",
         "student_loan_plan",
     ),
-    "benunit": ("benunit_support_channel",),
+    "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
         "region",
         "tenure_type",
@@ -566,6 +569,13 @@ def _was_donor() -> pd.DataFrame:
             "DVPriRntR8": 1 + rows.astype(int) % 2,
             "CTAmtR8": 900.0 + rows * 10.0,
             "HFINWNTR8_Sum": -50.0 + rows * 4.0,
+            "HFINWNTR8_exSLC_Sum": 20.0 + rows - rows % 5,
+            "HMortGR8": np.where(
+                np.isin(np.take([1, 2, 3, 4], rows.astype(int) % 4), [2, 3]),
+                10_000.0 + rows * 100.0,
+                0.0,
+            ),
+            "Ten1R8": np.take([1, 2, 3, 4], rows.astype(int) % 4),
             "HFINWR8_SUM": 30.0 + rows,
             "DVhvalueR8": 100_000.0 + rows * 2_000.0,
             "DVHseValR8_sum": 1_000.0 + rows * 50.0,
@@ -856,7 +866,7 @@ def _normalization_markdown() -> str:
     lines = [
         "# UK spine parity string normalization",
         "",
-        "The unchanged legacy transforms retain these 21 textual table columns as",
+        "The unchanged legacy transforms retain these 22 textual table columns as",
         "pandas `object`. The frozen graph dtype token `string` is specified by",
         'interface-freeze amendment 10 as pandas `StringDtype(storage="python")`.',
         "Before computing the legacy oracle's `uk_frame_content_identity` (live,",
@@ -912,8 +922,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 21:
-        raise RuntimeError("The legacy normalization audit is not exactly 21 cells.")
+    if observed != expected_order or len(observed) != 22:
+        raise RuntimeError("The legacy normalization audit is not exactly 22 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -999,7 +1009,19 @@ def _build_implementations(
 
     def capture_root(frame: Frame) -> Frame:
         result = root_transform(frame)
-        root_capture["frame"] = result
+        # Snapshot the root: the next legacy stage (age_tail) rewrites the
+        # person table in place, so an aliased capture would carry its ages.
+        root_capture["frame"] = Frame(
+            {
+                entity: result.table(entity).copy(deep=True)
+                for entity in result.entities
+            },
+            result.schema,
+            {entity: result.weights_for(entity) for entity in result.weighted_entities},
+            result.strata.copy(deep=True),
+            mass_log=result.mass_log,
+            metadata=dict(result.metadata),
+        )
         return result
 
     implementations: dict[str, object] = {
@@ -1074,6 +1096,9 @@ def _build_implementations(
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
+        "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
+            stage=stages["uc_deduction_attributes"]
+        ),
         "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
             stage=stages["cgt_incidence_clone"]
         ),
@@ -1101,7 +1126,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 27-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 28-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1134,7 +1159,7 @@ def _run_legacy_plan(
 def legacy_oracle_frame(fixture: Path) -> Frame:
     """The legacy oracle's final frame on the fixture, computed live.
 
-    Rebuilds the same 26 transforms the graph's UK registry reconstructs from
+    Rebuilds the same 28 transforms the graph's UK registry reconstructs from
     ``fixture/sources``, runs them through the legacy StagePlan in this
     process, root included, and applies the one string normalization the
     fixture documents. The content identity is a byte-exact fingerprint of
@@ -1213,7 +1238,7 @@ def generate(output: Path) -> None:
     descriptor = {
         "schema_version": "uk-spine-parity-fixture.v1",
         "description": (
-            "Data-only inputs for reconstructing the same 26 current UK stage "
+            "Data-only inputs for reconstructing the same 28 current UK stage "
             "transform classes used by the legacy StagePlan oracle."
         ),
         "stages": {stage.stage: _stage_payload(stage) for stage in stages},
@@ -1249,7 +1274,7 @@ def generate(output: Path) -> None:
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
-        "tools/graph_uk_spine_fixture.py; current 26-transform legacy "
+        "tools/graph_uk_spine_fixture.py; current 28-transform legacy "
         "StagePlan oracle with parsed private-source seams. The acceptance "
         "test runs both sides from frs_raw in-process (root weights differ "
         "by one ulp between machines); the captured root tables serve the "

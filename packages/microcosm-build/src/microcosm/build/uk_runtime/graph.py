@@ -85,12 +85,19 @@ _STRUCTURAL_WEIGHT_KIND = {
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
         "uc_capital_coherence",
-        # Earlier stages in this version genuinely condition on age.  The
-        # terminal rewrite must live above them rather than becoming their
-        # same-version owner and reversing those dependencies.
-        "age_tail",
+        # ``frs_education_grant_split`` rewrites the root cell
+        # ``education_grants`` that the open-surface ``frs_legacy_proxies``
+        # reader already bound to.  In the root version that rewrite opened a
+        # boundary by the same-version owner rule; now that ``age_tail`` opens
+        # its own version right after the root, the root cells are inherited
+        # rather than owned there, so the isolation must be declared.
+        "frs_education_grant_split",
     }
 )
+# ``age_tail`` needs no isolation entry: it is declared immediately after the
+# root stage, and the root version already owns ``age``, so the same-version
+# owner rule opens its boundary.  Every later age reader then binds to the
+# disaggregated cell — the #785 contract — instead of the top-coded root.
 
 _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_spine": ("frs",),
@@ -194,6 +201,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("benunit", "would_claim_uc"),
         }
     ),
+    "uc_deduction_attributes": frozenset({("household", "region")}),
     "cgt_incidence_clone": None,
     "cgt_band_donors": None,
     "hmrc_cgt_gains_spine": frozenset(
@@ -222,11 +230,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
         }
     ),
+    # Keyed on the structural person_id before any clone provenance exists;
+    # the transform refuses a frame that already carries person_source_id.
     "age_tail": frozenset(
         {
             ("person", "age"),
             ("person", "gender"),
-            ("person", "person_source_id"),
         }
     ),
 }
@@ -256,8 +265,8 @@ class _Cell:
 
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
 _ROOT_PERSON_BOOL = {"is_household_head", "is_benunit_head", "is_parent"}
-_ROOT_PERSON_INT: set[str] = set()
-_ROOT_PERSON_FLOAT = {"age"}
+_ROOT_PERSON_INT = {"age"}
+_ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
     "is_married": "bool",
@@ -295,12 +304,13 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
         elif column in _ROOT_PERSON_BOOL:
             cells.append(_Cell("person", column, "bool"))
         elif column in _ROOT_PERSON_INT:
+            # frs_spine casts age to int64 after checking the raw codes are
+            # integral, and age_tail keeps an integer input integer (its
+            # bands are integral), so the legacy runner and this declaration
+            # agree without relying on the CREATE-time cast (#845).  Rewrites
+            # cannot change their base's dtype.
             cells.append(_Cell("person", column, "int64"))
         elif column in _ROOT_PERSON_FLOAT:
-            # age_tail is an honest float64 rewrite.  Rewrites cannot change
-            # their base's declared dtype, so the graph normalizes age at
-            # CREATE while the legacy spine reaches the same dtype at its
-            # final stage.
             cells.append(_Cell("person", column, "float64"))
         elif column.startswith("household_"):
             # No root data column currently takes this spelling; keep an
@@ -445,6 +455,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         _Cell("household", "num_vehicles", "int64"),
         *_cells("household", ("cash_isa", "stocks_and_shares_isa")),
+        *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
     ),
     "regional_property_uprating": _cells(
@@ -532,6 +543,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
+    "uc_deduction_attributes": (
+        _Cell("benunit", "uc_deduction_random_draw", "float64"),
+        _Cell("benunit", "uc_deduction_type_random_draw", "float64"),
+        _Cell("benunit", "uc_latent_deduction_rate", "float64"),
+        _Cell("benunit", "uc_deduction_combination", "string"),
+    ),
     "cgt_incidence_clone": (
         _Cell("household", "household_is_capital_gains_clone", "bool"),
         _Cell("person", "capital_gains", "float64"),
@@ -549,7 +566,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
-    "age_tail": (_Cell("person", "age", "float64"),),
+    "age_tail": (_Cell("person", "age", "int64"),),
 }
 
 _HMRC_SPI_FLOAT_COLUMNS = (

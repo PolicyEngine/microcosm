@@ -43,7 +43,7 @@ PARITY = Path(__file__).parent / "fixtures" / "parity"
 #: was taken under).
 KERNEL_PARITY = PARITY / "kernels"
 
-#: H2: ``uk_spine.json`` — the 27-stage FRS spine expressed as a graph — plus
+#: H2: ``uk_spine.json`` — the 28-stage FRS spine expressed as a graph — plus
 #: ``sources/``, the data-only bundle both the graph and the legacy oracle
 #: rebuild their transforms from. The root transform's weights differ at the
 #: last bit between machines, so both sides recompute the root from the raw
@@ -250,12 +250,12 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     engine tier (``requires_uk``) and skips in the engine-free fast lane.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/uk_spine/`` with
-    ``uk_spine.json`` and ``sources/``; both sides run the 27 transforms from
+    ``uk_spine.json`` and ``sources/``; both sides run the 28 transforms from
     those sources in this process, root included, because the root weights
     differ at the last bit between machines. Stage order comes
     from declared ``consumes``: the assertion below is that the compiled
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
-    in ``tools/build_uk_frs_spine.py`` — the 27 names intersected with a
+    in ``tools/build_uk_frs_spine.py`` — the 28 names intersected with a
     28-stage packaged manifest, kept in step by hand — can be deleted.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
@@ -280,7 +280,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     graph = uk_spine_graph()
     assert graph_from_json((UK_SPINE_PARITY / "uk_spine.json").read_text()) == graph
     compiled = compile_graph(graph)
-    assert len(compiled.order) >= 28, "a CREATE node plus the 27 spine stages"
+    assert len(compiled.order) >= 29, "a CREATE node plus the 28 spine stages"
     assert all(
         set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
         for index, node_id in enumerate(compiled.order)

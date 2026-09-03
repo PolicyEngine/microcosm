@@ -86,6 +86,9 @@ pool whose terminal battery is red remains fail-closed unless the operator
 passes `--allow-gate-failed-base-pool`; that opt-in carries the full red verdict
 into `release_manifest.json` for a separate human publication decision. It does
 not weaken the exact-k manifest arm or authorize publication by itself.
+A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
+for known-excluded publications while preserving their scoring-only diagnostic
+path.
 
 ## Root journals are history, not state
 

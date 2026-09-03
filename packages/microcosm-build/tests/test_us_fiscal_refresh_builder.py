@@ -1743,20 +1743,16 @@ def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
             )
         return
 
-    loaded_frame, receipt, loaded_identity = (
-        builder._load_base_pool_if_identified(
-            pool_h5,
-            allow_gate_failed_base_pool=allow_gate_failed,
-        )
+    loaded_frame, receipt, loaded_identity = builder._load_base_pool_if_identified(
+        pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
     )
 
     assert loaded_frame is frame
     assert loaded_identity is authenticated
     assert receipt["status"] == status
     assert receipt["allow_gate_failed_base_pool"] is allow_gate_failed
-    assert receipt["agreement_gate_reference"]["failure_count"] == len(
-        gate_failures
-    )
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(gate_failures)
 
 
 def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
@@ -1777,7 +1773,9 @@ def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
     )
     out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
     monkeypatch.setattr(
         builder,
         "_load_frame",
@@ -1826,7 +1824,9 @@ def test_builder_refuses_bare_stamped_pool_h5_before_generic_load(
         )
     out = tmp_path / "out"
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_refuse_certified_release_dir_reuse", lambda path: None)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
     monkeypatch.setattr(
         builder,
         "_load_frame",
@@ -1909,9 +1909,10 @@ def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
         "authenticated_pool_h5.verified_digest(\n"
         '            consumer="builder base dataset identity"'
     ) in main_source
-    assert "if pool_frame is None:\n        base_frame = _load_frame(base_h5)" in (
-        main_source
-    )
+    assert (
+        "if pool_frame is None:\n        base_frame = _load_frame("
+        "base_h5, expected_sha256=base_dataset_sha256)"
+    ) in main_source
     assert "base_dataset_sha256=base_dataset_sha256" in main_source
     assert '"base_dataset_sha256": base_dataset_sha256' in diagnostics_source
     assert '"manifest_sha256": authenticated_pool_h5.manifest_sha256' in receipt_source
@@ -1964,7 +1965,9 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
 
-    base_load = source.index("base_frame = _load_frame(base_h5)")
+    base_load = source.index(
+        "base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)"
+    )
     tail_presence = source.index(
         "capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(",
         base_load,
@@ -4570,7 +4573,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
 
-    def fake_load_frame(path):
+    def fake_load_frame(path, *, expected_sha256=None):
         captured["source_stage_events"].append("load_frame")
         return FakeFrame()
 
@@ -9160,9 +9163,7 @@ def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> N
     builder = _load_builder_module()
 
     with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
-        builder._exact_k_ladder_manifest_payload(
-            **_gate_failed_exact_k_inputs(builder)
-        )
+        builder._exact_k_ladder_manifest_payload(**_gate_failed_exact_k_inputs(builder))
 
 
 def _gate_failed_base_pool_receipt() -> dict[str, object]:

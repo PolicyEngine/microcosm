@@ -57,6 +57,11 @@ from microcosm.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
     us_geography_ladder_gate,
 )
+from microcosm.build.us_runtime.h5_io import (
+    assert_h5_unchanged,
+    refuse_denied_frame,
+    refuse_denied_pool_h5,
+)
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -483,7 +488,18 @@ def assert_required_us_release_source_columns(
 
 
 def load_us_frame(path: str | Path) -> Frame:
-    """Load a PolicyEngine-US single-year H5 into a Microcosm frame."""
+    """Load a PolicyEngine-US single-year H5 into a Microcosm frame.
+
+    This is the generic ingress every release-producing tool falls back to
+    when an H5 does not identify as a multispine pool. A denied pool whose
+    sidecar and metadata row were stripped would otherwise be laundered
+    here, so the bytes are checked against the sealed deny-list first.
+    """
+
+    # The deny check precedes the engine import so a denied file is refused
+    # even where no engine is installed.
+    consumer = "generic base-H5 path (load_us_frame)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
 
     from policyengine_us.data import USSingleYearDataset
 
@@ -497,11 +513,14 @@ def load_us_frame(path: str | Path) -> Frame:
         "marital_unit": dataset.marital_unit.copy(),
     }
     weights = tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
-    return Frame(
+    assert_h5_unchanged(path, sha256, consumer=consumer)
+    frame = Frame(
         tables,
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+    refuse_denied_frame(frame, consumer=consumer)
+    return frame
 
 
 def copy_microcosm_root_attrs(

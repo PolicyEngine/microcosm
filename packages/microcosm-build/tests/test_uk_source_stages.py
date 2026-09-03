@@ -28,6 +28,9 @@ E3_STAGE_NAMES = [
     "frs_legacy_proxies",
     "frs_education_grant_split",
 ]
+POST_FRS_SPINE_STAGE_NAMES = [
+    "age_tail",
+]
 E4_STAGE_NAMES = [
     "frs_take_up",
     "frs_person_draws",
@@ -54,6 +57,9 @@ UC_REPORTER_REDRAW_STAGE_NAMES = [
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
+E9_STAGE_NAMES = [
+    "uc_deduction_attributes",
+]
 E8_STAGE_NAMES = [
     "cgt_incidence_clone",
     "cgt_band_donors",
@@ -61,15 +67,9 @@ E8_STAGE_NAMES = [
     "salary_sacrifice",
     "student_loans",
 ]
-# Spine stages that land after the E8 block. `age_tail` rewrites `age` and so
-# must run downstream of every stage that conditions on it — student_loans
-# reads it for cohort start years, the CGT stages for the adult carrier — which
-# is the position the #623 calibration campaign exercised.
-POST_E8_STAGE_NAMES = [
-    "age_tail",
-]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
+    *POST_FRS_SPINE_STAGE_NAMES,
     *E3_STAGE_NAMES,
     *E4_STAGE_NAMES,
     *E5_STAGE_NAMES,
@@ -77,8 +77,8 @@ UK_SOURCE_STAGE_NAMES = [
     *E7_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
-    *POST_E8_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
 ]
@@ -159,21 +159,37 @@ class TestUKSourceStagesManifest:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert (
-            names[names.index("etb_services") + 1 : names.index("cgt_incidence_clone")]
-            == [
-                *E7_STAGE_NAMES,
-                *UC_REPORTER_REDRAW_STAGE_NAMES,
-                *UC_COHERENCE_STAGE_NAMES,
-            ]
-        )
+        assert names[
+            names.index("etb_services") + 1 : names.index("cgt_incidence_clone")
+        ] == [
+            *E7_STAGE_NAMES,
+            *UC_REPORTER_REDRAW_STAGE_NAMES,
+            *UC_COHERENCE_STAGE_NAMES,
+            *E9_STAGE_NAMES,
+        ]
 
-    def test_e8_block_is_contiguous_and_the_certified_pair_stays_last(self) -> None:
-        # Two invariants, and only two: the E8 stages stay contiguous, and the
+    def test_age_tail_runs_immediately_after_frs_spine(self) -> None:
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        spine = [stage["stage"] for stage in canonical["stages"][:-2]]
+
+        assert spine[1] == "age_tail"
+
+    def test_age_tail_position_owns_the_only_later_age_rewrite_guard(self) -> None:
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+        stages = list(manifest.stages)
+        names = [stage.stage for stage in stages]
+        age_tail_index = names.index("age_tail")
+
+        assert age_tail_index == names.index("frs_spine") + 1
+        for stage in stages[age_tail_index + 1 :]:
+            assert "age" not in stage.outputs, stage.stage
+            assert "age" not in stage.rewrites, stage.stage
+
+    def test_e8_block_is_final_and_the_certified_pair_stays_last(self) -> None:
+        # The E8 stages stay contiguous at the end of the spine, while the
         # certified pair stays at [-2:] (the frozen-copy lockstep test reads
-        # them from there). E8 being the *final* spine block was an artifact
-        # of it having been the last increment — the spine may grow a tail
-        # after it, as `age_tail` does, without either invariant moving.
+        # them from there). age_tail is now the post-frs_spine block, before
+        # every stage that conditions on age.
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
@@ -181,7 +197,7 @@ class TestUKSourceStagesManifest:
         spine = names[:-2]
         start = spine.index(E8_STAGE_NAMES[0])
         assert spine[start : start + len(E8_STAGE_NAMES)] == E8_STAGE_NAMES
-        assert spine[start + len(E8_STAGE_NAMES) :] == POST_E8_STAGE_NAMES
+        assert spine[start + len(E8_STAGE_NAMES) :] == []
 
     def test_copy_is_lockstep_with_frozen_original_except_citation_rewrites(
         self,
@@ -300,6 +316,7 @@ class TestUKSourceStagesManifest:
                     "hmrc_spi_income_spine": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
+                    "uc_deduction_attributes": _identity,
                     "cgt_incidence_clone": _identity,
                     "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
@@ -394,6 +411,10 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.regional_uprating import (
             UK_REGIONAL_PROPERTY_REWRITES,
         )
+        from microcosm.build.uk_runtime.uc_deduction_attributes import (
+            UC_DEDUCTION_NONNEGATIVE_OUTPUT_COLUMNS,
+            UC_DEDUCTION_OUTPUT_COLUMNS,
+        )
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_OUTPUT_COLUMNS,
@@ -432,6 +453,11 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["was_wealth"].nonnegative_outputs
             == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["uc_deduction_attributes"].outputs == UC_DEDUCTION_OUTPUT_COLUMNS
+        assert (
+            stages["uc_deduction_attributes"].nonnegative_outputs
+            == UC_DEDUCTION_NONNEGATIVE_OUTPUT_COLUMNS
         )
         assert stages["regional_property_uprating"].outputs == ()
         assert (
@@ -655,6 +681,12 @@ class TestE3ManifestLockstep:
             "redraw_spi_reporter_capital",
             "derive",
         ]
+        assert [op.kind for op in stages["uc_deduction_attributes"].operations] == [
+            "assign_uniform_draw",
+            "assign_uniform_draw",
+            "map_uniform_to_banded_rate",
+            "map_uniform_to_categorical",
+        ]
         assert [op.kind for op in stages["cgt_incidence_clone"].operations] == [
             "clone_records",
             "draw_capital_gains_prior_from_banded_quantiles",
@@ -839,6 +871,27 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
+    def test_e5_debt_segment_predictors_lockstep(self) -> None:
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_DEBT_SEGMENT_PREDICTORS,
+            UK_WAS_WEALTH_PREDICTORS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        qrf = stages["was_wealth"].operations[2]
+
+        assert qrf.kind == "fit_weighted_qrf_chain"
+        assert tuple(qrf.parameters["debt_segment_predictors"]) == (
+            UK_WAS_DEBT_SEGMENT_PREDICTORS
+        )
+        # The extra predictor belongs to the debt segment only: the shared
+        # base list, and so E5's first three segments, are unchanged.
+        assert not set(UK_WAS_DEBT_SEGMENT_PREDICTORS) & set(
+            qrf.parameters["predictors"]
+        )
+        assert tuple(qrf.parameters["predictors"]) == UK_WAS_WEALTH_PREDICTORS
+
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
@@ -891,6 +944,20 @@ class TestE3ManifestLockstep:
             operation.parameters["seed"]
             for operation in stages["student_loans"].operations[1:]
         ] == [42, 42]
+
+    def test_e9_declared_seed_lockstep(self) -> None:
+        from microcosm.build.uk_runtime.uc_deduction_attributes import (
+            UK_UC_DEDUCTION_ATTRIBUTES_DECLARED_SEEDS,
+        )
+
+        stage = load_country_spec("uk").sources.stage_map()["uc_deduction_attributes"]
+        declared = {
+            operation.parameters["output"]: operation.parameters["seed"]
+            for operation in stage.operations
+            if operation.kind == "assign_uniform_draw"
+        }
+
+        assert declared == UK_UC_DEDUCTION_ATTRIBUTES_DECLARED_SEEDS
 
     def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
         spec = load_country_spec("uk")

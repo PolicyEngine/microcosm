@@ -791,6 +791,42 @@ def _write_ready_pool(
     return manifest_path
 
 
+def _write_gate_failed_pool(tmp_path: Path) -> Path:
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    failed_gate = {
+        "passed": False,
+        "gates": {
+            "us_spine_agreement": {
+                "passed": False,
+                "failures": ["fixture terminal failure"],
+                "details": {"fixture": False},
+            }
+        },
+    }
+    manifest.update(
+        {
+            "status": "gate_failed",
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics.update(
+        {
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest_path
+
+
 def _canonical_late_calibration_owner_receipt(
     spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
 ) -> dict[str, object]:
@@ -1446,10 +1482,11 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
         transition_authority["sha256"]
         == manifest["late_producer_transition_authority_sha256"]
     )
-    assert stacked_spine_module._json_ready(
-        frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
-    ) == (
-        manifest["stack_manifest"]
+    assert (
+        stacked_spine_module._json_ready(
+            frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+        )
+        == (manifest["stack_manifest"])
     )
 
 
@@ -1465,12 +1502,10 @@ def test_ready_stacked_pool_loader_restores_sampled_rung_manifest(
 
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
-    stack_manifest = frame.metadata[
-        stacked_spine_module.STACKED_SPINE_MANIFEST_KEY
-    ]
-    assert stacked_spine_module._json_ready(stack_manifest) == manifest[
-        "stack_manifest"
-    ]
+    stack_manifest = frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+    assert (
+        stacked_spine_module._json_ready(stack_manifest) == manifest["stack_manifest"]
+    )
     assert stack_manifest["version"] == 4
     assert stack_manifest["sample_fraction"] == 0.25
 
@@ -1665,38 +1700,7 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
-    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    failed_gate = {
-        "passed": False,
-        "gates": {
-            "us_spine_agreement": {
-                "passed": False,
-                "failures": ["fixture terminal failure"],
-                "details": {"fixture": False},
-            }
-        },
-    }
-    manifest.update(
-        {
-            "status": "gate_failed",
-            "simulation_ready": False,
-            "agreement_gate": failed_gate,
-            "terminal_gates": failed_gate,
-        }
-    )
-    diagnostics.update(
-        {
-            "simulation_ready": False,
-            "agreement_gate": failed_gate,
-            "terminal_gates": failed_gate,
-        }
-    )
-    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
-    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path = _write_gate_failed_pool(tmp_path)
 
     with pytest.raises(ValueError, match="not simulation-ready"):
         load_simulation_ready_us_multispine_pool(manifest_path)
@@ -1730,6 +1734,9 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         authenticated_h5,
         allow_gate_failed_base_pool=True,
     )
+    assert (
+        receipt["content_identity_sha256"] == authenticated_h5.content_identity_sha256
+    )
     assert receipt["status"] == "gate_failed"
     assert receipt["simulation_ready"] is False
     assert receipt["allow_gate_failed_base_pool"] is True
@@ -1744,8 +1751,549 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
                 "message": "fixture terminal failure",
             }
         ],
-        "verdict": failed_gate,
+        "verdict": loaded_manifest["agreement_gate"],
     }
+
+
+def test_denied_gate_failed_pool_is_available_only_for_scoring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["publication_run_id"]
+    reason = "fixture pool is excluded from the certifiable line"
+    reference = "microcosm#856; fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+
+    frame, loaded_manifest, _ = load_authenticated_us_multispine_pool_for_scoring(
+        manifest_path
+    )
+    assert frame.n("household") == 3
+    assert loaded_manifest["status"] == "gate_failed"
+
+    refused_loaders = (
+        (
+            "manifest-only",
+            lambda: h5_io.load_simulation_ready_us_multispine_pool_manifest(
+                manifest_path
+            ),
+        ),
+        (
+            "simulation-ready",
+            lambda: load_simulation_ready_us_multispine_pool(manifest_path),
+        ),
+        (
+            "release-strict",
+            lambda: load_authenticated_us_multispine_pool_for_release(
+                manifest_path,
+                allow_terminal_gate_failure=False,
+            ),
+        ),
+        (
+            "release-opt-in",
+            lambda: load_authenticated_us_multispine_pool_for_release(
+                manifest_path,
+                allow_terminal_gate_failure=True,
+            ),
+        ),
+    )
+    for loader_name, loader in refused_loaders:
+        with pytest.raises(ValueError) as error:
+            loader()
+        message = str(error.value)
+        assert run_id in message, loader_name
+        assert reason in message, loader_name
+        assert reference in message, loader_name
+
+
+def test_pool_deny_list_matches_manifest_sha256_without_matching_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "sha-only.manifest.json"
+    observed_run_id = "different-observed-publication"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "publication_run_id": observed_run_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+    denied_run_id = "sha-matched-denied-publication"
+    reason = "fixture manifest digest is excluded"
+    reference = "microcosm#856; sha-fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            denied_run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256=_sha256(manifest_path),
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-sha-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+    assert observed_run_id != denied_run_id
+
+    with pytest.raises(ValueError) as error:
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+    message = str(error.value)
+    assert observed_run_id in message
+    assert denied_run_id in message
+    assert reason in message
+    assert reference in message
+
+
+def test_pool_deny_list_contains_candidate_26_identity() -> None:
+    denied = h5_io.DENIED_POOL_PUBLICATIONS["2ab3f5a136bf4033be876bf150a6fbb4"]
+    assert denied.manifest_sha256 == (
+        "2a06fc2b1b73b006bb1bae7d13daeef813a4645c989374408eceaed0ef321cbd"
+    )
+    assert denied.release_id == (
+        "populace-us-2024-stacked-f025-s578-asec42213-acs382903-"
+        "20260831T162338Z-e14b24e8"
+    )
+    assert denied.pool_h5_sha256 == (
+        "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
+    )
+    assert denied.content_identity_sha256 == (
+        "f5a5023bb9a74003d433abf04c796c96da0a34c6a7caff78b70fee421c4a7b2c"
+    )
+    assert "\n" not in denied.reason
+    assert denied.reference == (
+        "microcosm#856; plan gate 20260902-220844-plan-532dab66"
+    )
+
+
+def test_pool_deny_list_matches_pool_h5_sha256_without_other_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A repackaged manifest around the same H5 bytes is still refused."""
+    manifest_path = tmp_path / "h5-only.manifest.json"
+    denied_h5 = "a" * 64
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "publication_run_id": "repackaged-publication",
+                "pool_h5": {"sha256": denied_h5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "h5-matched-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-h5-release",
+                reason="fixture H5 bytes are excluded",
+                reference="microcosm#856; h5-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="pool H5 SHA-256"):
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+
+def test_denied_pool_h5_digest_is_refused_on_generic_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripping the sidecar and metadata row must not reopen a generic path."""
+    denied_h5 = "b" * 64
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded",
+                reference="microcosm#856; stripped-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    h5_io.refuse_denied_pool_h5_digest("c" * 64, consumer="fixture consumer")
+    with pytest.raises(ValueError) as error:
+        h5_io.refuse_denied_pool_h5_digest(denied_h5, consumer="fixture consumer")
+    message = str(error.value)
+    assert "fixture consumer" in message
+    assert "stripped-denied-publication" in message
+    assert "even without pool identity metadata" in message
+
+
+def test_scoring_evidence_of_a_denied_pool_cannot_become_a_release_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scoring exception must not launder a denied pool into release evidence."""
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["publication_run_id"]
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    _frame, loaded_manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+    )
+    with pytest.raises(ValueError, match="cannot become a release receipt"):
+        us_multispine_pool_release_receipt(
+            loaded_manifest,
+            authenticated_h5,
+            allow_gate_failed_base_pool=True,
+        )
+
+
+def test_denied_pool_bytes_are_refused_by_every_generic_ingress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripped of sidecar and metadata, a denied pool must fail at each ingress."""
+    from microcosm.build.us_runtime import l0_refit_export
+
+    stripped = tmp_path / "stripped.h5"
+    stripped.write_bytes(b"denied pool bytes with no identity metadata")
+    denied_h5 = hashlib.sha256(stripped.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded",
+                reference="microcosm#856; stripped-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        l0_refit_export.load_us_frame(stripped)
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        h5_io.load_legacy_calibrated_us_h5(stripped)
+    # The L0/refit export reads the base through load_us_frame first, so the
+    # refusal precedes any use of the weights file, which need not exist.
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        l0_refit_export.export_us_l0_refit_h5(
+            base_h5=stripped,
+            weights_npz=tmp_path / "absent.npz",
+            output_h5=tmp_path / "out.h5",
+        )
+
+
+def test_h5_read_is_refused_when_the_file_changes_under_it(tmp_path: Path) -> None:
+    """The refusal check and the read are bound by a post-read digest."""
+    path = tmp_path / "base.h5"
+    path.write_bytes(b"benign bytes")
+    sha256 = h5_io.refuse_denied_pool_h5(path, consumer="fixture consumer")
+    h5_io.assert_h5_unchanged(path, sha256, consumer="fixture consumer")
+    path.write_bytes(b"replaced bytes")
+    with pytest.raises(ValueError, match="changed while being read"):
+        h5_io.assert_h5_unchanged(path, sha256, consumer="fixture consumer")
+
+
+def _tool_module(relative: str, name: str):
+    import importlib.util
+
+    root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location(name, root / relative)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_repackaged_denied_pool_is_refused_by_every_generic_ingress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dropping the metadata table and re-serializing changes the byte digest
+    and removes every pool marker; the content identity survives and every
+    generic ingress still refuses the file."""
+    pytest.importorskip("tables")
+    from microcosm.build.us_runtime import l0_refit_export
+
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    original_h5 = Path(manifest["pool_h5"]["path"])
+    repackaged_dir = tmp_path / "repackaged"
+    repackaged_dir.mkdir()
+    repackaged = repackaged_dir / "plain.h5"  # no sidecar manifest beside it
+    with pd.HDFStore(original_h5, mode="r") as source:
+        with pd.HDFStore(repackaged, mode="w") as target:
+            for key in source.keys():
+                if key.lstrip("/") == "_populace_staging_metadata":
+                    continue
+                table = source.get(key)
+                if key.lstrip("/") == "household" and isinstance(table, pd.DataFrame):
+                    # Launder harder: drop optional provenance columns and
+                    # relabel the household ids consistently.
+                    table = table.drop(
+                        columns=[
+                            c
+                            for c in (
+                                "household_support_channel",
+                                "household_support_clone_index",
+                            )
+                            if c in table.columns
+                        ]
+                    )
+                    table = table.assign(household_id=table["household_id"] + 1000)
+                target.put(key.lstrip("/"), table)
+
+    assert h5_io.identify_us_multispine_pool_manifest(repackaged) is None
+    assert _sha256(repackaged) != _sha256(original_h5)
+    identity = h5_io.pool_h5_content_identity(repackaged)
+    assert identity == h5_io.pool_h5_content_identity(original_h5)
+
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            manifest["publication_run_id"]: h5_io.DeniedPoolPublication(
+                manifest_sha256=_sha256(manifest_path),
+                pool_h5_sha256=_sha256(original_h5),
+                content_identity_sha256=identity,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    fiscal = _tool_module("tools/build_us_fiscal_refresh_release.py", "fiscal_tool")
+    puf_base = _tool_module("tools/build_us_puf_support_base.py", "puf_base_tool")
+    acs_base = _tool_module(
+        "tools/_legacy/build_us_acs_multispine_base.py", "acs_base_tool"
+    )
+    ingresses = (
+        ("load_us_frame", lambda: l0_refit_export.load_us_frame(repackaged)),
+        ("legacy loader", lambda: h5_io.load_legacy_calibrated_us_h5(repackaged)),
+        ("fiscal builder", lambda: fiscal._load_frame(repackaged)),
+        ("puf support base", lambda: puf_base._load_frame(repackaged)),
+        ("legacy acs base", lambda: acs_base._load_base_frame(repackaged)),
+    )
+    for label, ingress in ingresses:
+        with pytest.raises(ValueError, match="repackaging") as error:
+            ingress()
+        assert manifest["publication_run_id"] in str(error.value), label
+
+
+def test_content_identity_ignores_ids_columns_and_order() -> None:
+    """Version 2 hashes the sorted weight multiset with the count, nothing else."""
+    weights = np.asarray([3.0, 1.5, 2.25], dtype=np.float64)
+    identity = h5_io.content_identity_of_household_weights(weights)
+    assert identity == h5_io.content_identity_of_household_weights(weights[::-1])
+    assert identity != h5_io.content_identity_of_household_weights(weights[:2])
+    assert identity != h5_io.content_identity_of_household_weights(weights + 1e-9)
+
+
+def test_loaded_frame_of_a_denied_pool_is_refused_even_if_the_disk_file_changed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ABA: benign bytes on disk for both hashes, denied tables actually read."""
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    denied_h5 = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(denied_h5, mode="r") as store:
+        denied_tables = {
+            key.lstrip("/"): store.get(key)
+            for key in store.keys()
+            if key.lstrip("/") != "_populace_staging_metadata"
+        }
+    identity = h5_io.content_identity_of_household_weights(
+        denied_tables["household"]["household_weight"].to_numpy(dtype=np.float64)
+    )
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            manifest["publication_run_id"]: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256=identity,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    benign = tmp_path / "benign.h5"
+    with pd.HDFStore(benign, mode="w") as store:
+        for key, table in denied_tables.items():
+            if key == "household":
+                table = table.assign(household_weight=table["household_weight"] * 0.5)
+            store.put(key, table)
+    # Both on-disk checks see the benign file; the read is swapped to the
+    # denied tables, as a pathname replacement between check and read would do.
+    monkeypatch.setattr(
+        h5_io, "read_frame_table", lambda store, entity: denied_tables[entity].copy()
+    )
+    with pytest.raises(ValueError, match="loaded frame"):
+        h5_io.load_legacy_calibrated_us_h5(benign)
+
+
+def test_selection_manifest_provenance_is_required_for_v2_and_denied_for_any(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from microcosm.build.us_runtime import warm_start_selection as wss
+
+    def write(version: int, source: dict) -> Path:
+        path = tmp_path / f"selection-v{version}-{len(list(tmp_path.iterdir()))}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": version,
+                    "join_key": list(wss.DEFAULT_SELECTION_JOIN_KEY),
+                    "source": source,
+                    "n_selected": 0,
+                    "identities_sha256": wss._identities_digest(
+                        tuple(wss.DEFAULT_SELECTION_JOIN_KEY), []
+                    ),
+                    "identities": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    # A legacy v1 manifest with loose provenance still loads.
+    assert (
+        wss.load_selection_source_from_manifest(write(1, {"kind": "h5"})).n_identities
+        == 0
+    )
+    # A v2 manifest must carry canonical byte and content provenance.
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.load_selection_source_from_manifest(write(2, {"kind": "h5"}))
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.load_selection_source_from_manifest(
+            write(
+                2,
+                {"kind": "h5", "sha256": "A" * 64, "content_identity_sha256": "b" * 64},
+            )
+        )
+    # The public writer cannot emit an unloadable v2 manifest.
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.write_selection_source_manifest(
+            wss.SelectionSource(
+                join_key=tuple(wss.DEFAULT_SELECTION_JOIN_KEY),
+                identities=[],
+                provenance={"kind": "h5"},
+            ),
+            tmp_path / "unwritable.json",
+        )
+
+    denied_h5 = "d" * 64
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "denied-selection-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason="fixture pool is excluded",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    # Denied provenance is refused on either schema, byte or content, any case.
+    with pytest.raises(ValueError, match="denied publication"):
+        wss.load_selection_source_from_manifest(
+            write(1, {"kind": "h5", "sha256": denied_h5.upper()})
+        )
+    with pytest.raises(ValueError, match="content identity"):
+        wss.load_selection_source_from_manifest(
+            write(
+                2,
+                {"kind": "h5", "sha256": "e" * 64, "content_identity_sha256": "2" * 64},
+            )
+        )
+
+
+def test_fiscal_builder_binds_its_late_base_load_to_the_recorded_digest(
+    tmp_path: Path,
+) -> None:
+    fiscal = _tool_module(
+        "tools/build_us_fiscal_refresh_release.py", "fiscal_tool_bind"
+    )
+    base = tmp_path / "base.h5"
+    base.write_bytes(b"benign base bytes")
+    with pytest.raises(ValueError, match="not the base dataset whose identity"):
+        fiscal._load_frame(base, expected_sha256="f" * 64)
+
+
+def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:
+    """The deny-list's only exception must stay a scoring-only ingress.
+
+    Every non-test source file that names the scoring loader is listed here;
+    a release builder, preflight, or pool tool that started calling it would
+    reopen the release ingress the deny-list closes.
+    """
+    root = Path(__file__).resolve().parents[3]
+    name = "load_authenticated_us_multispine_pool_for_scoring"
+    allowed = {
+        "packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py",
+        "tools/score_us_release_head_to_head.py",
+    }
+    found = set()
+    for folder in ("tools", "packages/microcosm-build/src"):
+        for path in sorted((root / folder).rglob("*.py")):
+            if name in path.read_text(encoding="utf-8"):
+                found.add(path.relative_to(root).as_posix())
+    assert found == allowed
 
 
 def test_gate_failed_release_opt_in_is_rejected_for_a_ready_pool(
