@@ -2613,6 +2613,7 @@ def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
             f"{consumer}: {path} is not the base dataset whose identity was recorded "
             f"(SHA-256 {sha256}, expected {expected_sha256}); the read is refused."
         )
+
     from policyengine_us.data import USSingleYearDataset
 
     dataset = USSingleYearDataset(file_path=str(path))

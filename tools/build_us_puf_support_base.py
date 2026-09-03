@@ -3153,6 +3153,7 @@ def _parse_asec_source_paths(values: list[str]) -> dict[int, Path]:
 def _load_frame(path: Path) -> Frame:
     consumer = "PUF support base --base-h5 loader (_load_frame)"
     sha256 = refuse_denied_pool_h5(path, consumer=consumer)
+
     from policyengine_us.data import USSingleYearDataset
 
     dataset = USSingleYearDataset(file_path=str(path))

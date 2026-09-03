@@ -496,10 +496,13 @@ def load_us_frame(path: str | Path) -> Frame:
     here, so the bytes are checked against the sealed deny-list first.
     """
 
-    from policyengine_us.data import USSingleYearDataset
-
+    # The deny check precedes the engine import so a denied file is refused
+    # even where no engine is installed.
     consumer = "generic base-H5 path (load_us_frame)"
     sha256 = refuse_denied_pool_h5(path, consumer=consumer)
+
+    from policyengine_us.data import USSingleYearDataset
+
     dataset = USSingleYearDataset(file_path=str(path))
     tables = {
         "person": dataset.person.copy(),

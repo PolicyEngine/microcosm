@@ -512,6 +512,9 @@ def _sha256_file(path: Path) -> str:
 
 def _load_us_frame_from_h5(path: Path) -> Frame:
     """Load a microcosm US H5 into a Frame (lazy PE-US import, like the release tool)."""
+
+    refuse_denied_pool_h5(path, consumer="selection-source H5 loader")
+
     from policyengine_us.data import USSingleYearDataset
 
     dataset = USSingleYearDataset(file_path=str(path))
