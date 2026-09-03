@@ -18,6 +18,7 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StructuralDelta,
+    WeightTransition,
     compile_graph,
 )
 
@@ -340,3 +341,11 @@ def test_declared_names_may_not_contain_dots() -> None:
         Owned("a.b", "c", "int64")
     with pytest.raises(GraphError, match="may not contain '.'"):
         Slice("a", ("c",), rows="m.k")
+
+
+def test_every_declared_name_channel_refuses_dots() -> None:
+    """Amendment 15 covers weight transitions and the mass partition too."""
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        WeightTransition("house.hold", "design", "importance")
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Graph("toy", (), (), mass_partition=("person", "per.iod"))

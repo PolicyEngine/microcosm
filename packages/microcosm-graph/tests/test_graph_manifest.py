@@ -200,11 +200,11 @@ def test_population_view_entity_accessor_handles_frame_attribute_collisions(
     ).population("survey")
 
     assert view.entity(entity_name) is raw.table(entity_name)
-    with pytest.raises(
-        AttributeError,
-        match=rf"collides.*\.entity\({entity_name!r}\)",
-    ):
-        getattr(view, entity_name)
+    # The colliding name resolves to the Frame member, exactly as on a Frame,
+    # and inherited Frame operations keep working on the view.
+    assert getattr(view, entity_name) is not raw.table(entity_name)
+    assert view.n("person") == raw.n("person")
+    assert list(view.entities) == list(raw.entities)
 
 
 def test_manifest_key_excludes_every_operational_field() -> None:

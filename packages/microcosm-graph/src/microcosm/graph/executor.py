@@ -885,6 +885,18 @@ def _validate_create(node: Node, frame: Frame) -> None:
         raise NodeRejected(
             f"Node {node.id!r} returned an invalid Frame: {error}"
         ) from error
+    # Amendment 15: every name the graph will spell as entity.column is dot-free.
+    dotted_names = sorted(
+        name
+        for entity in frame.entities
+        for name in (entity, *map(str, frame.table(entity).columns))
+        if "." in name
+    )
+    if dotted_names:
+        raise NodeRejected(
+            f"CREATE node {node.id!r} returned a Frame with dotted names "
+            f"{dotted_names[:5]}; entity and column names may not contain '.'."
+        )
     expected_columns = {(owned.entity, owned.column) for owned in node.outputs}
     actual_columns = {
         (entity, str(column))

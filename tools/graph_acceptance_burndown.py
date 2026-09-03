@@ -134,8 +134,11 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
     """Every way ``source`` could suppress a result that the marker scan misses.
 
     Returns human-readable problems; an empty tuple means the file uses only
-    the forms the ratchet models (module-level ``test_*`` functions carrying
-    :data:`ALLOWED_MARKS`).
+    the forms the ratchet models: module-level ``test_*`` functions carrying
+    :data:`ALLOWED_MARKS`, spelled through ``import pytest`` itself. The scan
+    fails closed: an alias for pytest, a ``from pytest import ...``, a
+    parametrize over a non-literal, or a ``pytest.param`` carrying marks
+    anywhere in the module is refused rather than resolved.
     """
     problems: list[str] = []
     tree = ast.parse(source, filename=file)
@@ -147,6 +150,29 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
             return name.rsplit(".", 1)[-1]
         return None
 
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest" and alias.asname not in (None, "pytest"):
+                    problems.append(
+                        f"{file}: pytest is imported under an alias ({alias.asname})"
+                    )
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+            "pytest"
+        ):
+            problems.append(
+                f"{file}: 'from {node.module} import ...' hides marker spellings; "
+                "import pytest itself"
+            )
+        if (
+            isinstance(node, ast.Call)
+            and dotted(node.func).endswith("param")
+            and any(keyword.arg == "marks" for keyword in node.keywords)
+        ):
+            problems.append(
+                f"{file}: pytest.param(..., marks=...) is not allowed anywhere in "
+                "an acceptance file"
+            )
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == "pytestmark"
@@ -168,6 +194,12 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
                         f"{file}::{node.name} carries mark {name!r}, which is not allowed"
                     )
                 if name == "parametrize" and isinstance(decorator, ast.Call):
+                    cases = decorator.args[1] if len(decorator.args) > 1 else None
+                    if not isinstance(cases, ast.List | ast.Tuple):
+                        problems.append(
+                            f"{file}::{node.name} parametrizes over a non-literal; "
+                            "cases must be written inline"
+                        )
                     for argument in ast.walk(decorator):
                         if (
                             isinstance(argument, ast.keyword)
@@ -184,7 +216,8 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
                     and inner.name.startswith("test_")
                 ):
                     problems.append(
-                        f"{file}::{node.name} nests {inner.name}, which pytest would not collect"
+                        f"{file}::{node.name} nests {inner.name}, which pytest would "
+                        "not collect"
                     )
         if isinstance(node, ast.Call) and dotted(node.func) in SUPPRESSING_CALLS:
             problems.append(

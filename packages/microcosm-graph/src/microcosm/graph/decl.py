@@ -259,7 +259,7 @@ class WeightTransition:
     mass: str = "conserve"
 
     def __post_init__(self) -> None:
-        _nonempty("WeightTransition.entity", self.entity)
+        _name("WeightTransition.entity", self.entity)
         if self.to_kind not in WEIGHT_KINDS:
             raise GraphError(
                 f"WeightTransition.to_kind {self.to_kind!r} is not one of "
@@ -457,8 +457,8 @@ class Graph:
                 raise GraphError(
                     "Graph.mass_partition must be an (entity, column) pair of strings."
                 )
-            _nonempty("Graph.mass_partition entity", self.mass_partition[0])
-            _nonempty("Graph.mass_partition column", self.mass_partition[1])
+            _name("Graph.mass_partition entity", self.mass_partition[0])
+            _name("Graph.mass_partition column", self.mass_partition[1])
 
     def normative(self) -> dict[str, object]:
         """The graph-level facts that enter every structural node's key."""

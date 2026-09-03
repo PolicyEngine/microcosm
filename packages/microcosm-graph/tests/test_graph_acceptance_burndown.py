@@ -448,6 +448,34 @@ def test_suppression_forms_the_marker_scan_cannot_model_are_refused(
     assert any(expected in problem for problem in problems), problems
 
 
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            'import pytest as hidden\n\n\n@hidden.mark.xfail(strict=True, reason="charter A1: x")\ndef test_a1_one() -> None:\n    assert False\n',
+            "imported under an alias",
+        ),
+        (
+            'from pytest import mark as hidden\n\n\n@hidden.xfail(strict=True, reason="charter A1: x")\ndef test_a1_one() -> None:\n    assert False\n',
+            "hides marker spellings",
+        ),
+        (
+            'import pytest\n\nCASES = [pytest.param(1, marks=pytest.mark.xfail)]\n\n\n@pytest.mark.parametrize("x", CASES)\ndef test_a1_one(x) -> None:\n    assert False\n',
+            "non-literal",
+        ),
+        (
+            "import pytest\n\nCASES = [pytest.param(1, marks=pytest.mark.xfail)]\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "pytest.param(..., marks=...) is not allowed",
+        ),
+    ],
+)
+def test_aliases_and_indirect_parameters_are_refused(
+    source: str, expected: str
+) -> None:
+    problems = burndown.suppressions_in(source, "sample.py")
+    assert any(expected in problem for problem in problems), problems
+
+
 def test_the_allowed_marks_are_not_suppressions() -> None:
     source = (
         "import pytest\n\n\n"

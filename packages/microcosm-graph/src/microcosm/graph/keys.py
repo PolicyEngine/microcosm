@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import platform as _platform
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
 from .canonical import canonical_json, normative, sha256_domain
 from .decl import CompiledGraph, StructuralDelta
-from .kernel import Capabilities
+from .kernel import Capabilities, Numeric
 
 __all__ = [
+    "platform_fingerprint",
     "artifact_key",
     "frame_key",
     "node_key",
@@ -65,6 +68,18 @@ def source_content_key(name: str, path: str | Path) -> str:
     else:
         raise FileNotFoundError(f"Source path does not exist: {source_path}")
     return _hash_parts("source", name, content_hash, size)
+
+
+def platform_fingerprint() -> str:
+    """The platform a platform-bitwise kernel's bytes belong to.
+
+    Architecture, operating system, and Python minor version: the axes along
+    which ``fit.qrf@1`` was measured to move (``docs/graph-qrf-cross-platform.md``).
+    """
+    return (
+        f"{_platform.machine()}/{sys.platform}/"
+        f"py{sys.version_info.major}.{sys.version_info.minor}"
+    )
 
 
 def artifact_key(node_key: str, entity: str, column: str) -> str:
@@ -217,6 +232,14 @@ def node_key(
     # bytes. Bind the complete declaration so a cache entry produced under one
     # contract cannot satisfy another kernel with the same ref and code hash.
     capabilities = _capabilities_projection(kernel_capabilities)
+    # A platform-bitwise kernel's bytes belong to one platform (amendment 16):
+    # its key carries the platform, so a shared store never serves another
+    # platform's output. Other kernels' keys are unchanged by this.
+    platform_scope = (
+        (platform_fingerprint(),)
+        if kernel_capabilities.numeric is Numeric.PLATFORM_BITWISE
+        else ()
+    )
     return _hash_parts(
         "node",
         normative(node),
@@ -226,6 +249,7 @@ def node_key(
         resolved_sources,
         graph_facts,
         capabilities,
+        *platform_scope,
     )
 
 

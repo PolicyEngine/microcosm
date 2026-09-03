@@ -255,9 +255,13 @@ Amendments so far (each re-locked):
     difference in the forest flips which donor a quantile draw lands on
     (45 of 6,000 cells moved by up to 7% between arm64 and x86_64 while the
     rest agreed to one ulp; `docs/graph-qrf-cross-platform.md`), so no
-    per-cell `Tolerance` is true of it. Parity (H1) is asserted on one
-    platform; a cross-platform gate on such a kernel says so in its
-    evidence. Raised by the #847 gate review; adopted 2026-09-03.
+    per-cell `Tolerance` is true of it. The node key of a platform-bitwise
+    kernel carries a platform fingerprint (architecture, OS, Python minor),
+    so a shared store never serves another platform's output, and parity
+    pins record the platform: H1 asserts bytes on the pinned platform and
+    identity partitioning elsewhere; a cross-platform gate on such a kernel
+    says so in its evidence. Raised by the #847 gate review; adopted
+    2026-09-03.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

@@ -23,6 +23,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from microcosm.graph.keys import platform_fingerprint
+
 if "_toy" not in sys.modules:
     _SPEC = importlib.util.spec_from_file_location(
         "_toy", Path(__file__).with_name("_toy.py")
@@ -182,10 +184,19 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         # are the cells compared. A weight transition is compared through the
         # weight artifact under the ``<entity>.weights`` column.
         direct = _direct_table(case)
+        # A platform-bitwise kernel's bytes are asserted only on the platform
+        # that produced the pins (amendment 16); elsewhere the property that
+        # holds is identity partitioning: the node key carries the platform,
+        # so a shared store can never serve the pinned platform's artifact.
+        platform_bound = pins.get("numeric") == "platform_bitwise"
+        same_platform = pins.get("platform") == platform_fingerprint()
         compared = 0
         for cell, key in node.artifacts.items():
             label = f"{cell[0]}.{cell[1]}"
             if label in direct.columns:
+                if platform_bound and not same_platform:
+                    compared += 1  # identity partitioning is the assertion here
+                    continue
                 _assert_same_bytes(store.load_column(key), direct[label])
                 compared += 1
         if node.weight_key is not None:

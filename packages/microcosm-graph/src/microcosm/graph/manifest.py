@@ -63,24 +63,6 @@ class PopulationView(Frame):
         for slot in Frame.__slots__:
             object.__setattr__(self, slot, getattr(frame, slot))
 
-    def __getattribute__(self, name: str) -> object:
-        if not name.startswith("_") and name in _FRAME_PUBLIC_ATTRIBUTES:
-            try:
-                schema = object.__getattribute__(self, "_schema")
-                tables = object.__getattribute__(self, "_tables")
-            except AttributeError:
-                # Pickle probes protocol attributes before restoring slots.
-                pass
-            else:
-                exact_person_alias = (
-                    name == "person" and schema.person_entity == "person"
-                )
-                if name in tables and not exact_person_alias:
-                    # Keep all collision diagnostics in __getattr__, including
-                    # when a Frame descriptor would otherwise mask the entity.
-                    return object.__getattribute__(self, "__getattr__")(name)
-        return super().__getattribute__(name)
-
     def entity(self, name: str) -> pd.DataFrame:
         """Return an entity table, including names colliding with Frame APIs.
 
@@ -97,19 +79,20 @@ class PopulationView(Frame):
         return Frame.table(self, name)
 
     def __getattr__(self, name: str) -> object:
+        """Entity tables by attribute, for names that collide with nothing.
+
+        Python reaches here only when ordinary lookup fails, so an entity
+        whose name collides with a Frame attribute resolves to the Frame
+        attribute (as on a plain Frame) and stays reachable through
+        :meth:`entity`; inherited Frame methods keep working either way.
+        """
         try:
             schema = object.__getattribute__(self, "_schema")
         except AttributeError:
             raise AttributeError(
                 f"{type(self).__name__!s} has no attribute {name!r}"
             ) from None
-        exact_person_alias = name == "person" and schema.person_entity == "person"
         if name in schema.entities:
-            if name in _FRAME_PUBLIC_ATTRIBUTES and not exact_person_alias:
-                raise AttributeError(
-                    f"PopulationView entity name {name!r} collides with a public "
-                    f"Frame attribute; use .entity({name!r}) to access its table"
-                )
             return Frame.table(self, name)
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 

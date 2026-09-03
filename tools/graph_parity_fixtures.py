@@ -44,6 +44,7 @@ from microcosm.graph import (
     WeightTransition,
     graph_to_json,
 )
+from microcosm.graph.keys import platform_fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
@@ -449,6 +450,8 @@ def _pins(node_id: str, kernel: object, seed: int | None) -> dict[str, object]:
         "kernel": kernel.ref,  # type: ignore[attr-defined]
         "implementation_hash": kernel.implementation_hash(),  # type: ignore[attr-defined]
         "dependencies": dependencies,
+        "numeric": capabilities.numeric.value,
+        "platform": platform_fingerprint(),
     }
 
 
