@@ -2,8 +2,9 @@
 
 ## State
 
-Fail-before regressions are committed and the portable identity implementation
-is in progress on `f1-portable-worker-identity` from base
+The portable worker identity core is implemented and focused green; the
+authenticated H5 boundary and remaining enclosing version mirrors are in
+progress on `f1-portable-worker-identity` from base
 `09abf2ad78e9af3c5314a4b303d42a75e30d49c4`.
 
 ## Done
@@ -24,10 +25,22 @@ is in progress on `f1-portable-worker-identity` from base
   primary-QRF sidecar 2, resource semantics 2, registry 17, producer receipt
   4, transition authority 2, stacked authority 12, checkpoint materializer 13,
   and pool manifest 10.
+- Added a closed, versioned worker identity that binds interpreter bytes,
+  implementation/version/ABI/cache tag, canonical semantic `pyvenv.cfg`, the
+  exact approved lock, transitive source imports, verified installed RECORD
+  contents, canonical argv, and fit/predict controls. Absolute executable,
+  prefix, and raw argv aliases are retained separately for audit.
+- Switched current primary-QRF resource authentication and checkpoint-resume
+  comparison to semantic projections while preserving full audit aliases in
+  receipts. Bumped the primary config, checkpoint sidecar, late registry,
+  producer receipt, transition authority, and stacked authority sources.
+- Green evidence: Ruff passed for the three implementation files and the three
+  committed portable-identity regressions passed (`3 passed`).
 
 ## Next
 
-- Implement the portable semantic identity and the scoring-only legacy loader
-  boundary without changing release API signatures.
+- Complete the enclosing resource-semantics, pool materializer, and manifest
+  version mirrors and implement the explicit scoring-only legacy attestation
+  through both late-DAG validation passes without changing release signatures.
 - Regenerate typed specifications, surface receipts, document the contract,
   and run focused and required repository checks.

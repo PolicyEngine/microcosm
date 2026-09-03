@@ -83,6 +83,7 @@ from microcosm.build.source_manifest import load_source_manifest
 from microcosm.build.us_runtime import (
     post_transfer_calibration as post_transfer_calibration_runtime,
 )
+from microcosm.build.us_runtime import worker_identity as worker_identity_runtime
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     AcsPumsEarningsUniverseApplication,
@@ -1700,11 +1701,12 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v11 binds the post-transfer two-part calibration policy. v10 bound the
+# v12 binds the portable primary-QRF worker identity. v11 binds the
+# post-transfer two-part calibration policy. v10 bound the
 # primary-PUF whole-pool output-universe declaration. v9 bound the
 # content-hashed execution/transition-authority schema in addition to the
 # import-validated producer/input DAG.
-_STACKED_AUTHORITY_VERSION = 11
+_STACKED_AUTHORITY_VERSION = 12
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -4220,7 +4222,9 @@ def _validate_pregnancy_structural_receipt(
         or structural.get("status") != "verified"
     ):
         raise ValueError(f"{boundary}: pregnancy structural policy is invalid.")
-    counts = {field: structural.get(field) for field in _PREGNANCY_STRUCTURAL_COUNT_FIELDS}
+    counts = {
+        field: structural.get(field) for field in _PREGNANCY_STRUCTURAL_COUNT_FIELDS
+    }
     if any(
         not isinstance(value, int) or isinstance(value, bool) or value < 0
         for value in counts.values()
@@ -4250,9 +4254,7 @@ def _validate_pregnancy_structural_receipt(
             != row_counts["imputed_rows"]
         )
     ):
-        raise ValueError(
-            f"{boundary}: pregnancy structural accounting is invalid."
-        )
+        raise ValueError(f"{boundary}: pregnancy structural accounting is invalid.")
 
 
 def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
@@ -5360,7 +5362,7 @@ def _late_resource_binding_schema_version(column: str) -> int:
     kind = _late_virtual_resource_kind(column)
     return {
         "acs_pums_earnings_universe_execution_config": 2,
-        "primary_puf_execution_config": 4,
+        "primary_puf_execution_config": 5,
         "post_clone_source_execution_config": 3,
         "source_finalizer_execution_config": 2,
         "late_transfer_model_config": 3,
@@ -5589,10 +5591,23 @@ def _validate_late_resource_binding(
             puf_tax_detail_tail_bound_quantiles_identity()
         ):
             raise ValueError(f"{boundary}: late primary-QRF tail bounds changed.")
-        if qrf.get("worker_execution") != (
-            _late_primary_qrf_worker_execution_binding()
-        ):
-            raise ValueError(f"{boundary}: late primary-QRF worker binding changed.")
+        recorded_worker = qrf.get("worker_execution")
+        try:
+            semantically_equal = (
+                worker_identity_runtime.primary_qrf_worker_bindings_semantically_equal(
+                    recorded_worker,
+                    _late_primary_qrf_worker_execution_binding(),
+                    boundary=f"{boundary}: late primary-QRF worker",
+                )
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"{boundary}: late primary-QRF worker binding is malformed."
+            ) from exc
+        if not semantically_equal:
+            raise ValueError(
+                f"{boundary}: late primary-QRF semantic worker identity changed."
+            )
         if doctrines != {
             "require_complete_recipient_predictors": True,
             "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -5904,7 +5919,7 @@ _PRIMARY_QRF_SEMANTIC_ENVIRONMENT_NAMES = (
 )
 
 
-def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
+def _legacy_primary_qrf_worker_execution_binding() -> dict[str, object]:
     """Bind the interpreter and reviewed inherited environment controls."""
 
     fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
@@ -5979,6 +5994,17 @@ def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
     }
 
 
+def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
+    """Bind portable semantics and retain absolute launch paths for audit."""
+
+    return worker_identity_runtime.primary_qrf_worker_execution_binding()
+
+
+_legacy_worker_execution_mismatch_paths = (
+    worker_identity_runtime._legacy_worker_execution_mismatch_paths
+)
+
+
 def _late_primary_execution_config_binding(
     *,
     clone_attachment_fraction: float,
@@ -6017,7 +6043,7 @@ def _late_primary_execution_config_binding(
     )
     return {
         "resource_kind": "primary_puf_execution_config",
-        "schema_version": 4,
+        "schema_version": 5,
         "clone_attachment": {
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
@@ -6228,7 +6254,7 @@ def _validate_stacked_late_primary_checkpoint_input_binding(
         raise ValueError(f"{boundary}: primary-QRF input binding schema drifted.")
     if (
         binding.get("artifact_kind") != _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND
-        or binding.get("schema_version") != 1
+        or binding.get("schema_version") != 2
     ):
         raise ValueError(f"{boundary}: primary-QRF input binding identity changed.")
     resources = binding.get("primary_resource_receipts")
@@ -6266,7 +6292,7 @@ def stacked_late_primary_checkpoint_input_binding(
     }
     payload: dict[str, object] = {
         "artifact_kind": _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND,
-        "schema_version": 1,
+        "schema_version": 2,
         "primary_resource_receipts": resources,
     }
     payload["sha256"] = _canonical_sha256(payload)
@@ -6275,6 +6301,76 @@ def stacked_late_primary_checkpoint_input_binding(
         boundary="US stacked late primary-QRF input-binding construction",
     )
     return payload
+
+
+def _late_primary_resource_receipts_semantic_projection(
+    resources: Mapping[str, object],
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    """Normalize only primary-worker audit aliases out of authentication."""
+
+    normalized = _json_ready(resources)
+    if not isinstance(normalized, dict):  # pragma: no cover - Mapping normalized
+        raise TypeError(f"{boundary}: primary resources are not an object.")
+    key = f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}"
+    receipt = normalized.get(key)
+    if not isinstance(receipt, dict):
+        raise ValueError(f"{boundary}: primary execution-config receipt is absent.")
+    binding = receipt.get("binding")
+    if not isinstance(binding, dict):
+        raise ValueError(f"{boundary}: primary execution config is absent.")
+    qrf = binding.get("qrf")
+    if not isinstance(qrf, dict):
+        raise ValueError(f"{boundary}: primary QRF config is absent.")
+    qrf["worker_execution"] = (
+        worker_identity_runtime.primary_qrf_worker_semantic_projection(
+            qrf.get("worker_execution"),
+            boundary=f"{boundary}: primary-QRF worker",
+        )
+    )
+    receipt["binding_sha256"] = _canonical_sha256(binding)
+    return normalized
+
+
+def _late_primary_resource_receipts_semantically_equal(
+    left: Mapping[str, object],
+    right: Mapping[str, object],
+    *,
+    boundary: str,
+) -> bool:
+    """Compare checkpoint resources without authenticating launcher aliases."""
+
+    return _late_primary_resource_receipts_semantic_projection(
+        left, boundary=f"{boundary} recorded"
+    ) == _late_primary_resource_receipts_semantic_projection(
+        right, boundary=f"{boundary} live"
+    )
+
+
+def _late_primary_checkpoint_input_bindings_semantically_equal(
+    left: Mapping[str, object],
+    right: Mapping[str, object],
+    *,
+    boundary: str,
+) -> bool:
+    """Compare validated sidecars while retaining their original audit bytes."""
+
+    _validate_stacked_late_primary_checkpoint_input_binding(
+        left, boundary=f"{boundary} recorded"
+    )
+    _validate_stacked_late_primary_checkpoint_input_binding(
+        right, boundary=f"{boundary} live"
+    )
+    return (
+        left.get("artifact_kind") == right.get("artifact_kind")
+        and left.get("schema_version") == right.get("schema_version")
+        and _late_primary_resource_receipts_semantically_equal(
+            left["primary_resource_receipts"],
+            right["primary_resource_receipts"],
+            boundary=boundary,
+        )
+    )
 
 
 _SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
@@ -6838,6 +6934,24 @@ def stacked_late_producer_resource_semantics_receipt(
                 }
             }
         elif contract.kind == "primary_puf":
+            primary_execution_config = _late_primary_execution_config_binding(
+                clone_attachment_fraction=clone_attachment_fraction,
+                clone_attachment_seed=clone_attachment_seed,
+                seed=primary_seed,
+                n_estimators=primary_n_estimators,
+                predictors=None,
+                person_outputs=None,
+                tax_unit_outputs=None,
+                fit_records_enabled=True,
+                tail_bound_diagnostics_enabled=True,
+            )
+            worker_binding = primary_execution_config["qrf"]["worker_execution"]
+            primary_execution_config["qrf"]["worker_execution"] = (
+                worker_identity_runtime.primary_qrf_worker_semantic_projection(
+                    worker_binding,
+                    boundary="US late resource-semantics primary-QRF worker",
+                )
+            )
             resources = {
                 "tax_unit.@puf_donor_tax_units": {
                     "resolution": "runtime_content_bound",
@@ -6855,17 +6969,7 @@ def stacked_late_producer_resource_semantics_receipt(
                 },
                 f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}": {
                     "resolution": "static_exact",
-                    "binding": _late_primary_execution_config_binding(
-                        clone_attachment_fraction=clone_attachment_fraction,
-                        clone_attachment_seed=clone_attachment_seed,
-                        seed=primary_seed,
-                        n_estimators=primary_n_estimators,
-                        predictors=None,
-                        person_outputs=None,
-                        tax_unit_outputs=None,
-                        fit_records_enabled=True,
-                        tail_bound_diagnostics_enabled=True,
-                    ),
+                    "binding": primary_execution_config,
                 },
             }
         elif contract.kind == "post_clone_source":
@@ -6960,7 +7064,7 @@ def stacked_late_producer_resource_semantics_receipt(
         )
     payload: dict[str, object] = {
         "artifact_kind": _LATE_RESOURCE_SEMANTICS_ARTIFACT_KIND,
-        "schema_version": 1,
+        "schema_version": 2,
         "producer_schedule_sha256": schedule_receipt["schedule_sha256"],
         "producer_schedule_payload_sha256": schedule_receipt["payload_sha256"],
         "producer_count": len(producer_rows),
@@ -11836,7 +11940,11 @@ def _run_stacked_puf_pass_evaluate(
             capital_gains_tail_spec=tail_spec,
             capital_gains_tail_agi_bands=tail_agi_bands,
         )
-        if _json_ready(actual_resources) != _json_ready(bound_resources):
+        if not _late_primary_resource_receipts_semantically_equal(
+            bound_resources,
+            actual_resources,
+            boundary="stacked primary-QRF callback invocation",
+        ):
             raise ValueError(
                 "Stacked primary-QRF callback invocation disagrees with its "
                 "declared late-producer donor/config resources."
@@ -11863,7 +11971,11 @@ def _run_stacked_puf_pass_evaluate(
                 observed_input_binding,
                 boundary="stacked primary-QRF checkpoint resume",
             )
-            if observed_input_binding != normalized_input_binding:
+            if not _late_primary_checkpoint_input_bindings_semantically_equal(
+                observed_input_binding,
+                normalized_input_binding,
+                boundary="stacked primary-QRF checkpoint resume",
+            ):
                 raise ValueError(
                     "Stacked primary QRF checkpoint input binding differs from "
                     "the live late-producer donor/config resources; refusing "
