@@ -56,6 +56,33 @@ def _frame() -> Frame:
     )
 
 
+def _frame_with_colliding_entity(name: str) -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2], dtype=np.int64),
+            f"person_{name}_id": np.asarray([10, 20], dtype=np.int64),
+        }
+    )
+    group = pd.DataFrame(
+        {
+            f"{name}_id": np.asarray([10, 20], dtype=np.int64),
+            f"{name}_value": np.asarray([100, 200], dtype=np.int64),
+        }
+    )
+    return Frame(
+        {"person": person, name: group},
+        EntitySchema(group_entities=(name,)),
+        {
+            name: Weights(
+                np.asarray([1.0, 2.0], dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+        pd.Series(["a", "b"], name="stratum"),
+        metadata={"source": "collision fixture"},
+    )
+
+
 def _receipt(key: str, *, hit: bool = False, wall_time: float = 0.2) -> NodeReceipt:
     return NodeReceipt(
         key=key,
@@ -159,6 +186,25 @@ def test_manifest_json_round_trip_and_population_view() -> None:
             {"a": _receipt("a" * 64)},
             populations={"survey": object()},  # type: ignore[dict-item]
         )
+
+
+@pytest.mark.parametrize("entity_name", ["metadata", "schema", "table", "entities"])
+def test_population_view_entity_accessor_handles_frame_attribute_collisions(
+    entity_name: str,
+) -> None:
+    raw = _frame_with_colliding_entity(entity_name)
+    view = RunManifest(
+        country="toy",
+        nodes={"a": _receipt("a" * 64)},
+        populations={"survey": raw},
+    ).population("survey")
+
+    assert view.entity(entity_name) is raw.table(entity_name)
+    with pytest.raises(
+        AttributeError,
+        match=rf"collides.*\.entity\({entity_name!r}\)",
+    ):
+        getattr(view, entity_name)
 
 
 def test_manifest_key_excludes_every_operational_field() -> None:
