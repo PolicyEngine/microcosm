@@ -2,12 +2,14 @@
 
 ## State
 
-All six ruled findings are implemented and focused-green; the final verification
-matrix and report are next. Work remains in progress on branch `fix-847-r2`,
-based exactly on dispatched head `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
-first and failed because the mandated no-network environment cannot resolve
-GitHub; the local `origin/graph-amendments-11-13` ref matches the dispatched
-head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
+Complete on 2026-09-02. All six ruled findings, the UK rewrite integration,
+and the required verification matrix are green on branch `fix-847-r2`, based
+exactly on dispatched head `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`.
+The required fetch was attempted first and failed because the mandated
+no-network environment cannot resolve GitHub; the local
+`origin/graph-amendments-11-13` ref matches the dispatched head. Work is
+isolated in `/private/tmp/microcosm-fix-847-r2`, the committed handoff is in
+`out.md`, and no push occurred.
 
 ## Done
 
@@ -66,7 +68,6 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Captured the new ordinary cold/cache rewrite regression red on
   `person.income`, then passed it alongside the original non-rewrite rejection,
   all executor/population tests, and the H2 UK spine parity node.
-
 - F5: every FILTER, EXPAND, and REWEIGHT now receives the executor's full D2
   mass record in its portable receipt, independent of partitions, entrant
   strata, or the kernel's declared mass policy.
@@ -90,10 +91,18 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Captured the four F10 collision parameters red on the missing accessor, then
   passed them with the existing population-view test and all 29 manifest tests;
   focused Ruff and formatting checks are green.
+- Final exact package suite: 352 passed, 1 pre-existing PolicyEngine UK
+  deprecation warning, 0 failed in 107.07 seconds.
+- Ruff check and format-check passed on all 10 touched Python files.
+- CI grouping verification passed with 354 tracked test files.
+- Acceptance burndown verification passed: 41 green, 0 red, 0 missing.
+- Audited the complete base-to-head diff: no frozen interface file and no
+  acceptance test file changed; `git diff --check` is clean.
+- Wrote the full finding-by-finding handoff and command evidence to `out.md`.
 
 ## Next
 
-- Run the full requested verification matrix and write `out.md`.
+- Handoff complete; no implementation or verification work remains.
 
 ---
 
