@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 __all__ = [
+    "UK_DENSE_RELEASE_ID",
     "UK_NATIONAL_RELEASE_ID",
     "UK_RELEASE_TIERS",
     "UK_RELEASE_TIER_CPS_TRANSFER",
@@ -39,6 +40,16 @@ UK_RELEASE_TIERS = frozenset(
 #: "-national" segment keeps the id disjoint from the exact-k ladder's
 #: "-k<N>" shape and may retire as the migration moves on.
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+
+#: The dense joint (national + local) line's release id (microcosm#762 A18,
+#: ruling 2026-09-03): the same constant-id approach as the national line,
+#: same "2024-25" FRS-release vintage segment, "-dense" because the artifact
+#: is the spine cloned K times through the OA ladder (792,690 rows at K=15)
+#: — a sparse successor via the L0 penalty is a later increment. Published
+#: on the inspect lane only (per-cut tag, never the default slot); consumers
+#: reach it by the registry key ("uk", 2025, "dense").
+UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
+
 
 def validate_uk_release_tier(tier: object) -> str:
     """Return a ratified UK source tier, rejecting every other token."""

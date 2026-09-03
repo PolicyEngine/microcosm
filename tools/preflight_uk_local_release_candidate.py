@@ -230,8 +230,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ledger-facts", type=Path)
     parser.add_argument("--skip-digests", action="store_true")
     parser.add_argument("--candidate-dir", type=Path, help="check a finished run")
+    parser.add_argument(
+        "--release-dir", type=Path, help="validate an assembled release directory"
+    )
     args = parser.parse_args(argv)
     failures: list[str] = []
+    if args.release_dir is not None:
+        from microcosm.data.contract import ReleaseContractError, validate_release_dir
+
+        try:
+            validate_release_dir(args.release_dir)
+        except ReleaseContractError as error:
+            failures += [str(line) for line in getattr(error, "failures", [str(error)])]
     if args.env:
         missing = [
             n
@@ -254,8 +264,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.candidate_dir is not None:
         failures += check_candidate_dir(args.candidate_dir)
-    if not args.env and args.candidate_dir is None:
-        parser.error("nothing to check: pass --env and/or --candidate-dir")
+    if not args.env and args.candidate_dir is None and args.release_dir is None:
+        parser.error(
+            "nothing to check: pass --env, --candidate-dir and/or --release-dir"
+        )
     for failure in failures:
         print(f"FAIL {failure}", file=sys.stderr)
     print(

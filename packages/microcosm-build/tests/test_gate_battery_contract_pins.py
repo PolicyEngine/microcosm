@@ -377,3 +377,48 @@ class TestCertificationMirrors:
         )
 
         assert data_contract._UK_NATIONAL_RELEASE_ID == UK_NATIONAL_RELEASE_ID
+
+
+class TestDenseLineMirrors:
+    """The dense joint line's contract mirrors (microcosm#762 A18)."""
+
+    def test_release_id_mirrors_the_build_shard(self) -> None:
+        from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
+
+        assert data_contract._UK_DENSE_RELEASE_ID == UK_DENSE_RELEASE_ID
+        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(
+            f"{UK_DENSE_RELEASE_ID}-20260903T105422Z-ca611e43"
+        )
+        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(UK_DENSE_RELEASE_ID) is None
+
+    def test_entry_ids_mirror_the_local_battery_scope(self) -> None:
+        from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+
+        assert data_contract._UK_DENSE_GATE_ENTRY_IDS == frozenset(UK_LOCAL_GATE_SCOPE)
+        assert data_contract._UK_DENSE_RELEASE_BLOCKING_IDS < (
+            data_contract._UK_DENSE_GATE_ENTRY_IDS
+        )
+
+    def test_scoped_digests_mirror_the_live_local_manifest(self) -> None:
+        import importlib.util
+        from pathlib import Path
+
+        from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+        from microcosm.build.uk_runtime.release_certification import _scoped_digests
+
+        spec = importlib.util.spec_from_file_location(
+            "build_uk_rowwise_candidate",
+            Path(__file__).resolve().parents[3]
+            / "tools"
+            / "build_uk_rowwise_candidate.py",
+        )
+        builder = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(builder)
+        live = _scoped_digests(
+            frozenset(UK_LOCAL_GATE_SCOPE),
+            phases=tuple(data_contract._UK_DENSE_GATE_PHASES),
+            policy_suffix=str(builder._LOCAL_GATE_POLICY_SUFFIX),
+        )
+        for field, mirrored in data_contract._UK_DENSE_GATE_DIGESTS.items():
+            assert mirrored == live[field], field
