@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -96,7 +97,8 @@ DEFAULT_SELECTION_JOIN_KEY: tuple[str, ...] = (
     "household_support_clone_index",
 )
 
-_MANIFEST_SCHEMA_VERSION = 1
+_MANIFEST_SCHEMA_VERSION = 2
+_LEGACY_MANIFEST_SCHEMA_VERSION = 1
 
 
 def _validate_join_key(join_key: Sequence[str]) -> tuple[str, ...]:
@@ -408,6 +410,9 @@ def write_selection_source_manifest(source: SelectionSource, path: str | Path) -
     artifact the selection descended from.
     """
     path = Path(path)
+    _refuse_denied_selection_provenance(
+        source.provenance, manifest_path=Path(path), require_provenance=True
+    )
     payload = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
         "join_key": list(source.join_key),
@@ -425,10 +430,11 @@ def load_selection_source_from_manifest(path: str | Path) -> SelectionSource:
     path = Path(path)
     payload = json.loads(path.read_text())
     version = payload.get("schema_version")
-    if version != _MANIFEST_SCHEMA_VERSION:
+    if version not in (_MANIFEST_SCHEMA_VERSION, _LEGACY_MANIFEST_SCHEMA_VERSION):
         raise ValueError(
             f"unsupported selection-source manifest schema_version {version!r}; "
-            f"expected {_MANIFEST_SCHEMA_VERSION}."
+            f"expected {_MANIFEST_SCHEMA_VERSION} (or legacy "
+            f"{_LEGACY_MANIFEST_SCHEMA_VERSION})."
         )
     join_key = _validate_join_key(payload["join_key"])
     identities = [list(row) for row in payload["identities"]]
@@ -446,7 +452,11 @@ def load_selection_source_from_manifest(path: str | Path) -> SelectionSource:
             f"{len(identities)} identities present."
         )
     provenance = dict(payload.get("source", {}))
-    _refuse_denied_selection_provenance(provenance, manifest_path=path)
+    _refuse_denied_selection_provenance(
+        provenance,
+        manifest_path=path,
+        require_provenance=version == _MANIFEST_SCHEMA_VERSION,
+    )
     return SelectionSource(
         join_key=join_key,
         identities=identities,
@@ -454,25 +464,39 @@ def load_selection_source_from_manifest(path: str | Path) -> SelectionSource:
     )
 
 
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
 def _refuse_denied_selection_provenance(
-    provenance: Mapping[str, object], *, manifest_path: Path
+    provenance: Mapping[str, object],
+    *,
+    manifest_path: Path,
+    require_provenance: bool,
 ) -> None:
-    """A selection manifest must say what it descended from, and it may not
-    descend from a denied pool by bytes or by content."""
+    """A v2 selection manifest must say what it descended from (lowercase
+    sha256 of the source bytes and its content identity); any manifest may not
+    descend from a denied pool by bytes or by content. Legacy v1 manifests
+    recorded provenance loosely and load as-is unless what they record is
+    denied."""
 
     sha256 = provenance.get("sha256")
-    if not isinstance(sha256, str) or not sha256:
-        raise ValueError(
-            f"selection-source manifest {manifest_path} records no source sha256; "
-            "a selection with unknown provenance cannot prune a release base."
-        )
-    refuse_denied_pool_h5_digest(
-        sha256, consumer=f"selection-source manifest {manifest_path}"
-    )
     identity = provenance.get("content_identity_sha256")
+    if require_provenance:
+        for label, value in (("sha256", sha256), ("content_identity_sha256", identity)):
+            if not isinstance(value, str) or _HEX64.fullmatch(value) is None:
+                raise ValueError(
+                    f"selection-source manifest {manifest_path} (schema "
+                    f"{_MANIFEST_SCHEMA_VERSION}) must record source.{label} as 64 "
+                    "lowercase hexadecimal characters; a selection with unknown "
+                    "provenance cannot prune a release base."
+                )
+    if isinstance(sha256, str) and sha256:
+        refuse_denied_pool_h5_digest(
+            sha256.lower(), consumer=f"selection-source manifest {manifest_path}"
+        )
     if isinstance(identity, str) and identity:
         refuse_denied_content_identity(
-            identity,
+            identity.lower(),
             consumer=f"selection-source manifest {manifest_path}",
             how="recorded source provenance, by content identity",
         )

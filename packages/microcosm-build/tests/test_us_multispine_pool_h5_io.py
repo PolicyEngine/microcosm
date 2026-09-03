@@ -1734,6 +1734,9 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         authenticated_h5,
         allow_gate_failed_base_pool=True,
     )
+    assert (
+        receipt["content_identity_sha256"] == authenticated_h5.content_identity_sha256
+    )
     assert receipt["status"] == "gate_failed"
     assert receipt["simulation_ready"] is False
     assert receipt["allow_gate_failed_base_pool"] is True
@@ -2179,30 +2182,56 @@ def test_loaded_frame_of_a_denied_pool_is_refused_even_if_the_disk_file_changed(
         h5_io.load_legacy_calibrated_us_h5(benign)
 
 
-def test_selection_manifest_from_a_denied_pool_is_refused_and_provenance_is_required(
+def test_selection_manifest_provenance_is_required_for_v2_and_denied_for_any(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from microcosm.build.us_runtime import warm_start_selection as wss
 
-    manifest_path = tmp_path / "selection.json"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "schema_version": wss._MANIFEST_SCHEMA_VERSION,
-                "join_key": list(wss.DEFAULT_SELECTION_JOIN_KEY),
-                "source": {"kind": "h5", "path": "somewhere.h5"},
-                "n_selected": 0,
-                "identities_sha256": wss._identities_digest(
-                    tuple(wss.DEFAULT_SELECTION_JOIN_KEY), []
-                ),
-                "identities": [],
-            }
-        ),
-        encoding="utf-8",
+    def write(version: int, source: dict) -> Path:
+        path = tmp_path / f"selection-v{version}-{len(list(tmp_path.iterdir()))}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": version,
+                    "join_key": list(wss.DEFAULT_SELECTION_JOIN_KEY),
+                    "source": source,
+                    "n_selected": 0,
+                    "identities_sha256": wss._identities_digest(
+                        tuple(wss.DEFAULT_SELECTION_JOIN_KEY), []
+                    ),
+                    "identities": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    # A legacy v1 manifest with loose provenance still loads.
+    assert (
+        wss.load_selection_source_from_manifest(write(1, {"kind": "h5"})).n_identities
+        == 0
     )
-    with pytest.raises(ValueError, match="records no source sha256"):
-        wss.load_selection_source_from_manifest(manifest_path)
+    # A v2 manifest must carry canonical byte and content provenance.
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.load_selection_source_from_manifest(write(2, {"kind": "h5"}))
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.load_selection_source_from_manifest(
+            write(
+                2,
+                {"kind": "h5", "sha256": "A" * 64, "content_identity_sha256": "b" * 64},
+            )
+        )
+    # The public writer cannot emit an unloadable v2 manifest.
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.write_selection_source_manifest(
+            wss.SelectionSource(
+                join_key=tuple(wss.DEFAULT_SELECTION_JOIN_KEY),
+                identities=[],
+                provenance={"kind": "h5"},
+            ),
+            tmp_path / "unwritable.json",
+        )
 
     denied_h5 = "d" * 64
     monkeypatch.setattr(
@@ -2220,16 +2249,18 @@ def test_selection_manifest_from_a_denied_pool_is_refused_and_provenance_is_requ
         },
         raising=False,
     )
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    payload["source"]["sha256"] = denied_h5
-    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    # Denied provenance is refused on either schema, byte or content, any case.
     with pytest.raises(ValueError, match="denied publication"):
-        wss.load_selection_source_from_manifest(manifest_path)
-    payload["source"]["sha256"] = "e" * 64
-    payload["source"]["content_identity_sha256"] = "2" * 64
-    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+        wss.load_selection_source_from_manifest(
+            write(1, {"kind": "h5", "sha256": denied_h5.upper()})
+        )
     with pytest.raises(ValueError, match="content identity"):
-        wss.load_selection_source_from_manifest(manifest_path)
+        wss.load_selection_source_from_manifest(
+            write(
+                2,
+                {"kind": "h5", "sha256": "e" * 64, "content_identity_sha256": "2" * 64},
+            )
+        )
 
 
 def test_fiscal_builder_binds_its_late_base_load_to_the_recorded_digest(

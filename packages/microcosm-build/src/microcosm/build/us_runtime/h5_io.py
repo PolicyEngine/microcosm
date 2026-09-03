@@ -19,7 +19,6 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -39,6 +38,10 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
 from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
+)
+from microcosm.data.denied_pools import (
+    DENIED_POOL_PUBLICATIONS,
+    DeniedPoolPublication,
 )
 from microcosm.frame import (
     Frame,
@@ -419,44 +422,6 @@ def _validated_stacked_sampling_manifest_binding(
 
 class AuthenticatedPoolH5MismatchError(RuntimeError):
     """A pool H5 no longer matches the bytes authenticated by its manifest."""
-
-
-@dataclass(frozen=True)
-class DeniedPoolPublication:
-    """One source-coded pool identity excluded from readiness and release."""
-
-    manifest_sha256: str
-    pool_h5_sha256: str
-    content_identity_sha256: str
-    release_id: str
-    reason: str
-    reference: str
-
-
-DENIED_POOL_PUBLICATIONS: Mapping[str, DeniedPoolPublication] = MappingProxyType(
-    {
-        "2ab3f5a136bf4033be876bf150a6fbb4": DeniedPoolPublication(
-            manifest_sha256=(
-                "2a06fc2b1b73b006bb1bae7d13daeef813a4645c989374408eceaed0ef321cbd"
-            ),
-            pool_h5_sha256=(
-                "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
-            ),
-            content_identity_sha256=(
-                "f5a5023bb9a74003d433abf04c796c96da0a34c6a7caff78b70fee421c4a7b2c"
-            ),
-            release_id=(
-                "populace-us-2024-stacked-f025-s578-asec42213-acs382903-"
-                "20260831T162338Z-e14b24e8"
-            ),
-            reason=(
-                "candidate-26 is gate_failed on its terminal by-origin battery "
-                "and is excluded from the certifiable dense line by decision"
-            ),
-            reference="microcosm#856; plan gate 20260902-220844-plan-532dab66",
-        )
-    }
-)
 
 
 def _file_sha256_stream(path: str | Path) -> str:
@@ -860,6 +825,7 @@ def us_multispine_pool_release_receipt(
         "publication_run_id": authenticated_pool_h5.publication_run_id,
         "pool_h5_sha256": authenticated_pool_h5.sha256,
         "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
+        "content_identity_sha256": authenticated_pool_h5.content_identity_sha256,
         "allow_gate_failed_base_pool": bool(allow_gate_failed_base_pool),
         "agreement_gate_reference": {
             "battery_status": "green" if is_ready else "red",

@@ -46,6 +46,7 @@ from pathlib import Path
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
@@ -848,9 +849,32 @@ def _check_target_registry_ref(
         failures.append(f"{filename} {owner}.target_registry.n_specs must be > 0.")
 
 
+def _check_base_pool_not_denied(manifest: Mapping, failures: list[str]) -> None:
+    """A release assembled from a denied pool may not be published, however it
+    reached the release directory (microcosm#856)."""
+
+    base_pool = manifest.get("base_pool")
+    if not isinstance(base_pool, Mapping):
+        return
+    match = denied_pool_publication_for(
+        publication_run_id=base_pool.get("publication_run_id"),
+        manifest_sha256=base_pool.get("manifest_sha256"),
+        pool_h5_sha256=base_pool.get("pool_h5_sha256"),
+        content_identity_sha256=base_pool.get("content_identity_sha256"),
+    )
+    if match is not None:
+        run_id, denied, how = match
+        failures.append(
+            f"build_manifest.json base_pool is denied publication {run_id!r} "
+            f"(matched by {how}; release_id {denied.release_id!r}) and cannot be "
+            f"published. Reason: {denied.reason}. Reference: {denied.reference}."
+        )
+
+
 def _check_build_manifest(
     manifest: Mapping, release_id: str, failures: list[str]
 ) -> None:
+    _check_base_pool_not_denied(manifest, failures)
     build_id = manifest.get("build_id")
     if not build_id:
         failures.append("build_manifest.json is missing 'build_id'.")
