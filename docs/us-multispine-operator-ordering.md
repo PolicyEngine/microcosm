@@ -593,6 +593,13 @@ receipt. The scoring loader may authenticate a deny-listed pool for
 diagnostics, but candidate-26 remains denied for release independently of this
 relocation check.
 
+This F1 identity assumes the interpreter's inherited startup path is trusted.
+It binds the two named fit controls and the resolved source/installed-RECORD
+closure; it does not additionally authenticate `PYTHONPATH`, executable
+`.pth` startup hooks, `sitecustomize`/`usercustomize`, or shadow `.pyc` files.
+Hardening those interpreter-startup mechanisms would change the worker launch
+contract and is outside this portability repair.
+
 Every one of the 16 source producers consumes the following 16-requirement
 wrapper bundle `W`. It is added to the operator-specific kernel inventory in
 the table below, even where a kernel requirement names the same physical

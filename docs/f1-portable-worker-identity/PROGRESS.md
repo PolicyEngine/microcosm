@@ -103,6 +103,8 @@ focused green; documentation and full verification are in progress on
   parameterized cases pass while real mutated manifests still fail earlier.
 - Enforced absolute `sys_executable` and `sys_prefix` audit aliases while
   retaining the unmodified raw `argv_template[0]` audit value.
+- Recorded the F1 threat-model boundary: inherited Python startup/path hooks
+  remain trusted and are not added to the two specified semantic fit controls.
 
 ## Next
 
