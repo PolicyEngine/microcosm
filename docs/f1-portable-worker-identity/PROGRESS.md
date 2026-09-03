@@ -2,9 +2,10 @@
 
 ## State
 
-The portable worker identity and authenticated H5/scoring boundary are
-implemented and focused green; the remaining generated/spec version mirrors
-are in progress on `f1-portable-worker-identity` from base
+The portable worker identity, authenticated H5/scoring boundary, and typed
+specification mirrors are implemented and focused green; downstream pinned
+hashes, documentation, and full verification are in progress on
+`f1-portable-worker-identity` from base
 `09abf2ad78e9af3c5314a4b303d42a75e30d49c4`.
 
 ## Done
@@ -67,11 +68,19 @@ are in progress on `f1-portable-worker-identity` from base
   end-to-end current/legacy H5 authentication and release cases passed; the
   12-case legacy attestation/laundering subset passed. Ruff check passed on the
   edited Python boundary files.
+- Replaced both constants-era worker templates with the closed portable
+  resolver algebra, made the typed projector resolve the alias-free semantic
+  receipt, and retained semantic worker fields in inventory identity while
+  excluding only `audit_aliases`.
+- Updated the imputation and spine JSON schemas and checked-in US YAML mirrors
+  to primary config 5, registry/schedule 17, producer receipt 4, transition
+  authority 2, resource semantics 2, stacked authority 12, and checkpoint
+  materializer 13. JSON parsing, Ruff, bundle loading, and all four imputation
+  projector tests pass.
 
 ## Next
 
-- Update the semantic spec-engine and generator mirrors, retain only audit
-  aliases outside inventory identity, regenerate typed US specifications, and
-  update all enclosing version/hash fixtures.
+- Refresh every observed spec/authority/inventory hash and coverage count,
+  including generated coverage evidence and version assertions.
 - Document the operator attestation/receipt contract, add the changelog, then
   run focused, CI-group, and required repository checks.

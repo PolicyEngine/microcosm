@@ -474,23 +474,14 @@ def _wire(value: FrozenValue) -> object:
 
 
 def _without_operational_bindings(value: object) -> object:
-    """Strip execution-profile subtrees before semantic digesting.
-
-    ``worker_execution`` embeds the invoking interpreter path verbatim
-    (``sys.executable``), which spells itself differently between a script
-    (``.venv/bin/python``) and the pytest console script
-    (``.venv/bin/python3``) for the same interpreter. Execution profile is a
-    receipted operational surface, never semantic evidence, so inventory
-    digests are computed over the receipt with those subtrees removed. The
-    live generation-0 receipt itself is unchanged.
-    """
+    """Strip only audit aliases before semantic inventory digesting."""
 
     if isinstance(value, Mapping):
         drop_self_hash = "producers" in value and "sha256" in value
         return {
             key: _without_operational_bindings(item)
             for key, item in value.items()
-            if key != "worker_execution" and not (drop_self_hash and key == "sha256")
+            if key != "audit_aliases" and not (drop_self_hash and key == "sha256")
         }
     if isinstance(value, list):
         return [_without_operational_bindings(item) for item in value]
@@ -1695,9 +1686,7 @@ def build_inventory_coverage(
             "sha256": _operational_free_sha256(geography_assignment),
             "authority_roles": sorted(geography_authorities),
             "target_vintage": _mapping(
-                geography_authorities.get(
-                    "congressional_district_vintage_crosswalk"
-                ),
+                geography_authorities.get("congressional_district_vintage_crosswalk"),
                 "checkpoint geography crosswalk authority",
             ).get("target_vintage"),
         },

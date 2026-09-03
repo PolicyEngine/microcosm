@@ -3280,264 +3280,60 @@
                  "additionalProperties": false,
                  "properties": {
                   "resolve_as": {
-                   "type": "string"
+                   "const": "worker_execution"
                   },
                   "surface": {
-                   "type": "string"
+                   "const": "execution_profile"
                   },
                   "template": {
                    "type": "object",
                    "additionalProperties": false,
                    "properties": {
-                    "argv_template": {
-                     "type": "array",
-                     "items": {
-                      "anyOf": [
-                       {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                         "resolver_op": {
-                          "const": "sys_executable"
-                         }
-                        },
-                        "required": [
-                         "resolver_op"
-                        ]
-                       },
-                       {
-                        "type": "string"
-                       }
-                      ]
-                     }
+                    "schema_version": {
+                     "const": 1
                     },
-                    "environment": {
+                    "semantic_identity": {
                      "type": "object",
                      "additionalProperties": false,
                      "properties": {
-                      "bound_names": {
-                       "type": "array",
-                       "items": {
-                        "type": "string"
-                       }
-                      },
-                      "overrides": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {}
-                      },
-                      "policy": {
-                       "type": "string"
-                      },
-                      "semantic_controls": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {
-                        "POPULACE_FIT_N_JOBS": {
-                         "type": "object",
-                         "additionalProperties": false,
-                         "properties": {
-                          "configured": {
-                           "type": "object",
-                           "additionalProperties": false,
-                           "properties": {
-                            "name": {
-                             "const": "POPULACE_FIT_N_JOBS"
-                            },
-                            "resolver_op": {
-                             "const": "environment_value"
-                            }
-                           },
-                           "required": [
-                            "name",
-                            "resolver_op"
-                           ]
-                          },
-                          "resolved": {
-                           "type": "object",
-                           "additionalProperties": false,
-                           "properties": {
-                            "default": {
-                             "type": "integer"
-                            },
-                            "name": {
-                             "const": "POPULACE_FIT_N_JOBS"
-                            },
-                            "resolver_op": {
-                             "const": "env_canonical_positive_int_or_default"
-                            }
-                           },
-                           "required": [
-                            "default",
-                            "name",
-                            "resolver_op"
-                           ]
-                          }
-                         },
-                         "required": [
-                          "configured",
-                          "resolved"
-                         ]
-                        },
-                        "POPULACE_FIT_PREDICT_WORKERS": {
-                         "type": "object",
-                         "additionalProperties": false,
-                         "properties": {
-                          "configured": {
-                           "type": "object",
-                           "additionalProperties": false,
-                           "properties": {
-                            "name": {
-                             "const": "POPULACE_FIT_PREDICT_WORKERS"
-                            },
-                            "resolver_op": {
-                             "const": "environment_value"
-                            }
-                           },
-                           "required": [
-                            "name",
-                            "resolver_op"
-                           ]
-                          },
-                          "resolution": {
-                           "type": "object",
-                           "additionalProperties": false,
-                           "properties": {
-                            "name": {
-                             "const": "POPULACE_FIT_PREDICT_WORKERS"
-                            },
-                            "resolver_op": {
-                             "const": "env_or_cpu_count_resolution_label"
-                            }
-                           },
-                           "required": [
-                            "name",
-                            "resolver_op"
-                           ]
-                          },
-                          "resolved": {
-                           "type": "object",
-                           "additionalProperties": false,
-                           "properties": {
-                            "fallback_minimum": {
-                             "type": "integer"
-                            },
-                            "name": {
-                             "const": "POPULACE_FIT_PREDICT_WORKERS"
-                            },
-                            "resolver_op": {
-                             "const": "env_positive_int_or_cpu_count"
-                            }
-                           },
-                           "required": [
-                            "fallback_minimum",
-                            "name",
-                            "resolver_op"
-                           ]
-                          }
-                         },
-                         "required": [
-                          "configured",
-                          "resolution",
-                          "resolved"
-                         ]
-                        }
-                       },
-                       "required": [
-                        "POPULACE_FIT_N_JOBS",
-                        "POPULACE_FIT_PREDICT_WORKERS"
-                       ]
+                      "resolver_op": {
+                       "const": "primary_qrf_worker_semantic_identity"
                       }
                      },
                      "required": [
-                      "bound_names",
-                      "overrides",
-                      "policy",
-                      "semantic_controls"
+                      "resolver_op"
                      ]
                     },
-                    "interpreter": {
+                    "semantic_identity_sha256": {
                      "type": "object",
                      "additionalProperties": false,
                      "properties": {
-                      "cache_tag": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {
-                        "resolver_op": {
-                         "const": "python_cache_tag"
-                        }
-                       },
-                       "required": [
-                        "resolver_op"
-                       ]
-                      },
-                      "executable": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {
-                        "resolver_op": {
-                         "const": "sys_executable"
-                        }
-                       },
-                       "required": [
-                        "resolver_op"
-                       ]
-                      },
-                      "implementation": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {
-                        "resolver_op": {
-                         "const": "python_implementation"
-                        }
-                       },
-                       "required": [
-                        "resolver_op"
-                       ]
-                      },
-                      "resolved_executable": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {
-                        "resolver_op": {
-                         "const": "resolved_sys_executable"
-                        }
-                       },
-                       "required": [
-                        "resolver_op"
-                       ]
-                      },
-                      "version": {
-                       "type": "object",
-                       "additionalProperties": false,
-                       "properties": {
-                        "resolver_op": {
-                         "const": "python_version_triplet"
-                        }
-                       },
-                       "required": [
-                        "resolver_op"
-                       ]
+                      "resolver_op": {
+                       "const": "primary_qrf_worker_semantic_identity_sha256"
                       }
                      },
                      "required": [
-                      "cache_tag",
-                      "executable",
-                      "implementation",
-                      "resolved_executable",
-                      "version"
+                      "resolver_op"
                      ]
                     },
-                    "module": {
-                     "type": "string"
+                    "audit_aliases": {
+                     "type": "object",
+                     "additionalProperties": false,
+                     "properties": {
+                      "resolver_op": {
+                       "const": "primary_qrf_worker_audit_aliases"
+                      }
+                     },
+                     "required": [
+                      "resolver_op"
+                     ]
                     }
                    },
                    "required": [
-                    "argv_template",
-                    "environment",
-                    "interpreter",
-                    "module"
+                    "schema_version",
+                    "semantic_identity",
+                    "semantic_identity_sha256",
+                    "audit_aliases"
                    ]
                   }
                  },
