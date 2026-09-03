@@ -243,3 +243,33 @@ Applied on this branch in one commit; every constant is the measured choice abov
 **A16 — seven reviewed measure exclusions, one-month window (approved 2026-09-03, expire 2026-10-03), tracked on microcosm#736.** `ons.land.corporate_land_value` (8.7×), `ons.land.land_value` (2.5×), `ons.savings_interest_income` (−86 %), `obr.housing_benefit` (−78 %), `slc.borrowers.plan_2_liable` (−65 %), `slc.borrowers.plan_2_above_threshold` (−69 %), `dwp.jsa_claimants` (1.8×) — each unreachable by reweighting within the stretch bound on spine-m (R8–R10), each a frame-side gap; the register now holds 51 entries. None of the seven is a cross-grain bridge member, so no bridge classification changes.
 
 Verification on this commit: doctrine / candidate / ledger / measure-simulation / rowwise files 99 passed; country spec, battery bindings, seam driver, scorer and the microcosm-data contract suite 543 passed, 1 skipped; both censuses current; `ci_test_groups.py --verify` ok; `ruff check` clean; no pinned digest moved. The release-candidate run (R13) applies all of this under `--release-candidate` with holdout.
+
+## R13 — First release-candidate run under the ruled doctrine (2026-09-03; `--release-candidate`, K=15, `grain_equal`, bound 10, 1500 epochs, A15 uprating, A16 exclusions, single engine block, holdout on)
+
+Run from PR B at b59563ba; every pin verified; chained on R11's row. Wall 11,903 s (3.3 h: engine 12 min, main solve ~35 min, five holdout folds ~2.5 h); peak 9.3 GB. **Every release-blocking gate passed; the manifest says `releasable: true`; exit 0.** Matrix 20,473 rows (357 national after the seven A16 exclusions, 19,105 local, 1,011 ladder) × 792,690.
+
+| | G (1500, pre-ruling, R10) | **RC (R13)** |
+|---|---|---|
+| loss initial → final | 0.3195 → 0.0184 | 0.3041 → 0.0156 |
+| max / positive-median weight | 2,857 | **398** |
+| ESS fraction / top-1 % share | 0.105 / 0.187 | **0.161** / 0.161 |
+| constituency ESS min / median | 54.6 / 133 | **65.7 / 219** |
+| mass factor → households | 0.967 → 28.28M | **0.989 → 28.93M** (FRS grossing 29.25M) |
+| lone over-65 households (target 4.25M) | 4.11M | **4.24M** |
+| local within 10 %: age / census / HMRC / UC / tenure / council tax | 100 / 98.8 / 98.9 / 99.9 / 97.3 / 86.8 | 100 / 99.3 / 99.2 / 99.9 / **87.3** / **91.5** |
+| local cells past 25 % (diagnostic) | 116 | **40** |
+| national within 10 % / 25 % | 93.1 / 97.8 | **94.7 / 99.2** |
+| national within 10 %: SPI / UC / population / OBR / two-child / composition | 98 / 99 / 100 / 71 / 100 / 71 | 98 / 99 / 100 / 70 / 100 / **86** |
+| Glasgow social rent (target 102k) | 203k | 150k |
+| holdout (5 rotated folds, 4,023 local rows each, national rows in training) | not run | mean 0.204, worst 0.213 (uncalibrated 0.304) |
+
+Readings:
+
+1. **A16 did what it was for.** With the seven unreachable rows out, the solver stops paying for them: the max/median ratio falls from 2,857 to 398 and the median constituency ESS rises from 133 to 219, while national fit improves (94.7 / 99.2) and the composition family goes from 71 to 86 % within 10 %.
+2. **A15 closes the mass and composition flags.** Households calibrate to 28.93M (1.1 % under the FRS grossing, against 3.3 % under the census-vintage rows); lone over-65 households land 0.4 % from the ONS row; council-tax fit rises to 91.5 % because the VOA 2025 stock and the uprated household rows now agree.
+3. **A15 exposes the next vintage seam: tenure.** The tenure cells are the same census-2021 household universe split by tenure, and they were not uprated: per local authority they sum to 95.7 % of the uprated household row (98.9 % before). The solver holds the household rows (−0.1 %) and lets the tenure cells overshoot, and it puts the overshoot where the age and composition rows push it — owned outright, +8.2 % median, 123 of 359 authorities past +10 % (owned with mortgage +1.2 %, private rent +0.8 %, social rent +0.7 %, none below −10 %). This is not a fit failure of the solve; it is the tenure family binding at 2021 while everything around it binds at 2025. **Proposed ruling A17:** uprate the census-vintage tenure cells by the same national household factor (they carry `uprating_from_period` 2021/22 holds today), receipted like the ladder rows; expected effect from these numbers: tenure back above 95 % within 10 %, owned outright ~+4.7 % median.
+4. **Holdout is now measured.** Cells the solve never saw come out at a mean capped relative error of 0.204 (worst fold 0.213) against 0.304 uncalibrated and 0.0156 in-sample: the local calibration improves unseen cells by a third and fits its own cells thirteen times better than that. This is the number the release contract should publish beside the in-sample fit.
+5. **Two evidence defects found on this run, fixed on this branch for the next:** (a) the driver ran the gate battery in the non-release posture even under `--release-candidate` (`release_candidate=False` hard-coded), so the signed report says `release_candidate: false, shippable: false`; the battery now attests the posture it ran under (a release candidate also blocks on absent evidence); (b) the manifest never recorded the measure exclusions the national compile stood on; it now carries `measure_exclusions` (name → register record; 51 on the live compile) beside `ladder_household_uprating`. The next release-candidate run (after A17) verifies both on the live artifact.
+6. Remaining diagnostic misses: 40 local cells past 25 %, led by the Kensington / Westminster / Cities of London self-employment amounts (−95 %; the frame carries a twelfth of HMRC's amount there; adjudicated under `hmrc_spi_frame_model_proxy`) and Glasgow social rent (+46 %). The `weight_ratio` diagnostic (max/median 398 against 100) stays red by construction of the design weights.
+
+Artifact: `data/ukds/acceptance/762-rowwise-candidate/spine-m/f100-k15-RC/microcosm_uk_2025_local.h5` (792,690 rows) with its manifest, gate report, diagnostics and Logbook row (disposition `iterating`). Not published; the release contract, scoring against the incumbent and the shippable attestation are the next items.

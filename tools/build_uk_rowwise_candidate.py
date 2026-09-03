@@ -1002,6 +1002,9 @@ def _run_candidate(
                     if args.sample_fraction == 1.0
                     else ("uk_local_geography_ladder_post_calibration",)
                 ),
+                # The battery attests the posture it ran under: a release
+                # candidate blocks on absent evidence and can be shippable.
+                release_candidate=bool(args.release_candidate),
             )
         except GateBatteryBlockedError:
             # Write-then-block, extended to the whole evidence bundle: a
@@ -1748,6 +1751,7 @@ def _run_local_gate_battery(
     report_path: Path,
     release_id: str,
     enforce_only: tuple[str, ...] | None = None,
+    release_candidate: bool = False,
 ) -> tuple[dict[str, object], GateResult]:
     manifest = uk_scoped_gate_manifest(
         UK_LOCAL_GATE_SCOPE,
@@ -1758,7 +1762,7 @@ def _run_local_gate_battery(
         manifest,
         release_id=release_id,
         report_path=report_path,
-        release_candidate=False,
+        release_candidate=release_candidate,
         registry=UK_GATE_REGISTRY,
     )
     phase = battery.run_phase(
@@ -1791,7 +1795,7 @@ def _run_local_gate_battery(
             raise ValueError(f"enforce_only names unknown local gates: {unknown}.")
         selected_blocking = [
             outcome
-            for outcome in phase.blocking_outcomes(release_candidate=False)
+            for outcome in phase.blocking_outcomes(release_candidate=release_candidate)
             if outcome.entry.id in enforce_only
         ]
         if selected_blocking:
@@ -2315,6 +2319,19 @@ def _manifest(
             cross_grain.get("ladder_household_uprating")
             or {"applied": False, "reason": "no cross-grain receipt"}
         ),
+        # The reviewed measure exclusions the national compile stood on
+        # (name -> register record), so the narrowing is in the evidence.
+        "measure_exclusions": {
+            str(name): dict(record)
+            for name, record in sorted(
+                (
+                    (getattr(args, "_joint_inputs_receipt", None) or {}).get(
+                        "measure_exclusions"
+                    )
+                    or {}
+                ).items()
+            )
+        },
         "blocked_at_f100": bool(getattr(args, "_blocked_failures", [])),
         "blocking_failures": list(getattr(args, "_blocked_failures", [])),
         "diagnostic_failures": list(getattr(args, "_diagnostic_failures", [])),

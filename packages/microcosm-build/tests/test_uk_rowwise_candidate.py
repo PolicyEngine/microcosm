@@ -1181,6 +1181,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert "fanout_controls_summed" not in f100["cross_grain"]
     assert "fanout_controls_summed" not in f100["solve"]["cross_grain"]
     assert f100["releasable"] is True
+    assert f100["measure_exclusions"] == joint_inputs["measure_exclusions"]
+    assert f100["ladder_household_uprating"]["applied"] is False
     assert _spool_rows(f100_out)[0].rung == "f100"
 
     f001_out = tmp_path / "joint-f001"
