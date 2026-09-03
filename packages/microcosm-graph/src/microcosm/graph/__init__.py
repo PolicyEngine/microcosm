@@ -46,8 +46,8 @@ from .kernel import (
     KernelResult,
     KernelRole,
     Numeric,
-    SeedSource,
     NumericScope,
+    SeedSource,
     Tolerance,
     source_hash,
 )
