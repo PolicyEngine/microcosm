@@ -1,3 +1,33 @@
+# #847 gate round 2: executor and population fixes
+
+## State
+
+In progress on branch `fix-847-r2`, based exactly on dispatched head
+`142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
+first and failed because the mandated no-network environment cannot resolve
+GitHub; the local `origin/graph-amendments-11-13` ref matches the dispatched
+head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
+
+## Done
+
+- Read the repository agent instructions and the GitNexus debugging workflow.
+- Confirmed the GitNexus query/context tools are unavailable in this session;
+  tracing will use the required source and tests directly.
+- Created the isolated worktree and branch at the dispatched commit.
+- Recorded the six ruled findings, frozen-file constraints, per-finding commit
+  boundary, and required final verification/reporting contract.
+
+## Next
+
+- Sync and verify the worktree-local environment.
+- Read the charter, graph implementation files, acceptance tests, and toy
+  fixtures before editing.
+- Implement and regression-test F2, F3, F4, F5, F7, and F10 as one commit per
+  finding, maintaining this journal after each coherent step.
+- Run the full requested verification matrix and write `out.md`.
+
+---
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
