@@ -240,6 +240,47 @@ def test_calibration_view_uses_targets_ratios_and_mass(explanation) -> None:
     assert "urban" in rendered
 
 
+def test_calibration_view_renders_partition_mass_with_deltas(tmp_path: Path) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    original = run.manifest.nodes["calibrated"]
+    mass = dict(original.receipt["mass"])
+    mass["stratum_before"] = {}
+    mass["stratum_after"] = {}
+    mass["partition"] = {
+        "entity": "household",
+        "column": "period",
+        "stratum_before": {
+            "2024": {"rural": 10.0, "urban": 20.0},
+            "2025": {"rural": 5.0},
+        },
+        "stratum_after": {
+            "2024": {"rural": 8.0, "urban": 23.0},
+            "2026": {"urban": 10.0},
+        },
+    }
+    changed = replace(
+        original,
+        receipt={**dict(original.receipt), "mass": mass},
+    )
+    manifest = replace(
+        run.manifest,
+        nodes={**dict(run.manifest.nodes), "calibrated": changed},
+    )
+
+    rendered = explain_html(run.compiled, manifest)
+
+    assert "Mass by household.period partition" in rendered
+    assert (
+        "<th>Partition value</th><th>Stratum</th><th>Before</th><th>After</th>"
+        "<th>Change</th></tr></thead><tbody>" in rendered
+    )
+    assert ">2024</td><td>rural</td><td>10</td><td>8</td><td>-2</td>" in rendered
+    assert ">2024</td><td>urban</td><td>20</td><td>23</td><td>3</td>" in rendered
+    assert ">2025</td><td>rural</td><td>5</td><td>0</td><td>-5</td>" in rendered
+    assert ">2026</td><td>urban</td><td>0</td><td>10</td><td>10</td>" in rendered
+    assert "http://" not in rendered and "https://" not in rendered
+
+
 def test_calibration_view_reads_adam_diagnostics(tmp_path: Path) -> None:
     run = toy.run_toy(toy.full_graph(), tmp_path / "run")
     targets = (

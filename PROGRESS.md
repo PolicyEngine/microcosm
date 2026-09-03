@@ -2,7 +2,7 @@
 
 ## State
 
-F2 through F5 are implemented and focused-green; F7 is next. Work remains in
+F2 through F7 are implemented and focused-green; F10 is next. Work remains in
 progress on branch `fix-847-r2`, based exactly on dispatched head
 `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
 first and failed because the mandated no-network environment cannot resolve
@@ -62,11 +62,18 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Captured the B6 group-entrant JSON regression red with missing `mass`, then
   passed it cold and warm; the executor plus B-ownership and D-weight suites
   pass together (57 tests), with focused Ruff and formatting checks green.
+- F7: the calibration mass-ledger view now renders a deterministic per-partition
+  table with partition value, stratum, before, after, and delta; absent cells
+  are explicit zeroes, and partition data remains visible even when aggregate
+  stratum mappings are empty.
+- Captured the partition-view regression red on the missing heading, then passed
+  it and all 14 ordinary explanation tests; focused Ruff and formatting checks
+  are green. No checked-in HTML/digest pin required regeneration.
 
 ## Next
 
-- Implement and regression-test F7 and F10 as one commit per
-  finding, maintaining this journal after each coherent step.
+- Implement and regression-test F10 as its own finding commit,
+  maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
 
 ---
