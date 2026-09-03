@@ -262,12 +262,23 @@ def _incumbent_estimates(
     registry: TargetRegistry,
     incumbent_weights: pd.DataFrame,
     incumbent_metrics: pd.DataFrame,
-) -> dict[str, float]:
+) -> tuple[dict[str, float], dict[str, int]]:
+    """Estimate every registry row the incumbent can, and name the rest.
+
+    An area absent from the incumbent's wide weight table (the incumbent
+    ships 360 local authorities against the register's 361: Northern
+    Ireland's ``N09000011`` has no column) is not a fitted row disappearing
+    — the incumbent simply has no estimate there. Those rows are returned
+    as ``missing_areas`` (area → row count) and scored candidate-only, with
+    the receipt saying so; the comparison never silently shrinks.
+    """
+
     incumbent_weights, incumbent_metrics = _align_on_household_id(
         incumbent_weights,
         incumbent_metrics,
     )
     estimates: dict[str, float] = {}
+    missing_areas: dict[str, int] = {}
     for spec in registry.specs:
         area = str(spec.metadata.get("ledger_geography_id") or "")
         if not area:
@@ -276,7 +287,8 @@ def _incumbent_estimates(
                 "ledger_geography_id metadata."
             )
         if area not in incumbent_weights.columns:
-            raise ValueError(f"incumbent wide weights are missing area {area!r}.")
+            missing_areas[area] = missing_areas.get(area, 0) + 1
+            continue
         if spec.measure not in incumbent_metrics.columns:
             raise ValueError(
                 f"incumbent household metrics are missing measure {spec.measure!r}."
@@ -292,7 +304,12 @@ def _incumbent_estimates(
                 f"incumbent inputs for {spec.to_target().row_name!r} are invalid."
             )
         estimates[spec.to_target().row_name] = float(np.dot(weights, metric))
-    return estimates
+    if not estimates:
+        raise ValueError(
+            "incumbent wide weights cover none of the registry's areas: "
+            f"{sorted(missing_areas)[:10]}."
+        )
+    return estimates, dict(sorted(missing_areas.items()))
 
 
 def _relative_errors(estimates: np.ndarray, targets: np.ndarray) -> np.ndarray:
@@ -341,7 +358,7 @@ def score_uk_local_candidate(
         candidate_diagnostics,
         target_registry,
     )
-    incumbent = _incumbent_estimates(
+    incumbent, incumbent_missing_areas = _incumbent_estimates(
         target_registry,
         incumbent_weights,
         incumbent_metrics,
@@ -354,8 +371,15 @@ def score_uk_local_candidate(
         [candidate[spec.to_target().row_name] for spec in target_registry.specs],
         dtype=np.float64,
     )
+    compared_mask = np.array(
+        [spec.to_target().row_name in incumbent for spec in target_registry.specs],
+        dtype=bool,
+    )
     incumbent_estimates = np.array(
-        [incumbent[spec.to_target().row_name] for spec in target_registry.specs],
+        [
+            incumbent.get(spec.to_target().row_name, np.nan)
+            for spec in target_registry.specs
+        ],
         dtype=np.float64,
     )
     candidate_errors = _relative_errors(candidate_estimates, targets)
@@ -365,11 +389,28 @@ def score_uk_local_candidate(
     for index, spec in enumerate(target_registry.specs):
         name = spec.to_target().row_name
         candidate_error = float(candidate_errors[index])
-        incumbent_error = float(incumbent_errors[index])
         bucket = families.setdefault(
             spec.family,
-            {"candidate_target_wins": 0, "incumbent_target_wins": 0, "ties": 0},
+            {
+                "candidate_target_wins": 0,
+                "incumbent_target_wins": 0,
+                "ties": 0,
+                "incumbent_absent": 0,
+            },
         )
+        if not compared_mask[index]:
+            bucket["incumbent_absent"] += 1
+            drift.append(
+                {
+                    "target": name,
+                    "family": spec.family,
+                    "candidate_relative_error": candidate_error,
+                    "incumbent_relative_error": None,
+                    "winner": "incumbent_absent",
+                }
+            )
+            continue
+        incumbent_error = float(incumbent_errors[index])
         if abs(candidate_error) < abs(incumbent_error):
             winner = "candidate"
             candidate_wins += 1
@@ -399,18 +440,32 @@ def score_uk_local_candidate(
         targets,
         target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
     )
+    # The incumbent's aggregate and the head-to-head candidate aggregate are
+    # both over the rows the incumbent can estimate; the candidate's full
+    # surface loss stays reported over every fitted row.
     incumbent_loss = relative_error_loss(
-        incumbent_estimates,
-        targets,
+        incumbent_estimates[compared_mask],
+        targets[compared_mask],
+        target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
+    )
+    candidate_loss_on_compared_rows = relative_error_loss(
+        candidate_estimates[compared_mask],
+        targets[compared_mask],
         target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
     )
     return {
         "candidate_fitted_surface_loss": candidate_loss,
+        "candidate_fitted_surface_loss_on_compared_rows": (
+            candidate_loss_on_compared_rows
+        ),
         "candidate_holdout_loss": holdout["mean_holdout_loss"],
         "incumbent_fitted_surface_loss": incumbent_loss,
         "incumbent_holdout_loss": None,
         "candidate_target_wins": candidate_wins,
         "incumbent_target_wins": incumbent_wins,
+        "rows_compared": int(compared_mask.sum()),
+        "rows_candidate_only": int((~compared_mask).sum()),
+        "incumbent_missing_areas": incumbent_missing_areas,
         "rows_outside_register": rows_outside_register,
         "holdout_basis": holdout["basis"],
         "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
