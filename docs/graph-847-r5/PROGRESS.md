@@ -2,10 +2,10 @@
 
 ## State
 
-In progress on the standalone `fix-847-r5` lane at the requested
-`cdbf71888f4b5896e124519d643fa2347c483123` head. The ten final-round gate
-findings are under reproduction and repair. No implementation change has been
-made yet.
+In progress on the standalone `fix-847-r5` lane at the requested starting
+head. The frozen interface and all named source surfaces have been read; the
+ten final-round findings are now under focused reproduction. No implementation
+change has been made yet.
 
 ## Done
 
@@ -16,11 +16,15 @@ made yet.
   is named `fix-847-r5`.
 - Preserved the historical repository-root journals. This lane journal lives
   under `docs/graph-847-r5/` to comply with the explicit root-journal boundary.
+- Read `docs/graph-acceptance.md`, including amendments 11--17 and the
+  interface freeze; `docs/graph-interface.lock`; all seven named graph modules;
+  the acceptance burndown tool; both named fit modules; and the H-parity test.
+- Confirmed amendment 17's `NumericScope` interface already exists in frozen
+  `kernel.py`, while executor context construction still supplies only the old
+  tolerance projection.
 
 ## Next
 
-- Read the interface charter, lock, named graph and fit modules, parity test,
-  and acceptance tooling.
 - Reproduce each finding against the starting head before implementing it.
 - Add one regression per finding, make small named commits, run the complete
   required verification block, and write the lane report to the requested
