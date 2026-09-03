@@ -784,11 +784,12 @@ def _assert_copied_expand_storage(
     after: Frame,
     node: Node,
     lineage: Mapping[str, pd.Series],
+    *,
+    rewrites: frozenset[tuple[str, str]],
 ) -> None:
-    """Require copied additions to retain every carried data cell exactly."""
+    """Require copied additions to retain carried cells except declared rewrites."""
 
     person = before.schema.person_entity
-    rewrites = {(owned.entity, owned.column) for owned in node.outputs if owned.rewrite}
     for entity in before.entities:
         entity_lineage = lineage[entity]
         copied = ~entity_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
@@ -852,6 +853,7 @@ def restore_cached_expand(
     result: KernelResult,
     *,
     mass_partition: tuple[str, str] | None = None,
+    rewrite_coordinates: frozenset[tuple[str, str]] = frozenset(),
 ) -> Population:
     """Restore a previously validated EXPAND frame against its keyed base.
 
@@ -860,6 +862,9 @@ def restore_cached_expand(
     to this base version.  This function re-establishes graph ownership,
     design-weight ancestry, and the executor mass ledger without relaxing the
     miss-path lineage validation.
+    ``rewrite_coordinates`` is the executor-validated set of full-cell rewrite
+    claims in this EXPAND version; only those carried cells may differ between
+    a copied row and its source.
     """
 
     if node.structural is not StructuralDelta.EXPAND or result.frame is None:
@@ -878,7 +883,13 @@ def restore_cached_expand(
     lineage = _validate_expand_lineage(
         population.frame, node, receipt_lineage, after=frame
     )
-    _assert_copied_expand_storage(population.frame, frame, node, lineage)
+    _assert_copied_expand_storage(
+        population.frame,
+        frame,
+        node,
+        lineage,
+        rewrites=rewrite_coordinates,
+    )
     _assert_cached_expand_strata(population.frame, frame, node, lineage, result.receipt)
     _assert_expand_weights(population, frame, node, result)
 
@@ -1002,6 +1013,7 @@ def patch(
     result: KernelResult,
     *,
     mass_partition: tuple[str, str] | None = None,
+    rewrite_coordinates: frozenset[tuple[str, str]] = frozenset(),
 ) -> Population:
     """Validate and apply one node result without mutating ``population``.
 
@@ -1011,6 +1023,9 @@ def patch(
     overlays enumerated by ``params['expand_cells']``. ``result.weights`` is
     the full target vector named by ``params['expand_weight_entity']`` and
     ``params['expand_weight_kind']``.
+    ``rewrite_coordinates`` is the executor-validated set of full-cell rewrite
+    claims in this EXPAND version; only those carried cells may differ between
+    a copied row and its source.
     """
 
     if node.structural is StructuralDelta.CREATE:
@@ -1041,7 +1056,9 @@ def patch(
             raise PopulationError(f"Non-structural node {node.id!r} returned a Frame.")
         frame, owners = _patch_columns(population, node, result)
     elif lineage_expand:
-        frame, owners = _patch_expand(population, node, result)
+        frame, owners = _patch_expand(
+            population, node, result, rewrite_coordinates=rewrite_coordinates
+        )
     else:
         frame, owners = _patch_structural(population, node, result)
 
@@ -1229,7 +1246,11 @@ def _remap_expand_memberships(
 
 
 def _patch_expand(
-    population: Population, node: Node, result: KernelResult
+    population: Population,
+    node: Node,
+    result: KernelResult,
+    *,
+    rewrite_coordinates: frozenset[tuple[str, str]],
 ) -> tuple[Frame, dict[tuple[str, str], str]]:
     """Materialize a source-lineage EXPAND result in the executor."""
 
@@ -1437,7 +1458,13 @@ def _patch_expand(
         mass_log=before.mass_log,
         metadata=before.metadata,
     )
-    _assert_copied_expand_storage(before, frame, node, lineage)
+    _assert_copied_expand_storage(
+        before,
+        frame,
+        node,
+        lineage,
+        rewrites=rewrite_coordinates,
+    )
     owners = {
         (entity, str(column)): node.id
         for entity in frame.entities

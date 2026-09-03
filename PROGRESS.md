@@ -56,6 +56,17 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
   entrant/copy toy test and cached-frame tamper test. The complete population,
   executor, and B-ownership suites pass together (85 tests), with focused Ruff
   and formatting checks green.
+- The first full verification run exposed the UK `cgt_band_donors`
+  integration: its copied people intentionally receive a rewritten
+  `person.capital_gains`, declared by the EXPAND version's ordinary claimant
+  because the frozen interface forbids structural outputs.
+- Tightened F4's exemption to overlay coordinates whose compiled same-version
+  claimant declares a full-row rewrite, on both cold and cached paths; all
+  other copied carried cells remain exact.
+- Captured the new ordinary cold/cache rewrite regression red on
+  `person.income`, then passed it alongside the original non-rewrite rejection,
+  all executor/population tests, and the H2 UK spine parity node.
+
 - F5: every FILTER, EXPAND, and REWEIGHT now receives the executor's full D2
   mass record in its portable receipt, independent of partitions, entrant
   strata, or the kernel's declared mass policy.
