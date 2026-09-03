@@ -382,6 +382,7 @@ from microcosm.build.uk_runtime.parity_reference import (
     load_efrs_parity_reference,
 )
 from microcosm.build.uk_runtime.release_identity import (
+    UK_DENSE_RELEASE_ID,
     UK_RELEASE_TIER_CPS_TRANSFER,
     UK_RELEASE_TIER_FRS,
     UK_RELEASE_TIERS,
@@ -690,6 +691,7 @@ __all__ = [
     "UK_OA_LADDER_SCHEMA_VERSION",
     "UK_POSTCODE_OA_MAY25_ZIP_URL",
     "UK_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "UK_DENSE_RELEASE_ID",
     "UK_RELEASE_TIERS",
     "UK_RELEASE_TIER_CPS_TRANSFER",
     "UK_RELEASE_TIER_FRS",

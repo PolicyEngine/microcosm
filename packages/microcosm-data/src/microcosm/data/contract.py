@@ -40,7 +40,7 @@ import json
 import math
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
@@ -559,6 +559,68 @@ _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 # microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
 # data shard cannot import the build shard); lockstep-tested.
 _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+# The dense joint national + local line (microcosm#762 A18, ruling
+# 2026-09-03): the same constant-id approach, published on the inspect lane
+# under the non-default local-area role. Mirrored from
+# microcosm.build.uk_runtime.release_identity.UK_DENSE_RELEASE_ID; lockstep-
+# tested in test_gate_battery_contract_pins.py.
+_UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
+_UK_DENSE_CUT_TAG_RE = re.compile(
+    re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
+)
+_UK_DENSE_GATE_REPORT_FILE = "uk_local_gates.json"
+_UK_DENSE_SCORE_RECEIPT_FILE = "score_vs_incumbent.json"
+_UK_DENSE_SOURCE_COVERAGE_FILE = "uk_source_coverage.json"
+_UK_DENSE_NAMESPACE = "uk_dense"
+_UK_DENSE_REQUIRED_RELEASE_FILES = (
+    "build_manifest.json",
+    "release_manifest.json",
+    "calibration_diagnostics.json",
+    "gate_summary.json",
+    _UK_DENSE_SOURCE_COVERAGE_FILE,
+    _UK_DENSE_GATE_REPORT_FILE,
+    _UK_DENSE_SCORE_RECEIPT_FILE,
+    "sha256sums.txt",
+)
+# The local battery scope (microcosm.build.uk_runtime.calibration_run
+# .UK_LOCAL_GATE_SCOPE) and its scoped spec digests, mirrored and
+# lockstep-tested against the live scoped manifest.
+_UK_DENSE_GATE_ENTRY_IDS = frozenset(
+    {
+        "uk_local_area_support",
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_per_family_fit",
+        "uk_local_target_fit",
+        "uk_local_weight_ess",
+        "uk_local_weight_ratio",
+    }
+)
+_UK_DENSE_RELEASE_BLOCKING_IDS = frozenset(
+    {"uk_local_area_support", "uk_local_geography_ladder_post_calibration"}
+)
+_UK_DENSE_GATE_PHASES = ("terminal",)
+_UK_DENSE_GATE_DIGESTS = {
+    "policy_sha256": (
+        "095b8d34152d45e07e626826ce397f73e4881fc9d870dc2ab0405d8b5f62bd71"
+    ),
+    "gates_manifest_sha256": (
+        "ee2adc33cb3aaf485dbb5d42225a8f9bcc621c971084b299126e8e842ebc34eb"
+    ),
+    "spec_fingerprint": (
+        "6d64fac7605ab22149bcc1c780c0b3989c5cd943c942489c3ddc7dc5e9e07114"
+    ),
+}
+_UK_DENSE_SOURCE_COVERAGE_KEYS = (
+    "spine",
+    "ledger_artifact",
+    "geography_ladder",
+    "incumbent",
+    "doctrine",
+    "measure_exclusions",
+    "signed_deferrals",
+    "holdout",
+    "uprating",
+)
 # The per-cut tag grammar the assembler mints from the calibration attempt id
 # (tools/assemble_uk_release_dir.py). The contract validates the same shape so
 # a hand-edited or stale revision cannot claim a cut the attempt chain never
@@ -4127,10 +4189,278 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         raise ReleaseContractError(release_dir, failures)
 
 
+def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
+    """The dense joint UK line's contract (microcosm#762 A18).
+
+    The non-default local-area role with UK evidence in place of the US
+    coverage file: the signed local gate-battery report verified with the
+    executor's key (release posture attested, every release-blocking entry
+    passed, the scoped spec digests pinned), the head-to-head score against
+    the incumbent, and a source-coverage receipt naming the spine, the Ledger
+    artifact, the geography ladder, the incumbent extraction, the doctrine,
+    the reviewed exclusions and signed deferrals, the holdout and the vintage
+    uprating. Artifacts pin to the release id or to one of its immutable
+    per-cut tags.
+    """
+
+    failures: list[str] = []
+    for filename in _UK_DENSE_REQUIRED_RELEASE_FILES:
+        if not (release_dir / filename).is_file():
+            failures.append(f"required file {filename!r} is missing.")
+    release_manifest: Mapping | None = None
+    manifest_path = release_dir / "release_manifest.json"
+    if manifest_path.is_file():
+        release_manifest = _load_json(manifest_path, failures)
+    if release_manifest is not None:
+        _check_local_area_release_manifest(
+            release_manifest,
+            release_id,
+            failures,
+            revision_ok=lambda revision: (
+                revision == release_id
+                or _UK_DENSE_CUT_TAG_RE.fullmatch(revision) is not None
+            ),
+        )
+        namespace = release_manifest.get("namespace")
+        if namespace != _UK_DENSE_NAMESPACE:
+            failures.append(
+                "release_manifest.json namespace must be "
+                f"{_UK_DENSE_NAMESPACE!r}, got {namespace!r}."
+            )
+    build_manifest_path = release_dir / "build_manifest.json"
+    if build_manifest_path.is_file():
+        build_manifest = _load_json(build_manifest_path, failures)
+        if build_manifest is not None and build_manifest.get("build_id") != release_id:
+            failures.append(
+                "build_manifest.json 'build_id' is "
+                f"{build_manifest.get('build_id')!r} but the release directory "
+                f"is named {release_id!r}."
+            )
+    gate_path = release_dir / "gate_summary.json"
+    if gate_path.is_file():
+        gate_summary = _load_json(gate_path, failures)
+        if gate_summary is not None:
+            _check_local_area_gates(gate_summary, failures)
+    diagnostics_path = release_dir / "calibration_diagnostics.json"
+    if diagnostics_path.is_file():
+        diagnostics = _load_json(diagnostics_path, failures)
+        if diagnostics is not None:
+            _check_local_area_calibration_diagnostics(diagnostics, failures)
+    report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
+    if report_path.is_file():
+        report = _load_json(report_path, failures)
+        if report is not None:
+            _check_uk_dense_gate_report(report, failures=failures)
+            if (
+                _artifact_by_path(release_manifest or {}, _UK_DENSE_GATE_REPORT_FILE)
+                is None
+            ):
+                failures.append(
+                    "release_manifest.json must declare the signed gate report "
+                    f"{_UK_DENSE_GATE_REPORT_FILE!r} as an artifact."
+                )
+    coverage_path = release_dir / _UK_DENSE_SOURCE_COVERAGE_FILE
+    if coverage_path.is_file():
+        coverage = _load_json(coverage_path, failures)
+        if coverage is not None:
+            _check_uk_dense_source_coverage(coverage, failures)
+    _check_local_area_checksum_ledger(
+        release_dir,
+        release_manifest,
+        failures,
+        required_files=_UK_DENSE_REQUIRED_RELEASE_FILES,
+    )
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    if failures:
+        raise ReleaseContractError(release_dir, failures)
+
+
+def _check_uk_dense_gate_report(report: Mapping, *, failures: list[str]) -> None:
+    """Verify the signed local gate-battery report the dense line ships.
+
+    Same producer and signing dance as the exact-k terminal report, scoped to
+    the local battery: the six local entries, one terminal phase, the local
+    scoped digests, release posture attested, every release-blocking entry
+    passed, ``gate_outcomes_sha256`` recomputed, and the HMAC over the
+    canonical report re-nulled at the signature slot.
+    """
+
+    file = _UK_DENSE_GATE_REPORT_FILE
+    core_fields = {
+        "schema_version",
+        "country",
+        "release_id",
+        "release_candidate",
+        "spec_fingerprint",
+        "gates_manifest_sha256",
+        "phases",
+        "phases_evaluated",
+        "blocked_at_phase",
+        "shippable",
+        "gates",
+        "policy_sha256",
+        "release_evidence",
+        "evidence_sha256",
+        "attestation",
+    }
+    missing = sorted(core_fields - set(map(str, report)))
+    if missing:
+        failures.append(f"{file} is missing report field(s) {missing}.")
+        return
+    if report.get("schema_version") != _UK_GATE_BATTERY_SCHEMA_VERSION:
+        failures.append(
+            f"{file} schema_version must be {_UK_GATE_BATTERY_SCHEMA_VERSION}."
+        )
+    if report.get("country") != "uk":
+        failures.append(f"{file} country must be 'uk'.")
+    if report.get("release_candidate") is not True:
+        failures.append(
+            f"{file} release_candidate must be true: the battery ran in the "
+            "dev posture."
+        )
+    if report.get("shippable") is not True:
+        failures.append(f"{file} shippable must be true.")
+    if report.get("blocked_at_phase") is not None:
+        failures.append(f"{file} blocked_at_phase must be null.")
+    if list(report.get("phases") or ()) != list(_UK_DENSE_GATE_PHASES):
+        failures.append(f"{file} phases must be {list(_UK_DENSE_GATE_PHASES)}.")
+    if list(report.get("phases_evaluated") or ()) != list(_UK_DENSE_GATE_PHASES):
+        failures.append(
+            f"{file} phases_evaluated must be {list(_UK_DENSE_GATE_PHASES)}."
+        )
+    for field, expected in _UK_DENSE_GATE_DIGESTS.items():
+        if report.get(field) != expected:
+            failures.append(
+                f"{file} {field} does not match the reviewed local gate spec."
+            )
+    gates = report.get("gates")
+    if not isinstance(gates, Mapping):
+        failures.append(f"{file} gates must be an object.")
+        return
+    if set(map(str, gates)) != set(_UK_DENSE_GATE_ENTRY_IDS):
+        failures.append(
+            f"{file} gates must contain exactly the local battery entries "
+            f"{sorted(_UK_DENSE_GATE_ENTRY_IDS)}, got {sorted(map(str, gates))}."
+        )
+    for entry_id, entry in gates.items():
+        if not isinstance(entry, Mapping):
+            failures.append(f"{file} gate {entry_id!r} must be an object.")
+            continue
+        status = entry.get("status")
+        if status not in _UK_GATE_BATTERY_STATUSES:
+            failures.append(f"{file} gate {entry_id!r} has unknown status {status!r}.")
+        expected_criticality = (
+            "release_blocking"
+            if entry_id in _UK_DENSE_RELEASE_BLOCKING_IDS
+            else "diagnostic"
+        )
+        if entry.get("criticality") != expected_criticality:
+            failures.append(
+                f"{file} gate {entry_id!r} criticality must be "
+                f"{expected_criticality!r}."
+            )
+        if (
+            entry_id in _UK_DENSE_RELEASE_BLOCKING_IDS
+            and status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES
+        ):
+            failures.append(
+                f"{file} release-blocking gate {entry_id!r} did not pass ({status!r})."
+            )
+    attestation = report.get("attestation")
+    if not isinstance(attestation, Mapping):
+        failures.append(f"{file} attestation must be an object.")
+        return
+    if attestation.get("schema_version") != _UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION:
+        failures.append(
+            f"{file} attestation.schema_version must be "
+            f"{_UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION}."
+        )
+    if attestation.get("producer") != _UK_GATE_BATTERY_PRODUCER:
+        failures.append(
+            f"{file} attestation.producer must name the gate-battery executor."
+        )
+    if attestation.get("signature_algorithm") != _UK_TERMINAL_GATE_SIGNATURE_ALGORITHM:
+        failures.append(
+            f"{file} attestation.signature_algorithm must be "
+            f"{_UK_TERMINAL_GATE_SIGNATURE_ALGORITHM!r}."
+        )
+    for field in (
+        "release_id",
+        "release_candidate",
+        "spec_fingerprint",
+        "gates_manifest_sha256",
+        "policy_sha256",
+    ):
+        if attestation.get(field) != report.get(field):
+            failures.append(f"{file} attestation.{field} disagrees with the report.")
+    if attestation.get("gate_outcomes_sha256") != _canonical_sha256(gates):
+        failures.append(
+            f"{file} attestation.gate_outcomes_sha256 does not match gates."
+        )
+    if "signing_error" in attestation:
+        failures.append(
+            f"{file} attestation records a signing error; the report is unsigned."
+        )
+    verification_key = _uk_gate_battery_verification_key(failures)
+    if verification_key is None:
+        return
+    if (
+        attestation.get("signing_key_sha256")
+        != hashlib.sha256(verification_key).hexdigest()
+    ):
+        failures.append(
+            f"{file} attestation.signing_key_sha256 does not identify the trusted key."
+        )
+    unsigned_report = dict(report)
+    unsigned_report["attestation"] = {**attestation, "signature": None}
+    expected_signature = hmac.new(
+        verification_key, _canonical_json_bytes(unsigned_report), hashlib.sha256
+    ).hexdigest()
+    signature = attestation.get("signature")
+    if not isinstance(signature, str) or not hmac.compare_digest(
+        signature, expected_signature
+    ):
+        failures.append(
+            f"{file} attestation.signature does not authenticate the report "
+            "with the trusted key."
+        )
+
+
+def _check_uk_dense_source_coverage(coverage: Mapping, failures: list[str]) -> None:
+    file = _UK_DENSE_SOURCE_COVERAGE_FILE
+    for key in _UK_DENSE_SOURCE_COVERAGE_KEYS:
+        value = coverage.get(key)
+        if not isinstance(value, Mapping) or not value:
+            failures.append(f"{file} is missing the coverage object {key!r}.")
+    for key, sha_field in (
+        ("spine", "sha256"),
+        ("geography_ladder", "sha256"),
+        ("ledger_artifact", "facts_sha256"),
+        ("ledger_artifact", "manifest_sha256"),
+    ):
+        block = coverage.get(key)
+        if isinstance(block, Mapping):
+            digest = block.get(sha_field)
+            if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+                failures.append(f"{file} {key}.{sha_field} must be a sha256 digest.")
+    incumbent = coverage.get("incumbent")
+    if isinstance(incumbent, Mapping) and not incumbent.get("snapshot"):
+        failures.append(f"{file} incumbent must name the private-repo snapshot.")
+    holdout = coverage.get("holdout")
+    if isinstance(holdout, Mapping):
+        value = holdout.get("mean_holdout_loss")
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            failures.append(
+                f"{file} holdout.mean_holdout_loss must be a finite number."
+            )
+
+
 def _check_local_area_checksum_ledger(
     release_dir: Path,
     release_manifest: Mapping | None,
     failures: list[str],
+    *,
+    required_files: tuple[str, ...] = LOCAL_AREA_REQUIRED_RELEASE_FILES,
 ) -> None:
     """Validate sha256sums.txt as a real ledger, not a presence token.
 
@@ -4164,7 +4494,7 @@ def _check_local_area_checksum_ledger(
             continue
         entries[name] = digest
 
-    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
+    for filename in required_files:
         if filename == "sha256sums.txt":
             continue
         if filename not in entries:
@@ -4200,7 +4530,11 @@ def _check_local_area_checksum_ledger(
 
 
 def _check_local_area_release_manifest(
-    manifest: Mapping, release_id: str, failures: list[str]
+    manifest: Mapping,
+    release_id: str,
+    failures: list[str],
+    *,
+    revision_ok: Callable[[str], bool] | None = None,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version != RELEASE_MANIFEST_SCHEMA_VERSION:
@@ -4277,7 +4611,12 @@ def _check_local_area_release_manifest(
                     f"release_manifest.json artifact {name!r} is missing {field!r}."
                 )
         revision = entry.get("revision")
-        if revision is not None and revision != release_id:
+        pinned = (
+            revision == release_id
+            if revision_ok is None
+            else bool(revision_ok(str(revision)))
+        )
+        if revision is not None and not pinned:
             failures.append(
                 f"release_manifest.json artifact {name!r} revision "
                 f"{revision!r} is not pinned to the release id "
@@ -4473,6 +4812,9 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 )
             role = declared_role
     if role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
+        if release_id == _UK_DENSE_RELEASE_ID:
+            _validate_uk_dense_release_dir(release_dir, release_id)
+            return
         _validate_local_area_release_dir(release_dir, release_id)
         return
 
