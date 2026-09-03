@@ -1943,6 +1943,78 @@ def test_denied_pool_h5_digest_is_refused_on_generic_paths(
     assert "even without pool identity metadata" in message
 
 
+def test_scoring_evidence_of_a_denied_pool_cannot_become_a_release_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scoring exception must not launder a denied pool into release evidence."""
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["publication_run_id"]
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    _frame, loaded_manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+    )
+    with pytest.raises(ValueError, match="cannot become a release receipt"):
+        us_multispine_pool_release_receipt(
+            loaded_manifest,
+            authenticated_h5,
+            allow_gate_failed_base_pool=True,
+        )
+
+
+def test_denied_pool_bytes_are_refused_by_every_generic_ingress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripped of sidecar and metadata, a denied pool must fail at each ingress."""
+    from microcosm.build.us_runtime import l0_refit_export
+
+    stripped = tmp_path / "stripped.h5"
+    stripped.write_bytes(b"denied pool bytes with no identity metadata")
+    denied_h5 = hashlib.sha256(stripped.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded",
+                reference="microcosm#856; stripped-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        l0_refit_export.load_us_frame(stripped)
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        h5_io.load_legacy_calibrated_us_h5(stripped)
+    # The L0/refit export reads the base through load_us_frame first, so the
+    # refusal precedes any use of the weights file, which need not exist.
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        l0_refit_export.export_us_l0_refit_h5(
+            base_h5=stripped,
+            weights_npz=tmp_path / "absent.npz",
+            output_h5=tmp_path / "out.h5",
+        )
+
+
 def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:
     """The deny-list's only exception must stay a scoring-only ingress.
 

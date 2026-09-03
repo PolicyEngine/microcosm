@@ -447,6 +447,16 @@ DENIED_POOL_PUBLICATIONS: Mapping[str, DeniedPoolPublication] = MappingProxyType
 )
 
 
+def _file_sha256_stream(path: str | Path) -> str:
+    """Stream a file's SHA-256 (a pool H5 is gigabytes)."""
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def refuse_denied_pool_h5_digest(sha256: str, *, consumer: str) -> None:
     """Refuse an H5 whose bytes are a denied publication's pool, however presented.
 
@@ -615,6 +625,23 @@ def us_multispine_pool_release_receipt(
 ) -> dict[str, object]:
     """Build self-contained release evidence from an authenticated pool."""
 
+    # The scoring-only loader may authenticate a denied publication; nothing
+    # it returns may become release evidence.
+    for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+        if (
+            authenticated_pool_h5.publication_run_id == denied_run_id
+            or authenticated_pool_h5.manifest_sha256
+            == denied_publication.manifest_sha256
+            or authenticated_pool_h5.sha256 == denied_publication.pool_h5_sha256
+        ):
+            raise ValueError(
+                f"US multispine pool publication {denied_run_id!r} is on the "
+                "sealed deny-list and cannot become a release receipt, even "
+                "from scoring-only evidence. Reason: "
+                f"{denied_publication.reason}. Reference: "
+                f"{denied_publication.reference}."
+            )
+
     status = manifest.get("status")
     simulation_ready = manifest.get("simulation_ready")
     is_ready = status == "simulation_ready" and simulation_ready is True
@@ -736,6 +763,12 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     ``CALIBRATED``.  It is not the loader for the new pre-calibration
     multispine pool, whose importance-weight receipt lives in its manifest.
     """
+    # The legacy calibrated loader is a generic entity-table ingress; a denied
+    # pool's bytes are refused here before any table is read.
+    refuse_denied_pool_h5_digest(
+        _file_sha256_stream(path),
+        consumer="legacy calibrated US H5 loader (load_legacy_calibrated_us_h5)",
+    )
 
     with pd.HDFStore(Path(path), mode="r") as store:
         tables = {

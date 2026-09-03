@@ -946,7 +946,7 @@ def test__preflight_base__refuses_denied_pool_bytes_on_generic_path(
             base_h5, allow_gate_failed_base_pool=False
         )
     message = str(error.value)
-    assert "generic path" in message
+    assert "generic base-H5 path" in message
     assert "stripped-denied-publication" in message
     assert "even without pool identity metadata" in message
 

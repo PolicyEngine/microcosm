@@ -54,7 +54,6 @@ and reuses the release tool's own register and engine input-variable surface.
 
 from __future__ import annotations
 
-import hashlib
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -68,7 +67,6 @@ from microcosm.build.gates import input_mass_parity_gate
 from microcosm.build.us_runtime.h5_io import (
     identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_release,
-    refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
@@ -971,16 +969,6 @@ def run_preflight(
     )
 
 
-def _file_sha256(path: Path) -> str:
-    """Stream a file's SHA-256 (a pool H5 is gigabytes)."""
-
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _load_preflight_base(
     base_h5: Path,
     *,
@@ -998,11 +986,7 @@ def _load_preflight_base(
                 "identify as a US multispine pool."
             )
         # A denied pool whose sidecar and metadata row were stripped lands
-        # here; its bytes are still its identity.
-        refuse_denied_pool_h5_digest(
-            _file_sha256(base_h5),
-            consumer="US release-gate preflight --base-h5 (generic path)",
-        )
+        # here; load_us_frame refuses its bytes before reading them.
         return load_us_frame(base_h5), None, None
 
     frame, manifest, authenticated_pool_h5 = (
