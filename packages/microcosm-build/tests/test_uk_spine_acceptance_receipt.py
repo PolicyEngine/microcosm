@@ -45,12 +45,20 @@ def test_receipt_roster_is_the_production_plan():
     receipt = _receipt()
     accepted_roster = tuple(receipt["candidate"]["stage_roster"])
     production_roster = _production_graph_stage_names()
-    expected_extra_stages = {"uc_capital_coherence", "uc_reporter_redraw"}
+    expected_extra_stages = {
+        "uc_capital_coherence",
+        "uc_reporter_redraw",
+        "uc_deduction_attributes",
+    }
 
     assert set(production_roster) - set(accepted_roster) == expected_extra_stages
     assert tuple(
         stage for stage in production_roster if stage not in expected_extra_stages
     ) == accepted_roster
+    # The E9 stage runs directly after the capital-coherence stage.
+    assert production_roster.index("uc_deduction_attributes") == (
+        production_roster.index("uc_capital_coherence") + 1
+    )
     assert receipt["candidate"]["stage_count"] == len(accepted_roster)
 
 
