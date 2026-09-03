@@ -90,6 +90,10 @@ focused green; documentation and full verification are in progress on
   schema-9 scoring exception, receipt fields, version cascade, independent
   release deny-list, and the exact limits of the plan-defined authorization
   tuple. Added the F1 changelog fragment.
+- Closed the exact-k release-receipt propagation gap found in adversarial
+  review: the authenticated pool's worker schema/digest/audit receipt is now
+  required in `exact_k_ladder.pool` and therefore survives into both build and
+  release manifests.
 
 ## Next
 

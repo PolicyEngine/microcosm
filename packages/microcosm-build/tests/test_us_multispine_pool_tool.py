@@ -3518,7 +3518,7 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
     assert changed == current
 
 
-def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
+def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
