@@ -640,13 +640,18 @@ class RunManifest:
                     "body does not match portable provenance"
                 )
         else:
-            recomputed_body = json.loads(canonical_json(manifest.content_addressed))
+            recomputed_body = manifest.content_addressed
             _validate_current_content_addressed_body(body, recomputed_body, manifest)
         recomputed_key = sha256_domain("manifest", canonical_json(body))
         serialized_key = raw.get("key")
         if serialized_key != recomputed_key:
             raise ValueError(
                 "manifest content key mismatch: serialized provenance was altered"
+            )
+        if schema_version == _SCHEMA_VERSION and serialized_key != manifest.key:
+            raise ValueError(
+                "manifest content key mismatch: serialized key differs from "
+                "reconstructed portable provenance"
             )
         if "tier" in raw and raw["tier"] != manifest.tier:
             raise ValueError(
@@ -793,7 +798,9 @@ def _validate_current_content_addressed_body(
             detail = "the content-addressed body omits its receipt"
         elif node_id not in expected_nodes:
             detail = "the content-addressed body names an absent node"
-        elif body_nodes[node_id] != expected_nodes[node_id]:
+        elif canonical_json(body_nodes[node_id]) != canonical_json(
+            expected_nodes[node_id]
+        ):
             detail = "the content-addressed receipt differs from portable provenance"
         else:
             continue
@@ -805,7 +812,7 @@ def _validate_current_content_addressed_body(
             f"manifest content key mismatch after node {first_node!r}: body fields "
             f"{sorted(body)!r} do not equal {sorted(expected_fields)!r}"
         )
-    if body.get("tier") != expected.get("tier"):
+    if canonical_json(body.get("tier")) != canonical_json(expected.get("tier")):
         release_nodes = sorted(
             node_id
             for node_id, node in manifest.nodes.items()

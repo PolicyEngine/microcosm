@@ -12,6 +12,7 @@ import pytest
 
 import microcosm.graph as graph_api
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.decl import StructuralDelta
 from microcosm.graph.kernel import Capabilities, Determinism, KernelRole, SeedSource
 from microcosm.graph.manifest import Decision, NodeReceipt, PopulationView, RunManifest
@@ -407,6 +408,21 @@ def test_from_json_rejects_coordinated_gate_and_tier_tampering(
     path.write_text(tampered, encoding="utf-8")
     with pytest.raises(graph_api.StoreCorruptError, match="gate"):
         RunManifest.load_certified(path, store)
+
+
+def test_schema_v2_body_rejects_canonically_distinct_numeric_value(
+    tmp_path: Path,
+) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store)
+    document = json.loads(manifest.to_json())
+    document["content_addressed"]["nodes"]["gate"]["seed"] = 1.0
+    document["key"] = sha256_domain(
+        "manifest", canonical_json(document["content_addressed"])
+    )
+
+    with pytest.raises(ValueError, match="node 'gate'"):
+        RunManifest.from_json(json.dumps(document))
 
 
 def test_v1_manifest_relabel_with_fabricated_tolerance_fails_key() -> None:

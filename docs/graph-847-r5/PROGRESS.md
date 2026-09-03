@@ -34,6 +34,11 @@ change has been made yet.
   `n_jobs=1`, leaves the live fitted model untouched, and restores the current
   runtime setting on trusted unpickle. The cache-collision regression and all
   fit-kernel tests pass.
+- Reproduced finding 2 by changing only an authenticated body seed from integer
+  `1` to float `1.0` and recomputing the serialized key; schema-v2 loading did
+  not raise. Current-body validation now compares canonical bytes per receipt
+  and tier, and also requires the accepted serialized key to equal the rebuilt
+  manifest key. The full manifest unit file passes.
 
 ## Next
 
