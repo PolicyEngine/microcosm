@@ -1256,6 +1256,156 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     assert claim_kernel.calls == 1
 
 
+def test_materialized_expand_claim_rejects_filter_population(tmp_path: Path) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def keep_all(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            keep=pd.Series(True, index=person["person_id"], dtype="bool")
+        )
+
+    def claim_size(context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "size"): pd.Series(
+                    household["size"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="int64",
+                )
+            }
+        )
+
+    filtered = Node(
+        "filtered",
+        "filter.claim-boundary@1",
+        inputs=(Slice("person", ("selected",)),),
+        structural=StructuralDelta.FILTER,
+        base="survey",
+        mass="free",
+    )
+    claimant = Node(
+        "claim_filtered_size",
+        "claim.filtered-size@1",
+        outputs=(Owned("household", "size", "int64"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=filtered.id,
+    )
+    filter_kernel = _Kernel(
+        filtered.kernel,
+        Capabilities(
+            Determinism.DETERMINISTIC,
+            structural=StructuralDelta.FILTER,
+        ),
+        keep_all,
+    )
+    claim_kernel = _Kernel(
+        claimant.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        claim_size,
+    )
+    registry = _registry()
+    registry.register(filter_kernel)
+    registry.register(claim_kernel)
+    graph = Graph("toy", (SOURCE,), (CREATE, filtered, claimant))
+    store = ContentStore(tmp_path / "store")
+
+    for _ in range(2):
+        with pytest.raises(
+            NodeRejected,
+            match="claim_filtered_size.*filtered.*FILTER",
+        ):
+            _run(graph, source, store, registry)
+    assert filter_kernel.calls == 1
+    assert claim_kernel.calls == 0
+
+
+def test_materialized_expand_claim_rejects_non_materialized_coordinate(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def copy_household(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1, 2],
+                    index=pd.Index([4, 5], name="person_id"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    [10],
+                    index=pd.Index([30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            weights=Weights(
+                np.array([0.5, 2.0, 0.5], dtype=np.float64),
+                WeightKind.IMPORTANCE,
+            ),
+        )
+
+    def claim_size(context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "size"): pd.Series(
+                    household["size"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="int64",
+                )
+            }
+        )
+
+    clone = Node(
+        "clone",
+        "expand.unmaterialized@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="free",
+    )
+    claimant = Node(
+        "claim_unmaterialized_size",
+        "claim.unmaterialized-size@1",
+        outputs=(Owned("household", "size", "int64"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=clone.id,
+    )
+    expand_kernel = _Kernel(
+        clone.kernel,
+        Capabilities(
+            Determinism.DETERMINISTIC,
+            structural=StructuralDelta.EXPAND,
+        ),
+        copy_household,
+    )
+    claim_kernel = _Kernel(
+        claimant.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        claim_size,
+    )
+    registry = _registry()
+    registry.register(expand_kernel)
+    registry.register(claim_kernel)
+    graph = Graph("toy", (SOURCE,), (CREATE, clone, claimant))
+    store = ContentStore(tmp_path / "store")
+
+    for _ in range(2):
+        with pytest.raises(
+            NodeRejected,
+            match=r"claim_unmaterialized_size.*household\.size.*clone",
+        ):
+            _run(graph, source, store, registry)
+    assert expand_kernel.calls == 1
+    assert claim_kernel.calls == 0
+
+
 def test_entrant_expand_rejects_mutated_copied_carried_values(
     tmp_path: Path,
 ) -> None:
