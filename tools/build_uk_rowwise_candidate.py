@@ -429,6 +429,23 @@ def _resolve_candidate_engine_surface(
     }
     if blocks > 1:
         receipt["deviation"] = "per_clone_block_engine_resolution"
+        present = sorted(
+            column
+            for column in UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
+            if column in measure_inputs
+        )
+        receipt["block_sensitivity"] = {
+            "known_population_normalised_measures": list(
+                UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
+            ),
+            "present_in_this_run": present,
+            "caveat": (
+                "per-block engine resolution mis-measures population-normalised "
+                "formulas (each block reproduces a national aggregate); rows "
+                "on these measures are not evidence for adjudication from this "
+                "run. Resolve in a single block before ruling on them."
+            ),
+        }
     try:
         scratch_dir.rmdir()
     except OSError:
@@ -1741,6 +1758,21 @@ def _local_diagnostics_registry(
             level, _ = _spec_geography(spec)
             geography[spec.to_target().row_name] = level
     return TargetRegistry(specs, country="uk"), geography
+
+
+#: Measure columns whose policyengine-uk formulas normalise by a population
+#: total (a fixed national aggregate allocated by each household's share of
+#: total weighted corporate wealth, or a term scaled by a weight sum). Under
+#: ``--engine-blocks K`` the engine sees one clone block at a time, so each
+#: block reproduces the whole aggregate and the column comes out K× (receipt
+#: R15 in ``experiments/762-uk-rowwise-candidate-receipts.md``: corporate
+#: land value ×15.000 at K=15). Evidence from a per-block run must not
+#: adjudicate these rows; the release posture is single-block.
+UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = (
+    "ons/corporate_land_value",
+    "ons/land_value",
+    "slc/student_loan_repayment/england",
+)
 
 
 def _run_local_gate_battery(

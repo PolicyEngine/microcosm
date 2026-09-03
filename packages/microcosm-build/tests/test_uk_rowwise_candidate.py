@@ -851,6 +851,15 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
     ]
     assert receipt["blocks"] == 2
     assert receipt["deviation"] == "per_clone_block_engine_resolution"
+    sensitivity = receipt["block_sensitivity"]
+    assert (
+        "ons/corporate_land_value"
+        in sensitivity["known_population_normalised_measures"]
+    )
+    assert set(sensitivity["present_in_this_run"]) <= set(
+        sensitivity["known_population_normalised_measures"]
+    )
+    assert "not evidence for adjudication" in sensitivity["caveat"]
     assert (
         metrics["constituency"].index.tolist()
         == clone.frame.table("household")["household_id"].tolist()

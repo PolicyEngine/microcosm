@@ -296,17 +296,17 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "ons.household_composition.": 3,
     "obr.fuel_duties": 1,
     # microcosm#762 A16 (2026-09-03): the rows the spine cannot reach by
-    # reweighting — land values, savings interest, housing benefit, the two
-    # plan-2 borrower stocks and JSA claimants — windowed to one month.
-    "ons.land.": 2,
+    # reweighting — savings interest, housing benefit, the two plan-2
+    # borrower stocks and JSA claimants — windowed to one month. The two
+    # ONS land rows first listed were withdrawn the same day (receipt R15):
+    # their apparent 8.7x / 2.5x misses were an artefact of per-block engine
+    # resolution, and single-block resolution puts them within 3 % and 9 %.
     "ons.savings_interest_income": 1,
     "obr.housing_benefit": 1,
     "dwp.jsa_claimants": 1,
 }
 
 _A16_UNREACHABLE_ROWS = (
-    "ons.land.corporate_land_value",
-    "ons.land.land_value",
     "ons.savings_interest_income",
     "obr.housing_benefit",
     "slc.borrowers.plan_2_liable",
@@ -318,7 +318,7 @@ _A16_UNREACHABLE_ROWS = (
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 51
+    assert len(names) == len(set(names)) == 49
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -349,7 +349,7 @@ def test_packaged_exclusions_load():
         if entry["name"].startswith("ons.household_composition."):
             assert entry["tracking"] == "microcosm#791", entry["name"]
 
-    # The 2026-09-03 tranche is #762's A16: seven unreachable national rows,
+    # The 2026-09-03 tranche is #762's A16: five unreachable national rows,
     # a one-month window, tracked on the WS-C deferrals issue.
     a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
     assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS)
