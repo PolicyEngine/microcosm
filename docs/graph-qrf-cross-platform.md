@@ -14,11 +14,11 @@ seeds 0–4 in four regimes (positive-only, mixed-sign, near-ties, zero-inflated
 | cells that differ | 45 |
 | largest absolute movement | 2.322e+00 |
 | largest relative movement | 6.825e-02 |
-| largest movement in ulps | 450359958233450 |
+| largest int64-view distance (not a ulps count once a donor flips) | 450359958233450 |
 
 Cases with any difference (cases not listed were bit-identical):
 
-| case | max abs | max rel | max ulps | differing |
+| case | max abs | max rel | int64-view distance | differing |
 |---|---|---|---|---|
 | positive/0 | 3.907e-02 | 3.194e-02 | 175940752005003 | 3/300 |
 | positive/1 | 7.406e-02 | 6.825e-02 | 333524120092336 | 2/300 |

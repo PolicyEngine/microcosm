@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
 from microcosm.frame import Frame
 
@@ -354,13 +354,24 @@ class NodeReceipt:
             "wall_time": self.wall_time,
         }
 
+    #: Fields a run may change without changing what was computed.
+    RUN_LEVEL_FIELDS: ClassVar[frozenset[str]] = frozenset({"hit", "wall_time"})
+
+    def _content_payload(self) -> dict[str, object]:
+        """The receipt less its run-level fields; this is what the manifest key hashes."""
+
+        payload = self._payload()
+        return {k: v for k, v in payload.items() if k not in self.RUN_LEVEL_FIELDS}
+
 
 @dataclass(frozen=True)
 class RunManifest:
     """One run's provenance plus its attached, non-serialized populations.
 
-    Every complete node receipt and the derived release tier form :attr:`key`.
-    Signed decisions remain unauthenticated provenance by interface ruling;
+    Every complete node receipt, less its run-level fields (``hit`` and
+    ``wall_time``), and the derived release tier form :attr:`key`, so two runs
+    that computed the same thing share a key whether or not either was served
+    from the store. Signed decisions stay outside the key by interface ruling;
     the release receipt's required decision names are authenticated so a
     certified load can revalidate those carried records. Country, host,
     timestamps, and attached ``Frame`` instances are also outside the
@@ -435,7 +446,8 @@ class RunManifest:
         """The exact projection hashed by :attr:`key`."""
 
         nodes = {
-            node_id: self.nodes[node_id]._payload() for node_id in sorted(self.nodes)
+            node_id: self.nodes[node_id]._content_payload()
+            for node_id in sorted(self.nodes)
         }
         return MappingProxyType(
             {

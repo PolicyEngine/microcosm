@@ -363,6 +363,7 @@ def test_determinism_across_stores_and_zero_kernel_memoization(
         node: item.key for node, item in second.nodes.items()
     }
     assert _object_bytes(first_store) == _object_bytes(second_store)
+    assert first.key == second.key
     assert all(not item.hit for item in first.nodes.values())
     assert first.nodes["survey"].frame_key is not None
     assert first.nodes["a"].frame_key is None
@@ -383,7 +384,7 @@ def test_determinism_across_stores_and_zero_kernel_memoization(
     warm = _run(_graph(), source, first_store, first_registry)
     assert _calls(first_registry) == calls_before
     assert all(item.hit for item in warm.nodes.values())
-    assert warm.key != first.key
+    assert warm.key == first.key
     assert warm.population("survey").table("person")["b"].tolist() == [60, 120, 180]
 
 

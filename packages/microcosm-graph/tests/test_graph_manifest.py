@@ -242,8 +242,18 @@ def test_manifest_key_authenticates_receipts_and_excludes_run_metadata() -> None
         host="host-b",
     )
     assert cold.key == metadata_only.key
+    # A warm run that changed nothing but the run-level fields shares the key.
+    run_level_only = replace(
+        warm,
+        nodes={
+            node_id: replace(receipt, receipt=cold.nodes[node_id].receipt)
+            for node_id, receipt in warm.nodes.items()
+        },
+    )
+    assert cold.key == run_level_only.key
+    assert cold.to_json() != run_level_only.to_json()
+    # A changed kernel receipt is content, so it moves the key.
     assert cold.key != warm.key
-    assert cold.to_json() != warm.to_json()
 
 
 def test_decisions_are_provenance_outside_manifest_and_node_identity() -> None:
@@ -377,7 +387,11 @@ def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) ->
     assert document["known_failures"] == ["gate"]
     body = document["content_addressed"]
     assert body["tier"] == "evidence"
-    assert body["nodes"] == document["nodes"]
+    # The body is the serialized receipts less their run-level fields.
+    assert body["nodes"] == {
+        node_id: {k: v for k, v in receipt.items() if k not in ("hit", "wall_time")}
+        for node_id, receipt in document["nodes"].items()
+    }
     assert "decisions" not in body
 
     restored = RunManifest.load(path, store)

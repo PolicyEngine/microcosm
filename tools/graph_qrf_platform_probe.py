@@ -84,14 +84,22 @@ def compare(out_dir: str) -> None:
             for u, v in zip(x, y, strict=True)
         ]
         moved = int((diff > 0).sum())
-        worst["abs"] = max(worst["abs"], float(diff.max()))
-        worst["rel"] = max(worst["rel"], float(rel[diff > 0].max()) if moved else 0.0)
-        worst["ulps"] = max(worst["ulps"], max(ulps))
+        case_abs = float(diff.max())
+        case_rel = float(rel[diff > 0].max()) if moved else 0.0
+        # The int64-view distance is a ulps count only while both values share
+        # a sign and a binade; when a quantile draw lands on a different donor
+        # it is just a large integer, reported for completeness and never
+        # interpreted as a bound.
+        case_view_distance = max(ulps)
+        worst["abs"] = max(worst["abs"], case_abs)
+        worst["rel"] = max(worst["rel"], case_rel)
+        worst["ulps"] = max(worst["ulps"], case_view_distance)
         worst["cells"] += len(x)
         worst["differing"] += moved
         if moved:
             print(
-                f"{key}: max_abs={diff.max():.3e} max_rel={worst['rel']:.3e} differing={moved}/{len(x)}"
+                f"{key}: max_abs={case_abs:.3e} max_rel={case_rel:.3e} "
+                f"int64_view_distance={case_view_distance} differing={moved}/{len(x)}"
             )
     print(f"{files[0].stem} vs {files[1].stem}:", worst)
 
