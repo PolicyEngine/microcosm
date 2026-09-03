@@ -306,3 +306,25 @@ Mechanism: policyengine-uk's `corporate_land_value` distributes the parameter `a
 Actions on this branch: the two land entries are withdrawn from `calibration_measure_exclusions.json` (51 → 49; A16 is five rows: savings interest, housing benefit, the two plan-2 borrower stocks, JSA claimants — all block-insensitive, so their evidence stands); the register test pins follow; the manifest's `measure_resolution` block now carries a `block_sensitivity` caveat naming the known population-normalised measures whenever `--engine-blocks > 1`, and the doctrine note is that **evidence from a per-block run must not adjudicate a population-normalised row** — the release posture is single-block already (R11: 10.2 GB at K=15). The #736 item and the R12 table need the same correction (drafted for María's go, not posted). The next release-candidate run binds both land rows.
 
 Savings interest, re-examined with the same care: the row is block-insensitive and the miss is real, but it is partly a **concept** gap, not only a frame gap. Three published figures: the FRS-based spine carries £13.8bn at 2025 (engine-uprated by the ONS HAXV index); HMRC's SPI 2023-24 taxable savings interest of taxpayers sums to £18.3bn across the income bands (taxpayers only, ISA interest excluded); the ONS row is UKEA HAXV, households' (S.14) D.41 interest **resources** in the national accounts — £95.5bn for 2025, up from £19.6bn in 2021 — which includes FISIM-adjusted interest and the household sector's unincorporated businesses. The spine is roughly a third under the HMRC taxpayer figure once uprated, which is a frame gap; the further four- to five-fold step to the ONS row is definitional. The right fix is a declared reconciliation on the target side (bind the SPI amount, or a declared D.41-to-cash bridge), not only a spine imputation — that is what the spine issue should ask for.
+
+## R16 — Release-candidate re-run after A17 (2026-09-03, 16:00–19:07; PR B c3fed31f; `--release-candidate`, single block, holdout 5 folds)
+
+Pre-flight `--env` OK before launch; pre-flight `--candidate-dir` OK after: release posture attested (`release_candidate: true`, **`shippable: true`**, signed), every release-blocking gate passed, doctrine values, A15 + A17 applied (1,436 tenure cells uprated: 1,308 census-2021, 128 census-2022), 49 measure exclusions receipted, holdout measured, chain intact (row `…160005Z-e39715fc` on R13's). Wall 11,176 s (3.1 h), peak 9.0 GB. Matrix 20,475 rows (359 national — the two land rows back in after R15 — 19,105 local, 1,011 ladder) × 792,690. No warnings; weights all positive.
+
+| | R13 | **R16** |
+|---|---|---|
+| loss initial → final | 0.3041 → 0.0156 | 0.3030 → 0.0143 |
+| local within 10 %: age / census / HMRC / UC / tenure / council tax | 100 / 99.3 / 99.2 / 99.9 / **87.3** / 91.5 | 100 / 99.7 / 99.2 / 99.9 / **99.2** / 91.9 |
+| tenure within 10 % by metric: outright / mortgage / private / social | 65.7 / 90.3 / 95.0 / 98.1 | **97.2 / 99.7 / 100 / 99.7** |
+| national within 10 % / 25 % | 94.7 / 99.2 (357 rows) | 94.7 / 99.2 (359 rows; 340 / 356) |
+| land rows (now bound): corporate / total / household | excluded | +0.3 % / −6.0 % / +0.4 % |
+| max / median weight; ESS fraction | 398; 0.161 | 400; 0.163 |
+| constituency ESS min / median | 65.7 / 219 | 63.8 / 220 |
+| households (FRS grossing 29.25M) | 28.93M (0.989) | **29.07M (0.994)** |
+| lone over-65 households (target 4.25M) | 4.24M | 4.27M |
+| Glasgow social rent (target now 105,849 after A17) | 150k / 102k | 136k / 106k |
+| holdout mean / worst (uncalibrated 0.304) | 0.204 / 0.213 | **0.190 / 0.199** |
+| vs incumbent on 19,089 rows: loss / within 10 % / wins | 0.0146 vs 0.181 / 98.0 vs 60.4 / 16,973 vs 2,116 | 0.0154 vs 0.181 / **98.8 vs 60.4** / 16,936 vs 2,153 |
+| gate report | `release_candidate: false`, not shippable | **`release_candidate: true`, shippable, signed** |
+
+Readings: A17 closes the tenure seam (owned outright 65.7 → 97.2 % within 10 %) with no cost elsewhere; households land 0.6 % under the FRS grossing; the holdout improves because the uprated tenure cells are consistent with the household rows the folds hold out; the land rows bind within 6 % once measured in a single block. Remaining national misses past 25 %: council-tax band D stock (+30 %), UC 5+-children households (−29 %), one SPI self-employment band (+27 %). The diagnostic `target_fit` gate lists 42 local cells past 25 % (council-tax bands and the Kensington/Westminster self-employment amounts). This is the artifact the dense line (`microcosm-uk-2024-25-dense`, A18) assembles from.
