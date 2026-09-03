@@ -867,15 +867,26 @@ def _gate_outcome(node_id: str, node: NodeReceipt) -> str:
 
 
 def _decision_names(decisions: tuple[Decision, ...]) -> frozenset[str]:
-    """Names carried by the two accepted signed-decision record shapes."""
+    """Validate the two signed-decision record shapes and return their names."""
 
     names: set[str] = set()
     for decision in decisions:
         payload = dict(decision)
-        name = payload.get("name", decision.kind)
-        if not isinstance(name, str) or not name:
+        if set(payload) == {"name", "owner", "signature"}:
+            fields = ("name", "owner", "signature")
+            name = payload["name"]
+        elif set(payload) == {"owner", "kind", "text", "signed_at"}:
+            fields = ("owner", "kind", "text", "signed_at")
+            name = payload["kind"]
+        else:  # defended by Decision.from_mapping
             raise NodeRejectedError(
-                "Certified manifests require non-empty signed decision names."
+                "Certified manifests require a recognized signed decision record."
+            )
+        empty = [field for field in fields if not payload[field].strip()]
+        if empty:
+            raise NodeRejectedError(
+                "Certified manifests require non-empty signed decision fields; "
+                f"record {name!r} has empty fields {empty!r}."
             )
         names.add(name)
     return frozenset(names)

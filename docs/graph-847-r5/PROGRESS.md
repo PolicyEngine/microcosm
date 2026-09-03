@@ -48,8 +48,11 @@ follows it.
   returned certified. Release receipts now authenticate the normative required
   decision names, and certified loading rederives the outcome from those names
   and the carried signed records. Missing requirements fail closed; missing
-  records report `unreached`. Focused executor, full manifest, and acceptance
-  F-gate tests pass.
+  records report `unreached`. A final adversarial pass also reproduced five
+  carried-record substitutions with blank legacy/current signature fields;
+  all retained the authenticated body/key and were accepted. Certified load
+  now revalidates the exact signed-record shapes and every required field as
+  non-empty. Focused executor, full manifest, and acceptance F-gate tests pass.
 - Reproduced finding 10 by removing portable mass evidence from a calibration
   receipt while retaining an attached partitioned `MassRecord`; totals rendered
   but the partition heading and row were absent. The fallback now uses the

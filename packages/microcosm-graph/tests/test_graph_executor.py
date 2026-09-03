@@ -2637,6 +2637,70 @@ def test_certified_loader_revalidates_authenticated_required_decisions(
         RunManifest.load_certified(path, store)
 
 
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        {"name": "publish", "owner": "", "signature": "signed"},
+        {"name": "publish", "owner": "reviewer", "signature": ""},
+        {
+            "owner": "",
+            "kind": "publish",
+            "text": "approved",
+            "signed_at": "2026-09-03",
+        },
+        {
+            "owner": "reviewer",
+            "kind": "publish",
+            "text": "",
+            "signed_at": "2026-09-03",
+        },
+        {
+            "owner": "reviewer",
+            "kind": "publish",
+            "text": "approved",
+            "signed_at": "",
+        },
+    ],
+    ids=[
+        "legacy-owner",
+        "legacy-signature",
+        "current-owner",
+        "current-text",
+        "current-signed-at",
+    ],
+)
+def test_certified_loader_revalidates_signed_decision_fields(
+    tmp_path: Path,
+    replacement: dict[str, str],
+) -> None:
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _release_graph(
+        gate_outcome="pass",
+        tier_answer="certified",
+        requires=("publish",),
+    )
+    signed = _run(
+        graph,
+        source,
+        store,
+        _release_registry(),
+        decisions=({"name": "publish", "owner": "reviewer", "signature": "signed"},),
+    )
+    path = tmp_path / "invalid-signed-record.json"
+    signed.save(path)
+    document = json.loads(path.read_text())
+    authenticated_body = document["content_addressed"]
+    authenticated_key = document["key"]
+    document["decisions"] = [replacement]
+    assert document["content_addressed"] == authenticated_body
+    assert document["key"] == authenticated_key
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(NodeRejected, match="non-empty signed decision"):
+        RunManifest.load_certified(path, store)
+
+
 def test_gate_outcome_is_closed_and_gate_exceptions_become_failures(
     tmp_path: Path,
 ) -> None:
