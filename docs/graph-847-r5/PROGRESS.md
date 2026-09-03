@@ -30,8 +30,9 @@ follows it.
   `pytestmark` bindings; dynamic suppressor aliases; counterfeit pytest roots;
   and mutation of the trusted `pytest.mark` root. The scanner now fails closed
   on each of those unresolved forms, refuses aliases of the `pytest` object,
-  restricts its non-marker use to direct non-suppressing assertion helpers,
-  and conservatively inspects deferred bodies for bindings and aliases. The
+  including aliases smuggled through parametrization cases, restricts its
+  non-marker use to direct non-suppressing assertion helpers, and
+  conservatively inspects deferred bodies for bindings and aliases. The
   complete burndown-tool unit file, actual ratchet verification, and focused
   Ruff pass.
 - Reproduced finding 5 through the graph store: `POPULACE_FIT_N_JOBS=1` and

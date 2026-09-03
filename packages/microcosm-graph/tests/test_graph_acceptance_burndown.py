@@ -464,6 +464,10 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "outside a direct pytest.mark decorator",
         ),
         (
+            "import pytest\n\n\n@pytest.mark.parametrize('p', [pytest])\ndef test_a1_one(p) -> None:\n    p.skip('x')\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
             "import pytest\n\n\ndef test_a1_one() -> None:\n    p = pytest\n    p.skip('x')\n",
             "outside a direct pytest.mark decorator",
         ),

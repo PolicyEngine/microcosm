@@ -186,11 +186,18 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
 
     def inside_direct_mark_decorator(node: ast.expr) -> bool:
         child: ast.AST = node
-        while (parent := parents.get(child)) is not None:
-            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
-                return child in parent.decorator_list and mark_name(child) is not None
+        parent = parents.get(child)
+        while isinstance(parent, ast.Attribute) and parent.value is child:
             child = parent
-        return False
+            parent = parents.get(child)
+        if isinstance(parent, ast.Call) and parent.func is child:
+            child = parent
+            parent = parents.get(child)
+        return (
+            isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef)
+            and child in parent.decorator_list
+            and mark_name(child) is not None
+        )
 
     def inside_direct_safe_pytest_call(node: ast.expr) -> bool:
         child: ast.AST = node
