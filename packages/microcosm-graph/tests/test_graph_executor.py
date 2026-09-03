@@ -2515,6 +2515,60 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
         )
 
 
+def test_fit_qrf_model_artifact_is_canonical_across_runtime_worker_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pickle
+
+    from microcosm.fit.kernels import QRF_PARAM_KERNEL
+    from microcosm.graph import graph_from_json
+    from tools.graph_parity_fixtures import FIXTURES, ParityCsvSource
+
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    case = FIXTURES / "fit.qrf"
+    compiled = compile_graph(graph_from_json((case / "graph.json").read_text()))
+    registry = KernelRegistry()
+    registry.register(ParityCsvSource())
+    registry.register(QRF_PARAM_KERNEL)
+
+    manifests = []
+    stores = []
+    for n_jobs in ("1", "2"):
+        monkeypatch.setenv("POPULACE_FIT_N_JOBS", n_jobs)
+        store = ContentStore(tmp_path / f"store-{n_jobs}")
+        stores.append(store)
+        manifests.append(
+            run_graph(
+                compiled,
+                sources={"fixture": case},
+                store=store,
+                kernels=registry,
+                resume="forbid",
+            )
+        )
+
+    first_node = manifests[0].nodes["fit_qrf"]
+    second_node = manifests[1].nodes["fit_qrf"]
+    assert first_node.key == second_node.key
+    first_artifact = first_node.opaque_artifacts["model"]
+    second_artifact = second_node.opaque_artifacts["model"]
+    assert first_artifact == second_artifact
+    first_bytes = stores[0].load_bytes(first_artifact)
+    assert first_bytes == stores[1].load_bytes(second_artifact)
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "2")
+    loaded = pickle.loads(first_bytes)  # noqa: S301 - trusted graph-store artifact
+    forests = [
+        forest
+        for target in loaded._target_models.values()
+        for forest in (target.positive, target.negative)
+        if forest is not None
+    ]
+    assert forests
+    assert {forest.model.n_jobs for forest in forests} == {2}
+
+
 def test_fit_qrf_tolerance_source_hash_pin_is_current() -> None:
     import json
 

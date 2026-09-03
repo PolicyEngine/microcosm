@@ -28,6 +28,12 @@ change has been made yet.
   decorator on a collected test that it cannot prove is an allowed direct
   pytest mark, and recognizes annotated/augmented module `pytestmark`
   assignments. The complete burndown-tool unit file and focused Ruff pass.
+- Reproduced finding 5 through the graph store: `POPULACE_FIT_N_JOBS=1` and
+  `=2` produced the same node/artifact identities but pickle bytes differed at
+  byte 798. `_Forest` now serializes a shallow model copy with canonical
+  `n_jobs=1`, leaves the live fitted model untouched, and restores the current
+  runtime setting on trusted unpickle. The cache-collision regression and all
+  fit-kernel tests pass.
 
 ## Next
 
