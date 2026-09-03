@@ -304,10 +304,11 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
         elif column in _ROOT_PERSON_BOOL:
             cells.append(_Cell("person", column, "bool"))
         elif column in _ROOT_PERSON_INT:
-            # The FRS root produces an integer age and age_tail rewrites it
-            # as int64 (integral bands by construction), so the declaration
-            # matches what the root produces and no CREATE-time cast is
-            # needed (#845).  Rewrites cannot change their base's dtype.
+            # frs_spine casts age to int64 after checking the raw codes are
+            # integral, and age_tail keeps an integer input integer (its
+            # bands are integral), so the legacy runner and this declaration
+            # agree without relying on the CREATE-time cast (#845).  Rewrites
+            # cannot change their base's dtype.
             cells.append(_Cell("person", column, "int64"))
         elif column in _ROOT_PERSON_FLOAT:
             cells.append(_Cell("person", column, "float64"))

@@ -270,6 +270,26 @@ def test_cli_returns_one_and_writes_classified_report(
     assert json.loads(output_path.read_text(encoding="utf-8"))["ok"] is False
 
 
+def test_cli_returns_two_on_a_malformed_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A report that fails the schema checks must neither classify nor look like
+    # a clean run: exit 2, nothing on stdout, the reason on stderr.
+    report_path = tmp_path / "payload.json"
+    expectation_path = tmp_path / "expectation.json"
+    malformed = _report(tables={"person": _table()})
+    malformed["tables"] = "not-an-object"
+    report_path.write_text(json.dumps(malformed), encoding="utf-8")
+    expectation_path.write_text(json.dumps(_expectation()), encoding="utf-8")
+
+    exit_code = CLASSIFIER.main([str(report_path), str(expectation_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert "could not be completed" in captured.err
+
+
 def test_malformed_or_duplicate_expectations_are_refused() -> None:
     duplicate = _expectation()
     duplicate["expected_changed"].append(

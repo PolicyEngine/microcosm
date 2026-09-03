@@ -400,7 +400,12 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_household["household_weight"] = _raw_number(household, "gross4").to_numpy()
 
     age = _number(person, "age80") + _number(person, "age")
-    pe_person["age"] = age
+    # The graph declares person.age int64 from the root (#845); the raw
+    # AGE80/AGE columns are integer codes, and blanks coerce to 0 above, so
+    # a non-integral value here is a vintage defect rather than data.
+    if not np.array_equal(age.to_numpy(), np.floor(age.to_numpy())):
+        raise ValueError("FRS age80/age columns must be integral to build person.age.")
+    pe_person["age"] = age.astype("int64")
     pe_person["gender"] = np.where(_number(person, "sex") == 1, "MALE", "FEMALE")
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR

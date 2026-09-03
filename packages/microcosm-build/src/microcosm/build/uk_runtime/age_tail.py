@@ -24,7 +24,11 @@ The stage runs immediately after ``frs_spine``, before every imputation that
 conditions on age. Later support and capital-gains stages clone whole rows, so
 each clone copies its donor's already-disaggregated age. A runtime guard
 refuses a frame that already carries ``person_source_id``: clone provenance is
-proof that the position contract has been violated.
+proof that the position contract has been violated. That guard can only
+fire on the legacy ``StagePlan`` runner, which hands stages the whole frame;
+the graph executor builds this stage's frame from its consumed slices alone
+(``age``, ``gender`` and the executor-carried ids), so there the position is
+enforced by the manifest/graph order tests, not by this check.
 
 Ages are assigned, not weighted, toward the ONS distribution: the achieved
 weighted shares land near the ONS shares by construction and calibration

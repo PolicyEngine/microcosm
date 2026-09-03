@@ -173,8 +173,8 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
         values["is_in_non_advanced_education"].to_numpy(dtype=bool)
         | values["is_in_approved_training"].to_numpy(dtype=bool)
     )
-    # Integer by contract whatever dtype ``age`` arrives in: age_tail now
-    # rewrites age as float64 upstream of this stage.
+    # Integer by the stage's own contract, whatever dtype ``age`` arrives in
+    # (int64 from the root since #845; float in synthetic frames).
     values["age_started_or_accepted_current_education_or_training"] = np.where(
         in_qualifying,
         np.minimum(age, 18),

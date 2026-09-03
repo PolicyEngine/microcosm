@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.etb_services import (
     allocate_nhs_by_age_gender,
@@ -88,6 +89,89 @@ def test_nhs_native_top_bands_and_budget_normalization_use_full_table() -> None:
     assert allocated.loc[3, "a_and_e_visits"] == 40.0 / 5.0
     spending = allocated["nhs_a_and_e_spending"].to_numpy(dtype=float)
     assert np.all(np.diff(spending) > 0)
+
+
+def test_an_empty_native_cell_is_named_in_the_receipt_and_allocates_nothing() -> None:
+    # Nobody aged 95+ here: the donor cost for that cell reaches no recipient
+    # and, because the budget factor normalizes the donor table rather than
+    # the realized allocation, it is dropped. The receipt must say so rather
+    # than let a placeholder count hide it.
+    from microcosm.build.uk_runtime.etb_services import (
+        allocate_nhs_by_age_gender,
+        nhs_cell_receipt,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3],
+            "person_household_id": [1, 2, 3],
+            "age": [84, 85, 90],
+            "gender": ["FEMALE", "FEMALE", "FEMALE"],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3],
+            "household_weight": [2.0, 3.0, 4.0],
+        }
+    )
+
+    cells = build_nhs_cell_table(_raw_nhs_rows(), person, household)
+    empty = cells[cells["Lower age"] == 95]
+    receipt = nhs_cell_receipt(cells)
+
+    assert (empty["Total people"] == 0).all()
+    assert (empty["Per-person average spending"] == 0).all()
+    assert (empty["Per-person average units"] == 0).all()
+    assert receipt["empty_cells"] == [
+        {
+            "gender": "FEMALE",
+            "lower_age": 95,
+            "upper_age": 120,
+            "services": sorted(empty["Service"].astype(str)),
+        }
+    ]
+    assert receipt["empty_cell_count"] == len(empty)
+    assert receipt["unallocated_cost_share"] == pytest.approx(
+        float(empty["Total Cost"].sum()) / float(cells["Total Cost"].sum())
+    )
+
+    allocated, allocated_receipt = allocate_nhs_by_age_gender(
+        person,
+        household_weights=household["household_weight"].to_numpy(),
+        household=household.drop(columns="household_weight"),
+        nhs_table=_raw_nhs_rows(),
+        with_receipt=True,
+    )
+    assert allocated_receipt == receipt
+    assert allocated["nhs_a_and_e_spending"].gt(0).all()
+
+
+def test_a_fully_occupied_table_reports_no_empty_cells() -> None:
+    from microcosm.build.uk_runtime.etb_services import nhs_cell_receipt
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_household_id": [1, 2, 3, 4],
+            "age": [84, 85, 90, 95],
+            "gender": ["FEMALE", "FEMALE", "FEMALE", "FEMALE"],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4],
+            "household_weight": [2.0, 3.0, 4.0, 5.0],
+        }
+    )
+
+    receipt = nhs_cell_receipt(build_nhs_cell_table(_raw_nhs_rows(), person, household))
+
+    assert receipt == {
+        "empty_cells": [],
+        "empty_cell_count": 0,
+        "unallocated_cost_share": 0.0,
+    }
 
 
 def test_nhs_age_bounds_parse_every_committed_resource_label() -> None:

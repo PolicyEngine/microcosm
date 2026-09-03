@@ -174,6 +174,7 @@ def test_services_support_clip_ranges_and_rail_ratio() -> None:
     assert transform.checkpoint_metadata()["evidence"] == {
         "stage": "etb_services",
         "support_clip": clip_result.receipt.evidence(),
+        "nhs_cells": {},
     }
     fare_index = load_etb_services_anchors()["rail_fare_index_2023"]["value"]
     assert 111.0 / fare_index == pytest.approx(100.0)
