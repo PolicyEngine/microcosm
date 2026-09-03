@@ -600,19 +600,39 @@ def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> 
     assert expanded.mass_ledger[-1].operation == "expand"
 
     assert result.expand is not None
+    receipt = {"expand": expand_lineage_receipt(result.expand)}
     cached = restore_cached_expand(
         population,
         node,
         KernelResult(
             frame=expanded.frame,
             weights=result.weights,
-            receipt={"expand": expand_lineage_receipt(result.expand)},
+            receipt=receipt,
         ),
     )
     np.testing.assert_array_equal(
         cached.design_weights["household"], expanded.design_weights["household"]
     )
     assert cached.mass_ledger == expanded.mass_ledger
+
+    mutated_person = expanded.frame.table("person").copy()
+    mutated_person.loc[mutated_person["person_id"] == 5, "amount"] = 99.0
+    mutated_frame = _replace_person_table(
+        expanded.frame, mutated_person, expanded.frame.strata
+    )
+    with pytest.raises(
+        PopulationError,
+        match=r"person\.amount.*copied target/source ids.*\(5, 1\)",
+    ):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=mutated_frame,
+                weights=result.weights,
+                receipt=receipt,
+            ),
+        )
 
 
 def test_cached_expand_requires_exact_lineage_id_sequence() -> None:

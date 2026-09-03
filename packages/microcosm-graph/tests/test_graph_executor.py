@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -44,6 +46,15 @@ from microcosm.graph.store import (
     StoreMiss,
     StoreUnavailable,
 )
+
+if "_toy" not in sys.modules:
+    _TOY_SPEC = importlib.util.spec_from_file_location(
+        "_toy", Path(__file__).with_name("_toy.py")
+    )
+    assert _TOY_SPEC is not None and _TOY_SPEC.loader is not None
+    sys.modules["_toy"] = importlib.util.module_from_spec(_TOY_SPEC)
+    _TOY_SPEC.loader.exec_module(sys.modules["_toy"])
+toy = sys.modules["_toy"]
 
 SOURCE = SourceRef("survey", "csv-tables", description="toy bytes")
 CREATE = Node(
@@ -1238,6 +1249,39 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     )
     assert expand_kernel.calls == 1
     assert claim_kernel.calls == 1
+
+
+def test_entrant_expand_rejects_mutated_copied_carried_values(
+    tmp_path: Path,
+) -> None:
+    expand, claim = toy.entrant_person_node(
+        "mutated_copy", strata_mode="mutates_copied_income"
+    )
+    graph = toy.small_graph(nodes=(toy.CREATE, expand, claim))
+    sources = {"survey": toy.copy_source(tmp_path / "source")}
+    registry = toy.toy_registry()
+    store = ContentStore(tmp_path / "store")
+    source_person = toy.read_toy_frame(sources["survey"]).table("person")
+    source_id = int(source_person["person_id"].iloc[0])
+    copied_id = int(source_person["person_id"].max()) + 2
+
+    for attempt in range(2):
+        with pytest.raises(
+            NodeRejected, match=r"mutated_copy.*person\.income"
+        ) as error:
+            toy.run_toy(
+                graph,
+                tmp_path / f"attempt-{attempt}",
+                sources=sources,
+                registry=registry,
+                store=store,
+            )
+        assert f"({copied_id}, {source_id})" in str(error.value)
+
+    calls = toy.calls_by_ref(registry)
+    assert calls["source.csv@1"] == 1
+    assert calls[expand.kernel] == 2
+    assert calls[claim.kernel] == 0
 
 
 def test_expand_id_overlay_is_rejected_without_committing_cache(tmp_path: Path) -> None:
