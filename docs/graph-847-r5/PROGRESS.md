@@ -3,8 +3,8 @@
 ## State
 
 All ten findings are implemented on the standalone `fix-847-r5` lane, with the
-frozen interface unchanged. The complete required verification block and lane
-report are next.
+frozen interface unchanged. Final verification is in progress; the lane report
+follows it.
 
 ## Done
 
@@ -90,6 +90,10 @@ report are next.
   serialization, QRF cache-collision, seed-source, and implementation-pin
   regressions pass. A forced off-platform fit case also passes with zero byte
   comparisons after asserting the key partition.
+- The first required full Ruff invocation exposed a pre-existing import-order
+  defect in the amendment-17 root export block. The import names were reordered
+  without changing exports or behavior; verification restarts from the first
+  required command after this committed cleanup.
 
 ## Next
 
