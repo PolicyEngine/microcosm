@@ -214,6 +214,18 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
                 failures.append(
                     f"release-blocking gate {gate_id} status {entry.get('status')!r}."
                 )
+        # Authenticate the report exactly as the release contract will, so a
+        # signing defect surfaces right after the run rather than at assembly.
+        try:
+            from microcosm.data.contract import _check_uk_dense_gate_report
+
+            contract_failures: list[str] = []
+            _check_uk_dense_gate_report(report, failures=contract_failures)
+            failures += [f"contract: {line}" for line in contract_failures]
+        except ImportError:
+            failures.append(
+                "microcosm.data.contract is not importable; the report cannot be verified."
+            )
     if not glob.glob(str(candidate_dir / "logbook-spool" / "*.json")):
         failures.append("no Logbook row in logbook-spool/.")
     return failures

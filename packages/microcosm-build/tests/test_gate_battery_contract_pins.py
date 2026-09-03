@@ -422,3 +422,96 @@ class TestDenseLineMirrors:
         )
         for field, mirrored in data_contract._UK_DENSE_GATE_DIGESTS.items():
             assert mirrored == live[field], field
+
+
+class TestResignCanonicalForm:
+    """A re-signed scoped report authenticates under the contract (#762 R17)."""
+
+    def test_resigned_report_with_integral_float_verifies(self, monkeypatch) -> None:
+        import base64
+        import copy
+        import hashlib
+        import json
+
+        from microcosm.build.gate_battery import _canonical_sha256
+        from microcosm.build.uk_runtime.calibration_run import (
+            finalize_uk_scoped_gate_report,
+        )
+
+        key = base64.b64encode(b"\x05" * 32).decode()
+        monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", key)
+        gates = {}
+        for entry_id in sorted(data_contract._UK_DENSE_GATE_ENTRY_IDS):
+            blocking = entry_id in data_contract._UK_DENSE_RELEASE_BLOCKING_IDS
+            gates[entry_id] = {
+                "gate": entry_id.removeprefix("uk_local_"),
+                "phase": "terminal",
+                "criticality": "release_blocking" if blocking else "diagnostic",
+                "status": "passed",
+                "failures": [],
+                # The integral float that separates the Logbook canonical
+                # form (50) from the gate battery's (50.0).
+                "details": {"floors": {"minimum_effective_sample_size": 50.0}},
+                "reason": None,
+            }
+        attestation = {
+            "schema_version": data_contract._UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
+            "producer": data_contract._UK_GATE_BATTERY_PRODUCER,
+            "country": "uk",
+            "release_id": "uk-local-candidate-f100-s42-20260903T160005Z-e39715fc",
+            "release_candidate": True,
+            "spec_fingerprint": data_contract._UK_DENSE_GATE_DIGESTS[
+                "spec_fingerprint"
+            ],
+            "gates_manifest_sha256": data_contract._UK_DENSE_GATE_DIGESTS[
+                "gates_manifest_sha256"
+            ],
+            "policy_sha256": data_contract._UK_DENSE_GATE_DIGESTS["policy_sha256"],
+            "phases": ["terminal"],
+            "phases_evaluated": ["terminal"],
+            "blocked_at_phase": None,
+            "release_evidence": {},
+            "evidence_sha256": {},
+            "gate_outcomes_sha256": _canonical_sha256(gates),
+            "signature_algorithm": "hmac-sha256",
+            "signing_key_sha256": None,
+            "signature": None,
+            "signing_error": "unsigned at battery time",
+        }
+        payload = {
+            "schema_version": data_contract._UK_GATE_BATTERY_SCHEMA_VERSION,
+            "country": "uk",
+            "release_id": attestation["release_id"],
+            "release_candidate": True,
+            "spec_fingerprint": attestation["spec_fingerprint"],
+            "gates_manifest_sha256": attestation["gates_manifest_sha256"],
+            "phases": ["terminal"],
+            "phases_evaluated": ["terminal"],
+            "blocked_at_phase": None,
+            "shippable": True,
+            "gates": gates,
+            "policy_sha256": attestation["policy_sha256"],
+            "release_evidence": {},
+            "evidence_sha256": {},
+            "attestation": attestation,
+        }
+        finalize_uk_scoped_gate_report(
+            payload,
+            posture="local_candidate",
+            scope_exclusions={},
+            aggregate_admin_measurement=None,
+        )
+        # Round-trip through JSON exactly as the driver persists it.
+        persisted = json.loads(json.dumps(payload, sort_keys=True))
+        assert (
+            persisted["attestation"]["signing_key_sha256"]
+            == hashlib.sha256(base64.b64decode(key)).hexdigest()
+        )
+        failures: list[str] = []
+        data_contract._check_uk_dense_gate_report(persisted, failures=failures)
+        assert failures == [], failures
+        tampered = copy.deepcopy(persisted)
+        tampered["posture"] = "edited"
+        failures = []
+        data_contract._check_uk_dense_gate_report(tampered, failures=failures)
+        assert any("signature does not authenticate" in f for f in failures)

@@ -63,23 +63,85 @@ def _good_candidate(tmp_path: Path) -> Path:
         },
     }
     (candidate / "rowwise_candidate_manifest.json").write_text(json.dumps(manifest))
-    report = {
-        "release_candidate": True,
-        "shippable": True,
-        "blocked_at_phase": None,
-        "attestation": {"signature": "abc"},
-        "gates": {
-            "uk_local_area_support": {
-                "criticality": "release_blocking",
-                "status": "passed",
-            },
-            "uk_local_target_fit": {"criticality": "diagnostic", "status": "failed"},
-        },
-    }
     (candidate / "microcosm_uk_2025_local.local_gates.json").write_text(
-        json.dumps(report)
+        json.dumps(_signed_report())
     )
     return candidate
+
+
+KEY = base64.b64encode(b"\x06" * 32).decode()
+
+
+@pytest.fixture(autouse=True)
+def _trusted_key(monkeypatch) -> None:
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+
+
+def _signed_report() -> dict:
+    """A complete schema-4 local report signed the way the battery signs."""
+
+    import hashlib
+    import hmac
+
+    from microcosm.build.gate_battery import _canonical_json_bytes, _canonical_sha256
+    from microcosm.data import contract as dc
+
+    key_bytes = base64.b64decode(KEY)
+    gates = {}
+    for entry_id in sorted(dc._UK_DENSE_GATE_ENTRY_IDS):
+        blocking = entry_id in dc._UK_DENSE_RELEASE_BLOCKING_IDS
+        gates[entry_id] = {
+            "gate": entry_id.removeprefix("uk_local_"),
+            "phase": "terminal",
+            "criticality": "release_blocking" if blocking else "diagnostic",
+            "status": "passed" if blocking else "failed",
+            "failures": [] if blocking else ["a diagnostic miss"],
+            "details": {"floors": {"minimum_effective_sample_size": 50.0}},
+            "reason": None,
+        }
+    attestation = {
+        "schema_version": dc._UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
+        "producer": dc._UK_GATE_BATTERY_PRODUCER,
+        "country": "uk",
+        "release_id": "uk-local-candidate-f100-s42-20260903T160005Z-e39715fc",
+        "release_candidate": True,
+        "spec_fingerprint": dc._UK_DENSE_GATE_DIGESTS["spec_fingerprint"],
+        "gates_manifest_sha256": dc._UK_DENSE_GATE_DIGESTS["gates_manifest_sha256"],
+        "policy_sha256": dc._UK_DENSE_GATE_DIGESTS["policy_sha256"],
+        "phases": ["terminal"],
+        "phases_evaluated": ["terminal"],
+        "blocked_at_phase": None,
+        "release_evidence": {},
+        "evidence_sha256": {},
+        "gate_outcomes_sha256": _canonical_sha256(gates),
+        "signature_algorithm": "hmac-sha256",
+        "signing_key_sha256": hashlib.sha256(key_bytes).hexdigest(),
+        "signature": None,
+    }
+    report = {
+        "schema_version": dc._UK_GATE_BATTERY_SCHEMA_VERSION,
+        "country": "uk",
+        "release_id": attestation["release_id"],
+        "release_candidate": True,
+        "spec_fingerprint": attestation["spec_fingerprint"],
+        "gates_manifest_sha256": attestation["gates_manifest_sha256"],
+        "phases": ["terminal"],
+        "phases_evaluated": ["terminal"],
+        "blocked_at_phase": None,
+        "shippable": True,
+        "gates": gates,
+        "policy_sha256": attestation["policy_sha256"],
+        "release_evidence": {},
+        "evidence_sha256": {},
+        "attestation": attestation,
+        "posture": "local_candidate",
+        "scope_exclusions": {},
+        "aggregate_admin_measurement": None,
+    }
+    attestation["signature"] = hmac.new(
+        key_bytes, _canonical_json_bytes(report), hashlib.sha256
+    ).hexdigest()
+    return report
 
 
 def test_good_candidate_dir_passes(tmp_path: Path) -> None:
@@ -130,7 +192,7 @@ def test_good_candidate_dir_passes(tmp_path: Path) -> None:
             ),
             "release-blocking gate",
         ),
-        (lambda m, r: r.__setitem__("attestation", {}), "signature"),
+        (lambda m, r: r["attestation"].__setitem__("signature", "0" * 64), "signature"),
     ],
 )
 def test_each_missing_flag_is_named(tmp_path: Path, mutate, needle: str) -> None:
