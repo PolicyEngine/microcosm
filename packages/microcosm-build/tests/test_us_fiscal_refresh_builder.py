@@ -4207,6 +4207,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["schema_version"] == 7
     assert diagnostics["targets"][0]["source"] == {
         "id": "irs_soi",
+        "label": "IRS Statistics of Income",
         "citation": "fixture",
     }
     assert diagnostics["targets"][0]["dimensions"] == {"geography_state": "0400000US06"}

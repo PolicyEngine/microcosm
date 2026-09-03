@@ -23,6 +23,7 @@ import numpy as np
 
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.calibrate import UK_CALIBRATION_PROVIDER_LABELS
 from microcosm.data.contract import validate_release_dir
 
 _ATTEMPT_PREFIX = "uk-frs-calibration-attempt-"
@@ -463,12 +464,7 @@ def _stage_and_finalize(
             "UK national calibration pipeline release assembled from attempt "
             f"{attempt_id} at immutable cut {cut_tag}."
         ),
-        "publisher_labels": {
-            "obr": "Office for Budget Responsibility",
-            "hmrc": "HM Revenue and Customs",
-            "ons": "Office for National Statistics",
-            "dwp": "Department for Work and Pensions",
-        },
+        "publisher_labels": dict(UK_CALIBRATION_PROVIDER_LABELS),
     }
     release_manifest_path = release_dir / "release_manifest.json"
     _write_json(release_manifest_path, release_manifest)

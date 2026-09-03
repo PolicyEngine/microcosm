@@ -31,6 +31,7 @@ from microcosm.calibrate._target_loss_attribution import (
     TargetLossAttributionError,
     assemble_target_loss_attribution,
 )
+from microcosm.calibrate.provider_labels import calibration_provider_label
 from microcosm.calibrate.solve import CalibrationResult
 
 __all__ = [
@@ -51,8 +52,9 @@ __all__ = [
 #: warning-only degradation state when that supplementary attribution cannot
 #: be validated.
 #: v7 adds producer-defined source, variable, and dimension identity for
-#: registry-backed release diagnostics. Geography is represented as a typed
-#: dimension with stable identifiers and display labels.
+#: registry-backed release diagnostics. Sources include country-owned display
+#: labels when registered. Geography is represented as a typed dimension with
+#: stable identifiers and display labels.
 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 7
 
 _LOGGER = logging.getLogger(__name__)
@@ -487,6 +489,9 @@ def _structured_target_fields(
     dimensions, definitions = _structured_dimensions(metadata, country=country)
     citation = str(getattr(target, "source", "")).strip()
     source: dict[str, str] = {"id": source_id}
+    source_label = calibration_provider_label(country, source_id)
+    if source_label:
+        source["label"] = source_label
     if citation:
         source["citation"] = citation
         source_url = next(

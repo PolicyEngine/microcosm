@@ -600,6 +600,11 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         for row in diagnostics["targets"]
         if row["source"]["id"] == "obr"
     }
+    assert {
+        row["source"]["label"]
+        for row in diagnostics["targets"]
+        if row["source"]["id"] == "obr"
+    } == {"Office for Budget Responsibility"}
     assert obr_variables == {
         "obr.esa@2025": "efo_expenditure",
         "obr.income_tax@2025": "efo_receipts",

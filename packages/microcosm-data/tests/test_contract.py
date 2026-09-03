@@ -3563,7 +3563,11 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
         }
     }
     for row in diagnostics["targets"]:
-        row["source"] = {"id": "fixture", "citation": row["source"]}
+        row["source"] = {
+            "id": "fixture",
+            "label": "Fixture provider",
+            "citation": row["source"],
+        }
         row["variable"] = {"id": row["target_name"]}
         row["dimensions"] = {"geography_country": "0100000US"}
     _write_json_and_refresh_manifest_hash(
@@ -3574,6 +3578,28 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
     )
 
     validate_release_dir(release_dir)
+
+
+def test_schema_7_rejects_an_empty_source_label(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {}
+    for row in diagnostics["targets"]:
+        row["source"] = {"id": "fixture", "label": " "}
+        row["variable"] = {"id": row["target_name"]}
+        row["dimensions"] = {}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "source 'label' must be a non-empty string" in failures
 
 
 def test_schema_7_rejects_partial_identity_and_multiple_geographies(

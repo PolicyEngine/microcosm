@@ -3363,6 +3363,19 @@ def _check_structured_diagnostics_target(
                 f"{owner} schema 7 requires {field!r} to be an object with a "
                 "non-empty string 'id'."
             )
+    source = target.get("source")
+    if (
+        isinstance(source, Mapping)
+        and "label" in source
+        and (
+            not isinstance(source.get("label"), str)
+            or not str(source.get("label")).strip()
+        )
+    ):
+        failures.append(
+            f"{owner} schema 7 source 'label' must be a non-empty string "
+            "when provided."
+        )
     values = target.get("dimensions")
     if not isinstance(values, Mapping):
         failures.append(f"{owner} schema 7 requires a 'dimensions' object.")

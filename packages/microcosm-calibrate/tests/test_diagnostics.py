@@ -463,6 +463,7 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     assert income["period"] == 2024
     assert income["source"] == {
         "id": "irs_soi",
+        "label": "IRS Statistics of Income",
         "citation": "IRS SOI 2024",
     }
     assert income["variable"] == {
@@ -531,6 +532,7 @@ def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
 
     assert payload["targets"][2]["source"] == {
         "id": "ons",
+        "label": "Office for National Statistics",
         "citation": "ons | Population table | https://example.test/ons",
         "url": "https://example.test/ons",
     }
