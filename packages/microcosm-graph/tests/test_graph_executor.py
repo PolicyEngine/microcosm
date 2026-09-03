@@ -1577,6 +1577,35 @@ def test_cache_load_misses_when_stored_capabilities_disagree(
         )
 
 
+def test_cache_load_names_legacy_capabilities_without_tolerance(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _graph()
+    registry = _registry()
+    manifest = _run(graph, source, store, registry)
+
+    node = graph.node("a")
+    key = manifest.nodes["a"].key
+    record_key = graph_executor._cache_record_key(key)
+    record = store.load_json(record_key)
+    stored_capabilities = record["capabilities"]
+    assert isinstance(stored_capabilities, dict)
+    del stored_capabilities["tolerance"]
+    store.put_json(record_key, record, node_key=key, verify_existing=False)
+
+    kernel = registry.get(node.kernel)
+    with pytest.raises(StoreMiss, match=r"legacy_capabilities.*tolerance"):
+        graph_executor._load_record(
+            store,
+            node,
+            key=key,
+            kernel_impl_hash=kernel.implementation_hash(),
+            capabilities=kernel.capabilities,
+        )
+
+
 def test_fit_qrf_seed_source_change_misses_a_shared_store(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

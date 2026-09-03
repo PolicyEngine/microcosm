@@ -295,7 +295,13 @@ def _short(value: object, limit: int = 28) -> str:
 
 
 def _role(receipt: NodeReceipt) -> str:
-    return str(_value(receipt.capabilities.role))
+    capabilities = receipt.capabilities
+    role = (
+        capabilities.get("role", "compute")
+        if isinstance(capabilities, Mapping)
+        else capabilities.role
+    )
+    return str(_value(role))
 
 
 def _node_status(receipt: NodeReceipt) -> tuple[str, str]:
@@ -460,6 +466,8 @@ def _render_graph(
 
 def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
     capabilities = receipt.capabilities
+    if isinstance(capabilities, Mapping):
+        return {str(key): _plain(value) for key, value in capabilities.items()}
     tolerance = capabilities.tolerance
     return {
         "determinism": _value(capabilities.determinism),
@@ -482,7 +490,7 @@ def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
 
 
 def _receipt_payload(receipt: NodeReceipt) -> dict[str, object]:
-    return {
+    payload = {
         "node_key": receipt.key,
         "store_hit": receipt.hit,
         "seed": receipt.seed,
@@ -499,6 +507,9 @@ def _receipt_payload(receipt: NodeReceipt) -> dict[str, object]:
         "opaque_artifacts": receipt.opaque_artifacts,
         "wall_time": receipt.wall_time,
     }
+    if receipt.legacy_capabilities:
+        payload["legacy_capabilities"] = True
+    return payload
 
 
 def _render_node_detail(

@@ -1208,6 +1208,15 @@ def _require_record_shape(
             f"not {expected!r}."
         )
     expected_capabilities = _capabilities_projection(capabilities)
+    stored_capabilities = raw["capabilities"]
+    if (
+        isinstance(stored_capabilities, Mapping)
+        and "tolerance" not in stored_capabilities
+    ):
+        raise StoreMiss(
+            f"Cached receipt for node {node.id!r} has legacy_capabilities: "
+            "the schema-v1 contract omits tolerance."
+        )
     if raw["capabilities"] != expected_capabilities:
         raise StoreMiss(
             f"Cached receipt capabilities for node {node.id!r} disagree with "

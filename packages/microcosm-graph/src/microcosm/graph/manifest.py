@@ -31,7 +31,8 @@ if TYPE_CHECKING:
 
 __all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
+_LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
 
@@ -177,13 +178,14 @@ class NodeReceipt:
     seed: int
     kernel_ref: str
     kernel_impl_hash: str
-    capabilities: Capabilities
+    capabilities: Capabilities | Mapping[str, object]
     receipt: Mapping[str, object] = field(default_factory=dict)
     artifacts: Mapping[tuple[str, str], str] = field(default_factory=dict)
     wall_time: float = 0.0
     frame_key: str | None = None
     weight_key: str | None = None
     opaque_artifacts: Mapping[str, str] = field(default_factory=dict)
+    legacy_capabilities: bool = field(default=False, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, str):
@@ -196,7 +198,17 @@ class NodeReceipt:
             raise TypeError("NodeReceipt.kernel_ref must be a string")
         if not isinstance(self.kernel_impl_hash, str):
             raise TypeError("NodeReceipt.kernel_impl_hash must be a string")
-        if not isinstance(self.capabilities, Capabilities):
+        if not isinstance(self.legacy_capabilities, bool):
+            raise TypeError("NodeReceipt.legacy_capabilities must be a bool")
+        if self.legacy_capabilities:
+            if not isinstance(self.capabilities, Mapping) or isinstance(
+                self.capabilities, Capabilities
+            ):
+                raise TypeError("legacy NodeReceipt.capabilities must be a raw mapping")
+            frozen_capabilities = _legacy_capabilities_from_payload(self.capabilities)
+            object.__setattr__(self, "capabilities", frozen_capabilities)
+            object.__setattr__(self, "hit", False)
+        elif not isinstance(self.capabilities, Capabilities):
             raise TypeError("NodeReceipt.capabilities must be Capabilities")
         frozen_receipt = _freeze_json(self.receipt)
         if not isinstance(frozen_receipt, Mapping):
@@ -267,13 +279,15 @@ class NodeReceipt:
 
     def _payload(self) -> dict[str, object]:
         capabilities = self.capabilities
-        return {
-            "key": self.key,
-            "hit": self.hit,
-            "seed": self.seed,
-            "kernel_ref": self.kernel_ref,
-            "kernel_impl_hash": self.kernel_impl_hash,
-            "capabilities": {
+        capabilities_payload: Mapping[str, object]
+        if self.legacy_capabilities:
+            if not isinstance(capabilities, Mapping):  # pragma: no cover
+                raise TypeError("legacy capabilities lost their raw mapping")
+            capabilities_payload = capabilities
+        else:
+            if not isinstance(capabilities, Capabilities):  # pragma: no cover
+                raise TypeError("current capabilities lost their typed contract")
+            capabilities_payload = {
                 "determinism": _enum_value(capabilities.determinism),
                 "numeric": _enum_value(capabilities.numeric),
                 "seed_source": _enum_value(capabilities.seed_source),
@@ -282,7 +296,15 @@ class NodeReceipt:
                 "consumes_se": capabilities.consumes_se,
                 "dependencies": capabilities.dependencies,
                 "tolerance": _tolerance_payload(capabilities.tolerance),
-            },
+            }
+        return {
+            "key": self.key,
+            "hit": self.hit,
+            "seed": self.seed,
+            "kernel_ref": self.kernel_ref,
+            "kernel_impl_hash": self.kernel_impl_hash,
+            "capabilities": capabilities_payload,
+            "legacy_capabilities": self.legacy_capabilities,
             "receipt": self.receipt,
             "artifacts": tuple(
                 {"entity": entity, "column": column, "key": key}
@@ -388,7 +410,7 @@ class RunManifest:
         releases = [
             (node_id, node)
             for node_id, node in self.nodes.items()
-            if node.capabilities.role is KernelRole.RELEASE
+            if _capability_role(node) is KernelRole.RELEASE
         ]
         if not releases:
             return None
@@ -413,7 +435,7 @@ class RunManifest:
                 raise ValueError(
                     f"release node {node_id!r} names missing gate {gate_id!r}"
                 ) from error
-            if gate.capabilities.role is not KernelRole.GATE:
+            if _capability_role(gate) is not KernelRole.GATE:
                 raise ValueError(
                     f"release node {node_id!r} names non-gate ancestor {gate_id!r}"
                 )
@@ -439,7 +461,7 @@ class RunManifest:
         failures: set[str] = set()
         for node_id, node in self.nodes.items():
             outcome = node.receipt.get("outcome")
-            if node.capabilities.role is KernelRole.GATE and (
+            if _capability_role(node) is KernelRole.GATE and (
                 _gate_outcome(node_id, node) not in _CERTIFYING_GATE_OUTCOMES
             ):
                 failures.add(node_id)
@@ -538,18 +560,20 @@ class RunManifest:
         raw = json.loads(value)
         if not isinstance(raw, dict):
             raise ValueError("manifest JSON must contain an object")
-        if type(raw.get("schema_version")) is not int or (
-            raw["schema_version"] != _SCHEMA_VERSION
-        ):
-            raise ValueError(
-                f"unsupported manifest schema version {raw.get('schema_version')!r}"
-            )
+        schema_version = raw.get("schema_version")
+        if type(schema_version) is not int or schema_version not in {
+            _LEGACY_SCHEMA_VERSION,
+            _SCHEMA_VERSION,
+        }:
+            raise ValueError(f"unsupported manifest schema version {schema_version!r}")
 
         nodes_raw = raw.get("nodes")
         if not isinstance(nodes_raw, dict):
             raise ValueError("manifest nodes must be an object")
         nodes = {
-            str(node_id): _node_receipt_from_payload(payload)
+            str(node_id): _node_receipt_from_payload(
+                payload, schema_version=schema_version
+            )
             for node_id, payload in nodes_raw.items()
         }
         decisions_raw = raw.get("decisions", [])
@@ -664,10 +688,20 @@ class RunManifest:
         """Load ``path`` only when its reached release is certified."""
 
         manifest = cls.load(path, store)
+        legacy_nodes = sorted(
+            node_id
+            for node_id, node in manifest.nodes.items()
+            if node.legacy_capabilities
+        )
+        if legacy_nodes:
+            raise NodeRejectedError(
+                f"Manifest {manifest.key} is unreached: legacy_capabilities on "
+                f"nodes {legacy_nodes!r} omit the schema-v2 tolerance field."
+            )
         releases = [
             node
             for node in manifest.nodes.values()
-            if node.capabilities.role is KernelRole.RELEASE
+            if _capability_role(node) is KernelRole.RELEASE
         ]
         if any(node.receipt.get("outcome") == "unreached" for node in releases):
             raise NodeRejectedError(
@@ -678,6 +712,19 @@ class RunManifest:
                 f"Manifest {manifest.key} is evidence-tier, not certified."
             )
         return manifest
+
+
+def _capability_role(node: NodeReceipt) -> KernelRole:
+    """Return a receipt role without constructing a legacy contract."""
+
+    capabilities = node.capabilities
+    if isinstance(capabilities, Capabilities):
+        return capabilities.role
+    role = capabilities.get("role", KernelRole.COMPUTE.value)
+    try:
+        return KernelRole(str(role))
+    except ValueError as error:  # Parser validation should make this unreachable.
+        raise ValueError(f"node capabilities have invalid role {role!r}") from error
 
 
 def _gate_outcome(node_id: str, node: NodeReceipt) -> str:
@@ -729,18 +776,61 @@ def _invalid_decision(value: object) -> Decision:
     )
 
 
-def _capabilities_from_payload(value: object) -> Capabilities:
+def _capability_contract_fields(
+    value: object,
+) -> tuple[
+    Determinism,
+    Numeric,
+    SeedSource,
+    StructuralDelta,
+    KernelRole,
+    bool,
+    tuple[str, ...],
+]:
     if not isinstance(value, Mapping):
         raise ValueError("node capabilities must be an object")
     consumes_se = value.get("consumes_se")
     dependencies = value.get("dependencies")
     if not isinstance(consumes_se, bool):
         raise ValueError("capabilities.consumes_se must be a bool")
-    if not isinstance(dependencies, list):
+    if not isinstance(dependencies, list | tuple):
         raise ValueError("capabilities.dependencies must be an array")
-    if not all(isinstance(item, str) for item in dependencies):
-        raise ValueError("capabilities.dependencies must contain strings")
-    raw_tolerance = value.get("tolerance")
+    if not all(isinstance(item, str) and item for item in dependencies):
+        raise ValueError("capabilities.dependencies must contain non-empty strings")
+    try:
+        return (
+            Determinism(_string_field(value, "determinism")),
+            Numeric(_string_field(value, "numeric")),
+            SeedSource(_string_field(value, "seed_source")),
+            StructuralDelta(_string_field(value, "structural")),
+            KernelRole(str(value.get("role", KernelRole.COMPUTE.value))),
+            consumes_se,
+            tuple(dependencies),
+        )
+    except ValueError as error:
+        raise ValueError(f"invalid node capabilities: {error}") from error
+
+
+def _legacy_capabilities_from_payload(value: object) -> Mapping[str, object]:
+    """Validate schema-v1 capabilities without inventing a tolerance."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("node capabilities must be an object")
+    if "tolerance" in value:
+        raise ValueError("legacy capabilities must omit the tolerance field")
+    _capability_contract_fields(value)
+    frozen = _freeze_json(value)
+    if not isinstance(frozen, Mapping):  # pragma: no cover
+        raise ValueError("legacy node capabilities must be an object")
+    return frozen
+
+
+def _capabilities_from_payload(value: object) -> Capabilities:
+    if not isinstance(value, Mapping):
+        raise ValueError("node capabilities must be an object")
+    if "tolerance" not in value:
+        raise ValueError("capabilities.tolerance is required by schema v2")
+    raw_tolerance = value["tolerance"]
     if raw_tolerance is None:
         tolerance = None
     else:
@@ -769,19 +859,28 @@ def _capabilities_from_payload(value: object) -> Capabilities:
                 "must be an integer"
             )
         tolerance = Tolerance(rtol=float(rtol), atol=float(atol), ulps=ulps)
+    (
+        determinism,
+        numeric,
+        seed_source,
+        structural,
+        role,
+        consumes_se,
+        dependencies,
+    ) = _capability_contract_fields(value)
     return Capabilities(
-        determinism=Determinism(_string_field(value, "determinism")),
-        numeric=Numeric(_string_field(value, "numeric")),
-        seed_source=SeedSource(_string_field(value, "seed_source")),
-        structural=StructuralDelta(_string_field(value, "structural")),
-        role=KernelRole(str(value.get("role", KernelRole.COMPUTE.value))),
+        determinism=determinism,
+        numeric=numeric,
+        seed_source=seed_source,
+        structural=structural,
+        role=role,
         consumes_se=consumes_se,
-        dependencies=tuple(dependencies),
+        dependencies=dependencies,
         tolerance=tolerance,
     )
 
 
-def _node_receipt_from_payload(value: object) -> NodeReceipt:
+def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeReceipt:
     if not isinstance(value, Mapping):
         raise ValueError("manifest node receipts must be objects")
     hit = value.get("hit")
@@ -792,6 +891,25 @@ def _node_receipt_from_payload(value: object) -> NodeReceipt:
     frame_key = value.get("frame_key")
     weight_key = value.get("weight_key")
     opaque_artifacts = value.get("opaque_artifacts", {})
+    capabilities_payload = value.get("capabilities")
+    if schema_version == _LEGACY_SCHEMA_VERSION:
+        if "legacy_capabilities" in value:
+            raise ValueError("schema-v1 node receipts cannot carry legacy_capabilities")
+        legacy_capabilities = (
+            isinstance(capabilities_payload, Mapping)
+            and "tolerance" not in capabilities_payload
+        )
+    else:
+        legacy_capabilities = value.get("legacy_capabilities")
+        if not isinstance(legacy_capabilities, bool):
+            raise ValueError(
+                "schema-v2 node receipt legacy_capabilities must be a bool"
+            )
+    capabilities = (
+        _legacy_capabilities_from_payload(capabilities_payload)
+        if legacy_capabilities
+        else _capabilities_from_payload(capabilities_payload)
+    )
     if not isinstance(hit, bool):
         raise ValueError("node receipt hit must be a bool")
     if not isinstance(seed_value, int) or isinstance(seed_value, bool):
@@ -830,11 +948,12 @@ def _node_receipt_from_payload(value: object) -> NodeReceipt:
         seed=seed_value,
         kernel_ref=_string_field(value, "kernel_ref"),
         kernel_impl_hash=_string_field(value, "kernel_impl_hash"),
-        capabilities=_capabilities_from_payload(value.get("capabilities")),
+        capabilities=capabilities,
         receipt=receipt,
         artifacts=artifacts,
         wall_time=float(wall_time),
         frame_key=frame_key,
         weight_key=weight_key,
         opaque_artifacts=opaque_artifacts,
+        legacy_capabilities=legacy_capabilities,
     )
