@@ -4154,6 +4154,123 @@ def test_late_table_content_digest_binds_dtype_index_and_order() -> None:
     )
 
 
+def _fixture_primary_execution_config_binding() -> dict[str, object]:
+    return stacked_spine_module._late_primary_execution_config_binding(
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+        predictors=None,
+        person_outputs=None,
+        tax_unit_outputs=None,
+        fit_records_enabled=True,
+        tail_bound_diagnostics_enabled=True,
+    )
+
+
+def _validate_fixture_primary_execution_config(
+    binding: Mapping[str, object],
+) -> None:
+    stacked_spine_module._validate_late_resource_binding(
+        binding,
+        producer=stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
+        entity="tax_unit",
+        column=stacked_spine_module.US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
+        boundary="portable worker identity fixture",
+    )
+
+
+def test_late_primary_worker_authentication_ignores_audit_alias_relocation() -> None:
+    binding = _fixture_primary_execution_config_binding()
+    worker = binding["qrf"]["worker_execution"]
+    original_semantic_identity = deepcopy(worker["semantic_identity"])
+    original_semantic_sha256 = worker["semantic_identity_sha256"]
+    relocated_interpreter = (
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-c26-build/.venv/bin/python"
+    )
+
+    worker["audit_aliases"] = {
+        "sys_executable": relocated_interpreter,
+        "sys_prefix": str(Path(relocated_interpreter).parents[1]),
+        "argv_template_0": relocated_interpreter,
+    }
+
+    _validate_fixture_primary_execution_config(binding)
+    assert worker["semantic_identity"] == original_semantic_identity
+    assert worker["semantic_identity_sha256"] == original_semantic_sha256
+
+
+def test_late_primary_worker_authentication_rejects_rehashed_semantic_change() -> None:
+    binding = _fixture_primary_execution_config_binding()
+    worker = binding["qrf"]["worker_execution"]
+    semantic_identity = worker["semantic_identity"]
+    semantic_identity["interpreter"]["bytes_sha256"] = "0" * 64
+    worker["semantic_identity_sha256"] = stacked_spine_module._canonical_sha256(
+        semantic_identity
+    )
+
+    with pytest.raises(ValueError, match="semantic worker identity changed"):
+        _validate_fixture_primary_execution_config(binding)
+
+
+def test_legacy_worker_mismatch_paths_reproduce_sealed_stop_case() -> None:
+    sealed_interpreter = (
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-c26-build/.venv/bin/python"
+    )
+    replay_interpreter = "/private/tmp/microcosm-c27-rootcause/.venv/bin/python"
+    common_argv = [
+        "-m",
+        "microcosm.build.us_runtime.puf_qrf_worker",
+        "--checkpoint-dir",
+        "{checkpoint_dir}",
+        "--target-index",
+        "{target_index}",
+    ]
+    sealed_worker = {
+        "module": "microcosm.build.us_runtime.puf_qrf_worker",
+        "argv_template": [sealed_interpreter, *common_argv],
+        "interpreter": {
+            "executable": sealed_interpreter,
+            "resolved_executable": (
+                "/Users/maxghenis/.local/share/uv/python/"
+                "cpython-3.14.4-macos-aarch64-none/bin/python3.14"
+            ),
+            "implementation": "cpython",
+            "cache_tag": "cpython-314",
+            "version": [3, 14, 4],
+        },
+        "environment": {
+            "policy": "inherit_parent_environment_with_bound_fit_controls",
+            "overrides": {},
+            "semantic_controls": {
+                "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},
+                "POPULACE_FIT_PREDICT_WORKERS": {
+                    "configured": "18",
+                    "resolved": 18,
+                    "resolution": "environment_override",
+                },
+            },
+            "bound_names": [
+                "POPULACE_FIT_N_JOBS",
+                "POPULACE_FIT_PREDICT_WORKERS",
+            ],
+        },
+    }
+    replay_worker = deepcopy(sealed_worker)
+    replay_worker["argv_template"][0] = replay_interpreter
+    replay_worker["interpreter"]["executable"] = replay_interpreter
+
+    mismatch_paths = stacked_spine_module._legacy_worker_execution_mismatch_paths(
+        sealed_worker,
+        replay_worker,
+    )
+
+    assert set(mismatch_paths) == {
+        "argv_template[0]",
+        "interpreter.executable",
+    }
+
+
 def test_late_primary_resources_bind_donor_content_and_execution_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
