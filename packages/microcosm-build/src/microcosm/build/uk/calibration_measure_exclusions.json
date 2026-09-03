@@ -396,6 +396,69 @@
       "adjudication": "microcosm#757 (the uk_target_fit dispositions, issue comment 5427936411)",
       "approved_on": "2026-08-26",
       "expires_on": "2026-11-26"
+    },
+    {
+      "name": "ons.land.corporate_land_value",
+      "reason": "The spine carries £20.4tn of corporate land value against the ONS £2.1tn (8.7x at initialization on spine-m; 2.7x after the K=15 solve at stretch bound 10): a land-imputation defect (units or a double draw) in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
+    },
+    {
+      "name": "ons.land.land_value",
+      "reason": "The spine carries £24.9tn of total land value against the ONS £7.1tn (2.5x at initialization on spine-m; still 1.6x after the K=15 solve at stretch bound 10): the same land-imputation defect as the corporate row. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
+    },
+    {
+      "name": "ons.savings_interest_income",
+      "reason": "The spine carries £13.8bn of savings interest income against the ONS £95.5bn (-86% at initialization on spine-m, -89% after the solve): the FRS interest income capture, not the weights. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
+    },
+    {
+      "name": "obr.housing_benefit",
+      "reason": "The spine carries £2.7bn of housing benefit against the OBR £12.1bn (-78% at initialization on spine-m). Under grain_equal the solver chases the aggregate by multiplying the few HB households (£9.4bn at 512 epochs, £11.4bn at 1500), which halves the effective sample and doubles Glasgow's social-rent count; under uniform it is ignored. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
+    },
+    {
+      "name": "slc.borrowers.plan_2_liable",
+      "reason": "The spine carries 3.4M plan-2 borrowers liable against the SLC 9.7M (-65% at initialization on spine-m; -52% after the solve): student-loan borrower coverage in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
+    },
+    {
+      "name": "slc.borrowers.plan_2_above_threshold",
+      "reason": "The spine carries 1.4M plan-2 borrowers above threshold against the SLC 4.5M (-69% at initialization on spine-m; -43% after the solve): student-loan borrower coverage in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
+    },
+    {
+      "name": "dwp.jsa_claimants",
+      "reason": "The spine carries 199k JSA claimants against the DWP 71k (1.8x at initialization on spine-m; -13% after the solve): legacy-benefit reporting in the frame after the UC migration. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
+      "approved_on": "2026-09-03",
+      "expires_on": "2026-10-03"
     }
   ]
 }

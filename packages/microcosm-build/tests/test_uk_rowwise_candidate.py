@@ -439,10 +439,13 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     )
     assert manifest["parameters"]["doctrine"] == {
         "target_loss_cap": 10.0,
-        "max_weight_ratio": 100.0,
+        "max_weight_ratio": 10.0,
         "scale_rule": "default_target_loss_scales",
-        "target_weight_rule": "uniform",
+        "target_weight_rule": "grain_equal",
+        "solve_epochs": 1500,
+        "clone_count": 15,
     }
+    assert manifest["ladder_household_uprating"]["applied"] is False
     assert manifest["solve"]["n_targets"] == 4
     assert manifest["solve"]["n_households"] == 416
     assert np.isfinite(manifest["solve"]["initial_loss"])
@@ -642,7 +645,7 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
                 str(output_dir),
             ]
         ).n_clones
-        == 4
+        == builder.UK_LOCAL_CLONE_COUNT
     )
     with pytest.raises(ValueError, match="must equal --n-clones"):
         builder.main(
@@ -1674,3 +1677,40 @@ def test_gate_criticality_reads_fail_closed() -> None:
     )
     assert blocking == ["[uk_local_area_support] ESS 42.3 < 50"]
     assert diagnostic == ["[uk_local_weight_ratio] ratio 578 > 100"]
+def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None:
+    builder = _load_builder_module()
+    pin = "0" * 64
+    base = [
+        "--input-h5",
+        str(tmp_path / "spine.h5"),
+        "--input-sha256",
+        pin,
+        "--ladder",
+        str(tmp_path / "ladder.npz"),
+        "--ladder-sha256",
+        pin,
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        pin,
+        "--ledger-manifest-sha256",
+        pin,
+        "--out",
+        str(tmp_path / "out"),
+        "--release-candidate",
+    ]
+    # The doctrine defaults are the release posture: nothing to refuse.
+    args = builder._parse_args(base)
+    builder._validate_cli_args(args)
+    assert args.n_clones == builder.UK_LOCAL_CLONE_COUNT == 15
+    assert args.epochs == builder.UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert args.target_weight_rule == "grain_equal"
+
+    with pytest.raises(ValueError, match=r"--epochs != doctrine 1500"):
+        builder._validate_cli_args(builder._parse_args([*base, "--epochs", "512"]))
+    with pytest.raises(ValueError, match=r"--n-clones != doctrine 15"):
+        builder._validate_cli_args(builder._parse_args([*base, "--n-clones", "10"]))
+    with pytest.raises(ValueError, match=r"--target-weight-rule"):
+        builder._validate_cli_args(
+            builder._parse_args([*base, "--target-weight-rule", "uniform"])
+        )

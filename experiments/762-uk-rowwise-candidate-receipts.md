@@ -224,3 +224,22 @@ Mechanics, all 14 runs: no warnings, tracebacks or NaN; no swapping (26 GB machi
 ## R11 — Single-block engine resolution at K=15 (the `--release-candidate` posture) (2026-09-03 07:xx; `grain_equal`, bound 10, 64 epochs, no `--engine-blocks`)
 
 `--release-candidate` refuses `--engine-blocks > 1`, so the release run resolves policyengine-uk over the full 792,690-row K=15 frame in one block. Measured on the measurement branch with a short solve (64 epochs) since the engine, not the solve, is the memory question: wall 885 s; peak resident 10.2 GB (`time -l`), 9 GB sampled every 20 s by a 22 GB watchdog that never fired; no warnings; `measure_resolution.blocks = 1`, no deviation record; identical gate verdicts to the blocked runs (area_support passed). The 26 GB machine carries the release posture at K=15 with headroom; the per-block runs' 10.5–12 GB peaks came from the solve, not the engine.
+
+## R12 — Rulings applied (María, 2026-09-03): doctrine constants, A15 ladder uprating, A16 reviewed exclusions
+
+Applied on this branch in one commit; every constant is the measured choice above and each carries its adjudication note in `local_doctrine.py`:
+
+| constant | was | now | receipt |
+|---|---|---|---|
+| `UK_LOCAL_MAX_WEIGHT_RATIO` (A3) | 100.0 | **10.0** | R8: no fit cost at 100/20/10; only 10 clears the ESS floor; equals the national bound |
+| `UK_LOCAL_TARGET_WEIGHT_RULE` (A2) | `uniform` | **`grain_equal`** | R6–R10: national 92–93 % vs 78–85 % within 10 %; `uniform` stays a receipted override |
+| `UK_LOCAL_CLONE_COUNT` (K) | 4 (driver default) | **15** | R9: clears the floor under `grain_equal` at bound 10 (min constituency ESS 54.1) |
+| `UK_LOCAL_SOLVE_EPOCHS` | 512 (driver default) | **1500** | R10; matches the national certified-cut posture |
+
+`--release-candidate` now refuses `--epochs`, `--n-clones` and `--target-weight-rule` values that differ from the doctrine, beside the earlier refusals; the manifest's `parameters.doctrine` block records `solve_epochs` and `clone_count`.
+
+**A15 — ladder household rows uprated to the calibration year.** The OA ladder's household counts are census-vintage (England, Wales and Northern Ireland 2021; Scotland 2022; ladder total 28,060,832). The surface now scales every ladder household row by one national factor: the Ledger's published UK household total for the calibration year (ONS *Families and households in the UK 2025*, Table 5 all-households row, `ons.households_total` at K02000001, calendar year 2025: **29,003,000**; the 2021 row of the same table is 28,119,000, 0.2 % from the ladder total) over the ladder total, so **factor 1.033577**. Assignment shares and support counts stay census-based. The fact is selected by concept, geography, period and empty dimensions and fails closed on zero or several matches; the receipt (`ladder_household_uprating`: factor, totals, fact keys, source record id) rides the cross-grain receipt and the manifest, and `--release-candidate` refuses a run whose rows bind as published. This is the health-audit flag 2 resolution: the 4 % household mass cut under `uniform` (29.25M → 28.07M) was the census vintage binding at 2025; the uprated rows sum to 29.0M, 0.8 % under the FRS grossing.
+
+**A16 — seven reviewed measure exclusions, one-month window (approved 2026-09-03, expire 2026-10-03), tracked on microcosm#736.** `ons.land.corporate_land_value` (8.7×), `ons.land.land_value` (2.5×), `ons.savings_interest_income` (−86 %), `obr.housing_benefit` (−78 %), `slc.borrowers.plan_2_liable` (−65 %), `slc.borrowers.plan_2_above_threshold` (−69 %), `dwp.jsa_claimants` (1.8×) — each unreachable by reweighting within the stretch bound on spine-m (R8–R10), each a frame-side gap; the register now holds 51 entries. None of the seven is a cross-grain bridge member, so no bridge classification changes.
+
+Verification on this commit: doctrine / candidate / ledger / measure-simulation / rowwise files 99 passed; country spec, battery bindings, seam driver, scorer and the microcosm-data contract suite 543 passed, 1 skipped; both censuses current; `ci_test_groups.py --verify` ok; `ruff check` clean; no pinned digest moved. The release-candidate run (R13) applies all of this under `--release-candidate` with holdout.
