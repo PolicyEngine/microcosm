@@ -13,6 +13,7 @@ import microcosm.build.logbook_family as family_module
 from microcosm.build.logbook import LogbookRow, record_build_attempt
 from microcosm.build.logbook_family import (
     FamilyAction,
+    FamilyArchiveRecords,
     FamilyMember,
     LogbookFamily,
     derive_family_id,
@@ -28,6 +29,7 @@ from microcosm.build.logbook_family import (
     record_family_action,
     record_family_member,
     validate_family_action,
+    validate_family_archive_records,
     validate_family_membership,
     validate_family_source,
 )
@@ -241,6 +243,108 @@ def test_supersession_requires_members_and_matching_cardinality() -> None:
             members=members,
             builds=mismatched_fraction,
         )
+
+
+def test_family_archive_validation_matches_database_relationship_constraints() -> None:
+    family = _family()
+    other_family = _family(source_pool_sha256="b" * 64)
+    builds = {
+        build_id: _build(build_id)
+        for build_id in ("family-build-1", "family-build-2", "family-build-3")
+    }
+    members = tuple(
+        FamilyMember.create(family_id=FAMILY_ID, build_id=build_id)
+        for build_id in builds
+    )
+
+    duplicate_membership = FamilyArchiveRecords(
+        families=(family, other_family),
+        family_members=(
+            members[0],
+            FamilyMember.create(
+                family_id=other_family.family_id,
+                build_id=members[0].build_id,
+            ),
+        ),
+        family_actions=(),
+    )
+    with pytest.raises(ValueError, match="belongs to more than one family"):
+        validate_family_archive_records(
+            duplicate_membership,
+            scope="us",
+            builds=tuple(builds.values()),
+        )
+
+    replacement = _action()
+    second_replacement = _action(
+        action_id="97654321-4321-4321-8321-cba987654321",
+        build_id="family-build-3",
+    )
+    with pytest.raises(ValueError, match="more than one direct replacement"):
+        validate_family_archive_records(
+            FamilyArchiveRecords(
+                families=(family,),
+                family_members=members,
+                family_actions=(replacement, second_replacement),
+            ),
+            scope="us",
+            builds=tuple(builds.values()),
+        )
+
+    reverse_replacement = _action(
+        action_id="a7654321-4321-4321-8321-cba987654321",
+        build_id="family-build-1",
+        related_build_id="family-build-2",
+    )
+    with pytest.raises(ValueError, match="replacement cycle"):
+        validate_family_archive_records(
+            FamilyArchiveRecords(
+                families=(family,),
+                family_members=members,
+                family_actions=(replacement, reverse_replacement),
+            ),
+            scope="us",
+            builds=tuple(builds.values()),
+        )
+
+
+def test_family_import_rejects_invalid_relationship_before_spooling(
+    tmp_path: Path,
+) -> None:
+    family = _family()
+    members = (
+        FamilyMember.create(family_id=FAMILY_ID, build_id="family-build-1"),
+        FamilyMember.create(family_id=FAMILY_ID, build_id="family-build-2"),
+    )
+    action = _action()
+    builds = (
+        _build("family-build-1", requested_k=57_240),
+        _build("family-build-2", requested_k=20_000),
+    )
+    archive_root = tmp_path / "logbook"
+    export_family_records(
+        family_archive_path(archive_root, "families", "us"),
+        (family,),
+    )
+    export_family_records(
+        family_archive_path(archive_root, "family_members", "us"),
+        members,
+    )
+    export_family_records(
+        family_archive_path(archive_root, "family_actions", "us"),
+        (action,),
+    )
+    spool = tmp_path / "spool"
+
+    with pytest.raises(ValueError, match="matching requested_k"):
+        import_family_scope(
+            archive_root,
+            scope="us",
+            spool_dir=spool,
+            builds=builds,
+        )
+
+    assert not spool.exists()
 
 
 def test_family_spool_is_durable_and_idempotent(tmp_path: Path) -> None:
@@ -512,6 +616,7 @@ def test_family_scope_archive_exports_and_imports_in_dependency_order(
         archive_root,
         scope="us",
         spool_dir=tmp_path / "spool",
+        builds=builds,
     )
 
     assert imported.family_actions == (action,)

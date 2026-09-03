@@ -292,7 +292,7 @@ def test_family_archive_commands_and_queries(
         predecessor=large.row_digest,
         minute=2,
         pipeline="us-stacked-pool",
-        requested_k=20_000,
+        requested_k=57_240,
     )
     members = (
         FamilyMember.create(family_id=family_id, build_id=large.build_id),
@@ -383,10 +383,10 @@ def test_family_archive_commands_and_queries(
         json.loads(line) for line in capsys.readouterr().out.splitlines() if line
     ]
     assert [row["build_id"] for row in build_rows] == [
-        "family-small",
         "family-large",
+        "family-small",
     ]
-    assert [row["requested_k"] for row in build_rows] == [20_000, 57_240]
+    assert [row["requested_k"] for row in build_rows] == [57_240, 57_240]
     assert all(
         "gate_verdicts" not in row and "cost_usd" not in row for row in build_rows
     )

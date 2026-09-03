@@ -516,6 +516,82 @@ def test_failure_after_numeric_resolution_retains_request_without_membership(
     assert error_receipt["phases_reached"][-1] == "error"
 
 
+def test_keyboard_interrupt_is_recorded_separately_and_reraised(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (8, {}),
+    )
+
+    def interrupt_builder(_argv):
+        raise KeyboardInterrupt("fixture interruption")
+
+    with pytest.raises(KeyboardInterrupt, match="fixture interruption"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=interrupt_builder,
+        )
+
+    row = load_spool_rows(tmp_path / "out" / "logbook-spool")[0]
+    assert row.disposition == "failed"
+    assert row.gate_verdicts["exact_k_build"]["verdict"] == "interrupted"
+    assert row.phases_reached[-1] == "interrupted"
+    receipt = json.loads(
+        (
+            tmp_path
+            / "out/logbook-receipts/populace-us-2024-k8-fixture/error.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert receipt["error_type"] == "builtins.KeyboardInterrupt"
+    assert receipt["message"] == "fixture interruption"
+
+
+def test_system_exit_is_not_recorded_as_a_build_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (8, {}),
+    )
+
+    def exit_builder(_argv):
+        raise SystemExit(2)
+
+    with pytest.raises(SystemExit, match="2"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=exit_builder,
+        )
+
+    assert load_spool_rows(tmp_path / "out" / "logbook-spool") == ()
+    assert not (
+        tmp_path / "out/logbook-receipts/populace-us-2024-k8-fixture/error.json"
+    ).exists()
+
+
 def test_packaged_household_count_must_match_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

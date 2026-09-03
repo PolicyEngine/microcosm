@@ -712,6 +712,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.archive_root,
                 scope=args.scope,
                 spool_dir=args.spool,
+                builds=builds,
             )
             print(
                 f"imported family records for {args.scope}: "

@@ -26,6 +26,8 @@ from .logbook import (
     _remote_config,
     _validate_digest,
     _validate_remote_url,
+    load_logbook_file,
+    load_spool_rows,
     logbook_chain_scope,
     reconcile_spool,
     urlopen,
@@ -57,6 +59,7 @@ __all__ = [
     "record_family_action",
     "record_family_member",
     "validate_family_action",
+    "validate_family_archive_records",
     "validate_family_membership",
     "validate_family_source",
 ]
@@ -490,11 +493,25 @@ def reconcile_logbook_spool(
     *,
     timeout: float = 10.0,
 ) -> LogbookReconcileResult:
+    build_rows = load_spool_rows(spool_dir)
+    family_records = load_family_spool(spool_dir)
+    if any(
+        (
+            family_records.families,
+            family_records.family_members,
+            family_records.family_actions,
+        )
+    ) and _family_records_are_self_contained(family_records):
+        validate_family_archive_records(family_records, builds=build_rows or None)
     build_result = reconcile_spool(spool_dir, timeout=timeout)
     if build_result.errors:
         family_result = _retained_family_result(spool_dir)
     else:
-        family_result = reconcile_family_spool(spool_dir, timeout=timeout)
+        family_result = reconcile_family_spool(
+            spool_dir,
+            timeout=timeout,
+            builds=build_rows or None,
+        )
     return LogbookReconcileResult(
         builds=build_result,
         families=family_result,
@@ -505,10 +522,20 @@ def reconcile_family_spool(
     spool_dir: str | Path = "logbook-spool",
     *,
     timeout: float = 10.0,
+    builds: Sequence[LogbookRow] | None = None,
 ) -> FamilyReconcileResult:
     directory = Path(spool_dir)
     queued = _load_spooled_family_records(directory)
     retained = sum(len(records) for _, records in queued)
+    records = load_family_spool(directory)
+    available_builds = (
+        tuple(builds) if builds is not None else load_spool_rows(directory)
+    )
+    if retained and _family_records_are_self_contained(records):
+        validate_family_archive_records(
+            records,
+            builds=available_builds or None,
+        )
     config = _remote_config()
     if config is None or retained == 0:
         return FamilyReconcileResult(0, 0, retained, ())
@@ -688,7 +715,7 @@ def load_family_archive_records(
             FamilyAction,
         ),
     )
-    _validate_archive_records(records, scope=scope)
+    validate_family_archive_records(records, scope=scope)
     return records
 
 
@@ -713,7 +740,7 @@ def export_family_scope(
             family_actions,
         ),
     )
-    _validate_archive_records(combined, scope=scope, builds=builds)
+    validate_family_archive_records(combined, scope=scope, builds=builds)
     candidates_by_type = {
         "families": families,
         "family_members": family_members,
@@ -742,8 +769,19 @@ def import_family_scope(
     *,
     scope: str,
     spool_dir: str | Path = "logbook-spool",
+    builds: Sequence[LogbookRow] | None = None,
 ) -> FamilyArchiveRecords:
     records = load_family_archive_records(archive_root, scope)
+    available_builds = tuple(builds) if builds is not None else _load_scope_builds(
+        archive_root,
+        scope,
+        required=bool(records.family_members),
+    )
+    validate_family_archive_records(
+        records,
+        scope=scope,
+        builds=available_builds,
+    )
     for family in records.families:
         record_family(family, spool_dir=spool_dir, post_remote=False)
     for member in records.family_members:
@@ -982,23 +1020,47 @@ def _merge_archive_records[RecordT: (LogbookFamily, FamilyMember, FamilyAction)]
     return tuple(merged)
 
 
-def _validate_archive_records(
+def validate_family_archive_records(
     records: FamilyArchiveRecords,
     *,
-    scope: str,
+    scope: str | None = None,
     builds: Sequence[LogbookRow] | None = None,
 ) -> None:
-    expected_scope = _nonempty_text(scope, "scope")
-    if expected_scope not in DECLARED_LOGBOOK_SCOPES:
-        raise ValueError(
-            f"scope must be one of {sorted(DECLARED_LOGBOOK_SCOPES)}, "
-            f"got {expected_scope!r}."
-        )
-    families = {family.family_id: family for family in records.families}
+    expected_scope = None
+    if scope is not None:
+        expected_scope = _nonempty_text(scope, "scope")
+        if expected_scope not in DECLARED_LOGBOOK_SCOPES:
+            raise ValueError(
+                f"scope must be one of {sorted(DECLARED_LOGBOOK_SCOPES)}, "
+                f"got {expected_scope!r}."
+            )
+
+    families: dict[str, LogbookFamily] = {}
+    families_by_source: dict[tuple[str, str], LogbookFamily] = {}
+    for family in records.families:
+        family.to_mapping()
+        previous = families.get(family.family_id)
+        if previous is not None and previous != family:
+            raise ValueError(
+                f"Family {family.family_id} has conflicting records."
+            )
+        families[family.family_id] = family
+        source_key = (family.chain_scope, family.source_pool_sha256)
+        previous_source = families_by_source.get(source_key)
+        if (
+            previous_source is not None
+            and previous_source.family_id != family.family_id
+        ):
+            raise ValueError(
+                f"Source {family.source_pool_sha256} in scope "
+                f"{family.chain_scope} belongs to multiple families."
+            )
+        families_by_source[source_key] = family
+
     wrong_scope = sorted(
         family.family_id
         for family in records.families
-        if family.chain_scope != expected_scope
+        if expected_scope is not None and family.chain_scope != expected_scope
     )
     if wrong_scope:
         raise ValueError(
@@ -1006,17 +1068,34 @@ def _validate_archive_records(
             f"from another scope: {', '.join(wrong_scope)}."
         )
 
-    members = {
-        (member.family_id, member.build_id): member for member in records.family_members
-    }
+    members: dict[tuple[str, str], FamilyMember] = {}
+    family_by_build: dict[str, str] = {}
     for member in records.family_members:
+        member.to_mapping()
         if member.family_id not in families:
             raise ValueError(
                 f"Family member {member.build_id} references missing family "
                 f"{member.family_id}."
             )
+        member_key = (member.family_id, member.build_id)
+        previous = members.get(member_key)
+        if previous is not None and previous != member:
+            raise ValueError(
+                f"Family member {member.family_id}/{member.build_id} has "
+                "conflicting records."
+            )
+        members[member_key] = member
+        previous_family = family_by_build.get(member.build_id)
+        if previous_family is not None and previous_family != member.family_id:
+            raise ValueError(
+                f"Build {member.build_id} belongs to more than one family: "
+                f"{previous_family} and {member.family_id}."
+            )
+        family_by_build[member.build_id] = member.family_id
+
+    builds_by_id: dict[str, LogbookRow] | None = None
     if builds is not None:
-        builds_by_id: dict[str, LogbookRow] = {}
+        builds_by_id = {}
         for build in builds:
             previous = builds_by_id.get(build.build_id)
             if previous is not None and previous != build:
@@ -1033,7 +1112,19 @@ def _validate_archive_records(
                     f"references missing build {member.build_id}."
                 )
             validate_family_membership(families[member.family_id], member, build)
+    actions: dict[str, FamilyAction] = {}
+    replacements: dict[tuple[str, str], FamilyAction] = {}
+    replacement_edges: dict[tuple[str, str], set[tuple[str, str]]] = {}
     for action in records.family_actions:
+        action.to_mapping()
+        previous_action = actions.get(action.action_id)
+        if previous_action is not None:
+            if previous_action != action:
+                raise ValueError(
+                    f"Family action {action.action_id} has conflicting records."
+                )
+            continue
+        actions[action.action_id] = action
         if (action.family_id, action.build_id) not in members:
             raise ValueError(
                 f"Family action {action.action_id} references missing member "
@@ -1051,6 +1142,86 @@ def _validate_archive_records(
                 f"Family action {action.action_id} references missing related "
                 f"member {action.family_id}/{action.related_build_id}."
             )
+        if action.action_type == "supersedes":
+            assert action.related_build_id is not None
+            replacement_key = (action.family_id, action.related_build_id)
+            previous_replacement = replacements.get(replacement_key)
+            if previous_replacement is not None:
+                raise ValueError(
+                    f"Build {action.related_build_id} has more than one direct "
+                    f"replacement in family {action.family_id}."
+                )
+            replacements[replacement_key] = action
+            replacement_edges.setdefault(
+                (action.family_id, action.build_id),
+                set(),
+            ).add(replacement_key)
+        if builds_by_id is not None:
+            validate_family_action(
+                action,
+                members=tuple(members.values()),
+                builds=builds_by_id,
+            )
+
+    _validate_replacement_graph(replacement_edges)
+
+
+def _validate_replacement_graph(
+    edges: Mapping[tuple[str, str], set[tuple[str, str]]],
+) -> None:
+    states: dict[tuple[str, str], int] = {}
+
+    def visit(node: tuple[str, str]) -> None:
+        state = states.get(node, 0)
+        if state == 1:
+            raise ValueError(
+                f"Family {node[0]} contains a replacement cycle involving "
+                f"build {node[1]}."
+            )
+        if state == 2:
+            return
+        states[node] = 1
+        for related in edges.get(node, ()):
+            visit(related)
+        states[node] = 2
+
+    for build in edges:
+        visit(build)
+
+
+def _family_records_are_self_contained(records: FamilyArchiveRecords) -> bool:
+    family_ids = {family.family_id for family in records.families}
+    members = {
+        (member.family_id, member.build_id) for member in records.family_members
+    }
+    return all(
+        member.family_id in family_ids for member in records.family_members
+    ) and all(
+        (
+            (action.family_id, action.build_id) in members
+            and (
+                action.related_build_id is None
+                or (action.family_id, action.related_build_id) in members
+            )
+        )
+        for action in records.family_actions
+    )
+
+
+def _load_scope_builds(
+    archive_root: str | Path,
+    scope: str,
+    *,
+    required: bool,
+) -> tuple[LogbookRow, ...]:
+    build_archive = Path(archive_root) / Path(*scope.split("/")).with_suffix(".jsonl")
+    if not build_archive.is_file():
+        if required:
+            raise ValueError(
+                f"Family members for {scope} require build archive {build_archive}."
+            )
+        return ()
+    return load_logbook_file(build_archive)
 
 
 def _record_key(record: LogbookFamily | FamilyMember | FamilyAction) -> str:

@@ -730,6 +730,54 @@ def launch(
         source_pool_sha256=config.pool_manifest_sha256,
     )
 
+    def retain_unsuccessful_attempt(
+        error: BaseException,
+        *,
+        status: str,
+    ) -> None:
+        try:
+            failure_path = error_receipt_path(
+                resolved_out,
+                build_id=config.release_id,
+            )
+            failure_reference = local_artifact_reference(
+                failure_path,
+                repository_hint=_REPOSITORY_ROOT,
+            )
+            state.gate_verdicts = {
+                "exact_k_build": {
+                    "verdict": status,
+                    "receipt": failure_reference,
+                }
+            }
+            state.artifact_location = failure_reference
+            append_phase(state, status)
+            write_error_receipt(
+                failure_path,
+                state=state,
+                pipeline=_LOGBOOK_PIPELINE,
+                error=error,
+            )
+            if state.spool_path is None:
+                _record_exact_k_attempt(
+                    state=state,
+                    started_at=started_at,
+                    started_ts=started_ts,
+                    code_pin=code_pin,
+                    seed=config.seed,
+                    predecessor=predecessor,
+                    spool_dir=spool_dir,
+                    requested_k=requested_k,
+                    realized_k=None,
+                    disposition="failed",
+                )
+            reconcile_logbook_spool(spool_dir)
+        except Exception as recording_error:
+            error.add_note(
+                "Exact-k Logbook unsuccessful-attempt recording also failed: "
+                f"{type(recording_error).__name__}: {recording_error}"
+            )
+
     try:
         k, _ = _validate_pins_and_resolve_k(
             config=config,
@@ -853,49 +901,11 @@ def launch(
         }
         package_result = resolved_out / "package_result.json"
         atomic_write_json(package_result, result)
-    except BaseException as error:
-        try:
-            failure_path = error_receipt_path(
-                resolved_out,
-                build_id=config.release_id,
-            )
-            failure_reference = local_artifact_reference(
-                failure_path,
-                repository_hint=_REPOSITORY_ROOT,
-            )
-            state.gate_verdicts = {
-                "exact_k_build": {
-                    "verdict": "error",
-                    "receipt": failure_reference,
-                }
-            }
-            state.artifact_location = failure_reference
-            append_phase(state, "error")
-            write_error_receipt(
-                failure_path,
-                state=state,
-                pipeline=_LOGBOOK_PIPELINE,
-                error=error,
-            )
-            if state.spool_path is None:
-                _record_exact_k_attempt(
-                    state=state,
-                    started_at=started_at,
-                    started_ts=started_ts,
-                    code_pin=code_pin,
-                    seed=config.seed,
-                    predecessor=predecessor,
-                    spool_dir=spool_dir,
-                    requested_k=requested_k,
-                    realized_k=None,
-                    disposition="failed",
-                )
-            reconcile_logbook_spool(spool_dir)
-        except Exception as recording_error:
-            error.add_note(
-                "Exact-k Logbook failure recording also failed: "
-                f"{type(recording_error).__name__}: {recording_error}"
-            )
+    except KeyboardInterrupt as error:
+        retain_unsuccessful_attempt(error, status="interrupted")
+        raise
+    except Exception as error:
+        retain_unsuccessful_attempt(error, status="error")
         raise
 
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))

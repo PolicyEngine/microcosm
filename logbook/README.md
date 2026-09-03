@@ -140,6 +140,12 @@ python tools/logbook.py family-export --scope us --source <run-dir>/logbook-spoo
 python tools/logbook.py family-export --scope uk/frs --remote
 ```
 
+Before an export or import changes any files, collection-level validation
+enforces the database relationship constraints: one family per build, one
+direct replacement per replaced build, compatible build cardinality or
+sampling fraction, and an acyclic replacement history. Invalid input is
+rejected before a partial import can be placed in the reconciliation spool.
+
 To restore archives, first copy the scope's build archive and three family
 archives into a local spool, then send the spool. The import rejects a member
 whose archived build belongs to another scope. Reconciliation sends queued
