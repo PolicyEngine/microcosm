@@ -55,7 +55,7 @@ AM_SPEC_SHA256 = "659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880
         ),
         (
             "uk",
-            "3edba9fab87024376ab61696c503cd0b9e541b5bc0f444759ceb6f28fa5f08a0",
+            "d01fa52a6f9cc32af96e6b2650298154f3dd3311018f90ba8b3c890c31930e04",
             {
                 "benunit.benunit_id",
                 "household.household_id",
