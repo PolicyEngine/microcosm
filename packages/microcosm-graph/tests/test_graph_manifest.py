@@ -387,11 +387,16 @@ def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) ->
     assert document["known_failures"] == ["gate"]
     body = document["content_addressed"]
     assert body["tier"] == "evidence"
-    # The body is the serialized receipts less their run-level fields.
-    assert body["nodes"] == {
-        node_id: {k: v for k, v in receipt.items() if k not in ("hit", "wall_time")}
-        for node_id, receipt in document["nodes"].items()
-    }
+    # The body is the serialized receipts less their run-level fields, and a
+    # release node's decision-derived outcome is run-level too.
+    for node_id, receipt in document["nodes"].items():
+        serialized = {k: v for k, v in receipt.items() if k not in ("hit", "wall_time")}
+        if receipt["capabilities"]["role"] == "release":
+            assert "outcome" in receipt["receipt"]
+            serialized["receipt"] = {
+                k: v for k, v in receipt["receipt"].items() if k != "outcome"
+            }
+        assert body["nodes"][node_id] == serialized
     assert "decisions" not in body
 
     restored = RunManifest.load(path, store)

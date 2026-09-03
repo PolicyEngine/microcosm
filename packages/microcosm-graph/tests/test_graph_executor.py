@@ -455,15 +455,8 @@ def test_decisions_supplied_to_a_run_do_not_move_the_manifest_key(
         "signature": "toy-signature-0001",
     }
     decided = _run(graph, source, store, _release_registry(), decisions=(decision,))
-    release = next(
-        node_id
-        for node_id, item in decided.nodes.items()
-        if item.receipt.get("outcome") is not None
-    )
-    assert (
-        undecided.nodes[release].receipt["outcome"]
-        != decided.nodes[release].receipt["outcome"]
-    )
+    assert undecided.nodes["release"].receipt["outcome"] == "unreached"
+    assert decided.nodes["release"].receipt["outcome"] == "pass"
     assert undecided.key == decided.key
     assert undecided.to_json() != decided.to_json()
 
