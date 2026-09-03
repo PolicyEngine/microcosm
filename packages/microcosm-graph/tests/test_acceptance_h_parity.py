@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from microcosm.graph.keys import platform_fingerprint
+from microcosm.graph import platform_fingerprint
 
 if "_toy" not in sys.modules:
     _SPEC = importlib.util.spec_from_file_location(

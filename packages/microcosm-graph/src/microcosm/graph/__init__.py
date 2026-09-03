@@ -52,6 +52,7 @@ from .kernel import (
 )
 
 __all__ = [
+    "platform_fingerprint",
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
     "GATE_OUTCOMES",
