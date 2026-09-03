@@ -2,10 +2,9 @@
 
 ## State
 
-In progress on the standalone `fix-847-r5` lane at the requested starting
-head. The frozen interface and all named source surfaces have been read; the
-ten final-round findings are now under focused reproduction. No implementation
-change has been made yet.
+Seven of ten findings are fixed and committed on the standalone `fix-847-r5`
+lane. The frozen interface remains unchanged. Findings 4, 6, and 7 are next,
+followed by the complete required verification block and lane report.
 
 ## Done
 
@@ -56,10 +55,18 @@ change has been made yet.
   but the partition heading and row were absent. The fallback now uses the
   canonical `mass_record_receipt` projection, preserving every partition field.
   All graph-explanation tests pass.
+- Reproduced finding 8 with three cached EXPAND corruptions: an incumbent cell
+  changed, an undeclared column added, and a declared new column removed. All
+  three replayed without error. Cached restoration now requires the exact base
+  plus declared column set for every entity, validates declared dtypes, and
+  compares every incumbent column's complete prefix with storage semantics
+  before checking copied additions. The focused regressions and full population
+  unit file pass.
 
 ## Next
 
-- Reproduce each finding against the starting head before implementing it.
-- Add one regression per finding, make small named commits, run the complete
-  required verification block, and write the lane report to the requested
-  output file.
+- Implement and verify amendment 17 numeric-scope aggregation (finding 4), the
+  H1 node-key parity pin (finding 6), and dotted EXPAND declaration refusal
+  (finding 7), preserving the frozen files.
+- Run the complete required verification block and write the lane report to
+  the requested output file.

@@ -788,10 +788,45 @@ def _assert_copied_expand_storage(
     *,
     rewrites: frozenset[tuple[str, str]],
 ) -> None:
-    """Require copied additions to retain carried cells except declared rewrites."""
+    """Revalidate cached EXPAND storage against its cold-path invariants."""
 
     person = before.schema.person_entity
+    declared: dict[str, dict[str, str]] = {entity: {} for entity in before.entities}
+    for entity, column, dtype in _expand_cells(node):
+        if entity not in declared:
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} names unknown entity {entity!r}."
+            )
+        declared[entity][column] = dtype
+
     for entity in before.entities:
+        before_table = before.table(entity)
+        after_table = after.table(entity)
+        expected_columns = set(before_table.columns) | set(declared[entity])
+        actual_columns = set(after_table.columns)
+        if actual_columns != expected_columns:
+            missing = sorted(expected_columns - actual_columns, key=str)
+            extra = sorted(actual_columns - expected_columns, key=str)
+            raise PopulationError(
+                f"Cached EXPAND node {node.id!r} {entity!r} column set differs "
+                f"from its declaration (missing={missing}, extra={extra})."
+            )
+        for column, dtype in declared[entity].items():
+            assert_dtype(
+                after_table[column],
+                dtype,
+                label=f"Cached EXPAND node {node.id!r} cell {entity}.{column}",
+            )
+        for column in before_table.columns:
+            incumbent = (
+                after_table[column].iloc[: len(before_table)].reset_index(drop=True)
+            )
+            if not storage_equal(before_table[column], incumbent):
+                raise PopulationError(
+                    f"Cached EXPAND node {node.id!r} changed incumbent storage "
+                    f"in {entity}.{column}."
+                )
+
         entity_lineage = lineage[entity]
         copied = ~entity_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
         if not copied.any():
@@ -804,8 +839,6 @@ def _assert_copied_expand_storage(
                 before.schema.membership_column(group)
                 for group in before.schema.group_entities
             )
-        before_table = before.table(entity)
-        after_table = after.table(entity)
         before_ids = pd.Index(before_table[id_column], name=id_column)
         after_ids = pd.Index(after_table[id_column], name=id_column)
         copied_lineage = entity_lineage.iloc[np.flatnonzero(copied)]

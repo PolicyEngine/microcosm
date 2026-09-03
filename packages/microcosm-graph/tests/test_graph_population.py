@@ -854,6 +854,76 @@ def test_expand_lineage_carries_rows_remaps_memberships_and_restores_cache() -> 
         )
 
 
+def test_cached_expand_rejects_changed_incumbent_storage() -> None:
+    population = _population()
+    node = _lineage_expand_node()
+    result = _lineage_expand_result()
+    expanded = patch(population, node, result)
+    person = expanded.frame.table("person").copy()
+    person.loc[person["person_id"] == 1, "amount"] = 99.0
+    mutated_frame = _replace_person_table(expanded.frame, person, expanded.frame.strata)
+    assert result.expand is not None
+
+    with pytest.raises(PopulationError, match="incumbent storage"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=mutated_frame,
+                weights=result.weights,
+                receipt={"expand": expand_lineage_receipt(result.expand)},
+            ),
+        )
+
+
+@pytest.mark.parametrize("mutation", ["extra", "missing"], ids=["extra", "missing"])
+def test_cached_expand_requires_exact_declared_column_set(mutation: str) -> None:
+    population = _population()
+    node = Node(
+        "column_set_expand",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (("person", "new_value", "float64"),),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="conserve",
+    )
+    lineage_result = _lineage_expand_result()
+    result = KernelResult(
+        expand=lineage_result.expand,
+        columns={
+            ("person", "new_value"): pd.Series(
+                [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+                index=pd.Index([1, 2, 3, 4, 5, 6], name="person_id"),
+                dtype="float64",
+            )
+        },
+        weights=lineage_result.weights,
+    )
+    expanded = patch(population, node, result)
+    person = expanded.frame.table("person").copy()
+    if mutation == "extra":
+        person["unexpected"] = np.arange(len(person), dtype=np.int64)
+    else:
+        person = person.drop(columns="new_value")
+    mutated_frame = _replace_person_table(expanded.frame, person, expanded.frame.strata)
+    assert result.expand is not None
+
+    with pytest.raises(PopulationError, match="column set"):
+        restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=mutated_frame,
+                weights=result.weights,
+                receipt={"expand": expand_lineage_receipt(result.expand)},
+            ),
+        )
+
+
 def test_cached_expand_requires_exact_lineage_id_sequence() -> None:
     population = _population()
     node = Node(
