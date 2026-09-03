@@ -207,7 +207,7 @@ def test_population_view_entity_accessor_handles_frame_attribute_collisions(
     assert list(view.entities) == list(raw.entities)
 
 
-def test_manifest_key_excludes_every_operational_field() -> None:
+def test_manifest_key_authenticates_receipts_and_excludes_run_metadata() -> None:
     cold = RunManifest(
         country="toy",
         nodes={
@@ -232,11 +232,19 @@ def test_manifest_key_excludes_every_operational_field() -> None:
         finished_at="soon",
         host="host-b",
     )
-    assert cold.key == warm.key
+    metadata_only = RunManifest(
+        country="renamed descriptive label",
+        nodes=cold.nodes,
+        started_at="second",
+        finished_at="soon",
+        host="host-b",
+    )
+    assert cold.key == metadata_only.key
+    assert cold.key != warm.key
     assert cold.to_json() != warm.to_json()
 
 
-def test_decisions_change_manifest_identity_but_not_node_identity() -> None:
+def test_decisions_are_provenance_outside_manifest_and_node_identity() -> None:
     receipt = _receipt("a" * 64)
     bare = RunManifest("toy", {"a": receipt})
     decided = RunManifest(
@@ -245,7 +253,7 @@ def test_decisions_change_manifest_identity_but_not_node_identity() -> None:
         decisions=(Decision("owner", "release", "yes", "2026-09-01"),),
     )
     assert bare.nodes["a"].key == decided.nodes["a"].key
-    assert bare.key != decided.key
+    assert bare.key == decided.key
 
 
 def test_original_signed_decision_records_remain_mapping_compatible() -> None:
@@ -282,7 +290,7 @@ def test_decision_and_node_mapping_order_are_not_identity() -> None:
     assert forward.key == reversed_.key
 
 
-def test_serialized_content_key_detects_provenance_tampering() -> None:
+def test_serialized_decisions_are_provenance_outside_content_key() -> None:
     manifest = RunManifest(
         "toy",
         {"a": _receipt("a" * 64)},
@@ -290,8 +298,9 @@ def test_serialized_content_key_detects_provenance_tampering() -> None:
     )
     payload = json.loads(manifest.to_json())
     payload["decisions"][0]["text"] = "no"
-    with pytest.raises(ValueError, match="content key mismatch"):
-        RunManifest.from_json(json.dumps(payload))
+    restored = RunManifest.from_json(json.dumps(payload))
+    assert restored.key == manifest.key
+    assert restored.decisions[0].text == "no"
 
 
 def test_receipts_and_nested_payloads_are_immutable() -> None:
@@ -310,7 +319,7 @@ def test_receipts_and_nested_payloads_are_immutable() -> None:
     assert receipt.artifact_keys == receipt.artifacts
 
 
-def test_optional_artifact_identities_round_trip_and_allow_legacy_absence() -> None:
+def test_optional_artifact_identities_round_trip_and_missing_fields_fail_key() -> None:
     manifest = RunManifest("toy", {"a": _receipt("a" * 64)})
     restored = RunManifest.from_json(manifest.to_json())
     receipt = restored.nodes["a"]
@@ -322,10 +331,8 @@ def test_optional_artifact_identities_round_trip_and_allow_legacy_absence() -> N
     del legacy_payload["nodes"]["a"]["frame_key"]
     del legacy_payload["nodes"]["a"]["weight_key"]
     del legacy_payload["nodes"]["a"]["opaque_artifacts"]
-    legacy = RunManifest.from_json(json.dumps(legacy_payload))
-    assert legacy.nodes["a"].frame_key is None
-    assert legacy.nodes["a"].weight_key is None
-    assert legacy.nodes["a"].opaque_artifacts == {}
+    with pytest.raises(ValueError, match="node 'a'"):
+        RunManifest.from_json(json.dumps(legacy_payload))
 
 
 def test_transient_mass_ledgers_are_immutable_and_not_portable_identity() -> None:
@@ -366,10 +373,10 @@ def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) ->
     assert document["key"] == manifest.key
     assert document["tier"] == "evidence"
     assert document["known_failures"] == ["gate"]
-    assert document["content_addressed"] == {
-        "node_keys": ["a" * 64, "c" * 64],
-        "decisions": [],
-    }
+    body = document["content_addressed"]
+    assert body["tier"] == "evidence"
+    assert body["nodes"] == document["nodes"]
+    assert "decisions" not in body
 
     restored = RunManifest.load(path, store)
     assert restored.key == manifest.key
@@ -377,6 +384,62 @@ def test_saved_manifest_persists_and_rederives_release_fields(tmp_path: Path) ->
     assert restored.known_failures == ("gate",)
     with pytest.raises(graph_api.NodeRejectedError, match="evidence"):
         RunManifest.load_certified(path, store)
+
+
+def test_from_json_rejects_coordinated_gate_and_tier_tampering(
+    tmp_path: Path,
+) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store)
+    document = json.loads(manifest.to_json())
+    document["nodes"]["gate"]["receipt"]["outcome"] = "pass"
+    document["nodes"]["release"]["receipt"].update(
+        {"tier": "certified", "outcome": "pass"}
+    )
+    document["tier"] = "certified"
+    document["known_failures"] = []
+    tampered = json.dumps(document)
+
+    with pytest.raises(ValueError, match="gate"):
+        RunManifest.from_json(tampered)
+
+    path = tmp_path / "tampered.json"
+    path.write_text(tampered, encoding="utf-8")
+    with pytest.raises(graph_api.StoreCorruptError, match="gate"):
+        RunManifest.load_certified(path, store)
+
+
+def test_v1_manifest_relabel_with_fabricated_tolerance_fails_key() -> None:
+    path = MANIFEST_FIXTURES / "v1_tolerance_bound_without_tolerance.json"
+    document = json.loads(path.read_text())
+    document["schema_version"] = 2
+    receipt = document["nodes"]["fit_qrf"]
+    receipt["legacy_capabilities"] = False
+    receipt["capabilities"]["tolerance"] = {
+        "rtol": 1e-6,
+        "atol": 1e-9,
+        "ulps": 2,
+    }
+
+    with pytest.raises(ValueError, match="fit_qrf"):
+        RunManifest.from_json(json.dumps(document))
+
+
+def test_untouched_certified_manifest_round_trips_and_loads_certified(
+    tmp_path: Path,
+) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(
+        store,
+        tier="certified",
+        gate_outcome="pass",
+    )
+
+    restored = RunManifest.from_json(manifest.to_json())
+    assert restored.to_json() == manifest.to_json()
+    path = tmp_path / "certified.json"
+    manifest.save(path)
+    assert RunManifest.load_certified(path, store).key == manifest.key
 
 
 def test_v1_tolerance_bound_manifest_loads_as_legacy_cache_miss(
@@ -458,7 +521,7 @@ def test_loader_wraps_noncanonical_body_with_manifest_key(tmp_path: Path) -> Non
     path = tmp_path / "manifest.json"
     manifest.save(path)
     document = json.loads(path.read_text())
-    document["content_addressed"]["node_keys"][0] = float("nan")
+    document["content_addressed"]["nodes"]["gate"]["seed"] = float("nan")
     path.write_text(json.dumps(document))
 
     with pytest.raises(graph_api.StoreCorruptError, match=manifest.key):
@@ -482,7 +545,7 @@ def test_known_failures_includes_explicitly_rejected_nodes() -> None:
         ("schema_version", True),
         ("known_failures", []),
         ("key", "0" * 64),
-        ("content_addressed", {"node_keys": [], "decisions": []}),
+        ("content_addressed", {"nodes": {}, "tier": None}),
     ],
 )
 def test_load_rejects_every_persisted_projection_mismatch(

@@ -359,9 +359,11 @@ class NodeReceipt:
 class RunManifest:
     """One run's provenance plus its attached, non-serialized populations.
 
-    Only sorted node keys and signed decisions form :attr:`key`.  Store hits,
-    timings, host, timestamps, receipts, and attached ``Frame`` instances are
-    run-level observations and cannot invalidate computational reuse.
+    Every complete node receipt and the derived release tier form :attr:`key`.
+    Signed decisions remain unauthenticated provenance by interface ruling;
+    country, host, timestamps, and attached ``Frame`` instances are also
+    outside the content-addressed body. Computational reuse continues to use
+    node keys, not this run-manifest identity.
     """
 
     country: str
@@ -430,14 +432,13 @@ class RunManifest:
     def content_addressed(self) -> Mapping[str, object]:
         """The exact projection hashed by :attr:`key`."""
 
-        decisions = sorted(
-            (decision._payload() for decision in self.decisions),
-            key=canonical_json,
-        )
+        nodes = {
+            node_id: self.nodes[node_id]._payload() for node_id in sorted(self.nodes)
+        }
         return MappingProxyType(
             {
-                "node_keys": tuple(sorted(item.key for item in self.nodes.values())),
-                "decisions": tuple(decisions),
+                "nodes": MappingProxyType(nodes),
+                "tier": self.tier,
             }
         )
 
@@ -627,20 +628,23 @@ class RunManifest:
             host=_string_field(raw, "host"),
         )
         body = raw.get("content_addressed")
-        if "content_addressed" in raw:
-            if not isinstance(body, Mapping):
-                raise ValueError("manifest content-addressed body must be an object")
-            recomputed_body = json.loads(canonical_json(manifest.content_addressed))
+        if not isinstance(body, Mapping):
+            raise ValueError("manifest content-addressed body must be an object")
+        if schema_version == _LEGACY_SCHEMA_VERSION:
+            recomputed_body = json.loads(
+                canonical_json(_legacy_content_addressed(manifest))
+            )
             if body != recomputed_body:
                 raise ValueError(
-                    "manifest content key mismatch: the content-addressed body "
-                    "does not match portable provenance"
+                    "manifest content key mismatch: the legacy content-addressed "
+                    "body does not match portable provenance"
                 )
-            recomputed_key = sha256_domain("manifest", canonical_json(body))
         else:
-            recomputed_key = manifest.key
+            recomputed_body = json.loads(canonical_json(manifest.content_addressed))
+            _validate_current_content_addressed_body(body, recomputed_body, manifest)
+        recomputed_key = sha256_domain("manifest", canonical_json(body))
         serialized_key = raw.get("key")
-        if serialized_key != recomputed_key or recomputed_key != manifest.key:
+        if serialized_key != recomputed_key:
             raise ValueError(
                 "manifest content key mismatch: serialized provenance was altered"
             )
@@ -750,6 +754,69 @@ class RunManifest:
                 f"Manifest {manifest.key} is evidence-tier, not certified."
             )
         return manifest
+
+
+def _legacy_content_addressed(manifest: RunManifest) -> Mapping[str, object]:
+    """Reconstruct the schema-v1 identity projection for legacy validation."""
+
+    decisions = sorted(
+        (decision._payload() for decision in manifest.decisions),
+        key=canonical_json,
+    )
+    return MappingProxyType(
+        {
+            "node_keys": tuple(sorted(node.key for node in manifest.nodes.values())),
+            "decisions": tuple(decisions),
+        }
+    )
+
+
+def _validate_current_content_addressed_body(
+    body: Mapping[str, object],
+    expected: Mapping[str, object],
+    manifest: RunManifest,
+) -> None:
+    """Match a schema-v2 body to portable receipts, naming the first node."""
+
+    expected_nodes = expected.get("nodes")
+    if not isinstance(expected_nodes, Mapping):  # pragma: no cover - internal shape
+        raise RuntimeError("current manifest identity lost its node mapping")
+    first_node = min(manifest.nodes, default="<manifest>")
+    body_nodes = body.get("nodes")
+    if not isinstance(body_nodes, Mapping):
+        raise ValueError(
+            f"manifest content key mismatch at node {first_node!r}: "
+            "the content-addressed body has no node receipt mapping"
+        )
+    for node_id in sorted(set(body_nodes) | set(expected_nodes)):
+        if node_id not in body_nodes:
+            detail = "the content-addressed body omits its receipt"
+        elif node_id not in expected_nodes:
+            detail = "the content-addressed body names an absent node"
+        elif body_nodes[node_id] != expected_nodes[node_id]:
+            detail = "the content-addressed receipt differs from portable provenance"
+        else:
+            continue
+        raise ValueError(f"manifest content key mismatch at node {node_id!r}: {detail}")
+
+    expected_fields = {"nodes", "tier"}
+    if set(body) != expected_fields:
+        raise ValueError(
+            f"manifest content key mismatch after node {first_node!r}: body fields "
+            f"{sorted(body)!r} do not equal {sorted(expected_fields)!r}"
+        )
+    if body.get("tier") != expected.get("tier"):
+        release_nodes = sorted(
+            node_id
+            for node_id, node in manifest.nodes.items()
+            if _capability_role(node) is KernelRole.RELEASE
+        )
+        tier_node = release_nodes[0] if release_nodes else first_node
+        raise ValueError(
+            f"manifest content key mismatch at node {tier_node!r}: stored tier "
+            f"{body.get('tier')!r} differs from derived tier "
+            f"{expected.get('tier')!r}"
+        )
 
 
 def _capability_role(node: NodeReceipt) -> KernelRole:
