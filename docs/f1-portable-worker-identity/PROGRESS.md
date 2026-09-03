@@ -2,9 +2,9 @@
 
 ## State
 
-The portable worker identity, authenticated H5/scoring boundary, and typed
-specification mirrors are implemented and focused green; downstream pinned
-hashes, documentation, and full verification are in progress on
+The portable worker identity, authenticated H5/scoring boundary, typed
+specification mirrors, and downstream identity pins are implemented and
+focused green; documentation and full verification are in progress on
 `f1-portable-worker-identity` from base
 `09abf2ad78e9af3c5314a4b303d42a75e30d49c4`.
 
@@ -77,10 +77,17 @@ hashes, documentation, and full verification are in progress on
   authority 2, resource semantics 2, stacked authority 12, and checkpoint
   materializer 13. JSON parsing, Ruff, bundle loading, and all four imputation
   projector tests pass.
+- Refreshed the schedule, stacked-authority, resource-semantics, checkpoint,
+  graph, and country-spec identity pins, plus their exact version assertions.
+  Regenerated coverage evidence is green at `42154/42154` configuration fields
+  and `41/41` inventory checks; its deterministic `--check` is also green.
+- Green evidence for the refreshed spec identity contracts: `18 passed, 21
+  skipped`, exit 0. The constants-era bundle generator was also attempted with
+  both `--check` and `--check --skip-validation`; each exits 1 before byte
+  comparison because this environment lacks the optional `policyengine-us`
+  distribution metadata.
 
 ## Next
 
-- Refresh every observed spec/authority/inventory hash and coverage count,
-  including generated coverage evidence and version assertions.
 - Document the operator attestation/receipt contract, add the changelog, then
   run focused, CI-group, and required repository checks.

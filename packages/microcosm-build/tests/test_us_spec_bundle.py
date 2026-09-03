@@ -386,7 +386,7 @@ def test_constant_derived_domain_counts_are_complete(
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086"
+        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
     )
 
     assert len(take_up["programs"]) == 17
@@ -790,6 +790,25 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
         for resource in primary_node["virtual_resources"]
         if resource["binding"]["resource_kind"] == "primary_puf_execution_config"
     )
+    assert graph["schedule_payload_schema_version"] == 17
+    assert graph["execution_receipt_contract"]["version"] == 4
+    assert graph["execution_receipt_contract"]["transition_authority"]["version"] == 2
+    assert graph["resource_semantics"]["schema_version"] == 2
+    assert primary_binding["schema_version"] == 5
+    assert primary_binding["qrf"]["worker_execution"] == {
+        "surface": "execution_profile",
+        "resolve_as": "worker_execution",
+        "template": {
+            "schema_version": 1,
+            "semantic_identity": {
+                "resolver_op": "primary_qrf_worker_semantic_identity"
+            },
+            "semantic_identity_sha256": {
+                "resolver_op": "primary_qrf_worker_semantic_identity_sha256"
+            },
+            "audit_aliases": {"resolver_op": "primary_qrf_worker_audit_aliases"},
+        },
+    }
     runtime_bands = primary_binding["capital_gains_tail"]["soi_e19200_agi_bands"][
         "runtime_agi_bands"
     ]
@@ -949,12 +968,8 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     assert geography["assignment"]["anchor"] == "puma"
     assert geography["assignment"]["order"] == "before_gap_fill"
     assert geography["assignment"]["assign_tract"] is False
-    assert geography["assignment"][
-        "congressional_district_vintage_crosswalk"
-    ] == {
-        "source_ref": (
-            "source:us_congressional_district_vintage_crosswalk_117_to_119"
-        ),
+    assert geography["assignment"]["congressional_district_vintage_crosswalk"] == {
+        "source_ref": ("source:us_congressional_district_vintage_crosswalk_117_to_119"),
         "source_vintage": "vintage:cd_117",
         "target_vintage": "vintage:cd_119",
     }
@@ -984,9 +999,12 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     assert engine_version_occurrences == {
         kind: int(kind == "take_up") for kind in TYPED_DOMAIN_KINDS
     }
-    assert take_up["legacy_contract_metadata"]["asserted_engine"][
-        "inventory_built_against"
-    ] == engine_version
+    assert (
+        take_up["legacy_contract_metadata"]["asserted_engine"][
+            "inventory_built_against"
+        ]
+        == engine_version
+    )
     assert _count_scalar(engine_lock, engine_version) == 1
     resolved_vintages = thaw_json(resolved_us_spec.vintage_authorities)
     assert resolved_vintages["records"]["policyengine_us_surface"]["value"] == (

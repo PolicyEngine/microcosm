@@ -784,9 +784,9 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 16
+    assert receipt["schema_version"] == 17
     assert receipt["execution_receipt_contract"] == {
-        "version": 3,
+        "version": 4,
         "row_binding": (
             "declared_globally_reconciled_input_and_scope_exact_output_source_"
             "and_primary_callback_resource_receipt_and_previous_execution_sha256"
@@ -799,7 +799,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
         "transition_authority": {
             "authority_id": "us_stacked_late_producer_transition",
             "metadata_key": "us_late_producer_transition_authority",
-            "version": 1,
+            "version": 2,
             "independent_digest_required": True,
         },
     }

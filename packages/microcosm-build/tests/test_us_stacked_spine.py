@@ -13,6 +13,7 @@ import hashlib
 import inspect
 import json
 import pickle
+import sys
 from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
@@ -4585,7 +4586,7 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "tax_unit_outputs": "canonical_default",
     }
     execution = baseline["tax_unit.@primary_puf_execution_config"]["binding"]
-    assert execution["schema_version"] == 4
+    assert execution["schema_version"] == 5
     assert execution["clone_attachment"]["support_channels"] == [
         stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
         stacked_spine_module.PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -4614,9 +4615,19 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         }
     }
     worker = execution["qrf"]["worker_execution"]
-    assert worker["module"] == "microcosm.build.us_runtime.puf_qrf_worker"
-    assert worker["argv_template"] == [
-        worker["interpreter"]["executable"],
+    assert set(worker) == {
+        "schema_version",
+        "semantic_identity",
+        "semantic_identity_sha256",
+        "audit_aliases",
+    }
+    assert worker["schema_version"] == 1
+    semantic = worker["semantic_identity"]
+    assert semantic["worker_module"]["name"] == (
+        "microcosm.build.us_runtime.puf_qrf_worker"
+    )
+    assert semantic["argv_template"] == [
+        worker_identity_module.PRIMARY_QRF_INTERPRETER_PLACEHOLDER,
         "-m",
         "microcosm.build.us_runtime.puf_qrf_worker",
         "--checkpoint-dir",
@@ -4624,7 +4635,15 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "--target-index",
         "{target_index}",
     ]
-    environment = worker["environment"]
+    assert worker["semantic_identity_sha256"] == (
+        worker_identity_module._canonical_sha256(semantic)
+    )
+    assert worker["audit_aliases"] == {
+        "sys_executable": str(Path(sys.executable)),
+        "sys_prefix": str(Path(sys.prefix)),
+        "argv_template_0": str(Path(sys.executable)),
+    }
+    environment = semantic["environment"]
     assert environment["policy"] == (
         "inherit_parent_environment_with_bound_fit_controls"
     )
@@ -4807,6 +4826,7 @@ def test_stacked_primary_qrf_refuses_unbound_surface_and_missing_audit_sink() ->
     binding = stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
         resources
     )
+    assert binding["schema_version"] == 2
     frame = _late_primary_entry(_stacked_gap_fixture())
 
     with pytest.raises(ValueError, match=r"canonical predictor/output surface"):
@@ -8573,7 +8593,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -8594,7 +8614,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 11
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 12
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -8613,7 +8633,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 11
+    assert receipt["version"] == 12
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
