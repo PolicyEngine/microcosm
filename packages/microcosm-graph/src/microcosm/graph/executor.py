@@ -1819,12 +1819,7 @@ def run_graph(
             cache_hit=hit,
             mass_partition=compiled.graph.mass_partition,
         )
-        author_mass = compiled.graph.mass_partition is not None or (
-            node.structural is StructuralDelta.EXPAND
-            and node.entrants
-            and "entrant_strata" in normalized_receipt
-        )
-        if author_mass and node.structural not in {
+        if node.structural not in {
             StructuralDelta.NONE,
             StructuralDelta.CREATE,
         }:

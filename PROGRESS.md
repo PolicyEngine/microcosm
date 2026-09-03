@@ -2,7 +2,7 @@
 
 ## State
 
-F2 through F4 are implemented and focused-green; F5 is next. Work remains in
+F2 through F5 are implemented and focused-green; F7 is next. Work remains in
 progress on branch `fix-847-r2`, based exactly on dispatched head
 `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
 first and failed because the mandated no-network environment cannot resolve
@@ -56,10 +56,16 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
   entrant/copy toy test and cached-frame tamper test. The complete population,
   executor, and B-ownership suites pass together (85 tests), with focused Ruff
   and formatting checks green.
+- F5: every FILTER, EXPAND, and REWEIGHT now receives the executor's full D2
+  mass record in its portable receipt, independent of partitions, entrant
+  strata, or the kernel's declared mass policy.
+- Captured the B6 group-entrant JSON regression red with missing `mass`, then
+  passed it cold and warm; the executor plus B-ownership and D-weight suites
+  pass together (57 tests), with focused Ruff and formatting checks green.
 
 ## Next
 
-- Implement and regression-test F5, F7, and F10 as one commit per
+- Implement and regression-test F7 and F10 as one commit per
   finding, maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
 
