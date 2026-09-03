@@ -149,6 +149,7 @@ DYNAMIC_NAMESPACE_REFERENCES = frozenset(
         "builtins.setattr",
         "builtins.__import__",
         "importlib.import_module",
+        "sys.modules",
     }
 )
 

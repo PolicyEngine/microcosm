@@ -444,6 +444,14 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "module-level pytestmark",
         ),
         (
+            "import sys\nfrom helper import SKIP_MARK\n\nsys.modules[__name__].__dict__.update({'pytestmark': SKIP_MARK})\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import sys\nfrom helper import SKIP_MARK\n\nsys.modules[__name__].__dict__.setdefault('pytestmark', SKIP_MARK)\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
             "import pytest\n\n\n@pytest.mark.skip\ndef test_a1_one() -> None:\n    assert False\n",
             "carries mark 'skip'",
         ),

@@ -105,8 +105,20 @@ follows it.
   defect in the amendment-17 root export block. The import names were reordered
   without changing exports or behavior; verification restarts from the first
   required command after this committed cleanup.
+- A final read-only adversarial audit found that mutating
+  `sys.modules[__name__].__dict__` through `update` or `setdefault` could still
+  install an imported `pytestmark` without a scanner finding. Both variants
+  reproduced as empty suppression results; any access to `sys.modules` now
+  fails closed as a dynamic module namespace, and the focused parametrized
+  regressions pass.
+- The first full required graph-plus-fit run reached 100% with one failure:
+  frozen acceptance B still asserts the pre-amendment-17 `KernelContext` field
+  set and omits the already-locked `numerics` field. The same contradiction is
+  present at the pinned starting SHA; the prohibited test and frozen kernel
+  remain unchanged while the remaining audit and rerun proceed.
 
 ## Next
 
-- Run the complete required verification block and write the lane report to
-  the requested output file.
+- Finish the parallel code audit, rerun the complete required verification
+  block after the final ratchet hardening, and write the lane report to the
+  requested output file.
