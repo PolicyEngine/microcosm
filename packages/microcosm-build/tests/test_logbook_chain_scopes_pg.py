@@ -31,9 +31,7 @@ psycopg = pytest.importorskip("psycopg")
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS = ROOT / "supabase/migrations"
 CHAIN_SCOPES_MIGRATION = MIGRATIONS / "20260818000000_logbook_chain_scopes.sql"
-UK_LOCAL_SCOPE_MIGRATION = (
-    MIGRATIONS / "20260829000000_logbook_uk_local_scope.sql"
-)
+UK_LOCAL_SCOPE_MIGRATION = MIGRATIONS / "20260829000000_logbook_uk_local_scope.sql"
 FAMILY_MIGRATION = MIGRATIONS / "20260830000000_logbook_family_model.sql"
 ROWS = ROOT / "logbook/us.jsonl"
 ROW_VERSION_FIXTURES = (
@@ -247,9 +245,7 @@ def test_logbook_chain_scopes_migration_preserves_and_scopes_live_rows() -> None
     # independence is already proven above: uk/frs opened while us had rows.
     _insert(
         connection,
-        _build_row(
-            "uk-local-genesis", pipeline="uk-local-rowwise", predecessor=None
-        ),
+        _build_row("uk-local-genesis", pipeline="uk-local-rowwise", predecessor=None),
     )
     _refuses(
         connection,

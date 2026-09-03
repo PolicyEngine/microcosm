@@ -535,9 +535,7 @@ def test_cli_export_accepts_uk_local_scope_archive(
     _write_jsonl(source, rows)
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 0
     assert "exported 3 new Logbook rows" in capsys.readouterr().out
