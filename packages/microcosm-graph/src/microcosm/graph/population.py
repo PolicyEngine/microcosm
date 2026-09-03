@@ -883,6 +883,12 @@ def restore_cached_expand(
     lineage = _validate_expand_lineage(
         population.frame, node, receipt_lineage, after=frame
     )
+    _assert_copied_expand_memberships(
+        population.frame,
+        {entity: frame.table(entity) for entity in frame.entities},
+        lineage,
+        node,
+    )
     _assert_copied_expand_storage(
         population.frame,
         frame,
@@ -1163,13 +1169,13 @@ def _targets_by_source(lineage: pd.Series) -> dict[object, list[object]]:
     return grouped
 
 
-def _remap_expand_memberships(
+def _remapped_expand_memberships(
     before: Frame,
     tables: Mapping[str, pd.DataFrame],
     lineage: Mapping[str, pd.Series],
     node: Node,
-) -> None:
-    """Make each copied person's memberships follow the copied groups.
+) -> dict[str, pd.Series]:
+    """Return memberships whose copied rows follow their copied groups.
 
     Multiple copies use strict ordinal alignment: the nth copy of every member
     follows the nth copy of its source group. A copied group therefore requires
@@ -1191,6 +1197,7 @@ def _remap_expand_memberships(
             f"EXPAND node {node.id!r} cannot align copied person memberships."
         )
     person_targets = _targets_by_source(person_lineage)
+    result: dict[str, pd.Series] = {}
 
     for group in before.schema.group_entities:
         membership = before.schema.membership_column(group)
@@ -1240,9 +1247,82 @@ def _remap_expand_memberships(
             seen[source_person_id] = ordinal + 1
 
         carried = source_person[membership].reset_index(drop=True)
-        tables[person][membership] = pd.concat(
-            [carried, remapped], ignore_index=True
-        ).array
+        result[membership] = pd.concat([carried, remapped], ignore_index=True)
+    return result
+
+
+def _remap_expand_memberships(
+    before: Frame,
+    tables: Mapping[str, pd.DataFrame],
+    lineage: Mapping[str, pd.Series],
+    node: Node,
+) -> dict[str, pd.Series]:
+    """Install the lineage-derived memberships for copied persons."""
+
+    person = before.schema.person_entity
+    remapped = _remapped_expand_memberships(before, tables, lineage, node)
+    for membership, values in remapped.items():
+        tables[person][membership] = values.array
+    return remapped
+
+
+def _assert_copied_expand_memberships(
+    before: Frame,
+    tables: Mapping[str, pd.DataFrame],
+    lineage: Mapping[str, pd.Series],
+    node: Node,
+    *,
+    remapped: Mapping[str, pd.Series] | None = None,
+) -> None:
+    """Validate copied memberships against lineage, with the B6 exception."""
+
+    person = before.schema.person_entity
+    person_lineage = lineage[person]
+    copied_positions = np.flatnonzero(
+        ~person_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+    )
+    if not len(copied_positions):
+        return
+
+    if remapped is None:
+        remapped = _remapped_expand_memberships(before, tables, lineage, node)
+    overlay_coordinates = {
+        (entity, column) for entity, column, _ in _expand_cells(node)
+    }
+    person_table = tables[person]
+    source_person_count = before.n(person)
+    for group in before.schema.group_entities:
+        membership = before.schema.membership_column(group)
+        coordinate = (person, membership)
+        actual = person_table[membership].reset_index(drop=True)
+        expected = remapped[membership]
+        entrant_group_ids = pd.Index(
+            lineage[group].index[
+                lineage[group].isna().to_numpy(dtype=np.bool_, copy=False)
+            ]
+        )
+        for addition_position in copied_positions:
+            row_position = source_person_count + int(addition_position)
+            if storage_equal(
+                actual.iloc[[row_position]].reset_index(drop=True),
+                expected.iloc[[row_position]].reset_index(drop=True),
+            ):
+                continue
+            offending_group_id = actual.iloc[row_position]
+            if (
+                coordinate in overlay_coordinates
+                and not pd.isna(offending_group_id)
+                and offending_group_id in entrant_group_ids
+            ):
+                continue
+            person_id = _lineage_json_scalar(person_lineage.index[addition_position])
+            named_group_id = _lineage_json_scalar(offending_group_id)
+            raise PopulationError(
+                f"EXPAND node {node.id!r} membership overlay {person}.{membership} "
+                f"re-pointed copied {person} id {person_id!r} to {group} id "
+                f"{named_group_id!r}; only its lineage-remapped group or a "
+                f"same-EXPAND entrant {group} is allowed."
+            )
 
 
 def _patch_expand(
@@ -1388,10 +1468,14 @@ def _patch_expand(
         carried[id_column] = replacement_ids.array
         tables[entity] = carried
 
-    _remap_expand_memberships(before, tables, lineage, node)
+    remapped_memberships = _remap_expand_memberships(before, tables, lineage, node)
 
     for (entity, column), aligned in aligned_cells.items():
         tables[entity][column] = aligned.array
+
+    _assert_copied_expand_memberships(
+        before, tables, lineage, node, remapped=remapped_memberships
+    )
 
     for entity, expected_ids in target_ids.items():
         id_column = before.schema.entity_id_column(entity)
