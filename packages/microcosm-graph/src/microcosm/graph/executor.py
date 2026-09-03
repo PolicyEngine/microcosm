@@ -653,6 +653,27 @@ def _expand_writer_coordinates(node: Node) -> frozenset[tuple[str, str]]:
     )
 
 
+def _expand_declared_payload(node: Node) -> list[str]:
+    """Canonical receipt spellings of every declared EXPAND coordinate."""
+
+    return [
+        f"{entity}.{column}"
+        for entity, column in sorted(_expand_writer_coordinates(node))
+    ]
+
+
+def _parse_expand_declared(node: Node, raw: object) -> frozenset[tuple[str, str]]:
+    """Validate the executor-authored EXPAND declaration attestation."""
+
+    expected = tuple(_expand_declared_payload(node))
+    if not isinstance(raw, list | tuple) or tuple(raw) != expected:
+        raise ValueError(
+            f"EXPAND node {node.id!r} expand_declared must exactly equal its "
+            f"canonical declaration {expected!r}."
+        )
+    return _expand_writer_coordinates(node)
+
+
 def _parse_expand_writes(
     node: Node, raw: object
 ) -> Mapping[tuple[str, str], tuple[str, ...]]:
@@ -726,8 +747,8 @@ def _validate_materialized_expand_outputs(
             f"EXPAND population version {holder.id!r} has no runtime receipt."
         )
     try:
-        expand_writes = _parse_expand_writes(
-            holder, holder_receipt.receipt.get("expand_writes")
+        expand_declared = _parse_expand_declared(
+            holder, holder_receipt.receipt.get("expand_declared")
         )
     except ValueError as error:  # executor-authored receipts cannot be malformed
         raise NodeRejected(
@@ -735,11 +756,11 @@ def _validate_materialized_expand_outputs(
             f"EXPAND population version {holder.id!r}: {error}"
         ) from error
     for entity, column in sorted(materialized):
-        if (entity, column) not in expand_writes:
+        if (entity, column) not in expand_declared:
             raise NodeRejected(
                 f"Node {node.id!r} names materialized EXPAND output "
                 f"{entity}.{column}, but EXPAND population version {holder.id!r} "
-                "did not materialize that coordinate."
+                "did not declare that coordinate."
             )
 
 
@@ -1492,12 +1513,16 @@ def _require_record_shape(
             raise StoreMiss(
                 f"Cached EXPAND node {node.id!r} predates expand_writes provenance."
             )
+        if "expand_declared" not in raw_receipt:
+            raise StoreMiss(
+                f"Cached EXPAND node {node.id!r} predates expand_declared provenance."
+            )
         try:
+            _parse_expand_declared(node, raw_receipt["expand_declared"])
             _parse_expand_writes(node, raw_receipt["expand_writes"])
         except ValueError as error:
             raise StoreCorrupt(
-                f"Cached EXPAND node {node.id!r} has malformed expand_writes "
-                "provenance."
+                f"Cached EXPAND node {node.id!r} has malformed EXPAND provenance."
             ) from error
     return raw
 
@@ -1984,6 +2009,7 @@ def run_graph(
         )
         if node.structural is StructuralDelta.EXPAND:
             assert incumbent is not None
+            normalized_receipt["expand_declared"] = _expand_declared_payload(node)
             try:
                 authored_expand_writes = expand_writes_receipt(
                     incumbent.frame,

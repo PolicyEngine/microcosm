@@ -1406,6 +1406,107 @@ def test_materialized_expand_claim_rejects_non_materialized_coordinate(
     assert claim_kernel.calls == 0
 
 
+def test_entrant_expand_with_zero_entrants_allows_declared_materialized_claim(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+
+    def admit_no_entrants(context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [],
+                    index=pd.Index([], name="person_id", dtype="int64"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    [],
+                    index=pd.Index([], name="household_id", dtype="int64"),
+                    dtype="int64",
+                ),
+            },
+            columns={
+                ("household", "size"): pd.Series(
+                    household["size"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="int64",
+                )
+            },
+            weights=context.weights["household"],
+        )
+
+    def claim_size(context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        return KernelResult(
+            columns={
+                ("household", "size"): pd.Series(
+                    household["size"].array.copy(),
+                    index=pd.Index(household["household_id"], name="household_id"),
+                    dtype="int64",
+                )
+            }
+        )
+
+    expand = Node(
+        "zero_entrant_expand",
+        "expand.zero-entrants@1",
+        inputs=(Slice("household", ("size",)),),
+        structural=StructuralDelta.EXPAND,
+        base=CREATE.id,
+        params={
+            "expand_cells": (("household", "size", "int64"),),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+    claimant = Node(
+        "claim_zero_entrant_size",
+        "claim.zero-entrant-size@1",
+        outputs=(Owned("household", "size", "int64"),),
+        params={"materialized_expand_outputs": ("household.size",)},
+        population=expand.id,
+    )
+    expand_kernel = _Kernel(
+        expand.kernel,
+        Capabilities(
+            Determinism.DETERMINISTIC,
+            structural=StructuralDelta.EXPAND,
+        ),
+        admit_no_entrants,
+    )
+    claim_kernel = _Kernel(
+        claimant.kernel,
+        Capabilities(Determinism.DETERMINISTIC),
+        claim_size,
+    )
+    registry = _registry()
+    registry.register(expand_kernel)
+    registry.register(claim_kernel)
+    graph = Graph("toy", (SOURCE,), (CREATE, expand, claimant))
+    store = ContentStore(tmp_path / "store")
+
+    cold = _run(graph, source, store, registry)
+    warm = _run(graph, source, store, registry)
+
+    for manifest in (cold, warm):
+        assert manifest.nodes[expand.id].receipt["expand_declared"] == (
+            "household.size",
+        )
+        assert manifest.nodes[expand.id].receipt["expand_writes"] == {}
+        assert manifest.nodes[claimant.id].receipt["capabilities"][
+            "tolerance_writers"
+        ] == {"household.size": (CREATE.id,)}
+    assert not cold.nodes[expand.id].hit
+    assert not cold.nodes[claimant.id].hit
+    assert warm.nodes[expand.id].hit
+    assert warm.nodes[claimant.id].hit
+    assert expand_kernel.calls == 1
+    assert claim_kernel.calls == 1
+
+
 def test_entrant_expand_rejects_mutated_copied_carried_values(
     tmp_path: Path,
 ) -> None:
