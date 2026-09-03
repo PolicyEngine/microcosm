@@ -12,18 +12,21 @@ word ``xfail``: a decorator inside a docstring, a commented-out marker, or a
 marker on a helper would all fool a text search, and the number this prints is
 the number the charter is scored on.
 
-``--verify`` compares against ``origin/node-graph``, file by file, and exits 1
-if any file's count rose. A file that does not exist on the baseline is
-reported as new and constrains nothing; a file that does is a ratchet. It also
-refuses a marker that is not ``strict=True`` (a non-strict marker hides an
-``xpass``, so a property could go green without anybody noticing), a marker
-whose reason names no charter id, and a charter id with no test at all.
+``--verify`` compares against the baseline branch by property identity and
+exits 1 if any property that was green there is red now, whichever file the
+marker sits in and whatever else went green (counts can offset; identities
+cannot). A property the charter gained since the baseline may start red. It
+also refuses a marker that is not ``strict=True`` (a non-strict marker hides
+an ``xpass``, so a property could go green without anybody noticing), a marker
+whose reason names no charter id or an id the charter does not list, and a
+charter id with no test at all.
 """
 
 from __future__ import annotations
 
 import argparse
 import ast
+import fnmatch
 import json
 import re
 import subprocess
@@ -154,6 +157,37 @@ def counts(files: tuple[str, ...]) -> dict[str, tuple[Marker, ...]]:
         for file in files
         if (ROOT / file).is_file()
     }
+
+
+def baseline_suite_files(ref: str) -> tuple[str, ...]:
+    """The acceptance files as of ``ref``, including ones since deleted."""
+    # ``git ls-tree`` takes literal paths, not globs: list the directory and
+    # match the file pattern here.
+    result = subprocess.run(
+        [
+            "git",
+            "ls-tree",
+            "-r",
+            "--name-only",
+            ref,
+            "--",
+            str(Path(SUITE_GLOB).parent),
+        ],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode != 0:
+        return ()
+    pattern = Path(SUITE_GLOB).name
+    return tuple(
+        sorted(
+            line
+            for line in result.stdout.splitlines()
+            if line and fnmatch.fnmatch(Path(line).name, pattern)
+        )
+    )
 
 
 def baseline_source(ref: str, file: str) -> str | None:
@@ -291,43 +325,67 @@ def verify(ref: str = BASELINE_REF) -> int:
         if entry["state"] == "missing":
             problems.append(f"charter {entry['id']} has no test in the suite")
 
+    declared = set(charter_ids((ROOT / CHARTER).read_text()))
+    for file in sorted(current):
+        for marker in current[file]:
+            if marker.charter_id and marker.charter_id not in declared:
+                problems.append(
+                    f"{file}::{marker.test} names {marker.charter_id}, which "
+                    f"{CHARTER} does not list"
+                )
+
     if not fetch_baseline(ref):
         print(f"baseline={ref} unavailable; the ratchet did not run")
     else:
         print(f"baseline={ref}")
-        # A property the charter gained since the baseline is committed red
-        # first (the charter's meta-TDD rule), so its marker is not a re-red.
+        # The ratchet is on property identities, not counts: a property that
+        # is green on the baseline and red now is a re-red, whatever else
+        # went green, whichever file the marker sits in. A property the
+        # charter gained since the baseline is committed red first (the
+        # charter's meta-TDD rule), so its marker is not a re-red.
         baseline_charter = baseline_source(ref, CHARTER)
         known = set(charter_ids(baseline_charter)) if baseline_charter else set()
+        new_to_charter = declared - known
+        was_red: set[str] = set()
+        for file in baseline_suite_files(ref):
+            source = baseline_source(ref, file)
+            if source is not None:
+                was_red |= {m.charter_id for m in markers_in(source, file)}
         for file in sorted(current):
             source = baseline_source(ref, file)
-            if source is None:
-                print(f"  [new]  {file}: {len(current[file])}")
-                continue
-            was_markers = markers_in(source, file)
-            was_ids = {marker.charter_id for marker in was_markers}
-            new_reds = sorted(
-                {
-                    marker.charter_id
-                    for marker in current[file]
-                    if marker.charter_id
-                    and marker.charter_id not in was_ids
-                    and marker.charter_id not in known
-                }
-            )
-            was = len(was_markers)
-            now = len(current[file]) - len(new_reds)
+            ids = {m.charter_id for m in current[file] if m.charter_id}
+            new_reds = sorted(ids & new_to_charter)
             suffix = (
                 f" (+{len(new_reds)} new: {', '.join(new_reds)})" if new_reds else ""
             )
+            if source is None:
+                print(f"  [new]  {file}: {len(current[file])}{suffix}")
+                continue
+            was = len(markers_in(source, file))
+            now = len(current[file]) - len(new_reds)
             print(
                 f"  {'rose' if now > was else 'ok':<6} {file}: {was} -> {now}{suffix}"
             )
-            if now > was:
-                problems.append(
-                    f"{file} re-reds {now - was} propert"
-                    f"{'y' if now - was == 1 else 'ies'} ({was} -> {now})"
+        now_red = {m.charter_id for file in current for m in current[file]}
+        re_reds = sorted((now_red & declared) - was_red - new_to_charter)
+        if re_reds:
+            where = {
+                identifier: sorted(
+                    file
+                    for file in current
+                    if any(m.charter_id == identifier for m in current[file])
                 )
+                for identifier in re_reds
+            }
+            problems.append(
+                f"re-reds {len(re_reds)} propert"
+                f"{'y' if len(re_reds) == 1 else 'ies'}: "
+                + ", ".join(
+                    f"{identifier} (green on {ref}; red in "
+                    f"{', '.join(where[identifier])})"
+                    for identifier in re_reds
+                )
+            )
 
     if problems:
         print()

@@ -566,6 +566,19 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     f"Graph.mass_partition {entity}.{column} is declared {dtype!r}; "
                     f"a partition column must be one of {sorted(PARTITION_DTYPES)}."
                 )
+        # A partition value is fixed when a row is created. Any later owner of
+        # the column, rewrite or not, could move mass between partitions with
+        # the total unchanged, which no mass policy can see; refuse it here.
+        for (version, owner_entity, owner_column), owner_id in sorted(owners.items()):
+            if (owner_entity, owner_column) != (entity, column):
+                continue
+            if by_id[owner_id].structural is not StructuralDelta.CREATE:
+                raise GraphError(
+                    f"Node {owner_id!r} owns mass partition {entity}.{column} in "
+                    f"version {version!r}; a partition value is fixed by the CREATE "
+                    "node that admits the row, and no later node may write or "
+                    "rewrite it."
+                )
 
     def declared_dtype(version: str, entity: str, column: str) -> str | None:
         """The owner-declared dtype of a column as visible in ``version``."""

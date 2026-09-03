@@ -523,7 +523,9 @@ class ExpandEntrantPerson(ToyKernel):
     arrives through ``KernelResult.strata`` (amendment 14). ``strata_mode``
     exercises the refusals: ``missing`` omits the field, ``unknown_id``
     labels an id the node never adds, ``labels_incumbent`` labels an
-    incumbent person as well.
+    incumbent person as well, and ``labels_copied`` also copies the
+    template person to a second new id and labels that copy, which takes
+    its stratum from lineage and may not be labelled.
     """
 
     def compute(self, context: KernelContext) -> KernelResult:
@@ -531,13 +533,17 @@ class ExpandEntrantPerson(ToyKernel):
         person_ids = pd.Index(person["person_id"], name="person_id")
         template = person.iloc[0]
         entrant_id = int(person_ids.max()) + 1
+        mode = str(context.params.get("strata_mode", "ok"))
+        copy_id = entrant_id + 1
+        added_ids = [entrant_id, copy_id] if mode == "labels_copied" else [entrant_id]
         target_ids = person_ids.append(
-            pd.Index([entrant_id], dtype="int64", name="person_id")
+            pd.Index(added_ids, dtype="int64", name="person_id")
         )
 
         def overlay(column: str, dtype: str, value: object) -> pd.Series:
+            added = [value] + ([template[column]] if mode == "labels_copied" else [])
             values = pd.concat(
-                [person[column].reset_index(drop=True), pd.Series([value])],
+                [person[column].reset_index(drop=True), pd.Series(added)],
                 ignore_index=True,
             )
             return pd.Series(pd.array(values, dtype=dtype), index=target_ids)
@@ -554,11 +560,11 @@ class ExpandEntrantPerson(ToyKernel):
                 "person_release_id", "int64", int(template["person_release_id"])
             ),
         }
-        mode = str(context.params.get("strata_mode", "ok"))
         labelled = {
             "ok": [entrant_id],
             "unknown_id": [entrant_id + 1],
             "labels_incumbent": [int(person_ids[0]), entrant_id],
+            "labels_copied": [entrant_id, copy_id],
         }
         strata = (
             None
@@ -579,11 +585,12 @@ class ExpandEntrantPerson(ToyKernel):
             for entity in ("household", "release")
         }
         household_weights = context.weights["household"]
+        lineage = [pd.NA] + ([int(person_ids[0])] if mode == "labels_copied" else [])
         return KernelResult(
             expand={
                 "person": pd.Series(
-                    pd.array([pd.NA], dtype="Int64"),
-                    index=pd.Index([entrant_id], dtype="int64", name="person_id"),
+                    pd.array(lineage, dtype="Int64"),
+                    index=pd.Index(added_ids, dtype="int64", name="person_id"),
                 ),
                 **empty,
             },

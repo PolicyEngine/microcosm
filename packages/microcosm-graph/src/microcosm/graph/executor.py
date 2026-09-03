@@ -542,17 +542,39 @@ def _input_tolerances(
     resolved: dict[tuple[str, str], Tolerance | None] = {}
     for coordinate in sorted(coordinates):
         entity, column = coordinate
-        owner_id = (
-            input_version
-            if coordinate in rewritten
-            else compiled.owners.get(
-                (input_version, entity, column),
-                input_version,
+        if coordinate in rewritten:
+            # The incumbent a rewrite receives was produced somewhere in the
+            # version's base chain, never in the version the rewrite opens.
+            start = (
+                compiled.graph.node(input_version).base
+                if node.structural is StructuralDelta.NONE
+                else input_version
             )
-        )
-        owner = compiled.graph.node(owner_id)
-        resolved[coordinate] = kernels.get(owner.kernel).capabilities.tolerance
+        else:
+            start = input_version
+        assert start is not None
+        producer = compiled.graph.node(_producer_of(compiled, start, entity, column))
+        resolved[coordinate] = kernels.get(producer.kernel).capabilities.tolerance
     return MappingProxyType(resolved)
+
+
+def _producer_of(
+    compiled: CompiledGraph, version: str, entity: str, column: str
+) -> str:
+    """The node whose kernel wrote ``entity.column`` as seen from ``version``.
+
+    A structural version carries the columns it does not own from its base,
+    so the tolerance a reader sees is the producer's, not the carrier's: a
+    bitwise ``FILTER`` in between neither tightens nor erases it (C5).
+    """
+    while True:
+        owner = compiled.owners.get((version, entity, column))
+        if owner is not None:
+            return owner
+        holder = compiled.graph.node(version)
+        if holder.structural is StructuralDelta.CREATE or holder.base is None:
+            return version
+        version = holder.base
 
 
 def _validate_series(

@@ -56,7 +56,7 @@ its owner.
 | C2 | **Removal invariance.** Removing a node that nothing depends on, or adding a new leaf node, changes no other node's key or output. This is the `0347a009` replay: five targets removed, zero survivors re-modeled. | F5 | same |
 | C3 | **Declared predecessors only.** A chained target's predictors are exactly its declared predecessors. The executor hands a kernel only its declared slices, so an undeclared read is impossible rather than merely detected. | F5, leg 3 §legibility | same |
 | C4 | **Seed from identity.** A node's RNG seed is a pure function of its node key. Two nodes with identical declarations, inputs, and kernels in different graphs draw identical values. No positional RNG consumption exists anywhere in the shard (static check). | F4, `docs/spec-engine.md:254-282` | same |
-| C5 | **Tolerance is declared.** A kernel claiming `tolerance_bound` numerics without a `Tolerance` is refused at registration, and a bitwise kernel may not carry one. The tolerance is recorded in every receipt, and a kernel reading a cell sees its owner's declared tolerance in `KernelContext.tolerances`; a gate comparing against anything else says so in its evidence. | H2 (arm64/x86 one-ulp weights); microcosm-dynamics#412 | Max's session; amendment 13 |
+| C5 | **Tolerance is declared.** A kernel claiming `tolerance_bound` numerics without a `Tolerance` is refused at registration, and a bitwise kernel may not carry one. The tolerance is recorded in every receipt, and a kernel reading a cell sees the declared tolerance of the node that produced it in `KernelContext.tolerances`: a structural version (`FILTER`, `EXPAND`, `REWEIGHT`) carries a column's tolerance through unchanged, so a bitwise carrier neither tightens nor erases a producer's bound, and a rewrite sees the incumbent producer's; a gate comparing against anything else says so in its evidence. | H2 (arm64/x86 one-ulp weights); microcosm-dynamics#412 | Max's session; amendment 13 |
 
 ## D. Weights and mass
 
@@ -67,7 +67,7 @@ its owner.
 | D3 | **Cap anchored to design.** A calibration node's `max_weight_ratio` is asserted against the declared anchor across composed stages; a selection-then-refit chain that ships a record above `R × design` fails. | F9 (#493) | same |
 | D4 | **Filters are binary.** A target filter containing NaN or a non-binary value is rejected at compile. | F9 | same |
 | D5 | **Uncertainty travels.** A target's declared standard error reaches the calibration kernel's inputs; a kernel that ignores a declared `se` must say so in its capability record. | scoreboard row 5 (leg 1 finding 7) | same |
-| D6 | **Mass is partitioned.** With `Graph.mass_partition` set, the ledger reports per stratum within each partition value, `conserve` holds within each partition, and a node that moves mass between partitions under `conserve` fails. Every `CREATE` node declares the partition column with a partition dtype, or compilation fails. A row contributes mass only to the partitions it exists in. | Dynamics: person-period residency (microcosm-dynamics#412) | Max's session; amendment 12 |
+| D6 | **Mass is partitioned.** With `Graph.mass_partition` set, the ledger reports per stratum within each partition value, `conserve` holds within each partition, and a node that moves mass between partitions under `conserve` fails. Every `CREATE` node declares the partition column with a partition dtype, and no later node may own it (write or rewrite), or compilation fails: a partition value is fixed when the row is created, because a reassignment with the total unchanged is invisible to every mass policy. A row contributes mass only to the partitions it exists in. | Dynamics: person-period residency (microcosm-dynamics#412) | Max's session; amendment 12 |
 
 ## E. Store and resume
 
@@ -215,16 +215,22 @@ Amendments so far (each re-locked):
 12. **Mass is partitioned.** `Graph.mass_partition = (entity, column)`
     partitions mass accounting (per stratum within each partition value;
     `conserve` per partition). Every `CREATE` node declares the column
-    with a dtype in `PARTITION_DTYPES`. The field is normative: the
-    executor folds it into every structural node's key, so structural keys
-    move once when a graph adopts it. Raised by the dynamics program for
-    person-period residency; adopted 2026-09-02.
+    with a dtype in `PARTITION_DTYPES`, and `compile_graph` refuses any
+    later owner of it, rewrite or not: a partition value is fixed when
+    the row is created (review finding, 2026-09-02). The field is
+    normative: the executor folds it into every structural node's key, so
+    structural keys move once when a graph adopts it. Raised by the
+    dynamics program for person-period residency; adopted 2026-09-02.
 13. **Tolerance is declared.** `Capabilities.tolerance: Tolerance | None`
     (`rtol`, `atol`, `ulps`) is required for `tolerance_bound` kernels and
     forbidden for bitwise ones; `KernelContext.tolerances` hands each
-    reader the declared tolerance of every input cell's owner. Raised by
-    the H2 parity finding (root weights differ by one ulp between arm64
-    and x86) and the dynamics review; adopted 2026-09-02.
+    reader the declared tolerance of every input cell's producer, resolved
+    through structural carriers to the node that wrote the values (a
+    rewrite sees the incumbent producer's). The whole `Capabilities`
+    projection, tolerance included, is part of a node's identity and is
+    compared on every cache hit. Raised by the H2 parity finding (root
+    weights differ by one ulp between arm64 and x86) and the dynamics
+    review; adopted 2026-09-02.
 
 14. **Entrant persons carry their stratum.** `KernelResult.strata` (EXPAND
     kernels on an `entrants=True` node only) names the stratum of every

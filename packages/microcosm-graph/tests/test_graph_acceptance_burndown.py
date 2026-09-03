@@ -306,6 +306,62 @@ def test_a9_nine() -> None:
 )
 
 
+A1_GREEN_A3_RED = """
+import pytest
+
+
+def test_a1_one() -> None:
+    assert True
+
+
+@pytest.mark.xfail(strict=True, reason="charter A3: pending")
+def test_a3_three() -> None:
+    assert False
+"""
+
+
+def test_verify_ratchets_on_property_identity_not_on_counts(tmp_path: Path) -> None:
+    """A1 going green cannot pay for A3 going red: the count is 1 -> 1, and
+    the ratchet still refuses, naming the property and the file."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(A1_GREEN_A3_RED)
+    swapped = _run(root, "--verify")
+    assert swapped.returncode == 1
+    assert "1 -> 1" in swapped.stdout
+    assert "re-reds 1 property: A3" in swapped.stdout
+    assert "test_acceptance_a.py" in swapped.stdout
+    assert "verification=failed" in swapped.stdout
+
+
+def test_verify_counts_markers_in_new_files(tmp_path: Path) -> None:
+    """A file the baseline lacks constrains nothing by itself, but a marker
+    inside it on a property that was green is still a re-red."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    tests = root / "packages" / "microcosm-graph" / "tests"
+    (tests / "test_acceptance_b.py").write_text(
+        'import pytest\n\n\n@pytest.mark.xfail(strict=True, reason="charter A3: moved")\n'
+        "def test_a3_three_again() -> None:\n    assert False\n"
+    )
+    moved = _run(root, "--verify")
+    assert moved.returncode == 1
+    assert "[new]  packages/microcosm-graph/tests/test_acceptance_b.py" in moved.stdout
+    assert "re-reds 1 property: A3" in moved.stdout
+    assert "test_acceptance_b.py" in moved.stdout
+
+
+def test_verify_refuses_a_marker_on_an_id_the_charter_does_not_list(
+    tmp_path: Path,
+) -> None:
+    """An invented id is not a new property; it is a marker on nothing."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(NEW_PROPERTY_STARTS_RED)  # A9 is not in the charter here
+    invented = _run(root, "--verify")
+    assert invented.returncode == 1
+    assert "names A9, which docs/graph-acceptance.md does not list" in invented.stdout
+
+
 def test_verify_lets_a_property_new_to_the_charter_start_red(tmp_path: Path) -> None:
     """The charter's meta-TDD rule: a new property is committed red first.
 

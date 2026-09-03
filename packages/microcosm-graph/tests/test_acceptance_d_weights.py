@@ -258,6 +258,29 @@ def test_d6_mass_is_partitioned(tmp_path: Path) -> None:
         toy.CREATE,
         outputs=(*toy.CREATE.outputs, Owned("person", "period", "int64")),
     )
+
+    # A partition value is fixed when the row is created: a later node that
+    # writes or rewrites the column could move mass between partitions with
+    # the total unchanged, which no policy can see, so compilation refuses it.
+    reassigning = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (
+            create,
+            toy.select_node("period_view", base="survey", policy="free"),
+            Node(
+                "reassign_period",
+                "derive.rewrite@1",
+                inputs=(Slice("person", ("age",)),),
+                outputs=(Owned("person", "period", "int64", rewrite=True),),
+                population="period_view",
+            ),
+        ),
+        mass_partition=("person", "period"),
+    )
+    with pytest.raises(GraphError, match=r"reassign_period.*mass partition"):
+        compile_graph(reassigning)
+
     sources = {"survey": source_path}
     conserving = Graph(
         "toy",

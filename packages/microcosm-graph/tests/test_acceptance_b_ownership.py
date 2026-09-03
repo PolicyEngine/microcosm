@@ -345,7 +345,9 @@ def test_b7_entrant_persons_carry_their_stratum(tmp_path: Path) -> None:
     assert mass["stratum_after"]["urban"] > mass["stratum_before"]["urban"]
     assert mass["stratum_after"]["rural"] == mass["stratum_before"]["rural"]
 
-    for mode in ("missing", "unknown_id", "labels_incumbent"):
+    # A copied person takes its stratum from lineage, so a label for it is
+    # refused exactly like a label for an incumbent or an unknown id.
+    for mode in ("missing", "unknown_id", "labels_incumbent", "labels_copied"):
         bad, bad_claim = toy.entrant_person_node(f"cohort_{mode}", strata_mode=mode)
         with pytest.raises(NodeRejectedError, match=f"cohort_{mode}"):
             toy.run_toy(

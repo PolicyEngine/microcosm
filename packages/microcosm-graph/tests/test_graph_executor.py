@@ -15,6 +15,7 @@ import microcosm.graph.executor as graph_executor
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.decl import (
     Graph,
+    GraphError,
     Node,
     Owned,
     Ownership,
@@ -692,9 +693,13 @@ def test_rewrite_incumbent_is_projected_from_its_owned_declaration(
             "age",
             "income",
         }
+        # The FILTER that opens this version carries ``age`` and ``income``
+        # from CREATE without writing them, so the tolerances a reader (and
+        # a rewrite, for its incumbent) sees are the producer's — bitwise
+        # here — not the tolerance-bound carrier's (charter C5).
         assert context.tolerances == {
-            ("person", "age"): boundary_tolerance,
-            ("person", "income"): boundary_tolerance,
+            ("person", "age"): None,
+            ("person", "income"): None,
         }
 
         return KernelResult(
@@ -1125,7 +1130,8 @@ def test_partitioned_graph_accepts_structural_entrant_partition_values(
         Capabilities(Determinism.DETERMINISTIC),
         pass_through("period"),
     )
-    with pytest.raises(NodeRejected, match="cannot own mass partition"):
+    # Compilation refuses the owner before the executor's own guard can.
+    with pytest.raises(GraphError, match="owns mass partition"):
         _run(
             Graph(
                 "toy",

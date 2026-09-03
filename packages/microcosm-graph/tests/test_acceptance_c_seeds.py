@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -252,3 +253,27 @@ def test_c5_tolerance_is_declared(tmp_path: Path) -> None:
     bitwise_evidence = run.manifest.nodes[bitwise_gate.id].receipt
     assert bitwise_evidence["outcome"] == "pass"
     assert bitwise_evidence["evidence"]["tolerance"] is None
+
+    # A carried column keeps its producer's tolerance through a structural
+    # version: the bitwise FILTER that carries ``bounded_value`` into
+    # ``adults_view`` neither tightens nor erases the bound a reader sees.
+    carrier = toy.select_node("adults_view", base="survey", policy="free")
+    carried_gate = replace(
+        tolerance_gate("carried_gate", "bounded_value"), population=carrier.id
+    )
+    carried_bitwise_gate = replace(
+        tolerance_gate("carried_bitwise_gate", "bitwise_value"),
+        population=carrier.id,
+    )
+    carried = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (toy.CREATE, bounded, bitwise, carrier, carried_gate, carried_bitwise_gate),
+    )
+    carried_run = toy.run_toy(carried, tmp_path / "carried")
+    carried_evidence = carried_run.manifest.nodes[carried_gate.id].receipt
+    assert carried_evidence["outcome"] == "pass"
+    assert carried_evidence["evidence"]["tolerance"] == bound
+    carried_bitwise = carried_run.manifest.nodes[carried_bitwise_gate.id].receipt
+    assert carried_bitwise["outcome"] == "pass"
+    assert carried_bitwise["evidence"]["tolerance"] is None
