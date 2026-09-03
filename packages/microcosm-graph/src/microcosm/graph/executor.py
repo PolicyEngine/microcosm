@@ -197,7 +197,9 @@ def _decision_names(decisions: tuple[Decision, ...]) -> frozenset[str]:
     return frozenset(names)
 
 
-def _release_outcome(node: Node, tier: str, decisions: tuple[Decision, ...]) -> str:
+def _required_decision_names(node: Node) -> tuple[str, ...]:
+    """Validate and return a release node's normative decision requirements."""
+
     required = node.params.get("requires_decisions", ())
     if not isinstance(required, tuple) or any(
         not isinstance(name, str) or not name for name in required
@@ -210,6 +212,11 @@ def _release_outcome(node: Node, tier: str, decisions: tuple[Decision, ...]) -> 
         raise NodeRejected(
             f"Release node {node.id!r} repeats a required decision name."
         )
+    return required
+
+
+def _release_outcome(node: Node, tier: str, decisions: tuple[Decision, ...]) -> str:
+    required = _required_decision_names(node)
     if not set(required) <= _decision_names(decisions):
         return "unreached"
     return "pass" if tier == "certified" else "fail"
@@ -1979,11 +1986,16 @@ def run_graph(
         if kernel.capabilities.role is KernelRole.RELEASE:
             derived_tier, gate_ids = _release_tier(compiled, node_id, receipts)
             _validate_release_tier(node, result, derived_tier)
+            required_decisions = _required_decision_names(node)
             normalized_receipt["tier"] = derived_tier
             normalized_receipt["outcome"] = (
                 "pass" if derived_tier == "certified" else "fail"
             )
             normalized_receipt["gate_ancestry"] = list(gate_ids)
+            # Required names are derived from normative node params and live in
+            # authenticated release provenance. The signed records themselves
+            # remain top-level run provenance and never enter a node key.
+            normalized_receipt["requires_decisions"] = list(required_decisions)
         receipt_capabilities = _capabilities_projection(kernel.capabilities)
         if tolerance_writers:
             receipt_capabilities["tolerance_writers"] = tolerance_writers

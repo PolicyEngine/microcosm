@@ -39,7 +39,7 @@ from microcosm.graph.kernel import (
     Numeric,
     Tolerance,
 )
-from microcosm.graph.manifest import Decision
+from microcosm.graph.manifest import Decision, RunManifest
 from microcosm.graph.store import (
     ContentStore,
     StoreCorrupt,
@@ -2306,6 +2306,38 @@ def test_release_decision_changes_only_the_manifest_outcome(tmp_path: Path) -> N
     assert signed.nodes["release"].key == missing.nodes["release"].key
     assert signed.nodes["release"].artifacts == missing.nodes["release"].artifacts
     assert signed.nodes["release"].receipt["tier"] == "certified"
+    assert signed.nodes["release"].receipt["requires_decisions"] == ("publish",)
+
+
+def test_certified_loader_revalidates_authenticated_required_decisions(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _release_graph(
+        gate_outcome="pass",
+        tier_answer="certified",
+        requires=("publish",),
+    )
+    signed = _run(
+        graph,
+        source,
+        store,
+        _release_registry(),
+        decisions=({"name": "publish", "owner": "reviewer", "signature": "signed"},),
+    )
+    path = tmp_path / "certified.json"
+    signed.save(path)
+    document = json.loads(path.read_text())
+    authenticated_body = document["content_addressed"]
+    authenticated_key = document["key"]
+    document["decisions"] = []
+    assert document["content_addressed"] == authenticated_body
+    assert document["key"] == authenticated_key
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(NodeRejected, match=r"unreached.*publish"):
+        RunManifest.load_certified(path, store)
 
 
 def test_gate_outcome_is_closed_and_gate_exceptions_become_failures(

@@ -140,6 +140,7 @@ def _persisted_manifest(
             "tier": tier,
             "outcome": release_outcome or ("pass" if tier == "certified" else "fail"),
             "gate_ancestry": ["gate"],
+            "requires_decisions": [],
         },
         artifacts={("release", "tier"): release_artifact},
     )
@@ -515,6 +516,29 @@ def test_certified_loader_checks_unreached_before_tier(tmp_path: Path) -> None:
     unreached.save(unreached_path)
     with pytest.raises(graph_api.NodeRejectedError, match="unreached"):
         RunManifest.load_certified(unreached_path, store)
+
+
+def test_certified_loader_requires_authenticated_decision_requirements(
+    tmp_path: Path,
+) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store, tier="certified", gate_outcome="pass")
+    path = tmp_path / "missing-requirements.json"
+    document = json.loads(manifest.to_json())
+    del document["nodes"]["release"]["receipt"]["requires_decisions"]
+    del document["content_addressed"]["nodes"]["release"]["receipt"][
+        "requires_decisions"
+    ]
+    document["key"] = sha256_domain(
+        "manifest", canonical_json(document["content_addressed"])
+    )
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        graph_api.NodeRejectedError,
+        match="authenticated requires_decisions",
+    ):
+        RunManifest.load_certified(path, store)
 
 
 def test_loader_rederives_tier_from_gate_receipts(tmp_path: Path) -> None:

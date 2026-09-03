@@ -361,9 +361,11 @@ class RunManifest:
 
     Every complete node receipt and the derived release tier form :attr:`key`.
     Signed decisions remain unauthenticated provenance by interface ruling;
-    country, host, timestamps, and attached ``Frame`` instances are also
-    outside the content-addressed body. Computational reuse continues to use
-    node keys, not this run-manifest identity.
+    the release receipt's required decision names are authenticated so a
+    certified load can revalidate those carried records. Country, host,
+    timestamps, and attached ``Frame`` instances are also outside the
+    content-addressed body. Computational reuse continues to use node keys,
+    not this run-manifest identity.
     """
 
     country: str
@@ -746,14 +748,27 @@ class RunManifest:
                 f"nodes {legacy_nodes!r} omit the schema-v2 tolerance field."
             )
         releases = [
-            node
-            for node in manifest.nodes.values()
+            (node_id, node)
+            for node_id, node in manifest.nodes.items()
             if _capability_role(node) is KernelRole.RELEASE
         ]
-        if any(node.receipt.get("outcome") == "unreached" for node in releases):
-            raise NodeRejectedError(
-                f"Manifest {manifest.key} release outcome is unreached."
-            )
+        decision_names = _decision_names(manifest.decisions)
+        for node_id, node in releases:
+            required = _required_decision_names(node_id, node)
+            missing = sorted(set(required) - decision_names)
+            if missing:
+                raise NodeRejectedError(
+                    f"Manifest {manifest.key} release outcome is unreached: "
+                    f"missing required signed decisions {missing!r}."
+                )
+            expected_outcome = "pass" if manifest.tier == "certified" else "fail"
+            stored_outcome = node.receipt.get("outcome")
+            if stored_outcome != expected_outcome:
+                raise NodeRejectedError(
+                    f"Manifest {manifest.key} release node {node_id!r} outcome "
+                    f"{stored_outcome!r} disagrees with revalidated outcome "
+                    f"{expected_outcome!r}."
+                )
         if manifest.tier != "certified":
             raise NodeRejectedError(
                 f"Manifest {manifest.key} is evidence-tier, not certified."
@@ -849,6 +864,39 @@ def _gate_outcome(node_id: str, node: NodeReceipt) -> str:
             f"expected one of {GATE_OUTCOMES!r}"
         )
     return str(outcome)
+
+
+def _decision_names(decisions: tuple[Decision, ...]) -> frozenset[str]:
+    """Names carried by the two accepted signed-decision record shapes."""
+
+    names: set[str] = set()
+    for decision in decisions:
+        payload = dict(decision)
+        name = payload.get("name", decision.kind)
+        if not isinstance(name, str) or not name:
+            raise NodeRejectedError(
+                "Certified manifests require non-empty signed decision names."
+            )
+        names.add(name)
+    return frozenset(names)
+
+
+def _required_decision_names(node_id: str, node: NodeReceipt) -> tuple[str, ...]:
+    """Read authenticated release decision requirements, failing closed."""
+
+    raw = node.receipt.get("requires_decisions")
+    if not isinstance(raw, tuple) or any(
+        not isinstance(name, str) or not name for name in raw
+    ):
+        raise NodeRejectedError(
+            f"Release node {node_id!r} has no valid authenticated "
+            "requires_decisions provenance."
+        )
+    if len(set(raw)) != len(raw):
+        raise NodeRejectedError(
+            f"Release node {node_id!r} repeats an authenticated required decision name."
+        )
+    return raw
 
 
 def _validate_artifacts(manifest: RunManifest, store: ContentStore) -> None:

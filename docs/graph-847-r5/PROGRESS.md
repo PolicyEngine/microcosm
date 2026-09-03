@@ -44,6 +44,13 @@ change has been made yet.
   The parser now passes validated numeric values into `Tolerance` unchanged so
   its existing normalization raises `ValueError`, which the loader wraps as
   `StoreCorruptError`. The full manifest unit file remains green.
+- Reproduced finding 1 from a real signed certified graph manifest: deleting
+  only top-level decisions preserved its key/body and `load_certified` still
+  returned certified. Release receipts now authenticate the normative required
+  decision names, and certified loading rederives the outcome from those names
+  and the carried signed records. Missing requirements fail closed; missing
+  records report `unreached`. Focused executor, full manifest, and acceptance
+  F-gate tests pass.
 
 ## Next
 
