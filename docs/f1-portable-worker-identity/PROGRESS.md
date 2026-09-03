@@ -86,8 +86,11 @@ focused green; documentation and full verification are in progress on
   both `--check` and `--check --skip-validation`; each exits 1 before byte
   comparison because this environment lacks the optional `policyengine-us`
   distribution metadata.
+- Documented the semantic/audit identity split, the explicit plan-authorized
+  schema-9 scoring exception, receipt fields, version cascade, independent
+  release deny-list, and the exact limits of the plan-defined authorization
+  tuple. Added the F1 changelog fragment.
 
 ## Next
 
-- Document the operator attestation/receipt contract, add the changelog, then
-  run focused, CI-group, and required repository checks.
+- Run focused, CI-group, and required repository checks.
