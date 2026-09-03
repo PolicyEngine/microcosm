@@ -304,9 +304,9 @@ class Node:
     sources: tuple[str, ...] = ()
     weights: WeightTransition | None = None
     mass: str = "conserve"
-    entrants: bool = False
     description: str = ""
     citation: str = ""
+    entrants: bool = False
 
     def __post_init__(self) -> None:
         _nonempty("Node.id", self.id)

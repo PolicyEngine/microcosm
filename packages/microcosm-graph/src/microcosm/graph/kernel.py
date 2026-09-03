@@ -115,8 +115,17 @@ class Tolerance:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int | float):
                 raise ValueError(f"Tolerance.{name} must be a number.")
-            if not (value >= 0.0) or value == float("inf"):
+            try:
+                # Keys and manifests carry the float; an integer too large for
+                # one would only fail later, at identity time.
+                as_float = float(value)
+            except OverflowError as error:
+                raise ValueError(
+                    f"Tolerance.{name} must be representable as a finite float."
+                ) from error
+            if not (as_float >= 0.0) or as_float == float("inf"):
                 raise ValueError(f"Tolerance.{name} must be non-negative and finite.")
+            object.__setattr__(self, name, as_float)
         if isinstance(self.ulps, bool) or not isinstance(self.ulps, int):
             raise ValueError("Tolerance.ulps must be an integer.")
         if self.ulps < 0:
@@ -278,9 +287,9 @@ class KernelResult:
     keep: pd.Series | None = None
     expand: Mapping[str, pd.Series] | None = None
     weights: Weights | None = None
-    strata: pd.Series | None = None
     artifacts: Mapping[str, bytes] = field(default_factory=dict)
     receipt: Mapping[str, object] = field(default_factory=dict)
+    strata: pd.Series | None = None
 
 
 @runtime_checkable

@@ -18,7 +18,8 @@ marker sits in and whatever else went green (counts can offset; identities
 cannot). A property the charter gained since the baseline may start red. It
 also refuses a marker that is not ``strict=True`` (a non-strict marker hides
 an ``xpass``, so a property could go green without anybody noticing), a marker
-whose reason names no charter id or an id the charter does not list, and a
+whose reason names no charter id, an id the charter does not list, or an id
+other than the one in its own test name, two markers on one property, and a
 charter id with no test at all.
 """
 
@@ -326,13 +327,32 @@ def verify(ref: str = BASELINE_REF) -> int:
             problems.append(f"charter {entry['id']} has no test in the suite")
 
     declared = set(charter_ids((ROOT / CHARTER).read_text()))
+    seen: dict[str, str] = {}
     for file in sorted(current):
         for marker in current[file]:
-            if marker.charter_id and marker.charter_id not in declared:
+            if not marker.charter_id:
+                continue
+            if marker.charter_id not in declared:
                 problems.append(
                     f"{file}::{marker.test} names {marker.charter_id}, which "
                     f"{CHARTER} does not list"
                 )
+            # The reason is free text; the test name is the binding. A marker
+            # whose reason names one property while sitting on another's test
+            # would let a re-red hide behind a known red, so the two must agree
+            # and each property may carry one marker.
+            named = TEST_ID.match(marker.test)
+            if named is None or named.group(1).upper() != marker.charter_id:
+                problems.append(
+                    f"{file}::{marker.test} claims charter {marker.charter_id} "
+                    "but is not that property's test"
+                )
+            if marker.charter_id in seen:
+                problems.append(
+                    f"{marker.charter_id} carries two markers: {seen[marker.charter_id]} "
+                    f"and {file}::{marker.test}"
+                )
+            seen.setdefault(marker.charter_id, f"{file}::{marker.test}")
 
     if not fetch_baseline(ref):
         print(f"baseline={ref} unavailable; the ratchet did not run")

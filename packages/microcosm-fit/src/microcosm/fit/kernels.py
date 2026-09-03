@@ -49,12 +49,17 @@ FIT_QRF_DEPENDENCIES = (
 )
 """Distributions whose versions form part of ``fit.qrf@1``'s identity."""
 
-#: Provisional one-ULP acceptance budget, not an established cross-platform
-#: upper bound. On 2026-09-02, one 12-output positive-only H1 fixture was
-#: bit-identical between native arm64 and x86_64 under Rosetta. Broader
-#: native-x86, seed, regime, near-tie, and non-binary-exact coverage is required
-#: before treating this as a kernel-wide bound.
-FIT_QRF_TOLERANCE = Tolerance(ulps=1)
+#: Provisional relative budget for ``fit.qrf@1``, declared because the kernel
+#: is not bitwise across platforms (charter C5, H2's one-ulp root-weight
+#: finding) and a ``tolerance_bound`` kernel must declare something. It is
+#: NOT a measured bound: the only measurement so far (2026-09-02) is one
+#: 12-output, positive-only H1 fixture that was bit-identical between native
+#: arm64 and x86_64 under Rosetta, which supports nothing tighter than "small".
+#: Tightening this (for example to ``Tolerance(ulps=1)``) requires native-x86,
+#: multi-seed, multi-regime, near-tie, and mixed-sign coverage first; until
+#: then the declared budget errs loose so no gate treats an unmeasured claim
+#: as a guarantee. Changing it moves the kernel's identity (H1 pins).
+FIT_QRF_TOLERANCE = Tolerance(rtol=1e-6)
 
 
 QRF_EXECUTOR_SEED_HIGH = 2**31 - 1

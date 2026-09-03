@@ -362,6 +362,39 @@ def test_verify_refuses_a_marker_on_an_id_the_charter_does_not_list(
     assert "names A9, which docs/graph-acceptance.md does not list" in invented.stdout
 
 
+MISLABELLED_MARKER = """
+import pytest
+
+
+@pytest.mark.xfail(strict=True, reason="charter A3: pending")
+def test_a1_one() -> None:
+    assert False
+
+
+@pytest.mark.xfail(strict=True, reason="charter A3: pending")
+def test_a3_three() -> None:
+    assert False
+"""
+
+
+def test_verify_binds_a_marker_to_the_test_it_decorates(tmp_path: Path) -> None:
+    """The reason is free text; the test name is the binding.
+
+    A marker on ``test_a1_*`` that claims A3 would let A1 go red while the
+    set of red ids stays {A3}; the tool refuses the mismatch and the
+    duplicate, so the ratchet compares one marker per property.
+    """
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(MISLABELLED_MARKER)
+    mislabelled = _run(root, "--verify")
+    assert mislabelled.returncode == 1
+    assert "test_a1_one claims charter A3 but is not that property's test" in (
+        mislabelled.stdout
+    )
+    assert "A3 carries two markers" in mislabelled.stdout
+
+
 def test_verify_lets_a_property_new_to_the_charter_start_red(tmp_path: Path) -> None:
     """The charter's meta-TDD rule: a new property is committed red first.
 

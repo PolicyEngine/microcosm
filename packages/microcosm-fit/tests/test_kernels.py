@@ -15,6 +15,7 @@ from microcosm.fit import FittedRegimeGatedQRF
 from microcosm.fit import fit as fit_qrf
 from microcosm.fit.kernels import (
     FIT_QRF_DEPENDENCIES,
+    FIT_QRF_TOLERANCE,
     QRF_EXECUTOR_KERNEL,
     QRF_EXECUTOR_SEED_HIGH,
     QRF_PARAM_KERNEL,
@@ -31,7 +32,6 @@ from microcosm.graph import (
     Owned,
     SeedSource,
     Slice,
-    Tolerance,
     source_hash,
 )
 
@@ -234,7 +234,7 @@ def test_capabilities_protocol_and_wrapped_source_hash() -> None:
         numeric=Numeric.TOLERANCE_BOUND,
         seed_source=SeedSource.PARAM,
         dependencies=FIT_QRF_DEPENDENCIES,
-        tolerance=Tolerance(ulps=1),
+        tolerance=FIT_QRF_TOLERANCE,
     )
     assert QRF_EXECUTOR_KERNEL.capabilities.seed_source is SeedSource.EXECUTOR
     assert QRF_PARAM_KERNEL.implementation_hash() == source_hash(

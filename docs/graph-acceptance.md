@@ -56,7 +56,7 @@ its owner.
 | C2 | **Removal invariance.** Removing a node that nothing depends on, or adding a new leaf node, changes no other node's key or output. This is the `0347a009` replay: five targets removed, zero survivors re-modeled. | F5 | same |
 | C3 | **Declared predecessors only.** A chained target's predictors are exactly its declared predecessors. The executor hands a kernel only its declared slices, so an undeclared read is impossible rather than merely detected. | F5, leg 3 §legibility | same |
 | C4 | **Seed from identity.** A node's RNG seed is a pure function of its node key. Two nodes with identical declarations, inputs, and kernels in different graphs draw identical values. No positional RNG consumption exists anywhere in the shard (static check). | F4, `docs/spec-engine.md:254-282` | same |
-| C5 | **Tolerance is declared.** A kernel claiming `tolerance_bound` numerics without a `Tolerance` is refused at registration, and a bitwise kernel may not carry one. The tolerance is recorded in every receipt, and a kernel reading a cell sees the declared tolerance of the node that produced it in `KernelContext.tolerances`: a structural version (`FILTER`, `EXPAND`, `REWEIGHT`) carries a column's tolerance through unchanged, so a bitwise carrier neither tightens nor erases a producer's bound, and a rewrite sees the incumbent producer's; a gate comparing against anything else says so in its evidence. | H2 (arm64/x86 one-ulp weights); microcosm-dynamics#412 | Max's session; amendment 13 |
+| C5 | **Tolerance is declared.** A kernel claiming `tolerance_bound` numerics without a `Tolerance` is refused at registration, and a bitwise kernel may not carry one. The tolerance is recorded in every receipt, and a kernel reading a cell sees the declared tolerance of the node that produced it in `KernelContext.tolerances`: a structural version (`FILTER`, `EXPAND`, `REWEIGHT`) carries a column's tolerance through unchanged, so a bitwise carrier neither tightens nor erases a producer's bound, and a rewrite sees the incumbent producer's. Where more than one node wrote rows of a column in a version — a producer plus an `EXPAND` kernel that materialized entrant rows, or a claimant that took them over — the reader sees the loosest declared tolerance among those writers (componentwise maximum of `rtol`, `atol`, `ulps`; a bitwise writer contributes none), and a claimant's `KernelContext.tolerances` includes the coordinates it claims; a gate comparing against anything else says so in its evidence. | H2 (arm64/x86 one-ulp weights); microcosm-dynamics#412 | Max's session; amendment 13 |
 
 ## D. Weights and mass
 
@@ -226,7 +226,9 @@ Amendments so far (each re-locked):
     forbidden for bitwise ones; `KernelContext.tolerances` hands each
     reader the declared tolerance of every input cell's producer, resolved
     through structural carriers to the node that wrote the values (a
-    rewrite sees the incumbent producer's). The whole `Capabilities`
+    rewrite sees the incumbent producer's; where several nodes wrote rows
+    of one column — entrant materialization, claims — the loosest declared
+    tolerance among them). The whole `Capabilities`
     projection, tolerance included, is part of a node's identity and is
     compared on every cache hit. Raised by the H2 parity finding (root
     weights differ by one ulp between arm64 and x86) and the dynamics
