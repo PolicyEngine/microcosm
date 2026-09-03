@@ -2,9 +2,9 @@
 
 ## State
 
-F2 through F7 are implemented and focused-green; F10 is next. Work remains in
-progress on branch `fix-847-r2`, based exactly on dispatched head
-`142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
+All six ruled findings are implemented and focused-green; the final verification
+matrix and report are next. Work remains in progress on branch `fix-847-r2`,
+based exactly on dispatched head `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
 first and failed because the mandated no-network environment cannot resolve
 GitHub; the local `origin/graph-amendments-11-13` ref matches the dispatched
 head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
@@ -69,11 +69,19 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Captured the partition-view regression red on the missing heading, then passed
   it and all 14 ordinary explanation tests; focused Ruff and formatting checks
   are green. No checked-in HTML/digest pin required regeneration.
+- F10: added the explicit `PopulationView.entity(name)` path for every declared
+  entity and made ambiguous attribute shorthand fail with guidance when an
+  entity name collides with a public `Frame` API; default `view.person` and
+  non-colliding convenience access remain intact.
+- Collision detection and fallback lookup avoid descriptor and missing-slot
+  recursion, including pickle protocol probes, and the class-bound table lookup
+  remains usable for entities named `table` or `entities`.
+- Captured the four F10 collision parameters red on the missing accessor, then
+  passed them with the existing population-view test and all 29 manifest tests;
+  focused Ruff and formatting checks are green.
 
 ## Next
 
-- Implement and regression-test F10 as its own finding commit,
-  maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
 
 ---

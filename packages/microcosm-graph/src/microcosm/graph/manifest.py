@@ -27,6 +27,8 @@ from .kernel import (
 from .population import MassRecord
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from .store import ContentStore
 
 __all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
@@ -35,14 +37,22 @@ _SCHEMA_VERSION = 2
 _LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
+_FRAME_PUBLIC_ATTRIBUTES = frozenset(
+    name for name in dir(Frame) if not name.startswith("_")
+)
+
 
 class PopulationView(Frame):
     """Zero-copy manifest view with entity-name table access.
 
     All attached populations use this type. Existing :class:`Frame` accessors
-    remain available, and a group entity can also be read by name (for example,
-    `view.household` is equivalent to `view.table("household")`). The source
-    Frame keeps its original type.
+    remain available, and a non-colliding group entity can also be read by name
+    (for example, ``view.household`` is equivalent to
+    ``view.entity("household")``). If an entity name collides with a public
+    :class:`Frame` attribute such as ``metadata``, shorthand attribute access
+    raises :class:`AttributeError` with guidance instead of returning the
+    unrelated frame member. :meth:`entity` is the reliable accessor for every
+    entity name. The source Frame keeps its original type.
     """
 
     __slots__ = ()
@@ -53,9 +63,54 @@ class PopulationView(Frame):
         for slot in Frame.__slots__:
             object.__setattr__(self, slot, getattr(frame, slot))
 
+    def __getattribute__(self, name: str) -> object:
+        if not name.startswith("_") and name in _FRAME_PUBLIC_ATTRIBUTES:
+            try:
+                schema = object.__getattribute__(self, "_schema")
+                tables = object.__getattribute__(self, "_tables")
+            except AttributeError:
+                # Pickle probes protocol attributes before restoring slots.
+                pass
+            else:
+                exact_person_alias = (
+                    name == "person" and schema.person_entity == "person"
+                )
+                if name in tables and not exact_person_alias:
+                    # Keep all collision diagnostics in __getattr__, including
+                    # when a Frame descriptor would otherwise mask the entity.
+                    return object.__getattribute__(self, "__getattr__")(name)
+        return super().__getattribute__(name)
+
+    def entity(self, name: str) -> pd.DataFrame:
+        """Return an entity table, including names colliding with Frame APIs.
+
+        Args:
+            name: An entity declared by the attached frame's schema.
+
+        Returns:
+            The entity table. Treat as read-only.
+
+        Raises:
+            ValueError: If ``name`` is not declared by the schema.
+        """
+
+        return Frame.table(self, name)
+
     def __getattr__(self, name: str) -> object:
-        if name in self.entities:
-            return self.table(name)
+        try:
+            schema = object.__getattribute__(self, "_schema")
+        except AttributeError:
+            raise AttributeError(
+                f"{type(self).__name__!s} has no attribute {name!r}"
+            ) from None
+        exact_person_alias = name == "person" and schema.person_entity == "person"
+        if name in schema.entities:
+            if name in _FRAME_PUBLIC_ATTRIBUTES and not exact_person_alias:
+                raise AttributeError(
+                    f"PopulationView entity name {name!r} collides with a public "
+                    f"Frame attribute; use .entity({name!r}) to access its table"
+                )
+            return Frame.table(self, name)
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
 
