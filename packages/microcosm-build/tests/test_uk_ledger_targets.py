@@ -1401,24 +1401,40 @@ def test_uk_ledger_households_total_selects_exactly_one_fact() -> None:
 
 
 def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
-    ladder = SimpleNamespace(
+    small_ladder = SimpleNamespace(
         households=np.asarray([10.0, 20.0]),
         constituency_code=np.asarray(["E14000001", "S14000001"]),
         local_authority_code=np.asarray(["E06000001", "S12000005"]),
         metadata={"oa_vintage": "ew:2021_census;scotland:2022_census;ni:dz2021"},
     )
-    reference = uk_ledger_households_total(
+    small_reference = uk_ledger_households_total(
         (_households_total_fact(2025, 33.0),), period=2025
     )
-    uprating = uk_ladder_household_uprating(ladder, reference, period=2025)
-    assert uprating["applied"] is True
-    assert uprating["factor"] == pytest.approx(1.1)
-    assert uprating["ladder_households_total"] == 30.0
-    assert uprating["ladder_oa_vintage"].startswith("ew:2021_census")
-    assert uprating["reference"] == reference
-    assert "A15" in uprating["adjudication"]
+    small = uk_ladder_household_uprating(small_ladder, small_reference, period=2025)
+    assert small["applied"] is True
+    assert small["factor"] == pytest.approx(1.1)
+    assert small["ladder_households_total"] == 30.0
+    assert small["ladder_oa_vintage"].startswith("ew:2021_census")
+    assert small["reference"] == small_reference
+    assert "A15" in small["adjudication"]
     with pytest.raises(ValueError, match="calibration period"):
-        uk_ladder_household_uprating(ladder, reference, period=2024)
+        uk_ladder_household_uprating(small_ladder, small_reference, period=2024)
+
+    def tenure_spec(name, value, **metadata):
+        return TargetSpec(
+            name=name,
+            entity="household",
+            value=value,
+            measure="tenure/social_rent",
+            period=2025,
+            source="ONS",
+            family="ons_housing",
+            metadata={
+                "contract_target_id": "ons.tenure.social_rent",
+                "geography_level": "local_authority",
+                **metadata,
+            },
+        )
 
     registry = TargetRegistry(
         [
@@ -1436,15 +1452,51 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
                     "geography_id": "K03000001",
                 },
             ),
+            # A census-2021 tenure cell held to 2025 (A17: uprated), a
+            # Scottish census-2022 hold (uprated), and a tenure cell compiled
+            # from a 2025 fact with no hold (never touched).
+            tenure_spec(
+                "ons.tenure.social_rent@E06000001@2025",
+                50.0,
+                geography_id="E06000001",
+                uprating_from_period=2021,
+                uprating_to_period=2025,
+            ),
+            tenure_spec(
+                "ons.tenure.social_rent@S12000005@2025",
+                40.0,
+                geography_id="S12000005",
+                uprating_from_period=2022,
+                uprating_to_period=2025,
+            ),
+            tenure_spec(
+                "ons.tenure.social_rent@E06000002@2025",
+                30.0,
+                geography_id="E06000002",
+            ),
         ],
         country="uk",
     )
+    ladder = SimpleNamespace(
+        households=np.asarray([10.0, 20.0, 5.0]),
+        constituency_code=np.asarray(["E14000001", "S14000001", "E14000002"]),
+        local_authority_code=np.asarray(["E06000001", "S12000005", "E06000002"]),
+        metadata={"oa_vintage": "ew:2021_census;scotland:2022_census;ni:dz2021"},
+    )
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 38.5),), period=2025
+    )
+    uprating = uk_ladder_household_uprating(ladder, reference, period=2025)
+    assert uprating["factor"] == pytest.approx(1.1)
     as_published, receipt = uk_local_target_surface(
         registry, ladder, bound_national_target_ids=(), period=2025
     )
     assert receipt["ladder_household_uprating"]["applied"] is False
+    assert receipt["ladder_household_uprating"]["tenure_cells"]["applied"] is False
     published_rows = as_published.loc[as_published["metric"] == "households"]
-    assert published_rows["value"].tolist() == [10.0, 20.0, 10.0, 20.0]
+    assert published_rows["value"].tolist() == [10.0, 5.0, 20.0, 10.0, 5.0, 20.0]
+    tenure_published = as_published.loc[as_published["metric"] == "tenure/social_rent"]
+    assert tenure_published["value"].tolist() == [50.0, 40.0, 30.0]
 
     uprated, receipt = uk_local_target_surface(
         registry,
@@ -1454,8 +1506,19 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
         ladder_household_uprating=uprating,
     )
     rows = uprated.loc[uprated["metric"] == "households"]
-    assert rows["value"].tolist() == pytest.approx([11.0, 22.0, 11.0, 22.0])
-    assert receipt["ladder_household_uprating"] == uprating
+    assert rows["value"].tolist() == pytest.approx([11.0, 5.5, 22.0, 11.0, 5.5, 22.0])
+    tenure_rows = uprated.loc[uprated["metric"] == "tenure/social_rent"]
+    assert tenure_rows["value"].tolist() == pytest.approx([55.0, 44.0, 30.0])
+    tenure_receipt = receipt["ladder_household_uprating"]["tenure_cells"]
+    assert tenure_receipt["applied"] is True
+    assert tenure_receipt["cells"] == 2
+    assert tenure_receipt["by_census_vintage"] == {"2021": 1, "2022": 1}
+    assert "A17" in tenure_receipt["adjudication"]
+    assert {
+        k: v
+        for k, v in receipt["ladder_household_uprating"].items()
+        if k != "tenure_cells"
+    } == uprating
     declined, receipt = uk_local_target_surface(
         registry,
         ladder,
@@ -1465,11 +1528,15 @@ def test_uk_ladder_household_uprating_scales_ladder_rows_and_receipts() -> None:
     )
     assert declined.loc[declined["metric"] == "households", "value"].tolist() == [
         10.0,
+        5.0,
         20.0,
         10.0,
+        5.0,
         20.0,
     ]
-    assert receipt["ladder_household_uprating"] == {
+    declined_receipt = receipt["ladder_household_uprating"]
+    assert declined_receipt["tenure_cells"]["applied"] is False
+    assert {k: v for k, v in declined_receipt.items() if k != "tenure_cells"} == {
         "applied": False,
         "reason": "no facts",
     }
