@@ -596,7 +596,7 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         target_registry=registry,
     )
     obr_variables = {
-        row["name"]: row["variable"]["id"]
+        row["name"]: row["variable"]
         for row in diagnostics["targets"]
         if row["source"]["id"] == "obr"
     }
@@ -606,8 +606,16 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         if row["source"]["id"] == "obr"
     } == {"Office for Budget Responsibility"}
     assert obr_variables == {
-        "obr.esa@2025": "efo_expenditure",
-        "obr.income_tax@2025": "efo_receipts",
+        "obr.esa@2025": {
+            "id": "efo_expenditure",
+            "label": "EFO expenditure",
+            "measure": "total",
+        },
+        "obr.income_tax@2025": {
+            "id": "efo_receipts",
+            "label": "EFO receipts",
+            "measure": "total",
+        },
     }
 
 

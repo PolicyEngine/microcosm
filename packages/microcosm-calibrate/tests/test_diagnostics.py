@@ -468,6 +468,7 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     }
     assert income["variable"] == {
         "id": "adjusted_gross_income",
+        "label": "Adjusted gross income",
         "measure": "total",
     }
     assert income["dimensions"] == {
@@ -538,6 +539,7 @@ def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
     }
     assert payload["targets"][2]["variable"] == {
         "id": "population",
+        "label": "Population",
         "measure": "count",
     }
     assert payload["targets"][2]["dimensions"] == {
@@ -601,8 +603,16 @@ def test_registry_diagnostics_separate_measure_from_variable_category(
 
     variables = [row["variable"] for row in payload["targets"]]
     assert variables == [
-        {"id": "spi_employment_income", "measure": "total"},
-        {"id": "spi_employment_income", "measure": "count"},
+        {
+            "id": "spi_employment_income",
+            "label": "SPI employment income",
+            "measure": "total",
+        },
+        {
+            "id": "spi_employment_income",
+            "label": "SPI employment income",
+            "measure": "count",
+        },
     ]
     assert payload["targets"][0]["dimensions"] == {"total_income_lower_bound": "100000"}
     assert payload["targets"][1]["dimensions"] == {"total_income_lower_bound": "100000"}

@@ -4210,6 +4210,11 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         "label": "IRS Statistics of Income",
         "citation": "fixture",
     }
+    assert diagnostics["targets"][0]["variable"] == {
+        "id": "income",
+        "label": "Income",
+        "measure": "total",
+    }
     assert diagnostics["targets"][0]["dimensions"] == {"geography_state": "0400000US06"}
     assert diagnostics["dimensions"]["geography_state"] == {
         "label": "State",

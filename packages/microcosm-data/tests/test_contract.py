@@ -3568,7 +3568,10 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
             "label": "Fixture provider",
             "citation": row["source"],
         }
-        row["variable"] = {"id": row["target_name"]}
+        row["variable"] = {
+            "id": row["target_name"],
+            "label": "Fixture statistic",
+        }
         row["dimensions"] = {"geography_country": "0100000US"}
     _write_json_and_refresh_manifest_hash(
         release_dir,
@@ -3580,13 +3583,18 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
     validate_release_dir(release_dir)
 
 
-def test_schema_7_rejects_an_empty_source_label(release_dir: Path) -> None:
+@pytest.mark.parametrize("field", ["source", "variable"])
+def test_schema_7_rejects_an_empty_identity_label(
+    release_dir: Path,
+    field: str,
+) -> None:
     diagnostics = _calibration_diagnostics()
     diagnostics["schema_version"] = 7
     diagnostics["dimensions"] = {}
     for row in diagnostics["targets"]:
-        row["source"] = {"id": "fixture", "label": " "}
+        row["source"] = {"id": "fixture"}
         row["variable"] = {"id": row["target_name"]}
+        row[field]["label"] = " "
         row["dimensions"] = {}
     _write_json_and_refresh_manifest_hash(
         release_dir,
@@ -3599,7 +3607,7 @@ def test_schema_7_rejects_an_empty_source_label(release_dir: Path) -> None:
         validate_release_dir(release_dir)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "source 'label' must be a non-empty string" in failures
+    assert f"{field} 'label' must be a non-empty string" in failures
 
 
 def test_schema_7_rejects_partial_identity_and_multiple_geographies(

@@ -33,6 +33,7 @@ from microcosm.calibrate._target_loss_attribution import (
 )
 from microcosm.calibrate.provider_labels import calibration_provider_label
 from microcosm.calibrate.solve import CalibrationResult
+from microcosm.calibrate.variable_labels import calibration_variable_label
 
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
@@ -505,6 +506,9 @@ def _structured_target_fields(
         if source_url:
             source["url"] = source_url
     variable: dict[str, str] = {"id": variable_id}
+    variable_label = calibration_variable_label(country, source_id, variable_id)
+    if variable_label:
+        variable["label"] = variable_label
     measure = _variable_measure(metadata)
     if measure:
         variable["measure"] = measure
