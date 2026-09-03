@@ -16,6 +16,7 @@ import pandas as pd
 
 from microcosm.frame import Frame, WeightKind, Weights
 
+from . import keys as graph_keys
 from .canonical import canonical_json, sha256_domain
 from .codecs import SOURCE_CODECS, SourceCodecRegistry
 from .decl import (
@@ -34,6 +35,8 @@ from .kernel import (
     KernelRegistry,
     KernelResult,
     KernelRole,
+    Numeric,
+    NumericScope,
     Tolerance,
 )
 from .keys import (
@@ -457,6 +460,7 @@ def _project_context(
     key: str,
     sources: Mapping[str, Path],
     tolerances: Mapping[tuple[str, str], Tolerance | None],
+    numerics: Mapping[tuple[str, str], NumericScope],
 ) -> KernelContext:
     if population is None:
         return KernelContext(
@@ -468,6 +472,7 @@ def _project_context(
             rng=np.random.default_rng(seed(key)),
             sources=MappingProxyType({name: sources[name] for name in node.sources}),
             tolerances=tolerances,
+            numerics=numerics,
         )
 
     frame = population.frame
@@ -558,7 +563,66 @@ def _project_context(
         rng=np.random.default_rng(seed(key)),
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         tolerances=tolerances,
+        numerics=numerics,
     )
+
+
+_NUMERIC_RANK = {
+    Numeric.BITWISE: 0,
+    Numeric.PLATFORM_BITWISE: 1,
+    Numeric.TOLERANCE_BOUND: 2,
+}
+
+
+def _input_numerics(
+    compiled: CompiledGraph,
+    node_id: str,
+    kernels: KernelRegistry,
+    *,
+    writers: Mapping[tuple[str, str], tuple[str, ...]] | None = None,
+) -> Mapping[tuple[str, str], NumericScope]:
+    """Resolve each read coordinate to its loosest writer numeric scope."""
+
+    writer_map = _input_writers(compiled, node_id) if writers is None else writers
+    resolved: dict[tuple[str, str], NumericScope] = {}
+    for coordinate, writer_ids in writer_map.items():
+        capabilities = tuple(
+            kernels.get(compiled.graph.node(writer_id).kernel).capabilities
+            for writer_id in writer_ids
+        )
+        numeric = max(
+            (capability.numeric for capability in capabilities),
+            key=_NUMERIC_RANK.__getitem__,
+            default=Numeric.BITWISE,
+        )
+        bounds = tuple(
+            capability.tolerance
+            for capability in capabilities
+            if capability.numeric is Numeric.TOLERANCE_BOUND
+        )
+        tolerance = (
+            None
+            if not bounds
+            else Tolerance(
+                rtol=max(bound.rtol for bound in bounds if bound is not None),
+                atol=max(bound.atol for bound in bounds if bound is not None),
+                ulps=max(bound.ulps for bound in bounds if bound is not None),
+            )
+        )
+        platform = (
+            graph_keys.platform_fingerprint()
+            if any(
+                capability.numeric is Numeric.PLATFORM_BITWISE
+                for capability in capabilities
+            )
+            else None
+        )
+        resolved[coordinate] = NumericScope(
+            numeric=numeric,
+            tolerance=tolerance,
+            platform=platform,
+        )
+    return MappingProxyType(resolved)
 
 
 def _input_tolerances(
@@ -567,32 +631,18 @@ def _input_tolerances(
     kernels: KernelRegistry,
     *,
     writers: Mapping[tuple[str, str], tuple[str, ...]] | None = None,
+    numerics: Mapping[tuple[str, str], NumericScope] | None = None,
 ) -> Mapping[tuple[str, str], Tolerance | None]:
-    """Resolve each read coordinate to the loosest tolerance of its writers."""
+    """Project each input numeric scope to its legacy tolerance value."""
 
-    writer_map = _input_writers(compiled, node_id) if writers is None else writers
-    resolved: dict[tuple[str, str], Tolerance | None] = {}
-    for coordinate, writer_ids in writer_map.items():
-        bounds = [
-            tolerance
-            for writer_id in writer_ids
-            if (
-                tolerance := kernels.get(
-                    compiled.graph.node(writer_id).kernel
-                ).capabilities.tolerance
-            )
-            is not None
-        ]
-        resolved[coordinate] = (
-            None
-            if not bounds
-            else Tolerance(
-                rtol=max(bound.rtol for bound in bounds),
-                atol=max(bound.atol for bound in bounds),
-                ulps=max(bound.ulps for bound in bounds),
-            )
-        )
-    return MappingProxyType(resolved)
+    scopes = (
+        _input_numerics(compiled, node_id, kernels, writers=writers)
+        if numerics is None
+        else numerics
+    )
+    return MappingProxyType(
+        {coordinate: scope.tolerance for coordinate, scope in scopes.items()}
+    )
 
 
 def _input_writers(
@@ -1903,8 +1953,15 @@ def run_graph(
         _validate_population_declaration(node, incumbent)
         _validate_materialized_expand_outputs(compiled, node, incumbent, receipts)
         input_writers = _input_writers(compiled, node_id, receipts=receipts)
-        input_tolerances = _input_tolerances(
+        input_numerics = _input_numerics(
             compiled, node_id, kernels, writers=input_writers
+        )
+        input_tolerances = _input_tolerances(
+            compiled,
+            node_id,
+            kernels,
+            writers=input_writers,
+            numerics=input_numerics,
         )
         tolerance_writers = _tolerance_writer_payload(input_writers)
 
@@ -1947,6 +2004,7 @@ def run_graph(
                 key=key,
                 sources=source_paths,
                 tolerances=input_tolerances,
+                numerics=input_numerics,
             )
             before = _context_digest(context)
             try:

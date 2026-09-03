@@ -37,8 +37,10 @@ from microcosm.graph.kernel import (
     KernelResult,
     KernelRole,
     Numeric,
+    NumericScope,
     Tolerance,
 )
+from microcosm.graph.keys import platform_fingerprint
 from microcosm.graph.manifest import Decision, RunManifest
 from microcosm.graph.store import (
     ContentStore,
@@ -878,6 +880,229 @@ def test_masked_writer_preserves_upstream_tolerance_provenance(
     assert receipt["evidence"]["tolerance_writers"] == {
         "person.income": [create.id, masked.id]
     }
+
+
+@pytest.mark.parametrize(
+    ("first_numeric", "second_numeric"),
+    [
+        (Numeric.TOLERANCE_BOUND, Numeric.PLATFORM_BITWISE),
+        (Numeric.PLATFORM_BITWISE, Numeric.TOLERANCE_BOUND),
+    ],
+    ids=["bounded-then-platform", "platform-then-bounded"],
+)
+def test_input_numeric_scopes_preserve_platform_across_masked_writer_order(
+    tmp_path: Path,
+    first_numeric: Numeric,
+    second_numeric: Numeric,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    bound = Tolerance(rtol=1e-6, atol=2e-6, ulps=3)
+    current_platform = platform_fingerprint()
+
+    def write_full(target: str) -> Callable[[KernelContext], KernelResult]:
+        def compute(context: KernelContext) -> KernelResult:
+            person = context.tables["person"]
+            return KernelResult(
+                columns={
+                    ("person", target): pd.Series(
+                        person["age"].to_numpy(dtype=np.float64),
+                        index=pd.Index(person["person_id"], name="person_id"),
+                        dtype="float64",
+                    )
+                }
+            )
+
+        return compute
+
+    def rewrite_selected(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        selected = person["selected"].to_numpy(dtype=np.bool_)
+        return KernelResult(
+            columns={
+                ("person", "mixed_value"): pd.Series(
+                    person.loc[selected, "mixed_value"].to_numpy(dtype=np.float64),
+                    index=pd.Index(person.loc[selected, "person_id"], name="person_id"),
+                    dtype="float64",
+                )
+            }
+        )
+
+    def keep_all(context: KernelContext) -> KernelResult:
+        person = context.tables["person"]
+        return KernelResult(
+            keep=pd.Series(True, index=person["person_id"], dtype="bool")
+        )
+
+    expected = {
+        ("person", "age"): NumericScope(),
+        ("person", "mixed_value"): NumericScope(
+            numeric=Numeric.TOLERANCE_BOUND,
+            tolerance=bound,
+            platform=current_platform,
+        ),
+        ("person", "platform_value"): NumericScope(
+            numeric=Numeric.PLATFORM_BITWISE,
+            platform=current_platform,
+        ),
+    }
+
+    def audit(context: KernelContext) -> KernelResult:
+        assert context.numerics == expected
+        assert set(context.tolerances) == set(expected)
+        for coordinate, scope in context.numerics.items():
+            assert context.tolerances[coordinate] == scope.tolerance
+        return KernelResult(receipt={"outcome": "pass", "evidence": {"scopes": 3}})
+
+    def numeric_capabilities(numeric: Numeric) -> Capabilities:
+        return Capabilities(
+            Determinism.DETERMINISTIC,
+            numeric=numeric,
+            tolerance=bound if numeric is Numeric.TOLERANCE_BOUND else None,
+        )
+
+    create = replace(CREATE, kernel="numeric.source@1")
+    boundary = Node(
+        "numeric_boundary",
+        "numeric.filter@1",
+        inputs=(Slice("person", ("selected", "mixed_value", "platform_value")),),
+        structural=StructuralDelta.FILTER,
+        base=create.id,
+        mass="free",
+    )
+    platform_only = Node(
+        "platform_only",
+        "numeric.platform-only@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "platform_value", "float64"),),
+        population=create.id,
+    )
+    first = Node(
+        "mixed_first",
+        "numeric.mixed-first@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "mixed_value", "float64"),),
+        population=create.id,
+    )
+    second = Node(
+        "mixed_second",
+        "numeric.mixed-second@1",
+        inputs=(Slice("person", ("selected",)),),
+        outputs=(
+            Owned("person", "mixed_value", "float64", rows="selected", rewrite=True),
+        ),
+        population=boundary.id,
+    )
+    gate = Node(
+        "numeric_gate",
+        "numeric.gate@1",
+        inputs=(Slice("person", ("age", "mixed_value", "platform_value")),),
+        population=boundary.id,
+    )
+    registry = _registry()
+    for kernel in (
+        _Kernel(
+            create.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                structural=StructuralDelta.CREATE,
+            ),
+            _source,
+        ),
+        _Kernel(
+            platform_only.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                numeric=Numeric.PLATFORM_BITWISE,
+            ),
+            write_full("platform_value"),
+        ),
+        _Kernel(
+            boundary.kernel,
+            Capabilities(
+                Determinism.DETERMINISTIC,
+                structural=StructuralDelta.FILTER,
+            ),
+            keep_all,
+        ),
+        _Kernel(
+            first.kernel, numeric_capabilities(first_numeric), write_full("mixed_value")
+        ),
+        _Kernel(second.kernel, numeric_capabilities(second_numeric), rewrite_selected),
+        _Kernel(
+            gate.kernel,
+            Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
+            audit,
+        ),
+    ):
+        registry.register(kernel)
+
+    manifest = _run(
+        Graph(
+            "numeric-scopes",
+            (SOURCE,),
+            (create, boundary, platform_only, first, second, gate),
+        ),
+        source,
+        ContentStore(tmp_path / "store"),
+        registry,
+    )
+    assert manifest.nodes[gate.id].receipt["outcome"] == "pass"
+
+
+def test_tolerance_gate_refuses_cross_platform_numeric_scope() -> None:
+    coordinate = ("person", "income")
+    current_platform = platform_fingerprint()
+    gate = toy.GateReportsTolerance(
+        "gate.platform-scope@1",
+        Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE),
+    )
+    node = Node(
+        "platform_scope_gate",
+        gate.ref,
+        inputs=(Slice("person", ("income",)),),
+        outputs=(Owned("release", "platform_verdict", "string"),),
+        params={
+            "entity": "person",
+            "column": "income",
+            "verdict_column": "platform_verdict",
+            "comparison_platform": "different/platform",
+        },
+    )
+    context = KernelContext(
+        node=node,
+        tables={
+            "person": pd.DataFrame(
+                {"person_id": [1], "income": np.array([1.0], dtype=np.float64)}
+            ),
+            "release": pd.DataFrame({"release_id": [1]}),
+        },
+        weights={},
+        strata=pd.Series(["a"], name="stratum"),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        tolerances={coordinate: None},
+        numerics={
+            coordinate: NumericScope(
+                numeric=Numeric.PLATFORM_BITWISE,
+                platform=current_platform,
+            )
+        },
+    )
+
+    result = gate.run(context)
+
+    assert result.receipt["outcome"] == "evidence_absent"
+    assert result.receipt["evidence"] == {
+        "observed": 1.0,
+        "tolerance": None,
+        "numeric": "platform_bitwise",
+        "platform": current_platform,
+        "comparison_platform": "different/platform",
+        "reason": "numeric contract is scoped to a different platform",
+    }
+    assert result.columns[("release", "platform_verdict")].tolist() == [
+        "evidence_absent"
+    ]
 
 
 def test_filter_mask_result_is_applied_to_the_base_frame(tmp_path: Path) -> None:

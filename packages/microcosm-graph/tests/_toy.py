@@ -684,6 +684,7 @@ class GateReportsTolerance(ToyKernel):
         column = str(context.params["column"])
         observed = float(context.tables[entity][column].astype("float64").mean())
         declared = context.tolerances[(entity, column)]
+        scope = context.numerics[(entity, column)]
         tolerance = (
             None
             if declared is None
@@ -693,16 +694,33 @@ class GateReportsTolerance(ToyKernel):
                 "ulps": declared.ulps,
             }
         )
+        comparison_platform = context.params.get("comparison_platform")
+        cross_platform = (
+            scope.platform is not None
+            and comparison_platform is not None
+            and comparison_platform != scope.platform
+        )
+        outcome = "evidence_absent" if cross_platform else "pass"
+        evidence = {
+            "observed": observed,
+            "tolerance": tolerance,
+            "numeric": scope.numeric.value,
+            "platform": scope.platform,
+        }
+        if comparison_platform is not None:
+            evidence["comparison_platform"] = comparison_platform
+        if cross_platform:
+            evidence["reason"] = "numeric contract is scoped to a different platform"
         verdict_column = str(context.params["verdict_column"])
         return KernelResult(
             columns={
                 ("release", verdict_column): pd.Series(
-                    ["pass"], index=_owned_ids(context, "release"), dtype="string"
+                    [outcome], index=_owned_ids(context, "release"), dtype="string"
                 )
             },
             receipt={
-                "outcome": "pass",
-                "evidence": {"observed": observed, "tolerance": tolerance},
+                "outcome": outcome,
+                "evidence": evidence,
             },
         )
 

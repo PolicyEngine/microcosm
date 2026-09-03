@@ -2,9 +2,10 @@
 
 ## State
 
-Eight of ten findings are fixed on the standalone `fix-847-r5` lane. The frozen
-interface remains unchanged. Findings 4 and 6 are next, followed by the
-complete required verification block and lane report.
+Nine of ten findings are fixed on the standalone `fix-847-r5` lane. The frozen
+interface remains unchanged. The H1 parity-pin fix and fixture regeneration
+(finding 6) are next, followed by the complete required verification block and
+lane report.
 
 ## Done
 
@@ -70,11 +71,20 @@ complete required verification block and lane report.
   keys, cache I/O, or kernels. Both cold/auto regression variants pass without
   creating store objects. The combined executor/population run passes apart
   from the known QRF fixture pin made stale by finding 5 and due for finding 6.
+- Reproduced finding 4 with an integrated gate over all-bitwise, sole
+  platform-bitwise, and mixed bounded/platform coordinates in both mixed-writer
+  orders: the gate received an empty `numerics` mapping and failed. Executor
+  aggregation now applies the explicit bitwise < platform-bitwise < bounded
+  order, combines bounded tolerances componentwise, retains the current
+  platform whenever any writer is platform-bitwise, and derives `tolerances`
+  from those exact scopes. The tolerance-reporting gate also records numeric
+  class/platform and returns `evidence_absent` for an explicitly different
+  comparison platform. Focused tests, kernel contracts, executor tests (apart
+  from the pending QRF parity pin), and acceptance C all pass.
 
 ## Next
 
-- Implement and verify amendment 17 numeric-scope aggregation (finding 4) and
-  the H1 node-key parity pin plus fixture regeneration (finding 6), preserving
-  the frozen files.
+- Implement and verify the H1 node-key parity pin plus fixture regeneration
+  (finding 6), preserving the frozen files.
 - Run the complete required verification block and write the lane report to
   the requested output file.
