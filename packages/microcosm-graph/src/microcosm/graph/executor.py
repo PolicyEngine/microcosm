@@ -48,6 +48,7 @@ from .keys import (
 from .manifest import Decision, NodeReceipt, RunManifest
 from .population import (
     Population,
+    _expand_cells,
     entrant_strata_receipt,
     expand_lineage_receipt,
     expand_writes_receipt,
@@ -432,17 +433,7 @@ def _expand_rewrite_coordinates(
 
     if node.structural is not StructuralDelta.EXPAND:
         return frozenset()
-    raw_cells = node.params.get("expand_cells", ())
-    if not isinstance(raw_cells, tuple):
-        return frozenset()
-    overlay_coordinates = {
-        (entry[0], entry[1])
-        for entry in raw_cells
-        if isinstance(entry, tuple)
-        and len(entry) == 3
-        and isinstance(entry[0], str)
-        and isinstance(entry[1], str)
-    }
+    overlay_coordinates = _expand_writer_coordinates(node)
     rewrites: set[tuple[str, str]] = set()
     for (version, entity, column), owner_id in compiled.owners.items():
         coordinate = (entity, column)
@@ -647,17 +638,7 @@ def _expand_writer_coordinates(node: Node) -> frozenset[tuple[str, str]]:
 
     if node.structural is not StructuralDelta.EXPAND:
         return frozenset()
-    raw_cells = node.params.get("expand_cells", ())
-    if not isinstance(raw_cells, tuple):
-        return frozenset()
-    return frozenset(
-        (entry[0], entry[1])
-        for entry in raw_cells
-        if isinstance(entry, tuple)
-        and len(entry) == 3
-        and isinstance(entry[0], str)
-        and isinstance(entry[1], str)
-    )
+    return frozenset((entity, column) for entity, column, _dtype in _expand_cells(node))
 
 
 def _expand_declared_payload(node: Node) -> list[str]:
@@ -1853,6 +1834,21 @@ def _preflight_require(
         )
 
 
+def _preflight_expand_declarations(compiled: CompiledGraph) -> None:
+    """Reject malformed runtime EXPAND conventions before keys or cache I/O."""
+
+    for node_id in compiled.order:
+        node = compiled.graph.node(node_id)
+        if node.structural is not StructuralDelta.EXPAND:
+            continue
+        try:
+            _expand_writer_coordinates(node)
+        except (TypeError, ValueError) as error:
+            raise NodeRejected(
+                f"Node {node.id!r} expand_cells declaration rejected: {error}"
+            ) from error
+
+
 def run_graph(
     compiled: CompiledGraph,
     *,
@@ -1876,6 +1872,7 @@ def run_graph(
             raise TypeError("decisions must contain Decision records or mappings.")
     decisions = tuple(normalized_decisions)
 
+    _preflight_expand_declarations(compiled)
     started_at = _now()
     source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)

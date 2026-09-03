@@ -1255,6 +1255,78 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     assert claim_kernel.calls == 1
 
 
+@pytest.mark.parametrize(
+    "coordinate",
+    [("house.hold", "new_value"), ("household", "new.value")],
+    ids=["entity", "column"],
+)
+def test_dotted_expand_cell_is_rejected_before_cold_or_warm_execution(
+    tmp_path: Path,
+    coordinate: tuple[str, str],
+) -> None:
+    source = _source_path(tmp_path / "source")
+    entity, column = coordinate
+
+    def expand(context: KernelContext) -> KernelResult:
+        return KernelResult(
+            expand={
+                "person": pd.Series(
+                    [1, 2],
+                    index=pd.Index([4, 5], name="person_id"),
+                    dtype="int64",
+                ),
+                "household": pd.Series(
+                    [10],
+                    index=pd.Index([30], name="household_id"),
+                    dtype="int64",
+                ),
+            },
+            columns={
+                coordinate: pd.Series(
+                    [False, False, True],
+                    index=pd.Index([10, 20, 30], name="household_id"),
+                    dtype="bool",
+                )
+            },
+            weights=Weights(
+                np.array([0.5, 2.0, 0.5], dtype=np.float64),
+                WeightKind.IMPORTANCE,
+            ),
+        )
+
+    clone = Node(
+        "dotted_clone",
+        "expand.dotted@1",
+        structural=StructuralDelta.EXPAND,
+        base="survey",
+        params={
+            "expand_cells": ((entity, column, "bool"),),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="free",
+        entrants=True,
+    )
+    expand_kernel = _Kernel(
+        clone.kernel,
+        Capabilities(
+            Determinism.DETERMINISTIC,
+            structural=StructuralDelta.EXPAND,
+        ),
+        expand,
+    )
+    registry = _registry()
+    registry.register(expand_kernel)
+    graph = Graph("toy", (SOURCE,), (CREATE, clone))
+    store = ContentStore(tmp_path / "store")
+
+    for resume in ("forbid", "auto"):
+        with pytest.raises(NodeRejected, match=r"expand_cells.*dot-free"):
+            _run(graph, source, store, registry, resume=resume)
+    assert expand_kernel.calls == 0
+    assert _object_bytes(store) == {}
+
+
 def test_materialized_expand_claim_rejects_filter_population(tmp_path: Path) -> None:
     source = _source_path(tmp_path / "source")
 

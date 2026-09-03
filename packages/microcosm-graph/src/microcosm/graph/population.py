@@ -1172,6 +1172,11 @@ def _expand_cells(node: Node) -> tuple[tuple[str, str, str], ...]:
                 f"EXPAND node {node.id!r} has malformed expand_cells entry {item!r}."
             )
         entity, column, dtype = item
+        if "." in entity or "." in column:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} params['expand_cells'] entity and "
+                f"column names must be dot-free; got {entity!r}, {column!r}."
+            )
         # Reuse the declaration token validator without importing frozen
         # declaration internals into this runtime convention.
         dtype_for_token(dtype)

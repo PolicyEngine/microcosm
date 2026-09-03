@@ -2,9 +2,9 @@
 
 ## State
 
-Seven of ten findings are fixed and committed on the standalone `fix-847-r5`
-lane. The frozen interface remains unchanged. Findings 4, 6, and 7 are next,
-followed by the complete required verification block and lane report.
+Eight of ten findings are fixed on the standalone `fix-847-r5` lane. The frozen
+interface remains unchanged. Findings 4 and 6 are next, followed by the
+complete required verification block and lane report.
 
 ## Done
 
@@ -62,11 +62,19 @@ followed by the complete required verification block and lane report.
   compares every incumbent column's complete prefix with storage semantics
   before checking copied additions. The focused regressions and full population
   unit file pass.
+- Reproduced finding 7 with a dotted `expand_cells` column: the cold execution
+  did not raise and authored provenance the warm parser cannot represent.
+  Entity and column names are now required to be dot-free by the shared EXPAND
+  parser, executor receipt-coordinate discovery uses that parser, and an
+  all-node preflight refuses malformed declarations before source hashing,
+  keys, cache I/O, or kernels. Both cold/auto regression variants pass without
+  creating store objects. The combined executor/population run passes apart
+  from the known QRF fixture pin made stale by finding 5 and due for finding 6.
 
 ## Next
 
-- Implement and verify amendment 17 numeric-scope aggregation (finding 4), the
-  H1 node-key parity pin (finding 6), and dotted EXPAND declaration refusal
-  (finding 7), preserving the frozen files.
+- Implement and verify amendment 17 numeric-scope aggregation (finding 4) and
+  the H1 node-key parity pin plus fixture regeneration (finding 6), preserving
+  the frozen files.
 - Run the complete required verification block and write the lane report to
   the requested output file.
