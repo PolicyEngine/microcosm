@@ -18,6 +18,7 @@ from microcosm.build.logbook import (
     VERSION_2_LOGBOOK_ROW_FIELDS,
     LogbookRow,
     canonical_json_bytes,
+    compute_row_digest,
     load_logbook_row,
     reconcile_spool,
     record_build_attempt,
@@ -330,6 +331,37 @@ def test_remote_legacy_null_columns_restore_exact_legacy_shape() -> None:
 
     assert restored.to_mapping() == legacy
     assert frozenset(restored.to_mapping()) == LEGACY_LOGBOOK_ROW_FIELDS
+
+
+def test_digest_normalizes_database_shaped_legacy_row() -> None:
+    legacy = LogbookRow.create(**_row_kwargs()).to_mapping()
+    database_row = {
+        **legacy,
+        "row_format_version": None,
+        "requested_k": None,
+        "realized_k": None,
+        "record_unit": None,
+    }
+
+    assert compute_row_digest(database_row) == legacy["row_digest"]
+    assert frozenset(database_row) == REMOTE_LOGBOOK_ROW_FIELDS
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"row_format_version": None, "requested_k": 20_000},
+        {"row_format_version": 3},
+        {"row_format_version": "2"},
+    ],
+)
+def test_digest_rejects_ambiguous_or_unsupported_versions(
+    overrides: dict[str, object],
+) -> None:
+    value = {**LogbookRow.create(**_row_kwargs()).to_mapping(), **overrides}
+
+    with pytest.raises(ValueError, match="Cannot hash"):
+        compute_row_digest(value)
 
 
 def test_remote_partially_versioned_legacy_row_is_rejected() -> None:

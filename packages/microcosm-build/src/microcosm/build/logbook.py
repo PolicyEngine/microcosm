@@ -502,12 +502,31 @@ def logbook_chain_scope(pipeline: str) -> str | None:
 def compute_row_digest(value: Mapping[str, Any]) -> str:
     """Compute SHA-256(canonical non-chain fields || predecessor)."""
 
-    fields = (
-        VERSION_2_LOGBOOK_ROW_FIELDS
-        if "row_format_version" in value
-        else LEGACY_LOGBOOK_ROW_FIELDS
-    )
-    keys = frozenset(value)
+    normalized = dict(value)
+    version = normalized.get("row_format_version")
+    if version is None:
+        populated_extensions = {
+            field: normalized[field]
+            for field in _VERSION_2_EXTENSION_FIELDS
+            if field in normalized and normalized[field] is not None
+        }
+        if populated_extensions:
+            raise ValueError(
+                "Cannot hash legacy Logbook row with version-2 values: "
+                f"{sorted(populated_extensions)}."
+            )
+        for field in _VERSION_2_EXTENSION_FIELDS:
+            normalized.pop(field, None)
+        fields = LEGACY_LOGBOOK_ROW_FIELDS
+    elif isinstance(version, bool) or not isinstance(version, int) or version != 2:
+        raise ValueError(
+            "Cannot hash Logbook row with unsupported row_format_version "
+            f"{version!r}."
+        )
+    else:
+        fields = VERSION_2_LOGBOOK_ROW_FIELDS
+
+    keys = frozenset(normalized)
     missing = (fields - {"row_digest"}) - keys
     extra = keys - fields
     if missing or extra:
@@ -516,14 +535,14 @@ def compute_row_digest(value: Mapping[str, Any]) -> str:
             f"missing={sorted(missing)}, extra={sorted(extra)}."
         )
     predecessor = _validate_digest(
-        value.get("prev_row_digest"),
+        normalized.get("prev_row_digest"),
         "prev_row_digest",
         nullable=True,
     )
     payload = {
-        key: value[key]
+        key: normalized[key]
         for key in sorted(fields)
-        if key in value and key not in _HASH_EXCLUDED_FIELDS
+        if key in normalized and key not in _HASH_EXCLUDED_FIELDS
     }
     material = canonical_json_bytes(payload) + (predecessor or "").encode("ascii")
     return hashlib.sha256(material).hexdigest()
