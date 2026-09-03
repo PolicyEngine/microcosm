@@ -83,9 +83,9 @@ def _literal(node: ast.expr | None) -> object:
 
 
 def markers_in(source: str, file: str = "<memory>") -> tuple[Marker, ...]:
-    """Every ``pytest.mark.xfail`` marker on a test function in ``source``."""
+    """Every ``pytest.mark.xfail`` marker on a module-level test function."""
     found: list[Marker] = []
-    for node in ast.walk(ast.parse(source, filename=file)):
+    for node in ast.parse(source, filename=file).body:
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         for decorator in node.decorator_list:
@@ -112,10 +112,91 @@ def markers_in(source: str, file: str = "<memory>") -> tuple[Marker, ...]:
     return tuple(found)
 
 
+#: The only marks an acceptance test may carry: the strict charter marker, the
+#: engine guards, and a plain parametrize. Anything else that pytest would
+#: honour — skip, skipif, a non-strict or unnamed xfail, marks on a class or a
+#: module, marks smuggled through ``pytest.param`` — could hide a failing
+#: known-green property while the ratchet reports it green.
+ALLOWED_MARKS = frozenset({"xfail", "requires_uk", "requires_us", "parametrize"})
+#: Runtime calls that suppress a result from inside a test body.
+SUPPRESSING_CALLS = frozenset(
+    {
+        "pytest.xfail",
+        "pytest.skip",
+        "pytest.importorskip",
+        "xfail",
+        "skip",
+    }
+)
+
+
+def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
+    """Every way ``source`` could suppress a result that the marker scan misses.
+
+    Returns human-readable problems; an empty tuple means the file uses only
+    the forms the ratchet models (module-level ``test_*`` functions carrying
+    :data:`ALLOWED_MARKS`).
+    """
+    problems: list[str] = []
+    tree = ast.parse(source, filename=file)
+
+    def mark_name(node: ast.expr) -> str | None:
+        target = node.func if isinstance(node, ast.Call) else node
+        name = dotted(target)
+        if ".mark." in name or name.startswith("mark."):
+            return name.rsplit(".", 1)[-1]
+        return None
+
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in node.targets
+        ):
+            problems.append(f"{file}: module-level pytestmark is not allowed")
+        if isinstance(node, ast.ClassDef):
+            problems.append(
+                f"{file}: class {node.name} — tests must be module-level functions"
+            )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            for decorator in node.decorator_list:
+                name = mark_name(decorator)
+                if name is None:
+                    continue
+                if name not in ALLOWED_MARKS:
+                    problems.append(
+                        f"{file}::{node.name} carries mark {name!r}, which is not allowed"
+                    )
+                if name == "parametrize" and isinstance(decorator, ast.Call):
+                    for argument in ast.walk(decorator):
+                        if (
+                            isinstance(argument, ast.keyword)
+                            and argument.arg == "marks"
+                        ):
+                            problems.append(
+                                f"{file}::{node.name} smuggles marks through pytest.param"
+                            )
+                            break
+            for inner in ast.walk(node):
+                if (
+                    inner is not node
+                    and isinstance(inner, ast.FunctionDef | ast.AsyncFunctionDef)
+                    and inner.name.startswith("test_")
+                ):
+                    problems.append(
+                        f"{file}::{node.name} nests {inner.name}, which pytest would not collect"
+                    )
+        if isinstance(node, ast.Call) and dotted(node.func) in SUPPRESSING_CALLS:
+            problems.append(
+                f"{file}: runtime {dotted(node.func)}() suppresses a result"
+            )
+    return tuple(problems)
+
+
 def tests_in(source: str, file: str = "<memory>") -> dict[str, str]:
     """Charter id to test name, for every ``test_<id>_...`` in ``source``."""
     named: dict[str, str] = {}
-    for node in ast.walk(ast.parse(source, filename=file)):
+    for node in ast.parse(source, filename=file).body:
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         match = TEST_ID.match(node.name)
@@ -325,6 +406,8 @@ def verify(ref: str = BASELINE_REF) -> int:
     for entry in data["properties"]:
         if entry["state"] == "missing":
             problems.append(f"charter {entry['id']} has no test in the suite")
+    for file in sorted(current):
+        problems.extend(suppressions_in((ROOT / file).read_text(), file))
 
     declared = set(charter_ids((ROOT / CHARTER).read_text()))
     seen: dict[str, str] = {}
@@ -366,6 +449,14 @@ def verify(ref: str = BASELINE_REF) -> int:
         baseline_charter = baseline_source(ref, CHARTER)
         known = set(charter_ids(baseline_charter)) if baseline_charter else set()
         new_to_charter = declared - known
+        # A property the baseline charter listed cannot simply vanish: that
+        # would drop it from scoring (and let a green id be renamed into a
+        # "new" red one). Retiring a property is a charter change of its own.
+        for identifier in sorted(known - declared):
+            problems.append(
+                f"charter {identifier} was listed on {ref} but is gone from "
+                f"{CHARTER}; retiring a property needs its own reviewed change"
+            )
         was_red: set[str] = set()
         for file in baseline_suite_files(ref):
             source = baseline_source(ref, file)

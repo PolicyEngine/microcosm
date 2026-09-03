@@ -60,7 +60,7 @@ WRAPPED_KERNELS = ("fit.qrf", "calibrate", "simulate")
 #: not promise cross-platform bit stability, so ``fit.qrf@1`` says so; parity
 #: in the locked environment is still asserted byte for byte below.
 NUMERIC_CLAIMS = {
-    "fit.qrf": "tolerance_bound",
+    "fit.qrf": "platform_bitwise",
     "calibrate": "bitwise",
     "simulate": "bitwise",
 }

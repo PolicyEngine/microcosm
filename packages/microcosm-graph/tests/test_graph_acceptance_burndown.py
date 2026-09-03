@@ -395,6 +395,69 @@ def test_verify_binds_a_marker_to_the_test_it_decorates(tmp_path: Path) -> None:
     assert "A3 carries two markers" in mislabelled.stdout
 
 
+def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
+    """Dropping a baseline row (and its test) is not a way to go green."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    (root / "docs" / "graph-acceptance.md").write_text(
+        "| Id | Property |\n|---|---|\n| A3 | three |\n"
+    )
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text("def test_a3_three() -> None:\n    assert True\n")
+    removed = _run(root, "--verify")
+    assert removed.returncode == 1
+    assert "charter A1 was listed on origin/main but is gone" in removed.stdout
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "import pytest\n\npytestmark = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\n\n@pytest.mark.skip\ndef test_a1_one() -> None:\n    assert False\n",
+            "carries mark 'skip'",
+        ),
+        (
+            'import pytest\n\n\n@pytest.mark.skipif(True, reason="x")\ndef test_a1_one() -> None:\n    assert False\n',
+            "carries mark 'skipif'",
+        ),
+        (
+            "import pytest\n\n\nclass TestA:\n    def test_a1_one(self) -> None:\n        assert False\n",
+            "tests must be module-level functions",
+        ),
+        (
+            'import pytest\n\n\ndef test_a1_one() -> None:\n    pytest.xfail("later")\n',
+            "runtime pytest.xfail() suppresses",
+        ),
+        (
+            'import pytest\n\n\n@pytest.mark.parametrize("x", [pytest.param(1, marks=pytest.mark.xfail)])\ndef test_a1_one(x) -> None:\n    assert False\n',
+            "smuggles marks through pytest.param",
+        ),
+        (
+            "def test_a1_outer() -> None:\n    def test_a1_one() -> None:\n        assert False\n",
+            "nests test_a1_one",
+        ),
+    ],
+)
+def test_suppression_forms_the_marker_scan_cannot_model_are_refused(
+    source: str, expected: str
+) -> None:
+    problems = burndown.suppressions_in(source, "sample.py")
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_the_allowed_marks_are_not_suppressions() -> None:
+    source = (
+        "import pytest\n\n\n"
+        '@pytest.mark.requires_uk\n@pytest.mark.parametrize("x", [1, 2])\n'
+        '@pytest.mark.xfail(strict=True, reason="charter A1: pending")\n'
+        "def test_a1_one(x) -> None:\n    assert False\n"
+    )
+    assert burndown.suppressions_in(source, "sample.py") == ()
+
+
 def test_verify_lets_a_property_new_to_the_charter_start_red(tmp_path: Path) -> None:
     """The charter's meta-TDD rule: a new property is committed red first.
 

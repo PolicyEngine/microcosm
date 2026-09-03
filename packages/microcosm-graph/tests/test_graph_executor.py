@@ -2252,17 +2252,20 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
 def test_fit_qrf_tolerance_source_hash_pin_is_current() -> None:
     import json
 
-    from microcosm.fit.kernels import FIT_QRF_TOLERANCE, QRF_PARAM_KERNEL, QRFKernel
+    from microcosm.fit.kernels import QRF_PARAM_KERNEL, QRFKernel
     from tools.graph_parity_fixtures import FIXTURES
 
     pins = json.loads((FIXTURES / "fit.qrf" / "pins.json").read_text())
-    # The declared budget is provisional (see the constant's comment); the
-    # pin tracks whatever it is, and the identity must not depend on it.
-    assert QRF_PARAM_KERNEL.capabilities.tolerance == FIT_QRF_TOLERANCE
+    # fit.qrf@1 is platform-bitwise (amendment 16): no tolerance, and the
+    # implementation identity must not depend on the capability declaration.
+    assert QRF_PARAM_KERNEL.capabilities.numeric is Numeric.PLATFORM_BITWISE
+    assert QRF_PARAM_KERNEL.capabilities.tolerance is None
     assert pins["implementation_hash"] == QRF_PARAM_KERNEL.implementation_hash()
     changed_tolerance = QRFKernel(QRF_PARAM_KERNEL.capabilities.seed_source)
     changed_tolerance.capabilities = replace(
-        changed_tolerance.capabilities, tolerance=Tolerance(ulps=2)
+        changed_tolerance.capabilities,
+        numeric=Numeric.TOLERANCE_BOUND,
+        tolerance=Tolerance(ulps=2),
     )
     assert changed_tolerance.implementation_hash() == pins["implementation_hash"]
 

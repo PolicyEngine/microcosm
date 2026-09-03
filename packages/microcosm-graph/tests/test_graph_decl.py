@@ -326,3 +326,17 @@ def test_mass_partition_must_be_declared_by_every_create_node() -> None:
         )
     with pytest.raises(GraphError, match="pair of strings"):
         Graph("toy", (SRC,), (periodic,), mass_partition=("person",))  # type: ignore[arg-type]
+
+
+def test_declared_names_may_not_contain_dots() -> None:
+    """Amendment 15: ``entity.column`` spellings must be unambiguous."""
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Slice("a.b", ("c",))
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Slice("a", ("b.c",))
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Owned("a", "b.c", "int64")
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Owned("a.b", "c", "int64")
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Slice("a", ("c",), rows="m.k")

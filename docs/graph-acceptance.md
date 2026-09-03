@@ -241,6 +241,24 @@ Amendments so far (each re-locked):
     found the frozen result had no channel for a new person's mandatory
     stratum and left person entrants fail-closed; adopted 2026-09-02.
 
+15. **Names are dot-free.** `compile`-time declarations refuse an entity,
+    column, or row-mask name containing `.`: receipts, keys, and gate
+    evidence spell a coordinate `entity.column`, and a dot inside either
+    part would let two coordinates collide. `EntitySchema` itself still
+    permits dots; the graph does not. Raised by the #847 gate review;
+    adopted 2026-09-03.
+
+16. **Platform-bitwise numerics.** `Numeric.PLATFORM_BITWISE`: identical
+    bytes on one platform (architecture and locked dependencies), with no
+    bound on cross-platform movement; a tolerance is forbidden on it as on
+    `bitwise`. Adopted when measuring `fit.qrf@1` showed that a one-ulp
+    difference in the forest flips which donor a quantile draw lands on
+    (45 of 6,000 cells moved by up to 7% between arm64 and x86_64 while the
+    rest agreed to one ulp; `docs/graph-qrf-cross-platform.md`), so no
+    per-cell `Tolerance` is true of it. Parity (H1) is asserted on one
+    platform; a cross-platform gate on such a kernel says so in its
+    evidence. Raised by the #847 gate review; adopted 2026-09-03.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

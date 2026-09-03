@@ -155,3 +155,14 @@ def test_capabilities_reject_look_alike_fields_and_registration_needs_the_real_t
 
     with pytest.raises(TypeError, match="must carry a Capabilities instance"):
         KernelRegistry().register(Impostor())
+
+
+def test_platform_bitwise_forbids_a_tolerance_like_bitwise() -> None:
+    """Amendment 16: platform-bitwise kernels declare no per-cell tolerance."""
+    Capabilities(Determinism.SEEDED, numeric=Numeric.PLATFORM_BITWISE)
+    with pytest.raises(ValueError, match="bitwise kernel declares no Tolerance"):
+        Capabilities(
+            Determinism.SEEDED,
+            numeric=Numeric.PLATFORM_BITWISE,
+            tolerance=Tolerance(rtol=1e-6),
+        )

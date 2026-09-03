@@ -948,12 +948,20 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
     opaque_artifacts = value.get("opaque_artifacts", {})
     capabilities_payload = value.get("capabilities")
     if schema_version == _LEGACY_SCHEMA_VERSION:
+        # Every schema-v1 receipt is legacy: v1 never recorded a tolerance, so
+        # a v1 receipt that carries one, or the v2 legacy flag, is a hybrid
+        # that no writer produced and is refused rather than promoted.
         if "legacy_capabilities" in value:
             raise ValueError("schema-v1 node receipts cannot carry legacy_capabilities")
-        legacy_capabilities = (
+        if (
             isinstance(capabilities_payload, Mapping)
-            and "tolerance" not in capabilities_payload
-        )
+            and "tolerance" in capabilities_payload
+        ):
+            raise ValueError(
+                "schema-v1 node receipts cannot carry capabilities.tolerance; "
+                "a v1 manifest is legacy in full"
+            )
+        legacy_capabilities = True
     else:
         legacy_capabilities = value.get("legacy_capabilities")
         if not isinstance(legacy_capabilities, bool):

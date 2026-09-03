@@ -145,6 +145,17 @@ def _nonempty(label: str, value: str) -> None:
         raise GraphError(f"{label} must be a non-empty string, got {value!r}.")
 
 
+def _name(label: str, value: str) -> None:
+    """An entity or column name: non-empty and free of ``.``.
+
+    Receipts, keys, and evidence spell a coordinate ``entity.column``; a dot
+    inside either part would make two coordinates collide (amendment 15).
+    """
+    _nonempty(label, value)
+    if "." in value:
+        raise GraphError(f"{label} may not contain '.', got {value!r}.")
+
+
 @dataclass(frozen=True)
 class SourceRef:
     """A named external input, identified by content at run time.
@@ -180,14 +191,14 @@ class Slice:
     rows: str = ROWS_ALL
 
     def __post_init__(self) -> None:
-        _nonempty("Slice.entity", self.entity)
+        _name("Slice.entity", self.entity)
         if not self.columns:
             raise GraphError(f"Slice on {self.entity!r} declares no columns.")
         if len(set(self.columns)) != len(self.columns):
             raise GraphError(f"Slice on {self.entity!r} repeats a column.")
         for column in self.columns:
-            _nonempty("Slice.columns[]", column)
-        _nonempty("Slice.rows", self.rows)
+            _name("Slice.columns[]", column)
+        _name("Slice.rows", self.rows)
 
 
 @dataclass(frozen=True)
@@ -217,14 +228,14 @@ class Owned:
     rewrite: bool = False
 
     def __post_init__(self) -> None:
-        _nonempty("Owned.entity", self.entity)
-        _nonempty("Owned.column", self.column)
+        _name("Owned.entity", self.entity)
+        _name("Owned.column", self.column)
         if self.dtype not in DTYPES:
             raise GraphError(
                 f"Owned {self.entity}.{self.column}: dtype {self.dtype!r} is not "
                 f"one of {sorted(DTYPES)}."
             )
-        _nonempty("Owned.rows", self.rows)
+        _name("Owned.rows", self.rows)
         if not isinstance(self.ownership, Ownership):
             raise GraphError("Owned.ownership must be an Ownership value.")
 

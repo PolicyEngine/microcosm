@@ -86,9 +86,18 @@ class Determinism(StrEnum):
 
 
 class Numeric(StrEnum):
-    """How reproducible a kernel's numbers are across runs."""
+    """How reproducible a kernel's numbers are across runs.
+
+    ``bitwise``: identical bytes on every platform. ``platform_bitwise``:
+    identical bytes on one platform (architecture and locked dependencies),
+    with no bound on how far a cell may move across platforms; a quantile
+    forest is the model case, where a one-ulp difference can flip which
+    donor a draw lands on (amendment 16). ``tolerance_bound``: every cell
+    within a declared :class:`Tolerance` across platforms.
+    """
 
     BITWISE = "bitwise"
+    PLATFORM_BITWISE = "platform_bitwise"
     TOLERANCE_BOUND = "tolerance_bound"
 
 
@@ -209,7 +218,10 @@ class Capabilities:
                 "A tolerance_bound kernel must declare its Tolerance; a claim of "
                 "bounded movement without a bound is not a claim."
             )
-        if self.numeric is Numeric.BITWISE and self.tolerance is not None:
+        if (
+            self.numeric in (Numeric.BITWISE, Numeric.PLATFORM_BITWISE)
+            and self.tolerance is not None
+        ):
             raise ValueError("A bitwise kernel declares no Tolerance.")
 
 
