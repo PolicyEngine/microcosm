@@ -189,3 +189,34 @@ Readings:
 2. Under `uniform` K=15 lifts the floor margin (54.1 → 71.6) and changes fit by ≤ 1 point; the national rows remain effectively unweighted (OBR 38 %).
 3. Cost of K=15: wall +50 % (13 → 20 min), memory flat, artifact 792,690 rows (~2.4 GB h5).
 4. The three constants the RC run needs are now each measured on this spine: stretch bound 10 (R8), rule `grain_equal` (R6–R9), K=15 (R9). All three are rulings for María (A2, A3, and the K default); none is applied on PR B until ruled.
+
+## R10 — Epoch count: 512 vs 1500 at K=15, bound 10, both rules (2026-09-03 05:00–07:00; f100, no holdout, `--engine-blocks 15`, measurement branch)
+
+Every earlier run used the driver default of 512 epochs (the national doctrine solves 256; María's ruling is 1500). Same pins, seed and chain; `--epochs 1500`. Wall 3,228 s (U) / 3,538 s (G); peak 9.0 / 7.7 GB. Both pass every release-blocking gate.
+
+| K=15, bound 10 | U (512) | U (1500) | G (512) | G (1500) |
+|---|---|---|---|---|
+| loss at epoch 256 / 512 / 1024 / 1500 | 0.0178 / 0.0165 / – / – | 0.0178 / 0.0165 / 0.0154 / 0.0152 | 0.0254 / 0.0211 / – / – | 0.0254 / 0.0211 / 0.0196 / 0.0184 |
+| loss drop over the last 128 epochs | 1.9 % | 0.4 % | 5.7 % | 2.8 % |
+| median / max abs relative error | 0.0079 / 19.21 | 0.0077 / 0.75 | 0.0072 / 0.95 | 0.0062 / 0.98 |
+| max / positive-median weight | 184 | 231 | 827 | **2,857** |
+| ESS fraction / top-1 % weight share | 0.271 / 0.124 | 0.232 / 0.137 | 0.129 / 0.177 | 0.105 / 0.187 |
+| constituency ESS min / median | 71.6 / 410 | 62.5 / 345 | 54.1 / 169 | 54.6 / 133 |
+| local within 10 %: age / census / HMRC / UC / tenure / council tax | 100 / 99.9 / 99.5 / 99.9 / 99.2 / 86.3 | 100 / 99.9 / 99.4 / 99.9 / 99.2 / 86.6 | 100 / 98.4 / 98.9 / 99.9 / 97.1 / 87.1 | 100 / 98.8 / 98.9 / 99.9 / 97.3 / 86.8 |
+| national within 10 % / 25 % | 78.6 / 90.4 | **85.2 / 93.7** | 92.0 / 97.5 | 93.1 / 97.8 |
+| national within 10 %: SPI / UC / population / OBR / two-child / composition | 84 / 92 / 92 / 38 / 67 / 29 | 89 / 97 / 98 / 57 / 73 / 29 | 98 / 99 / 100 / 62 / 100 / 71 | 98 / 99 / 100 / 71 / 100 / 71 |
+| lone over-65 households (target 4.25M) | 2.89M | 2.96M | 3.94M | 4.11M |
+| OBR housing benefit (target £12.1bn; spine £2.7bn) | £2.6bn | £2.9bn | £9.4bn | £11.4bn |
+| Glasgow social rent (target 102k) | 110k | 109k | 197k | 203k |
+| mass factor | 0.960 | 0.960 | 0.969 | 0.967 |
+
+Readings:
+
+1. **1500 epochs is not converged either**, but close under `uniform` (0.4 % over the last 128 epochs) and still moving under `grain_equal` (2.8 %). Wall time triples (20 → 55–59 min); memory does not grow.
+2. **Under `uniform` the extra epochs go to the national rows**: 78.6 → 85.2 % within 10 % (UC 92 → 97, population 92 → 98, OBR 38 → 57) at unchanged local fit, and the one frozen past-cap cell (Barking band G) resolves (max abs error 19.2 → 0.75). The price is moderate: ESS fraction 0.27 → 0.23, median constituency ESS 410 → 345.
+3. **Under `grain_equal` the extra epochs go to the unreachable rows**: housing benefit is chased from £9.4bn to £11.4bn of the £12.1bn OBR aggregate the spine cannot carry (it holds £2.7bn), by multiplying HB households; the max/median ratio goes 827 → 2,857, the ESS fraction 0.129 → 0.105, the median constituency ESS 169 → 133, and Glasgow's social-rent count stays at twice its target. National fit gains 1 point. This is the health flag 3 mechanism measured: without reviewed exclusions for the unreachable national rows (land ×2, savings interest, housing benefit, SLC borrowers), longer solves under `grain_equal` buy concentration, not fit.
+4. The mass flag (health flag 2) is unchanged by epochs: `uniform` keeps lone over-65 households at 2.96M against 4.25M.
+
+### Health audit of the licensed runs (2026-09-03)
+
+Mechanics, all 14 runs: no warnings, tracebacks or NaN; no swapping (26 GB machine, peaks 7.7–12.1 GB); every pin verified; the logbook spool chain intact; the licensed logbook untouched; weights all positive with sums equal to the manifests; engine resolution deterministic across K (identical initial national estimates at K=10 and K=15). Substance: (1) the solver stops on the epoch cap, not a convergence criterion (R10); (2) census-2021 household rows binding at calibration year 2025 remove 4 % of households, taken from single-person households under `uniform` (lone over-65 −31 %) — proposed ruling A15: uprate the ladder household rows to 2025 by one national factor from ONS household estimates; (3) six national rows are unreachable by reweighting because the spine is wrong — corporate land value 8.7×, land value 2.5×, savings interest −86 %, housing benefit −78 %, SLC plan-2 borrowers −65/−69 %, JSA claimants 1.8× (claimant count; the OBR JSA spend row 3.4×) — proposed ruling A16: reviewed measure exclusions with receipts before the release-candidate run, and spine issues for the land and savings-interest imputations. Cosmetic: the gate report's `candidate_name` reuses the national constant (`microcosm_uk_2024`).
