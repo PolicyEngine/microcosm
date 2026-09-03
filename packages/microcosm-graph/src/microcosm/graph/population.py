@@ -37,6 +37,7 @@ __all__ = [
     "expand_lineage_receipt",
     "entrant_strata_receipt",
     "mass_record_receipt",
+    "expand_writes_receipt",
     "owned_ids",
     "patch",
     "population_from_frame",
@@ -1273,8 +1274,8 @@ def _assert_copied_expand_memberships(
     node: Node,
     *,
     remapped: Mapping[str, pd.Series] | None = None,
-) -> None:
-    """Validate copied memberships against lineage, with the B6 exception."""
+) -> frozenset[tuple[str, str]]:
+    """Validate copied memberships and return legal overlay re-pointings."""
 
     person = before.schema.person_entity
     person_lineage = lineage[person]
@@ -1282,7 +1283,7 @@ def _assert_copied_expand_memberships(
         ~person_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
     )
     if not len(copied_positions):
-        return
+        return frozenset()
 
     if remapped is None:
         remapped = _remapped_expand_memberships(before, tables, lineage, node)
@@ -1291,6 +1292,7 @@ def _assert_copied_expand_memberships(
     }
     person_table = tables[person]
     source_person_count = before.n(person)
+    repointed: set[tuple[str, str]] = set()
     for group in before.schema.group_entities:
         membership = before.schema.membership_column(group)
         coordinate = (person, membership)
@@ -1314,6 +1316,7 @@ def _assert_copied_expand_memberships(
                 and not pd.isna(offending_group_id)
                 and offending_group_id in entrant_group_ids
             ):
+                repointed.add(coordinate)
                 continue
             person_id = _lineage_json_scalar(person_lineage.index[addition_position])
             named_group_id = _lineage_json_scalar(offending_group_id)
@@ -1323,6 +1326,7 @@ def _assert_copied_expand_memberships(
                 f"{named_group_id!r}; only its lineage-remapped group or a "
                 f"same-EXPAND entrant {group} is allowed."
             )
+    return frozenset(repointed)
 
 
 def _patch_expand(
@@ -1555,6 +1559,65 @@ def _patch_expand(
         for column in frame.table(entity).columns
     }
     return frame, owners
+
+
+def expand_writes_receipt(
+    before: Frame,
+    after: Frame,
+    node: Node,
+    receipt: Mapping[str, object],
+    *,
+    rewrite_coordinates: frozenset[tuple[str, str]] = frozenset(),
+) -> dict[str, list[str]]:
+    """Record each EXPAND overlay coordinate and the row classes it wrote."""
+
+    if node.structural is not StructuralDelta.EXPAND:
+        raise PopulationError("expand_writes_receipt requires an EXPAND node.")
+    receipt_lineage = _expand_lineage_from_receipt(before, node, receipt)
+    lineage = _validate_expand_lineage(before, node, receipt_lineage, after=after)
+    cells = _expand_cells(node)
+    membership_coordinates = {
+        (
+            before.schema.person_entity,
+            before.schema.membership_column(group),
+        )
+        for group in before.schema.group_entities
+    }
+    materialized_memberships = membership_coordinates & {
+        (entity, column) for entity, column, _ in cells
+    }
+    copied_membership_rewrites = (
+        _assert_copied_expand_memberships(
+            before,
+            {entity: after.table(entity) for entity in after.entities},
+            lineage,
+            node,
+        )
+        if materialized_memberships
+        else frozenset()
+    )
+
+    writes: dict[str, list[str]] = {}
+    for entity, column, _ in sorted(cells):
+        coordinate = (entity, column)
+        source_is_null = lineage[entity].isna().to_numpy(dtype=np.bool_, copy=False)
+        classes: list[str] = []
+        if source_is_null.any():
+            classes.append("entrant")
+        if (
+            (~source_is_null).any()
+            and column in before.table(entity)
+            and (
+                coordinate in rewrite_coordinates
+                or coordinate in copied_membership_rewrites
+            )
+        ):
+            classes.append("copied-rewrite")
+        if column not in before.table(entity) and after.n(entity):
+            classes.append("new-column")
+        if classes:
+            writes[f"{entity}.{column}"] = classes
+    return writes
 
 
 def _assert_expand_weights(

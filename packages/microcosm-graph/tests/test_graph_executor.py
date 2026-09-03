@@ -1116,6 +1116,8 @@ def test_entrant_expand_aggregates_all_coordinate_writer_tolerances(
         registry,
     )
     document = json.loads(manifest.to_json())
+    expand_receipt = document["nodes"][expand.id]["receipt"]
+    assert expand_receipt["expand_writes"]["household.size"] == ["entrant"]
     claim_receipt = document["nodes"][claim.id]["receipt"]
     assert claim_receipt["capabilities"]["tolerance_writers"] == {
         "household.size": [create.id, expand.id]
@@ -1164,7 +1166,7 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
         )
 
     def claim(context: KernelContext) -> KernelResult:
-        assert context.tolerances == {("household", "is_clone"): None}
+        assert context.tolerances == {("household", "is_clone"): Tolerance(atol=9e-6)}
         household = context.tables["household"]
         assert set(household) == {"household_id", "is_clone"}
         return KernelResult(
@@ -1219,12 +1221,15 @@ def test_expand_lineage_receipt_and_materialized_cell_survive_cache(
     store = ContentStore(tmp_path / "store")
 
     cold = _run(graph, source, store, registry, resume="forbid")
+    assert cold.nodes[clone.id].receipt["expand_writes"] == {
+        "household.is_clone": ("new-column",)
+    }
     assert dict(cold.nodes[clone.id].receipt["expand"]) == {
         "household": ((30, 10),),
         "person": ((4, 1), (5, 2)),
     }
     assert cold.nodes[claim_clone.id].receipt["capabilities"]["tolerance_writers"] == {
-        "household.is_clone": ()
+        "household.is_clone": (clone.id,)
     }
     assert cold.population(clone.id).table("person")[
         "person_household_id"
@@ -1287,6 +1292,8 @@ def test_entrant_expand_rejects_mutated_copied_carried_values(
 def test_expand_allows_copied_value_declared_as_same_version_rewrite(
     tmp_path: Path,
 ) -> None:
+    expand_tolerance = Tolerance(rtol=7e-6)
+
     def copy_with_rewritten_income(context: KernelContext) -> KernelResult:
         person = context.tables["person"]
         person_ids = pd.Index(person["person_id"], name="person_id")
@@ -1324,6 +1331,7 @@ def test_expand_allows_copied_value_declared_as_same_version_rewrite(
         )
 
     def claim_rewritten_income(context: KernelContext) -> KernelResult:
+        assert context.tolerances == {("person", "income"): expand_tolerance}
         person = context.tables["person"]
         return KernelResult(
             columns={
@@ -1363,7 +1371,9 @@ def test_expand_allows_copied_value_declared_as_same_version_rewrite(
             expand.kernel,
             Capabilities(
                 Determinism.DETERMINISTIC,
+                numeric=Numeric.TOLERANCE_BOUND,
                 structural=StructuralDelta.EXPAND,
+                tolerance=expand_tolerance,
             ),
             copy_with_rewritten_income,
         )
@@ -1384,6 +1394,12 @@ def test_expand_allows_copied_value_declared_as_same_version_rewrite(
 
     for run in (cold, warm):
         assert run.population(expand.id).table("person")["income"].iloc[-1] == 1.0
+        assert run.nodes[expand.id].receipt["expand_writes"] == {
+            "person.income": ("copied-rewrite",)
+        }
+        assert run.nodes[claim.id].receipt["capabilities"]["tolerance_writers"] == {
+            "person.income": (CREATE.id, expand.id)
+        }
     assert not cold.nodes[expand.id].hit
     assert warm.nodes[expand.id].hit
     assert warm.nodes[claim.id].hit

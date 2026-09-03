@@ -50,6 +50,7 @@ from .population import (
     Population,
     entrant_strata_receipt,
     expand_lineage_receipt,
+    expand_writes_receipt,
     mass_record_receipt,
     patch,
     restore_cached_expand,
@@ -70,6 +71,7 @@ __all__ = ["NodeRejected", "NodeRejectedError", "run_graph"]
 NodeRejected = NodeRejectedError
 
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
+_EXPAND_WRITE_CLASSES = ("entrant", "copied-rewrite", "new-column")
 
 
 def _now() -> str:
@@ -634,9 +636,9 @@ def _input_writers(
 
 
 def _expand_writer_coordinates(node: Node) -> frozenset[tuple[str, str]]:
-    """Coordinates an entrant EXPAND declares it will materialize."""
+    """Coordinates an EXPAND declares it may materialize."""
 
-    if node.structural is not StructuralDelta.EXPAND or not node.entrants:
+    if node.structural is not StructuralDelta.EXPAND:
         return frozenset()
     raw_cells = node.params.get("expand_cells", ())
     if not isinstance(raw_cells, tuple):
@@ -651,6 +653,49 @@ def _expand_writer_coordinates(node: Node) -> frozenset[tuple[str, str]]:
     )
 
 
+def _parse_expand_writes(
+    node: Node, raw: object
+) -> Mapping[tuple[str, str], tuple[str, ...]]:
+    """Validate an executor-authored EXPAND coordinate/row-class record."""
+
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"EXPAND node {node.id!r} expand_writes must be a mapping.")
+    declared = _expand_writer_coordinates(node)
+    parsed: dict[tuple[str, str], tuple[str, ...]] = {}
+    for spelling, raw_classes in raw.items():
+        if not isinstance(spelling, str) or spelling.count(".") != 1:
+            raise ValueError(
+                f"EXPAND node {node.id!r} expand_writes coordinate {spelling!r} "
+                "must be an 'entity.column' string."
+            )
+        entity, column = spelling.split(".")
+        coordinate = (entity, column)
+        if coordinate not in declared:
+            raise ValueError(
+                f"EXPAND node {node.id!r} expand_writes names undeclared "
+                f"coordinate {spelling!r}."
+            )
+        if not isinstance(raw_classes, list | tuple) or not raw_classes:
+            raise ValueError(
+                f"EXPAND node {node.id!r} expand_writes {spelling!r} must name "
+                "at least one row class."
+            )
+        classes = tuple(raw_classes)
+        if any(not isinstance(value, str) for value in classes):
+            raise ValueError(
+                f"EXPAND node {node.id!r} expand_writes {spelling!r} row classes "
+                "must be strings."
+            )
+        canonical = tuple(value for value in _EXPAND_WRITE_CLASSES if value in classes)
+        if classes != canonical:
+            raise ValueError(
+                f"EXPAND node {node.id!r} expand_writes {spelling!r} row classes "
+                f"must be unique and ordered as {_EXPAND_WRITE_CLASSES!r}."
+            )
+        parsed[coordinate] = classes
+    return MappingProxyType(parsed)
+
+
 def _writers_of(
     compiled: CompiledGraph,
     version: str,
@@ -662,7 +707,7 @@ def _writers_of(
 ) -> tuple[str, ...]:
     """All nodes that wrote rows of ``entity.column`` as seen from ``version``.
 
-    The result is in causal order: the originating producer, entrant EXPAND
+    The result is in causal order: the originating producer, EXPAND
     materializers, rewrites, and materialization claimants. Structural nodes
     that only carry the coordinate do not appear.
     """
@@ -693,7 +738,7 @@ def _writers_of(
             if not inherited:
                 break
 
-        if _expand_wrote_entrant_rows(holder, coordinate, receipts):
+        if _expand_wrote_rows(holder, coordinate, receipts):
             add(holder.id)
         if holder.structural is StructuralDelta.CREATE or holder.base is None:
             break
@@ -701,32 +746,27 @@ def _writers_of(
     return tuple(reversed(newest_first))
 
 
-def _expand_wrote_entrant_rows(
+def _expand_wrote_rows(
     node: Node,
     coordinate: tuple[str, str],
     receipts: Mapping[str, NodeReceipt] | None,
 ) -> bool:
-    """Whether this EXPAND actually materialized entrant rows for a cell."""
+    """Whether this EXPAND actually wrote any row of a coordinate."""
 
     if coordinate not in _expand_writer_coordinates(node):
         return False
     if receipts is None:
-        # Static callers have no runtime lineage with which to refine the
-        # entrant declaration.
+        # Static preflight has no runtime receipt with which to refine the
+        # declaration. Exact writer ids are checked during execution.
         return True
     node_receipt = receipts.get(node.id)
     if node_receipt is None:
         return False
-    raw_expand = node_receipt.receipt.get("expand")
-    if not isinstance(raw_expand, Mapping):
-        return False
-    entries = raw_expand.get(coordinate[0])
-    if not isinstance(entries, tuple | list):
-        return False
-    return any(
-        isinstance(entry, tuple | list) and len(entry) == 2 and entry[1] is None
-        for entry in entries
-    )
+    try:
+        writes = _parse_expand_writes(node, node_receipt.receipt.get("expand_writes"))
+    except ValueError as error:  # executor-authored receipts cannot be malformed
+        raise NodeRejected(str(error)) from error
+    return coordinate in writes
 
 
 def _validate_series(
@@ -1385,6 +1425,21 @@ def _require_record_shape(
             f"Cached receipt capabilities for node {node.id!r} disagree with "
             "the registered kernel contract."
         )
+    if node.structural is StructuralDelta.EXPAND:
+        raw_receipt = raw["receipt"]
+        if not isinstance(raw_receipt, Mapping):
+            raise StoreCorrupt(f"Cached node {node.id!r} receipt is malformed.")
+        if "expand_writes" not in raw_receipt:
+            raise StoreMiss(
+                f"Cached EXPAND node {node.id!r} predates expand_writes provenance."
+            )
+        try:
+            _parse_expand_writes(node, raw_receipt["expand_writes"])
+        except ValueError as error:
+            raise StoreCorrupt(
+                f"Cached EXPAND node {node.id!r} has malformed expand_writes "
+                "provenance."
+            ) from error
     return raw
 
 
@@ -1792,6 +1847,7 @@ def run_graph(
                 )
                 hit = True
             except StoreMiss:
+                replace_stale_record = store.has(_cache_record_key(key))
                 if resume == "require":  # defended by preflight; handles races
                     raise
 
@@ -1857,14 +1913,49 @@ def run_graph(
                 **evidence,
                 "tolerance_writers": tolerance_writers,
             }
+        expand_rewrites = _expand_rewrite_coordinates(compiled, node)
         updated = _apply_result(
             node,
             result,
             incumbent,
             cache_hit=hit,
             mass_partition=compiled.graph.mass_partition,
-            rewrite_coordinates=_expand_rewrite_coordinates(compiled, node),
+            rewrite_coordinates=expand_rewrites,
         )
+        if node.structural is StructuralDelta.EXPAND:
+            assert incumbent is not None
+            try:
+                authored_expand_writes = expand_writes_receipt(
+                    incumbent.frame,
+                    updated.frame,
+                    node,
+                    normalized_receipt,
+                    rewrite_coordinates=expand_rewrites,
+                )
+            except (TypeError, ValueError) as error:
+                raise NodeRejected(
+                    f"Node {node.id!r} expand_writes receipt rejected: {error}"
+                ) from error
+            if hit:
+                try:
+                    stored_expand_writes = _parse_expand_writes(
+                        node, normalized_receipt.get("expand_writes")
+                    )
+                except ValueError as error:  # defended by cached-record validation
+                    raise StoreCorrupt(
+                        f"Cached EXPAND node {node.id!r} has malformed "
+                        "expand_writes provenance."
+                    ) from error
+                stored_payload = {
+                    f"{entity}.{column}": list(classes)
+                    for (entity, column), classes in stored_expand_writes.items()
+                }
+                if stored_payload != authored_expand_writes:
+                    raise StoreCorrupt(
+                        f"Cached EXPAND node {node.id!r} expand_writes provenance "
+                        "disagrees with its materialized frame."
+                    )
+            normalized_receipt["expand_writes"] = authored_expand_writes
         if node.structural not in {
             StructuralDelta.NONE,
             StructuralDelta.CREATE,
