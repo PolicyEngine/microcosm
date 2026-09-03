@@ -1004,6 +1004,19 @@ def uk_ladder_household_uprating(
     }
 
 
+def _is_census_vintage_hold(metadata: Mapping[str, Any], period: int | str) -> bool:
+    """True for a compiled reference held from a census vintage to ``period``."""
+
+    from_period = metadata.get("uprating_from_period")
+    to_period = metadata.get("uprating_to_period")
+    if from_period is None or to_period is None:
+        return False
+    try:
+        return int(from_period) in (2021, 2022) and int(to_period) == int(period)
+    except (TypeError, ValueError):
+        return False
+
+
 def uk_local_target_surface(
     local_registry: TargetRegistry,
     ladder: Any,
@@ -1045,6 +1058,14 @@ def uk_local_target_surface(
                 f"ladder household uprating factor is invalid: {uprating_factor!r}."
             )
         uprating_receipt = dict(ladder_household_uprating)
+    # microcosm#762 A17 (ruling 2026-09-03): the census tenure cells are the
+    # same household universe as the ladder rows split by tenure, carried
+    # with identity holds from their census vintage; when the ladder rows
+    # uprate, the held tenure cells uprate by the same national factor so the
+    # partition keeps its published shares at the uprated level. A tenure
+    # cell compiled from a fact at the calibration period carries no hold
+    # and is never touched.
+    tenure_uprated: dict[str, int] = {}
 
     level_to_area_type = {
         level: area_type
@@ -1076,12 +1097,21 @@ def uk_local_target_surface(
                     f"for area_type {area_type!r}."
                 )
             output_position = len(output_rows)
+            value = float(spec.value)
+            if (
+                uprating_receipt.get("applied")
+                and contract_target_id.startswith("ons.tenure.")
+                and _is_census_vintage_hold(spec.metadata, period)
+            ):
+                value *= uprating_factor
+                from_period = str(spec.metadata.get("uprating_from_period"))
+                tenure_uprated[from_period] = tenure_uprated.get(from_period, 0) + 1
             output_rows.append(
                 {
                     "area_type": area_type,
                     "area_code": geography_id,
                     "metric": metric,
-                    "value": float(spec.value),
+                    "value": value,
                     "target_name": spec.name,
                     "family": family_for_metric(metric),
                     "source_family": spec.family,
@@ -1095,7 +1125,7 @@ def uk_local_target_surface(
                     "grain": area_type,
                     "geography_id": geography_id,
                     "target_id": f"contract:{contract_target_id}",
-                    "value": float(spec.value),
+                    "value": value,
                     "_output_position": output_position,
                 }
             )
@@ -1213,6 +1243,18 @@ def uk_local_target_surface(
         licensed_empty_legs=licensed_empty_legs,
     )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
+    uprating_receipt["tenure_cells"] = {
+        "applied": bool(tenure_uprated),
+        "cells": int(sum(tenure_uprated.values())),
+        "by_census_vintage": dict(sorted(tenure_uprated.items())),
+        "adjudication": "microcosm#762 (A17, ruling 2026-09-03)",
+        "reason": (
+            "census tenure cells (ONS Census 2021; Scotland's Census 2022) held "
+            "to the calibration period are the ladder's household universe split "
+            "by tenure; they take the ladder rows' national household factor so "
+            "the published tenure shares hold at the uprated level."
+        ),
+    }
     receipt["ladder_household_uprating"] = uprating_receipt
     for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
         output_position = reconciliation.iloc[position]["_output_position"]
