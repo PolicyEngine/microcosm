@@ -117,6 +117,7 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
         "rng",
         "sources",
         "tolerances",  # amendment 13: declared tolerances of the inputs' owners
+        "numerics",  # amendment 17: per-coordinate numeric class, bound, platform
     }
 
     graph = toy.small_graph(
