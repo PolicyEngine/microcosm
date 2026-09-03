@@ -98,6 +98,9 @@ focused green; documentation and full verification are in progress on
   roots are treated as internal code; neighboring site-packages remain in the
   installed RECORD closure. The source and external-import closure now come
   from one read rather than two potentially different filesystem snapshots.
+- Preserved the nested release-verdict regression beneath the new authenticated
+  manifest-payload guard by rebinding only its synthetic capability; both
+  parameterized cases pass while real mutated manifests still fail earlier.
 
 ## Next
 

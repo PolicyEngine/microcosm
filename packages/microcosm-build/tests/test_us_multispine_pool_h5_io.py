@@ -2986,6 +2986,10 @@ def test_release_receipt_rejects_incoherent_nested_gate_verdict(
     first_gate = next(iter(manifest["agreement_gate"]["gates"].values()))
     first_gate["passed"] = nested_passed
     first_gate["failures"] = failures
+    authenticated_h5 = replace(
+        authenticated_h5,
+        manifest_payload_sha256=_json_sha256(manifest),
+    )
 
     with pytest.raises(ValueError, match="incoherent passed verdict"):
         us_multispine_pool_release_receipt(
