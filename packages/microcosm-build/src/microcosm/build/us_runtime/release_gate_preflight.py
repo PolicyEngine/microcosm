@@ -201,18 +201,17 @@ class PreflightReport:
         lines: list[str] = []
         if self.base_pool is not None:
             agreement = self.base_pool.get("agreement_gate_reference")
-            if isinstance(agreement, Mapping) and agreement.get(
-                "battery_status"
-            ) == "red":
+            if (
+                isinstance(agreement, Mapping)
+                and agreement.get("battery_status") == "red"
+            ):
                 failure_count = agreement.get("failure_count")
                 lines.extend(
                     [
                         "!" * 72,
-                        "BASE POOL BATTERY: RED — "
-                        f"{failure_count} FAILURES",
+                        f"BASE POOL BATTERY: RED — {failure_count} FAILURES",
                         "Authenticated opt-in: --allow-gate-failed-base-pool",
-                        "Gates JSON SHA-256: "
-                        f"{agreement.get('gates_json_sha256')}",
+                        f"Gates JSON SHA-256: {agreement.get('gates_json_sha256')}",
                         "Human publication decision required; this evidence "
                         "does not determine the preflight exit code.",
                     ]
@@ -222,8 +221,7 @@ class PreflightReport:
                     for failure in failures:
                         if isinstance(failure, Mapping):
                             lines.append(
-                                f"  [{failure.get('gate')}] "
-                                f"{failure.get('message')}"
+                                f"  [{failure.get('gate')}] {failure.get('message')}"
                             )
                 lines.append("!" * 72)
         badge = {
@@ -987,6 +985,8 @@ def _load_preflight_base(
                 "--allow-gate-failed-base-pool was set, but --base-h5 does not "
                 "identify as a US multispine pool."
             )
+        # A denied pool whose sidecar and metadata row were stripped lands
+        # here; load_us_frame refuses its bytes before reading them.
         return load_us_frame(base_h5), None, None
 
     frame, manifest, authenticated_pool_h5 = (

@@ -5450,3 +5450,37 @@ def test_national_release_id_requires_the_certification() -> None:
     assert "release_certification.json" not in required_release_files(
         "dev-757-rebind-proof"
     )
+
+
+def test_a_release_built_from_a_denied_pool_cannot_be_published(monkeypatch) -> None:
+    """The publisher never loads an H5, so it must consult the deny-list itself."""
+    from microcosm.data import contract as contract_module
+    from microcosm.data import denied_pools
+
+    denied = denied_pools.DeniedPoolPublication(
+        manifest_sha256="0" * 64,
+        pool_h5_sha256="1" * 64,
+        content_identity_sha256="2" * 64,
+        release_id="fixture-release",
+        reason="fixture pool is excluded",
+        reference="microcosm#856; fixture-plan-gate",
+    )
+    monkeypatch.setattr(
+        denied_pools, "DENIED_POOL_PUBLICATIONS", {"denied-run": denied}, raising=False
+    )
+    for identity in (
+        {"publication_run_id": "denied-run"},
+        {"publication_run_id": "other", "manifest_sha256": "0" * 64},
+        {"publication_run_id": "other", "pool_h5_sha256": "1" * 64},
+        {"publication_run_id": "other", "content_identity_sha256": "2" * 64},
+    ):
+        manifest = _build_manifest()
+        manifest["base_pool"] = {"status": "gate_failed", **identity}
+        failures: list[str] = []
+        contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
+        assert any("denied publication 'denied-run'" in f for f in failures), identity
+    manifest = _build_manifest()
+    manifest["base_pool"] = {"status": "simulation_ready", "publication_run_id": "fine"}
+    failures = []
+    contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
+    assert not any("denied" in f for f in failures)
