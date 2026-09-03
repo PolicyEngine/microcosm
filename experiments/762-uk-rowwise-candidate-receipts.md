@@ -162,3 +162,30 @@ Readings:
 3. **The weighting rule is a national-fit vs support trade, now quantified at bound 10.** `grain_equal` lifts the national rows from 78 % to 92 % within 10 % (UC 89 → 99, SPI 84 → 97, OBR 43 → 62, two-child limit 67 → 100, household composition 29 → 71) and costs 2.6 points of census-household fit, 2.5 of tenure, half the ESS fraction, and five constituencies that miss the floor by 0.3–7.7 ESS (E14001123, E14001187, E14001417, E14001421, E14001563). Under `uniform` the 364 national rows are 1.8 % of 20,480 rows and are effectively ignored.
 4. The `target_fit` and `weight_ratio` entries that fail in every run are `diagnostic` criticality (not release-blocking). `target_fit` is dominated by council tax (97 of 110 cells at U10: the band-H shortage and the A14/Wales deferrals' neighbours); `weight_ratio` measures max/median of the final weights against 100 and stays above it at bound 10 because the design weights (staging importance × ladder clone) already spread ~10×.
 5. R9 measures the plan's K escalation for `grain_equal` at bound 10 (K=15, same chain) to see whether the five near-floor constituencies clear without giving up the national fit.
+
+## R9 — K escalation at bound 10: K=15 under both rules (2026-09-03 03:10–03:50; f100, no holdout, `--engine-blocks 15`, measurement branch at bound 10, chained on R8's G10 row)
+
+The plan's clause for insufficient ESS is a measured clone-count increase. Matrix 20,480 × 792,690 (K=15 clones of 52,846). Wall 1,169 s (U) / 1,178 s (G); peak 11.5 / 10.5 GB (per-block engine resolution keeps memory flat in K).
+
+| bound 10 | U10 (K=10) | G10 (K=10) | U15 (K=15) | G15 (K=15) |
+|---|---|---|---|---|
+| loss initial → final | 0.2777→0.0165 | 0.3198→0.0207 | 0.2734→0.0163 | 0.3195→0.0216 |
+| median / max abs relative error | 0.0081 / 17.18 | 0.0074 / 0.96 | 0.0079 / 19.21 | 0.0072 / 0.95 |
+| realized max ratio vs design | 10.0 | 10.0 | 10.0 | 10.0 |
+| max / positive-median weight | 104.6 | 578.1 | 183.8 | 827.3 |
+| ESS (absolute) / ESS fraction | 144,043 / 0.273 | 72,401 / 0.137 | 214,623 / 0.271 | 102,120 / 0.129 |
+| constituencies ESS < 50 (min constituency ESS) | 0 (54.1) | 5 (42.3) | 0 (71.6) | **0 (54.1)** |
+| min LA ESS (excluded micro-LAs) | 7.1 | 5.3 | 13.2 | 9.3 |
+| local within 10 %: age / census / HMRC / UC / tenure / council tax | 100 / 99.8 / 99.5 / 99.8 / 99.4 / 86.2 | 99.9 / 97.2 / 98.9 / 99.7 / 96.9 / 87.0 | 100 / 99.9 / 99.5 / 99.9 / 99.2 / 86.3 | 100 / 98.4 / 98.9 / 99.9 / 97.1 / 87.1 |
+| local cells past 25 % (diagnostic) | 110 | 116 | 108 | 109 |
+| national within 10 % / 25 % | 77.7 / 89.3 | 91.8 / 97.3 | 78.6 / 90.4 | 92.0 / 97.5 |
+| national within 10 %: SPI / UC / population / OBR / two-child / composition | 84 / 89 / 92 / 43 / 67 / 29 | 97 / 99 / 100 / 62 / 100 / 71 | 84 / 92 / 92 / 38 / 67 / 29 | 98 / 99 / 100 / 62 / 100 / 71 |
+| mass factor | 0.960 | 0.973 | 0.960 | 0.969 |
+| release-blocking gates | all pass (exit 0) | area_support (5) | all pass (exit 0) | **all pass (exit 0)** |
+
+Readings:
+
+1. **K=15 clears the floor under `grain_equal` without giving up the national fit.** The five near-floor constituencies of G10 pass (min constituency ESS 42.3 → 54.1); national stays 92 / 98; local moves by at most 1.2 points (census 97.2 → 98.4). Absolute ESS scales ~1.4× with the 1.5× rows; the ESS fraction is flat, so the concentration is a property of the rule, not of K.
+2. Under `uniform` K=15 lifts the floor margin (54.1 → 71.6) and changes fit by ≤ 1 point; the national rows remain effectively unweighted (OBR 38 %).
+3. Cost of K=15: wall +50 % (13 → 20 min), memory flat, artifact 792,690 rows (~2.4 GB h5).
+4. The three constants the RC run needs are now each measured on this spine: stretch bound 10 (R8), rule `grain_equal` (R6–R9), K=15 (R9). All three are rulings for María (A2, A3, and the K default); none is applied on PR B until ruled.
