@@ -40,9 +40,7 @@ class FrameStub:
 def _stub_value_type(values):
     """The policyengine ``value_type`` a real variable definition would carry."""
 
-    return {"f": float, "i": int, "b": bool}.get(
-        np.asarray(values).dtype.kind, str
-    )
+    return {"f": float, "i": int, "b": bool}.get(np.asarray(values).dtype.kind, str)
 
 
 class SimulationStub:
@@ -118,7 +116,9 @@ def test_compute_uk_measure_input_numeric_map_to_entity():
 
 def test_compute_uk_measure_input_refuses_unknown_and_length_mismatch():
     with pytest.raises(KeyError, match="no variable"):
-        compute_uk_measure_input(FrameStub(), SimulationStub({}), "person", "missing", 2025)
+        compute_uk_measure_input(
+            FrameStub(), SimulationStub({}), "person", "missing", 2025
+        )
 
     sim = SimulationStub({"income_tax": ("person", np.array([1.0]))})
     with pytest.raises(ValueError, match="produced 1 values"):
@@ -149,7 +149,9 @@ def test_exclusion_loader_refusals(tmp_path: Path):
 
     with pytest.raises(ValueError, match="schema_version"):
         load_uk_calibration_measure_exclusions(
-            _write_exclusions(tmp_path / "bad-version.json", {**base, "schema_version": 1})
+            _write_exclusions(
+                tmp_path / "bad-version.json", {**base, "schema_version": 1}
+            )
         )
     with pytest.raises(ValueError, match="unknown top-level"):
         load_uk_calibration_measure_exclusions(
@@ -183,7 +185,9 @@ def test_exclusion_loader_refusals(tmp_path: Path):
                 {**base, "exclusions": [_entry(expires_on="2026-08-25")]},
             )
         )
-    with pytest.raises(ValueError, match="unknown UK calibration measure exclusion field"):
+    with pytest.raises(
+        ValueError, match="unknown UK calibration measure exclusion field"
+    ):
         load_uk_calibration_measure_exclusions(
             _write_exclusions(
                 tmp_path / "extra-field.json",
@@ -202,8 +206,12 @@ def test_exclusion_loader_refusals(tmp_path: Path):
 def test_exclusion_applier_returns_pruned_registry_and_receipt():
     registry = TargetRegistry(
         [
-            TargetSpec(name="drop", entity="person", measure="drop", value=1.0, source="test"),
-            TargetSpec(name="keep", entity="person", measure="keep", value=1.0, source="test"),
+            TargetSpec(
+                name="drop", entity="person", measure="drop", value=1.0, source="test"
+            ),
+            TargetSpec(
+                name="keep", entity="person", measure="keep", value=1.0, source="test"
+            ),
         ],
         country="uk",
     )
@@ -246,7 +254,9 @@ def test_exclusion_applier_returns_pruned_registry_and_receipt():
 def test_exclusion_applier_warns_within_week_of_expiry():
     registry = TargetRegistry(
         [
-            TargetSpec(name="drop", entity="person", measure="drop", value=1.0, source="test"),
+            TargetSpec(
+                name="drop", entity="person", measure="drop", value=1.0, source="test"
+            ),
         ],
         country="uk",
     )
@@ -280,18 +290,35 @@ def test_exclusion_applier_warns_within_week_of_expiry():
 _PACKAGED_EXCLUSION_CENSUS = {
     "hmrc.salary_sacrifice.": 5,
     "_1_000_000_to_inf": 11,
-    "slc.": 3,
+    "slc.": 5,
     "dwp/uc_payment_dist/": 16,
     "obr.universal_credit_": 2,
     "ons.household_composition.": 3,
     "obr.fuel_duties": 1,
+    # microcosm#762 A16 (2026-09-03): the rows the spine cannot reach by
+    # reweighting — land values, savings interest, housing benefit, the two
+    # plan-2 borrower stocks and JSA claimants — windowed to one month.
+    "ons.land.": 2,
+    "ons.savings_interest_income": 1,
+    "obr.housing_benefit": 1,
+    "dwp.jsa_claimants": 1,
 }
+
+_A16_UNREACHABLE_ROWS = (
+    "ons.land.corporate_land_value",
+    "ons.land.land_value",
+    "ons.savings_interest_income",
+    "obr.housing_benefit",
+    "slc.borrowers.plan_2_liable",
+    "slc.borrowers.plan_2_above_threshold",
+    "dwp.jsa_claimants",
+)
 
 
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 44
+    assert len(names) == len(set(names)) == 51
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -321,6 +348,15 @@ def test_packaged_exclusions_load():
     for entry in exclusions:
         if entry["name"].startswith("ons.household_composition."):
             assert entry["tracking"] == "microcosm#791", entry["name"]
+
+    # The 2026-09-03 tranche is #762's A16: seven unreachable national rows,
+    # a one-month window, tracked on the WS-C deferrals issue.
+    a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
+    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS)
+    for entry in a16:
+        assert entry["expires_on"] == "2026-10-03", entry["name"]
+        assert entry["tracking"] == "microcosm#736", entry["name"]
+        assert "A16" in entry["adjudication"], entry["name"]
 
     # The lever targets are deliberately NOT excluded: the six UC
     # caseload / two-child-limit cells ride the would_claim_uc lever run.
@@ -380,7 +416,10 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
     assert scratch.receipt()["mode"] == "scratch_frame_export"
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
-    assert created == [str(tmp_path / "input.h5"), str(tmp_path / "simulation-input.h5")]
+    assert created == [
+        str(tmp_path / "input.h5"),
+        str(tmp_path / "simulation-input.h5"),
+    ]
 
 
 def _resolver_over(sim, monkeypatch, tmp_path: Path) -> UKMeasureResolver:

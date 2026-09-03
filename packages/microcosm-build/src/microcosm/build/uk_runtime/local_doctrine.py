@@ -32,9 +32,12 @@ from dataclasses import dataclass, fields, replace
 import numpy as np
 
 __all__ = [
+    "UK_LOCAL_CLONE_COUNT",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_DOCTRINE",
+    "UK_LOCAL_SOLVE_EPOCHS",
     "UK_LOCAL_TARGET_LOSS_CAP",
+    "UK_LOCAL_TARGET_WEIGHT_RULE",
     "UKLocalSolveDoctrine",
     "uk_local_doctrine_with_overrides",
     "uk_local_target_loss_weights",
@@ -46,17 +49,47 @@ UK_LOCAL_TARGET_LOSS_CAP = 10.0
 
 #: Declared weight-ratio stretch bound for the UK local solve.
 #:
-#: microcosm#493 adjudication record (2026-08-07): the bound stays 100.0,
-#: recorded against the US design bound of 5.0 (the ACS local and fiscal
-#: refresh defaults; realized max ratio 4.994 in production) and the US
-#: exact-k ladder's 20.0. The UK value is not yet a measured-fit choice —
-#: it is the bound the local solve inherited when it was a second entry
-#: point owning its own defaults — and tightening it without measured fit
-#: would be an arbitrary cutoff. The revision path remains the #495
-#: increment-6 calibrated-candidate review, which adjudicates against
-#: measured fit; any revision must edit this constant and its pinned test,
-#: which forces review.
-UK_LOCAL_MAX_WEIGHT_RATIO = 100.0
+#: microcosm#762 A3 adjudication (2026-09-03, receipts R8–R10 in
+#: ``experiments/762-uk-rowwise-candidate-receipts.md``): 10.0, measured
+#: against 100.0 and 20.0 on spine-m at K=10 under both weighting rules.
+#: Tightening 100 → 10 left the final loss and every family's within-10 %
+#: share unchanged to a tenth of a point; the extra stretch bought weight
+#: concentration, not fit (max/median 312 → 105 under ``uniform``, 1,014 →
+#: 578 under ``grain_equal``), and 10 was the only bound at which any run
+#: cleared the ESS ≥ 50 support floor. It is also the national doctrine's
+#: bound, so the two UK solves now agree. The #493 record (2026-08-07) had
+#: held 100.0 explicitly as the inherited, not-yet-measured value pending
+#: this review. Any revision must edit this constant and its pinned test.
+UK_LOCAL_MAX_WEIGHT_RATIO = 10.0
+
+#: Declared target-weighting rule for the UK local solve.
+#:
+#: microcosm#762 A2 adjudication (2026-09-03, receipts R6–R10):
+#: ``grain_equal`` — the national rows, the constituency rows and the
+#: local-authority rows take one equal share of the loss each, uniform
+#: within. Under ``uniform`` the 364 national rows are 1.8 % of the 20,480-
+#: row matrix and are effectively ignored (78 % within 10 %; OBR aggregates
+#: 43 %); ``grain_equal`` holds them at 92–93 % for about two points of
+#: census-household and tenure fit. ``uniform`` stays a receipted override.
+UK_LOCAL_TARGET_WEIGHT_RULE = "grain_equal"
+
+#: Declared solve length for the UK local solve (Adam epochs).
+#:
+#: microcosm#762 adjudication (2026-09-03, receipt R10): 1500, María's
+#: ruling, matching the national certified-cut posture. The solver has no
+#: stopping criterion; at 512 the loss was still falling 2–6 % per 128
+#: epochs, at 1500 it is 0.4 % (``uniform``) / 2.8 % (``grain_equal``).
+UK_LOCAL_SOLVE_EPOCHS = 1500
+
+#: Declared clone count K for the UK local candidate (rows per spine
+#: household through the OA ladder).
+#:
+#: microcosm#762 adjudication (2026-09-03, receipt R9): 15. The plan's
+#: K=4 default refused 172 UC child-band cells with zero support; K=10
+#: refused 86 band-H cells (A14) and, under ``grain_equal`` at bound 10,
+#: left five constituencies 0.3–7.7 ESS under the floor; K=15 clears the
+#: floor (min constituency ESS 54.1) at unchanged fit and flat memory.
+UK_LOCAL_CLONE_COUNT = 15
 
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
 _ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "grain_equal")
@@ -69,15 +102,15 @@ class UKLocalSolveDoctrine:
 
     ``scale_rule`` and ``target_weight_rule`` are closed vocabularies: the
     only admissible scale rule is the canonical target-defined default, and
-    the only admissible target weighting is uniform. A future family-level
-    weighting would be a new reviewed rule name here — never a per-target
-    vector.
+    the admissible target weightings are ``grain_equal`` (the reviewed
+    default) and ``uniform`` (a receipted override). Any other weighting
+    would be a new reviewed rule name here — never a per-target vector.
     """
 
     target_loss_cap: float = UK_LOCAL_TARGET_LOSS_CAP
     max_weight_ratio: float | None = UK_LOCAL_MAX_WEIGHT_RATIO
     scale_rule: str = "default_target_loss_scales"
-    target_weight_rule: str = "uniform"
+    target_weight_rule: str = UK_LOCAL_TARGET_WEIGHT_RULE
 
     def __post_init__(self) -> None:
         if (

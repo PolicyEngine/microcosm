@@ -14,9 +14,12 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import (
+    UK_LOCAL_CLONE_COUNT,
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
+    UK_LOCAL_SOLVE_EPOCHS,
     UK_LOCAL_TARGET_LOSS_CAP,
+    UK_LOCAL_TARGET_WEIGHT_RULE,
     UKLocalSolveDoctrine,
     past_cap_census,
     uk_local_doctrine_with_overrides,
@@ -80,15 +83,21 @@ def test_past_cap_census_defaults_scales_and_validates_shapes() -> None:
 
 
 def test_doctrine_constants_are_the_declared_contract() -> None:
+    # microcosm#762 rulings of 2026-09-03 (A2 rule, A3 bound, K, epochs);
+    # each is a measured choice recorded in the receipts (R6-R10). Moving
+    # one is a doctrine revision: edit the constant, its note, and this pin.
     assert UK_LOCAL_TARGET_LOSS_CAP == 10.0
-    assert UK_LOCAL_MAX_WEIGHT_RATIO == 100.0
+    assert UK_LOCAL_MAX_WEIGHT_RATIO == 10.0
+    assert UK_LOCAL_TARGET_WEIGHT_RULE == "grain_equal"
+    assert UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert UK_LOCAL_CLONE_COUNT == 15
     assert UK_LOCAL_SOLVE_DOCTRINE.target_loss_cap == UK_LOCAL_TARGET_LOSS_CAP
     assert UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio == UK_LOCAL_MAX_WEIGHT_RATIO
     assert UK_LOCAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
-    assert UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
-    assert UKLocalSolveDoctrine(
-        target_weight_rule="grain_equal"
-    ).target_weight_rule == ("grain_equal")
+    assert UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule == "grain_equal"
+    assert UKLocalSolveDoctrine(target_weight_rule="uniform").target_weight_rule == (
+        "uniform"
+    )
 
 
 def test_grain_equal_weights_give_each_grain_one_equal_share() -> None:
@@ -104,11 +113,11 @@ def test_grain_equal_weights_give_each_grain_one_equal_share() -> None:
 def test_local_doctrine_override_is_receipted_and_bounds_are_frozen() -> None:
     doctrine, receipt = uk_local_doctrine_with_overrides(
         UK_LOCAL_SOLVE_DOCTRINE,
-        {"target_weight_rule": "grain_equal"},
+        {"target_weight_rule": "uniform"},
     )
-    assert doctrine.target_weight_rule == "grain_equal"
+    assert doctrine.target_weight_rule == "uniform"
     assert receipt == {
-        "target_weight_rule": {"default": "uniform", "effective": "grain_equal"}
+        "target_weight_rule": {"default": "grain_equal", "effective": "uniform"}
     }
     with pytest.raises(ValueError, match="reviewed constants"):
         uk_local_doctrine_with_overrides(
