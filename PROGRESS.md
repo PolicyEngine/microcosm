@@ -20,11 +20,14 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
   `/private/tmp/microcosm-impl-uv-cache` after the requested fresh cache proved
   empty, and verified `inspect.getfile(microcosm.graph)` resolves inside this
   worktree.
+- Read the acceptance charter, including frozen-interface amendments and B6,
+  B7, C5, D2, and D6; inspected both frozen modules without editing them.
+- Traced the executor, population, manifest, and explanation paths against all
+  B/C/D acceptance tests and the toy graph fixtures; regression coverage will
+  live only in ordinary graph test modules plus the permitted toy helper.
 
 ## Next
 
-- Read the charter, graph implementation files, acceptance tests, and toy
-  fixtures before editing.
 - Implement and regression-test F2, F3, F4, F5, F7, and F10 as one commit per
   finding, maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
