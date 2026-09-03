@@ -9,6 +9,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from importlib import metadata as importlib_metadata
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ from microcosm.frame import (
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
     Capabilities,
+    ContentStore,
     Determinism,
     Graph,
     KernelBase,
@@ -42,7 +44,9 @@ from microcosm.graph import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    compile_graph,
     graph_to_json,
+    run_graph,
 )
 from microcosm.graph.keys import platform_fingerprint
 
@@ -83,9 +87,7 @@ class ParityCsvSource(KernelBase):
         case = context.params.get("case")
         if case not in {"fit.qrf", "calibrate", "simulate"}:
             raise ValueError(f"Unknown parity fixture case {case!r}.")
-        table = pd.read_csv(
-            context.sources["fixture"] / "inputs.csv", float_precision="round_trip"
-        )
+        table = pd.read_csv(context.sources["fixture"], float_precision="round_trip")
         frame = _frame_for_case(str(case), table)
         return KernelResult(frame=frame, receipt={"case": case, "rows": len(table)})
 
@@ -438,7 +440,12 @@ def _simulate_case() -> tuple[Graph, pd.DataFrame, pd.DataFrame, object, None]:
     )
 
 
-def _pins(node_id: str, kernel: object, seed: int | None) -> dict[str, object]:
+def _pins(
+    node_id: str,
+    node_key: str,
+    kernel: object,
+    seed: int | None,
+) -> dict[str, object]:
     capabilities = kernel.capabilities  # type: ignore[attr-defined]
     dependencies = {
         name: importlib_metadata.version(name)
@@ -446,6 +453,7 @@ def _pins(node_id: str, kernel: object, seed: int | None) -> dict[str, object]:
     }
     return {
         "node": node_id,
+        "node_key": node_key,
         "seed": seed,
         "kernel": kernel.ref,  # type: ignore[attr-defined]
         "implementation_hash": kernel.implementation_hash(),  # type: ignore[attr-defined]
@@ -468,9 +476,20 @@ def _write_case(
     (destination / "graph.json").write_text(graph_to_json(graph), encoding="utf-8")
     inputs.to_csv(destination / "inputs.csv", index=False, lineterminator="\n")
     direct.to_csv(destination / "direct.csv", index=False, lineterminator="\n")
+    node_id = graph.nodes[-1].id
+    with TemporaryDirectory(prefix="microcosm-parity-") as store_path:
+        manifest = run_graph(
+            compile_graph(graph),
+            sources={"fixture": destination / "inputs.csv"},
+            store=ContentStore(Path(store_path)),
+            kernels=parity_registry(),
+            resume="forbid",
+            decisions=(),
+        )
+    node_key = manifest.nodes[node_id].key
     (destination / "pins.json").write_text(
         json.dumps(
-            _pins(graph.nodes[-1].id, kernel, seed),
+            _pins(node_id, node_key, kernel, seed),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),

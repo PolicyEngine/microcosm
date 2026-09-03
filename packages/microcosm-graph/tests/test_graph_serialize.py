@@ -147,7 +147,7 @@ def test_generated_parity_graphs_bind_real_kernels_and_direct_bytes(
             store = ContentStore(tmp_path / name)
             manifest = run_graph(
                 compile_graph(graph),
-                sources={"fixture": case},
+                sources={"fixture": case / "inputs.csv"},
                 store=store,
                 kernels=parity_registry(),
                 resume="forbid",

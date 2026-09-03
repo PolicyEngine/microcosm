@@ -2816,7 +2816,7 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
     param_registry.register(QRF_PARAM_KERNEL)
     cold = run_graph(
         compiled,
-        sources={"fixture": case},
+        sources={"fixture": case / "inputs.csv"},
         store=store,
         kernels=param_registry,
     )
@@ -2838,7 +2838,7 @@ def test_fit_qrf_seed_source_change_misses_a_shared_store(
     with pytest.raises(NodeRejected, match="EXECUTOR-seeded.*must omit"):
         run_graph(
             compiled,
-            sources={"fixture": case},
+            sources={"fixture": case / "inputs.csv"},
             store=store,
             kernels=executor_registry,
         )
@@ -2870,7 +2870,7 @@ def test_fit_qrf_model_artifact_is_canonical_across_runtime_worker_settings(
         manifests.append(
             run_graph(
                 compiled,
-                sources={"fixture": case},
+                sources={"fixture": case / "inputs.csv"},
                 store=store,
                 kernels=registry,
                 resume="forbid",

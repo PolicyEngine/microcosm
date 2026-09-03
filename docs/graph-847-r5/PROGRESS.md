@@ -2,10 +2,9 @@
 
 ## State
 
-Nine of ten findings are fixed on the standalone `fix-847-r5` lane. The frozen
-interface remains unchanged. The H1 parity-pin fix and fixture regeneration
-(finding 6) are next, followed by the complete required verification block and
-lane report.
+All ten findings are implemented on the standalone `fix-847-r5` lane, with the
+frozen interface unchanged. The complete required verification block and lane
+report are next.
 
 ## Done
 
@@ -81,10 +80,18 @@ lane report.
   class/platform and returns `evidence_absent` for an explicitly different
   comparison platform. Focused tests, kernel contracts, executor tests (apart
   from the pending QRF parity pin), and acceptance C all pass.
+- Reproduced finding 6 by forcing the H1 simulate case down its off-platform
+  branch: the test completed with zero byte comparisons and no identity
+  assertion. H1 pins now include the target node key; the graph source is the
+  stable `inputs.csv` file rather than the self-referential fixture directory.
+  H1 asserts key inequality off-platform and key equality plus bytes on the
+  pinned platform, without counting a skipped byte comparison as evidence.
+  Fixtures were regenerated after the tool was formatted, and the H1,
+  serialization, QRF cache-collision, seed-source, and implementation-pin
+  regressions pass. A forced off-platform fit case also passes with zero byte
+  comparisons after asserting the key partition.
 
 ## Next
 
-- Implement and verify the H1 node-key parity pin plus fixture regeneration
-  (finding 6), preserving the frozen files.
 - Run the complete required verification block and write the lane report to
   the requested output file.

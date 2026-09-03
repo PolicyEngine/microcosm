@@ -39,7 +39,8 @@ PARITY = Path(__file__).parent / "fixtures" / "parity"
 #: H1: one directory per wrapped legacy kernel, each holding ``graph.json``
 #: (the node declaration), ``inputs.csv``, ``direct.csv`` (the direct call's
 #: output at the pinned seed), and ``pins.json`` (seed, kernel ref, kernel
-#: implementation hash, and the dependency versions the pin was taken under).
+#: implementation hash, target node key, and the dependency versions the pin
+#: was taken under).
 KERNEL_PARITY = PARITY / "kernels"
 
 #: H2: ``uk_spine.json`` — the 27-stage FRS spine expressed as a graph — plus
@@ -163,7 +164,15 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
     for name in WRAPPED_KERNELS:
         case = _require(KERNEL_PARITY / name, "the kernel-wrapper lane")
         pins = json.loads((case / "pins.json").read_text())
-        assert set(pins) >= {"seed", "kernel", "implementation_hash", "dependencies"}
+        assert set(pins) >= {
+            "seed",
+            "kernel",
+            "implementation_hash",
+            "dependencies",
+            "node_key",
+            "numeric",
+            "platform",
+        }
         kernel = registry.get(pins["kernel"])
         assert kernel.implementation_hash() == pins["implementation_hash"]
         assert set(pins["dependencies"]) == set(kernel.capabilities.dependencies)
@@ -171,7 +180,7 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         store = ContentStore(tmp_path / name)
         manifest = run_graph(
             compile_graph(graph_from_json((case / "graph.json").read_text())),
-            sources={"fixture": case},
+            sources={"fixture": case / "inputs.csv"},
             store=store,
             kernels=registry,
             resume="forbid",
@@ -188,28 +197,33 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         # that produced the pins (amendment 16); elsewhere the property that
         # holds is identity partitioning: the node key carries the platform,
         # so a shared store can never serve the pinned platform's artifact.
-        platform_bound = pins.get("numeric") == "platform_bitwise"
-        same_platform = pins.get("platform") == platform_fingerprint()
-        compared = 0
+        off_platform = (
+            pins["numeric"] == "platform_bitwise"
+            and pins["platform"] != platform_fingerprint()
+        )
+        if off_platform:
+            assert node.key != pins["node_key"]
+        else:
+            assert node.key == pins["node_key"]
+        exposed = 0
         for cell, key in node.artifacts.items():
             label = f"{cell[0]}.{cell[1]}"
             if label in direct.columns:
-                if platform_bound and not same_platform:
-                    compared += 1  # identity partitioning is the assertion here
-                    continue
-                _assert_same_bytes(store.load_column(key), direct[label])
-                compared += 1
+                exposed += 1
+                if not off_platform:
+                    _assert_same_bytes(store.load_column(key), direct[label])
         if node.weight_key is not None:
+            exposed += 1
             entity = (
                 graph_from_json((case / "graph.json").read_text())
                 .node(pins["node"])
                 .weights.entity
             )
-            _assert_same_bytes(
-                store.load_column(node.weight_key), direct[f"{entity}.weights"]
-            )
-            compared += 1
-        assert compared, f"{name}: the fixture exposed nothing to compare"
+            if not off_platform:
+                _assert_same_bytes(
+                    store.load_column(node.weight_key), direct[f"{entity}.weights"]
+                )
+        assert exposed, f"{name}: the fixture exposed nothing to compare"
 
 
 def _direct_table(case: Path):
