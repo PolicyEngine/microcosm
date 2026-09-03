@@ -43,8 +43,8 @@ SUITE_GLOB = "packages/microcosm-graph/tests/test_acceptance_*.py"
 CHARTER = "docs/graph-acceptance.md"
 
 #: The branch the ratchet compares against, and how to fetch it if absent.
-BASELINE_REF = "origin/node-graph"
-BASELINE_REFSPEC = "+refs/heads/node-graph:refs/remotes/origin/node-graph"
+BASELINE_REF = "origin/main"
+BASELINE_REFSPEC = "+refs/heads/main:refs/remotes/origin/main"
 
 #: Charter ids this suite owns. Group V (the visuals) belongs to another lane
 #: and is not an ``xfail`` in this suite.

@@ -118,8 +118,11 @@ def cohere_uc_capital(frame: Frame) -> UKUCCapitalCoherenceResult:
     capital = pd.to_numeric(
         benunit[UC_CAPITAL_REDRAW_OUTPUT], errors="coerce"
     ).to_numpy(dtype=float, na_value=np.nan, copy=True)
+    # Sentinel equality is exact (#833): -1.0 is a fixed literal every
+    # producer writes verbatim, and an isclose band would reclassify a
+    # corrupted near-sentinel value as a declared absence.
     valid_domain = np.isfinite(capital) & (
-        np.isclose(capital, UC_CAPITAL_UNAVAILABLE) | (capital >= 0.0)
+        (capital == UC_CAPITAL_UNAVAILABLE) | (capital >= 0.0)
     )
     if not valid_domain.all():
         raise ValueError(

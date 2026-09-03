@@ -6699,6 +6699,74 @@
      "required": [
       "kind",
       "output",
+      "training_rows",
+      "rows",
+      "rewrite_rows",
+      "screen",
+      "predictors",
+      "categorical_predictors",
+      "target",
+      "weight_mapping",
+      "fit",
+      "landing",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_spi_reported_uc"
+      },
+      "output": {
+       "type": "string"
+      },
+      "training_rows": {
+       "type": "string"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "rewrite_rows": {
+       "type": "string"
+      },
+      "screen": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "target": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "fit": {
+       "type": "string"
+      },
+      "landing": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
       "rows",
       "donor_rows",
       "dependent_children_bands",

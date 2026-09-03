@@ -130,6 +130,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "read_tables",
         "read_acs_rent_donor",
         "redraw_columns_from_fitted_qrf",
+        "redraw_spi_reported_uc",
         "redraw_spi_reporter_capital",
         "record_mass_conservation_receipt",
         "replace_zero_weight_spi_support",
