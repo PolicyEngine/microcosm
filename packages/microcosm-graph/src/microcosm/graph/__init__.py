@@ -50,6 +50,7 @@ from .kernel import (
     Tolerance,
     source_hash,
 )
+from .keys import platform_fingerprint
 
 __all__ = [
     "platform_fingerprint",
