@@ -339,10 +339,15 @@ class KernelResult:
         artifacts: Opaque bytes stored beside the node's outputs (a fitted
             model, a diagnostic table), keyed by name.
         receipt: Descriptive facts for the manifest. Never hashed into a
-            key. A gate kernel puts its verdict under ``"outcome"`` and its
-            evidence under ``"evidence"``; a mass-changing kernel may put
-            its own accounting under ``"mass"`` (the executor records its
-            own regardless).
+            node key; the run manifest's key does hash every node receipt
+            (less the executor's run-level fields), so a receipt must be a
+            deterministic function of the computation. A gate kernel puts
+            its verdict under ``"outcome"`` and its evidence under
+            ``"evidence"``; a mass-changing kernel may put its own
+            accounting under ``"mass"`` (the executor records its own
+            regardless). Timings, host names, and iteration diagnostics
+            that vary between runs of one computation do not belong here
+            (amendment 18).
     """
 
     columns: Mapping[tuple[str, str], pd.Series] = field(default_factory=dict)

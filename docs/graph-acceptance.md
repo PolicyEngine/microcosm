@@ -281,6 +281,17 @@ Amendments so far (each re-locked):
     or evidence a platform-scoped input (amendment 16). Raised by the
     #847 gate review (round 3); adopted 2026-09-03.
 
+18. **Receipts are deterministic.** `KernelResult.receipt` is never hashed
+    into a node key, but the run manifest's key hashes every node receipt
+    less the executor's run-level fields (`hit`, `wall_time`, and a release
+    node's decision-derived `outcome`), so a receipt must be a deterministic
+    function of the computation: gate outcomes and evidence belong there;
+    timings, host names, and iteration diagnostics that vary between runs of
+    one computation do not. Manifest schema 2 records this identity; a
+    schema-1 manifest loads as legacy in full (its receipts unauthenticated,
+    `hit` forced to false) and `load_certified` refuses it. Raised by the
+    #847 gate review; adopted 2026-09-03.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
