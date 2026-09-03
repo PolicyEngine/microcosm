@@ -50,6 +50,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
+    refuse_denied_frame,
     refuse_denied_pool_h5,
 )
 from microcosm.build.us_runtime.puma_ladder import (
@@ -985,7 +986,7 @@ def _load_base_frame(path: Path) -> Frame:
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
     assert_h5_unchanged(path, sha256, consumer=consumer)
-    return Frame(
+    frame = Frame(
         tables,
         US_SCHEMA,
         {
@@ -995,6 +996,8 @@ def _load_base_frame(path: Path) -> Frame:
             )
         },
     )
+    refuse_denied_frame(frame, consumer=consumer)
+    return frame
 
 
 def _write_dataset(

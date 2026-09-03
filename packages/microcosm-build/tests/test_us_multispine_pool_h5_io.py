@@ -1877,7 +1877,7 @@ def test_pool_deny_list_contains_candidate_26_identity() -> None:
         "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
     )
     assert denied.content_identity_sha256 == (
-        "674b6e69618bc9909dd2e4f9fcd8fbe6e8ff3f2589bb650dfb240d9e3ccc9ff9"
+        "f5a5023bb9a74003d433abf04c796c96da0a34c6a7caff78b70fee421c4a7b2c"
     )
     assert "\n" not in denied.reason
     assert denied.reference == (
@@ -2067,7 +2067,22 @@ def test_a_repackaged_denied_pool_is_refused_by_every_generic_ingress(
             for key in source.keys():
                 if key.lstrip("/") == "_populace_staging_metadata":
                     continue
-                target.put(key.lstrip("/"), source.get(key))
+                table = source.get(key)
+                if key.lstrip("/") == "household" and isinstance(table, pd.DataFrame):
+                    # Launder harder: drop optional provenance columns and
+                    # relabel the household ids consistently.
+                    table = table.drop(
+                        columns=[
+                            c
+                            for c in (
+                                "household_support_channel",
+                                "household_support_clone_index",
+                            )
+                            if c in table.columns
+                        ]
+                    )
+                    table = table.assign(household_id=table["household_id"] + 1000)
+                target.put(key.lstrip("/"), table)
 
     assert h5_io.identify_us_multispine_pool_manifest(repackaged) is None
     assert _sha256(repackaged) != _sha256(original_h5)
@@ -2105,6 +2120,128 @@ def test_a_repackaged_denied_pool_is_refused_by_every_generic_ingress(
         with pytest.raises(ValueError, match="repackaging") as error:
             ingress()
         assert manifest["publication_run_id"] in str(error.value), label
+
+
+def test_content_identity_ignores_ids_columns_and_order() -> None:
+    """Version 2 hashes the sorted weight multiset with the count, nothing else."""
+    weights = np.asarray([3.0, 1.5, 2.25], dtype=np.float64)
+    identity = h5_io.content_identity_of_household_weights(weights)
+    assert identity == h5_io.content_identity_of_household_weights(weights[::-1])
+    assert identity != h5_io.content_identity_of_household_weights(weights[:2])
+    assert identity != h5_io.content_identity_of_household_weights(weights + 1e-9)
+
+
+def test_loaded_frame_of_a_denied_pool_is_refused_even_if_the_disk_file_changed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ABA: benign bytes on disk for both hashes, denied tables actually read."""
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    denied_h5 = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(denied_h5, mode="r") as store:
+        denied_tables = {
+            key.lstrip("/"): store.get(key)
+            for key in store.keys()
+            if key.lstrip("/") != "_populace_staging_metadata"
+        }
+    identity = h5_io.content_identity_of_household_weights(
+        denied_tables["household"]["household_weight"].to_numpy(dtype=np.float64)
+    )
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            manifest["publication_run_id"]: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256=identity,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    benign = tmp_path / "benign.h5"
+    with pd.HDFStore(benign, mode="w") as store:
+        for key, table in denied_tables.items():
+            if key == "household":
+                table = table.assign(household_weight=table["household_weight"] * 0.5)
+            store.put(key, table)
+    # Both on-disk checks see the benign file; the read is swapped to the
+    # denied tables, as a pathname replacement between check and read would do.
+    monkeypatch.setattr(
+        h5_io, "read_frame_table", lambda store, entity: denied_tables[entity].copy()
+    )
+    with pytest.raises(ValueError, match="loaded frame"):
+        h5_io.load_legacy_calibrated_us_h5(benign)
+
+
+def test_selection_manifest_from_a_denied_pool_is_refused_and_provenance_is_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from microcosm.build.us_runtime import warm_start_selection as wss
+
+    manifest_path = tmp_path / "selection.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": wss._MANIFEST_SCHEMA_VERSION,
+                "join_key": list(wss.DEFAULT_SELECTION_JOIN_KEY),
+                "source": {"kind": "h5", "path": "somewhere.h5"},
+                "n_selected": 0,
+                "identities_sha256": wss._identities_digest(
+                    tuple(wss.DEFAULT_SELECTION_JOIN_KEY), []
+                ),
+                "identities": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="records no source sha256"):
+        wss.load_selection_source_from_manifest(manifest_path)
+
+    denied_h5 = "d" * 64
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "denied-selection-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason="fixture pool is excluded",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["source"]["sha256"] = denied_h5
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="denied publication"):
+        wss.load_selection_source_from_manifest(manifest_path)
+    payload["source"]["sha256"] = "e" * 64
+    payload["source"]["content_identity_sha256"] = "2" * 64
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="content identity"):
+        wss.load_selection_source_from_manifest(manifest_path)
+
+
+def test_fiscal_builder_binds_its_late_base_load_to_the_recorded_digest(
+    tmp_path: Path,
+) -> None:
+    fiscal = _tool_module(
+        "tools/build_us_fiscal_refresh_release.py", "fiscal_tool_bind"
+    )
+    base = tmp_path / "base.h5"
+    base.write_bytes(b"benign base bytes")
+    with pytest.raises(ValueError, match="not the base dataset whose identity"):
+        fiscal._load_frame(base, expected_sha256="f" * 64)
 
 
 def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:

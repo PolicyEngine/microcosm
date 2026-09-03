@@ -59,6 +59,7 @@ from microcosm.build.us_runtime.geography_ladder import (
 )
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
+    refuse_denied_frame,
     refuse_denied_pool_h5,
 )
 from microcosm.build.us_runtime.hours_worked import (
@@ -510,11 +511,13 @@ def load_us_frame(path: str | Path) -> Frame:
     }
     weights = tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     assert_h5_unchanged(path, sha256, consumer=consumer)
-    return Frame(
+    frame = Frame(
         tables,
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+    refuse_denied_frame(frame, consumer=consumer)
+    return frame
 
 
 def copy_microcosm_root_attrs(

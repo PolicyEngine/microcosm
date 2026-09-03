@@ -46,6 +46,13 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.h5_io import (
+    assert_h5_unchanged,
+    refuse_denied_content_identity,
+    refuse_denied_frame,
+    refuse_denied_pool_h5,
+    refuse_denied_pool_h5_digest,
+)
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.units import US_SCHEMA
 
@@ -438,11 +445,37 @@ def load_selection_source_from_manifest(path: str | Path) -> SelectionSource:
             f"selection-source manifest n_selected {declared} does not match the "
             f"{len(identities)} identities present."
         )
+    provenance = dict(payload.get("source", {}))
+    _refuse_denied_selection_provenance(provenance, manifest_path=path)
     return SelectionSource(
         join_key=join_key,
         identities=identities,
-        provenance=dict(payload.get("source", {})),
+        provenance=provenance,
     )
+
+
+def _refuse_denied_selection_provenance(
+    provenance: Mapping[str, object], *, manifest_path: Path
+) -> None:
+    """A selection manifest must say what it descended from, and it may not
+    descend from a denied pool by bytes or by content."""
+
+    sha256 = provenance.get("sha256")
+    if not isinstance(sha256, str) or not sha256:
+        raise ValueError(
+            f"selection-source manifest {manifest_path} records no source sha256; "
+            "a selection with unknown provenance cannot prune a release base."
+        )
+    refuse_denied_pool_h5_digest(
+        sha256, consumer=f"selection-source manifest {manifest_path}"
+    )
+    identity = provenance.get("content_identity_sha256")
+    if isinstance(identity, str) and identity:
+        refuse_denied_content_identity(
+            identity,
+            consumer=f"selection-source manifest {manifest_path}",
+            how="recorded source provenance, by content identity",
+        )
 
 
 def _sha256_file(path: Path) -> str:
@@ -489,11 +522,16 @@ def build_selection_source_manifest_from_h5(
     HF repo/revision) so a build records what the selection descended from.
     """
     source_h5 = Path(source_h5)
+    consumer = "selection-source manifest builder"
+    sha256 = refuse_denied_pool_h5(source_h5, consumer=consumer)
     frame = _load_us_frame_from_h5(source_h5)
+    assert_h5_unchanged(source_h5, sha256, consumer=consumer)
+    content_identity = refuse_denied_frame(frame, consumer=consumer)
     provenance: dict[str, object] = {
         "kind": "h5",
         "path": str(source_h5),
-        "sha256": _sha256_file(source_h5),
+        "sha256": sha256,
+        "content_identity_sha256": content_identity,
     }
     if repo_id is not None:
         provenance["repo_id"] = repo_id

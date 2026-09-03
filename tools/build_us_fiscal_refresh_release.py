@@ -235,6 +235,7 @@ from microcosm.build.us_runtime.h5_io import (
     identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_release,
     load_simulation_ready_us_multispine_pool,
+    refuse_denied_frame,
     refuse_denied_pool_h5,
     refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
@@ -2604,9 +2605,14 @@ def _download_base_h5() -> Path:
     )
 
 
-def _load_frame(path: Path) -> Frame:
+def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
     consumer = "US fiscal refresh release builder generic H5 loader (_load_frame)"
     sha256 = refuse_denied_pool_h5(path, consumer=consumer)
+    if expected_sha256 is not None and sha256 != expected_sha256:
+        raise ValueError(
+            f"{consumer}: {path} is not the base dataset whose identity was recorded "
+            f"(SHA-256 {sha256}, expected {expected_sha256}); the read is refused."
+        )
     from policyengine_us.data import USSingleYearDataset
 
     dataset = USSingleYearDataset(file_path=str(path))
@@ -2620,11 +2626,13 @@ def _load_frame(path: Path) -> Frame:
     }
     weights = tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     assert_h5_unchanged(path, sha256, consumer=consumer)
-    return Frame(
+    frame = Frame(
         tables,
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+    refuse_denied_frame(frame, consumer=consumer)
+    return frame
 
 
 def _resolve_selection_source(args):
@@ -8905,7 +8913,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     if pool_frame is None:
-        base_frame = _load_frame(base_h5)
+        base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)
     else:
         base_frame = pool_frame
     capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
