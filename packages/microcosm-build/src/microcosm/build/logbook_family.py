@@ -41,6 +41,7 @@ __all__ = [
     "FamilyWriteResult",
     "LogbookFamily",
     "LogbookReconcileResult",
+    "derive_family_id",
     "export_family_records",
     "export_family_scope",
     "family_archive_path",
@@ -62,6 +63,8 @@ __all__ = [
 
 
 FAMILY_ACTION_TYPES = frozenset({"revokes", "supersedes"})
+# uuid5(NAMESPACE_URL, "https://policyengine.org/microcosm/logbook-family")
+_FAMILY_ID_NAMESPACE = uuid.UUID("67c736a3-4a56-5c31-9cb6-37ef0a014645")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
 _SPOOL_DIRECTORIES = {
     "families": "families",
@@ -86,11 +89,10 @@ class LogbookFamily:
     def create(
         cls,
         *,
-        family_id: str,
         chain_scope: str,
         source_pool_sha256: str,
+        family_id: str | None = None,
     ) -> LogbookFamily:
-        parsed_id = _canonical_uuid(family_id, "family_id")
         parsed_scope = _nonempty_text(chain_scope, "chain_scope")
         if parsed_scope not in DECLARED_LOGBOOK_SCOPES:
             raise ValueError(
@@ -103,8 +105,16 @@ class LogbookFamily:
             nullable=False,
         )
         assert parsed_source is not None
+        derived_id = derive_family_id(parsed_scope, parsed_source)
+        if family_id is not None:
+            parsed_id = _canonical_uuid(family_id, "family_id")
+            if parsed_id != derived_id:
+                raise ValueError(
+                    f"family_id must be {derived_id} for chain_scope "
+                    f"{parsed_scope!r} and source_pool_sha256 {parsed_source}."
+                )
         return cls(
-            family_id=parsed_id,
+            family_id=derived_id,
             chain_scope=parsed_scope,
             source_pool_sha256=parsed_source,
         )
@@ -129,6 +139,28 @@ class LogbookFamily:
 
     def to_json_line(self) -> str:
         return _json_line(self.to_mapping())
+
+
+def derive_family_id(chain_scope: str, source_pool_sha256: str) -> str:
+    """Return the stable UUID for one scope and prepared-input manifest."""
+    parsed_scope = _nonempty_text(chain_scope, "chain_scope")
+    if parsed_scope not in DECLARED_LOGBOOK_SCOPES:
+        raise ValueError(
+            f"chain_scope must be one of {sorted(DECLARED_LOGBOOK_SCOPES)}, "
+            f"got {parsed_scope!r}."
+        )
+    parsed_source = _validate_digest(
+        source_pool_sha256,
+        "source_pool_sha256",
+        nullable=False,
+    )
+    assert parsed_source is not None
+    return str(
+        uuid.uuid5(
+            _FAMILY_ID_NAMESPACE,
+            f"{parsed_scope}\0{parsed_source}",
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -373,9 +405,14 @@ def validate_family_action(
     if (
         replacement.requested_k != replaced.requested_k
         or replacement.record_unit != replaced.record_unit
+        or (
+            replacement.requested_k is None
+            and replacement.rung != replaced.rung
+        )
     ):
         raise ValueError(
-            "Superseding builds must have matching requested_k and record_unit."
+            "Superseding builds must have matching requested_k and record_unit; "
+            "builds without cardinality must also have matching rung."
         )
 
 

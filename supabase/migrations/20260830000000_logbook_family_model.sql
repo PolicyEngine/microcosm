@@ -59,10 +59,17 @@ ALTER TABLE logbook.builds
     ),
     ADD CONSTRAINT builds_published_cardinality_matches CHECK (
         disposition NOT IN ('published', 'certified')
-        OR requested_k IS NULL
         OR (
-            realized_k IS NOT NULL
+            requested_k IS NULL
+            AND realized_k IS NULL
+            AND record_unit IS NULL
+            AND rung IS NOT NULL
+        )
+        OR (
+            requested_k IS NOT NULL
+            AND realized_k IS NOT NULL
             AND realized_k = requested_k
+            AND record_unit IS NOT NULL
         )
     );
 
@@ -387,9 +394,15 @@ DECLARE
     existing_action logbook.family_actions%ROWTYPE;
     replacement_requested bigint;
     replacement_unit text;
+    replacement_rung text;
     replaced_requested bigint;
     replaced_unit text;
+    replaced_rung text;
 BEGIN
+    PERFORM pg_advisory_xact_lock(
+        628,
+        hashtext('family-actions:' || NEW.family_id::text)
+    );
     PERFORM pg_advisory_xact_lock(
         628,
         hashtext('family-action:' || NEW.action_id::text)
@@ -421,8 +434,8 @@ BEGIN
     END IF;
 
     IF NEW.action_type = 'supersedes' THEN
-        SELECT build.requested_k, build.record_unit
-        INTO replacement_requested, replacement_unit
+        SELECT build.requested_k, build.record_unit, build.rung
+        INTO replacement_requested, replacement_unit, replacement_rung
         FROM logbook.family_members AS member
         JOIN logbook.builds AS build
           ON build.build_id = member.build_id
@@ -437,8 +450,8 @@ BEGIN
                 USING ERRCODE = '23503';
         END IF;
 
-        SELECT build.requested_k, build.record_unit
-        INTO replaced_requested, replaced_unit
+        SELECT build.requested_k, build.record_unit, build.rung
+        INTO replaced_requested, replaced_unit, replaced_rung
         FROM logbook.family_members AS member
         JOIN logbook.builds AS build
           ON build.build_id = member.build_id
@@ -455,9 +468,34 @@ BEGIN
 
         IF replacement_requested IS DISTINCT FROM replaced_requested
             OR replacement_unit IS DISTINCT FROM replaced_unit
+            OR (
+                replacement_requested IS NULL
+                AND replacement_rung IS DISTINCT FROM replaced_rung
+            )
         THEN
             RAISE EXCEPTION
-                'Superseding builds must have matching requested_k and record_unit'
+                'Superseding builds must have matching requested_k and record_unit; builds without cardinality must also have matching rung'
+                USING ERRCODE = '23514';
+        END IF;
+
+        IF EXISTS (
+            WITH RECURSIVE replaced_builds(build_id) AS (
+                SELECT NEW.related_build_id
+                UNION
+                SELECT action.related_build_id
+                FROM logbook.family_actions AS action
+                JOIN replaced_builds AS replaced
+                  ON action.build_id = replaced.build_id
+                WHERE action.family_id = NEW.family_id
+                  AND action.action_type = 'supersedes'
+            )
+            SELECT 1
+            FROM replaced_builds
+            WHERE build_id = NEW.build_id
+        ) THEN
+            RAISE EXCEPTION
+                'Superseding action would create a replacement cycle in family %',
+                NEW.family_id
                 USING ERRCODE = '23514';
         END IF;
     END IF;

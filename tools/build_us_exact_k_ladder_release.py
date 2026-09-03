@@ -17,7 +17,6 @@ Schema-v2 configuration (paths are resolved relative to the config file)::
 
     {
       "schema_version": 2,
-      "family": {"id": "12345678-1234-4234-9234-123456789abc"},
       "pool": {"release_id": "...", "manifest_sha256": "<sha256>"},
       "ladder": {"k": 57240, "seed": 17, "pi_hi": 0.95},
       "targets": {
@@ -58,7 +57,6 @@ import re
 import shlex
 import sys
 import time
-import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -92,6 +90,7 @@ from microcosm.build.logbook_adoption import (
 from microcosm.build.logbook_family import (
     FamilyMember,
     LogbookFamily,
+    derive_family_id,
     reconcile_logbook_spool,
     record_family,
     record_family_member,
@@ -176,7 +175,6 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         root,
         required={
             "schema_version",
-            "family",
             "pool",
             "ladder",
             "targets",
@@ -194,8 +192,6 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             f"{CONFIG_SCHEMA_VERSION}, got {root['schema_version']!r}."
         )
 
-    family = _object(root["family"], label="family")
-    _keys(family, required={"id"}, label="family")
     pool = _object(root["pool"], label="pool")
     _keys(pool, required={"release_id", "manifest_sha256"}, label="pool")
     ladder = _object(root["ladder"], label="ladder")
@@ -300,6 +296,10 @@ def _read_config(path: Path) -> LadderReleaseConfig:
     )
 
     pool_release_id = _nonempty_string(pool["release_id"], label="pool.release_id")
+    pool_manifest_sha256 = _sha256_value(
+        pool["manifest_sha256"],
+        label="pool.manifest_sha256",
+    )
     release_id = _nonempty_string(release["id"], label="release.id")
     if _RELEASE_ID.fullmatch(release_id) is None:
         raise ValueError(
@@ -312,11 +312,9 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         )
 
     return LadderReleaseConfig(
-        family_id=_uuid_value(family["id"], label="family.id"),
+        family_id=derive_family_id("us", pool_manifest_sha256),
         pool_release_id=pool_release_id,
-        pool_manifest_sha256=_sha256_value(
-            pool["manifest_sha256"], label="pool.manifest_sha256"
-        ),
+        pool_manifest_sha256=pool_manifest_sha256,
         requested_k=requested_k,
         seed=seed,
         pi_hi=pi_hi,
@@ -728,7 +726,6 @@ def launch(
         },
     )
     family = LogbookFamily.create(
-        family_id=config.family_id,
         chain_scope="us",
         source_pool_sha256=config.pool_manifest_sha256,
     )
@@ -938,17 +935,6 @@ def _sha256_value(value: object, *, label: str) -> str:
     if _LOWERCASE_SHA256.fullmatch(parsed) is None:
         raise ValueError(f"{label} must be a 64-character lowercase SHA-256.")
     return parsed
-
-
-def _uuid_value(value: object, *, label: str) -> str:
-    parsed = _nonempty_string(value, label=label)
-    try:
-        normalized = str(uuid.UUID(parsed))
-    except ValueError as exc:
-        raise ValueError(f"{label} must be a canonical UUID.") from exc
-    if parsed != normalized:
-        raise ValueError(f"{label} must use canonical lowercase UUID text.")
-    return normalized
 
 
 def _nonnegative_int(value: object, *, label: str) -> int:

@@ -252,6 +252,15 @@ class LogbookRow:
             rung,
             row_format_version=normalized_version,
         )
+        if (
+            disposition in {"published", "certified"}
+            and normalized_rung is None
+            and normalized_requested is None
+        ):
+            raise ValueError(
+                f"{disposition} exact-k build requires requested_k, "
+                "realized_k, and record_unit."
+            )
         normalized_prev = _validate_digest(
             prev_row_digest,
             "prev_row_digest",
@@ -1289,8 +1298,13 @@ def _validate_row_cardinality(
                 "using letters, digits, or underscores."
             )
 
-    if disposition in {"published", "certified"} and requested is not None:
-        if realized != requested:
+    if disposition in {"published", "certified"}:
+        if requested is None and realized is not None:
+            raise ValueError(
+                f"{disposition} build cannot record realized_k without "
+                "requested_k."
+            )
+        if requested is not None and realized != requested:
             raise ValueError(
                 f"{disposition} exact-k build requires realized_k to equal "
                 f"requested_k; got requested_k={requested!r}, "

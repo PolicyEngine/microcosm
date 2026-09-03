@@ -57,10 +57,10 @@ fraction values.
 
 The relational model has three parts:
 
-- `families` assigns a caller-created UUID to one Logbook scope and one
-  verified prepared-input manifest checksum. The UUID and checksum are
-  separate: the UUID is the database identifier, while the checksum describes
-  the input used by the family.
+- `families` assigns a deterministic UUIDv5 identifier to one Logbook scope
+  and one verified prepared-input manifest checksum. The UUID is derived from
+  the scope and checksum, so independent writers produce the same identifier
+  for the same prepared input.
 - `family_members` contains only `family_id` and `build_id`. It states that the
   build used the family's prepared input. Dataset properties such as size,
   random seed, file location, and build status remain on the build record.
@@ -152,13 +152,12 @@ python tools/logbook.py family-import --scope us --spool logbook-spool
 python tools/logbook.py reconcile --spool logbook-spool
 ```
 
-The exact-k launcher uses configuration format version 2 and requires the
-caller to create the family UUID:
+The exact-k launcher uses configuration format version 2 and derives the
+family UUID from the `us` scope and the prepared-input manifest checksum:
 
 ```json
 {
   "schema_version": 2,
-  "family": {"id": "12345678-1234-4234-9234-123456789abc"},
   "pool": {
     "release_id": "prepared-pool-release",
     "manifest_sha256": "<verified lowercase SHA-256>"
@@ -166,15 +165,15 @@ caller to create the family UUID:
 }
 ```
 
-Use the same `family.id` for every exact-k build that uses that prepared input.
-The launcher verifies `pool.manifest_sha256`, stores that same checksum as the
-family's `source_pool_sha256`, resolves `N` to a numeric household count, and
-writes the build, family, and membership under `<out>/logbook-spool/`. It then
+The UUIDv5 namespace is `67c736a3-4a56-5c31-9cb6-37ef0a014645`, itself derived
+from the URL `https://policyengine.org/microcosm/logbook-family`; each family
+uses `<chain_scope>\0<source_pool_sha256>` as its UUIDv5 name. The launcher
+verifies `pool.manifest_sha256`, stores that same checksum as the family's
+`source_pool_sha256`, resolves `N` to a numeric household count, and writes
+the build, family, and membership under `<out>/logbook-spool/`. It then
 attempts remote insertion in dependency order. If credentials or database
 access are unavailable, all files remain local; run `tools/logbook.py
-reconcile --spool <out>/logbook-spool` later. A family UUID already associated
-with another source checksum is rejected, and the conflicting local files are
-retained for inspection.
+reconcile --spool <out>/logbook-spool` later.
 
 Pass the current US predecessor checksum with
 `--logbook-prev-row-digest` or `POPULACE_LOGBOOK_PREV_ROW_DIGEST`. The exact-k

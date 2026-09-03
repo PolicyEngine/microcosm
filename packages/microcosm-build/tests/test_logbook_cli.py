@@ -15,6 +15,7 @@ from microcosm.build.logbook_family import (
     FamilyAction,
     FamilyMember,
     LogbookFamily,
+    derive_family_id,
     load_families,
     load_family_actions,
     load_family_members,
@@ -272,7 +273,7 @@ def test_family_archive_commands_and_queries(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    family_id = "12345678-1234-4234-9234-123456789abc"
+    family_id = derive_family_id("us", "a" * 64)
     action_id = "22345678-1234-4234-9234-123456789abc"
     family = LogbookFamily.create(
         family_id=family_id,
@@ -409,7 +410,7 @@ def test_family_export_rejects_member_whose_build_has_another_scope(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    family_id = "12345678-1234-4234-9234-123456789abc"
+    family_id = derive_family_id("us", "a" * 64)
     family = LogbookFamily.create(
         family_id=family_id,
         chain_scope="us",
@@ -693,7 +694,7 @@ def test_cli_remote_family_export_filters_each_table_by_stored_scope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    family_id = "12345678-1234-4234-9234-123456789abc"
+    family_id = derive_family_id("us", "a" * 64)
     action_id = "22345678-1234-4234-9234-123456789abc"
     family = LogbookFamily.create(
         family_id=family_id,

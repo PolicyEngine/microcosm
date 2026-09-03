@@ -15,6 +15,7 @@ from microcosm.build.logbook_family import (
     FamilyAction,
     FamilyMember,
     LogbookFamily,
+    derive_family_id,
     export_family_records,
     export_family_scope,
     family_archive_path,
@@ -31,7 +32,7 @@ from microcosm.build.logbook_family import (
     validate_family_source,
 )
 
-FAMILY_ID = "12345678-1234-4234-9234-123456789abc"
+FAMILY_ID = "86c298e7-a71a-5000-999f-cbf4aa993dac"
 ACTION_ID = "87654321-4321-4321-8321-cba987654321"
 
 
@@ -44,11 +45,15 @@ def _spool_only(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _family(**overrides: object) -> LogbookFamily:
     values = {
-        "family_id": FAMILY_ID,
         "chain_scope": "us",
         "source_pool_sha256": "a" * 64,
     }
     values.update(overrides)
+    if "family_id" not in overrides:
+        values["family_id"] = derive_family_id(
+            str(values["chain_scope"]),
+            str(values["source_pool_sha256"]),
+        )
     return LogbookFamily.create(**values)
 
 
@@ -56,13 +61,14 @@ def _build(
     build_id: str = "family-build-1",
     *,
     pipeline: str = "us-stacked-pool",
-    requested_k: int = 20_000,
+    requested_k: int | None = 20_000,
+    rung: str = "f100",
 ) -> LogbookRow:
     return LogbookRow.create(
         build_id=build_id,
         ts="2026-08-21T12:00:00Z",
         pipeline=pipeline,
-        rung="f100",
+        rung=rung,
         seed=17,
         code_pin="abc1234",
         input_pins_digest="1" * 64,
@@ -83,7 +89,7 @@ def _build(
         row_format_version=2,
         requested_k=requested_k,
         realized_k=requested_k,
-        record_unit="household",
+        record_unit=None if requested_k is None else "household",
     )
 
 
@@ -119,6 +125,23 @@ def test_family_and_membership_have_exact_fields() -> None:
         "family_id": FAMILY_ID,
         "build_id": "family-build-1",
     }
+
+
+def test_family_id_is_derived_from_scope_and_source() -> None:
+    family = LogbookFamily.create(
+        chain_scope="us",
+        source_pool_sha256="a" * 64,
+    )
+
+    assert family.family_id == FAMILY_ID
+    assert derive_family_id("uk/frs", "a" * 64) != FAMILY_ID
+    with pytest.raises(ValueError, match="family_id must be"):
+        LogbookFamily.from_mapping(
+            {
+                **family.to_mapping(),
+                "family_id": "12345678-1234-4234-9234-123456789abc",
+            }
+        )
 
 
 @pytest.mark.parametrize(
@@ -200,6 +223,25 @@ def test_supersession_requires_members_and_matching_cardinality() -> None:
     with pytest.raises(ValueError, match="matching requested_k"):
         validate_family_action(action, members=members, builds=mismatched)
 
+    mismatched_fraction = {
+        "family-build-1": _build(
+            "family-build-1",
+            requested_k=None,
+            rung="f100",
+        ),
+        "family-build-2": _build(
+            "family-build-2",
+            requested_k=None,
+            rung="f010",
+        ),
+    }
+    with pytest.raises(ValueError, match="must also have matching rung"):
+        validate_family_action(
+            action,
+            members=members,
+            builds=mismatched_fraction,
+        )
+
 
 def test_family_spool_is_durable_and_idempotent(tmp_path: Path) -> None:
     family = _family()
@@ -211,11 +253,8 @@ def test_family_spool_is_durable_and_idempotent(tmp_path: Path) -> None:
     assert first.spool_path == tmp_path / "families" / f"{FAMILY_ID}.json"
     assert json.loads(first.spool_path.read_text()) == family.to_mapping()
 
-    with pytest.raises(ValueError, match="divergent retry"):
-        record_family(
-            _family(source_pool_sha256="b" * 64),
-            spool_dir=tmp_path,
-        )
+    with pytest.raises(ValueError, match="family_id must be"):
+        _family(family_id=FAMILY_ID, source_pool_sha256="b" * 64)
 
 
 def test_family_spool_retry_completes_interrupted_parent_sync(
@@ -368,7 +407,7 @@ def test_family_reconciliation_stops_and_retains_dependents(
     assert len(list(tmp_path.rglob("*.json"))) == 2
 
 
-def test_family_archive_append_is_idempotent_and_detects_conflict(
+def test_family_archive_append_is_idempotent(
     tmp_path: Path,
 ) -> None:
     archive = tmp_path / "families" / "us.jsonl"
@@ -380,12 +419,6 @@ def test_family_archive_append_is_idempotent_and_detects_conflict(
     assert (first.existing, first.appended) == (0, 1)
     assert (second.existing, second.appended) == (1, 0)
     assert load_families(archive) == (family,)
-
-    with pytest.raises(ValueError, match="conflicts with existing"):
-        export_family_records(
-            archive,
-            [_family(source_pool_sha256="b" * 64)],
-        )
 
 
 @pytest.mark.parametrize(

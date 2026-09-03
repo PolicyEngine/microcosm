@@ -480,6 +480,34 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
     with pytest.raises(psycopg.errors.CheckViolation):
         _insert(connection, invalid_publication, versioned=True)
 
+    missing_publication_cardinality = _build_row(
+        "missing-publication-cardinality",
+        pipeline="us-stacked-pool",
+        predecessor=_digest_of(connection, different_unit["build_id"]),
+    )
+    missing_publication_cardinality.update(
+        rung=None,
+        row_format_version=2,
+        disposition="published",
+        artifact_location="hf://datasets/fixture/release-without-cardinality",
+    )
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _insert(connection, missing_publication_cardinality, versioned=True)
+
+    legacy_f100 = _build_row(
+        "family-us-legacy-f100",
+        pipeline="us-stacked-pool",
+        predecessor=_digest_of(connection, different_unit["build_id"]),
+    )
+    _insert(connection, legacy_f100)
+    legacy_f010 = _build_row(
+        "family-us-legacy-f010",
+        pipeline="us-stacked-pool",
+        predecessor=_digest_of(connection, legacy_f100["build_id"]),
+    )
+    legacy_f010["rung"] = "f010"
+    _insert(connection, legacy_f010)
+
     family_id = "12345678-1234-4234-9234-123456789abc"
     other_family_id = "22345678-1234-4234-9234-123456789abc"
     second_us_family_id = "62345678-1234-4234-9234-123456789abc"
@@ -514,6 +542,8 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         us_mismatch["build_id"],
         exact_k_null_rung["build_id"],
         different_unit["build_id"],
+        legacy_f100["build_id"],
+        legacy_f010["build_id"],
     ):
         _execute(connection, member_insert, (family_id, build_id))
     _execute(connection, member_insert, (family_id, us_first["build_id"]))
@@ -651,6 +681,38 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
                 None,
             ),
         )
+    with pytest.raises(psycopg.errors.CheckViolation, match="matching rung"):
+        _execute(
+            connection,
+            action_insert,
+            (
+                "b2345678-1234-4234-9234-123456789abc",
+                family_id,
+                legacy_f010["build_id"],
+                "supersedes",
+                legacy_f100["build_id"],
+                "2026-08-21T12:02:30Z",
+                "fixture",
+                "Different sampling fraction",
+                None,
+            ),
+        )
+    with pytest.raises(psycopg.errors.CheckViolation, match="replacement cycle"):
+        _execute(
+            connection,
+            action_insert,
+            (
+                "c2345678-1234-4234-9234-123456789abc",
+                family_id,
+                us_first["build_id"],
+                "supersedes",
+                exact_k_null_rung["build_id"],
+                "2026-08-21T12:02:45Z",
+                "fixture",
+                "Cyclic replacement",
+                None,
+            ),
+        )
 
     public_build = _fetchone(
         connection,
@@ -665,7 +727,15 @@ def test_family_model_migration_enforces_versioning_relationships_and_access() -
         "FROM logbook.family_members_public WHERE family_id = %s;",
         (family_id,),
     )[0]
-    assert public_cardinalities == [20_000, 20_000, 20_000, 20_000, 57_240]
+    assert public_cardinalities == [
+        20_000,
+        20_000,
+        20_000,
+        20_000,
+        57_240,
+        None,
+        None,
+    ]
     status = _fetchone(
         connection,
         "SELECT revoked, superseded_by_build_id "

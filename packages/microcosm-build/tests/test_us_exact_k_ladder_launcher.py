@@ -15,11 +15,10 @@ import microcosm.build.logbook_family as family_module
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.logbook_family import (
     LogbookFamily,
+    derive_family_id,
     load_family_spool,
     record_family,
 )
-
-FAMILY_ID = "12345678-1234-4234-9234-123456789abc"
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +48,6 @@ def _config_payload(
 ) -> dict[str, object]:
     return {
         "schema_version": 2,
-        "family": {"id": FAMILY_ID},
         "pool": {
             "release_id": "fixture-publication",
             "manifest_sha256": pool_manifest_sha256,
@@ -135,10 +133,12 @@ def test_config_requires_explicit_seed_and_ratified_k(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="and its SHA-256 pin"):
         launcher._read_config(path)
 
-    invalid_family = _config_payload()
-    invalid_family["family"]["id"] = "not-a-uuid"
-    path = _write_config(tmp_path, invalid_family)
-    with pytest.raises(ValueError, match="family.id must be a canonical UUID"):
+    unexpected_family = _config_payload()
+    unexpected_family["family"] = {
+        "id": "12345678-1234-4234-9234-123456789abc"
+    }
+    path = _write_config(tmp_path, unexpected_family)
+    with pytest.raises(ValueError, match=r"unknown=\['family'\]"):
         launcher._read_config(path)
 
 
@@ -361,7 +361,7 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     ]
     assert "--artifact-root" in result["publish_argv"]
     assert "--repo-id policyengine/populace-us" in result["publish_command"]
-    assert result["family_id"] == FAMILY_ID
+    assert result["family_id"] == derive_family_id("us", _sha256(manifest))
     assert result["requested_k"] == 8
     assert result["realized_k"] == 8
     assert result["record_unit"] == "household"
@@ -381,7 +381,6 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     family_records = load_family_spool(tmp_path / "out" / "logbook-spool")
     assert family_records.families == (
         LogbookFamily.create(
-            family_id=FAMILY_ID,
             chain_scope="us",
             source_pool_sha256=_sha256(manifest),
         ),
@@ -605,7 +604,7 @@ def test_release_id_cannot_overwrite_prior_failure_evidence(
     assert len(load_spool_rows(tmp_path / "out" / "logbook-spool")) == 1
 
 
-def test_matching_family_retry_is_accepted_and_mismatched_source_is_rejected(
+def test_matching_derived_family_retry_is_accepted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -625,7 +624,6 @@ def test_matching_family_retry_is_accepted_and_mismatched_source_is_rejected(
     matching_out = tmp_path / "matching"
     record_family(
         LogbookFamily.create(
-            family_id=FAMILY_ID,
             chain_scope="us",
             source_pool_sha256=source_sha256,
         ),
@@ -644,35 +642,6 @@ def test_matching_family_retry_is_accepted_and_mismatched_source_is_rejected(
         ),
     )
     assert len(load_family_spool(matching_out / "logbook-spool").families) == 1
-
-    mismatched_out = tmp_path / "mismatched"
-    record_family(
-        LogbookFamily.create(
-            family_id=FAMILY_ID,
-            chain_scope="us",
-            source_pool_sha256="f" * 64,
-        ),
-        spool_dir=mismatched_out / "logbook-spool",
-        post_remote=False,
-    )
-    builder_called = False
-
-    def unexpected_builder(_argv):
-        nonlocal builder_called
-        builder_called = True
-
-    with pytest.raises(ValueError, match="divergent retry"):
-        launcher.launch(
-            pool_manifest=manifest,
-            config_path=config_path,
-            out=mismatched_out,
-            release_builder=unexpected_builder,
-        )
-
-    assert builder_called is False
-    mismatched_records = load_family_spool(mismatched_out / "logbook-spool")
-    assert mismatched_records.families[0].source_pool_sha256 == "f" * 64
-    assert mismatched_records.family_members == ()
 
 
 def test_exact_k_spools_all_records_before_dependency_ordered_remote_delivery(

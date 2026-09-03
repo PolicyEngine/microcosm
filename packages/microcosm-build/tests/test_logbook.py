@@ -378,6 +378,35 @@ def test_remote_partially_versioned_legacy_row_is_rejected() -> None:
             },
             "requires realized_k to equal",
         ),
+        (
+            {
+                "row_format_version": 2,
+                "rung": None,
+                "disposition": "published",
+                "artifact_location": "hf://fixture",
+            },
+            "published exact-k build requires requested_k",
+        ),
+        (
+            {
+                "row_format_version": 2,
+                "rung": None,
+                "disposition": "certified",
+                "artifact_location": "hf://fixture",
+            },
+            "certified exact-k build requires requested_k",
+        ),
+        (
+            {
+                "row_format_version": 2,
+                "requested_k": None,
+                "realized_k": 20_000,
+                "record_unit": "household",
+                "disposition": "published",
+                "artifact_location": "hf://fixture",
+            },
+            "cannot record realized_k without requested_k",
+        ),
     ],
 )
 def test_version_2_cardinality_validation_fails_closed(
