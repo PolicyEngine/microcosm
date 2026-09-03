@@ -438,6 +438,36 @@ def test_exact_param_kernel_source_invalidation_and_decision_node_invariance(
     assert [dict(record) for record in decided.decisions] == [decision]
 
 
+def test_decisions_supplied_to_a_run_do_not_move_the_manifest_key(
+    tmp_path: Path,
+) -> None:
+    """F5: a release node's decision-derived outcome is provenance, not identity."""
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    graph = _release_graph(
+        gate_outcome="pass", tier_answer="certified", requires=("publish",)
+    )
+    undecided = _run(graph, source, store, _release_registry())
+    decision = {
+        "name": "publish",
+        "owner": "reviewer",
+        "signature": "toy-signature-0001",
+    }
+    decided = _run(graph, source, store, _release_registry(), decisions=(decision,))
+    release = next(
+        node_id
+        for node_id, item in decided.nodes.items()
+        if item.receipt.get("outcome") is not None
+    )
+    assert (
+        undecided.nodes[release].receipt["outcome"]
+        != decided.nodes[release].receipt["outcome"]
+    )
+    assert undecided.key == decided.key
+    assert undecided.to_json() != decided.to_json()
+
+
 def test_inert_fields_order_and_leaf_removal_do_not_move_survivors(
     tmp_path: Path,
 ) -> None:

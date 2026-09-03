@@ -356,22 +356,42 @@ class NodeReceipt:
 
     #: Fields a run may change without changing what was computed.
     RUN_LEVEL_FIELDS: ClassVar[frozenset[str]] = frozenset({"hit", "wall_time"})
+    #: Receipt entries of a release-role node that derive from the decisions a
+    #: run supplied rather than from computation (F5: decisions never feed a key).
+    RELEASE_RUN_LEVEL_RECEIPT_FIELDS: ClassVar[frozenset[str]] = frozenset({"outcome"})
 
     def _content_payload(self) -> dict[str, object]:
-        """The receipt less its run-level fields; this is what the manifest key hashes."""
+        """The receipt less its run-level fields; this is what the manifest key hashes.
+
+        For a release-role node the decision-derived ``outcome`` is also left
+        out, so two runs of one computation share a key whatever decisions
+        each was handed; the certified loader authenticates decisions instead.
+        """
 
         payload = self._payload()
-        return {k: v for k, v in payload.items() if k not in self.RUN_LEVEL_FIELDS}
+        body = {k: v for k, v in payload.items() if k not in self.RUN_LEVEL_FIELDS}
+        capabilities = body.get("capabilities")
+        role = capabilities.get("role") if isinstance(capabilities, Mapping) else None
+        receipt = body.get("receipt")
+        if role == "release" and isinstance(receipt, Mapping):
+            body["receipt"] = {
+                k: v
+                for k, v in receipt.items()
+                if k not in self.RELEASE_RUN_LEVEL_RECEIPT_FIELDS
+            }
+        return body
 
 
 @dataclass(frozen=True)
 class RunManifest:
     """One run's provenance plus its attached, non-serialized populations.
 
-    Every complete node receipt, less its run-level fields (``hit`` and
-    ``wall_time``), and the derived release tier form :attr:`key`, so two runs
-    that computed the same thing share a key whether or not either was served
-    from the store. Signed decisions stay outside the key by interface ruling;
+    Every complete node receipt, less its run-level fields (``hit``,
+    ``wall_time``, and a release node's decision-derived ``outcome``), and the
+    derived release tier form :attr:`key`, so two runs that computed the same
+    thing share a key whether or not either was served from the store and
+    whatever decisions each was handed. Signed decisions and the outcome they
+    yield stay outside the key by interface ruling;
     the release receipt's required decision names are authenticated so a
     certified load can revalidate those carried records. Country, host,
     timestamps, and attached ``Frame`` instances are also outside the
