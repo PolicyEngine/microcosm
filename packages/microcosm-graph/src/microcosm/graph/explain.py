@@ -1055,6 +1055,50 @@ def _mass_payload(
     return None
 
 
+def _partition_mass_table(mass: Mapping[str, object]) -> str:
+    raw_partition = mass.get("partition")
+    if not isinstance(raw_partition, Mapping):
+        return ""
+    raw_before = raw_partition.get("stratum_before", {})
+    raw_after = raw_partition.get("stratum_after", {})
+    by_before = raw_before if isinstance(raw_before, Mapping) else {}
+    by_after = raw_after if isinstance(raw_after, Mapping) else {}
+    partitions = sorted(set(by_before) | set(by_after), key=str)
+    rows: list[str] = []
+    for partition in partitions:
+        raw_before_strata = by_before.get(partition, {})
+        raw_after_strata = by_after.get(partition, {})
+        before_strata = (
+            raw_before_strata if isinstance(raw_before_strata, Mapping) else {}
+        )
+        after_strata = raw_after_strata if isinstance(raw_after_strata, Mapping) else {}
+        strata = sorted(set(before_strata) | set(after_strata), key=str)
+        for stratum in strata:
+            before = before_strata.get(stratum, 0.0)
+            after = after_strata.get(stratum, 0.0)
+            delta = (
+                float(after) - float(before)
+                if isinstance(before, int | float) and isinstance(after, int | float)
+                else None
+            )
+            rows.append(
+                f"<tr><td>{_escape(partition)}</td><td>{_escape(stratum)}</td>"
+                f"<td>{_escape(_number(before))}</td>"
+                f"<td>{_escape(_number(after))}</td>"
+                f"<td>{_escape(_number(delta))}</td></tr>"
+            )
+    entity = raw_partition.get("entity", "Not recorded")
+    column = raw_partition.get("column", "Not recorded")
+    heading = f"<h5>Mass by {_escape(f'{entity}.{column}')} partition</h5>"
+    if not rows:
+        return heading + '<p class="muted">Per-partition mass was not recorded.</p>'
+    return (
+        heading + '<div class="table-wrap"><table><thead><tr><th>Partition value</th>'
+        "<th>Stratum</th><th>Before</th><th>After</th><th>Change</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+
 def _mass_tables(mass: Mapping[str, object] | None) -> str:
     if mass is None:
         return '<p class="empty">Mass ledger values are not present in the portable receipt.</p>'
@@ -1077,8 +1121,13 @@ def _mass_tables(mass: Mapping[str, object] | None) -> str:
     by_before = raw_before if isinstance(raw_before, Mapping) else {}
     by_after = raw_after if isinstance(raw_after, Mapping) else {}
     strata = sorted(set(by_before) | set(by_after), key=str)
+    partition_table = _partition_mass_table(mass)
     if not strata:
-        return totals + '<p class="muted">Per-stratum mass was not recorded.</p>'
+        return (
+            totals
+            + '<p class="muted">Per-stratum mass was not recorded.</p>'
+            + partition_table
+        )
     rows = "".join(
         f"<tr><td>{_escape(stratum)}</td><td>{_escape(_number(by_before.get(stratum)))}</td>"
         f"<td>{_escape(_number(by_after.get(stratum)))}</td></tr>"
@@ -1088,6 +1137,7 @@ def _mass_tables(mass: Mapping[str, object] | None) -> str:
         totals
         + '<div class="table-wrap"><table><thead><tr><th>Stratum</th><th>Before</th>'
         f"<th>After</th></tr></thead><tbody>{rows}</tbody></table></div>"
+        + partition_table
     )
 
 
