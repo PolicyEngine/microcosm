@@ -51,6 +51,11 @@ change has been made yet.
   and the carried signed records. Missing requirements fail closed; missing
   records report `unreached`. Focused executor, full manifest, and acceptance
   F-gate tests pass.
+- Reproduced finding 10 by removing portable mass evidence from a calibration
+  receipt while retaining an attached partitioned `MassRecord`; totals rendered
+  but the partition heading and row were absent. The fallback now uses the
+  canonical `mass_record_receipt` projection, preserving every partition field.
+  All graph-explanation tests pass.
 
 ## Next
 

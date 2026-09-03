@@ -281,6 +281,38 @@ def test_calibration_view_renders_partition_mass_with_deltas(tmp_path: Path) -> 
     assert "http://" not in rendered and "https://" not in rendered
 
 
+def test_calibration_view_fallback_renders_partitioned_mass_record(
+    tmp_path: Path,
+) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    original_receipt = run.manifest.nodes["calibrated"]
+    receipt_without_mass = dict(original_receipt.receipt)
+    receipt_without_mass.pop("mass")
+    changed_receipt = replace(original_receipt, receipt=receipt_without_mass)
+    original_record = next(
+        record
+        for record in run.manifest.mass_ledgers["calibrated"]
+        if record.node_id == "calibrated"
+    )
+    partitioned_record = replace(
+        original_record,
+        partition_entity="household",
+        partition_column="period",
+        before_by_partition_stratum=((2024, (("rural", 10.0),)),),
+        after_by_partition_stratum=((2024, (("rural", 8.0),)),),
+    )
+    manifest = replace(
+        run.manifest,
+        nodes={**dict(run.manifest.nodes), "calibrated": changed_receipt},
+        mass_ledgers={"calibrated": (partitioned_record,)},
+    )
+
+    rendered = explain_html(run.compiled, manifest)
+
+    assert "Mass by household.period partition" in rendered
+    assert ">2024</td><td>rural</td><td>10</td><td>8</td><td>-2</td>" in rendered
+
+
 def test_calibration_view_reads_adam_diagnostics(tmp_path: Path) -> None:
     run = toy.run_toy(toy.full_graph(), tmp_path / "run")
     targets = (

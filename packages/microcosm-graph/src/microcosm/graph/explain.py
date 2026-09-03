@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta
 from .manifest import NodeReceipt, RunManifest
+from .population import mass_record_receipt
 from .view import describe
 
 if TYPE_CHECKING:
@@ -1030,13 +1031,7 @@ def _mass_payload(
         return payload
     for record in reversed(manifest.mass_ledgers.get(node.id, ())):
         if record.node_id == node.id:
-            return {
-                "before": record.before_total,
-                "after": record.after_total,
-                "stratum_before": dict(record.before_by_stratum),
-                "stratum_after": dict(record.after_by_stratum),
-                "policy": record.policy,
-            }
+            return mass_record_receipt(record)
     if node.base is not None:
         before = manifest.populations.get(node.base)
         after = manifest.populations.get(node.id)
