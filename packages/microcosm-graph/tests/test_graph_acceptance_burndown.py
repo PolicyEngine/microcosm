@@ -420,12 +420,64 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "module-level pytestmark",
         ),
         (
+            "import pytest\n\nif True:\n    pytestmark: list = [pytest.mark.skip]\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\n(pytestmark,) = (pytest.mark.skip,)\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\nif (pytestmark := pytest.mark.skip):\n    pass\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\nglobals()['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import pytest\nimport sys\n\nsys.modules[__name__].pytestmark = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\nimport sys\n\nsys.modules[__name__].__dict__['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
             "import pytest\n\n\n@pytest.mark.skip\ndef test_a1_one() -> None:\n    assert False\n",
             "carries mark 'skip'",
         ),
         (
             "import pytest\n\nskip = pytest.mark.skip\n\n\n@skip\ndef test_a1_one() -> None:\n    assert False\n",
             "unrecognized decorator 'skip'",
+        ),
+        (
+            "import pytest\n\nsuppress = pytest.skip\n\n\ndef test_a1_one() -> None:\n    suppress('x')\n",
+            "references pytest.skip",
+        ),
+        (
+            "import pytest\n\nsuppress = getattr(pytest, 'skip')\n\n\ndef test_a1_one() -> None:\n    suppress('x')\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import pytest\n\nnamespace = globals\nnamespace()['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import types\nimport unittest\n\ndisguised = types.SimpleNamespace(mark=types.SimpleNamespace(parametrize=lambda *args, **kwargs: unittest.skip('hidden')))\n\n\n@disguised.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "unrecognized decorator 'disguised.mark.parametrize'",
+        ),
+        (
+            "import pytest\nimport types\n\npytest = types.SimpleNamespace(mark=types.SimpleNamespace(parametrize=lambda *args, **kwargs: (lambda function: function)))\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "rebinds pytest",
+        ),
+        (
+            "import pytest\nimport unittest\n\npytest.mark.parametrize = lambda *args, **kwargs: unittest.skip('hidden')\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "rebinds pytest",
+        ),
+        (
+            "from counterfeit import pytest\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "rebinds pytest",
         ),
         (
             'import pytest\n\n\n@pytest.mark.skipif(True, reason="x")\ndef test_a1_one() -> None:\n    assert False\n',

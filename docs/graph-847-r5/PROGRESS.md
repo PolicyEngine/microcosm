@@ -25,8 +25,13 @@ follows it.
   `pytestmark`, an assigned skip alias, and all three `unittest.skip*`
   decorators returned no suppression problem. The scanner now rejects every
   decorator on a collected test that it cannot prove is an allowed direct
-  pytest mark, and recognizes annotated/augmented module `pytestmark`
-  assignments. The complete burndown-tool unit file and focused Ruff pass.
+  pytest mark. Adversarial follow-up cases also reproduced nested,
+  destructured, named-expression, attribute/subscript, and dynamic-namespace
+  `pytestmark` bindings; dynamic suppressor aliases; counterfeit pytest roots;
+  and mutation of the trusted `pytest.mark` root. The scanner now fails closed
+  on each of those unresolved forms and recognizes every module-scope binding
+  while excluding deferred function bodies. The complete burndown-tool unit
+  file, actual ratchet verification, and focused Ruff pass.
 - Reproduced finding 5 through the graph store: `POPULACE_FIT_N_JOBS=1` and
   `=2` produced the same node/artifact identities but pickle bytes differed at
   byte 798. `_Forest` now serializes a shallow model copy with canonical

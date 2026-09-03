@@ -128,6 +128,28 @@ SUPPRESSING_CALLS = frozenset(
         "skip",
     }
 )
+PYTEST_SUPPRESSORS = frozenset({"pytest.xfail", "pytest.skip", "pytest.importorskip"})
+DYNAMIC_NAMESPACE_REFERENCES = frozenset(
+    {
+        "globals",
+        "locals",
+        "vars",
+        "exec",
+        "eval",
+        "getattr",
+        "setattr",
+        "__import__",
+        "builtins.globals",
+        "builtins.locals",
+        "builtins.vars",
+        "builtins.exec",
+        "builtins.eval",
+        "builtins.getattr",
+        "builtins.setattr",
+        "builtins.__import__",
+        "importlib.import_module",
+    }
+)
 
 
 def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
@@ -146,9 +168,110 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
     def mark_name(node: ast.expr) -> str | None:
         target = node.func if isinstance(node, ast.Call) else node
         name = dotted(target)
-        if ".mark." in name or name.startswith("mark."):
-            return name.rsplit(".", 1)[-1]
+        parts = name.split(".")
+        if len(parts) == 3 and parts[:2] == ["pytest", "mark"]:
+            return parts[-1]
         return None
+
+    def rooted_at(node: ast.expr, name: str) -> bool:
+        while isinstance(node, ast.Attribute | ast.Subscript):
+            node = node.value
+        return isinstance(node, ast.Name) and node.id == name
+
+    class ModuleBindingScan(ast.NodeVisitor):
+        """Find bindings executed in the module namespace, not function bodies."""
+
+        pytestmark = False
+        pytest_rebound = False
+
+        def _binding(self, name: str | None) -> None:
+            if name == "pytestmark":
+                self.pytestmark = True
+            elif name == "pytest":
+                self.pytest_rebound = True
+
+        def visit_Name(self, node: ast.Name) -> None:
+            if isinstance(node.ctx, ast.Store | ast.Del):
+                self._binding(node.id)
+
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            if isinstance(node.ctx, ast.Store | ast.Del):
+                self._binding(node.attr)
+                if rooted_at(node.value, "pytest"):
+                    self.pytest_rebound = True
+            self.generic_visit(node)
+
+        def visit_Subscript(self, node: ast.Subscript) -> None:
+            if (
+                isinstance(node.ctx, ast.Store | ast.Del)
+                and isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)
+            ):
+                self._binding(node.slice.value)
+            if isinstance(node.ctx, ast.Store | ast.Del) and rooted_at(
+                node.value, "pytest"
+            ):
+                self.pytest_rebound = True
+            self.generic_visit(node)
+
+        def _visit_definition_expressions(
+            self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        ) -> None:
+            self._binding(node.name)
+            for decorator in node.decorator_list:
+                self.visit(decorator)
+            self.visit(node.args)
+            if node.returns is not None:
+                self.visit(node.returns)
+            for type_parameter in getattr(node, "type_params", ()):
+                self.visit(type_parameter)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_definition_expressions(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_definition_expressions(node)
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            # Defaults are evaluated in the surrounding scope; the body is not.
+            self.visit(node.args)
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            self._binding(node.name)
+            # A class is independently refused below. Only its expressions that
+            # execute in the surrounding scope need binding inspection here.
+            for expression in (*node.decorator_list, *node.bases):
+                self.visit(expression)
+            for keyword in node.keywords:
+                self.visit(keyword.value)
+            for type_parameter in getattr(node, "type_params", ()):
+                self.visit(type_parameter)
+
+        def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+            self._binding(node.name)
+            self.generic_visit(node)
+
+        def visit_MatchAs(self, node: ast.MatchAs) -> None:
+            self._binding(node.name)
+            self.generic_visit(node)
+
+        def visit_MatchStar(self, node: ast.MatchStar) -> None:
+            self._binding(node.name)
+
+        def visit_alias(self, node: ast.alias) -> None:
+            bound = node.asname or node.name.split(".", 1)[0]
+            if bound == "pytestmark":
+                self.pytestmark = True
+            if bound == "pytest" and node.name != "pytest":
+                self.pytest_rebound = True
+
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            for alias in node.names:
+                bound = alias.asname or alias.name
+                if bound == "pytestmark":
+                    self.pytestmark = True
+                if bound == "pytest":
+                    self.pytest_rebound = True
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -173,23 +296,30 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
                 f"{file}: pytest.param(..., marks=...) is not allowed anywhere in "
                 "an acceptance file"
             )
-    for node in tree.body:
-        assigned_targets: tuple[ast.expr, ...] = ()
-        if isinstance(node, ast.Assign):
-            assigned_targets = tuple(node.targets)
-        elif isinstance(node, ast.AnnAssign):
-            assigned_targets = (node.target,)
-        elif isinstance(node, ast.AugAssign):
-            assigned_targets = (node.target,)
-        if any(
-            isinstance(target, ast.Name) and target.id == "pytestmark"
-            for target in assigned_targets
+        if isinstance(node, ast.Attribute) and dotted(node) in PYTEST_SUPPRESSORS:
+            problems.append(
+                f"{file}: references {dotted(node)}, whose result could be aliased"
+            )
+        dynamic_name = dotted(node)
+        if (
+            isinstance(node, ast.Name | ast.Attribute)
+            and isinstance(node.ctx, ast.Load)
+            and dynamic_name in DYNAMIC_NAMESPACE_REFERENCES
         ):
-            problems.append(f"{file}: module-level pytestmark is not allowed")
+            problems.append(
+                f"{file}: dynamic module namespace access through "
+                f"{dynamic_name} is not allowed"
+            )
         if isinstance(node, ast.ClassDef):
             problems.append(
                 f"{file}: class {node.name} — tests must be module-level functions"
             )
+    bindings = ModuleBindingScan()
+    bindings.visit(tree)
+    if bindings.pytestmark:
+        problems.append(f"{file}: module-level pytestmark is not allowed")
+    if bindings.pytest_rebound:
+        problems.append(f"{file}: module code rebinds pytest, so marks are untrusted")
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             for decorator in node.decorator_list:
