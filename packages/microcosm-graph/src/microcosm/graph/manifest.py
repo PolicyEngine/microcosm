@@ -970,7 +970,7 @@ def _capabilities_from_payload(value: object) -> Capabilities:
                 "capabilities.tolerance rtol/atol must be numeric and ulps "
                 "must be an integer"
             )
-        tolerance = Tolerance(rtol=float(rtol), atol=float(atol), ulps=ulps)
+        tolerance = Tolerance(rtol=rtol, atol=atol, ulps=ulps)
     (
         determinism,
         numeric,

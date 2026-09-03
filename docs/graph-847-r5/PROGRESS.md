@@ -39,6 +39,11 @@ change has been made yet.
   not raise. Current-body validation now compares canonical bytes per receipt
   and tier, and also requires the accepted serialized key to equal the rebuilt
   manifest key. The full manifest unit file passes.
+- Reproduced finding 9 with a 400-digit schema-v2 tolerance integer;
+  `RunManifest.load` leaked `OverflowError: int too large to convert to float`.
+  The parser now passes validated numeric values into `Tolerance` unchanged so
+  its existing normalization raises `ValueError`, which the loader wraps as
+  `StoreCorruptError`. The full manifest unit file remains green.
 
 ## Next
 

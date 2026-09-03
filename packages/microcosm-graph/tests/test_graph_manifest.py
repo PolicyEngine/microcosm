@@ -544,6 +544,36 @@ def test_loader_wraps_noncanonical_body_with_manifest_key(tmp_path: Path) -> Non
         RunManifest.load(path, store)
 
 
+def test_load_wraps_oversized_tolerance_integer_as_store_corrupt(
+    tmp_path: Path,
+) -> None:
+    store = graph_api.ContentStore(tmp_path / "store")
+    manifest = _persisted_manifest(store)
+    path = tmp_path / "manifest.json"
+    document = json.loads(manifest.to_json())
+    oversized = int("9" * 400)
+    for gate in (
+        document["nodes"]["gate"],
+        document["content_addressed"]["nodes"]["gate"],
+    ):
+        gate["capabilities"]["numeric"] = "tolerance_bound"
+        gate["capabilities"]["tolerance"] = {
+            "rtol": oversized,
+            "atol": 0,
+            "ulps": 0,
+        }
+    document["key"] = sha256_domain(
+        "manifest", canonical_json(document["content_addressed"])
+    )
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        graph_api.StoreCorruptError,
+        match="representable as a finite float",
+    ):
+        RunManifest.load(path, store)
+
+
 def test_known_failures_includes_explicitly_rejected_nodes() -> None:
     rejected = replace(
         _receipt("a" * 64),
