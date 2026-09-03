@@ -548,6 +548,75 @@ def _lineage_expand_result(*, bad_source: bool = False) -> KernelResult:
     )
 
 
+def _membership_overlay_result(target: int) -> KernelResult:
+    return KernelResult(
+        expand={
+            "person": pd.Series(
+                [1, 2, 3],
+                index=pd.Index([5, 6, 7], name="person_id"),
+                dtype="int64",
+            ),
+            "household": pd.Series(
+                [10, 20],
+                index=pd.Index([40, 50], name="household_id"),
+                dtype="int64",
+            ),
+        },
+        columns={
+            ("person", "person_household_id"): pd.Series(
+                [10, 10, 20, 30, target, 40, 50],
+                index=pd.Index([1, 2, 3, 4, 5, 6, 7], name="person_id"),
+                dtype="int64",
+            )
+        },
+        weights=Weights(
+            np.array([0.5, 1.0, 3.0, 0.5, 1.0], dtype=np.float64),
+            WeightKind.IMPORTANCE,
+        ),
+    )
+
+
+@pytest.mark.parametrize("cached", [False, True], ids=("cold", "cached"))
+@pytest.mark.parametrize("target", [20, 50], ids=("incumbent", "copied-group"))
+def test_expand_rejects_repointed_copied_membership(target: int, cached: bool) -> None:
+    population = _population()
+    node = Node(
+        "membership_overlay",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": (("person", "person_household_id", "int64"),),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="free",
+    )
+    result = _membership_overlay_result(target)
+    if cached:
+        legal = _membership_overlay_result(40)
+        expanded = patch(population, node, legal)
+        person = expanded.frame.table("person").copy()
+        person.loc[person["person_id"] == 5, "person_household_id"] = target
+        result = KernelResult(
+            frame=_replace_person_table(expanded.frame, person, expanded.frame.strata),
+            weights=legal.weights,
+            receipt={"expand": expand_lineage_receipt(legal.expand)},
+        )
+
+    with pytest.raises(PopulationError) as error:
+        if cached:
+            restore_cached_expand(population, node, result)
+        else:
+            patch(population, node, result)
+
+    message = str(error.value)
+    assert "membership_overlay" in message
+    assert "person.person_household_id" in message
+    assert "person id 5" in message
+    assert f"household id {target}" in message
+
+
 def _entrant_person_expand_node(*, membership_dtype: str = "int64") -> Node:
     return Node(
         "entrant_person",
