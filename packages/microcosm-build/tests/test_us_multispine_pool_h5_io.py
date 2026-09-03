@@ -1769,6 +1769,7 @@ def test_denied_gate_failed_pool_is_available_only_for_scoring(
             run_id: h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-release",
                 reason=reason,
                 reference=reference,
@@ -1843,6 +1844,7 @@ def test_pool_deny_list_matches_manifest_sha256_without_matching_run_id(
             denied_run_id: h5_io.DeniedPoolPublication(
                 manifest_sha256=_sha256(manifest_path),
                 pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-sha-release",
                 reason=reason,
                 reference=reference,
@@ -1874,6 +1876,9 @@ def test_pool_deny_list_contains_candidate_26_identity() -> None:
     assert denied.pool_h5_sha256 == (
         "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
     )
+    assert denied.content_identity_sha256 == (
+        "674b6e69618bc9909dd2e4f9fcd8fbe6e8ff3f2589bb650dfb240d9e3ccc9ff9"
+    )
     assert "\n" not in denied.reason
     assert denied.reference == (
         "microcosm#856; plan gate 20260902-220844-plan-532dab66"
@@ -1904,6 +1909,7 @@ def test_pool_deny_list_matches_pool_h5_sha256_without_other_matches(
             "h5-matched-denied-publication": h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-h5-release",
                 reason="fixture H5 bytes are excluded",
                 reference="microcosm#856; h5-fixture-plan-gate",
@@ -1927,6 +1933,7 @@ def test_denied_pool_h5_digest_is_refused_on_generic_paths(
             "stripped-denied-publication": h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-stripped-release",
                 reason="fixture bytes are excluded",
                 reference="microcosm#856; stripped-fixture-plan-gate",
@@ -1959,6 +1966,7 @@ def test_scoring_evidence_of_a_denied_pool_cannot_become_a_release_receipt(
             run_id: h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-release",
                 reason="fixture pool is excluded from the certifiable line",
                 reference="microcosm#856; fixture-plan-gate",
@@ -1994,6 +2002,7 @@ def test_denied_pool_bytes_are_refused_by_every_generic_ingress(
             "stripped-denied-publication": h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-stripped-release",
                 reason="fixture bytes are excluded",
                 reference="microcosm#856; stripped-fixture-plan-gate",
@@ -2013,6 +2022,89 @@ def test_denied_pool_bytes_are_refused_by_every_generic_ingress(
             weights_npz=tmp_path / "absent.npz",
             output_h5=tmp_path / "out.h5",
         )
+
+
+def test_h5_read_is_refused_when_the_file_changes_under_it(tmp_path: Path) -> None:
+    """The refusal check and the read are bound by a post-read digest."""
+    path = tmp_path / "base.h5"
+    path.write_bytes(b"benign bytes")
+    sha256 = h5_io.refuse_denied_pool_h5(path, consumer="fixture consumer")
+    h5_io.assert_h5_unchanged(path, sha256, consumer="fixture consumer")
+    path.write_bytes(b"replaced bytes")
+    with pytest.raises(ValueError, match="changed while being read"):
+        h5_io.assert_h5_unchanged(path, sha256, consumer="fixture consumer")
+
+
+def _tool_module(relative: str, name: str):
+    import importlib.util
+
+    root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location(name, root / relative)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_repackaged_denied_pool_is_refused_by_every_generic_ingress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dropping the metadata table and re-serializing changes the byte digest
+    and removes every pool marker; the content identity survives and every
+    generic ingress still refuses the file."""
+    pytest.importorskip("tables")
+    from microcosm.build.us_runtime import l0_refit_export
+
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    original_h5 = Path(manifest["pool_h5"]["path"])
+    repackaged_dir = tmp_path / "repackaged"
+    repackaged_dir.mkdir()
+    repackaged = repackaged_dir / "plain.h5"  # no sidecar manifest beside it
+    with pd.HDFStore(original_h5, mode="r") as source:
+        with pd.HDFStore(repackaged, mode="w") as target:
+            for key in source.keys():
+                if key.lstrip("/") == "_populace_staging_metadata":
+                    continue
+                target.put(key.lstrip("/"), source.get(key))
+
+    assert h5_io.identify_us_multispine_pool_manifest(repackaged) is None
+    assert _sha256(repackaged) != _sha256(original_h5)
+    identity = h5_io.pool_h5_content_identity(repackaged)
+    assert identity == h5_io.pool_h5_content_identity(original_h5)
+
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            manifest["publication_run_id"]: h5_io.DeniedPoolPublication(
+                manifest_sha256=_sha256(manifest_path),
+                pool_h5_sha256=_sha256(original_h5),
+                content_identity_sha256=identity,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    fiscal = _tool_module("tools/build_us_fiscal_refresh_release.py", "fiscal_tool")
+    puf_base = _tool_module("tools/build_us_puf_support_base.py", "puf_base_tool")
+    acs_base = _tool_module(
+        "tools/_legacy/build_us_acs_multispine_base.py", "acs_base_tool"
+    )
+    ingresses = (
+        ("load_us_frame", lambda: l0_refit_export.load_us_frame(repackaged)),
+        ("legacy loader", lambda: h5_io.load_legacy_calibrated_us_h5(repackaged)),
+        ("fiscal builder", lambda: fiscal._load_frame(repackaged)),
+        ("puf support base", lambda: puf_base._load_frame(repackaged)),
+        ("legacy acs base", lambda: acs_base._load_base_frame(repackaged)),
+    )
+    for label, ingress in ingresses:
+        with pytest.raises(ValueError, match="repackaging") as error:
+            ingress()
+        assert manifest["publication_run_id"] in str(error.value), label
 
 
 def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:

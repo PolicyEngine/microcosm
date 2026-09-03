@@ -55,6 +55,10 @@ __all__ = [
     "AuthenticatedPoolH5MismatchError",
     "DENIED_POOL_PUBLICATIONS",
     "DeniedPoolPublication",
+    "POOL_CONTENT_IDENTITY_COLUMNS",
+    "assert_h5_unchanged",
+    "pool_h5_content_identity",
+    "refuse_denied_pool_h5",
     "refuse_denied_pool_h5_digest",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
@@ -419,6 +423,7 @@ class DeniedPoolPublication:
 
     manifest_sha256: str
     pool_h5_sha256: str
+    content_identity_sha256: str
     release_id: str
     reason: str
     reference: str
@@ -432,6 +437,9 @@ DENIED_POOL_PUBLICATIONS: Mapping[str, DeniedPoolPublication] = MappingProxyType
             ),
             pool_h5_sha256=(
                 "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
+            ),
+            content_identity_sha256=(
+                "674b6e69618bc9909dd2e4f9fcd8fbe6e8ff3f2589bb650dfb240d9e3ccc9ff9"
             ),
             release_id=(
                 "populace-us-2024-stacked-f025-s578-asec42213-acs382903-"
@@ -457,14 +465,48 @@ def _file_sha256_stream(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def refuse_denied_pool_h5_digest(sha256: str, *, consumer: str) -> None:
-    """Refuse an H5 whose bytes are a denied publication's pool, however presented.
+#: Household columns, in this order, that form a pool's packaging-independent
+#: content identity. Columns absent from a table are skipped, so a fixture
+#: without support provenance still has an identity.
+POOL_CONTENT_IDENTITY_COLUMNS = (
+    "household_id",
+    "household_weight",
+    "household_support_channel",
+    "household_support_clone_index",
+)
 
-    A pool whose sidecar manifest and artifact-metadata row were stripped no
-    longer identifies as a pool and would otherwise reach a consumer's generic
-    H5 path. The bytes are the identity that survives repackaging, so every
-    generic path hashes the file and asks here before using it.
+
+def pool_h5_content_identity(path: str | Path) -> str | None:
+    """SHA-256 of the household table's identity columns, sorted by id.
+
+    A whole-file digest changes when the artifact-metadata table is dropped
+    or the file is re-serialized; the households and their weights do not.
+    Returns ``None`` when the file has no readable ``household`` table with a
+    ``household_id`` column, which is then simply not a pool.
     """
+
+    try:
+        with pd.HDFStore(path, mode="r") as store:
+            if "/household" not in store.keys():
+                return None
+            table = store.get("household")
+    except Exception:  # noqa: BLE001 - unreadable or not an HDF file
+        return None
+    if not isinstance(table, pd.DataFrame) or "household_id" not in table.columns:
+        return None
+    columns = [c for c in POOL_CONTENT_IDENTITY_COLUMNS if c in table.columns]
+    canonical = (
+        table[columns]
+        .sort_values("household_id")
+        .reset_index(drop=True)
+        .to_csv(index=False, float_format="%.17g", lineterminator="\n")
+        .encode("utf-8")
+    )
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def refuse_denied_pool_h5_digest(sha256: str, *, consumer: str) -> None:
+    """Refuse an H5 whose bytes are a denied publication's pool, however presented."""
 
     for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
         if sha256 == denied_publication.pool_h5_sha256:
@@ -475,6 +517,43 @@ def refuse_denied_pool_h5_digest(sha256: str, *, consumer: str) -> None:
                 f"pool identity metadata. Reason: {denied_publication.reason}. "
                 f"Reference: {denied_publication.reference}."
             )
+
+
+def refuse_denied_pool_h5(path: str | Path, *, consumer: str) -> str:
+    """The central refusal boundary for every generic H5 ingress.
+
+    Checks the file's byte digest and its packaging-independent content
+    identity against the sealed deny-list, and returns the byte digest so the
+    caller can verify with :func:`assert_h5_unchanged` after it has read the
+    file (a pathname can be replaced between hashing and reading).
+    """
+
+    sha256 = _file_sha256_stream(path)
+    refuse_denied_pool_h5_digest(sha256, consumer=consumer)
+    identity = pool_h5_content_identity(path)
+    if identity is not None:
+        for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+            if identity == denied_publication.content_identity_sha256:
+                raise ValueError(
+                    f"{consumer}: H5 content identity {identity} is the pool of "
+                    f"denied publication {denied_run_id!r} (release_id="
+                    f"{denied_publication.release_id!r}) and is refused even after "
+                    "repackaging or metadata stripping. Reason: "
+                    f"{denied_publication.reason}. Reference: "
+                    f"{denied_publication.reference}."
+                )
+    return sha256
+
+
+def assert_h5_unchanged(path: str | Path, sha256: str, *, consumer: str) -> None:
+    """Refuse a read whose file changed between the refusal check and the read."""
+
+    observed = _file_sha256_stream(path)
+    if observed != sha256:
+        raise ValueError(
+            f"{consumer}: {path} changed while being read (SHA-256 {sha256} before, "
+            f"{observed} after); the read is refused."
+        )
 
 
 @dataclass(frozen=True)
@@ -764,11 +843,9 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     multispine pool, whose importance-weight receipt lives in its manifest.
     """
     # The legacy calibrated loader is a generic entity-table ingress; a denied
-    # pool's bytes are refused here before any table is read.
-    refuse_denied_pool_h5_digest(
-        _file_sha256_stream(path),
-        consumer="legacy calibrated US H5 loader (load_legacy_calibrated_us_h5)",
-    )
+    # pool is refused here, by bytes or by content, before any table is read.
+    consumer = "legacy calibrated US H5 loader (load_legacy_calibrated_us_h5)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
 
     with pd.HDFStore(Path(path), mode="r") as store:
         tables = {
@@ -788,6 +865,7 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
             )
         },
     )
+    assert_h5_unchanged(path, sha256, consumer=consumer)
     return canonicalize_frame_string_dtypes(
         frame,
         boundary="legacy calibrated US H5 load",

@@ -890,6 +890,7 @@ def test__cli__denied_pool_refuses_gate_failed_opt_in(
             run_id: h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-preflight-release",
                 reason=reason,
                 reference=reference,
@@ -934,6 +935,7 @@ def test__preflight_base__refuses_denied_pool_bytes_on_generic_path(
             "stripped-denied-publication": h5_io.DeniedPoolPublication(
                 manifest_sha256="0" * 64,
                 pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
                 release_id="fixture-stripped-release",
                 reason="fixture bytes are excluded from preflight",
                 reference="microcosm#856; stripped-preflight-plan-gate",

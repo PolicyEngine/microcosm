@@ -57,7 +57,10 @@ from microcosm.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
     us_geography_ladder_gate,
 )
-from microcosm.build.us_runtime.h5_io import refuse_denied_pool_h5_digest
+from microcosm.build.us_runtime.h5_io import (
+    assert_h5_unchanged,
+    refuse_denied_pool_h5,
+)
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -483,16 +486,6 @@ def assert_required_us_release_source_columns(
         )
 
 
-def _file_sha256(path: str | Path) -> str:
-    """Stream a file's SHA-256 (a pool H5 is gigabytes)."""
-
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def load_us_frame(path: str | Path) -> Frame:
     """Load a PolicyEngine-US single-year H5 into a Microcosm frame.
 
@@ -504,9 +497,8 @@ def load_us_frame(path: str | Path) -> Frame:
 
     from policyengine_us.data import USSingleYearDataset
 
-    refuse_denied_pool_h5_digest(
-        _file_sha256(path), consumer="generic base-H5 path (load_us_frame)"
-    )
+    consumer = "generic base-H5 path (load_us_frame)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
     dataset = USSingleYearDataset(file_path=str(path))
     tables = {
         "person": dataset.person.copy(),
@@ -517,6 +509,7 @@ def load_us_frame(path: str | Path) -> Frame:
         "marital_unit": dataset.marital_unit.copy(),
     }
     weights = tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
+    assert_h5_unchanged(path, sha256, consumer=consumer)
     return Frame(
         tables,
         US_SCHEMA,

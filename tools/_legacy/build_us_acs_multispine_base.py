@@ -48,6 +48,10 @@ from microcosm.build.us_runtime.acs_transfer import (
     resolve_acs_donor_channel,
 )
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.h5_io import (
+    assert_h5_unchanged,
+    refuse_denied_pool_h5,
+)
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
@@ -969,6 +973,8 @@ def _spine_totals(frame: Frame) -> dict[str, dict[str, Any]]:
 
 def _load_base_frame(path: Path) -> Frame:
     """Load the dense donor H5 without importing PolicyEngine-US at tool import."""
+    consumer = "legacy ACS multispine base --base-h5 loader (_load_base_frame)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
 
     with pd.HDFStore(path, mode="r") as store:
         tables = {
@@ -978,6 +984,7 @@ def _load_base_frame(path: Path) -> Frame:
     household_weights = (
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
+    assert_h5_unchanged(path, sha256, consumer=consumer)
     return Frame(
         tables,
         US_SCHEMA,

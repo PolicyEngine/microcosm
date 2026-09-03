@@ -231,9 +231,11 @@ from microcosm.build.us_runtime.fiscal_targets import (
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
+    assert_h5_unchanged,
     identify_us_multispine_pool_manifest,
     load_authenticated_us_multispine_pool_for_release,
     load_simulation_ready_us_multispine_pool,
+    refuse_denied_pool_h5,
     refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
@@ -2603,6 +2605,8 @@ def _download_base_h5() -> Path:
 
 
 def _load_frame(path: Path) -> Frame:
+    consumer = "US fiscal refresh release builder generic H5 loader (_load_frame)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
     from policyengine_us.data import USSingleYearDataset
 
     dataset = USSingleYearDataset(file_path=str(path))
@@ -2615,6 +2619,7 @@ def _load_frame(path: Path) -> Frame:
         "marital_unit": dataset.marital_unit.copy(),
     }
     weights = tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
+    assert_h5_unchanged(path, sha256, consumer=consumer)
     return Frame(
         tables,
         US_SCHEMA,
