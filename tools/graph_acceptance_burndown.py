@@ -129,6 +129,7 @@ SUPPRESSING_CALLS = frozenset(
     }
 )
 PYTEST_SUPPRESSORS = frozenset({"pytest.xfail", "pytest.skip", "pytest.importorskip"})
+SAFE_PYTEST_CALLS = frozenset({"pytest.approx", "pytest.fail", "pytest.raises"})
 DYNAMIC_NAMESPACE_REFERENCES = frozenset(
     {
         "globals",
@@ -164,6 +165,11 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
     """
     problems: list[str] = []
     tree = ast.parse(source, filename=file)
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
 
     def mark_name(node: ast.expr) -> str | None:
         target = node.func if isinstance(node, ast.Call) else node
@@ -177,6 +183,26 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
         while isinstance(node, ast.Attribute | ast.Subscript):
             node = node.value
         return isinstance(node, ast.Name) and node.id == name
+
+    def inside_direct_mark_decorator(node: ast.expr) -> bool:
+        child: ast.AST = node
+        while (parent := parents.get(child)) is not None:
+            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
+                return child in parent.decorator_list and mark_name(child) is not None
+            child = parent
+        return False
+
+    def inside_direct_safe_pytest_call(node: ast.expr) -> bool:
+        child: ast.AST = node
+        parent = parents.get(child)
+        while isinstance(parent, ast.Attribute) and parent.value is child:
+            child = parent
+            parent = parents.get(child)
+        return (
+            isinstance(parent, ast.Call)
+            and parent.func is child
+            and dotted(child) in SAFE_PYTEST_CALLS
+        )
 
     class ModuleBindingScan(ast.NodeVisitor):
         """Find bindings executed in the module namespace, not function bodies."""
@@ -225,6 +251,12 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
                 self.visit(node.returns)
             for type_parameter in getattr(node, "type_params", ()):
                 self.visit(type_parameter)
+            # Inspect deferred bodies conservatively too. A helper invoked at
+            # module scope can install pytestmark through ``global`` and a test
+            # body can alias a runtime suppressor. Static control-flow analysis
+            # cannot prove those bodies harmless, so bindings there fail closed.
+            for statement in node.body:
+                self.visit(statement)
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             self._visit_definition_expressions(node)
@@ -299,6 +331,17 @@ def suppressions_in(source: str, file: str = "<memory>") -> tuple[str, ...]:
         if isinstance(node, ast.Attribute) and dotted(node) in PYTEST_SUPPRESSORS:
             problems.append(
                 f"{file}: references {dotted(node)}, whose result could be aliased"
+            )
+        if (
+            isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node.id == "pytest"
+            and not inside_direct_mark_decorator(node)
+            and not inside_direct_safe_pytest_call(node)
+        ):
+            problems.append(
+                f"{file}: references pytest outside a direct pytest.mark decorator; "
+                "the object could be aliased or mutated"
             )
         dynamic_name = dotted(node)
         if (

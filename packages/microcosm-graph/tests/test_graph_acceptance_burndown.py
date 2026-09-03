@@ -460,6 +460,14 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "dynamic module namespace",
         ),
         (
+            "import pytest\n\np = pytest\n\n\ndef test_a1_one() -> None:\n    p.skip('x')\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
+            "import pytest\n\n\ndef test_a1_one() -> None:\n    p = pytest\n    p.skip('x')\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
             "import pytest\n\nnamespace = globals\nnamespace()['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
             "dynamic module namespace",
         ),
@@ -476,8 +484,16 @@ def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
             "rebinds pytest",
         ),
         (
+            "import pytest\nimport unittest\n\nmarks = pytest.mark\nmarks.parametrize = lambda *args, **kwargs: unittest.skip('hidden')\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
             "from counterfeit import pytest\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
             "rebinds pytest",
+        ),
+        (
+            "import pytest\n\n\ndef install_marker() -> None:\n    global pytestmark\n    pytestmark = pytest.mark.skip\n\n\ninstall_marker()\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
         ),
         (
             'import pytest\n\n\n@pytest.mark.skipif(True, reason="x")\ndef test_a1_one() -> None:\n    assert False\n',
