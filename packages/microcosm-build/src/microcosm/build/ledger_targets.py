@@ -30,6 +30,26 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
 )
 EXACT_PERIOD_VALUE_OPERATIONS = frozenset(("identity", "sum", "count_x_mean"))
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
+EXECUTION_GUARDED_STATUS_KEYS = frozenset(
+    (
+        "axiom_legal_output_status",
+        "behavioral_takeup_flag_status",
+        "geography_alignment_status",
+        "geography_bridge_status",
+        "microcosm_population_input_status",
+        "population_completeness_readiness",
+        "population_input_readiness",
+        "population_mapping_readiness",
+        "population_period_readiness",
+        "policyengine_behavior_input_status",
+        "policyengine_input_support_status",
+        "publisher_source_readiness",
+        "support_status",
+    )
+)
+EXECUTION_RESOLVED_STATUS_VALUES = frozenset(
+    ("aligned", "available", "not_applicable", "ready", "resolved")
+)
 
 
 @dataclass(frozen=True)
@@ -423,6 +443,12 @@ def _require_executable_reference(reference: LedgerTargetReference) -> None:
     singleton input or become ambiguous as soon as the next cell arrived.
     """
 
+    if reference.metadata.get("target_role") == "validation":
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} is validation-only and "
+            "cannot enter a calibration TargetRegistry."
+        )
+
     activation_status = reference.metadata.get("activation_status", "")
     if activation_status and activation_status != "active":
         raise ValueError(
@@ -430,6 +456,24 @@ def _require_executable_reference(reference: LedgerTargetReference) -> None:
             f"placeholder with activation_status={activation_status!r}. Replace "
             "it with harvested, cell-pinned references (or a reviewed scalar "
             "fact reference) before compilation."
+        )
+
+    blockers = {
+        key: value
+        for key, value in reference.metadata.items()
+        if key in EXECUTION_GUARDED_STATUS_KEYS
+        and (
+            not isinstance(value, str) or value not in EXECUTION_RESOLVED_STATUS_VALUES
+        )
+    }
+    if blockers:
+        rendered = ", ".join(
+            f"{key}={value!r}" for key, value in sorted(blockers.items())
+        )
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} has unresolved "
+            f"execution blockers: {rendered}. Activation is fail-closed until "
+            "every declared support and alignment status is resolved."
         )
 
 

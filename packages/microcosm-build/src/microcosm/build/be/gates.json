@@ -1,7 +1,7 @@
 {
   "version": 2,
   "country": "be",
-  "policy": "Declaration-only intended Belgian gate posture. Belgium has no incumbent dataset, so incumbent-comparison gates (parity, export_surface, target_surface) are not selected. National and NUTS1 references are declared release-blocking and commune-grain references diagnostic, but this schema change does not wire target-profile tiers or roles into runtime gates. External-oracle implementation (EUROMOD-BE baselines and Federal Planning Bureau reform scores) remains separate work in #264 and is not implemented here.",
+  "policy": "Belgian gate posture. Belgium has no incumbent dataset, so incumbent-comparison gates (parity, export_surface, target_surface) are not selected. National and NUTS1 references are declared release-blocking and commune-grain references diagnostic. Target-profile tier tolerances remain declarations for a future gate integration; target_role=validation is already an enforced exclusion from calibration compilation. External-oracle implementation (EUROMOD-BE baselines and Federal Planning Bureau reform scores) remains separate work in #264 and is not implemented here.",
   "phases": [
     "terminal"
   ],
@@ -15,7 +15,7 @@
         "within": 0.1,
         "min_family_share": 0.8
       },
-      "notes": "Calibration fit per source family (demography, fiscal income, income tax, social security, caseloads) so no family hides in the average."
+      "notes": "Calibration fit per candidate family (demography, fiscal income, income tax, and caseloads) so no family hides in the average. Social-security and national-account references remain validation-only."
     },
     {
       "id": "national_and_nuts1_admin_aggregates",
@@ -54,11 +54,10 @@
           "demography",
           "fiscal_income",
           "income_tax",
-          "social_security",
           "caseloads"
         ]
       },
-      "notes": "The eventual active target profile must cover every named family; the schema declarations and placeholders in this change do not themselves activate that surface."
+      "notes": "The eventual active target surface must cover every named calibration family. Income tax is declared in the separate exact-basis monetary profile; social security remains validation-only. These declarations do not themselves activate a target."
     },
     {
       "id": "demographics_vs_statbel",

@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "6f1dab96ccedb21fc261acf9ebbccfc036b2e354a78cf9314e394707a1888cf6",
+  "fingerprint": "75448d958ef56404fd343ae0ba19bc047f7d4f1d739b06c0970fb4281d618772",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -28,9 +28,11 @@
     "staging_repo": "policyengine/populace-be-staging"
   },
   "resource_hashes": {
-    "country_package.json": "1dff9052dbdcdbceeb077d1212008226cf783aa5d33cbda52d07437aef69d30b",
-    "gates.json": "85c07f713168058a081b40cf94da6a33035108ba7807e04818486032fb2ad580",
+    "country_package.json": "73f1411a3e0541204bb1f6d060061dfbe8cd39477a2e0819c12d1bcb552c0036",
+    "gates.json": "2a607384834002a919f4068e297321fa68f925f13afefa4f8fe145f1be3c3945",
     "geography_spine.json": "0b39217386dbc9b053a036766004f10a3a34434a293c1e956e0f4f053a08e1bf",
+    "monetary_target_profile.json": "91d8114a1fb5896800cf15f2f524d5cb1090b0ee7e895382311174e0eab17f60",
+    "population_inputs.json": "bb67b50d099d3206f3d8db6c9ff7291cff06779617b081111f0e1f4780e7e7ca",
     "release_contract.json": "af956e05782cd2aa5df108b216f0ff2a835f2a4e87d68419239b537550082c25",
     "source_stages.json": "64e45f48b5c3bb00a710e56f805c7c8c441ddc1050cfb61d846d45e9cbbb16b2",
     "spec/bundle.yaml": "182e2a0f0b12cef6db6a0192438721b2e041b2c72ef16fbafde8f13fd7b93021",
@@ -39,7 +41,7 @@
     "spec/sources.yaml": "1ca516ad27ee815cb60f451901dcdc6b8989c4f1731d0f6f3f1e50714e29e35e",
     "spec/spine.yaml": "908d99488c3905806ec6878d96b0e4a4cbb67c6ec69d53fe5f1d160246fdb513",
     "spec/vintages.yaml": "c842490287404cf306907800b0bcadec5d954e7e9c510f4b293786c5bedd0910",
-    "target_references.json": "a8c9f875e3a04d082fbacfa8511c856b3879077d8a4276df50ea38c345e702ea"
+    "target_references.json": "31717d4d48cb94e9a1552ea80aa4e1e2b4c3c5f6b00f8aa7fa0faab146fffdb5"
   },
   "resources": [
     "spec/bundle.yaml",
@@ -50,6 +52,8 @@
     "spec/vintages.yaml",
     "gates.json",
     "geography_spine.json",
+    "monetary_target_profile.json",
+    "population_inputs.json",
     "release_contract.json",
     "source_stages.json",
     "target_references.json"
@@ -58,11 +62,20 @@
     "silc_load"
   ],
   "target_reference_names": [
-    "statbel_population_by_age_sex_region",
-    "statbel_fiscal_income_by_commune",
-    "spf_finances_pit_total",
-    "onss_employee_contribution_total",
-    "onem_unemployment_caseload",
-    "nbb_household_disposable_income"
+    "statbel_population_by_age_sex_region_2025",
+    "statbel_fiscal_income_by_commune_2023",
+    "statbel_zero_income_tax_returns_2023_validation",
+    "onem_complete_unemployment_monthly_average_2024",
+    "sfpd_legal_pension_all_schemes_january_2025_blocked",
+    "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+    "opgroeien_groeipakket_basic_amount_children_2025_12",
+    "iriscare_entitled_children_2025_12",
+    "iriscare_payment_recipients_2025_12",
+    "ostbelgien_paid_children_2025_12",
+    "ostbelgien_payment_recipients_2025_12",
+    "walloon_single_parent_with_supplement_children_2023_12",
+    "walloon_single_parent_without_supplement_children_2023_12",
+    "walloon_other_household_with_supplement_children_2023_12",
+    "walloon_other_household_without_supplement_children_2023_12"
   ]
 }

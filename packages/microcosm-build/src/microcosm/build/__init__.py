@@ -142,6 +142,13 @@ from microcosm.build.plan import (  # noqa: E402 - after the compat gate
     StagePlan,
     StageRecord,
 )
+from microcosm.build.population_inputs import (  # noqa: E402 - after compat gate
+    PopulationInputContract,
+    PopulationInputNotReadyError,
+    PopulationInputProfile,
+    SchemePopulationMapping,
+    validate_population_input_frame,
+)
 from microcosm.build.source_runtime import (  # noqa: E402 - after the compat gate
     SourceRuntimeConfig,
     SourceRuntimeContext,
@@ -203,6 +210,10 @@ __all__ = [
     "MonetaryTargetContract",
     "MonetaryTargetProfile",
     "PreparedMonetaryMeasure",
+    "PopulationInputContract",
+    "PopulationInputNotReadyError",
+    "PopulationInputProfile",
+    "SchemePopulationMapping",
     "add_ledger_artifact_args",
     "aggregate_admin_gate",
     "area_support_gate",
@@ -239,6 +250,7 @@ __all__ = [
     "target_profile_coverage_gate",
     "target_spec_from_ledger_fact",
     "target_surface_gate",
+    "validate_population_input_frame",
     "weights_audit_gate",
     "UnsupportedLedgerTarget",
     "UnsupportedSourceOperationError",

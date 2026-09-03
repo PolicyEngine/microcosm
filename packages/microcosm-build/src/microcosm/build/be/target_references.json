@@ -1,160 +1,645 @@
 {
   "country": "be",
-  "description": "Belgian calibration and validation schema groundwork, by reference only. Values and source projections would resolve from Chronicle consumer facts at build time, but the current Chronicle Belgian catalog does not satisfy this full selector and period surface. Criticality tiers, relative tolerances, and target_role are validated declaration metadata only: this package does not yet wire them into runtime calibration objectives or release gates. Multi-cell series remain non-executable until Chronicle fanout produces cell-pinned references. No external-oracle implementation from #264 is included. The file never copies a target value from Chronicle, a survey publication, or a validation oracle.",
+  "description": "Value-free Belgium calibration-candidate and validation-only references. Values remain in Chronicle. Every selector declares an exact intended period and observed-only assertion policy; Microcosm owns any later source-readiness, population, period, unit, or geography bridge. Chronicle #212 supplies provisional regional child-benefit record identities, but Chronicle #213 requires native publisher artifacts for Opgroeien, Iriscare, and Ostbelgien before those rows are activation-grade. They remain validation/input contracts with explicit source and scheme-population blockers. Publisher household rows remain outside the target surface until their unit is proven equivalent to a Microcosm household. Unknown receipt or status remains null, never false, until complete imputation is explicitly ready and receipted. PolicyEngine consumes Microcosm-populated flags and owns behavioral mechanics; it does not supply the flags. Axiom receives no synthetic behavior concept. No regional or national child-benefit total is constructed.",
   "allowed_value_operations": [
     "identity"
   ],
   "target_references": [
     {
-      "name": "statbel_population_by_age_sex_region",
+      "name": "statbel_population_by_age_sex_region_2025",
       "ledger_selector": {
         "source_name": "statbel_population_structure",
         "source_measure_id": "people",
         "period_type": "calendar_year",
+        "period_value": 2025,
         "geography_level": "nuts1",
-        "geography_vintage": "nuts1_2025"
+        "geography_vintage": "NUTS_2024",
+        "entity_name": "person",
+        "record_set_id": "statbel.population_structure.cy2025.people.by_nuts1_age_sex"
       },
       "entity": "person",
       "measure": "people",
-      "period": 2023,
+      "period": 2025,
       "family": "demography",
-      "assertion_policy": "allow_source_projection",
+      "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_harvested_cell_references",
-        "basis_period": "population_reference_2023",
+        "activation_status": "requires_harvested_cells_and_geography_period_bridge",
+        "basis_period": "statbel_population_2025",
         "criticality": "release_blocking",
-        "criticality_tier": "demography_release",
-        "geography_vintage": "nuts1_2025",
+        "criticality_tier": "demography_candidate",
+        "geography_bridge_status": "required_missing",
+        "geography_vintage": "NUTS_2024",
+        "model_geography_vintage": "nuts1_2025",
         "publisher": "Statbel",
-        "series": "Structure of the population: age band by sex by region",
         "target_role": "calibration"
       },
-      "notes": "Non-executable series placeholder for an age-band x sex x NUTS1 count surface. Chronicle must fan this into dimension- and geography-pinned scalar references before compilation. The selector uses the typed NUTS1-2025 authority alias; a differently-vintaged source requires an explicit Chronicle projection/crosswalk. An observation for another year may enter only as a Chronicle source_projection whose fact period is the declared 2023 reference year."
+      "notes": "The official facts are 2025 NUTS-2024 cells. They are not relabeled as 2023 or NUTS1-2025 and remain non-executable until scalar cell references, exact period selection, a reviewed geography bridge, and support exist."
     },
     {
-      "name": "statbel_fiscal_income_by_commune",
+      "name": "statbel_fiscal_income_by_commune_2023",
       "ledger_selector": {
         "source_name": "statbel_fiscal_income",
         "source_measure_id": "taxable_income",
         "period_type": "tax_year",
+        "period_value": 2023,
         "geography_level": "commune",
-        "geography_vintage": "nis_2025"
+        "geography_vintage": "nis_2025",
+        "entity_name": "person",
+        "record_set_id": "statbel.fiscal_income.tax_year2023.taxable_income.by_commune_nis2025"
       },
-      "entity": "household",
+      "entity": "person",
       "measure": "belgium_pit_taxable_income",
-      "period": 2022,
+      "period": 2023,
       "family": "fiscal_income",
-      "assertion_policy": "allow_source_projection",
+      "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "activation_status": "requires_harvested_cell_references",
-        "basis_period": "assessment_income_year_2022",
+        "activation_status": "requires_harvested_cells_and_income_period_bridge",
+        "basis_period": "statbel_fiscal_income_2023",
         "criticality": "diagnostic",
         "criticality_tier": "commune_diagnostic",
         "geography_vintage": "nis_2025",
         "nis_vintage": "2025",
         "publisher": "Statbel",
-        "series": "Fiscal statistics of income: total net taxable income by municipality",
         "target_role": "calibration"
       },
-      "notes": "Non-executable series placeholder for commune fiscal-income cells; Chronicle must fan it into one commune-pinned scalar reference per selected cell before compilation. The eventual open commune series is diagnostic until the synthetic spine demonstrates adequate support. The selector binds the typed nis_2025 alias to the spine's 2025 NIS code set, and another code set must be projected and crosswalked in Chronicle rather than partially joined."
+      "notes": "The official unit is a taxpayer person and the income/tax year is 2023. The current SILC source represents 2022 income, so no cell may activate until exact scalar fanout, period support, and the taxpayer-person measure are receipted. metadata.nis_vintage remains the compatible 2025 spelling."
     },
     {
-      "name": "spf_finances_pit_total",
+      "name": "statbel_zero_income_tax_returns_2023_validation",
+      "ledger_source_record_id": "statbel.fiscal_income_distribution.income_year2023.zero_income_declarations.total.declarations",
       "ledger_selector": {
-        "source_name": "spf_finances_pit",
-        "source_measure_id": "tax_before_withholding",
+        "source_name": "statbel_fiscal_income_distribution",
+        "source_measure_id": "declarations",
         "period_type": "tax_year",
-        "geography_level": "country"
+        "period_value": 2023,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "entity_name": "return",
+        "record_set_id": "statbel.fiscal_income_distribution.income_year2023.zero_income_declarations",
+        "layout_groupby_value_id": "total",
+        "dimensions": []
       },
-      "entity": "person",
-      "measure": "belgium_pit_federal_and_local_tax_before_withholding",
-      "period": 2022,
-      "family": "income_tax",
-      "assertion_policy": "allow_source_projection",
+      "entity": "return",
+      "measure": "belgium_zero_income_tax_return_indicator",
+      "period": 2023,
+      "family": "income_distribution",
+      "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "basis_period": "assessment_income_year_2022",
-        "criticality": "release_blocking",
-        "criticality_tier": "core_fiscal_release",
-        "publisher": "SPF Finances / Statbel",
-        "series": "Personal income tax: assessed total",
-        "target_role": "calibration"
+        "activation_status": "requires_tax_return_unit_and_period_bridge",
+        "basis_period": "statbel_fiscal_distribution_2023",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "publisher": "Statbel",
+        "target_role": "validation"
       },
-      "notes": "National assessed PIT is compared with the Axiom-computed federal and local liability on the 2022 income-year basis. Assessment-year facts must identify the represented income year in Chronicle; a period mismatch is a projection, never a silent relabeling."
+      "notes": "A personal-income-tax return is neither a Microcosm person nor household. This exact scalar identifies the distribution surface but remains validation-only and non-executable until a separately reviewed return unit exists; no distribution cells are reconstructed."
     },
     {
-      "name": "onss_employee_contribution_total",
-      "ledger_selector": {
-        "source_name": "onss_contributions",
-        "source_measure_id": "worker_article_17_uncapped_component_contribution",
-        "period_type": "calendar_year",
-        "geography_level": "country"
-      },
-      "entity": "person",
-      "measure": "belgium_worker_article_17_uncapped_component_contribution",
-      "period": 2022,
-      "family": "social_security",
-      "assertion_policy": "allow_source_projection",
-      "period_match_policy": "exact",
-      "metadata": {
-        "basis_period": "calendar_year_2022",
-        "criticality": "release_blocking",
-        "criticality_tier": "standard_admin_release",
-        "publisher": "ONSS/RSZ",
-        "series": "Employee social-security contributions",
-        "target_role": "calibration"
-      },
-      "notes": "Worker-side contributions on the encoded slice. Employer-side and capped-regime totals can enter as distinct references when both the engine concepts and Ledger selectors exist."
-    },
-    {
-      "name": "onem_unemployment_caseload",
+      "name": "onem_complete_unemployment_monthly_average_2024",
+      "ledger_source_record_id": "onem_rva.unemployment.cy2024.complete_unemployment.country.country_total.receives_unemployment_benefit",
       "ledger_selector": {
         "source_name": "onem_rva_unemployment",
         "source_measure_id": "receives_unemployment_benefit",
         "period_type": "calendar_year",
-        "geography_level": "country"
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "entity_name": "person",
+        "record_set_id": "onem_rva.unemployment.cy2024.complete_unemployment.country",
+        "layout_groupby_value_id": "country_total",
+        "dimensions": []
       },
       "entity": "person",
-      "measure": "receives_unemployment_benefit",
-      "period": 2022,
+      "measure": "belgium_complete_unemployment_monthly_average_recipient_indicator",
+      "period": 2024,
       "family": "caseloads",
-      "assertion_policy": "allow_source_projection",
+      "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "basis_period": "calendar_year_2022",
+        "activation_status": "requires_person_period_population_mapping_and_period_alignment",
+        "anti_proxy_rule": "do_not_derive_receipt_from_positive_amount_or_entitlement",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "onem_monthly_average_2024",
         "criticality": "release_blocking",
-        "criticality_tier": "caseload_release",
+        "criticality_tier": "caseload_candidate",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "microcosm_population_input_status": "absent",
+        "policyengine_input_support_status": "absent",
         "publisher": "ONEM/RVA",
-        "series": "Unemployment benefit recipients",
         "target_role": "calibration"
       },
-      "notes": "The initial caseload family uses the calendar-year recipient count. Pension and regional child-benefit caseload references can join this family when their Chronicle packages and model mappings land."
+      "notes": "This is a monthly-average recipient statistic, not annual-any recipients or a take-up rate. It remains blocked because the Microcosm-populated unemployment receipt flag, the PolicyEngine input variable that consumes it, a typed person-period population, and an exact period mapping are absent."
     },
     {
-      "name": "nbb_household_disposable_income",
+      "name": "sfpd_legal_pension_all_schemes_january_2025_blocked",
+      "ledger_source_record_id": "sfpd.legal_pension.cy2025.recipients.all_schemes.recipients",
       "ledger_selector": {
-        "source_name": "nbb_national_accounts",
-        "source_measure_id": "household_disposable_income",
+        "source_name": "sfpd_pensions",
+        "source_measure_id": "recipients",
         "period_type": "calendar_year",
-        "geography_level": "country"
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "entity_name": "person",
+        "record_set_id": "sfpd.legal_pension.cy2025.recipients.by_scheme",
+        "layout_groupby_value_id": "all_schemes",
+        "dimensions": []
       },
-      "entity": "household",
-      "measure": "household_disposable_income",
-      "period": 2022,
-      "family": "national_accounts",
-      "assertion_policy": "allow_source_projection",
+      "entity": "person",
+      "measure": "belgium_legal_pension_recipient_indicator",
+      "period": 2025,
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
       "period_match_policy": "exact",
       "metadata": {
-        "basis_period": "calendar_year_2022",
+        "activation_status": "requires_chronicle_month_period_correction_and_population_input",
+        "anti_proxy_rule": "do_not_derive_receipt_from_positive_amount_or_entitlement",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "sfpd_pension_catalog_2025_mislabeled",
         "criticality": "diagnostic",
         "criticality_tier": "validation_only",
-        "publisher": "NBB",
-        "series": "Household-sector disposable income (national accounts)",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "microcosm_population_input_status": "absent",
+        "policyengine_input_support_status": "absent",
+        "publisher": "SFPD",
         "target_role": "validation"
       },
-      "notes": "Validation-tier level anchor only. The macro-realism gate may use it as a broad band, but neither the exact NBB level nor any survey- or EUROMOD-derived quantity enters the calibration objective."
+      "notes": "The merged Chronicle package types this row as calendar year 2025, while its source basis is January 2025. It is recorded only as a blocked dependency: correct the source period before targeting, and never sum the overlapping scheme rows in place of the published all-schemes total."
+    },
+    {
+      "name": "sfpd_grapa_regular_payment_beneficiaries_2025_01",
+      "ledger_source_record_id": "sfpd_grapa.month2025_01.regular_payment_beneficiaries.all.beneficiaries",
+      "ledger_selector": {
+        "source_name": "sfpd_grapa",
+        "source_measure_id": "beneficiaries",
+        "period_type": "month",
+        "period_value": "2025-01",
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "entity_name": "person",
+        "record_set_id": "sfpd_grapa.month2025_01.regular_payment_beneficiaries.by_sex",
+        "layout_groupby_value_id": "all",
+        "dimensions": []
+      },
+      "entity": "person",
+      "measure": "belgium_grapa_regular_payment_recipient_indicator",
+      "period": "2025-01",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_derive_receipt_from_positive_amount_or_entitlement",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "grapa_regular_payment_snapshot_2025_01",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
+        "population_input_id": "grapa_regular_payment_recipient",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "ready",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "SFPD",
+        "scheme_population_mapping_id": "grapa_regular_payment_population_2025_01",
+        "target_role": "validation"
+      },
+      "notes": "Exact January 2025 regular-payment beneficiary snapshot from Chronicle PR #212. It is not eligibility, annual-any receipt, a transaction count, or behavior. PolicyEngine must consume Microcosm's distinct measured or latent receipt flag through a PolicyEngine input variable and owns any residual non-legal behavior mechanics before Microcosm can estimate this row."
+    },
+    {
+      "name": "opgroeien_groeipakket_basic_amount_children_2025_12",
+      "ledger_source_record_id": "opgroeien.groeipakket.month2025_12.basic_amount.children.basic_amount_children.children",
+      "ledger_selector": {
+        "source_name": "opgroeien_groeipakket_dashboard",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-GROEIPAKKET-SCHEME",
+        "geography_vintage": "GROEIPAKKET_ADMINISTRATIVE_SCOPE_2025",
+        "entity_name": "person",
+        "record_set_id": "opgroeien.groeipakket.month2025_12.basic_amount.children",
+        "layout_groupby_value_id": "basic_amount_children",
+        "dimensions": [
+          "groeipakket.component",
+          "publication_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_groeipakket_basic_amount_child_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "child_benefit_rights_month_2025_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
+        "population_input_id": "groeipakket_basic_amount_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Opgroeien",
+        "scheme_population_mapping_id": "groeipakket_basic_amount_child_population_2025_12",
+        "target_role": "validation"
+      },
+      "notes": "Chronicle #212 declares this provisional dashboard-derived record identity, but Chronicle #213 requires a pinned native Opgroeien export before it is activation-grade. The scheme-wide population includes cross-border categories and is not BE2 residence. The typed mapping retains the declared scope and blocks independently on publisher bytes, scheme-population construction, the exact child status, period alignment, and completeness."
+    },
+    {
+      "name": "iriscare_entitled_children_2025_12",
+      "ledger_source_record_id": "iriscare.child_benefit.month2025_12.entitled_children.entitled_children.children",
+      "ledger_selector": {
+        "source_name": "iriscare_child_benefit_dashboard",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-IRISCARE-CHILD-BENEFIT-SCHEME",
+        "geography_vintage": "IRISCARE_CHILD_BENEFIT_ADMIN_SCOPE_2025",
+        "entity_name": "person",
+        "record_set_id": "iriscare.child_benefit.month2025_12.entitled_children",
+        "layout_groupby_value_id": "entitled_children",
+        "dimensions": [
+          "iriscare.statistic",
+          "publication_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_iriscare_child_benefit_entitled_child_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "child_benefit_rights_month_2025_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
+        "population_input_id": "iriscare_entitled_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Iriscare",
+        "scheme_population_mapping_id": "iriscare_entitled_child_population_2025_12",
+        "target_role": "validation"
+      },
+      "notes": "Chronicle #212 declares this provisional dashboard-derived record identity, but Chronicle #213 requires a pinned native official Iriscare artifact before it is activation-grade. The intended entitled-child person status remains separate from payment recipients and from BE1 residence; source, scheme-population, input, period, and completeness gates all remain fail-closed."
+    },
+    {
+      "name": "iriscare_payment_recipients_2025_12",
+      "ledger_source_record_id": "iriscare.child_benefit.month2025_12.payment_recipients.payment_recipients.payment_recipients",
+      "ledger_selector": {
+        "source_name": "iriscare_child_benefit_dashboard",
+        "source_measure_id": "payment_recipients",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-IRISCARE-CHILD-BENEFIT-SCHEME",
+        "geography_vintage": "IRISCARE_CHILD_BENEFIT_ADMIN_SCOPE_2025",
+        "entity_name": "person",
+        "record_set_id": "iriscare.child_benefit.month2025_12.payment_recipients",
+        "layout_groupby_value_id": "payment_recipients",
+        "dimensions": [
+          "iriscare.statistic",
+          "publication_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_iriscare_child_benefit_payment_recipient_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "child_benefit_rights_month_2025_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
+        "population_input_id": "iriscare_payment_recipient",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Iriscare",
+        "scheme_population_mapping_id": "iriscare_payment_recipient_population_2025_12",
+        "target_role": "validation"
+      },
+      "notes": "Chronicle #212 declares this provisional dashboard-derived record identity, but Chronicle #213 requires a pinned native official Iriscare artifact before it is activation-grade. The intended allocataire unit is a payment-recipient person, not a household, and remains distinct from entitled children; source, scheme-population, input, period, and completeness gates all remain fail-closed."
+    },
+    {
+      "name": "ostbelgien_paid_children_2025_12",
+      "ledger_source_record_id": "ostbelgien.child_benefit.month2025_12.paid_children.paid_children.children",
+      "ledger_selector": {
+        "source_name": "ostbelgien_child_benefit_statistics",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-DG",
+        "geography_vintage": "child_benefit_scope_2025",
+        "entity_name": "person",
+        "record_set_id": "ostbelgien.child_benefit.month2025_12.paid_children",
+        "layout_groupby_value_id": "paid_children",
+        "dimensions": [
+          "ostbelgien.statistic"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_ostbelgien_child_benefit_paid_child_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "child_benefit_rights_month_2025_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
+        "population_input_id": "ostbelgien_paid_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Ostbelgien Statistik",
+        "scheme_population_mapping_id": "ostbelgien_paid_child_population_2025_12",
+        "target_role": "validation"
+      },
+      "notes": "Chronicle #212 declares this manually transcribed record identity, but Chronicle #213 rejects manual transcription as a publisher artifact and requires a pinned native official response before activation. BE-DG remains the declared scheme scope, not resident geography. Paid children stay distinct from payment recipients, and every source, population, input, period, and completeness gate remains fail-closed."
+    },
+    {
+      "name": "ostbelgien_payment_recipients_2025_12",
+      "ledger_source_record_id": "ostbelgien.child_benefit.month2025_12.payment_recipients.payment_recipients.payment_recipients",
+      "ledger_selector": {
+        "source_name": "ostbelgien_child_benefit_statistics",
+        "source_measure_id": "payment_recipients",
+        "period_type": "month",
+        "period_value": "2025-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-DG",
+        "geography_vintage": "child_benefit_scope_2025",
+        "entity_name": "person",
+        "record_set_id": "ostbelgien.child_benefit.month2025_12.payment_recipients",
+        "layout_groupby_value_id": "payment_recipients",
+        "dimensions": [
+          "ostbelgien.statistic"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_ostbelgien_child_benefit_payment_recipient_indicator",
+      "period": "2025-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_native_publisher_artifact_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "do_not_substitute_nuts_residence_or_positive_amount",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "child_benefit_rights_month_2025_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "native_publisher_artifact_required_missing",
+        "population_input_id": "ostbelgien_payment_recipient",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Ostbelgien Statistik",
+        "scheme_population_mapping_id": "ostbelgien_payment_recipient_population_2025_12",
+        "target_role": "validation"
+      },
+      "notes": "Chronicle #212 declares this manually transcribed record identity, but Chronicle #213 rejects manual transcription as a publisher artifact and requires a pinned native official response before activation. The intended unit is a distinct payment-recipient person in the declared scheme scope, not a child, family, household, or take-up count; every source, population, input, period, and completeness gate remains fail-closed."
+    },
+    {
+      "name": "walloon_single_parent_with_supplement_children_2023_12",
+      "ledger_source_record_id": "parlement_wallonie.child_benefit.month2023_12.children.single_parent_with_social_supplement.children",
+      "ledger_selector": {
+        "source_name": "parlement_wallonie_child_benefit_response",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2023-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-WALLOON-FRENCH",
+        "geography_vintage": "child_benefit_scope_2023",
+        "entity_name": "person",
+        "record_set_id": "parlement_wallonie.child_benefit.month2023_12.children_by_household_group",
+        "layout_groupby_value_id": "single_parent_with_social_supplement",
+        "dimensions": [
+          "parlement_wallonie.household_type",
+          "parlement_wallonie.social_supplement_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_walloon_single_parent_with_supplement_recipient_child_indicator",
+      "period": "2023-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "preserve_publisher_partition_and_do_not_construct_total",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "walloon_child_benefit_snapshot_2023_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
+        "population_input_id": "walloon_single_parent_with_supplement_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Parlement de Wallonie",
+        "scheme_population_mapping_id": "walloon_single_parent_with_supplement_children_2023_12",
+        "target_role": "validation"
+      },
+      "notes": "One of four exact publisher child partitions. It is not combined with the other partitions and is not mapped to the publisher household count."
+    },
+    {
+      "name": "walloon_single_parent_without_supplement_children_2023_12",
+      "ledger_source_record_id": "parlement_wallonie.child_benefit.month2023_12.children.single_parent_without_social_supplement.children",
+      "ledger_selector": {
+        "source_name": "parlement_wallonie_child_benefit_response",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2023-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-WALLOON-FRENCH",
+        "geography_vintage": "child_benefit_scope_2023",
+        "entity_name": "person",
+        "record_set_id": "parlement_wallonie.child_benefit.month2023_12.children_by_household_group",
+        "layout_groupby_value_id": "single_parent_without_social_supplement",
+        "dimensions": [
+          "parlement_wallonie.household_type",
+          "parlement_wallonie.social_supplement_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_walloon_single_parent_without_supplement_recipient_child_indicator",
+      "period": "2023-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "preserve_publisher_partition_and_do_not_construct_total",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "walloon_child_benefit_snapshot_2023_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
+        "population_input_id": "walloon_single_parent_without_supplement_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Parlement de Wallonie",
+        "scheme_population_mapping_id": "walloon_single_parent_without_supplement_children_2023_12",
+        "target_role": "validation"
+      },
+      "notes": "One of four exact publisher child partitions. It is not combined with the other partitions and is not mapped to the publisher household count."
+    },
+    {
+      "name": "walloon_other_household_with_supplement_children_2023_12",
+      "ledger_source_record_id": "parlement_wallonie.child_benefit.month2023_12.children.other_household_with_social_supplement.children",
+      "ledger_selector": {
+        "source_name": "parlement_wallonie_child_benefit_response",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2023-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-WALLOON-FRENCH",
+        "geography_vintage": "child_benefit_scope_2023",
+        "entity_name": "person",
+        "record_set_id": "parlement_wallonie.child_benefit.month2023_12.children_by_household_group",
+        "layout_groupby_value_id": "other_household_with_social_supplement",
+        "dimensions": [
+          "parlement_wallonie.household_type",
+          "parlement_wallonie.social_supplement_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_walloon_other_household_with_supplement_recipient_child_indicator",
+      "period": "2023-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "preserve_publisher_partition_and_do_not_construct_total",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "walloon_child_benefit_snapshot_2023_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
+        "population_input_id": "walloon_other_household_with_supplement_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Parlement de Wallonie",
+        "scheme_population_mapping_id": "walloon_other_household_with_supplement_children_2023_12",
+        "target_role": "validation"
+      },
+      "notes": "One of four exact publisher child partitions. It is not combined with the other partitions and is not mapped to the publisher household count."
+    },
+    {
+      "name": "walloon_other_household_without_supplement_children_2023_12",
+      "ledger_source_record_id": "parlement_wallonie.child_benefit.month2023_12.children.other_household_without_social_supplement.children",
+      "ledger_selector": {
+        "source_name": "parlement_wallonie_child_benefit_response",
+        "source_measure_id": "children",
+        "period_type": "month",
+        "period_value": "2023-12",
+        "geography_level": "statistical_scope",
+        "geography_id": "BE-WALLOON-FRENCH",
+        "geography_vintage": "child_benefit_scope_2023",
+        "entity_name": "person",
+        "record_set_id": "parlement_wallonie.child_benefit.month2023_12.children_by_household_group",
+        "layout_groupby_value_id": "other_household_without_social_supplement",
+        "dimensions": [
+          "parlement_wallonie.household_type",
+          "parlement_wallonie.social_supplement_status"
+        ]
+      },
+      "entity": "person",
+      "measure": "belgium_walloon_other_household_without_supplement_recipient_child_indicator",
+      "period": "2023-12",
+      "family": "caseloads",
+      "assertion_policy": "observed_only",
+      "period_match_policy": "exact",
+      "metadata": {
+        "activation_status": "requires_microcosm_input_and_period_alignment",
+        "anti_proxy_rule": "preserve_publisher_partition_and_do_not_construct_total",
+        "axiom_behavior_ownership": "none",
+        "basis_period": "walloon_child_benefit_snapshot_2023_12",
+        "criticality": "diagnostic",
+        "criticality_tier": "validation_only",
+        "input_consumer": "PolicyEngine",
+        "input_owner": "Microcosm",
+        "mechanics_owner": "PolicyEngine",
+        "publisher_source_readiness": "ready",
+        "population_input_id": "walloon_other_household_without_supplement_child",
+        "population_input_readiness": "required_missing",
+        "population_mapping_readiness": "required_missing",
+        "population_period_readiness": "exact_alignment_missing",
+        "population_completeness_readiness": "complete_imputation_required_missing",
+        "publisher": "Parlement de Wallonie",
+        "scheme_population_mapping_id": "walloon_other_household_without_supplement_children_2023_12",
+        "target_role": "validation"
+      },
+      "notes": "One of four exact publisher child partitions. It is not combined with the other partitions and is not mapped to the publisher household count."
     }
   ],
   "target_profile": {
@@ -162,67 +647,86 @@
     "required_families": [
       "demography",
       "fiscal_income",
-      "income_tax",
-      "social_security",
       "caseloads"
     ],
     "criticality_tiers": {
-      "demography_release": {
+      "demography_candidate": {
         "criticality": "release_blocking",
         "relative_tolerance": 0.02,
-        "description": "Population-structure cells: plus or minus 2 percent."
-      },
-      "core_fiscal_release": {
-        "criticality": "release_blocking",
-        "relative_tolerance": 0.05,
-        "description": "Core fiscal totals, including assessed PIT: plus or minus 5 percent."
-      },
-      "standard_admin_release": {
-        "criticality": "release_blocking",
-        "relative_tolerance": 0.1,
-        "description": "Administrative contribution totals: plus or minus 10 percent."
-      },
-      "caseload_release": {
-        "criticality": "release_blocking",
-        "relative_tolerance": 0.15,
-        "description": "Administrative caseload totals: plus or minus 15 percent."
+        "description": "Future exact-period population cells; currently blocked on cell, period, geography, and support contracts."
       },
       "commune_diagnostic": {
         "criticality": "diagnostic",
         "relative_tolerance": 0.1,
-        "description": "Commune fiscal-income cells: plus or minus 10 percent, reported but not release-blocking."
+        "description": "Future commune fiscal-income cells, reported diagnostically after exact period and unit support."
+      },
+      "caseload_candidate": {
+        "criticality": "release_blocking",
+        "relative_tolerance": 0.15,
+        "description": "Future administrative caseload level after exact population-input, statistic, and period support."
       },
       "validation_only": {
         "criticality": "diagnostic",
         "relative_tolerance": null,
-        "description": "Validation oracle only; no calibration tolerance."
+        "description": "Held out from calibration; no solver tolerance."
       }
     },
     "basis_periods": {
-      "population_reference_2023": {
+      "statbel_population_2025": {
+        "period": 2025,
+        "basis": "official_population_reference_year",
+        "fact_period_type": "calendar_year",
+        "mismatch_policy": "exact_observation_only",
+        "description": "Statbel 2025 population cells at their published NUTS-2024 geography."
+      },
+      "statbel_fiscal_income_2023": {
         "period": 2023,
-        "basis": "reference_date",
-        "fact_period_type": "calendar_year",
-        "mismatch_policy": "requires_source_projection",
-        "description": "Population stock in the BE-SILC 2023 survey year."
-      },
-      "assessment_income_year_2022": {
-        "period": 2022,
-        "basis": "income_year",
+        "basis": "income_and_tax_year",
         "fact_period_type": "tax_year",
-        "survey_year": 2023,
-        "income_reference_offset_years": -1,
-        "mismatch_policy": "requires_source_projection",
-        "description": "BE-SILC survey year 2023 carries 2022 incomes; assessed fiscal facts bind by represented income year."
+        "mismatch_policy": "exact_observation_only",
+        "description": "Statbel fiscal income for income/tax year 2023 under nis_2025."
       },
-      "calendar_year_2022": {
-        "period": 2022,
-        "basis": "calendar_year",
+      "statbel_fiscal_distribution_2023": {
+        "period": 2023,
+        "basis": "income_and_tax_year",
+        "fact_period_type": "tax_year",
+        "mismatch_policy": "exact_observation_only",
+        "description": "Statbel tax-return distribution fact for income year 2023."
+      },
+      "onem_monthly_average_2024": {
+        "period": 2024,
+        "basis": "monthly_average_within_calendar_year",
         "fact_period_type": "calendar_year",
-        "survey_year": 2023,
-        "income_reference_offset_years": -1,
-        "mismatch_policy": "requires_source_projection",
-        "description": "Calendar-year administrative or national-accounts fact aligned to the 2022 income reference year."
+        "mismatch_policy": "exact_observation_only",
+        "description": "ONEM complete-unemployment monthly-average recipient statistic for 2024."
+      },
+      "sfpd_pension_catalog_2025_mislabeled": {
+        "period": 2025,
+        "basis": "blocked_source_period_mismatch",
+        "fact_period_type": "calendar_year",
+        "mismatch_policy": "exact_observation_only",
+        "description": "Chronicle currently exposes calendar-year 2025, while the publisher basis is January 2025; the reference cannot activate."
+      },
+      "grapa_regular_payment_snapshot_2025_01": {
+        "period": "2025-01",
+        "basis": "regular_payment_snapshot",
+        "fact_period_type": "month",
+        "mismatch_policy": "exact_observation_only",
+        "description": "SFPD January 2025 GRAPA regular-payment population."
+      },
+      "child_benefit_rights_month_2025_12": {
+        "period": "2025-12",
+        "basis": "publisher_rights_or_reference_month",
+        "fact_period_type": "month",
+        "mismatch_policy": "exact_observation_only",
+        "description": "Opgroeien, Iriscare, and Ostbelgien December 2025 publisher populations, retained separately."
+      },
+      "walloon_child_benefit_snapshot_2023_12": {
+        "period": "2023-12",
+        "basis": "publisher_reference_month",
+        "fact_period_type": "month",
+        "mismatch_policy": "exact_observation_only",
+        "description": "Walloon Parliament December 2023 publisher child partitions, retained separately."
       }
     },
     "hierarchy_reconciliations": []

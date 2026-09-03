@@ -1,3 +1,148 @@
+# Belgium calibration, validation, and behavior-boundary contract
+
+## State
+
+Continued on 2026-08-31 on `be-benefit-participation-targets-resume` from the
+completed local handoff at `490caa69`. Live GitHub access is restored:
+authoritative Microcosm main remains `d1e3e397`, and existing #824 remains a
+draft at its reviewed head `ed6dc3d8`. Chronicle #213 now supplies the stricter
+source-faithfulness ruling that Opgroeien, Iriscare, and Ostbelgien require
+native publisher artifacts. The Belgium contract therefore carries a separate
+typed publisher-source readiness gate in addition to population construction,
+input, period, and completeness gates.
+
+Reviewed Microcosm #824 head `ed6dc3d8` remains an ancestor, and authoritative
+main `d1e3e397` is merged at `03e4d494`, bringing in reviewed #825 head
+`510e3e6c`. Exact Chronicle #212 base/head `10597ae6`/`0f75a2bb` and the live
+#213 head `fe3fd816` are recorded in the contract. Preserved `.lane-inputs/`
+remains intact and untracked.
+
+## Done
+
+- Finished the 15-row Belgium target surface, ten typed nullable person-input
+  contracts, ten one-to-one declared Chronicle record-to-input links, and a separate
+  three-row monetary inventory. GRAPA has an exact unit/scope mapping but is
+  still missing its input, period alignment, and completeness receipt; all
+  nine child mappings additionally keep scheme construction `required_missing`.
+- Corrected every ownership inversion: Microcosm owns and populates measured or
+  latent flags, PolicyEngine consumes them and owns non-legal mechanics, and
+  Axiom receives no synthetic behavior concept. Pension and ONEM now carry the
+  same explicit consumer/support direction.
+- Enforced unknown-as-null, complete-imputation readiness, exact selector/basis
+  periods, typed declared scheme source/scope/entity contracts, one-to-one mapping identity,
+  explicit missing geography bridges, recursive value-free monetary profiles,
+  and refusal of behavioral names in both input IDs and columns.
+- Enforced validation-only exclusion from calibration compilation. PIT remains
+  a blocked calibration candidate; ONSS and NBB are validation-only; EUROMOD,
+  FPB, constructed comparisons, monthly monetary snapshots, and unreviewed
+  HFCS wealth remain outside the calibration surface.
+- Regenerated the Belgium country golden only after semantic review. Its country
+  fingerprint is now `75448d958ef56404fd343ae0ba19bc047f7d4f1d739b06c0970fb4281d618772`;
+  the separately tested bundle spec identity remains
+  `935f8dedcd2d1b99abe57c1b5d990bc345f4cffbc7ab0cc8791733bde6721d14`.
+- All 548 focused country, gate, Ledger, monetary, profile, population-input,
+  and bundle cases pass. Focused Ruff and `git diff --check` pass.
+- After reconciling Chronicle #212 with #213, all 730 focused country, gate,
+  Ledger, monetary, profile, population-input, and bundle cases pass again;
+  repository Ruff, the unchanged 123-package lock, the 319-file CI grouping,
+  JSON parsing, and `git diff --check` also remain green.
+- Committed the complete semantic and reviewed-golden step as `d77ccf78`
+  (`Complete Belgium target input boundary`) without staging lane bookkeeping.
+- Verified the unchanged lock offline (123 packages), CI grouping (319 tracked
+  test files, `verification=ok`), repository Ruff, and both worktree and
+  main-to-head diff whitespace checks.
+- Passed all 1,688 runnable shared-spec CI cases with 43 expected skips and two
+  explicit deselections, plus the full calibration shard (212 passed). The two
+  deselected US parity regeneration cases fail identically on
+  `main@d1e3e397`: the local feed exposes a CBO `source_projection` while the
+  committed US reference is `observed_only`; this branch does not alter that
+  reference or assertion path.
+- A broader build-shard attempt reached 1,218 passes and 18 skips before being
+  stopped after those same two baseline failures were captured. The complete
+  shared-spec group then passed as recorded above.
+- Reconfirmed that `main@d1e3e397` and reviewed #824 head `ed6dc3d8` are both
+  ancestors; this branch is 13 commits ahead and zero behind authoritative
+  main. Live fetch, `gh pr view 824`, and the explicit
+  `git push origin HEAD:be-benefit-participation-targets` all failed only on
+  DNS resolution. No duplicate PR, force-push, readiness change, or merge was
+  attempted.
+- Wrote the complete base/head, dependency, ownership/readiness, test, blocker,
+  and frozen-review report to `.lane-inputs/OUT.md` without staging lane
+  bookkeeping.
+
+- Re-read the complete Fable v3 review and official benefit-participation law
+  audit. Confirmed that every receipt/status flag is Microcosm-populated,
+  PolicyEngine only consumes it and owns non-legal mechanics, and Axiom may see
+  only documented legal events/statuses/claims.
+- Attempted `git fetch --prune origin`; it failed because the managed shell
+  cannot resolve `github.com`. The canonical local clone has the same
+  `origin/main` (`d1e3e397`) and exact #824 branch/head, so no newer local
+  authority is available and the existing #825 merge remains the safe base.
+- Verified salvage `b89fa566` is a child of `779cf9e2` and every one of its ten
+  blobs matches the worktree. The five product files are preserved; the five
+  lane-input files remain untracked, so the salvage must not be cherry-picked
+  wholesale.
+- Made nullable boolean input storage explicit and added a separate
+  `completeness_readiness` gate. Unknown values remain null; activation requires
+  a complete-imputation receipt and proves `n_unknown=0`. Focused population
+  and country-profile tests pass, and both new test files are explicitly named
+  for the shared-spec CI group.
+- Read `AGENTS.md`, `CLAUDE.md`, `README.md`, `DESIGN.md`, and the GitNexus
+  impact-analysis workflow.
+- Inspected the stopped lane's branch, status, worktrees, remotes, refs,
+  reflog, committed history, staged and unstaged diffs, salvage refs, preserved
+  inputs, journals, and the exact reviewed diffs for PR #824 and PR #825. No
+  tracked work was discarded or overwritten.
+- Attempted the required direct `git fetch origin main`; the managed shell
+  cannot resolve `github.com`. Imported the canonical clone's already-fetched
+  `origin/main` instead, verified it is exactly `d1e3e397`, and verified merge
+  parent `510e3e6c` contains the generic monetary-target primitives.
+- Located reviewed PR #824 at exact head `ed6dc3d8`. Its two commits add a
+  GRAPA validation declaration and a generic execution blocker, but incorrectly
+  say PolicyEngine supplies receipt/behavior flags. This continuation corrects
+  the contract to Microcosm-owned measured or latent data consumed by
+  PolicyEngine.
+- Located reviewed Chronicle PR #212 at exact head `0f75a2bb`. It declares the
+  GRAPA and regional child-benefit record identities and scopes, but its
+  dashboard captures and manual transcriptions are not activation-grade where
+  the newer Chronicle #213 source audit requires native publisher artifacts.
+- Confirmed the immutable boundary: Chronicle owns publisher facts and
+  provenance; Microcosm owns population construction, calibration/validation
+  selection, measured or latent flag inputs, and their population; PolicyEngine
+  consumes those inputs and owns take-up assignment, labor response, and Axiom
+  orchestration. Axiom may receive only exact public-document concepts, never
+  synthetic take-up concepts.
+- Merged authoritative main without conflict or duplicated commits. The merge
+  preserves both exact reviewed ancestries and makes #825's value-free
+  `MonetaryTargetProfile`, exact accounting basis, prepared-measure receipt,
+  and binding refusal rules available to the Belgium package.
+- Audited every reviewed Chronicle #212 GRAPA and regional child-benefit row.
+  The exact person-unit mappings that can be declared are scheme/statistical-
+  scope mappings, never NUTS proxies: Opgroeien basic-amount children;
+  Iriscare entitled children and payment recipients; Ostbelgien paid children
+  and payment recipients; and the four Walloon child partitions. Publisher
+  family/household units remain unmapped because equivalence to a SILC
+  household is not established. Every declared person mapping must remain
+  blocked until Microcosm populates the exact measured or latent status flag.
+- Audited the broader Belgian fact catalog. PIT 2023 is exact but mismatched to
+  SILC-2023's 2022 income reference; ONEM 2024 is a monthly-average recipient
+  stock without a matching population flag or period; the merged SFPD pension
+  package labels a January snapshot as calendar-year 2025; and ONSS explicitly
+  calls its current Axiom Article-17 mapping approximate. None may silently
+  activate. NBB national accounts, Eurostat, EUROMOD, FPB/BFP, and constructed
+  comparisons are validation-only.
+- Confirmed that no reviewed Chronicle branch contains an official, pinned
+  NBB/ECB HFCS fact. The preserved object is only an offline-fetch handoff, so
+  wealth stays blocked pending a checksummed workbook ingest and exact
+  interview-period/support mapping.
+
+## Next
+
+- Verify the source-readiness changes and regenerated Belgium golden, commit,
+  normal-fast-forward the existing `be-benefit-participation-targets` branch,
+  update only draft #824, and freeze its exact head for Fable review. Never
+  open a duplicate, mark ready, merge, publish, or run a restricted build.
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
