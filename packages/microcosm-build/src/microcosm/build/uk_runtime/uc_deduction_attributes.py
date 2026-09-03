@@ -1,4 +1,13 @@
-"""Late UK Universal Credit deduction-attribute assignment stage."""
+"""Late UK Universal Credit deduction-attribute assignment stage.
+
+The two persisted draw columns are microcosm's identity-keyed uniforms (the
+E4 primitive: blake2b over ``seed:salt:benunit_id``), not PolicyEngine-UK's
+own fallback hash (``splitmix64_uniform(benunit_id, salt)``). The engine reads
+the persisted columns when a dataset carries them and only hashes when it
+does not, so the two never need to agree; what the design does rest on is the
+draw columns staying on the export surface, which the allow-list and
+``test_uk_uc_deduction_attributes.py`` pin.
+"""
 
 from __future__ import annotations
 
@@ -178,6 +187,10 @@ def assign_uc_deduction_attributes(
         )
 
     ids = benunit["benunit_id"].to_numpy()
+    # Identity-keyed blake2b uniforms, rounded to the engine's float32 input
+    # contract. These are not the engine's splitmix64 fallback draws: the
+    # engine reads these persisted columns and derives the same flag, rate and
+    # combination from them (module docstring).
     incidence_draws = _identity_float32_uniforms(
         ids,
         seed=UK_UC_DEDUCTION_ATTRIBUTES_DECLARED_SEEDS["uc_deduction_random_draw"],

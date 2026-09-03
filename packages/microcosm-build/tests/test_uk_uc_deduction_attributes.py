@@ -297,10 +297,20 @@ def test_stage_receipt_passes_latent_attribute_health_gate() -> None:
 def test_engine_golden_mirror_on_held_float32_draws() -> None:
     policyengine_uk = pytest.importorskip("policyengine_uk")
     resource = load_uc_deduction_distributions()
+    # Every real region factor is exercised against the engine: 1,024 units
+    # cycle through the twelve UK regions (~85 each). UNKNOWN is left to the
+    # hermetic mapping test: the engine cannot uprate rents for a household
+    # without a region (no private_rental_prices.UNKNOWN parameter), so it
+    # cannot host a simulation, while its factor of 1.0 is exercised in the
+    # stage's own mapping.
+    engine_regions = tuple(sorted(UC_DEDUCTION_REGIONS - {"UNKNOWN"}))
     assigned = UKUCDeductionAttributesStageTransform(stage=_stage(), resource=resource)(
-        _frame(256, region_names=("LONDON",))
+        _frame(1024, region_names=engine_regions)
     )
     assigned_benunit = assigned.table("benunit")
+    assert set(
+        assigned.table("household")["region"].map(lambda v: str(getattr(v, "name", v)))
+    ) == set(engine_regions)
     fallback_benunit = assigned_benunit.drop(
         columns=["uc_latent_deduction_rate", "uc_deduction_combination"]
     )
@@ -333,3 +343,41 @@ def test_engine_golden_mirror_on_held_float32_draws() -> None:
         engine_combination,
         assigned_benunit["uc_deduction_combination"].to_numpy(),
     )
+
+
+def _engine_splitmix64_uniform(ids: np.ndarray, salt: int = 0) -> np.ndarray:
+    """PolicyEngine-UK's fallback draw (``utils/stochastic.py`` at 2.92.1), inlined."""
+
+    with np.errstate(over="ignore"):
+        z = ids.astype(np.uint64) + np.uint64(salt) * np.uint64(0x632BE59BD9B4E019)
+        z = z + np.uint64(0x9E3779B97F4A7C15)
+        z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        z = z ^ (z >> np.uint64(31))
+    draws = (z >> np.uint64(11)).astype(np.float64) / 2.0**53
+    return np.minimum(draws, 1.0 - 2.0**-24)
+
+
+def test_persisted_draws_are_not_the_engine_fallback_and_stay_exported() -> None:
+    """The engine reads the persisted draws; it does not recompute them.
+
+    microcosm's draws are identity-keyed blake2b uniforms, the engine's fallback
+    is splitmix64 of ``benunit_id``: they agree on essentially no row, which is
+    fine only because the engine consumes the persisted columns. The design
+    therefore rests on the two draw columns staying on the export surface, so
+    that is pinned here alongside the divergence.
+    """
+
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    )
+
+    ids = np.arange(1, 4097, dtype=np.int64)
+    ours = _identity_float32_uniforms(ids, seed=0, salt="uc_deduction_random_draw")
+    engine_fallback = _engine_splitmix64_uniform(ids, salt=0)
+    agreement = np.mean(np.isclose(ours, engine_fallback, atol=1e-6))
+    assert agreement < 1e-3, agreement
+
+    for column in ("uc_deduction_random_draw", "uc_deduction_type_random_draw"):
+        assert f"benunit.{column}" in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+        assert column in _stage().outputs

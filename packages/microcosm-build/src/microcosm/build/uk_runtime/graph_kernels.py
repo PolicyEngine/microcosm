@@ -300,7 +300,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 27-stage spine "
+            "UK parity fixture must describe the current 28-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages

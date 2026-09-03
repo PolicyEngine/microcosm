@@ -444,7 +444,7 @@ def test_latent_attribute_realization_fails_beyond_the_declared_tolerance() -> N
 
 
 def test_latent_attribute_realization_caps_a_widened_producer_tolerance() -> None:
-    # 1,000 rows at a 0.5 share give a three-sigma band of ~0.047; a producer
+    # 1,000 rows at a 0.5 share give a four-sigma band of ~0.063; a producer
     # that declares 1.0 must not widen the pass rule.
     evidence = _latent_receipt()
     evidence["incidence_by_region"]["LONDON"].update(

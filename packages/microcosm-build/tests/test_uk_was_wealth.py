@@ -529,3 +529,61 @@ def test_segment_seeds_are_distinct_and_deterministic() -> None:
     assert seeds == module.was_wealth_segment_seeds(0)
     assert seeds != module.was_wealth_segment_seeds(1)
     assert all(isinstance(seed, int) for seed in seeds)
+
+
+def test_debt_segment_leaves_the_fourteen_e5_columns_byte_equal() -> None:
+    """The fourth chain segment cannot move the first three segments' draws.
+
+    Runs the real chain on the hermetic H2 fixture donor twice, stopping after
+    the third segment and after the fourth, and asserts the fourteen E5
+    columns are identical: the debt segment draws from the fourth child seed
+    and only appends columns.
+    """
+
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_DEBT_OUTPUT_COLUMNS,
+        UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        UK_WAS_WEALTH_PREDICTORS,
+        clean_was_household_table,
+        impute_was_wealth,
+    )
+    from tools.graph_uk_spine_fixture import _was_donor
+
+    donor = clean_was_household_table(_was_donor())
+    rng = np.random.default_rng(685)
+    n = 48
+    regions = np.resize(
+        np.asarray(["LONDON", "SCOTLAND", "WALES", "NORTH_EAST", "SOUTH_WEST"]), n
+    )
+    recipient = pd.DataFrame(
+        {
+            "household_net_income": rng.uniform(5_000, 90_000, n),
+            "num_adults": rng.integers(1, 4, n),
+            "num_children": rng.integers(0, 3, n),
+            "private_pension_income": rng.uniform(0, 20_000, n),
+            "employment_income": rng.uniform(0, 60_000, n),
+            "self_employment_income": rng.uniform(0, 10_000, n),
+            "capital_income": rng.uniform(0, 5_000, n),
+            "num_bedrooms": rng.integers(1, 6, n),
+            "council_tax": rng.uniform(800, 3_000, n),
+            "is_renting": rng.random(n) < 0.35,
+            "region": regions,
+            "has_mortgage_tenure": rng.random(n) < 0.3,
+        }
+    )
+    assert list(recipient.columns[:11]) == list(UK_WAS_WEALTH_PREDICTORS)
+
+    three = impute_was_wealth(donor, recipient, seed=0, n_estimators=2, segments=3)
+    four = impute_was_wealth(donor, recipient, seed=0, n_estimators=2, segments=4)
+
+    e5_columns = [
+        column
+        for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
+        if column not in UK_WAS_DEBT_OUTPUT_COLUMNS
+    ]
+    assert list(three.draws.columns) == e5_columns
+    assert list(four.draws.columns) == list(UK_WAS_WEALTH_OUTPUT_COLUMNS)
+    pd.testing.assert_frame_equal(three.draws, four.draws.loc[:, e5_columns])
+    assert three.segment_seeds == four.segment_seeds
+    assert len(three.fit_weight_records) == len(e5_columns)
+    assert len(four.fit_weight_records) == len(UK_WAS_WEALTH_OUTPUT_COLUMNS)

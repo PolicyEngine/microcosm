@@ -153,6 +153,17 @@ _RAW_TO_CLEAN = {
     "DVPriRntR8": "private_rent_code",
     "CTAmtR8": "council_tax",
     "HFINWNTR8_Sum": "net_financial_wealth",
+    # WAS round-8 household derived variables (UKDS SN 7215, DOI
+    # 10.5255/UKDA-SN-7215-20; round-8 user guide and derived-variable
+    # specification). HMortGR8 is total outstanding mortgage debt on the
+    # household's property (uk-data#426's mortgage measure); HFINWNTR8_exSLC_Sum
+    # is net financial wealth excluding student loans, so gross less it is the
+    # non-student-loan financial liabilities used for consumer_debt; Ten1R8 is
+    # the tenure code (1 own outright, 2 buying with mortgage, 3 part own/part
+    # rent, 4 rent, 5 rent free, 6 other). The I1 audit on the pinned tab
+    # confirmed the tenure reading empirically: mortgage debt is positive in
+    # 99.9% of code-2 and 100% of code-3 rows against 6.9% / 2.4% / 10.8% for
+    # codes 1 / 4 / 5 (experiments/685-net-new-stages-receipts.md, Part A).
     "HFINWNTR8_exSLC_Sum": "net_financial_wealth_exsl",
     "HFINWR8_SUM": "gross_financial_wealth",
     "HMortGR8": "mortgage_debt",
@@ -431,16 +442,31 @@ def was_wealth_segment_seeds(seed: int, segments: int = 4) -> tuple[int, ...]:
     )
 
 
+UK_WAS_CHAIN_SEGMENTS = 4
+
+
 def impute_was_wealth(
     donor: pd.DataFrame,
     recipient_predictor_frame: pd.DataFrame,
     *,
     seed: int,
     n_estimators: int,
+    segments: int = UK_WAS_CHAIN_SEGMENTS,
 ) -> UKWASWealthImputationResult:
-    """Fit segmented checkpointed QRF chains and draw WAS wealth outputs."""
+    """Fit segmented checkpointed QRF chains and draw WAS wealth outputs.
+
+    ``segments`` runs only the first *k* chain segments (a test seam: the
+    fourth, debt, segment draws from the fourth child seed, so the first three
+    segments' draws are identical whether or not it runs, and the E5 columns
+    stay byte-equal by construction).
+    """
 
     from microcosm.fit import RegimeGatedQRF
+
+    if not 1 <= int(segments) <= UK_WAS_CHAIN_SEGMENTS:
+        raise ValueError(
+            f"segments must be between 1 and {UK_WAS_CHAIN_SEGMENTS}, got {segments!r}."
+        )
 
     donor_encoded, recipient_encoded, encoded_predictors = encode_qrf_predictor_pair(
         donor, recipient_predictor_frame
@@ -485,6 +511,8 @@ def impute_was_wealth(
 
     base = encoded_predictors
     run_segment(base, ("owned_land", "property_wealth"))
+    if segments == 1:
+        return _partial_result(raw, fit_records, segment_seeds)
     donor_encoded["corporate_wealth"] = donor_encoded["corporate_wealth"].astype(float)
     donor_encoded["private_pension_wealth"] = donor_encoded[
         "private_pension_wealth"
@@ -505,6 +533,8 @@ def impute_was_wealth(
     raw["corporate_wealth"] = (
         raw["corporate_wealth_excl_isa"] + raw["stocks_and_shares_isa"]
     )
+    if segments == 2:
+        return _partial_result(raw, fit_records, segment_seeds)
     recipient_encoded["private_pension_wealth"] = raw["private_pension_wealth"]
     recipient_encoded["corporate_wealth"] = raw["corporate_wealth"]
     # Downstream targets condition on both components, carrying the
@@ -529,6 +559,8 @@ def impute_was_wealth(
             "cash_isa",
         ),
     )
+    if segments == 3:
+        return _partial_result(raw, fit_records, segment_seeds)
     prior_outputs = tuple(
         column
         for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
@@ -542,6 +574,19 @@ def impute_was_wealth(
     )
     return UKWASWealthImputationResult(
         draws=raw.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS],
+        fit_weight_records=tuple(fit_records),
+        segment_seeds=segment_seeds,
+    )
+
+
+def _partial_result(
+    raw: pd.DataFrame,
+    fit_records: list[FitWeightRecord],
+    segment_seeds: tuple[int, ...],
+) -> UKWASWealthImputationResult:
+    produced = [column for column in UK_WAS_WEALTH_OUTPUT_COLUMNS if column in raw]
+    return UKWASWealthImputationResult(
+        draws=raw.loc[:, produced],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
     )
