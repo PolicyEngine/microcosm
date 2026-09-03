@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -1268,6 +1269,202 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
     return receipt
 
 
+def _rewrite_as_legacy_relocated_worker_pool(
+    manifest_path: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Re-sign the tiny fixture with the frozen schema-9 worker binding."""
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    primary = next(
+        row
+        for row in dag["execution"]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+    available = primary["available_input_receipts"]
+    config_receipt = available["tax_unit.@primary_puf_execution_config"]
+    config = config_receipt["binding"]
+    recorded_executable = (
+        "/Users/maxghenis/PolicyEngine/_worktrees/"
+        "microcosm-c26-build/.venv/bin/python"
+    )
+    try:
+        from microcosm.build.us_runtime import worker_identity
+    except ImportError:
+        live_legacy_worker = (
+            stacked_spine_module._late_primary_qrf_worker_execution_binding()
+        )
+        semantic_identity = {
+            "worker_module": {"name": live_legacy_worker["module"]},
+            "argv_template": [
+                "{python_interpreter}",
+                *live_legacy_worker["argv_template"][1:],
+            ],
+            "environment": live_legacy_worker["environment"],
+            "transitive_environment_code_sha256": "0" * 64,
+        }
+    else:
+        semantic_identity = worker_identity.primary_qrf_worker_semantic_identity(
+            uv_lock_sha256=(
+                "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
+            )
+        )
+    recorded_worker = {
+        "module": semantic_identity["worker_module"]["name"],
+        "argv_template": [
+            recorded_executable,
+            *semantic_identity["argv_template"][1:],
+        ],
+        "interpreter": {
+            "executable": recorded_executable,
+            "resolved_executable": str(Path(sys.executable).resolve()),
+            "implementation": sys.implementation.name,
+            "cache_tag": sys.implementation.cache_tag,
+            "version": list(sys.version_info[:3]),
+        },
+        "environment": semantic_identity["environment"],
+    }
+    config["schema_version"] = 4
+    config["qrf"]["worker_execution"] = recorded_worker
+    config_receipt["binding_sha256"] = _json_sha256(config)
+    config_receipt_sha256 = _json_sha256(config_receipt)
+
+    for declared_input in primary["declared_inputs"]:
+        evidence = declared_input["evidence"]
+        changed = False
+        for alternative in evidence["alternatives"]:
+            for column in alternative:
+                if (
+                    column["entity"] == "tax_unit"
+                    and column["column"] == "@primary_puf_execution_config"
+                ):
+                    column["content_sha256"] = config_receipt_sha256
+                    changed = True
+        if changed:
+            evidence["sha256"] = _json_sha256(
+                {"alternatives": evidence["alternatives"]}
+            )
+    primary["producer_receipt"]["primary_resource_receipts_sha256"] = (
+        _json_sha256(available)
+    )
+
+    schedule = dag["producer_schedule"]
+    schedule["schema_version"] = 16
+    schedule["execution_receipt_contract"]["version"] = 3
+    schedule["execution_receipt_contract"]["transition_authority"]["version"] = 1
+    schedule_payload = {
+        key: value
+        for key, value in schedule.items()
+        if key
+        not in {
+            "payload_sha256",
+            "producer_count",
+            "source_producer_count",
+            "transfer_group_count",
+            "transfer_target_count",
+            "status",
+        }
+    }
+    schedule["payload_sha256"] = _json_sha256(schedule_payload)
+    dag["post_puf_transfer"]["producer_schedule"] = json.loads(
+        json.dumps(schedule)
+    )
+    dag["version"] = 3
+    previous_sha256 = _json_sha256(
+        {
+            "receipt_schema_version": 3,
+            "producer_schedule_sha256": dag["producer_schedule"]["payload_sha256"],
+            "input_frame_sha256": dag["input_frame_sha256"],
+        }
+    )
+    for row in dag["execution"]:
+        row["input_surface_sha256"] = _json_sha256(row["declared_inputs"])
+        row["output_surface_sha256"] = _json_sha256(row["output_surface"])
+        row["producer_receipt_sha256"] = _json_sha256(row["producer_receipt"])
+        row["previous_execution_sha256"] = previous_sha256
+        row.pop("sha256", None)
+        row["sha256"] = _json_sha256(row)
+        previous_sha256 = row["sha256"]
+    dag["execution_chain_sha256"] = previous_sha256
+    dag.pop("sha256", None)
+    dag["sha256"] = _json_sha256(dag)
+    transition_authority = {
+        "authority_id": stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+        "version": 1,
+        "receipt_sha256": dag["sha256"],
+        "producer_schedule_sha256": dag["producer_schedule"]["payload_sha256"],
+        "input_frame_sha256": dag["input_frame_sha256"],
+        "output_frame_sha256": dag["output_frame_sha256"],
+        "execution_chain_sha256": dag["execution_chain_sha256"],
+    }
+    transition_authority["sha256"] = _json_sha256(transition_authority)
+    manifest["late_producer_transition_authority_sha256"] = transition_authority[
+        "sha256"
+    ]
+    manifest["schema_version"] = 9
+    manifest.pop("worker_execution_authentication", None)
+
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    diagnostics["schema_version"] = 9
+    diagnostics.pop("worker_execution_authentication", None)
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return recorded_worker, semantic_identity
+
+
+def _write_legacy_worker_attestation(
+    manifest_path: Path,
+    *,
+    recorded_worker: dict[str, object],
+    semantic_identity: dict[str, object],
+    sealed_pool_h5_sha256: str | None = None,
+) -> Path:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    attestation = {
+        "artifact_kind": "populace_us_worker_identity_compatibility_attestation",
+        "schema_version": 1,
+        "plan_signature": {
+            "gate": "owner-authorization:c27-root-cause:2026-09-03",
+            "plan_sha256": (
+                "0a3409cfe1560d56a78ecc9acf012abaeb32621af278d745b674ebf1bee32cf6"
+            ),
+            "prompt_sha256": (
+                "9c1e4508f24d0915c1f3a2942723d3c219c990679227c7d0a315295d5e76efa2"
+            ),
+            "checklist_sha256": (
+                "5ee1f5fb40387cb690c2e85b32b6bd5abed78200f367c253e517a3917c417238"
+            ),
+            "evidence_sha256": (
+                "85345eae623d0081354d746a118c9dc5ddaa89a641238e546d8c8e9f7aabbb44"
+            ),
+        },
+        "purpose": "scoring_only",
+        "sealed_manifest_sha256": _sha256(manifest_path),
+        "sealed_pool_h5_sha256": (
+            sealed_pool_h5_sha256 or manifest["pool_h5"]["sha256"]
+        ),
+        "campaign_tree_sha": "1" * 40,
+        "uv_lock_sha256": (
+            "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
+        ),
+        "installed_transitive_environment_code_sha256": semantic_identity[
+            "transitive_environment_code_sha256"
+        ],
+        "recorded_worker_execution": recorded_worker,
+        "semantic_identity": semantic_identity,
+        "semantic_identity_sha256": _json_sha256(semantic_identity),
+        "permitted_mismatches": [
+            "argv_template[0]",
+            "interpreter.executable",
+        ],
+    }
+    attestation_path = manifest_path.with_name("worker-identity-attestation.json")
+    attestation_path.write_text(json.dumps(attestation), encoding="utf-8")
+    return attestation_path
+
+
 def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1753,6 +1950,105 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         ],
         "verdict": loaded_manifest["agreement_gate"],
     }
+
+
+def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    manifest_sha256 = _sha256(manifest_path)
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="requires.*compatibility attestation"):
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+
+    frame, manifest, authenticated = (
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=manifest_sha256,
+            worker_identity_attestation=attestation_path,
+        )
+    )
+
+    expected_authentication = {
+        "manifest_schema_version": 9,
+        "execution_config_schema_version": 4,
+        "worker_execution_schema_version": 0,
+        "semantic_identity_sha256": _json_sha256(semantic_identity),
+        "audit_aliases": {
+            "sys_executable": recorded_worker["interpreter"]["executable"],
+            "argv_template_0": recorded_worker["argv_template"][0],
+        },
+        "compatibility_attestation_sha256": _sha256(attestation_path),
+        "purpose": "scoring_only",
+    }
+    assert frame.n("household") == 3
+    assert manifest["status"] == "gate_failed"
+    assert manifest["simulation_ready"] is False
+    assert authenticated.sha256 == manifest["pool_h5"]["sha256"]
+    assert authenticated.manifest_sha256 == manifest_sha256
+    assert manifest["worker_execution_authentication"] == expected_authentication
+    assert authenticated.worker_execution_authentication == expected_authentication
+
+
+def test_scoring_loader_rejects_mismatched_legacy_worker_attestation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+        sealed_pool_h5_sha256="f" * 64,
+    )
+
+    with pytest.raises(ValueError, match="attestation.*H5|H5.*attestation"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            worker_identity_attestation=attestation_path,
+        )
+
+
+def test_release_loader_ignores_legacy_worker_attestation_and_refuses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="unsupported artifact binding"):
+        load_authenticated_us_multispine_pool_for_release(
+            manifest_path,
+            allow_terminal_gate_failure=True,
+        )
 
 
 def test_denied_gate_failed_pool_is_available_only_for_scoring(
