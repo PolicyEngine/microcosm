@@ -526,6 +526,8 @@ class ExpandEntrantPerson(ToyKernel):
     incumbent person as well, and ``labels_copied`` also copies the
     template person to a second new id and labels that copy, which takes
     its stratum from lineage and may not be labelled.
+    ``mutates_copied_income`` instead labels only the entrant but changes the
+    copied person's carried income to exercise the copy-invariance guard.
     """
 
     def compute(self, context: KernelContext) -> KernelResult:
@@ -535,13 +537,17 @@ class ExpandEntrantPerson(ToyKernel):
         entrant_id = int(person_ids.max()) + 1
         mode = str(context.params.get("strata_mode", "ok"))
         copy_id = entrant_id + 1
-        added_ids = [entrant_id, copy_id] if mode == "labels_copied" else [entrant_id]
+        copies_person = mode in {"labels_copied", "mutates_copied_income"}
+        added_ids = [entrant_id, copy_id] if copies_person else [entrant_id]
         target_ids = person_ids.append(
             pd.Index(added_ids, dtype="int64", name="person_id")
         )
 
         def overlay(column: str, dtype: str, value: object) -> pd.Series:
-            added = [value] + ([template[column]] if mode == "labels_copied" else [])
+            copied_value = template[column]
+            if mode == "mutates_copied_income" and column == "income":
+                copied_value = float(copied_value) + 1.0
+            added = [value] + ([copied_value] if copies_person else [])
             values = pd.concat(
                 [person[column].reset_index(drop=True), pd.Series(added)],
                 ignore_index=True,
@@ -565,6 +571,7 @@ class ExpandEntrantPerson(ToyKernel):
             "unknown_id": [entrant_id + 1],
             "labels_incumbent": [int(person_ids[0]), entrant_id],
             "labels_copied": [entrant_id, copy_id],
+            "mutates_copied_income": [entrant_id],
         }
         strata = (
             None
@@ -585,7 +592,7 @@ class ExpandEntrantPerson(ToyKernel):
             for entity in ("household", "release")
         }
         household_weights = context.weights["household"]
-        lineage = [pd.NA] + ([int(person_ids[0])] if mode == "labels_copied" else [])
+        lineage = [pd.NA] + ([int(person_ids[0])] if copies_person else [])
         return KernelResult(
             expand={
                 "person": pd.Series(

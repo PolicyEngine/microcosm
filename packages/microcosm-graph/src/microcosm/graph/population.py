@@ -779,6 +779,73 @@ def _validate_expand_lineage(
     return validated
 
 
+def _assert_copied_expand_storage(
+    before: Frame,
+    after: Frame,
+    node: Node,
+    lineage: Mapping[str, pd.Series],
+) -> None:
+    """Require copied additions to retain every carried data cell exactly."""
+
+    person = before.schema.person_entity
+    rewrites = {(owned.entity, owned.column) for owned in node.outputs if owned.rewrite}
+    for entity in before.entities:
+        entity_lineage = lineage[entity]
+        copied = ~entity_lineage.isna().to_numpy(dtype=np.bool_, copy=False)
+        if not copied.any():
+            continue
+
+        id_column = before.schema.entity_id_column(entity)
+        structural = {id_column}
+        if entity == person:
+            structural.update(
+                before.schema.membership_column(group)
+                for group in before.schema.group_entities
+            )
+        before_table = before.table(entity)
+        after_table = after.table(entity)
+        before_ids = pd.Index(before_table[id_column], name=id_column)
+        after_ids = pd.Index(after_table[id_column], name=id_column)
+        copied_lineage = entity_lineage.iloc[np.flatnonzero(copied)]
+        source_ids = copied_lineage.tolist()
+        target_ids = copied_lineage.index.tolist()
+        source_positions = before_ids.get_indexer(source_ids)
+        target_positions = after_ids.get_indexer(target_ids)
+        if (source_positions < 0).any() or (target_positions < 0).any():
+            raise PopulationError(
+                f"EXPAND node {node.id!r} cannot align copied {entity!r} rows."
+            )
+
+        for column in before_table.columns:
+            column = str(column)
+            if column in structural or (entity, column) in rewrites:
+                continue
+            copied_pairs = list(zip(target_ids, source_ids, strict=True))
+            if column not in after_table:
+                mismatches = copied_pairs[:5]
+            else:
+                source_values = (
+                    before_table[column].iloc[source_positions].reset_index(drop=True)
+                )
+                target_values = (
+                    after_table[column].iloc[target_positions].reset_index(drop=True)
+                )
+                if storage_equal(source_values, target_values):
+                    continue
+                mismatches = [
+                    pair
+                    for position, pair in enumerate(copied_pairs)
+                    if not storage_equal(
+                        source_values.iloc[[position]].reset_index(drop=True),
+                        target_values.iloc[[position]].reset_index(drop=True),
+                    )
+                ][:5]
+            raise PopulationError(
+                f"EXPAND node {node.id!r} changed carried storage in "
+                f"{entity}.{column} for copied target/source ids {mismatches}."
+            )
+
+
 def restore_cached_expand(
     population: Population,
     node: Node,
@@ -811,6 +878,7 @@ def restore_cached_expand(
     lineage = _validate_expand_lineage(
         population.frame, node, receipt_lineage, after=frame
     )
+    _assert_copied_expand_storage(population.frame, frame, node, lineage)
     _assert_cached_expand_strata(population.frame, frame, node, lineage, result.receipt)
     _assert_expand_weights(population, frame, node, result)
 
@@ -1369,6 +1437,7 @@ def _patch_expand(
         mass_log=before.mass_log,
         metadata=before.metadata,
     )
+    _assert_copied_expand_storage(before, frame, node, lineage)
     owners = {
         (entity, str(column)): node.id
         for entity in frame.entities

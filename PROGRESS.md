@@ -2,8 +2,8 @@
 
 ## State
 
-F2 and F3 are implemented and focused-green; F4 is next. Work remains in progress on
-branch `fix-847-r2`, based exactly on dispatched head
+F2 through F4 are implemented and focused-green; F5 is next. Work remains in
+progress on branch `fix-847-r2`, based exactly on dispatched head
 `142cb0c0e7d2f982c9ed61a2fc93a653ebb1619f`. The required fetch was attempted
 first and failed because the mandated no-network environment cannot resolve
 GitHub; the local `origin/graph-amendments-11-13` ref matches the dispatched
@@ -48,10 +48,18 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Captured all four F3 regression cases red, then passed the parametrized
   producer/EXPAND/claimant test, partition and masked-writer tests, stale-cache
   migration test, full executor suite, and C5 acceptance suite (46 tests).
+- F4: added a shared cold/cache EXPAND validator requiring every copied row to
+  retain its source's storage exactly across carried data columns; errors name
+  the coordinate and copied target/source ids. Structural identifiers and
+  memberships retain their declared EXPAND remapping semantics.
+- Captured both F4 regressions red (`DID NOT RAISE`), then passed the mixed
+  entrant/copy toy test and cached-frame tamper test. The complete population,
+  executor, and B-ownership suites pass together (85 tests), with focused Ruff
+  and formatting checks green.
 
 ## Next
 
-- Implement and regression-test F4, F5, F7, and F10 as one commit per
+- Implement and regression-test F5, F7, and F10 as one commit per
   finding, maintaining this journal after each coherent step.
 - Run the full requested verification matrix and write `out.md`.
 
