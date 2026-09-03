@@ -617,6 +617,113 @@ def test_expand_rejects_repointed_copied_membership(target: int, cached: bool) -
     assert f"household id {target}" in message
 
 
+def _entrant_to_copied_group_result(entrant_group: int) -> KernelResult:
+    frame = _frame()
+    person = frame.table("person")
+    person_ids = pd.Index([1, 2, 3, 4, 5, 6, 7], name="person_id", dtype="int64")
+    additions = {
+        "person_household_id": (40, 40, entrant_group),
+        "keep": (True, True, True),
+        "owned": (False, True, False),
+        "nullable": (True, False, pd.NA),
+        "amount": (-0.0, 1.0, 3.0),
+    }
+    tokens = {column: token_for_dtype(person[column].dtype) for column in additions}
+    return KernelResult(
+        expand={
+            "person": pd.Series(
+                [1, 2, pd.NA],
+                index=pd.Index([5, 6, 7], name="person_id", dtype="int64"),
+                dtype="Int64",
+            ),
+            "household": pd.Series(
+                [10],
+                index=pd.Index([40], name="household_id", dtype="int64"),
+                dtype="int64",
+            ),
+        },
+        columns={
+            ("person", column): pd.Series(
+                pd.array([*person[column], *values], dtype=tokens[column]),
+                index=person_ids,
+            )
+            for column, values in additions.items()
+        },
+        weights=Weights(
+            np.array([1.0, 2.0, 3.0, 1.0], dtype=np.float64),
+            WeightKind.DESIGN,
+        ),
+        strata=pd.Series(
+            ["entrant"],
+            index=pd.Index([7], name="person_id", dtype="int64"),
+            dtype=object,
+        ),
+    )
+
+
+@pytest.mark.parametrize("cached", [False, True], ids=("cold", "cached"))
+def test_expand_rejects_entrant_membership_to_copied_group(cached: bool) -> None:
+    population = _population()
+    node = Node(
+        "entrant_membership",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base="source",
+        params={
+            "expand_cells": tuple(
+                (
+                    "person",
+                    column,
+                    token_for_dtype(_frame().table("person")[column].dtype),
+                )
+                for column in (
+                    "person_household_id",
+                    "keep",
+                    "owned",
+                    "nullable",
+                    "amount",
+                )
+            ),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+    result = _entrant_to_copied_group_result(40)
+    if cached:
+        legal = _entrant_to_copied_group_result(10)
+        expanded = patch(population, node, legal)
+        person = expanded.frame.table("person").copy()
+        person.loc[person["person_id"] == 7, "person_household_id"] = 40
+        assert legal.expand is not None
+        result = KernelResult(
+            frame=_replace_person_table(expanded.frame, person, expanded.frame.strata),
+            weights=legal.weights,
+            receipt={
+                "expand": expand_lineage_receipt(legal.expand),
+                "entrant_strata": entrant_strata_receipt(
+                    population.frame,
+                    node,
+                    legal.expand,
+                    legal.strata,
+                ),
+            },
+        )
+
+    with pytest.raises(PopulationError) as error:
+        if cached:
+            restore_cached_expand(population, node, result)
+        else:
+            patch(population, node, result)
+
+    message = str(error.value)
+    assert "entrant_membership" in message
+    assert "person.person_household_id" in message
+    assert "entrant person id 7" in message
+    assert "copied household id 40" in message
+
+
 def _entrant_person_expand_node(*, membership_dtype: str = "int64") -> Node:
     return Node(
         "entrant_person",
