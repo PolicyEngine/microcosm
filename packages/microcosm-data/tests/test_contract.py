@@ -170,6 +170,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
+    "uk_stage_uc_deduction_attributes": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
@@ -213,7 +218,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
-    "uk_stage_age_tail_targets": ("stage_health", "transferred", None),
+    "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -253,6 +258,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_uc_deduction_combination_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
     "uk_student_loan_plan_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1150,6 +1160,8 @@ def _gate_battery_payload(
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "uc_capital_coherence",
+        "uc_deduction_attributes",
         "cgt_incidence_clone",
         "cgt_band_donors",
         "hmrc_cgt_gains_spine",
@@ -1159,6 +1171,7 @@ def _gate_battery_payload(
     ]
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
+        "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
@@ -5437,3 +5450,37 @@ def test_national_release_id_requires_the_certification() -> None:
     assert "release_certification.json" not in required_release_files(
         "dev-757-rebind-proof"
     )
+
+
+def test_a_release_built_from_a_denied_pool_cannot_be_published(monkeypatch) -> None:
+    """The publisher never loads an H5, so it must consult the deny-list itself."""
+    from microcosm.data import contract as contract_module
+    from microcosm.data import denied_pools
+
+    denied = denied_pools.DeniedPoolPublication(
+        manifest_sha256="0" * 64,
+        pool_h5_sha256="1" * 64,
+        content_identity_sha256="2" * 64,
+        release_id="fixture-release",
+        reason="fixture pool is excluded",
+        reference="microcosm#856; fixture-plan-gate",
+    )
+    monkeypatch.setattr(
+        denied_pools, "DENIED_POOL_PUBLICATIONS", {"denied-run": denied}, raising=False
+    )
+    for identity in (
+        {"publication_run_id": "denied-run"},
+        {"publication_run_id": "other", "manifest_sha256": "0" * 64},
+        {"publication_run_id": "other", "pool_h5_sha256": "1" * 64},
+        {"publication_run_id": "other", "content_identity_sha256": "2" * 64},
+    ):
+        manifest = _build_manifest()
+        manifest["base_pool"] = {"status": "gate_failed", **identity}
+        failures: list[str] = []
+        contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
+        assert any("denied publication 'denied-run'" in f for f in failures), identity
+    manifest = _build_manifest()
+    manifest["base_pool"] = {"status": "simulation_ready", "publication_run_id": "fine"}
+    failures = []
+    contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
+    assert not any("denied" in f for f in failures)
