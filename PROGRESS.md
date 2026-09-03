@@ -16,10 +16,13 @@ head. Work is isolated in `/private/tmp/microcosm-fix-847-r2`.
 - Created the isolated worktree and branch at the dispatched commit.
 - Recorded the six ruled findings, frozen-file constraints, per-finding commit
   boundary, and required final verification/reporting contract.
+- Completed the exact locked all-package US+UK sync offline using the populated
+  `/private/tmp/microcosm-impl-uv-cache` after the requested fresh cache proved
+  empty, and verified `inspect.getfile(microcosm.graph)` resolves inside this
+  worktree.
 
 ## Next
 
-- Sync and verify the worktree-local environment.
 - Read the charter, graph implementation files, acceptance tests, and toy
   fixtures before editing.
 - Implement and regression-test F2, F3, F4, F5, F7, and F10 as one commit per
