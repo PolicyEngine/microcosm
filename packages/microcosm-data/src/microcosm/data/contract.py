@@ -376,13 +376,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "9d4f1d5bdcf803bc718eeb27a3cae58730b3a7933eb8b417306c52234775651d"
+    "f7e2cf43fc2dd18a3d1add2965bb67e4faf21299678838ee0ac43694bb498a34"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a59a9308811298813fb5b92ae0c13ba50939c5e206b47a64e94d2ec5897087b3"
+    "a787221b57af1c0d8c653ee652597fe3f79d5ff3ba8c58f6c16ee7a3ce755ea8"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "306dabe4a310a8bf0a50f95e00c393e79e64fb723d6830328dd92a553044552e"
+    "b7fa1a0e7d242f474ac5746de0f0115a96b935dbbcce57f4cdbbc955d0f9a0b9"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -449,7 +449,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
-    "uk_stage_age_tail_targets": ("stage_health", "transferred"),
+    "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -650,10 +650,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "0f1d1102611c5115d403f0c5a6ac823adba207f20b47adbd40d2b226e8b73477"
+            "70a47a57039a236ae67df7d019fc7f8d43cbffab14a47d00a1e3e28dbc83a5a3"
         ),
         "policy_sha256": (
-            "861e665cdd6c6ad8bd599483139df3fe36df5a011c840f601a800a2fc0990355"
+            "21e6b68e013cfc33a5bf96e141c42fd6fb23a34a237ae71a9e5f806a958552c8"
         ),
     },
     "calibration_seam": {
