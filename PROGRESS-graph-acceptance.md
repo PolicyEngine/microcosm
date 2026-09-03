@@ -14,6 +14,15 @@ Two naming notes, both forced by the repository rather than chosen:
 
 ## State
 
+> Historical (2026-09-02): this journal describes the suite the day it was
+> written. The `node-graph` branch merged into `main` in #836 with all 37
+> executable charter properties (groups A–H, including the four incident
+> replays and H1–H3 parity) green: `tools/graph_acceptance_burndown.py`
+> reports 37/37 and no `xfail` marker remains. The visual properties V1–V4
+> are reviewed by hand, not by the burndown, and are not claimed here.
+> `docs/graph-acceptance.md` is the charter (the definition of done), not a
+> status page; for current state check git and GitHub.
+
 The suite is complete and red. `uv run pytest packages/microcosm-graph`
 reports **41 xfailed, 37 passed**: one strict `xfail` per charter property in
 groups A–H plus the four incident replays, and green guards that protect the
