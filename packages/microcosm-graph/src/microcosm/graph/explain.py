@@ -598,14 +598,16 @@ def _run_metadata(manifest: RunManifest) -> str:
     hits = sum(receipt.hit for receipt in manifest.nodes.values())
     try:
         tier = manifest.tier or "Not applicable"
+        manifest_key = manifest.key
     except ValueError:
         tier = "Invalid release evidence"
+        manifest_key = "Invalid manifest"
     decisions = ", ".join(decision.kind for decision in manifest.decisions) or "None"
     return (
         '<details class="metadata"><summary>Run metadata</summary>'
         '<dl class="detail-grid">'
         f"<dt>Country</dt><dd>{_escape(manifest.country)}</dd>"
-        f"<dt>Manifest key</dt><dd><code>{_escape(manifest.key)}</code></dd>"
+        f"<dt>Manifest key</dt><dd><code>{_escape(manifest_key)}</code></dd>"
         f"<dt>Tier</dt><dd>{_escape(tier)}</dd>"
         f"<dt>Nodes</dt><dd>{len(manifest.nodes)}</dd>"
         f"<dt>Store hits</dt><dd>{hits}</dd>"

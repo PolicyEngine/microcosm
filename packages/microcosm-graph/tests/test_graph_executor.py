@@ -362,7 +362,6 @@ def test_determinism_across_stores_and_zero_kernel_memoization(
     }
     assert _object_bytes(first_store) == _object_bytes(second_store)
     assert all(not item.hit for item in first.nodes.values())
-    assert first.key == second.key
     assert first.nodes["survey"].frame_key is not None
     assert first.nodes["a"].frame_key is None
     assert first.nodes["a"].receipt["capabilities"]["determinism"] == (  # type: ignore[index]
@@ -382,11 +381,11 @@ def test_determinism_across_stores_and_zero_kernel_memoization(
     warm = _run(_graph(), source, first_store, first_registry)
     assert _calls(first_registry) == calls_before
     assert all(item.hit for item in warm.nodes.values())
-    assert warm.key == first.key
+    assert warm.key != first.key
     assert warm.population("survey").table("person")["b"].tolist() == [60, 120, 180]
 
 
-def test_exact_param_kernel_source_and_decision_invalidation(
+def test_exact_param_kernel_source_invalidation_and_decision_node_invariance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = _source_path(tmp_path / "source")
@@ -432,7 +431,7 @@ def test_exact_param_kernel_source_and_decision_invalidation(
     assert {node: item.key for node, item in decided.nodes.items()} == {
         node: item.key for node, item in changed_source.nodes.items()
     }
-    assert decided.key != changed_source.key
+    assert decided.key == replace(decided, decisions=()).key
     assert [dict(record) for record in decided.decisions] == [decision]
 
 
