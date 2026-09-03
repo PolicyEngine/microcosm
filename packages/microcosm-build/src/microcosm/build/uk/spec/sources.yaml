@@ -29,7 +29,7 @@ stages:
     sha256: fa7871eb45cad0db5fd05ede454ced60405d2f9c598651ea5acea5c91a6ff52f
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-accounts
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: fa7871eb45cad0db5fd05ede454ced60405d2f9c598651ea5acea5c91a6ff52f
       filename: accounts.tab
@@ -48,7 +48,7 @@ stages:
     sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-adult
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
       filename: adult.tab
@@ -67,7 +67,7 @@ stages:
     sha256: f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-benefits
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3
       filename: benefits.tab
@@ -86,7 +86,7 @@ stages:
     sha256: 66b894624498316d19b6259e287a607e98ed3daacc9be3d3e9067d32b8e09a5a
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-benunit
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 66b894624498316d19b6259e287a607e98ed3daacc9be3d3e9067d32b8e09a5a
       filename: benunit.tab
@@ -105,7 +105,7 @@ stages:
     sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-child
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
       filename: child.tab
@@ -124,7 +124,7 @@ stages:
     sha256: 7ccd3f92f299a1f49b24063188177cdb8a958d8bcd753fc3d74dadda6ad04023
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-chldcare
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 7ccd3f92f299a1f49b24063188177cdb8a958d8bcd753fc3d74dadda6ad04023
       filename: chldcare.tab
@@ -143,7 +143,7 @@ stages:
     sha256: c661379a4aa5079ce482b1f98f0bfb9157ad9b3ba4eb10739b61846f9c9548e4
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-extchild
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: c661379a4aa5079ce482b1f98f0bfb9157ad9b3ba4eb10739b61846f9c9548e4
       filename: extchild.tab
@@ -162,7 +162,7 @@ stages:
     sha256: 2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-househol
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5
       filename: househol.tab
@@ -181,7 +181,7 @@ stages:
     sha256: eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-job
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2
       filename: job.tab
@@ -200,7 +200,7 @@ stages:
     sha256: e7a8d6f47cab7bf9db9bfd7b3ad5ebe5830ec75245d065dcf8654c7c20b97a7d
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-maint
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: e7a8d6f47cab7bf9db9bfd7b3ad5ebe5830ec75245d065dcf8654c7c20b97a7d
       filename: maint.tab
@@ -219,7 +219,7 @@ stages:
     sha256: 6a08f6846970dfdc544a7efc8a93fed4f3210d872cd2d160dfb14ca8d92d5ed0
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-mortgage
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 6a08f6846970dfdc544a7efc8a93fed4f3210d872cd2d160dfb14ca8d92d5ed0
       filename: mortgage.tab
@@ -238,7 +238,7 @@ stages:
     sha256: dfff1baf71a3de05f3a2fcf0c01a3995df5657f242cd7846aa61f6cc27a1cead
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-oddjob
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: dfff1baf71a3de05f3a2fcf0c01a3995df5657f242cd7846aa61f6cc27a1cead
       filename: oddjob.tab
@@ -257,7 +257,7 @@ stages:
     sha256: 9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-penprov
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1
       filename: penprov.tab
@@ -276,7 +276,7 @@ stages:
     sha256: 2b9be1eb6583cc8916fc06294be27e6217f2aea73da24b97b3226293f6a6ec24
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-pension
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 2b9be1eb6583cc8916fc06294be27e6217f2aea73da24b97b3226293f6a6ec24
       filename: pension.tab
@@ -433,7 +433,7 @@ stages:
     sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-adult
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
       filename: adult.tab
@@ -473,7 +473,7 @@ stages:
     sha256: 2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-househol
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5
       filename: househol.tab
@@ -537,7 +537,7 @@ stages:
     sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-adult
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
       filename: adult.tab
@@ -556,7 +556,7 @@ stages:
     sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-child
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
       filename: child.tab
@@ -610,7 +610,7 @@ stages:
     sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-adult
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
       filename: adult.tab
@@ -840,7 +840,7 @@ stages:
     sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
     chronicle_artifact:
       source_id: ons
-      package_id: ons-was-round-8-household
+      package_id: ons-was-round-8
       year: 2018
       sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
       filename: was_round_8_hhold_eul_may_2025_230525.tab
@@ -1016,7 +1016,7 @@ stages:
     sha256: 6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72
     chronicle_artifact:
       source_id: ons
-      package_id: ons-lcfs-2023-24-household
+      package_id: ons-lcfs-2023-24
       year: 2023
       sha256: 6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72
       filename: dvhh_ukanon_v2_2023.tab
@@ -1032,7 +1032,7 @@ stages:
     sha256: f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50
     chronicle_artifact:
       source_id: ons
-      package_id: ons-lcfs-2023-24-person
+      package_id: ons-lcfs-2023-24
       year: 2023
       sha256: f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50
       filename: dvper_ukanon_202324_2023.tab
@@ -1048,7 +1048,7 @@ stages:
     sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
     chronicle_artifact:
       source_id: ons
-      package_id: ons-was-round-8-household
+      package_id: ons-was-round-8
       year: 2018
       sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
       filename: was_round_8_hhold_eul_may_2025_230525.tab
@@ -1233,7 +1233,7 @@ stages:
     sha256: d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8
     chronicle_artifact:
       source_id: ons
-      package_id: ons-etb-1977-2024-household
+      package_id: ons-etb-1977-2024
       year: 1977
       sha256: d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8
       filename: householdv2_1977-2024.tab
@@ -1293,7 +1293,7 @@ stages:
     sha256: d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8
     chronicle_artifact:
       source_id: ons
-      package_id: ons-etb-1977-2024-household
+      package_id: ons-etb-1977-2024
       year: 1977
       sha256: d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8
       filename: householdv2_1977-2024.tab
@@ -1393,7 +1393,7 @@ stages:
     sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-adult
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
       filename: adult.tab
@@ -1412,7 +1412,7 @@ stages:
     sha256: f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3
     chronicle_artifact:
       source_id: dwp
-      package_id: dwp-frs-2024-25-benefits
+      package_id: dwp-frs-2024-25
       year: 2024
       sha256: f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3
       filename: benefits.tab

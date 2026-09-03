@@ -435,7 +435,7 @@ class TestFailClosedGate:
         message = str(error.value)
         assert message.count("adult.tab") >= 5  # every stage that reads it
         assert adult.sha256 in message
-        assert "dwp/dwp-frs-2024-25-adult" in message
+        assert "dwp/dwp-frs-2024-25" in message
 
 
 class TestRecordedPinCrossCheck:
