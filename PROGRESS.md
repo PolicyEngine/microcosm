@@ -72,9 +72,17 @@ before fixing them; commit each coherent step. No GitHub network or push.
 - Verified every forbidden path, docs/tools, and uv.lock is unchanged from
   `32ce6f51`; the standalone coverage proof is still running.
 
+- Standalone spec proof passed, direct exit 0: 42,154/42,154 configuration
+  fields and 41/41 inventory checks. No pins moved; the unchanged spec SHA is
+  `9db29b4d33424fbb21a83c63927c7de55ba9a333d631f6323935f67a496eee46`.
+- Seven required suites are complete (887 passes total, direct exit 0 each).
+  The focused worker rerun has passed 70/77 selected tests and is running the
+  real transfer-bank identity integration; no failure has been reported.
+
 ## Next
 
-- Finish the full focused worker rerun and standalone spec-pin proof.
+- Finish the full focused worker rerun, then close the journal and external
+  report with its direct exit code and complete counts.
 - Run the full required verification with direct exit codes; report counts,
   pin proof, commit SHAs, and deliberate scope exclusions.
 
