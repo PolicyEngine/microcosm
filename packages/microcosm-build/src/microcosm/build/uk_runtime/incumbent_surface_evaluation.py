@@ -19,6 +19,7 @@ this module owns the joins, the classification and the summaries.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from importlib import resources as importlib_resources
 from typing import Any
@@ -51,6 +52,37 @@ _AREA_TYPE_TO_LEVEL = {
     "local_authority": "local_authority",
 }
 _AREA_TYPE_TO_METRIC_GRAIN = {"constituency": "constituency", "local_authority": "la"}
+
+_ONS_REGION_AGE_RE = re.compile(
+    r"^ons/(?P<region>[a-z_]+)_age_(?P<lo>\d+)_(?P<hi>\d+)$"
+)
+_VOA_REGION_BAND_RE = re.compile(
+    r"^voa/council_tax/(?P<region>[A-Z_]+)/(?P<band>[A-H]|total)$"
+)
+# The incumbent's regional labels that differ from the FRS region enum.
+INCUMBENT_REGION_ALIASES: Mapping[str, str] = {
+    "EAST": "EAST_OF_ENGLAND",
+    "YORKSHIRE_AND_THE_HUMBER": "YORKSHIRE",
+}
+# GSS region codes as the row-wise artifact writes them (the devolved
+# nations carry the ladder's placeholder codes) -> FRS region enum names.
+GSS_REGION_CODES: Mapping[str, str] = {
+    "E12000001": "NORTH_EAST",
+    "E12000002": "NORTH_WEST",
+    "E12000003": "YORKSHIRE",
+    "E12000004": "EAST_MIDLANDS",
+    "E12000005": "WEST_MIDLANDS",
+    "E12000006": "EAST_OF_ENGLAND",
+    "E12000007": "LONDON",
+    "E12000008": "SOUTH_EAST",
+    "E12000009": "SOUTH_WEST",
+    "W92000004": "WALES",
+    "W99999999": "WALES",
+    "S92000003": "SCOTLAND",
+    "S99999999": "SCOTLAND",
+    "N92000002": "NORTHERN_IRELAND",
+    "N99999999": "NORTHERN_IRELAND",
+}
 
 
 def _resource_text(name: str) -> str:
@@ -301,6 +333,72 @@ def classify_local_rows(
             }
         )
     return _with_nullable_objects(pd.DataFrame(out), ("our_metric", "target_id"))
+
+
+def regional_rollup_estimates(
+    names: Iterable[str],
+    *,
+    household_region: pd.Series,
+    household_weight: pd.Series,
+    household_band: pd.Series,
+    person_household_id: pd.Series,
+    person_age: pd.Series,
+) -> dict[str, dict[str, Any]]:
+    """Measure the incumbent's regional rows by rolling the frame up by region.
+
+    ``ons/<region>_age_<lo>_<hi>`` rows count people in the closed age band;
+    ``voa/council_tax/<REGION>/<band|total>`` rows count households by
+    council-tax band (``total`` is every household in the region). The three
+    household series share the household-id index; the two person series are
+    positionally aligned. Names neither pattern recognises are ignored; a
+    region the frame does not carry is an error rather than a silent zero.
+    Returns ``name -> {"estimate", "rollup", "region"}``.
+    """
+    hh_region = household_region.astype(str)
+    hh_weight = household_weight.astype(float)
+    hh_band = household_band.astype(str)
+    known_regions = set(hh_region.unique())
+    p_ids = person_household_id.to_numpy()
+    p_region = hh_region.reindex(p_ids).to_numpy(dtype=object)
+    p_weight = hh_weight.reindex(p_ids).to_numpy(dtype=float)
+    if np.isnan(p_weight).any():
+        raise ValueError(
+            "person rows reference households missing from the household series."
+        )
+    age = person_age.to_numpy(dtype=float)
+    hh_region_values = hh_region.to_numpy(dtype=object)
+    hh_band_values = hh_band.to_numpy(dtype=object)
+    hh_weight_values = hh_weight.to_numpy(dtype=float)
+    out: dict[str, dict[str, Any]] = {}
+    for name in names:
+        match = _ONS_REGION_AGE_RE.match(name)
+        if match:
+            region = match["region"].upper()
+            region = INCUMBENT_REGION_ALIASES.get(region, region)
+            if region not in known_regions:
+                raise ValueError(f"{name}: region {region!r} is not on the frame.")
+            lo, hi = int(match["lo"]), int(match["hi"])
+            mask = (p_region == region) & (age >= lo) & (age <= hi)
+            out[name] = {
+                "estimate": float(p_weight[mask].sum()),
+                "rollup": "age_band_by_region",
+                "region": region,
+            }
+            continue
+        match = _VOA_REGION_BAND_RE.match(name)
+        if match:
+            region = INCUMBENT_REGION_ALIASES.get(match["region"], match["region"])
+            if region not in known_regions:
+                raise ValueError(f"{name}: region {region!r} is not on the frame.")
+            mask = hh_region_values == region
+            if match["band"] != "total":
+                mask = mask & (hh_band_values == match["band"])
+            out[name] = {
+                "estimate": float(hh_weight_values[mask].sum()),
+                "rollup": "council_tax_band_by_region",
+                "region": region,
+            }
+    return out
 
 
 def _relative_error(estimate: pd.Series, target: pd.Series) -> pd.Series:

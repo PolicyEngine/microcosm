@@ -15,6 +15,7 @@ merely fits badly — the point is to see the ugly part.
 from __future__ import annotations
 
 import argparse
+import collections
 import importlib.util
 import json
 import sys
@@ -28,6 +29,7 @@ import pandas as pd
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
+    GSS_REGION_CODES,
     classify_local_rows,
     classify_national_rows,
     evaluation_summary,
@@ -36,6 +38,7 @@ from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     load_uk_data_target_parity,
     match_national_rows,
     national_family_status,
+    regional_rollup_estimates,
     render_markdown,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
@@ -190,6 +193,61 @@ def main(argv=None) -> int:
         skipped.get(n) if isinstance(n, str) else None for n in national["our_name"]
     ]
 
+    print(
+        "rolling the frame up by region for the incumbent's regional rows ...",
+        file=sys.stderr,
+        flush=True,
+    )
+    household = frame.table("household")
+    person = frame.table("person")
+    hh_index = pd.Index(household["household_id"].to_numpy())
+    assigned_region = household["region_code"].astype(str).map(GSS_REGION_CODES)
+    if assigned_region.isna().any():
+        unknown = sorted(
+            household["region_code"].astype(str)[assigned_region.isna()].unique()
+        )
+        raise RuntimeError(f"unknown region codes on the household table: {unknown}")
+    region_agree = (
+        assigned_region.to_numpy() == household["region"].astype(str).to_numpy()
+    )
+    rollup = regional_rollup_estimates(
+        national["incumbent_name"].tolist(),
+        household_region=pd.Series(assigned_region.to_numpy(), index=hh_index),
+        household_weight=pd.Series(weights, index=hh_index),
+        household_band=pd.Series(
+            household["council_tax_band"].astype(str).to_numpy(), index=hh_index
+        ),
+        person_household_id=person["person_household_id"],
+        person_age=person["age"],
+    )
+    rollup_mask = national["candidate_estimate"].isna() & national[
+        "incumbent_name"
+    ].isin(rollup)
+    rolled = national.loc[rollup_mask, "incumbent_name"].tolist()
+    national.loc[rollup_mask, "candidate_estimate"] = [
+        rollup[n]["estimate"] for n in rolled
+    ]
+    national.loc[rollup_mask, "status"] = [
+        "rolled_up:" + rollup[n]["rollup"] for n in rolled
+    ]
+    national.loc[rollup_mask, "status_detail"] = (
+        "measured by rolling the frame up by assigned-area region; "
+        "not a target row on our side"
+    )
+    rollup_receipt = {
+        "rows": int(rollup_mask.sum()),
+        "region_source": (
+            "household.region_code (assigned area) mapped through GSS_REGION_CODES"
+        ),
+        "frs_region_agreement_share": float(region_agree.mean()),
+        "frs_region_agreement_weighted": float(
+            weights[region_agree].sum() / weights.sum()
+        ),
+        "by_rollup": dict(
+            collections.Counter(rollup[n]["rollup"] for n in rolled).most_common()
+        ),
+    }
+
     print("evaluating the local surface ...", file=sys.stderr, flush=True)
     household = frame.table("household")
     area_cols = {"constituency": "constituency_code", "la": "local_authority_code"}
@@ -208,7 +266,8 @@ def main(argv=None) -> int:
             for metric, value in row.items():
                 local_est[(area_type, str(area), str(metric))] = float(value)
     loc_fixture = load_incumbent_local_fixture()
-    target_ids = {metric: tid for tid, metric in _uk_local_metric_target_ids().items()}
+    # _uk_local_metric_target_ids already maps metric name -> target id.
+    target_ids = dict(_uk_local_metric_target_ids())
     unmapped_concern = {
         "housing/council_tax_net": ("blocked_source", "local_council_tax_net"),
         "housing/scotland_private_rent_amount": (
@@ -289,6 +348,7 @@ def main(argv=None) -> int:
             "local": loc_fixture.get("provenance"),
         },
         "measure_resolution": dict(resolution),
+        "regional_rollup": rollup_receipt,
         "summary": summary,
         "national_rows": national.replace({np.nan: None}).to_dict(orient="records"),
         "local_rows": local.replace({np.nan: None}).to_dict(orient="records"),

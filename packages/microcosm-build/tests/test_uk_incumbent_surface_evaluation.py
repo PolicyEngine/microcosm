@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
+    GSS_REGION_CODES,
     INCUMBENT_LOCAL_METRIC_ALIASES,
     classify_local_rows,
     classify_national_rows,
@@ -14,6 +16,7 @@ from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     load_uk_data_target_parity,
     match_national_rows,
     national_family_status,
+    regional_rollup_estimates,
     render_markdown,
 )
 
@@ -263,3 +266,68 @@ def test_summary_and_markdown_measure_only_what_has_an_estimate() -> None:
     text = render_markdown(summary, national, local)
     assert "The ugly part" in text and "| b | measure_excluded |" in text
     assert "Not measurable on our side: 1 national rows" in text
+
+
+def test_regional_rollup_measures_age_and_band_rows_by_region() -> None:
+    hh = pd.Index([1, 2, 3, 4])
+    region = pd.Series(["LONDON", "LONDON", "EAST_OF_ENGLAND", "YORKSHIRE"], index=hh)
+    weight = pd.Series([10.0, 20.0, 5.0, 7.0], index=hh)
+    band = pd.Series(["A", "H", "A", "D"], index=hh)
+    person_hh = pd.Series([1, 1, 2, 3, 4])
+    age = pd.Series([5, 40, 9, 89, 90])
+    out = regional_rollup_estimates(
+        [
+            "ons/london_age_0_9",
+            "ons/east_age_80_89",
+            "ons/yorkshire_and_the_humber_age_80_89",
+            "voa/council_tax/LONDON/A",
+            "voa/council_tax/LONDON/total",
+            "voa/council_tax/EAST_OF_ENGLAND/H",
+            "obr/income_tax",
+        ],
+        household_region=region,
+        household_weight=weight,
+        household_band=band,
+        person_household_id=person_hh,
+        person_age=age,
+    )
+    assert out["ons/london_age_0_9"] == {
+        "estimate": 30.0,
+        "rollup": "age_band_by_region",
+        "region": "LONDON",
+    }
+    assert out["ons/east_age_80_89"]["estimate"] == 5.0
+    assert out["ons/east_age_80_89"]["region"] == "EAST_OF_ENGLAND"
+    # The band is closed: age 90 is outside 80_89.
+    assert out["ons/yorkshire_and_the_humber_age_80_89"]["estimate"] == 0.0
+    assert out["voa/council_tax/LONDON/A"]["estimate"] == 10.0
+    assert out["voa/council_tax/LONDON/total"]["estimate"] == 30.0
+    assert out["voa/council_tax/LONDON/total"]["rollup"] == "council_tax_band_by_region"
+    assert out["voa/council_tax/EAST_OF_ENGLAND/H"]["estimate"] == 0.0
+    assert "obr/income_tax" not in out
+    with pytest.raises(ValueError, match="not on the frame"):
+        regional_rollup_estimates(
+            ["voa/council_tax/MARS/A"],
+            household_region=region,
+            household_weight=weight,
+            household_band=band,
+            person_household_id=person_hh,
+            person_age=age,
+        )
+
+
+def test_gss_region_codes_cover_the_artifact_placeholders() -> None:
+    assert GSS_REGION_CODES["E12000007"] == "LONDON"
+    assert GSS_REGION_CODES["N99999999"] == "NORTHERN_IRELAND"
+    assert GSS_REGION_CODES["W99999999"] == "WALES"
+    assert GSS_REGION_CODES["S99999999"] == "SCOTLAND"
+
+
+def test_local_metric_target_ids_map_metric_name_to_contract_id() -> None:
+    from microcosm.build.uk_runtime.ledger_targets import _uk_local_metric_target_ids
+
+    mapping = _uk_local_metric_target_ids()
+    # Direction matters: the evaluator looks our metric name up to find the
+    # contract id the membership register is keyed by.
+    assert mapping["council_tax/band_h"] == "voa.council_tax_stock.by_area.band_h"
+    assert mapping["uc_households"] == "dwp.uc.households_by_area"
