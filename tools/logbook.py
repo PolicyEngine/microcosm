@@ -7,8 +7,11 @@ exactly one named chain; ``validate`` and ``render`` accept either a single
 archive or a directory of them, reporting chain by chain.
 
 Remote export uses a distinct, read-only ``logbook_exporter`` JWT supplied
-as ``POPULACE_LEDGER_EXPORT_KEY`` plus the hosted project's gateway key in
-``POPULACE_LEDGER_API_KEY``.  It never reuses the insert-only writer key.
+as ``LOGBOOK_EXPORT_KEY`` plus the hosted project's gateway key in
+``LOGBOOK_API_KEY``.  It never reuses the insert-only writer key. The
+ledger-era spellings (``POPULACE_LEDGER_EXPORT_KEY``,
+``POPULACE_LEDGER_API_KEY``, ``POPULACE_LEDGER_URL``) stay honored for the
+Logbook dual-read window (microcosm#632) and warn once per process.
 The live store is row-oriented and carries every attempt across all scopes;
 the per-scope split is an archive convention, not a database partition.
 """
@@ -17,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -36,6 +38,16 @@ from microcosm.build.logbook import (
     render_markdown,
     urlopen,
 )
+from microcosm.build.logbook_env import (
+    LEGACY_API_KEY_ENV,
+    LEGACY_EXPORT_KEY_ENV,
+    LEGACY_URL_ENV,
+    LOGBOOK_API_KEY_ENV,
+    LOGBOOK_EXPORT_KEY_ENV,
+    LOGBOOK_URL_ENV,
+    describe_logbook_env,
+    logbook_env,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 #: Archives live at ``logbook/<country>/<scope>.jsonl`` — one hash chain per
@@ -46,8 +58,12 @@ ROOT = Path(__file__).resolve().parents[1]
 #: chain is born, and country is the outermost one.
 DEFAULT_ARCHIVE_ROOT = ROOT / "logbook"
 DEFAULT_SPOOL_ROOT = ROOT / "logbook-spool"
-REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
-REMOTE_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
+#: Ledger-era names, still honored through the Logbook dual-read window
+#: (microcosm#632). Reads go through
+#: :func:`microcosm.build.logbook_env.logbook_env`, which prefers
+#: ``LOGBOOK_EXPORT_KEY`` / ``LOGBOOK_API_KEY``.
+REMOTE_EXPORT_KEY_ENV = LEGACY_EXPORT_KEY_ENV
+REMOTE_API_KEY_ENV = LEGACY_API_KEY_ENV
 REMOTE_PAGE_SIZE = 500
 # Mirror of logbook.chain_scope() in
 # supabase/migrations/20260818000000_logbook_chain_scopes.sql. The legacy US
@@ -102,10 +118,16 @@ def _parser() -> argparse.ArgumentParser:
     source.add_argument(
         "--remote",
         action="store_true",
+        # The help text names the preferred Logbook spellings first and the
+        # ledger-era ones as the fallback they now are, so an operator
+        # reading --help configures the environment the dual-read window
+        # wants rather than the one it merely still tolerates.
         help=(
-            "Read the private live store using POPULACE_LEDGER_URL and the "
-            f"read-only {REMOTE_EXPORT_KEY_ENV}, authenticated at the gateway "
-            f"by {REMOTE_API_KEY_ENV}."
+            f"Read the private live store using {LOGBOOK_URL_ENV} and the "
+            f"read-only {LOGBOOK_EXPORT_KEY_ENV}, authenticated at the "
+            f"gateway by {LOGBOOK_API_KEY_ENV}. The ledger-era names "
+            f"({LEGACY_URL_ENV}, {REMOTE_EXPORT_KEY_ENV}, "
+            f"{REMOTE_API_KEY_ENV}) are still honored and warn once."
         ),
     )
 
@@ -243,13 +265,15 @@ def _archive_scope(archive: Path) -> str:
 
 
 def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
-    ledger_url = os.environ.get("POPULACE_LEDGER_URL")
-    export_key = os.environ.get(REMOTE_EXPORT_KEY_ENV)
-    api_key = os.environ.get(REMOTE_API_KEY_ENV)
+    ledger_url = logbook_env(LOGBOOK_URL_ENV)
+    export_key = logbook_env(LOGBOOK_EXPORT_KEY_ENV)
+    api_key = logbook_env(LOGBOOK_API_KEY_ENV)
     if not ledger_url or not export_key or not api_key:
         raise ValueError(
-            "remote export requires POPULACE_LEDGER_URL, "
-            f"{REMOTE_EXPORT_KEY_ENV}, and {REMOTE_API_KEY_ENV}"
+            "remote export requires "
+            + describe_logbook_env(
+                LOGBOOK_URL_ENV, LOGBOOK_EXPORT_KEY_ENV, LOGBOOK_API_KEY_ENV
+            )
         )
 
     rows: list[LogbookRow] = []
@@ -288,11 +312,7 @@ def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
                 )
             break
     wrong_scope = sorted(
-        {
-            row.pipeline
-            for row in rows
-            if _chain_scope(row.pipeline) != scope
-        }
+        {row.pipeline for row in rows if _chain_scope(row.pipeline) != scope}
     )
     if wrong_scope:
         raise ValueError(
