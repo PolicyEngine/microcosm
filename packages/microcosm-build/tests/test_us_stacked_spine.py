@@ -4584,6 +4584,44 @@ def test_worker_identity_refuses_unapproved_torch_backend_provider_before_import
         )
 
 
+def test_worker_identity_refuses_duplicate_backend_provider_distribution_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry_point = worker_identity_module.metadata.EntryPoint(
+        name="fixture_backend",
+        value="fixture_backend:register",
+        group="torch.backends",
+    )
+    distributions = tuple(
+        SimpleNamespace(
+            metadata={"Name": "fixture-torch-backend"},
+            version=version,
+            requires=(),
+            files=(),
+            entry_points=entry_points_for_distribution,
+        )
+        for version, entry_points_for_distribution in (
+            ("1.0", ()),
+            ("2.0", (entry_point,)),
+        )
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "distributions",
+        lambda: distributions,
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "packages_distributions",
+        lambda: {"fixture_backend": ["fixture-torch-backend"]},
+    )
+
+    with pytest.raises(RuntimeError, match="duplicate installed distribution identity"):
+        worker_identity_module._installed_distributions_record_sha256(
+            ("fixture_backend",)
+        )
+
+
 def test_worker_transitive_source_identity_binds_actual_imported_package_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4639,6 +4677,7 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
         "environment_code",
         "fit_jobs",
         "predict_workers",
+        "torch_backend_autoload",
     ),
 )
 def test_late_primary_worker_authentication_rejects_semantic_matrix(
@@ -4692,11 +4731,13 @@ def test_late_primary_worker_authentication_rejects_semantic_matrix(
         semantic["environment"]["semantic_controls"]["POPULACE_FIT_N_JOBS"][
             "resolved"
         ] = 1
-    else:
+    elif semantic_change == "predict_workers":
         predict = semantic["environment"]["semantic_controls"][
             "POPULACE_FIT_PREDICT_WORKERS"
         ]
         predict["resolved"] = int(predict["resolved"]) + 1
+    else:
+        semantic["environment"]["overrides"]["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "1"
     if refresh_environment_code:
         semantic["transitive_environment_code_sha256"] = (
             worker_identity_module._canonical_sha256(
@@ -4983,12 +5024,13 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     }
     environment = semantic["environment"]
     assert environment["policy"] == (
-        "inherit_parent_environment_with_bound_fit_controls"
+        "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"
     )
-    assert environment["overrides"] == {}
+    assert environment["overrides"] == {"TORCH_DEVICE_BACKEND_AUTOLOAD": "0"}
     assert environment["bound_names"] == [
         "POPULACE_FIT_N_JOBS",
         "POPULACE_FIT_PREDICT_WORKERS",
+        "TORCH_DEVICE_BACKEND_AUTOLOAD",
     ]
     assert environment["semantic_controls"] == {
         "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},

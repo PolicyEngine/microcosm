@@ -4,7 +4,8 @@
 
 In progress on 2026-09-04 on `f1-portable-worker-identity`, starting from
 `b26708a1`. All four Sol findings have fail-before reproductions. The schema-9
-envelope fix is focused green; the three worker-identity fixes remain.
+envelope and Torch backend-autoload fixes are focused green; the runtime/stdlib
+and real-resource closures remain.
 
 ## Done
 
@@ -38,11 +39,18 @@ envelope fix is focused green; the three worker-identity fixes remain.
   before any compatibility attestation is read or authenticated.
 - The valid schema-9 metadata-restoration case and the seven-case malformed
   envelope regression pass together (2 passed, exit 0).
+- Forced `TORCH_DEVICE_BACKEND_AUTOLOAD=0` in both the authenticated semantic
+  environment and every primary-QRF child launch, after caller overrides.
+- Enumerated and bound selected `torch.backends` entry-point metadata, refused
+  provider distributions outside the installed-code closure before clean
+  worker import, and refused duplicate canonical distribution identities so a
+  colliding provider cannot evade RECORD hashing.
+- Focused provider-refusal, duplicate-provider, launch-override, semantic
+  tamper, and legacy relocated-worker acceptance checks pass (exit 0 each).
 
 ## Next
 
-- Bind and force the Torch autoload policy, authenticate its entry-point group,
-  replace the manual resource list with a clean-import trace, and bind the
+- Replace the manual resource list with a clean-import trace, and bind the
   loaded runtime plus traced stdlib bytes.
 - Repin only identities that legitimately move, prove spec-engine pins remain
   fixed, then run the complete requested verification block.

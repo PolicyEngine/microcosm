@@ -97,6 +97,9 @@ _RAW_DRAW_BITS_DATASET = "raw_draw_bits"
 _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS = "require_complete_recipient_predictors"
 _ABSENT_CELLS = "absent_cells"
 _RECIPIENT_PREDICTOR_UNIVERSE = "recipient_predictor_universe"
+_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES = {
+    "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+}
 _ABSENT_CELLS_POLICIES = (
     PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -279,9 +282,11 @@ def run_primary_puf_qrf_chain(
                 "Primary QRF checkpoints have a non-contiguous prefix: "
                 f"target {first_gap} is missing but later target(s) {later} exist."
             )
-    child_environment = None
-    if environment is not None:
-        child_environment = {**os.environ, **dict(environment)}
+    child_environment = {
+        **os.environ,
+        **({} if environment is None else dict(environment)),
+        **_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES,
+    }
     for target_index, _target in enumerate(target_order):
         target_path = _target_path(root, manifest, target_index)
         if target_path.exists():

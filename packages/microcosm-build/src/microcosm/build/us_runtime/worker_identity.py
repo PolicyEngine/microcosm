@@ -56,6 +56,12 @@ _SEMANTIC_ENVIRONMENT_NAMES = (
     "POPULACE_FIT_N_JOBS",
     "POPULACE_FIT_PREDICT_WORKERS",
 )
+_TORCH_BACKEND_ENTRY_POINT_GROUP = "torch.backends"
+_WORKER_ENVIRONMENT_OVERRIDES = {"TORCH_DEVICE_BACKEND_AUTOLOAD": "0"}
+_BOUND_ENVIRONMENT_NAMES = (
+    *_SEMANTIC_ENVIRONMENT_NAMES,
+    *_WORKER_ENVIRONMENT_OVERRIDES,
+)
 _TRANSITIVE_PACKAGE_RESOURCES = (
     ("microcosm.build.us", "source_stages.json"),
     ("microcosm.build.us", "support_spine.json"),
@@ -418,10 +424,35 @@ def _installed_distributions_record_sha256(
 ) -> str:
     by_name: dict[str, metadata.Distribution] = {}
     package_to_distributions = metadata.packages_distributions()
-    for distribution in metadata.distributions():
+    torch_backend_entry_points: dict[str, list[dict[str, str]]] = {}
+    distributions_snapshot = tuple(metadata.distributions())
+    for distribution in distributions_snapshot:
         raw_name = distribution.metadata.get("Name")
         if raw_name:
-            by_name[canonicalize_name(raw_name)] = distribution
+            name = canonicalize_name(raw_name)
+            if name in by_name:
+                raise RuntimeError(
+                    "Primary-QRF worker found duplicate installed distribution "
+                    f"identity: {name}."
+                )
+            by_name[name] = distribution
+        else:
+            name = None
+        for entry_point in distribution.entry_points:
+            if entry_point.group != _TORCH_BACKEND_ENTRY_POINT_GROUP:
+                continue
+            if name is None:
+                raise RuntimeError(
+                    "Primary-QRF worker found a torch.backends entry-point "
+                    "provider without an installed distribution name."
+                )
+            torch_backend_entry_points.setdefault(name, []).append(
+                {
+                    "distribution": name,
+                    "name": entry_point.name,
+                    "value": entry_point.value,
+                }
+            )
 
     pending: set[str] = set()
     unavailable_roots: list[str] = []
@@ -479,6 +510,14 @@ def _installed_distributions_record_sha256(
             dependency = canonicalize_name(requirement.name)
             if dependency not in selected:
                 pending.add(dependency)
+
+    unapproved_backend_providers = sorted(set(torch_backend_entry_points) - selected)
+    if unapproved_backend_providers:
+        raise RuntimeError(
+            "Primary-QRF worker found unapproved torch.backends entry-point "
+            "provider distribution(s) outside its installed-code closure: "
+            f"{unapproved_backend_providers}."
+        )
 
     distributions: list[dict[str, object]] = []
     portable_paths_by_distribution: dict[str, set[Path]] = {}
@@ -557,6 +596,18 @@ def _installed_distributions_record_sha256(
     return _canonical_sha256(
         {
             "distributions": distributions,
+            "torch_backend_entry_points": sorted(
+                (
+                    row
+                    for name in sorted(selected)
+                    for row in torch_backend_entry_points.get(name, ())
+                ),
+                key=lambda row: (
+                    row["distribution"],
+                    row["name"],
+                    row["value"],
+                ),
+            ),
             "unavailable_import_roots": sorted(unavailable_roots),
         }
     )
@@ -661,8 +712,10 @@ def _semantic_environment() -> dict[str, object]:
             )
         predict_workers_source = "environment_override"
     return {
-        "policy": "inherit_parent_environment_with_bound_fit_controls",
-        "overrides": {},
+        "policy": (
+            "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"
+        ),
+        "overrides": dict(_WORKER_ENVIRONMENT_OVERRIDES),
         "semantic_controls": {
             "POPULACE_FIT_N_JOBS": {
                 "configured": fit_jobs_raw,
@@ -674,7 +727,7 @@ def _semantic_environment() -> dict[str, object]:
                 "resolution": predict_workers_source,
             },
         },
-        "bound_names": list(_SEMANTIC_ENVIRONMENT_NAMES),
+        "bound_names": list(_BOUND_ENVIRONMENT_NAMES),
     }
 
 
@@ -875,9 +928,9 @@ def _validate_semantic_identity(
     )
     if (
         environment.get("policy")
-        != "inherit_parent_environment_with_bound_fit_controls"
-        or environment.get("overrides") != {}
-        or environment.get("bound_names") != list(_SEMANTIC_ENVIRONMENT_NAMES)
+        != "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"
+        or environment.get("overrides") != _WORKER_ENVIRONMENT_OVERRIDES
+        or environment.get("bound_names") != list(_BOUND_ENVIRONMENT_NAMES)
     ):
         raise ValueError(f"{boundary} semantic environment policy changed.")
     controls = _require_exact_keys(
@@ -1026,6 +1079,15 @@ def legacy_primary_qrf_worker_execution_binding(
     argv = semantic["argv_template"]
     assert isinstance(worker_module, Mapping)
     assert isinstance(argv, list)
+    environment = _json_clone(semantic["environment"])
+    assert isinstance(environment, dict)
+    # The sealed schema-9 worker predates the forced Torch override. Keep its
+    # recorded execution projection frozen so the plan-authorized compatibility
+    # mismatch remains exactly the two relocated launcher aliases. The attested
+    # semantic identity above still binds and enforces the current safe policy.
+    environment["policy"] = "inherit_parent_environment_with_bound_fit_controls"
+    environment["overrides"] = {}
+    environment["bound_names"] = list(_SEMANTIC_ENVIRONMENT_NAMES)
     return {
         "module": worker_module["name"],
         "argv_template": [str(executable), *argv[1:]],
@@ -1036,7 +1098,7 @@ def legacy_primary_qrf_worker_execution_binding(
             "cache_tag": sys.implementation.cache_tag,
             "version": list(sys.version_info[:3]),
         },
-        "environment": _json_clone(semantic["environment"]),
+        "environment": environment,
     }
 
 

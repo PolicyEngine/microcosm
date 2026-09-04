@@ -1331,6 +1331,11 @@ def _rewrite_as_legacy_relocated_worker_pool(
                 "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
             )
         )
+    legacy_environment = (
+        worker_identity_module.legacy_primary_qrf_worker_execution_binding(
+            semantic_identity=semantic_identity
+        )["environment"]
+    )
     recorded_worker = {
         "module": semantic_identity["worker_module"]["name"],
         "argv_template": [
@@ -1344,7 +1349,7 @@ def _rewrite_as_legacy_relocated_worker_pool(
             "cache_tag": sys.implementation.cache_tag,
             "version": list(sys.version_info[:3]),
         },
-        "environment": semantic_identity["environment"],
+        "environment": legacy_environment,
     }
     config["schema_version"] = 4
     config["qrf"]["worker_execution"] = recorded_worker
