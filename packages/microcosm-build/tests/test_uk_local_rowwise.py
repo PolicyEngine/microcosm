@@ -1177,10 +1177,13 @@ def test_dense_builder_result_equals_frozen_pre_pr_fixture() -> None:
     frozen = pd.DataFrame(golden["target_frame"])
     common = [column for column in frozen.columns if column in dense.target_frame]
     assert common == list(frozen.columns)
+    # Exact, like the matrix: the golden's values round-trip through JSON
+    # without loss, so a tolerance would only hide a drift.
     pd.testing.assert_frame_equal(
         dense.target_frame[common].reset_index(drop=True),
         frozen[common].reset_index(drop=True),
         check_dtype=False,
+        check_exact=True,
     )
 
 

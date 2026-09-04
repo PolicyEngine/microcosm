@@ -1749,3 +1749,54 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         builder._validate_cli_args(
             builder._parse_args([*base, "--target-weight-rule", "uniform"])
         )
+
+
+def test_candidate_multi_block_engine_run_is_never_releasable(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """End to end: ``--engine-blocks K`` on f100 writes ``releasable: false``.
+
+    Every release-blocking gate passes here; the posture alone withholds the
+    verdict, and the manifest names the leg (``single_block_engine``). This is
+    the assertion that catches a future caller bypassing ``_release_verdict``.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(
+        input_h5, households_per_region=200, region_masses=(4.0, 10.0, 10.0, 9.0)
+    )
+    _write_ladder(ladder_path)
+    ladder = load_uk_oa_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+
+    args = [
+        *_joint_f100_args(input_h5, ladder_path, output_dir),
+        "--engine-blocks",
+        "2",
+    ]
+    assert builder.main(args) == 0
+
+    capsys.readouterr()
+    manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["parameters"]["engine_blocks"] == 2
+    assert manifest["blocking_failures"] == []
+    assert manifest["releasable"] is False
+    assert manifest["release_posture"] == {
+        "full_rung": True,
+        "single_block_engine": False,
+        "release_blocking_gates_passed": True,
+    }
