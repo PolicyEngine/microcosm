@@ -7,8 +7,9 @@ import os
 from pathlib import Path
 
 _TORCH_BACKEND_AUTOLOAD_ENVIRONMENT = "TORCH_DEVICE_BACKEND_AUTOLOAD"
-# Torch evaluates this control while ``puf_qrf_chain`` imports QRF, before
-# ``main`` can run. The worker entry point therefore owns the override here.
+# The authenticated launcher sets this before interpreter startup because
+# parent-package imports can load Torch before this module. Keep the bootstrap
+# override as defense in depth for subsequent imports.
 os.environ[_TORCH_BACKEND_AUTOLOAD_ENVIRONMENT] = "0"
 
 from microcosm.build.us_runtime.puf_qrf_chain import (  # noqa: E402

@@ -12111,7 +12111,10 @@ def _run_stacked_puf_pass_evaluate(
         predictor_universe_receipt = (
             primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
         )
-        run_primary_puf_qrf_chain(checkpoint_dir, environment={})
+        run_primary_puf_qrf_chain(
+            checkpoint_dir,
+            environment=worker_identity_runtime._semantic_environment()["overrides"],
+        )
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
             checkpoint_dir,

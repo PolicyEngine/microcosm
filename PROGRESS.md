@@ -31,9 +31,16 @@ before fixing them; commit each coherent step. No GitHub network or push.
   pytest script attempts exited 4 before collection. No sync was needed.
 - Recorded both failing commands and observations in the external report.
 
+- Fixed finding 1 by passing the semantic binding's forced overrides into
+  the stacked launch environment before Python starts. Retained the worker
+  bootstrap guard and corrected its comment; the pinned chain is untouched.
+- The fresh-interpreter first-Torch-import regression now passes: 1 passed
+  in 58.11s, direct exit 0. Its child sees `0` while the parent retains `1`.
+
 ## Next
 
-- Fix both findings, verify focused regressions, and commit each step.
+- Apply shared fresh-cache isolation to both subprocess paths; verify and
+  commit finding 2.
 - Run the full required verification with direct exit codes; report counts,
   pin proof, commit SHAs, and deliberate scope exclusions.
 
