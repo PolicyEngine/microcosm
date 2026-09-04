@@ -381,6 +381,74 @@ def test_primary_qrf_target_fsyncs_file_then_parent_directory_after_rename(
     ]
 
 
+def test_primary_qrf_worker_launch_forces_torch_backend_autoload_off(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The authenticated worker policy wins over inherited and caller values."""
+
+    monkeypatch.setenv("TORCH_DEVICE_BACKEND_AUTOLOAD", "1")
+    checkpoint_dir = tmp_path / "primary_qrf"
+    target_path = tmp_path / "target.h5"
+    worker_state = object()
+    manifest = {
+        "target_order": ["fixture_target"],
+        "initial_state": {},
+    }
+    calls: list[tuple[list[str], dict[str, str], bool]] = []
+
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "_load_manifest",
+        lambda _root: manifest,
+    )
+    monkeypatch.setattr(
+        puf_qrf_chain_module.QRFChainState,
+        "from_dict",
+        staticmethod(lambda _value: worker_state),
+    )
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "_target_path",
+        lambda *_args: target_path,
+    )
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "_load_target_checkpoint",
+        lambda *_args, **_kwargs: (None, worker_state),
+    )
+
+    def fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str],
+        check: bool,
+    ) -> object:
+        calls.append((argv, env, check))
+        return puf_qrf_chain_module.subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(puf_qrf_chain_module.subprocess, "run", fake_run)
+
+    run_primary_puf_qrf_chain(
+        checkpoint_dir,
+        environment={"TORCH_DEVICE_BACKEND_AUTOLOAD": "1"},
+    )
+
+    assert len(calls) == 1
+    argv, environment, check = calls[0]
+    assert argv == [
+        puf_qrf_chain_module.sys.executable,
+        "-m",
+        "microcosm.build.us_runtime.puf_qrf_worker",
+        "--checkpoint-dir",
+        str(checkpoint_dir.resolve()),
+        "--target-index",
+        "0",
+    ]
+    assert environment["TORCH_DEVICE_BACKEND_AUTOLOAD"] == "0"
+    assert check is False
+
+
 def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

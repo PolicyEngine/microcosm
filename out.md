@@ -1,119 +1,117 @@
-# Armenia country package final report (#814)
+# F1 portable worker identity — Sol gate round 1 report
 
-Date: 2026-08-28
+Date: 2026-09-04
 
-Branch: `armenia-country-package-814`
+Branch: `f1-portable-worker-identity`
 
-## Outcome
+## State
 
-The Armenia package is complete as a schema-valid, spec-only, engine-free
-greenfield contract. It is not represented as an executable build: the exact
-`populace-us` artifact, Armenian facts, generated cell bindings, community
-distribution, gate policy, and shared runtime kernels remain explicit
-prerequisites.
+Implementation is in progress. The four findings have been reproduced with
+new regression tests on the `b26708a1` implementation. The only preceding
+branch change was the committed progress-journal initialization.
 
-The closed `am/` inventory mirrors Belgium's six typed resources and five
-generation-zero JSON projections. It declares:
+## Environment preparation
 
-- a two-stage load of a to-be-authenticated public `populace-us` artifact and
-  target-derived marz assignment; every record remains a US donor support
-  record and is never described as Armenian microdata;
-- a 2022-census-vintage community spine constrained to the assigned marz, with
-  10 marzes plus Yerevan and 71 consolidated communities documented but no
-  invented code roster;
-- eight Ledger-only, count/indicator calibration authoring contracts spanning
-  demography, household structure, consumption, labour, earnings, pensions,
-  and family benefits;
-- real-resolver refusal of unexpanded multi-cell tables: Chronicle must generate
-  cell-pinned Ledger references and direct/pre-built candidate bindings before
-  runtime activation;
-- wage/payment, raw-income diagnostic, and national-accounts facts outside the
-  solver manifest until their validation role or AMD-compatible pre-built bridge
-  is enforceable;
-- greenfield aggregate-admin, per-family-fit, target-coverage, macro-realism,
-  support, weight-audit, ESS, and ratio gate declarations, plus active
-  release-blocking reference-coverage/support/output checks; and
-- a public 2024 release contract for `populace_am_{year}.h5`, with ArmStat open
-  dissemination stated and exact ArmStat/donor licence text left as a mandatory
-  verification item.
+- `uv sync --all-packages --locked --extra us --extra uk` exited 2 because the
+  runner exports `UV_FROZEN`, which `uv` rejects together with `--locked`.
+- `env -u UV_FROZEN uv sync --all-packages --locked --extra us --extra uk`
+  exited 2 because the sandbox does not permit uv to initialize its default
+  cache under `/Users/maxghenis/.cache/uv`.
+- `env -u UV_FROZEN UV_CACHE_DIR=/private/tmp/microcosm-uv-cache uv sync
+  --all-packages --locked --extra us --extra uk` exited 0: 125 packages
+  resolved and 103 packages checked.
+- All pytest commands below likewise set the writable `UV_CACHE_DIR` and use
+  the required `uv run --no-sync` mode.
 
-`HARVEST.md` has exactly one solver worklist row per live target-reference key,
-plus separate deferred validation/amount, geography, source-authentication, and
-external-oracle worklists. `NOTES.md` records the Belgium solver lessons,
-permanent survey tax-benefit holdouts, the amount/currency boundary,
-`populace#263/#265`, and the future Axiom-backed `rulespec-am` boundary.
+## Finding 1 — schema-9 stacked-envelope bypass
 
-Package identity after review:
+Reproduction test:
+`test_scoring_loader_requires_complete_schema_nine_stacked_envelope`.
 
-- CountrySpec fingerprint:
-  `64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8`
-- Typed spec SHA-256:
-  `659b6baf5ebbd71fb7786ec4c4d49df565b2bddabeb868a9385ed226c56880f9`
-
-## Verification
-
-All commands ran offline. The package-wide command used the exact lock-required
-`policyengine-us==1.819.0` already present in the local uv cache, so the two
-engine-only test files ran inside the same aggregate rather than failing for a
-missing optional dependency.
-
-Exact requested package-wide command:
+Command:
 
 ```sh
-UV_NO_SYNC=1 UV_PROJECT_ENVIRONMENT=/tmp/armenia-uv-env.ME3TCl UV_CACHE_DIR=/tmp/uv-cache-armenia-814 PYTHONPATH=packages/microcosm-build/src:packages/microcosm-calibrate/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-data/src:/Users/maxghenis/.cache/uv/archive-v0/ewqqbcYNhWejPQ-OfsFxl:/tmp/armenia-no-engine-site.vZ5Kv8:/Users/maxghenis/PolicyEngine/chronicle/.venv/lib/python3.14/site-packages uv run pytest packages/microcosm-build
+UV_CACHE_DIR=/private/tmp/microcosm-uv-cache uv run --no-sync pytest -q packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py::test_scoring_loader_accepts_legacy_worker_alias_relocation_only packages/microcosm-build/tests/test_us_multispine_pool_h5_io.py::test_scoring_loader_requires_complete_schema_nine_stacked_envelope
 ```
 
-Result: **6,556 passed, 45 skipped, 2,351 warnings, 0 failed** in 3,671.74
-seconds (1:01:11). The warnings are existing numerical, pandas copy/fragmentation,
-and PolicyEngine-US runtime warnings; none is Armenia-specific.
+Result: exit 1; 1 passed and 1 failed. The new regression showed that missing
+and wrong `pipeline` values were accepted. Omitting `operator_order`,
+`sampling`, `stack_manifest`, `geography_assignment`, or `stage_receipts`
+reached later validators instead of the common stacked-envelope refusal. The
+existing valid schema-9 path passed and restored both stacked frame-metadata
+anchors.
 
-Additional checks:
+Fix: pending.
 
-- Focused package/golden/compiler suite:
-  `uv run pytest packages/microcosm-build/tests/test_spec_only_country_packages.py packages/microcosm-build/tests/test_country_spec.py packages/microcosm-build/tests/test_spec_engine_country_bundles.py -p no:cacheprovider`
-  — **101 passed** in 29.82 seconds.
-- Authoritative `shared-spec` CI group:
-  `python3 tools/ci_test_groups.py --list shared-spec | xargs uv run pytest -p no:cacheprovider`
-  — **1,334 passed, 42 skipped, 1 warning** in 418.20 seconds.
-- `ruff check .` — **passed**.
-- `python3 tools/ci_test_groups.py --verify` — **verification=ok**, 313 test
-  files tracked.
-- `git diff --check` — **passed**.
+Commit SHA: pending.
 
-## Deviations from Belgium and why
+## Finding 2 — unbound loaded runtime and stdlib
 
-1. Armenia consumes a pre-built public US donor pool instead of native,
-   restricted SILC. No `support_spine.json` is present because the current
-   vocabulary describes raw ASEC pool construction, not an existing artifact.
-2. Armenia is engine-free. No target, gate, or release file requires
-   `rulespec-am`; any later rules leg must use Frame's `RulesEngine` protocol
-   through the Axiom adapter.
-3. Marz is target-assigned before community cloning. The clone factor is the
-   compile-safe minimum of one, not Belgium's 20: collision-avoiding fanout must
-   wait for the 71-to-11 roster and within-marz support evidence.
-4. There is no incumbent, so parity/export/target-surface gates are absent.
-   National accounts back a deferred macro-realism band; CEQ and World Bank
-   estimates remain documentation-only band candidates until harvested.
-5. The live solver manifest contains eight count/indicator series contracts,
-   not guessed scalar cells or AMD amount targets. Those series will expand to
-   the reviewed cell-level profile after Chronicle harvest; the eventual
-   10–16-margin selection is not fabricated in this package.
+Reproduction tests:
+`test_primary_qrf_worker_identity_binds_loaded_runtime_bytes` and
+`test_primary_qrf_worker_identity_binds_imported_stdlib_source`.
 
-## Top five maintainer questions
+The four identity/resource reproduction nodes were run together:
 
-1. Which immutable `populace-us` revision/file, hash, licence, and column
-   inventory certify the donor input?
-2. Which exact Statbank, ILCS, LFS, SRC, pension, and benefit tables/cells define
-   the 2024 profile, and what generated cell-reference/binding artifact owns
-   their fanout?
-3. Which scale-free indicator or reviewed AMD-compatible pre-built bridge makes
-   donor consumption bands and any future amount rows conceptually comparable?
-4. What ex-ante Armenia aggregate-fit, family-fit, macro-realism, ESS, and
-   weight-ratio thresholds—and which shared evaluators—activate the deferred
-   gate declarations?
-5. What is the authoritative 2022 marz/community roster and assignment table,
-   and when will the shared geography/source-coverage runtimes land under
-   `populace#263/#265`?
+```sh
+UV_CACHE_DIR=/private/tmp/microcosm-uv-cache uv run --no-sync pytest -q packages/microcosm-build/tests/test_us_stacked_spine.py::test_primary_qrf_worker_identity_binds_loaded_runtime_bytes packages/microcosm-build/tests/test_us_stacked_spine.py::test_primary_qrf_worker_identity_binds_imported_stdlib_source packages/microcosm-build/tests/test_us_stacked_spine.py::test_worker_identity_refuses_unapproved_torch_backend_provider_before_import packages/microcosm-build/tests/test_us_stacked_spine.py::test_worker_transitive_source_identity_binds_actual_imported_package_resource
+```
 
-No network fetch, push, PR, artifact build, release, or publication was
-performed. The repository-root `PROGRESS.md` was not touched.
+Result: exit 1; 4 failed. For finding 2, changing the temporary runtime
+library left both absent `runtime_binary` fields equal (`None == None`), and
+changing the temporary imported `argparse.py` left both absent
+`stdlib_imports_sha256` fields equal.
+
+Fix: pending.
+
+Commit SHA: pending.
+
+## Finding 3 — Torch backend entry-point autoload
+
+Reproduction tests:
+`test_worker_identity_refuses_unapproved_torch_backend_provider_before_import`
+and `test_primary_qrf_worker_launch_forces_torch_backend_autoload_off`.
+
+The first ran in the four-node command above and failed because a synthetic,
+unapproved distribution declaring a `torch.backends` entry point was accepted
+(`DID NOT RAISE RuntimeError`). The launcher test ran separately:
+
+```sh
+UV_CACHE_DIR=/private/tmp/microcosm-uv-cache uv run --no-sync pytest -q packages/microcosm-build/tests/test_puf_qrf_chain.py::test_primary_qrf_worker_launch_forces_torch_backend_autoload_off
+```
+
+Result: exit 1; 1 failed. With both the inherited and caller-supplied value set
+to `1`, the child environment retained `TORCH_DEVICE_BACKEND_AUTOLOAD=1`
+instead of forcing `0`.
+
+Fix: pending.
+
+Commit SHA: pending.
+
+## Finding 4 — incomplete import-time resource closure
+
+Reproduction test:
+`test_worker_transitive_source_identity_binds_actual_imported_package_resource`.
+
+It ran in the four-node identity command above. Result: exit 1 as part of the
+4-failure run. The manual two-file closure contained no row for
+`soi_table_2_1_interest_components_ty2015.json` (`len(target_rows) == 0`). A
+separate read-only audit-hook probe of a clean worker import found 24 Microcosm
+non-code resources, including that asset.
+
+Fix: pending.
+
+Commit SHA: pending.
+
+## Pins moved
+
+Pending implementation and verification.
+
+## Final verification
+
+Pending. No final verification result is claimed yet.
+
+## Deliberately not done
+
+- No network access, push, branch creation, stash, artifact build, release,
+  publication, or graph-interface/acceptance-lock edit was performed.

@@ -2163,12 +2163,102 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
     assert manifest["worker_execution_authentication"] == expected_authentication
     assert authenticated.worker_execution_authentication == expected_authentication
     assert _sha256(manifest_path) == manifest_sha256
+    assert (
+        stacked_spine_module._json_ready(
+            frame.metadata[stacked_spine_module.STACKED_SPINE_MANIFEST_KEY]
+        )
+        == manifest["stack_manifest"]
+    )
+    assert (
+        frame.metadata[stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY][
+            "sha256"
+        ]
+        == manifest["late_producer_transition_authority_sha256"]
+    )
     with pytest.raises(ValueError, match="Scoring-only.*release receipt"):
         us_multispine_pool_release_receipt(
             manifest,
             authenticated,
             allow_gate_failed_base_pool=True,
         )
+
+
+def test_scoring_loader_requires_complete_schema_nine_stacked_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path
+    )
+    complete_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    authentication_calls: list[Path] = []
+
+    def authenticate_without_recomputing_identity(
+        attestation_path: str | Path,
+        **_kwargs: object,
+    ) -> worker_identity_module.LegacyWorkerIdentityAuthentication:
+        path = Path(attestation_path)
+        authentication_calls.append(path)
+        return worker_identity_module.LegacyWorkerIdentityAuthentication(
+            attestation_sha256=_sha256(path),
+            campaign_tree_sha="b8819b3f",
+            recorded_worker_execution=recorded_worker,
+            semantic_identity=semantic_identity,
+            semantic_identity_sha256=_json_sha256(semantic_identity),
+        )
+
+    monkeypatch.setattr(
+        worker_identity_module,
+        "authenticate_legacy_worker_identity_attestation",
+        authenticate_without_recomputing_identity,
+    )
+    cases = (
+        ("missing_pipeline", "pipeline"),
+        ("wrong_pipeline", None),
+        ("missing_operator_order", "operator_order"),
+        ("missing_sampling", "sampling"),
+        ("missing_stack_manifest", "stack_manifest"),
+        ("missing_geography_assignment", "geography_assignment"),
+        ("missing_stage_receipts", "stage_receipts"),
+    )
+    mismatches: list[str] = []
+    for case, missing_field in cases:
+        manifest = json.loads(json.dumps(complete_manifest))
+        if missing_field is None:
+            manifest["pipeline"] = "changed-stacked-pipeline"
+            expected_missing: list[str] = []
+        else:
+            manifest.pop(missing_field)
+            expected_missing = [missing_field]
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        attestation_path = _write_legacy_worker_attestation(
+            manifest_path,
+            recorded_worker=recorded_worker,
+            semantic_identity=semantic_identity,
+        )
+
+        try:
+            load_authenticated_us_multispine_pool_for_scoring(
+                manifest_path,
+                worker_identity_attestation=attestation_path,
+            )
+        except ValueError as exc:
+            message = str(exc)
+            expected_fragments = (
+                "ambiguous stacked envelope",
+                f"missing={expected_missing!r}",
+            )
+            if any(fragment not in message for fragment in expected_fragments):
+                mismatches.append(f"{case}: ValueError: {message}")
+        else:
+            mismatches.append(f"{case}: accepted")
+
+    assert mismatches == [], "\n".join(mismatches)
+    assert authentication_calls == []
 
 
 def test_scoring_loader_rejects_mismatched_legacy_worker_attestation(

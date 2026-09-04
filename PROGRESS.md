@@ -2,10 +2,9 @@
 
 ## State
 
-In progress on 2026-09-04 on `f1-portable-worker-identity` at `b26708a1`.
-The four Sol findings are being reproduced before implementation changes:
-schema-9 envelope bypass, unbound Python runtime/stdlib, unbound Torch backend
-entry points, and incomplete import-time package-resource coverage.
+In progress on 2026-09-04 on `f1-portable-worker-identity`, starting from
+`b26708a1`. All four Sol findings now have fail-before reproductions; no
+implementation fix has landed yet.
 
 ## Done
 
@@ -19,15 +18,32 @@ entry points, and incomplete import-time package-resource coverage.
   refuse before side effects; keep tests offline; commit each coherent step.
 - Recorded the required focused and final verification suites and the
   requirement to report only commands actually run in `out.md`.
+- Synced the locked all-package US/UK environment after directing uv's cache to
+  a sandbox-writable path; the unmodified command's two environment-specific
+  refusals and the successful command are recorded in `out.md`.
+- Added fail-before coverage proving that schema 9 accepts missing/wrong
+  pipelines and routes other missing envelope sections around the common
+  validator; the focused result was 1 passed and 1 failed, exit 1.
+- Added fail-before identity coverage proving that loaded-runtime and stdlib
+  mutations are unbound, a synthetic unapproved `torch.backends` provider is
+  accepted, and the real SOI interest-components resource is absent. The four
+  focused nodes failed as intended, exit 1.
+- Added a fail-before launcher regression proving that an inherited/caller
+  `TORCH_DEVICE_BACKEND_AUTOLOAD=1` reaches the child unchanged. The focused
+  node failed as intended, exit 1.
+- Replaced the prior unrelated `out.md` with the current round's reproduction
+  report; fix/pin/final-verification sections remain explicitly pending.
 
 ## Next
 
-- Read the worker identity, authenticated H5, QRF worker, inventory projection,
-  and named regression suites.
-- Add and run fail-before regressions for each finding, recording the exact
-  reproduction results in `out.md`.
-- Implement and commit the four fixes independently, repin only identities that
-  legitimately move, then run the complete requested verification block.
+- Commit the fail-before regressions and reproduction report.
+- Make schema 9 traverse the complete common stacked-envelope validator before
+  any compatibility attestation is read or honored.
+- Bind and force the Torch autoload policy, authenticate its entry-point group,
+  replace the manual resource list with a clean-import trace, and bind the
+  loaded runtime plus traced stdlib bytes.
+- Repin only identities that legitimately move, prove spec-engine pins remain
+  fixed, then run the complete requested verification block.
 
 # Historical: ACS predictor release join
 

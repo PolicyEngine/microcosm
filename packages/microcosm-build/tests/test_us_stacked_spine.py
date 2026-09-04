@@ -4403,32 +4403,214 @@ def test_canonical_pyvenv_config_rejects_versions_that_are_not_the_interpreter(
         worker_identity_module._canonical_pyvenv_config()
 
 
-def test_worker_transitive_source_identity_binds_imported_package_resources(
+def _stub_worker_identity_static_closure(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stub_installed_distributions: bool = True,
+) -> None:
+    """Keep portable-identity mutation tests focused and inexpensive."""
+
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_worker_source_identity",
+        lambda: ("a" * 64, "b" * 64, ()),
+    )
+    if stub_installed_distributions:
+        monkeypatch.setattr(
+            worker_identity_module,
+            "_installed_distributions_record_sha256",
+            lambda _external_roots: "c" * 64,
+        )
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_canonical_pyvenv_config",
+        lambda: {
+            "implementation": sys.implementation.name,
+            "version": list(sys.version_info[:3]),
+            "include_system_site_packages": False,
+            "uv_version": "fixture",
+        },
+    )
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "2")
+
+
+def _empty_worker_import_trace() -> dict[str, object]:
+    return {
+        "module_origins": {},
+        "opened_files": (),
+        "namespace_roots": (),
+    }
+
+
+def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    resource = tmp_path / "worker-resource.json"
-    resource.write_text('{"value": 1}\n', encoding="utf-8")
+    _stub_worker_identity_static_closure(monkeypatch)
+    runtime = tmp_path / "libpython-fixture.so"
+    runtime.write_bytes(b"fixture runtime version one\n")
+    # ``raising=False`` makes this a behavioral red test on the vulnerable
+    # baseline: that implementation ignores the future loaded-runtime seam and
+    # therefore returns the same identity after the library changes.
     monkeypatch.setattr(
         worker_identity_module,
-        "_TRANSITIVE_PACKAGE_RESOURCES",
-        (("fixture.package", resource.name),),
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", runtime),
+        raising=False,
     )
     monkeypatch.setattr(
-        worker_identity_module.importlib.util,
-        "find_spec",
-        lambda package: SimpleNamespace(submodule_search_locations=(tmp_path,)),
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        lambda *_args, **_kwargs: _empty_worker_import_trace(),
+        raising=False,
     )
 
-    before = worker_identity_module._canonical_sha256(
-        worker_identity_module._worker_package_resource_rows()
+    before = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
     )
-    resource.write_text('{"value": 2}\n', encoding="utf-8")
-    after = worker_identity_module._canonical_sha256(
-        worker_identity_module._worker_package_resource_rows()
+    runtime.write_bytes(b"fixture runtime version two\n")
+    after = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
     )
 
-    assert after != before
+    assert before["interpreter"].get("runtime_binary") != after["interpreter"].get(
+        "runtime_binary"
+    )
+
+
+def test_primary_qrf_worker_identity_binds_imported_stdlib_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_worker_identity_static_closure(monkeypatch)
+    stdlib = tmp_path / "stdlib"
+    stdlib.mkdir()
+    argparse_source = stdlib / "argparse.py"
+    argparse_source.write_text("FIXTURE_VALUE = 1\n", encoding="utf-8")
+    site_packages = tmp_path / "site-packages"
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", tmp_path / "unchanged-libpython.so"),
+        raising=False,
+    )
+    (tmp_path / "unchanged-libpython.so").write_bytes(b"unchanged runtime\n")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        lambda *_args, **_kwargs: {
+            "module_origins": {"argparse": str(argparse_source)},
+            "opened_files": (),
+            "namespace_roots": (),
+        },
+        raising=False,
+    )
+    original_get_paths = worker_identity_module.sysconfig.get_paths
+
+    def fixture_get_paths(*args: object, **kwargs: object) -> dict[str, str]:
+        paths = dict(original_get_paths(*args, **kwargs))
+        paths.update(
+            {
+                "stdlib": str(stdlib),
+                "platstdlib": str(stdlib),
+                "purelib": str(site_packages),
+                "platlib": str(site_packages),
+            }
+        )
+        return paths
+
+    monkeypatch.setattr(
+        worker_identity_module.sysconfig, "get_paths", fixture_get_paths
+    )
+
+    before = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+    argparse_source.write_text("FIXTURE_VALUE = 2\n", encoding="utf-8")
+    after = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+
+    assert before["interpreter"].get("stdlib_imports_sha256") != after[
+        "interpreter"
+    ].get("stdlib_imports_sha256")
+
+
+def test_worker_identity_refuses_unapproved_torch_backend_provider_before_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_worker_identity_static_closure(
+        monkeypatch,
+        stub_installed_distributions=False,
+    )
+    provider = SimpleNamespace(
+        metadata={"Name": "fixture-torch-backend"},
+        version="1.0",
+        requires=(),
+        files=(),
+        entry_points=(
+            worker_identity_module.metadata.EntryPoint(
+                name="fixture_backend",
+                value="fixture_backend:register",
+                group="torch.backends",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "distributions",
+        lambda: (provider,),
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "packages_distributions",
+        lambda: {},
+    )
+
+    def unexpected_import_trace(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("clean worker import ran before torch backend provider refusal")
+
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        unexpected_import_trace,
+        raising=False,
+    )
+
+    with pytest.raises(RuntimeError, match=r"torch\.backends"):
+        worker_identity_module.primary_qrf_worker_semantic_identity(
+            uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+        )
+
+
+def test_worker_transitive_source_identity_binds_actual_imported_package_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_name = "soi_table_2_1_interest_components_ty2015.json"
+    before = worker_identity_module._worker_package_resource_rows()
+    target_rows = [
+        row for row in before if str(row.get("resource", "")).endswith(target_name)
+    ]
+    assert len(target_rows) == 1
+    target_resource = target_rows[0]["resource"]
+    target_sha256 = target_rows[0]["sha256"]
+    original_read_bytes = Path.read_bytes
+
+    def changed_resource_bytes(path: Path) -> bytes:
+        raw = original_read_bytes(path)
+        if path.name == target_name:
+            return raw + b"\n"
+        return raw
+
+    monkeypatch.setattr(Path, "read_bytes", changed_resource_bytes)
+    after = worker_identity_module._worker_package_resource_rows()
+    changed_target = next(row for row in after if row["resource"] == target_resource)
+
+    assert changed_target["sha256"] != target_sha256
+    assert worker_identity_module._canonical_sha256(after) != (
+        worker_identity_module._canonical_sha256(before)
+    )
 
 
 @pytest.mark.parametrize(
