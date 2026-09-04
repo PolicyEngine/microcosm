@@ -2,9 +2,12 @@
 
 ## State
 
-In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
-`32ce6f518e8847647f23b3f6f11e4a8dc060ed01`. Reproduce both peer findings
-before fixing them; commit each coherent step. No GitHub network or push.
+Complete on 2026-09-04 on `f1-portable-worker-identity`, starting at
+`32ce6f518e8847647f23b3f6f11e4a8dc060ed01`. Both peer findings have committed
+fail-before regressions and fixes. All eight requested suites passed (964
+tests); Ruff, formatting, and the spec-pin proof passed. No pins moved.
+No GitHub network or push. Final report:
+`/private/tmp/microcosm-pr871-astra-round1/out.md`.
 
 ## Done
 
@@ -13,11 +16,11 @@ before fixing them; commit each coherent step. No GitHub network or push.
 - Confirmed the assigned branch and clean starting tree.
 - Read the GitNexus debugging workflow; its tools are unavailable, so trace
   execution directly from source and offline tests.
-- Preserve the full `worker_execution` digest exclusion and all hard-boundary
+- Preserved the full `worker_execution` digest exclusion and all hard-boundary
   files, including the seed-attested `puf_qrf_chain.py` launcher.
-- The prompt provides no concrete `-o` path; asked asynchronously and will
-  write the report outside the repository at
-  `/private/tmp/microcosm-pr871-astra-round1/out.md` unless steered otherwise.
+- No concrete `-o` path was supplied. Asked asynchronously and wrote the
+  report outside the repository at the stated default path,
+  `/private/tmp/microcosm-pr871-astra-round1/out.md`.
 
 - Reproduced finding 1 before any production edit: the fresh interpreter at
   the real stacked/chain launch observes Torch autoload `1` before the worker
@@ -70,21 +73,22 @@ before fixing them; commit each coherent step. No GitHub network or push.
   inventory (15), coverage-tool (7), and imputation (4) suites passed, exit 0
   each. Ruff and changed-file formatting passed after the last test edit.
 - Verified every forbidden path, docs/tools, and uv.lock is unchanged from
-  `32ce6f51`; the standalone coverage proof is still running.
+  `32ce6f51`.
 
 - Standalone spec proof passed, direct exit 0: 42,154/42,154 configuration
   fields and 41/41 inventory checks. No pins moved; the unchanged spec SHA is
   `9db29b4d33424fbb21a83c63927c7de55ba9a333d631f6323935f67a496eee46`.
-- Seven required suites are complete (887 passes total, direct exit 0 each).
-  The focused worker rerun has passed 70/77 selected tests and is running the
-  real transfer-bank identity integration; no failure has been reported.
+- The focused worker rerun completed with direct exit 0: 77 passed, 244
+  deselected, 141 warnings in 866.48s. The real transfer-bank integration also
+  passed. All eight required suites total 964 passes, with no failures or skips.
+- Finished the external report with both fail-before commands/observations,
+  fix SHAs (`b131afb7`, `4a575d7d`), cache-isolation rationale, exact final
+  verification commands/counts, no-pin proof, and deliberate scope exclusions.
 
 ## Next
 
-- Finish the full focused worker rerun, then close the journal and external
-  report with its direct exit code and complete counts.
-- Run the full required verification with direct exit codes; report counts,
-  pin proof, commit SHAs, and deliberate scope exclusions.
+- Local review of the committed fixes and external report. No implementation
+  or verification work remains for these two findings; no push was performed.
 
 # Historical: Sol gate round 1 journal
 
