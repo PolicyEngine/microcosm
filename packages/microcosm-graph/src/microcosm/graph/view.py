@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 
 from .canonical import canonical_json
@@ -91,6 +92,30 @@ def describe(
             'Seed: int.from_bytes(sha256(b"seed\\0" + node_key)[:8], "little")'
         )
     else:
+        capabilities = run_receipt.capabilities
+        if isinstance(capabilities, Mapping):
+            tolerance_text = "<legacy_capabilities: tolerance unavailable>"
+            determinism = capabilities["determinism"]
+            numeric = capabilities["numeric"]
+            seed_source = capabilities["seed_source"]
+            structural = capabilities["structural"]
+            consumes_se = capabilities["consumes_se"]
+        else:
+            tolerance = capabilities.tolerance
+            tolerance_text = canonical_json(
+                None
+                if tolerance is None
+                else {
+                    "rtol": tolerance.rtol,
+                    "atol": tolerance.atol,
+                    "ulps": tolerance.ulps,
+                }
+            ).decode("utf-8")
+            determinism = capabilities.determinism
+            numeric = capabilities.numeric
+            seed_source = capabilities.seed_source
+            structural = capabilities.structural
+            consumes_se = capabilities.consumes_se
         lines.extend(
             [
                 'Seed: int.from_bytes(sha256(b"seed\\0" + node_key)[:8], '
@@ -98,11 +123,12 @@ def describe(
                 f"Store: {'hit' if run_receipt.hit else 'miss'}; "
                 f"wall_time={run_receipt.wall_time:.6g}s",
                 "Capabilities: "
-                f"determinism={_value(run_receipt.capabilities.determinism)}, "
-                f"numeric={_value(run_receipt.capabilities.numeric)}, "
-                f"seed={_value(run_receipt.capabilities.seed_source)}, "
-                f"structural={_value(run_receipt.capabilities.structural)}, "
-                f"consumes_se={run_receipt.capabilities.consumes_se}",
+                f"determinism={_value(determinism)}, "
+                f"numeric={_value(numeric)}, "
+                f"seed={_value(seed_source)}, "
+                f"structural={_value(structural)}, "
+                f"consumes_se={consumes_se}, "
+                f"tolerance={tolerance_text}",
                 "Receipt: " + canonical_json(run_receipt.receipt).decode("utf-8"),
             ]
         )

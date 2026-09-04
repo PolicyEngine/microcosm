@@ -18,6 +18,7 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StructuralDelta,
+    WeightTransition,
     compile_graph,
 )
 
@@ -270,3 +271,81 @@ def test_a_filter_cannot_read_a_column_nobody_defines() -> None:
     )
     with pytest.raises(GraphError, match="no node owns"):
         compile_graph(Graph("toy", (SRC,), (CREATE, subset)))
+
+
+def _expand(node_id: str, **overrides: object) -> Node:
+    settings: dict[str, object] = {"mass": "free", **overrides}
+    return Node(
+        node_id,
+        "clone.persons@1",
+        base="survey",
+        structural=StructuralDelta.EXPAND,
+        **settings,  # type: ignore[arg-type]
+    )
+
+
+def test_entrants_are_an_expand_declaration_that_cannot_conserve_mass() -> None:
+    """Amendment 11: entrants add rows without lineage, so they add mass."""
+    admitted = _expand("cohort", entrants=True)
+    assert admitted.entrants is True
+    assert "entrants" in admitted.normative()
+    with pytest.raises(GraphError, match="cannot declare mass='conserve'"):
+        _expand("cohort", entrants=True, mass="conserve")
+    with pytest.raises(GraphError, match="only an EXPAND node"):
+        Node("fit", "fit.qrf@1", entrants=True)
+    with pytest.raises(GraphError, match="must be a boolean"):
+        _expand("cohort", entrants="yes")
+
+
+def test_mass_partition_must_be_declared_by_every_create_node() -> None:
+    """Amendment 12: partitions exist from the first version, with a partition dtype."""
+    periodic = Node(
+        "survey",
+        "source.frame@1",
+        sources=("survey",),
+        structural=StructuralDelta.CREATE,
+        outputs=(Owned("person", "age", "int64"), Owned("person", "period", "int64")),
+    )
+    graph = Graph("toy", (SRC,), (periodic,), mass_partition=("person", "period"))
+    compiled = compile_graph(graph)
+    assert compiled.graph.normative() == {"mass_partition": ("person", "period")}
+    assert Graph("toy", (SRC,), (periodic,)).normative() == {"mass_partition": None}
+    with pytest.raises(GraphError, match="does not declare"):
+        compile_graph(
+            Graph("toy", (SRC,), (CREATE,), mass_partition=("person", "period"))
+        )
+    floating = Node(
+        "survey",
+        "source.frame@1",
+        sources=("survey",),
+        structural=StructuralDelta.CREATE,
+        outputs=(Owned("person", "period", "float64"),),
+    )
+    with pytest.raises(GraphError, match="partition column must be one of"):
+        compile_graph(
+            Graph("toy", (SRC,), (floating,), mass_partition=("person", "period"))
+        )
+    with pytest.raises(GraphError, match="pair of strings"):
+        Graph("toy", (SRC,), (periodic,), mass_partition=("person",))  # type: ignore[arg-type]
+
+
+def test_declared_names_may_not_contain_dots() -> None:
+    """Amendment 15: ``entity.column`` spellings must be unambiguous."""
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Slice("a.b", ("c",))
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Slice("a", ("b.c",))
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Owned("a", "b.c", "int64")
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Owned("a.b", "c", "int64")
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Slice("a", ("c",), rows="m.k")
+
+
+def test_every_declared_name_channel_refuses_dots() -> None:
+    """Amendment 15 covers weight transitions and the mass partition too."""
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        WeightTransition("house.hold", "design", "importance")
+    with pytest.raises(GraphError, match="may not contain '.'"):
+        Graph("toy", (), (), mass_partition=("person", "per.iod"))

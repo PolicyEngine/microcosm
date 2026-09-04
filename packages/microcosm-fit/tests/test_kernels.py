@@ -230,7 +230,7 @@ def test_capabilities_protocol_and_wrapped_source_hash() -> None:
     assert QRF_PARAM_KERNEL.ref == QRF_EXECUTOR_KERNEL.ref == "fit.qrf@1"
     assert QRF_PARAM_KERNEL.capabilities == Capabilities(
         determinism=Determinism.SEEDED,
-        numeric=Numeric.TOLERANCE_BOUND,
+        numeric=Numeric.PLATFORM_BITWISE,
         seed_source=SeedSource.PARAM,
         dependencies=FIT_QRF_DEPENDENCIES,
     )

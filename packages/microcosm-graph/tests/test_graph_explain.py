@@ -158,6 +158,36 @@ def test_explain_html_is_the_public_export() -> None:
     assert graph_api.explain_html is explain_html
 
 
+def test_entrant_person_strata_survive_cache_and_are_explained(tmp_path: Path) -> None:
+    expand, claim = toy.entrant_person_node()
+    graph = toy.small_graph(nodes=(toy.CREATE, expand, claim))
+    cold = toy.run_toy(graph, tmp_path / "cold")
+    warm = toy.run_toy(
+        graph,
+        tmp_path / "warm",
+        sources=cold.sources,
+        registry=cold.registry,
+        store=cold.store,
+    )
+    entrant_id = int(cold.manifest.population("survey").person["person_id"].max()) + 1
+
+    assert warm.manifest.nodes[expand.id].hit
+    assert warm.manifest.population(expand.id).strata.equals(
+        cold.manifest.population(expand.id).strata
+    )
+    assert cold.manifest.nodes[expand.id].receipt["entrant_strata"] == (
+        (entrant_id, "urban"),
+    )
+    assert (
+        warm.manifest.nodes[expand.id].receipt["entrant_strata"]
+        == cold.manifest.nodes[expand.id].receipt["entrant_strata"]
+    )
+    detail = describe(cold.compiled, expand.id, cold.manifest)
+    rendered = explain_html(cold.compiled, cold.manifest)
+    assert "entrant_strata" in detail and "urban" in detail
+    assert "entrant_strata" in rendered and "urban" in rendered
+
+
 def test_page_contains_every_node_and_its_click_detail(explanation) -> None:
     run, _charter, rendered = explanation
     for node_id in run.compiled.order:
@@ -172,11 +202,13 @@ def test_page_contains_every_node_and_its_click_detail(explanation) -> None:
 def test_page_contains_every_charter_property(explanation) -> None:
     _run, charter, rendered = explanation
     identifiers = re.findall(r"^\|\s*([A-Z]\d+)\s*\|", charter, re.MULTILINE)
-    assert len(dict.fromkeys(identifiers)) == 41
+    assert (
+        len(dict.fromkeys(identifiers)) == 45
+    )  # 41 + B6, C5, D6, B7 (amendments 11-14)
     for identifier in identifiers:
         assert f"<code>{identifier}</code>" in rendered
     assert "35 green" not in rendered  # V1-V4 are also represented.
-    assert "41 green" in rendered
+    assert "45 green" in rendered
     assert "0 red" in rendered
     assert "<th>Flip PR</th>" in rendered
     assert "Not recorded" in rendered
@@ -206,6 +238,79 @@ def test_calibration_view_uses_targets_ratios_and_mass(explanation) -> None:
     assert "Mass ledger" in rendered
     assert "rural" in rendered
     assert "urban" in rendered
+
+
+def test_calibration_view_renders_partition_mass_with_deltas(tmp_path: Path) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    original = run.manifest.nodes["calibrated"]
+    mass = dict(original.receipt["mass"])
+    mass["stratum_before"] = {}
+    mass["stratum_after"] = {}
+    mass["partition"] = {
+        "entity": "household",
+        "column": "period",
+        "stratum_before": {
+            "2024": {"rural": 10.0, "urban": 20.0},
+            "2025": {"rural": 5.0},
+        },
+        "stratum_after": {
+            "2024": {"rural": 8.0, "urban": 23.0},
+            "2026": {"urban": 10.0},
+        },
+    }
+    changed = replace(
+        original,
+        receipt={**dict(original.receipt), "mass": mass},
+    )
+    manifest = replace(
+        run.manifest,
+        nodes={**dict(run.manifest.nodes), "calibrated": changed},
+    )
+
+    rendered = explain_html(run.compiled, manifest)
+
+    assert "Mass by household.period partition" in rendered
+    assert (
+        "<th>Partition value</th><th>Stratum</th><th>Before</th><th>After</th>"
+        "<th>Change</th></tr></thead><tbody>" in rendered
+    )
+    assert ">2024</td><td>rural</td><td>10</td><td>8</td><td>-2</td>" in rendered
+    assert ">2024</td><td>urban</td><td>20</td><td>23</td><td>3</td>" in rendered
+    assert ">2025</td><td>rural</td><td>5</td><td>0</td><td>-5</td>" in rendered
+    assert ">2026</td><td>urban</td><td>0</td><td>10</td><td>10</td>" in rendered
+    assert "http://" not in rendered and "https://" not in rendered
+
+
+def test_calibration_view_fallback_renders_partitioned_mass_record(
+    tmp_path: Path,
+) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    original_receipt = run.manifest.nodes["calibrated"]
+    receipt_without_mass = dict(original_receipt.receipt)
+    receipt_without_mass.pop("mass")
+    changed_receipt = replace(original_receipt, receipt=receipt_without_mass)
+    original_record = next(
+        record
+        for record in run.manifest.mass_ledgers["calibrated"]
+        if record.node_id == "calibrated"
+    )
+    partitioned_record = replace(
+        original_record,
+        partition_entity="household",
+        partition_column="period",
+        before_by_partition_stratum=((2024, (("rural", 10.0),)),),
+        after_by_partition_stratum=((2024, (("rural", 8.0),)),),
+    )
+    manifest = replace(
+        run.manifest,
+        nodes={**dict(run.manifest.nodes), "calibrated": changed_receipt},
+        mass_ledgers={"calibrated": (partitioned_record,)},
+    )
+
+    rendered = explain_html(run.compiled, manifest)
+
+    assert "Mass by household.period partition" in rendered
+    assert ">2024</td><td>rural</td><td>10</td><td>8</td><td>-2</td>" in rendered
 
 
 def test_calibration_view_reads_adam_diagnostics(tmp_path: Path) -> None:

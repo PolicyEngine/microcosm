@@ -45,6 +45,8 @@ its owner.
 | B3 | **Storage-preserving patch.** Patching owned positions preserves the incumbent column's dtype (nullable `boolean` stays nullable `boolean`; float bits including negative zero survive) and leaves every non-owned position byte-identical. This is the WIC guard, made structural. | leg 2 §3.3 | same |
 | B4 | **Inputs are immutable.** A kernel receives read-only views; an in-place write raises inside the kernel and the node fails. | leg 1 finding 5 | same |
 | B5 | **Null means absence.** A node declares each owned cell as *produced* or *absent*. A kernel writing a non-null value into an absent-declared cell is rejected. | `DESIGN.md:128-134` | same |
+| B6 | **Entrants are declared.** An `EXPAND` node with `entrants=True` may return rows with null lineage; the executor requires the kernel to materialize every carried column for such a row (dtype-checked), records them as entrants rather than copies in the lineage receipt, and refuses null lineage on a node without the declaration. `entrants=True` with `mass='conserve'` is a compile error. An entrant needs a design anchor: it is admitted only while the weighted entity still carries `design` weights, and its admitted weight becomes that anchor; after any reweight the executor refuses entrant rows on that entity, because a derived weight has no design origin to record (ruled 2026-09-03, #847 gate round 3). | Dynamics: immigrant cohorts (microcosm-dynamics#412, #218) | Max's session; amendment 11 |
+| B7 | **Entrant persons carry their stratum.** An entrant row on the person entity takes its stratum from `KernelResult.strata` (indexed by its new id); an entrant person absent from it, a label for a copied or incumbent person, or a label for an unknown id rejects the node. Entrant persons join incumbent or entrant groups through the materialized membership columns, and the mass ledger counts them from the node that admits them. | Dynamics: immigrant cohorts are persons (microcosm-dynamics#412, #218) | Max's session; amendment 14 |
 
 ## C. Seeds and factorization
 
@@ -54,16 +56,18 @@ its owner.
 | C2 | **Removal invariance.** Removing a node that nothing depends on, or adding a new leaf node, changes no other node's key or output. This is the `0347a009` replay: five targets removed, zero survivors re-modeled. | F5 | same |
 | C3 | **Declared predecessors only.** A chained target's predictors are exactly its declared predecessors. The executor hands a kernel only its declared slices, so an undeclared read is impossible rather than merely detected. | F5, leg 3 §legibility | same |
 | C4 | **Seed from identity.** A node's RNG seed is a pure function of its node key. Two nodes with identical declarations, inputs, and kernels in different graphs draw identical values. No positional RNG consumption exists anywhere in the shard (static check). | F4, `docs/spec-engine.md:254-282` | same |
+| C5 | **Tolerance is declared.** A kernel claiming `tolerance_bound` numerics without a `Tolerance` is refused at registration, and a bitwise kernel may not carry one. The tolerance is recorded in every receipt, and a kernel reading a cell sees the declared tolerance of the node that produced it in `KernelContext.tolerances`: a structural version (`FILTER`, `EXPAND`, `REWEIGHT`) carries a column's tolerance through unchanged, so a bitwise carrier neither tightens nor erases a producer's bound, and a rewrite sees the incumbent producer's. Where more than one node wrote rows of a column in a version — a producer plus an `EXPAND` kernel that materialized entrant rows, or a claimant that took them over — the reader sees the loosest declared tolerance among those writers (componentwise maximum of `rtol`, `atol`, `ulps`; a bitwise writer contributes none), and a claimant's `KernelContext.tolerances` includes the coordinates it claims; a gate comparing against anything else says so in its evidence. | H2 (arm64/x86 one-ulp weights); microcosm-dynamics#412 | Max's session; amendment 13 |
 
 ## D. Weights and mass
 
 | Id | Property | Closes | Owner |
 |---|---|---|---|
 | D1 | **Weight transitions are typed nodes.** `design → importance → calibrated` are the only legal transitions; the executor rejects a regression and rejects a transition declared on inherited (non-explicit) weights. | F9 (leg 1 finding 1) | María / Max's session |
-| D2 | **Mass ledger.** Every population-changing node (select, concat, clone, reweight) emits a mass record with before/after totals and per-stratum mass. Under `conserve`, a stratum losing mass fails the node. `select` cannot drop mass silently. | F9 | same |
+| D2 | **Mass ledger.** Every population-changing node (select, concat, clone, reweight) emits a mass record with before/after totals and per-stratum mass. Mass is weighted person mass per stratum, within each declared partition (amendment 12). Under `conserve`, a stratum losing mass fails the node. An expansion that conserves its weight entity's mass while changing group composition changes person mass and must say so: `declared`, with a receipt stating the invariant it does hold (ruled 2026-09-02 on #844). `select` cannot drop mass silently. | F9 | same |
 | D3 | **Cap anchored to design.** A calibration node's `max_weight_ratio` is asserted against the declared anchor across composed stages; a selection-then-refit chain that ships a record above `R × design` fails. | F9 (#493) | same |
 | D4 | **Filters are binary.** A target filter containing NaN or a non-binary value is rejected at compile. | F9 | same |
 | D5 | **Uncertainty travels.** A target's declared standard error reaches the calibration kernel's inputs; a kernel that ignores a declared `se` must say so in its capability record. | scoreboard row 5 (leg 1 finding 7) | same |
+| D6 | **Mass is partitioned.** With `Graph.mass_partition` set, the ledger reports per stratum within each partition value, `conserve` holds within each partition, and a node that moves mass between partitions under `conserve` fails. Every `CREATE` node declares the partition column with a partition dtype, and no later node may own it (write or rewrite), or compilation fails: a partition value is fixed when the row is created, because a reassignment with the total unchanged is invisible to every mass policy. A row contributes mass only to the partitions it exists in. | Dynamics: person-period residency (microcosm-dynamics#412) | Max's session; amendment 12 |
 
 ## E. Store and resume
 
@@ -110,7 +114,7 @@ hand-drawn, so they stay true as the code moves.
 
 | Id | Property | Closes | Owner |
 |---|---|---|---|
-| H1 | **Kernel parity.** Each wrapped legacy kernel (QRF fit and draw via `microcosm-fit`, calibrate via `microcosm-calibrate`, simulate via a `RulesEngine`) produces byte-identical output to the direct call on a pinned fixture and seed. | #378 step 3 | Max's session |
+| H1 | **Kernel parity.** Each wrapped legacy kernel (QRF fit and draw via `microcosm-fit`, calibrate via `microcosm-calibrate`, simulate via a `RulesEngine`) produces byte-identical output to the direct call on a pinned fixture and seed. A platform-bitwise kernel (amendment 16) is byte-identical within a platform: its fixture carries one pin per platform CI runs on plus the authoring platform, bytes are asserted on each of those, and on any other platform the node key must differ from every pinned key (identity partitioning). | #378 step 3 | Max's session |
 | H2 | **UK spine parity.** The UK 26-stage spine expressed as a graph reproduces the current spine's `uk_frame_content_identity` on the fixture. Both sides run all 26 transforms from the fixture's raw tables in the test's own process, the graph through a CREATE kernel bound to the root transform, and nothing is pinned: the root transform's household weights differ by one ulp between machines (2026-09-02: two of 135 households on x86 versus this Mac), which the LCFS raking and every weight split then inherit. Stage order is derived from declared `consumes`; the hand-maintained `_STAGE_NAMES` tuple is deleted. | F12, F8 | María |
 | H3 | **US post-transfer parity.** The stacked spine's derive → seed → simulate subgraph reproduces a pinned fixture output. | #378 step 3 | Max's session, later |
 
@@ -201,6 +205,96 @@ Amendments so far (each re-locked):
     (python storage); a population entering the graph with `object`
     strings is normalized at `CREATE`. Parity fixtures compare identities
     after the same normalization on the legacy side, and say so.
+11. **Entrants are declared.** `Node.entrants=True` (EXPAND only) lets a
+    kernel add rows that copy no base row: their lineage is null, the
+    kernel materializes every carried column for them, the executor
+    records them as entrants, and the node's mass policy cannot be
+    `conserve`. An entrant is admitted only while the weighted entity
+    carries `design` weights (its admitted weight is its design anchor);
+    after a reweight the executor refuses entrant rows on that entity,
+    since a derived weight has no design origin to record. Raised by the
+    dynamics program (immigrant cohorts through the scheduled-entries seam,
+    microcosm-dynamics#412 / #218); Max ruled go 2026-09-02; adopted
+    2026-09-02; the design-anchor rule was stated 2026-09-03.
+12. **Mass is partitioned.** `Graph.mass_partition = (entity, column)`
+    partitions mass accounting (per stratum within each partition value;
+    `conserve` per partition). Every `CREATE` node declares the column
+    with a dtype in `PARTITION_DTYPES`, and `compile_graph` refuses any
+    later owner of it, rewrite or not: a partition value is fixed when
+    the row is created (review finding, 2026-09-02). The field is
+    normative: the executor folds it into every structural node's key, so
+    structural keys move once when a graph adopts it. Raised by the
+    dynamics program for person-period residency; adopted 2026-09-02.
+13. **Tolerance is declared.** `Capabilities.tolerance: Tolerance | None`
+    (`rtol`, `atol`, `ulps`) is required for `tolerance_bound` kernels and
+    forbidden for bitwise ones; `KernelContext.tolerances` hands each
+    reader the declared tolerance of every input cell's producer, resolved
+    through structural carriers to the node that wrote the values (a
+    rewrite sees the incumbent producer's; where several nodes wrote rows
+    of one column — entrant materialization, claims — the loosest declared
+    tolerance among them). The whole `Capabilities`
+    projection, tolerance included, is part of a node's identity and is
+    compared on every cache hit. Raised by the H2 parity finding (root
+    weights differ by one ulp between arm64 and x86) and the dynamics
+    review; adopted 2026-09-02.
+
+14. **Entrant persons carry their stratum.** `KernelResult.strata` (EXPAND
+    kernels on an `entrants=True` node only) names the stratum of every
+    entrant person by its new id; the executor requires exactly the entrant
+    persons there. Raised by the implementation of amendment 11, which
+    found the frozen result had no channel for a new person's mandatory
+    stratum and left person entrants fail-closed; adopted 2026-09-02.
+
+15. **Names are dot-free.** `compile`-time declarations refuse an entity,
+    column, or row-mask name containing `.`: receipts, keys, and gate
+    evidence spell a coordinate `entity.column`, and a dot inside either
+    part would let two coordinates collide. `EntitySchema` itself still
+    permits dots; the graph does not. Raised by the #847 gate review;
+    adopted 2026-09-03.
+
+16. **Platform-bitwise numerics.** `Numeric.PLATFORM_BITWISE`: identical
+    bytes on one platform (architecture and locked dependencies), with no
+    bound on cross-platform movement; a tolerance is forbidden on it as on
+    `bitwise`. Adopted when measuring `fit.qrf@1` showed that a one-ulp
+    difference in the forest flips which donor a quantile draw lands on
+    (45 of 6,000 cells moved by up to 7% between arm64 and x86_64 while the
+    rest agreed to one ulp; `docs/graph-qrf-cross-platform.md`), so no
+    per-cell `Tolerance` is true of it. The node key of a platform-bitwise
+    kernel carries a platform fingerprint (architecture, OS, Python minor),
+    so a shared store never serves another platform's output, and parity
+    pins record the platform: H1 asserts bytes on the pinned platform and
+    identity partitioning elsewhere; a cross-platform gate on such a kernel
+    says so in its evidence. Raised by the #847 gate review; adopted
+    2026-09-03.
+
+17. **Numeric scope per input coordinate.** `KernelContext.numerics` maps
+    each declared input coordinate to a `NumericScope`: the loosest
+    `Numeric` class among its writers (`bitwise` < `platform_bitwise` <
+    `tolerance_bound`), the loosest declared `Tolerance` among the
+    bounded writers, and the platform fingerprint the contract holds on.
+    A platform-bitwise writer never disappears into a bound: it sets
+    `platform`, so a sole platform-bitwise writer reaches a gate as
+    `platform_bitwise` rather than as `None`, and a bounded writer mixed
+    with one yields a bound that holds on that platform only.
+    `KernelContext.tolerances` stays as the projection of `numerics`. A
+    gate that compares across platforms must consult the scope and refuse
+    or evidence a platform-scoped input (amendment 16). Raised by the
+    #847 gate review (round 3); adopted 2026-09-03.
+
+18. **Receipts are deterministic.** `KernelResult.receipt` is never hashed
+    into a node key, but the run manifest's key hashes every node receipt
+    less the executor's run-level fields (`hit`, `wall_time`, and a release
+    node's decision-derived `outcome`), so a receipt must be a deterministic
+    function of the computation: gate outcomes and evidence belong there;
+    timings, host names, and iteration diagnostics that vary between runs of
+    one computation do not. Manifest schema 2 records this identity; a
+    schema-1 manifest loads as legacy in full (its receipts unauthenticated,
+    `hit` forced to false) and `load_certified` refuses it. Raised by the
+    #847 gate review; adopted 2026-09-03.
+
+Adding a normative field with a default changes the canonical projection
+of every node that carries it, so node keys moved with amendments 11 and
+13's sibling field `entrants`; no released artifact pins a graph key yet.
 
 ## Ownership
 

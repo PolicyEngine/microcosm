@@ -18,9 +18,23 @@ from __future__ import annotations
 import ast
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 
-from microcosm.graph import ContentStore, Graph, compile_graph
+import pytest
+
+from microcosm.graph import (
+    Capabilities,
+    ContentStore,
+    Determinism,
+    Graph,
+    Node,
+    Numeric,
+    Owned,
+    Slice,
+    Tolerance,
+    compile_graph,
+)
 
 if "_toy" not in sys.modules:
     _SPEC = importlib.util.spec_from_file_location(
@@ -167,3 +181,99 @@ def test_c4_seed_from_identity(tmp_path: Path) -> None:
     assert elsewhere.keys()["draw_z"] != here.keys()["draw_a"]
     assert elsewhere.seeds()["draw_z"] != here.seeds()["draw_a"]
     assert len(set(elsewhere.seeds().values())) == len(elsewhere.seeds())
+
+
+def test_c5_tolerance_is_declared(tmp_path: Path) -> None:
+    """Receipts and readers carry an owner's exact declared tolerance.
+
+    Capability receipts encode a tolerance as ``rtol``, ``atol``, and ``ulps``;
+    bitwise owners encode it as ``None``. A gate reads that same owner mapping
+    by coordinate and reports the JSON-safe value in its evidence.
+    """
+    with pytest.raises(ValueError, match="must declare its Tolerance"):
+        Capabilities(
+            determinism=Determinism.DETERMINISTIC,
+            numeric=Numeric.TOLERANCE_BOUND,
+        )
+    with pytest.raises(ValueError, match="bitwise kernel declares no Tolerance"):
+        Capabilities(
+            determinism=Determinism.DETERMINISTIC,
+            numeric=Numeric.BITWISE,
+            tolerance=Tolerance(rtol=1e-6),
+        )
+
+    bounded = Node(
+        "bounded",
+        "derive.tolerant@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "bounded_value", "float64"),),
+        params={
+            "entity": "person",
+            "columns": ("age",),
+            "target": "bounded_value",
+            "scale": 1.0,
+        },
+        population="survey",
+    )
+    bitwise = toy.derive("bitwise", ("age",), "bitwise_value")
+
+    def tolerance_gate(node_id: str, column: str) -> Node:
+        verdict = f"{node_id}_verdict"
+        return Node(
+            node_id,
+            "gate.tolerance@1",
+            inputs=(Slice("person", (column,)),),
+            outputs=(Owned("release", verdict, "string"),),
+            params={
+                "entity": "person",
+                "column": column,
+                "verdict_column": verdict,
+            },
+            population="survey",
+        )
+
+    bounded_gate = tolerance_gate("bounded_gate", "bounded_value")
+    bitwise_gate = tolerance_gate("bitwise_gate", "bitwise_value")
+    graph = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (toy.CREATE, bounded, bitwise, bounded_gate, bitwise_gate),
+    )
+    run = toy.run_toy(graph, tmp_path / "run")
+    bound = {"rtol": 1e-6, "atol": 0.0, "ulps": 0}
+
+    bounded_receipt = run.manifest.nodes[bounded.id].receipt
+    assert bounded_receipt["capabilities"]["tolerance"] == bound
+    bounded_evidence = run.manifest.nodes[bounded_gate.id].receipt
+    assert bounded_evidence["outcome"] == "pass"
+    assert bounded_evidence["evidence"]["tolerance"] == bound
+
+    bitwise_receipt = run.manifest.nodes[bitwise.id].receipt
+    assert bitwise_receipt["capabilities"]["tolerance"] is None
+    bitwise_evidence = run.manifest.nodes[bitwise_gate.id].receipt
+    assert bitwise_evidence["outcome"] == "pass"
+    assert bitwise_evidence["evidence"]["tolerance"] is None
+
+    # A carried column keeps its producer's tolerance through a structural
+    # version: the bitwise FILTER that carries ``bounded_value`` into
+    # ``adults_view`` neither tightens nor erases the bound a reader sees.
+    carrier = toy.select_node("adults_view", base="survey", policy="free")
+    carried_gate = replace(
+        tolerance_gate("carried_gate", "bounded_value"), population=carrier.id
+    )
+    carried_bitwise_gate = replace(
+        tolerance_gate("carried_bitwise_gate", "bitwise_value"),
+        population=carrier.id,
+    )
+    carried = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (toy.CREATE, bounded, bitwise, carrier, carried_gate, carried_bitwise_gate),
+    )
+    carried_run = toy.run_toy(carried, tmp_path / "carried")
+    carried_evidence = carried_run.manifest.nodes[carried_gate.id].receipt
+    assert carried_evidence["outcome"] == "pass"
+    assert carried_evidence["evidence"]["tolerance"] == bound
+    carried_bitwise = carried_run.manifest.nodes[carried_bitwise_gate.id].receipt
+    assert carried_bitwise["outcome"] == "pass"
+    assert carried_bitwise["evidence"]["tolerance"] is None

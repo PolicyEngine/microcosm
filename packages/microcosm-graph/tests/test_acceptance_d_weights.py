@@ -15,15 +15,21 @@ declaration rather than a verifier noticing afterwards.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.frame import WeightKind
 from microcosm.graph import (
+    Graph,
     GraphError,
     Node,
+    NodeRejectedError,
     Owned,
     Slice,
     StructuralDelta,
@@ -213,6 +219,135 @@ def test_d5_uncertainty_travels(tmp_path: Path) -> None:
     assert ignored.receipt["capabilities"]["consumes_se"] is False
     assert "se_seen" not in ignored.receipt
     assert toy.calibrated_node(kernel="calibrate.blind@1").params["target_se"] == 2500.0
+
+
+def test_d6_mass_is_partitioned(tmp_path: Path) -> None:
+    """Mass is conserved and receipted inside every partition value.
+
+    The receipt retains D2's flat totals and stratum maps and adds
+    ``mass["partition"]`` with ``entity``, ``column``, and nested
+    ``stratum_before``/``stratum_after`` maps keyed first by the JSON-string
+    partition value and then by stratum. This test fixes that public shape for
+    the implementation lane.
+    """
+    missing = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (toy.CREATE,),
+        mass_partition=("person", "period"),
+    )
+    with pytest.raises(GraphError, match=r"person\.period.*survey"):
+        compile_graph(missing)
+
+    source_path = toy.copy_source(tmp_path / "period-source")
+    person_path = source_path / "person.csv"
+    person = pd.read_csv(person_path)
+    is_adult = person["is_adult"].astype("boolean").fillna(False).to_numpy(bool)
+    person["period"] = np.where(
+        ~is_adult | person["person_id"].mod(2).eq(0), 2024, 2025
+    ).astype("int64")
+    person.to_csv(person_path, index=False)
+
+    schema_path = source_path / "schema.json"
+    schema = json.loads(schema_path.read_text())
+    schema["data_columns"]["person"].append("period")
+    schema["dtypes"]["period"] = "int64"
+    schema_path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
+
+    create = replace(
+        toy.CREATE,
+        outputs=(*toy.CREATE.outputs, Owned("person", "period", "int64")),
+    )
+
+    # A partition value is fixed when the row is created: a later node that
+    # writes or rewrites the column could move mass between partitions with
+    # the total unchanged, which no policy can see, so compilation refuses it.
+    reassigning = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (
+            create,
+            toy.select_node("period_view", base="survey", policy="free"),
+            Node(
+                "reassign_period",
+                "derive.rewrite@1",
+                inputs=(Slice("person", ("age",)),),
+                outputs=(Owned("person", "period", "int64", rewrite=True),),
+                population="period_view",
+            ),
+        ),
+        mass_partition=("person", "period"),
+    )
+    with pytest.raises(GraphError, match=r"reassign_period.*mass partition"):
+        compile_graph(reassigning)
+
+    sources = {"survey": source_path}
+    conserving = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (
+            create,
+            toy.select_node("period_conserve", base="survey", policy="conserve"),
+        ),
+        mass_partition=("person", "period"),
+    )
+    with pytest.raises(NodeRejectedError, match="period_conserve") as rejected:
+        toy.run_toy(conserving, tmp_path / "conserve", sources=sources)
+    assert "2024" in str(rejected.value)
+
+    free = Graph(
+        "toy",
+        (toy.SOURCE,),
+        (create, toy.select_node("period_free", base="survey", policy="free")),
+        mass_partition=("person", "period"),
+    )
+    run = toy.run_toy(free, tmp_path / "free", sources=sources)
+    mass = run.manifest.nodes["period_free"].receipt["mass"]
+    partition = mass["partition"]
+    assert set(partition) == {
+        "entity",
+        "column",
+        "stratum_before",
+        "stratum_after",
+    }
+    assert partition["entity"] == "person"
+    assert partition["column"] == "period"
+
+    weights = pd.read_csv(source_path / "weights.csv").set_index("household_id")[
+        "design_weight"
+    ]
+    weighted = person.assign(
+        _mass=person["person_household_id"].map(weights).astype("float64")
+    )
+
+    def expected(frame: pd.DataFrame) -> dict[str, dict[str, float]]:
+        grouped = frame.groupby(["period", "stratum"], observed=True)["_mass"].sum()
+        return {
+            str(period): {
+                str(stratum): float(grouped.loc[(period, stratum)])
+                for stratum in grouped.loc[period].index
+            }
+            for period in grouped.index.get_level_values("period").unique()
+        }
+
+    before = expected(weighted)
+    after = expected(weighted.loc[is_adult])
+    for key, wanted in (("stratum_before", before), ("stratum_after", after)):
+        actual = partition[key]
+        assert set(actual) == set(wanted) == {"2024", "2025"}
+        for period, strata in wanted.items():
+            assert actual[period] == pytest.approx(strata)
+
+    before_total = sum(sum(strata.values()) for strata in before.values())
+    after_total = sum(sum(strata.values()) for strata in after.values())
+    assert mass["before"] == pytest.approx(before_total)
+    assert mass["after"] == pytest.approx(after_total)
+    assert partition["stratum_after"]["2025"] == pytest.approx(
+        partition["stratum_before"]["2025"]
+    )
+    assert sum(partition["stratum_after"]["2024"].values()) < sum(
+        partition["stratum_before"]["2024"].values()
+    )
 
 
 def test_the_toy_country_declares_the_weight_lineage_the_charter_names() -> None:

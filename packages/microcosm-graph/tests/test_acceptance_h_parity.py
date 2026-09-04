@@ -23,6 +23,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from microcosm.graph import platform_fingerprint
+
 if "_toy" not in sys.modules:
     _SPEC = importlib.util.spec_from_file_location(
         "_toy", Path(__file__).with_name("_toy.py")
@@ -37,7 +39,8 @@ PARITY = Path(__file__).parent / "fixtures" / "parity"
 #: H1: one directory per wrapped legacy kernel, each holding ``graph.json``
 #: (the node declaration), ``inputs.csv``, ``direct.csv`` (the direct call's
 #: output at the pinned seed), and ``pins.json`` (seed, kernel ref, kernel
-#: implementation hash, and the dependency versions the pin was taken under).
+#: implementation hash, target node key, and the dependency versions the pin
+#: was taken under).
 KERNEL_PARITY = PARITY / "kernels"
 
 #: H2: ``uk_spine.json`` — the 28-stage FRS spine expressed as a graph — plus
@@ -60,7 +63,7 @@ WRAPPED_KERNELS = ("fit.qrf", "calibrate", "simulate")
 #: not promise cross-platform bit stability, so ``fit.qrf@1`` says so; parity
 #: in the locked environment is still asserted byte for byte below.
 NUMERIC_CLAIMS = {
-    "fit.qrf": "tolerance_bound",
+    "fit.qrf": "platform_bitwise",
     "calibrate": "bitwise",
     "simulate": "bitwise",
 }
@@ -161,7 +164,15 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
     for name in WRAPPED_KERNELS:
         case = _require(KERNEL_PARITY / name, "the kernel-wrapper lane")
         pins = json.loads((case / "pins.json").read_text())
-        assert set(pins) >= {"seed", "kernel", "implementation_hash", "dependencies"}
+        assert set(pins) >= {
+            "seed",
+            "kernel",
+            "implementation_hash",
+            "dependencies",
+            "node_key",
+            "numeric",
+            "platform",
+        }
         kernel = registry.get(pins["kernel"])
         assert kernel.implementation_hash() == pins["implementation_hash"]
         assert set(pins["dependencies"]) == set(kernel.capabilities.dependencies)
@@ -169,7 +180,7 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         store = ContentStore(tmp_path / name)
         manifest = run_graph(
             compile_graph(graph_from_json((case / "graph.json").read_text())),
-            sources={"fixture": case},
+            sources={"fixture": case / "inputs.csv"},
             store=store,
             kernels=registry,
             resume="forbid",
@@ -181,30 +192,54 @@ def test_h1_kernel_parity(tmp_path: Path) -> None:
         # own; the direct call produced only what direct.csv holds, so those
         # are the cells compared. A weight transition is compared through the
         # weight artifact under the ``<entity>.weights`` column.
-        direct = _direct_table(case)
-        compared = 0
+        # A platform-bitwise kernel's bytes are asserted on every platform
+        # that carries a pin: the authoring platform and each CI platform
+        # (amendment 16). Elsewhere the property that holds is identity
+        # partitioning: the node key carries the platform, so the local key
+        # differs from every pinned platform's key and a shared store can
+        # never serve another platform's artifact.
+        platforms = dict(pins.get("platforms", {}))
+        platforms.setdefault(
+            pins["platform"], {"node_key": pins["node_key"], "direct": "direct.csv"}
+        )
+        local = platforms.get(platform_fingerprint())
+        off_platform = pins["numeric"] == "platform_bitwise" and local is None
+        if off_platform:
+            assert node.key not in {entry["node_key"] for entry in platforms.values()}
+            direct = _direct_table(case)
+        else:
+            pinned = (
+                local
+                if pins["numeric"] == "platform_bitwise"
+                else platforms[pins["platform"]]
+            )
+            assert node.key == pinned["node_key"]
+            direct = _direct_table(case, pinned["direct"])
+        exposed = 0
         for cell, key in node.artifacts.items():
             label = f"{cell[0]}.{cell[1]}"
             if label in direct.columns:
-                _assert_same_bytes(store.load_column(key), direct[label])
-                compared += 1
+                exposed += 1
+                if not off_platform:
+                    _assert_same_bytes(store.load_column(key), direct[label])
         if node.weight_key is not None:
+            exposed += 1
             entity = (
                 graph_from_json((case / "graph.json").read_text())
                 .node(pins["node"])
                 .weights.entity
             )
-            _assert_same_bytes(
-                store.load_column(node.weight_key), direct[f"{entity}.weights"]
-            )
-            compared += 1
-        assert compared, f"{name}: the fixture exposed nothing to compare"
+            if not off_platform:
+                _assert_same_bytes(
+                    store.load_column(node.weight_key), direct[f"{entity}.weights"]
+                )
+        assert exposed, f"{name}: the fixture exposed nothing to compare"
 
 
-def _direct_table(case: Path):
+def _direct_table(case: Path, name: str = "direct.csv"):
     import pandas as pd
 
-    return pd.read_csv(case / "direct.csv", float_precision="round_trip")
+    return pd.read_csv(case / name, float_precision="round_trip")
 
 
 @pytest.mark.requires_uk
