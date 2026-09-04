@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
+from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
 
 
@@ -91,13 +92,47 @@ def main(argv=None) -> int:
             f"{len(compilation.unsupported)} national references failed to compile"
         )
     registry = compilation.registry  # un-excluded: signed-out rows are measured too
+    exclusions_all = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    # Every excluded row stays measurable except the counterfactual measures,
+    # which have no live route (that is why they are excluded): the resolver
+    # would refuse the whole pass on them.
+    contract = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("uk_population_targets.json")
+        .read_text(encoding="utf-8")
+    )
+    counterfactual_ids: set[str] = set()
+
+    def _collect(node) -> None:
+        if isinstance(node, dict):
+            if (
+                "target_id" in node
+                and "input_substitution_counterfactual" in json.dumps(node)
+            ):
+                counterfactual_ids.add(str(node["target_id"]))
+            for value in node.values():
+                _collect(value)
+        elif isinstance(node, list):
+            for value in node:
+                _collect(value)
+
+    _collect(contract)
+    unresolvable = {
+        s.name
+        for s in registry.specs
+        if s.name in exclusions_all
+        and str(s.metadata.get("contract_target_id")) in counterfactual_ids
+    }
+    resolver_registry = TargetRegistry(
+        [s for s in registry.specs if s.name not in unresolvable], country="uk"
+    )
     manifest = json.loads(args.candidate_manifest.read_text())
     bound = set()
     for name in json.loads(
         Path(str(manifest["outputs"]["calibration_diagnostics"]["path"])).read_text()
     )["targets"]:
         bound.add(str(name["name"]).rsplit("@", 1)[0])
-    exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    exclusions = exclusions_all
 
     print("loading the candidate frame ...", file=sys.stderr, flush=True)
     frame, _ = load_uk_rowwise_dataset(args.candidate_h5)
@@ -105,10 +140,10 @@ def main(argv=None) -> int:
 
     print("resolving the engine over the frame ...", file=sys.stderr, flush=True)
     with tempfile.TemporaryDirectory(prefix="uk-incumbent-eval-") as scratch:
-        _adapter, _inputs, national_rows, local_metrics, resolution = (
+        prepared_frame, _restore, national_rows, local_metrics, resolution = (
             driver._resolve_candidate_engine_surface(
                 frame,
-                registry,
+                resolver_registry,
                 period=period,
                 scratch_dir=Path(scratch),
                 band_edge_registry=registry,
@@ -116,8 +151,14 @@ def main(argv=None) -> int:
             )
         )
     print("building the national constraint matrix ...", file=sys.stderr, flush=True)
-    problem = build_constraint_matrix(frame, national_rows.targets)
+    # The resolver returns the adapter's prepared frame carrying the resolved
+    # measure columns; the raw frame has none of them (403 skipped).
+    problem = build_constraint_matrix(prepared_frame, national_rows.targets)
     estimates = np.asarray(problem.matrix @ weights, dtype=np.float64)
+    skipped = {
+        str(getattr(t, "name", t)): str(getattr(t, "reason", ""))
+        for t in problem.skipped
+    }
     est_by_name = {
         str(n).rsplit("@", 1)[0]: float(v)
         for n, v in zip(problem.names, estimates, strict=True)
@@ -141,6 +182,12 @@ def main(argv=None) -> int:
     )
     national["candidate_estimate"] = [
         est_by_name.get(n) if isinstance(n, str) else None for n in national["our_name"]
+    ]
+    national.loc[national["our_name"].isin(unresolvable), "status"] = (
+        "measure_excluded:unresolvable_counterfactual"
+    )
+    national["skip_reason"] = [
+        skipped.get(n) if isinstance(n, str) else None for n in national["our_name"]
     ]
 
     print("evaluating the local surface ...", file=sys.stderr, flush=True)
