@@ -18,6 +18,7 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
+from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -4157,7 +4158,12 @@ def test_late_table_content_digest_binds_dtype_index_and_order() -> None:
     )
 
 
-def _fixture_primary_execution_config_binding() -> dict[str, object]:
+@cache
+def _cached_fixture_primary_execution_config_binding(
+    _fit_jobs: str | None,
+    _predict_workers: str | None,
+    _cpu_count: int | None,
+) -> dict[str, object]:
     return stacked_spine_module._late_primary_execution_config_binding(
         clone_attachment_fraction=1.0,
         clone_attachment_seed=578,
@@ -4168,6 +4174,16 @@ def _fixture_primary_execution_config_binding() -> dict[str, object]:
         tax_unit_outputs=None,
         fit_records_enabled=True,
         tail_bound_diagnostics_enabled=True,
+    )
+
+
+def _fixture_primary_execution_config_binding() -> dict[str, object]:
+    return deepcopy(
+        _cached_fixture_primary_execution_config_binding(
+            worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
+            worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+            worker_identity_module.os.cpu_count(),
+        )
     )
 
 
