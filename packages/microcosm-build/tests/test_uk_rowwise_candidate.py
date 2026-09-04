@@ -388,7 +388,13 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert seed["adjudication"] == "microcosm#802"
     assert seed["approved_on"] == "2026-08-31"
     assert seed["expires_on"] == "2026-11-30"
-    assert adjudications["dormant"] == []
+    assert adjudications["dormant"] == [
+        "full_frs_tei_band_unavailable",
+        "hmrc_spi_frame_model_proxy",
+        "population_universe_private_households",
+        "uc_unit_vs_household_grain",
+        "voa_dwellings_vs_household_frame",
+    ]
     cross_grain = manifest["cross_grain"]
     assert cross_grain["bound_national_targets"] == []
     assert cross_grain["bound_higher_targets"] == []
@@ -433,10 +439,13 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     )
     assert manifest["parameters"]["doctrine"] == {
         "target_loss_cap": 10.0,
-        "max_weight_ratio": 100.0,
+        "max_weight_ratio": 10.0,
         "scale_rule": "default_target_loss_scales",
-        "target_weight_rule": "uniform",
+        "target_weight_rule": "grain_equal",
+        "solve_epochs": 1500,
+        "clone_count": 15,
     }
+    assert manifest["ladder_household_uprating"]["applied"] is False
     assert manifest["solve"]["n_targets"] == 4
     assert manifest["solve"]["n_households"] == 416
     assert np.isfinite(manifest["solve"]["initial_loss"])
@@ -556,7 +565,13 @@ def test_candidate_dry_run_plans_without_solve_or_write(
         "census_disclosure_control_noise"
         in adjudications["stood_on"]["census_households/constituency"]
     )
-    assert adjudications["dormant"] == []
+    assert adjudications["dormant"] == [
+        "full_frs_tei_band_unavailable",
+        "hmrc_spi_frame_model_proxy",
+        "population_universe_private_households",
+        "uc_unit_vs_household_grain",
+        "voa_dwellings_vs_household_frame",
+    ]
     cross_grain = plan["cross_grain"]
     assert cross_grain["bound_national_targets"] == []
     assert cross_grain["bound_higher_targets"] == []
@@ -630,7 +645,7 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
                 str(output_dir),
             ]
         ).n_clones
-        == 4
+        == builder.UK_LOCAL_CLONE_COUNT
     )
     with pytest.raises(ValueError, match="must equal --n-clones"):
         builder.main(
@@ -836,6 +851,15 @@ def test_candidate_engine_surface_resolves_real_per_clone_blocks(
     ]
     assert receipt["blocks"] == 2
     assert receipt["deviation"] == "per_clone_block_engine_resolution"
+    sensitivity = receipt["block_sensitivity"]
+    assert (
+        "ons/corporate_land_value"
+        in sensitivity["known_population_normalised_measures"]
+    )
+    assert set(sensitivity["present_in_this_run"]) <= set(
+        sensitivity["known_population_normalised_measures"]
+    )
+    assert "not evidence for adjudication" in sensitivity["caveat"]
     assert (
         metrics["constituency"].index.tolist()
         == clone.frame.table("household")["household_id"].tolist()
@@ -1148,6 +1172,28 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
     assert f100["schema_version"] == 2
+    # The written rowwise artifact carries the shared ``clone_index`` name on
+    # every table: the compact national loader must refuse it (flattening
+    # rule) and the rowwise reader must undo the export rename.
+    from microcosm.build.uk_runtime.rowwise_dataset import (
+        ladder_clone_index_column,
+        load_uk_rowwise_dataset,
+    )
+
+    dataset_path = Path(f100["outputs"]["dataset"]["path"])
+    with pytest.raises(ValueError, match="globally unique"):
+        builder.load_uk_national_frame(dataset_path)
+    reloaded, provenance = load_uk_rowwise_dataset(dataset_path)
+    assert provenance.source_h5 == dataset_path.resolve() or str(
+        provenance.source_h5
+    ).endswith(dataset_path.name)
+    for entity in ("person", "benunit", "household"):
+        assert ladder_clone_index_column(entity) in reloaded.table(entity).columns
+        assert "clone_index" not in reloaded.table(entity).columns
+    assert len(reloaded.table("household")) == f100["solve"]["n_households"]
+    assert reloaded.weights_for("household").total == pytest.approx(
+        f100["weights"]["calibration_mass_change"]["new_total"]
+    )
     assert f100["solve"]["n_targets_by_kind"] == {
         "local": 1,
         "ladder": 12,
@@ -1166,6 +1212,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     assert "fanout_controls_summed" not in f100["cross_grain"]
     assert "fanout_controls_summed" not in f100["solve"]["cross_grain"]
     assert f100["releasable"] is True
+    assert f100["measure_exclusions"] == joint_inputs["measure_exclusions"]
+    assert f100["ladder_household_uprating"]["applied"] is False
     assert _spool_rows(f100_out)[0].rung == "f100"
 
     f001_out = tmp_path / "joint-f001"
@@ -1662,3 +1710,93 @@ def test_gate_criticality_reads_fail_closed() -> None:
     )
     assert blocking == ["[uk_local_area_support] ESS 42.3 < 50"]
     assert diagnostic == ["[uk_local_weight_ratio] ratio 578 > 100"]
+
+
+def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None:
+    builder = _load_builder_module()
+    pin = "0" * 64
+    base = [
+        "--input-h5",
+        str(tmp_path / "spine.h5"),
+        "--input-sha256",
+        pin,
+        "--ladder",
+        str(tmp_path / "ladder.npz"),
+        "--ladder-sha256",
+        pin,
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        pin,
+        "--ledger-manifest-sha256",
+        pin,
+        "--out",
+        str(tmp_path / "out"),
+        "--release-candidate",
+    ]
+    # The doctrine defaults are the release posture: nothing to refuse.
+    args = builder._parse_args(base)
+    builder._validate_cli_args(args)
+    assert args.n_clones == builder.UK_LOCAL_CLONE_COUNT == 15
+    assert args.epochs == builder.UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert args.target_weight_rule == "grain_equal"
+
+    with pytest.raises(ValueError, match=r"--epochs != doctrine 1500"):
+        builder._validate_cli_args(builder._parse_args([*base, "--epochs", "512"]))
+    with pytest.raises(ValueError, match=r"--n-clones != doctrine 15"):
+        builder._validate_cli_args(builder._parse_args([*base, "--n-clones", "10"]))
+    with pytest.raises(ValueError, match=r"--target-weight-rule"):
+        builder._validate_cli_args(
+            builder._parse_args([*base, "--target-weight-rule", "uniform"])
+        )
+
+
+def test_candidate_multi_block_engine_run_is_never_releasable(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """End to end: ``--engine-blocks K`` on f100 writes ``releasable: false``.
+
+    Every release-blocking gate passes here; the posture alone withholds the
+    verdict, and the manifest names the leg (``single_block_engine``). This is
+    the assertion that catches a future caller bypassing ``_release_verdict``.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(
+        input_h5, households_per_region=200, region_masses=(4.0, 10.0, 10.0, 9.0)
+    )
+    _write_ladder(ladder_path)
+    ladder = load_uk_oa_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+
+    args = [
+        *_joint_f100_args(input_h5, ladder_path, output_dir),
+        "--engine-blocks",
+        "2",
+    ]
+    assert builder.main(args) == 0
+
+    capsys.readouterr()
+    manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["parameters"]["engine_blocks"] == 2
+    assert manifest["blocking_failures"] == []
+    assert manifest["releasable"] is False
+    assert manifest["release_posture"] == {
+        "full_rung": True,
+        "single_block_engine": False,
+        "release_blocking_gates_passed": True,
+    }

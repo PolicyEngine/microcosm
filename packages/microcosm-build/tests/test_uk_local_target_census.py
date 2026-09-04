@@ -160,7 +160,14 @@ def test_council_tax_source_and_fence_pin_measured_coverage() -> None:
     sources = {row["source_id"]: row for row in census["sources"]}
     source = sources["voa_council_tax_stock_la"]
     assert source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
-    assert "2,541 active band cells" in source["notes"]
+    assert "2,541 locally compilable band cells" in source["notes"]
+    assert "2,058 English cells bind" in source["notes"]
+    assert "bands A-G each cover 294 authorities" in source["notes"]
+    assert "entire 296-cell English Band H family is signed deferred" in source["notes"]
+    assert "84 authorities lack Band H support at K=10" in source["notes"]
+    assert "All 176 Welsh A-H cells are signed deferred" in source["notes"]
+    assert "no Wales country-level stock-by-band parent control" in source["notes"]
+    assert "all 830 excluded cells are signed deferrals" in source["notes"]
     assert "E09000001" in source["notes"]
     assert "W06000019 and W06000024" in source["notes"]
     assert "council_tax/net is not declared" in source["notes"]

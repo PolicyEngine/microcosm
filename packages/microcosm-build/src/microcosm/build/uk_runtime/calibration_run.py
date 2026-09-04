@@ -28,6 +28,9 @@ from microcosm.build.gate_battery import (
     GateBatteryRun,
     gate_signing_key_env,
 )
+from microcosm.build.gate_battery import (
+    _canonical_json_bytes as gate_battery_canonical_json_bytes,
+)
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -1056,8 +1059,15 @@ def resign_uk_gate_report(payload: dict[str, object]) -> None:
     attestation.pop("signing_error", None)
     attestation["signing_key_sha256"] = hashlib.sha256(key).hexdigest()
     attestation["signature"] = None
+    # Sign with the gate battery's canonical form — the one the battery used
+    # for the original signature and the one every verifier (the data
+    # contract's terminal and dense checks) recomputes. The Logbook's
+    # canonical form renders integral floats without the ".0" (50.0 -> 50),
+    # so a report re-signed with it cannot be authenticated wherever a gate
+    # detail carries an integral float (microcosm#762 R17: the local
+    # battery's ESS floor 50.0).
     attestation["signature"] = hmac.new(
-        key, canonical_json_bytes(payload), hashlib.sha256
+        key, gate_battery_canonical_json_bytes(payload), hashlib.sha256
     ).hexdigest()
 
 

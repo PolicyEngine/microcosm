@@ -57,7 +57,7 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed register's
 #: validity window (approved 2026-08-10, expires 2027-02-10) so the suite
 #: never drifts across an expiry boundary.
-CLOCK = date(2026, 9, 1)
+CLOCK = date(2026, 9, 15)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -1000,14 +1000,14 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 19_618
+        assert result.details["candidate_targets"] == 19_105
         assert result.details["reference_targets"] == 22_530
-        # 1,901 signed area deferrals from the membership file plus the 1,011
+        # 2,414 signed area deferrals from the membership file plus the 1,011
         # ladder-derived households@area rows: census_households binds from the
         # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
         # in-code default surface excludes it by rule rather than by absence.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_901 + 1_011
+        assert len(exclusions) == 2_414 + 1_011
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -1040,14 +1040,23 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
 
     entry = {entry.id: entry for entry in uk_gates.gates}["uk_local_area_support"]
     binding = UK_GATE_REGISTRY["area_support"]
+    # The committed register carries the two micro local authorities Maria
+    # excluded on the measured K=4 shortfalls (microcosm#762 A4); the
+    # synthetic roster carries them below the floor so the committed entries
+    # apply instead of reading as unknown.
     support = pd.DataFrame(
         {
-            "geography_level": ["constituency", "local_authority"],
-            "area_code": ["E14000001", "E06000001"],
-            "assigned_households": [50, 50],
-            "nonzero_households": [50, 50],
-            "effective_sample_size": [50.0, 50.0],
-            "nonzero_source_households": [50, 50],
+            "geography_level": [
+                "constituency",
+                "local_authority",
+                "local_authority",
+                "local_authority",
+            ],
+            "area_code": ["E14000001", "E06000001", "E06000053", "E09000001"],
+            "assigned_households": [50, 50, 7, 14],
+            "nonzero_households": [50, 50, 7, 14],
+            "effective_sample_size": [50.0, 50.0, 6.8, 12.1],
+            "nonzero_source_households": [50, 50, 7, 14],
         }
     )
     monkeypatch.setattr(
@@ -1055,7 +1064,7 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
         "_local_area_roster",
         lambda _resource, _levels: {
             "constituency": ("E14000001",),
-            "local_authority": ("E06000001",),
+            "local_authority": ("E06000001", "E06000053", "E09000001"),
         },
     )
     context = EvidenceContext(
@@ -1067,7 +1076,20 @@ def test_area_support_binding_resolves_register_and_rejects_expired_entry(
 
     committed = binding.evaluate(context, entry.parameters)
     assert committed.passed is True
-    assert committed.details["reviewed_exclusions"] == {}
+    assert set(committed.details["reviewed_exclusions"]) == {
+        "local_authority/E06000053",
+        "local_authority/E09000001",
+    }
+    assert committed.details["excluded_area_count"] == 2
+    exclusions = battery_bindings.load_uk_reviewed_exclusion_register(
+        None,
+        resource="local_area_support_exclusions.json",
+    )
+    a14_suffix = (
+        " Per microcosm#762 A14 the authority's own local-authority cells are "
+        "signed-deferred (`local_authority_support_floor_excluded`)."
+    )
+    assert all(record.reason.endswith(a14_suffix) for record in exclusions.values())
 
     monkeypatch.setattr(
         battery_bindings,

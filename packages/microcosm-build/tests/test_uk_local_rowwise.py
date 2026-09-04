@@ -482,7 +482,13 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     assert (
         receipt["register_resource"] == UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
     )
-    assert receipt["dormant"] == []
+    assert receipt["dormant"] == [
+        "full_frs_tei_band_unavailable",
+        "hmrc_spi_frame_model_proxy",
+        "population_universe_private_households",
+        "uc_unit_vs_household_grain",
+        "voa_dwellings_vs_household_frame",
+    ]
     stood_on = receipt["stood_on"]["census_households/constituency"]
     seed = stood_on["census_disclosure_control_noise"]
     assert seed["approved_by"] == "juaristi22"
@@ -679,6 +685,7 @@ def test_rowwise_binding_refuses_unadjudicated_committed_fence() -> None:
         require_adjudicated_uk_local_binding(
             ["uc_households/constituency"],
             problem.target_frame,
+            register={},
         )
 
 
@@ -1170,10 +1177,13 @@ def test_dense_builder_result_equals_frozen_pre_pr_fixture() -> None:
     frozen = pd.DataFrame(golden["target_frame"])
     common = [column for column in frozen.columns if column in dense.target_frame]
     assert common == list(frozen.columns)
+    # Exact, like the matrix: the golden's values round-trip through JSON
+    # without loss, so a tolerance would only hide a drift.
     pd.testing.assert_frame_equal(
         dense.target_frame[common].reset_index(drop=True),
         frozen[common].reset_index(drop=True),
         check_dtype=False,
+        check_exact=True,
     )
 
 

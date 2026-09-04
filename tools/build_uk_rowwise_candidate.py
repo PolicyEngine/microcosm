@@ -57,8 +57,10 @@ from microcosm.build.logbook_adoption import (
 from microcosm.build.target_materialization import resolve_target_measures
 from microcosm.build.uk_runtime import (
     UK_GATE_REGISTRY,
+    UK_LOCAL_CLONE_COUNT,
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
+    UK_LOCAL_SOLVE_EPOCHS,
     UK_LOCAL_TARGET_LOSS_CAP,
     CalibrationFrameAdapter,
     UKLadderRowwiseDatasetResult,
@@ -91,6 +93,8 @@ from microcosm.build.uk_runtime import (
     spine_provenance_from_sidecar,
     uk_household_weight_kind,
     uk_ladder_area_support_summary,
+    uk_ladder_household_uprating,
+    uk_ledger_households_total,
     uk_local_doctrine_with_overrides,
     uk_local_target_surface,
     uk_support_limited_misses,
@@ -425,6 +429,23 @@ def _resolve_candidate_engine_surface(
     }
     if blocks > 1:
         receipt["deviation"] = "per_clone_block_engine_resolution"
+        present = sorted(
+            column
+            for column in UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
+            if column in measure_inputs
+        )
+        receipt["block_sensitivity"] = {
+            "known_population_normalised_measures": list(
+                UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
+            ),
+            "present_in_this_run": present,
+            "caveat": (
+                "per-block engine resolution mis-measures population-normalised "
+                "formulas (each block reproduces a national aggregate); rows "
+                "on these measures are not evidence for adjudication from this "
+                "run. Resolve in a single block before ruling on them."
+            ),
+        }
     try:
         scratch_dir.rmdir()
     except OSError:
@@ -560,7 +581,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--target-weight-rule",
         choices=("uniform", "grain_equal"),
-        default="uniform",
+        default=UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
     )
     parser.add_argument("--release-candidate", action="store_true")
     parser.add_argument("--skip-holdout", action="store_true")
@@ -570,7 +591,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="Output directory for the candidate H5 and evidence sidecars.",
     )
-    parser.add_argument("--n-clones", type=int, default=4)
+    parser.add_argument("--n-clones", type=int, default=UK_LOCAL_CLONE_COUNT)
     parser.add_argument(
         "--candidate-clone-counts",
         type=_candidate_clone_counts_argument,
@@ -600,7 +621,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Survey year recorded for lineage (calibration uses the FRS release year).",
     )
     parser.add_argument("--source-lineage-modulus", type=int)
-    parser.add_argument("--epochs", type=int, default=512)
+    parser.add_argument("--epochs", type=int, default=UK_LOCAL_SOLVE_EPOCHS)
     parser.add_argument("--learning-rate", type=float, default=0.15)
     parser.add_argument(
         "--expected-constituency-vintage",
@@ -761,11 +782,45 @@ def _run_candidate(
         ladder = load_uk_oa_ladder(ladder_path)
         target_provenance = ladder_target_provenance(ladder)
         joint_inputs = _load_joint_target_inputs(args)
+        if joint_inputs is not None:
+            # microcosm#762 A15: the ladder's census household counts bind at
+            # the calibration year through one national factor from the
+            # Ledger's published UK household total (fail-closed by name on a
+            # real Ledger artifact; a synthetic artifact without facts binds
+            # the rows as published and says so, which the release posture
+            # refuses).
+            facts = getattr(joint_inputs.get("artifact"), "facts", None)
+            if facts is None:
+                joint_inputs["ladder_household_uprating"] = {
+                    "applied": False,
+                    "reason": (
+                        "the joint target inputs carry no Ledger facts; ladder "
+                        "household rows bind at their census vintage."
+                    ),
+                }
+            else:
+                joint_inputs["ladder_household_uprating"] = (
+                    uk_ladder_household_uprating(
+                        ladder,
+                        uk_ledger_households_total(
+                            facts, period=joint_inputs["calibration_year"]
+                        ),
+                        period=joint_inputs["calibration_year"],
+                    )
+                )
+            if args.release_candidate and not joint_inputs[
+                "ladder_household_uprating"
+            ].get("applied"):
+                raise SystemExit(
+                    "error: --release-candidate requires the A15 ladder household "
+                    "uprating: "
+                    + str(joint_inputs["ladder_household_uprating"].get("reason"))
+                )
         doctrine, doctrine_override = uk_local_doctrine_with_overrides(
             UK_LOCAL_SOLVE_DOCTRINE,
             (
                 {}
-                if args.target_weight_rule == "uniform"
+                if args.target_weight_rule == UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule
                 else {"target_weight_rule": args.target_weight_rule}
             ),
         )
@@ -861,6 +916,7 @@ def _run_candidate(
                 reviewed_unbound_higher_targets=joint_inputs[
                     "reviewed_unbound_higher_targets"
                 ],
+                ladder_household_uprating=joint_inputs.get("ladder_household_uprating"),
             )
             args._rung_surface = rung_surface
         args._bound_families = tuple(bound_families)
@@ -964,6 +1020,9 @@ def _run_candidate(
                     if args.sample_fraction == 1.0
                     else ("uk_local_geography_ladder_post_calibration",)
                 ),
+                # The battery attests the posture it ran under: a release
+                # candidate blocks on absent evidence and can be shippable.
+                release_candidate=bool(args.release_candidate),
             )
         except GateBatteryBlockedError:
             # Write-then-block, extended to the whole evidence bundle: a
@@ -1263,6 +1322,7 @@ def _build_joint_problem(
     period: int,
     sample_fraction: float,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]],
+    ladder_household_uprating: Mapping[str, Any] | None = None,
 ) -> tuple[
     pd.DataFrame,
     UKRowwiseLocalMatrix,
@@ -1297,6 +1357,7 @@ def _build_joint_problem(
         bound_national_target_ids=national_ids,
         period=period,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        ladder_household_uprating=ladder_household_uprating,
     )
     covered = {
         grain: set(values.astype(str).tolist()) for grain, values in assigned.items()
@@ -1425,6 +1486,7 @@ def _joint_dry_run_plan(
         bound_national_target_ids=_national_contract_target_ids(national_registry),
         period=joint_inputs["calibration_year"],
         reviewed_unbound_higher_targets=joint_inputs["reviewed_unbound_higher_targets"],
+        ladder_household_uprating=joint_inputs.get("ladder_household_uprating"),
     )
     household = clone.frame.table("household")
     covered = {
@@ -1699,6 +1761,21 @@ def _local_diagnostics_registry(
     return TargetRegistry(specs, country="uk"), geography
 
 
+#: Measure columns whose policyengine-uk formulas normalise by a population
+#: total (a fixed national aggregate allocated by each household's share of
+#: total weighted corporate wealth, or a term scaled by a weight sum). Under
+#: ``--engine-blocks K`` the engine sees one clone block at a time, so each
+#: block reproduces the whole aggregate and the column comes out K× (receipt
+#: R15 in ``experiments/762-uk-rowwise-candidate-receipts.md``: corporate
+#: land value ×15.000 at K=15). Evidence from a per-block run must not
+#: adjudicate these rows; the release posture is single-block.
+UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = (
+    "ons/corporate_land_value",
+    "ons/land_value",
+    "slc/student_loan_repayment/england",
+)
+
+
 def _run_local_gate_battery(
     *,
     frame: Any,
@@ -1708,6 +1785,7 @@ def _run_local_gate_battery(
     release_id: str,
     evaluated_on: date,
     enforce_only: tuple[str, ...] | None = None,
+    release_candidate: bool = False,
 ) -> tuple[dict[str, object], GateResult]:
     manifest = uk_scoped_gate_manifest(
         UK_LOCAL_GATE_SCOPE,
@@ -1718,7 +1796,7 @@ def _run_local_gate_battery(
         manifest,
         release_id=release_id,
         report_path=report_path,
-        release_candidate=False,
+        release_candidate=release_candidate,
         registry=UK_GATE_REGISTRY,
     )
     phase = battery.run_phase(
@@ -1753,7 +1831,7 @@ def _run_local_gate_battery(
             raise ValueError(f"enforce_only names unknown local gates: {unknown}.")
         selected_blocking = [
             outcome
-            for outcome in phase.blocking_outcomes(release_candidate=False)
+            for outcome in phase.blocking_outcomes(release_candidate=release_candidate)
             if outcome.entry.id in enforce_only
         ]
         if selected_blocking:
@@ -2313,6 +2391,23 @@ def _manifest(
         ),
         "releasable": releasable,
         "release_posture": release_posture,
+        "ladder_household_uprating": dict(
+            cross_grain.get("ladder_household_uprating")
+            or {"applied": False, "reason": "no cross-grain receipt"}
+        ),
+        # The reviewed measure exclusions the national compile stood on
+        # (name -> register record), so the narrowing is in the evidence.
+        "measure_exclusions": {
+            str(name): dict(record)
+            for name, record in sorted(
+                (
+                    (getattr(args, "_joint_inputs_receipt", None) or {}).get(
+                        "measure_exclusions"
+                    )
+                    or {}
+                ).items()
+            )
+        },
         "blocked_at_f100": bool(getattr(args, "_blocked_failures", [])),
         "blocking_failures": list(getattr(args, "_blocked_failures", [])),
         "diagnostic_failures": list(getattr(args, "_diagnostic_failures", [])),
@@ -2403,6 +2498,8 @@ def _doctrine_bounds() -> dict[str, Any]:
         "max_weight_ratio": float(UK_LOCAL_MAX_WEIGHT_RATIO),
         "scale_rule": UK_LOCAL_SOLVE_DOCTRINE.scale_rule,
         "target_weight_rule": UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
+        "solve_epochs": int(UK_LOCAL_SOLVE_EPOCHS),
+        "clone_count": int(UK_LOCAL_CLONE_COUNT),
     }
 
 
@@ -2504,8 +2601,12 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
                 + ", ".join(missing_release)
             )
         refused = []
-        if args.target_weight_rule != "uniform":
+        if args.target_weight_rule != UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule:
             refused.append("--target-weight-rule")
+        if args.epochs != UK_LOCAL_SOLVE_EPOCHS:
+            refused.append(f"--epochs != doctrine {UK_LOCAL_SOLVE_EPOCHS}")
+        if args.n_clones != UK_LOCAL_CLONE_COUNT:
+            refused.append(f"--n-clones != doctrine {UK_LOCAL_CLONE_COUNT}")
         if args.measure_exclusions is not None:
             refused.append("--measure-exclusions")
         if args.skip_holdout:

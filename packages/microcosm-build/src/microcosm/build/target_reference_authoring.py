@@ -62,13 +62,19 @@ class TargetReferenceAuthoringConfig:
 
 @dataclass(frozen=True)
 class AreaSignedDeferral:
-    """Signed area-level compile deferral for one contract target."""
+    """Signed area-level compile deferral for one contract target.
+
+    Missing cells are the default use. ``defer_if_compiles`` is an explicit
+    opt-in for a separate adjudication that prevents an available fact from
+    binding; ordinary deferrals remain stale once their cell compiles.
+    """
 
     target_id: str
     geography_level: str
     reason_id: str
     rationale: str
     area_ids: tuple[str, ...]
+    defer_if_compiles: bool = False
 
     def __post_init__(self) -> None:
         if not self.target_id:
@@ -330,12 +336,25 @@ def author_area_target_references(
                     entry["signed_reason_id"] = signed_deferral.reason_id
                     entry["signed_rationale"] = signed_deferral.rationale
                 else:
-                    if signed_deferral is not None:
+                    if (
+                        signed_deferral is not None
+                        and not signed_deferral.defer_if_compiles
+                    ):
                         raise ValueError(
                             "Stale area signed deferral for "
                             f"{target_id!r} at {geography_level!r}/{area_id!r}: "
                             "the candidate now compiles."
                         )
+                    if signed_deferral is not None:
+                        entry.update(
+                            {
+                                "status": "signed_deferred",
+                                "signed_reason_id": signed_deferral.reason_id,
+                                "signed_rationale": signed_deferral.rationale,
+                            }
+                        )
+                        candidates.append(entry)
+                        continue
                     spec = registry.specs[0]
                     resolved_period = str(spec.metadata.get("ledger_fact_period", ""))
                     _apply_uprating_hold(row, resolved_period, config.target_period)
@@ -406,6 +425,7 @@ def author_area_target_references(
                 "reason_id": deferral.reason_id,
                 "rationale": deferral.rationale,
                 "area_ids": list(deferral.area_ids),
+                **({"defer_if_compiles": True} if deferral.defer_if_compiles else {}),
             }
             for deferral in config.area_signed_deferrals
         ],

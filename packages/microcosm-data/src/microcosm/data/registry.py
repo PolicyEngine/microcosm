@@ -110,6 +110,22 @@ register(
 
 register(
     DatasetSpec(
+        # microcosm#762 A18: the dense joint national + local UK line. Not a
+        # default variant — the compact national line stays the fast
+        # microsimulation artifact; this one carries every constituency and
+        # local authority at K=15 clones per spine household.
+        country="uk",
+        year=2025,
+        variant="dense",
+        hf_repo="policyengine/populace-uk-private",
+        filename="microcosm_uk_2025_dense.h5",
+        engine_module="policyengine_uk.data",
+        engine_class="UKSingleYearDataset",
+        engine_package="policyengine-uk",
+    )
+)
+register(
+    DatasetSpec(
         country="us",
         year=2024,
         variant=DEFAULT_VARIANT,
