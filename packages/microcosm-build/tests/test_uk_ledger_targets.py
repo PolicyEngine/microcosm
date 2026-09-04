@@ -1353,6 +1353,8 @@ def test_uk_local_target_surface_receipts_a_single_cell_dropped_by_the_fanout_ru
     }
     assert ("K03000001", 2) in entries
     assert entries[("K02000001", 1)].startswith("Single cell at this geography")
+
+
 def _households_total_fact(period: int, value: float, **overrides):
     fact = {
         "concept_alignment": {"canonical_concept": "ons.households_total"},

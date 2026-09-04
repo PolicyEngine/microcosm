@@ -1710,6 +1710,8 @@ def test_gate_criticality_reads_fail_closed() -> None:
     )
     assert blocking == ["[uk_local_area_support] ESS 42.3 < 50"]
     assert diagnostic == ["[uk_local_weight_ratio] ratio 578 > 100"]
+
+
 def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None:
     builder = _load_builder_module()
     pin = "0" * 64
