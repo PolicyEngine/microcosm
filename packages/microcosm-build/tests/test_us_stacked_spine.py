@@ -4481,6 +4481,89 @@ def test_worker_import_trace_refuses_empty_result() -> None:
         )
 
 
+@pytest.mark.parametrize("cache_location", ["source_tree", "inherited_prefix"])
+def test_worker_identity_probe_ignores_valid_header_stale_bytecode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cache_location: str,
+) -> None:
+    import importlib.util
+    import marshal
+    import os
+    import struct
+    import subprocess
+
+    trace = _fixture_worker_import_trace(tmp_path)
+    worker_source = Path(
+        trace["module_origins"][worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+    )
+    (worker_source.parent.parent / "__init__.py").write_text("", encoding="utf-8")
+    marker = tmp_path / "worker-executed.txt"
+    worker_source.write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('source')\n",
+        encoding="utf-8",
+    )
+    source_bytes = worker_source.read_bytes()
+    source_stat = worker_source.stat()
+    poisoned_code = compile(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('stale cache')\n",
+        str(worker_source),
+        "exec",
+        optimize=sys.flags.optimize,
+    )
+    inherited_prefix = (
+        tmp_path / "inherited-cache" if cache_location == "inherited_prefix" else None
+    )
+    with monkeypatch.context() as cache_path_context:
+        cache_path_context.setattr(
+            sys,
+            "pycache_prefix",
+            None if inherited_prefix is None else str(inherited_prefix),
+        )
+        cache_path = Path(importlib.util.cache_from_source(str(worker_source)))
+    cache_path.parent.mkdir(parents=True)
+    # Python accepts this timestamp cache: its source mtime and size are valid,
+    # although the executable code object is unrelated to the source bytes.
+    cache_bytes = (
+        importlib.util.MAGIC_NUMBER
+        + struct.pack(
+            "<III", 0, int(source_stat.st_mtime) & 0xFFFFFFFF, len(source_bytes)
+        )
+        + marshal.dumps(poisoned_code)
+    )
+    cache_path.write_bytes(cache_bytes)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "namespace"))
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    if inherited_prefix is None:
+        monkeypatch.delenv("PYTHONPYCACHEPREFIX", raising=False)
+    else:
+        monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(inherited_prefix))
+
+    control = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import {worker_identity_module.PRIMARY_QRF_WORKER_MODULE}",
+        ],
+        env=dict(os.environ),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert control.returncode == 0, control.stderr
+    assert marker.read_text(encoding="utf-8") == "stale cache"
+    marker.unlink()
+
+    observed = worker_identity_module._clean_worker_import_trace()
+
+    assert marker.read_text(encoding="utf-8") == "source"
+    assert str(worker_source) in observed["opened_files"]
+    assert str(cache_path) not in observed["opened_files"]
+    assert worker_source.read_bytes() == source_bytes
+    assert cache_path.read_bytes() == cache_bytes
+
+
 def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5369,6 +5452,140 @@ def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None
             ),
             primary_resource_receipts=resources,
         )
+
+
+def test_stacked_worker_first_torch_import_forces_autoload_off(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Exercise the stacked launch in a child with no preloaded parent packages."""
+
+    import subprocess
+
+    import microcosm.build.us_runtime.puf_qrf_chain as chain_module
+
+    monkeypatch.setenv("TORCH_DEVICE_BACKEND_AUTOLOAD", "1")
+    worker_binding = _fixture_primary_execution_config_binding()["qrf"][
+        "worker_execution"
+    ]
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_late_primary_qrf_worker_execution_binding",
+        lambda: deepcopy(worker_binding),
+    )
+    checkpoint_identity = "a" * 64
+    checkpoint_dir = tmp_path / checkpoint_identity
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+
+    def initialize(_frame: Frame, _donor: pd.DataFrame, root: Path, **_kwargs) -> None:
+        root.mkdir(parents=True)
+        (root / stacked_spine_module.PRIMARY_QRF_MANIFEST_FILENAME).write_text("{}")
+
+    monkeypatch.setattr(
+        stacked_spine_module, "initialize_primary_puf_qrf_chain", initialize
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "primary_puf_qrf_recipient_predictor_universe_receipt",
+        lambda _root: {"fixture": "recipient-universe"},
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, _root, **_kwargs: (
+            frame,
+            frame.resolve_weights("tax_unit").kind,
+        ),
+    )
+    # Keep the real chain's subprocess argv/environment assembly; replace only
+    # the model/checkpoint work, which the first-import probe never reaches.
+    monkeypatch.setattr(
+        chain_module,
+        "_load_manifest",
+        lambda _root: {"target_order": ["fixture"], "initial_state": {}},
+    )
+    monkeypatch.setattr(
+        chain_module, "QRFChainState", SimpleNamespace(from_dict=lambda _raw: None)
+    )
+    monkeypatch.setattr(
+        chain_module, "_load_target_checkpoint", lambda *_args, **_kwargs: (None, None)
+    )
+    observed: list[dict[str, object]] = []
+    script = r"""
+import builtins
+import json
+import os
+import runpy
+import sys
+
+assert "torch" not in sys.modules
+assert "microcosm.build" not in sys.modules
+original_import = builtins.__import__
+
+def record_first_torch_import(name, *args, **kwargs):
+    if name == "torch" or name.startswith("torch."):
+        print("FIRST_TORCH_IMPORT=" + json.dumps({
+            "autoload": os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD"),
+            "worker_loaded": "microcosm.build.us_runtime.puf_qrf_worker" in sys.modules,
+        }), flush=True)
+        raise SystemExit(0)
+    return original_import(name, *args, **kwargs)
+
+builtins.__import__ = record_first_torch_import
+sys.argv = [sys.argv[1], *sys.argv[2:]]
+runpy.run_module("microcosm.build.us_runtime.puf_qrf_worker", run_name="__main__")
+raise AssertionError("worker never imported torch")
+"""
+
+    def launch_probe(argv: list[str], **kwargs):
+        assert argv[1:3] == ["-m", worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+        completed = subprocess.run(
+            [argv[0], "-c", script, *argv[2:]],
+            **kwargs,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert completed.returncode == 0, completed.stderr
+        for line in completed.stdout.splitlines():
+            if line.startswith("FIRST_TORCH_IMPORT="):
+                observed.append(json.loads(line.removeprefix("FIRST_TORCH_IMPORT=")))
+        return completed
+
+    monkeypatch.setattr(chain_module, "subprocess", SimpleNamespace(run=launch_probe))
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        primary_qrf_checkpoint_identity_sha256=checkpoint_identity,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+        fit_records_enabled=True,
+        tail_bound_diagnostics_enabled=True,
+    )
+    stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+        _late_primary_entry(_stacked_gap_fixture()),
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        fit_records=[],
+        tail_bound_diagnostics=[],
+        primary_qrf_checkpoint_dir=checkpoint_dir,
+        primary_qrf_input_binding=(
+            stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
+                resources
+            )
+        ),
+    )
+
+    assert observed == [{"autoload": "0", "worker_loaded": False}]
+    assert (
+        worker_binding["semantic_identity"]["environment"]["overrides"][
+            "TORCH_DEVICE_BACKEND_AUTOLOAD"
+        ]
+        == "0"
+    )
+    assert stacked_spine_module.os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] == "1"
 
 
 def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(

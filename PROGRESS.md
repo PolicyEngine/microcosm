@@ -19,10 +19,20 @@ before fixing them; commit each coherent step. No GitHub network or push.
   write the report outside the repository at
   `/private/tmp/microcosm-pr871-astra-round1/out.md` unless steered otherwise.
 
+- Reproduced finding 1 before any production edit: the fresh interpreter at
+  the real stacked/chain launch observes Torch autoload `1` before the worker
+  module loads (expected `0`); one test failed, direct exit 1.
+- Reproduced finding 2 before any production edit: both source-tree and
+  inherited-prefix valid-header stale caches execute altered code in the
+  production identity probe; two cases failed, direct exit 1. Control children
+  prove that disabling bytecode writes alone still executes those caches.
+- The recovered pytest script uses an obsolete interpreter shebang. Use
+  `uv run --no-sync python -m pytest` with a writable `UV_CACHE_DIR`; direct
+  pytest script attempts exited 4 before collection. No sync was needed.
+- Recorded both failing commands and observations in the external report.
+
 ## Next
 
-- Add and run fail-before fresh-interpreter autoload and valid-header stale
-  bytecode regressions; record exact commands and observed failures externally.
 - Fix both findings, verify focused regressions, and commit each step.
 - Run the full required verification with direct exit codes; report counts,
   pin proof, commit SHAs, and deliberate scope exclusions.
