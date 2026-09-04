@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from functools import cache
 from typing import Any
 
 import pytest
@@ -20,6 +22,7 @@ from microcosm.build.spec_engine.inventory_coverage import (
 from microcosm.build.spec_engine.legacy_adapter import compile_to_legacy_payload
 from microcosm.build.spec_engine.loader import load_bundle
 from microcosm.build.spec_engine.model import ResolvedSpec, ResourceKind, freeze_json
+from microcosm.build.us_runtime import worker_identity as worker_identity_module
 
 EXPECTED_CHECKS = {
     "acs_group_predictors_exact",
@@ -64,6 +67,40 @@ EXPECTED_CHECKS = {
     "take_up_program_mechanisms_exact",
     "take_up_program_order_exact",
 }
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reuse_real_worker_binding_for_pin_checks() -> object:
+    """Reuse one real operational binding while testing digests that strip it."""
+
+    original = worker_identity_module.primary_qrf_worker_execution_binding
+
+    @cache
+    def cached(
+        _fit_jobs: str | None,
+        _predict_workers: str | None,
+        _cpu_count: int | None,
+    ) -> dict[str, object]:
+        return original()
+
+    def binding() -> dict[str, object]:
+        return copy.deepcopy(
+            cached(
+                os.environ.get("POPULACE_FIT_N_JOBS"),
+                os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+                os.cpu_count(),
+            )
+        )
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(
+        worker_identity_module,
+        "primary_qrf_worker_execution_binding",
+        binding,
+    )
+    yield
+    patcher.undo()
+
 
 EXPECTED_COUNTS = {
     "adapter_surfaces": 13,

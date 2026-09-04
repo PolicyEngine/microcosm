@@ -76,6 +76,10 @@ fixes are implemented and focused green. Pin proof and full verification remain.
   one identical production identity apiece; production identity generation
   remains uncached. The interrupted pre-cache final run had 9 passes before
   exit 130 and is not treated as final evidence.
+- Added the same narrowly scoped reuse to the inventory and coverage-tool test
+  modules: each module constructs one real binding and deep-copies it for
+  repeated report builds whose digests deliberately strip `worker_execution`.
+  This does not cache the production resolver or replace its first real check.
 
 ## Next
 
