@@ -190,7 +190,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097"
+        "788b815f748abb2061c41efb0cec4cc4952435dbcb4448ecf21ccac85a5ccec2"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -382,11 +382,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086"
+        == "324b8e495920af091cb7c14f78b461b2a10fb3fedeb4ce706d68ae6b4c2e3b6b"
     )
 
     assert len(take_up["programs"]) == 17
@@ -930,7 +930,7 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
         "identity_generation": 1,
         "seed_protocol": LEGACY_V1_PROTOCOL.id,
     }
-    assert len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(LEGACY_V1_PROTOCOL.sites) == 66
     assert len(LEGACY_V1_PROTOCOL.streams) == 14
     assert LEGACY_V1_PROTOCOL.site("survey_sample_asec").default == 578
     assert LEGACY_V1_PROTOCOL.site("puf_live_aggregate_disaggregation").default == 0
@@ -949,12 +949,8 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     assert geography["assignment"]["anchor"] == "puma"
     assert geography["assignment"]["order"] == "before_gap_fill"
     assert geography["assignment"]["assign_tract"] is False
-    assert geography["assignment"][
-        "congressional_district_vintage_crosswalk"
-    ] == {
-        "source_ref": (
-            "source:us_congressional_district_vintage_crosswalk_117_to_119"
-        ),
+    assert geography["assignment"]["congressional_district_vintage_crosswalk"] == {
+        "source_ref": ("source:us_congressional_district_vintage_crosswalk_117_to_119"),
         "source_vintage": "vintage:cd_117",
         "target_vintage": "vintage:cd_119",
     }
@@ -984,9 +980,12 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
     assert engine_version_occurrences == {
         kind: int(kind == "take_up") for kind in TYPED_DOMAIN_KINDS
     }
-    assert take_up["legacy_contract_metadata"]["asserted_engine"][
-        "inventory_built_against"
-    ] == engine_version
+    assert (
+        take_up["legacy_contract_metadata"]["asserted_engine"][
+            "inventory_built_against"
+        ]
+        == engine_version
+    )
     assert _count_scalar(engine_lock, engine_version) == 1
     resolved_vintages = thaw_json(resolved_us_spec.vintage_authorities)
     assert resolved_vintages["records"]["policyengine_us_surface"]["value"] == (

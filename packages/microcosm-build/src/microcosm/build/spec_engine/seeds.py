@@ -742,6 +742,31 @@ LEGACY_V1_SITES = (
         ),
         candidate_universe="all_person_rows_before_abawd_eligibility_mask",
     ),
+    *(
+        _stable_site(
+            f"immigration_humanitarian_{label.replace(':', '_')}_assignment",
+            salt=f"immigration:{label}",
+            key_grammar=("source_year:source_person_id_if_present", "else_person_id"),
+            candidate_universe=(
+                "all_person_rows_then_category_origin_window_pool_mask"
+            ),
+        )
+        for label in (
+            "paroled_one_year:afghanistan",
+            "paroled_one_year:ukraine",
+            "paroled_one_year:nicaragua",
+            "paroled_one_year:venezuela",
+            "refugee",
+            "asylee",
+            "deportation_withheld",
+            "tps:venezuela",
+            "tps:el_salvador",
+            "tps:honduras",
+            "tps:nicaragua",
+            "tps:nepal",
+            "tps:other_designated",
+        )
+    ),
     _stable_site(
         "immigration_ead_workers_assignment",
         salt="immigration:ead_workers",

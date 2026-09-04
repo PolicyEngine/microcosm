@@ -1406,6 +1406,137 @@ REFORM_COVERAGE_PROBES = [
         ),
         "issue": "PolicyEngine/microcosm#312",
     },
+    {
+        "id": "hr1_medicaid_humanitarian_eligibility_restoration",
+        "name": "H.R.1 SS71109 Medicaid humanitarian-status restoration",
+        "parameter_changes": {
+            "gov.hhs.medicaid.eligibility.eligible_immigration_statuses": {
+                "2026-10-01.2100-12-31": [
+                    "CITIZEN",
+                    "LEGAL_PERMANENT_RESIDENT",
+                    "REFUGEE",
+                    "ASYLEE",
+                    "DEPORTATION_WITHHELD",
+                    "CUBAN_HAITIAN_ENTRANT",
+                    "CONDITIONAL_ENTRANT",
+                    "PAROLED_ONE_YEAR",
+                ]
+            }
+        },
+        "budget_measure": "medicaid",
+        "period": 2027,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["immigration_status_str"],
+        "min_abs_effect": 50_000_000.0,
+        "reason": (
+            "H.R.1 SS71109 narrows the Medicaid qualified-immigrant list to "
+            "citizens, LPRs, and Cuban/Haitian entrants from 2026-10-01; the "
+            "probe restores the pre-narrowing list at 2027 law, which binds "
+            "only through the REFUGEE/ASYLEE/DEPORTATION_WITHHELD/"
+            "PAROLED_ONE_YEAR values of immigration_status_str. The source "
+            "stage draws roughly 160k refugees (74% reporting Medicaid on the "
+            "2024 ASEC), 155k asylees, and 405k parolees to cited DHS/OHSS "
+            "stocks, so restoring their eligibility must re-enroll anchored "
+            "takers and move person-level medicaid dollars by far more than "
+            "the floor. A ~$0 score means the humanitarian statuses regressed "
+            "to zero records (microcosm #767's silent-zero failure) or the "
+            "engine channel broke."
+        ),
+        "issue": "PolicyEngine/microcosm#767",
+    },
+    {
+        "id": "hr1_aca_below_fpl_exception_restoration",
+        "name": "H.R.1 SS71302 ACA below-FPL immigrant exception restoration",
+        "parameter_changes": {
+            "gov.aca.below_fpl_immigration_exception_in_effect": {
+                "2026-01-01.2026-12-31": True
+            }
+        },
+        "budget_measure": "aca_ptc",
+        "period": 2026,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["immigration_status_str"],
+        "min_abs_effect": 5_000_000.0,
+        "reason": (
+            "H.R.1 SS71302 repeals the 26 USC 36B(c)(1)(B) below-FPL "
+            "lawfully-present exception from 2026. Restoring it for 2026 "
+            "binds, at 2026 law, only through tax units containing a "
+            "non-citizen who is ACA-lawfully-present yet "
+            "Medicaid-ineligible by status - on this file exactly the TPS "
+            "population the source stage draws to the CRS RS20844 per-country "
+            "stocks (865k weighted persons; the other humanitarian classes "
+            "remain Medicaid-qualified at 2026 annual parameters). "
+            "Below-poverty TPS units with marketplace take-up must regain "
+            "premium tax credits above the floor; ~$0 means the TPS records "
+            "vanished or the exception channel broke."
+        ),
+        "issue": "PolicyEngine/microcosm#767",
+    },
+    {
+        "id": "hr1_aca_lawful_presence_restoration",
+        "name": "H.R.1 SS71301 ACA lawful-presence list restoration",
+        "parameter_changes": {
+            "gov.aca.ineligible_immigration_statuses": {
+                "2027-01-01.2100-12-31": ["DACA", "UNDOCUMENTED"]
+            }
+        },
+        "budget_measure": "aca_ptc",
+        "period": 2027,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["immigration_status_str"],
+        "min_abs_effect": 10_000_000.0,
+        "reason": (
+            "H.R.1 SS71301 adds TPS/REFUGEE/ASYLEE/DEPORTATION_WITHHELD/"
+            "PAROLED_ONE_YEAR to the ACA ineligible-status list from "
+            "2027-01-01. The probe restores the pre-H.R.1 list (DACA and "
+            "UNDOCUMENTED only) at 2027, re-qualifying every humanitarian "
+            "status the source stage draws (~1.6M weighted persons across "
+            "parole, refugee, asylee, and TPS). Units among them with "
+            "marketplace take-up must regain premium tax credits above the "
+            "floor; ~$0 means the humanitarian statuses regressed or the "
+            "lawful-presence channel broke."
+        ),
+        "issue": "PolicyEngine/microcosm#767",
+    },
+    {
+        "id": "hr1_snap_humanitarian_eligibility_restoration",
+        "name": "H.R.1 SS10108 SNAP humanitarian-status restoration",
+        "parameter_changes": {
+            "gov.usda.snap.eligibility.eligible_immigration_statuses": {
+                "2025-07-01.2100-12-31": [
+                    "CITIZEN",
+                    "LEGAL_PERMANENT_RESIDENT",
+                    "REFUGEE",
+                    "ASYLEE",
+                    "DEPORTATION_WITHHELD",
+                    "CUBAN_HAITIAN_ENTRANT",
+                    "CONDITIONAL_ENTRANT",
+                    "PAROLED_ONE_YEAR",
+                ]
+            }
+        },
+        "budget_measure": "snap",
+        "period": 2026,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["immigration_status_str"],
+        "min_abs_effect": 25_000_000.0,
+        "reason": (
+            "H.R.1 SS10108 narrows SNAP alien eligibility to citizens, LPRs, "
+            "Cuban/Haitian entrants, and COFA citizens from 2025-07-01 "
+            "(modeled 2025-07). Restoring the pre-H.R.1 list at 2026 "
+            "re-includes the REFUGEE/ASYLEE/DEPORTATION_WITHHELD/"
+            "PAROLED_ONE_YEAR members the source stage draws to cited "
+            "DHS/OHSS stocks; is_snap_excluded_member stops excluding them, "
+            "so SNAP allotments for their households must rise above the "
+            "floor. ~$0 means the humanitarian statuses regressed to zero "
+            "records or the SNAP immigration channel broke."
+        ),
+        "issue": "PolicyEngine/microcosm#767",
+    },
 ]
 
 

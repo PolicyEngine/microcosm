@@ -99,7 +99,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v16 declares person.s_corp_income as a whole-pool primary-PUF output: its
+# v17 binds the ASEC and ACS source-scoped evidence read by constrained
+# immigration transfer and reconciliation. v16 declares person.s_corp_income
+# as a whole-pool primary-PUF output: its
 # certified combined-source semantics are carried by partnership_income, while
 # the separate S-corporation leaf is an exact-zero universe. v15 content-binds
 # the complete late dual-producer ownership matrix and
@@ -122,9 +124,11 @@ __all__ = [
 # implicit. Receipt v3 reconciles repeated physical evidence and scope
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
-# resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
+# resources it consumed. Receipt v4 additionally persists and validates the
+# paired constrained-immigration reconciliation and QRF evidence. Receipt v2
+# introduced exact virtual-resource payloads.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 17
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 4
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
@@ -954,8 +958,7 @@ _source_input_inventories = {
                 "A_MARITL",
                 "A_SPOUSE",
                 "A_HSCOL",
-                "WSAL_VAL",
-                "SEMP_VAL",
+                "A_LFSR",
                 "MCARE",
                 "CAID",
                 "IHSFLG",
@@ -977,6 +980,11 @@ _source_input_inventories = {
         _single("resolved_person_weight", "person", "@resolved_weight"),
         _requirement(
             "stable_source_identity",
+            (
+                _column("person", "source_year"),
+                _column("person", "source_household_id"),
+                _column("person", "source_person_id"),
+            ),
             (
                 _column("person", "source_year"),
                 _column("person", "source_person_id"),
@@ -1193,6 +1201,69 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
                 "adult_care_tax_unit_role",
                 "person",
                 _ADULT_CARE_ROLE_INPUT,
+            )
+        )
+    if group.name == transfer_producer_name("person", "source_operator_immigration"):
+        post_transfer_structure.extend(
+            (
+                _requirement(
+                    "immigration_stable_person_lineage",
+                    (
+                        _column("person", "source_year"),
+                        _column("person", "source_household_id"),
+                        _column("person", "source_person_id"),
+                    ),
+                    (
+                        _column("person", "source_year"),
+                        _column("person", "source_person_id"),
+                    ),
+                    (_column("person", "person_id"),),
+                ),
+                _single(
+                    "immigration_asec_citizenship",
+                    "person",
+                    "PRCITSHP",
+                    value_kind="finite_numeric",
+                    required_scope=_ASEC_SOURCE_SCOPE,
+                ),
+                _single(
+                    "immigration_asec_origin",
+                    "person",
+                    "PENATVTY",
+                    value_kind="finite_numeric",
+                    required_scope=_ASEC_SOURCE_SCOPE,
+                ),
+                _single(
+                    "immigration_asec_arrival",
+                    "person",
+                    "PEINUSYR",
+                    value_kind="finite_numeric",
+                    required_scope=_ASEC_SOURCE_SCOPE,
+                ),
+                _single(
+                    "immigration_acs_citizenship",
+                    "person",
+                    "CIT",
+                    value_kind="finite_numeric",
+                    required_scope=_ACS_SOURCE_SCOPE,
+                ),
+                _single(
+                    "immigration_acs_origin",
+                    "person",
+                    "POBP",
+                    value_kind="finite_numeric",
+                    required_scope=_ACS_SOURCE_SCOPE,
+                ),
+                _single(
+                    "immigration_acs_arrival",
+                    "person",
+                    "YOEP",
+                    # Native-born ACS people carry a structural blank. The
+                    # source-aware runtime requires a finite year only for
+                    # foreign-born CIT=4/5 rows.
+                    value_kind="column_present",
+                    required_scope=_ACS_SOURCE_SCOPE,
+                ),
             )
         )
     return _inventory(
@@ -2076,7 +2147,8 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
             ),
             "top_binding": (
                 "entry_and_output_frame_sha256_execution_chain_source_"
-                "completion_and_nineteen_transfer_groups"
+                "completion_nineteen_transfer_groups_and_constrained_"
+                "immigration_reconciliation"
             ),
             "transition_authority": {
                 "authority_id": US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,

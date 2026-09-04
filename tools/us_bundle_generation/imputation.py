@@ -871,6 +871,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    humanitarian_immigration = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["humanitarian_immigration"],
+                "humanitarian-immigration post-transfer contract",
+            )
+        )
+    )
+    humanitarian_immigration.pop("enabled")
     result["predictor_bindings"] = {
         "person_required": "acs_person_required",
         "person_optional": [
@@ -889,6 +898,17 @@ def _normalise_transfer_execution(
                 ]
             },
             "contract": adult_care,
+        },
+        "humanitarian_immigration": {
+            "activation": {
+                "all_targets": list(
+                    _array_like(
+                        result["immigration_status_targets"],
+                        "immigration status targets",
+                    )
+                )
+            },
+            "contract": humanitarian_immigration,
         },
         "schedule_d_capital_gain_distributions": {
             "activation": {
@@ -2152,7 +2172,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    expected_graph_counts = (2750, 92, 227, 35, 0, 213)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "

@@ -339,6 +339,22 @@
     "immigration_status_model_target": {
      "type": "string"
     },
+    "immigration_required_predictors": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "uniqueItems": true
+    },
+    "immigration_baseline_excluded_statuses": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "uniqueItems": true
+    },
     "immigration_status_targets": {
      "type": "array",
      "items": {
@@ -394,6 +410,62 @@
           "mutable_rows",
           "tax_unit_link",
           "tax_unit_role"
+         ]
+        }
+       },
+       "required": [
+        "activation",
+       "contract"
+       ]
+      },
+      "humanitarian_immigration": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "activation": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "all_targets": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         },
+         "required": [
+          "all_targets"
+         ]
+        },
+        "contract": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "candidate_shortfall": {
+           "type": "string"
+          },
+          "mutable_rows": {
+           "type": "string"
+          },
+          "selection": {
+           "type": "string"
+          },
+          "target_basis": {
+           "type": "string"
+          },
+          "targets": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         },
+         "required": [
+          "candidate_shortfall",
+          "mutable_rows",
+          "selection",
+          "target_basis",
+          "targets"
          ]
         }
        },
@@ -526,6 +598,7 @@
      },
      "required": [
       "adult_care",
+      "humanitarian_immigration",
       "schedule_d_capital_gain_distributions"
      ]
     },
@@ -776,6 +849,8 @@
     "donor_combined_components",
     "group_optional_names",
     "housing",
+    "immigration_baseline_excluded_statuses",
+    "immigration_required_predictors",
     "immigration_status_model_target",
     "immigration_status_targets",
     "post_transfer_features",
