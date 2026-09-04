@@ -59,10 +59,22 @@ before fixing them; commit each coherent step. No GitHub network or push.
   Required release-preflight (42), fiscal-refresh (224), and source-blindness
   (497) suites passed with direct exit 0 each.
 
+- Extended the same test-only reuse to the 11-case tail-control matrix: it
+  mutates parent constants, while the fresh worker's installed source and
+  startup environment stay identical. Independent review confirmed the real
+  resource extraction and digest comparison remain active.
+- Interrupted the earlier focused worker run after discovering that matrix's
+  22 redundant identities: direct exit 130, 58 passes before interruption;
+  this is not final evidence. Restarted the complete requested worker selector.
+- Launch/binding integration passed (2 tests, exit 0). Required H5 (98),
+  inventory (15), coverage-tool (7), and imputation (4) suites passed, exit 0
+  each. Ruff and changed-file formatting passed after the last test edit.
+- Verified every forbidden path, docs/tools, and uv.lock is unchanged from
+  `32ce6f51`; the standalone coverage proof is still running.
+
 ## Next
 
-- Finish launch integration, spec-pin proof, and remaining required worker,
-  H5, inventory, coverage-tool, and imputation suites currently underway.
+- Finish the full focused worker rerun and standalone spec-pin proof.
 - Run the full required verification with direct exit codes; report counts,
   pin proof, commit SHAs, and deliberate scope exclusions.
 

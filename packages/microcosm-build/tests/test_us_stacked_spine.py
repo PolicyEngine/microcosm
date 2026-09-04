@@ -5390,6 +5390,14 @@ def test_late_primary_resource_identity_binds_every_tail_control(
     name: str,
     replacement: object,
 ) -> None:
+    # In-memory tail controls change the resource config, while the worker's
+    # installed source and startup environment remain identical in both calls.
+    worker = _fixture_primary_execution_config_binding()["qrf"]["worker_execution"]
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_late_primary_qrf_worker_execution_binding",
+        lambda: deepcopy(worker),
+    )
     donor = pd.DataFrame({"fixture_donor": [1.0]})
     common = {
         "primary_qrf_checkpoint_identity_sha256": "a" * 64,
