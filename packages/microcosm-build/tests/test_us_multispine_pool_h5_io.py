@@ -57,6 +57,61 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _reuse_real_worker_identity_for_manifest_checks() -> object:
+    """Reuse real identities while this module mutates only artifact payloads."""
+
+    original_binding = worker_identity_module.primary_qrf_worker_execution_binding
+    original_semantic = worker_identity_module.primary_qrf_worker_semantic_identity
+
+    def controls() -> tuple[str | None, str | None, int | None]:
+        return (
+            worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
+            worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+            worker_identity_module.os.cpu_count(),
+        )
+
+    @cache
+    def cached_semantic(
+        uv_lock_sha256: str | None,
+        _fit_jobs: str | None,
+        _predict_workers: str | None,
+        _cpu_count: int | None,
+    ) -> dict[str, object]:
+        return original_semantic(uv_lock_sha256=uv_lock_sha256)
+
+    def semantic_identity(*, uv_lock_sha256: str | None = None) -> dict[str, object]:
+        return deepcopy(cached_semantic(uv_lock_sha256, *controls()))
+
+    @cache
+    def cached_binding(
+        _fit_jobs: str | None,
+        _predict_workers: str | None,
+        _cpu_count: int | None,
+    ) -> dict[str, object]:
+        return original_binding()
+
+    def binding() -> dict[str, object]:
+        return deepcopy(cached_binding(*controls()))
+
+    # Each lock/control combination still constructs a real identity. Keep the
+    # cached expected values private and return independent copies so a re-signed
+    # malicious manifest or attestation cannot mutate the validation baseline.
+    # Source/cache mutation regressions live outside this module; production
+    # identity generation remains uncached after this fixture is torn down.
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(
+        worker_identity_module,
+        "primary_qrf_worker_semantic_identity",
+        semantic_identity,
+    )
+    patcher.setattr(
+        worker_identity_module, "primary_qrf_worker_execution_binding", binding
+    )
+    yield
+    patcher.undo()
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

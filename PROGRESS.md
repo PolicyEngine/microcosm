@@ -48,11 +48,21 @@ before fixing them; commit each coherent step. No GitHub network or push.
   flags, replacement of an inherited prefix, and cleanup without parent
   environment mutation. Added semantic tamper coverage for both cache controls.
 
+- Extended only the test validation fixtures to reuse pristine real worker
+  identities by lock/fit controls and return independent deep copies. The
+  stacked mutation helper compares against an independently obtained baseline;
+  H5 tests mutate artifacts only. Production factories and source/cache
+  mutation regressions remain uncached. Focused H5 checks: 2 passed, exit 0.
+- Independent read-only review found no blocking issue in the startup/cache
+  fixes, regressions, hard boundaries, or fixture mutation separation.
+- Final repository Ruff passed; changed-file format check passed (5 files).
+  Required release-preflight (42), fiscal-refresh (224), and source-blindness
+  (497) suites passed with direct exit 0 each.
+
 ## Next
 
-- Finish launch integration and spec-pin proof currently running.
-- Complete narrowly scoped test-fixture reuse for repeated manifest/worker
-  validation, leaving production identity and mutation regressions uncached.
+- Finish launch integration, spec-pin proof, and remaining required worker,
+  H5, inventory, coverage-tool, and imputation suites currently underway.
 - Run the full required verification with direct exit codes; report counts,
   pin proof, commit SHAs, and deliberate scope exclusions.
 

@@ -4190,13 +4190,25 @@ def _fixture_primary_execution_config_binding() -> dict[str, object]:
 def _validate_fixture_primary_execution_config(
     binding: Mapping[str, object],
 ) -> None:
-    stacked_spine_module._validate_late_resource_binding(
-        binding,
-        producer=stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
-        entity="tax_unit",
-        column=stacked_spine_module.US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
-        boundary="portable worker identity fixture",
-    )
+    # These cases mutate received bindings, never the installed environment.
+    # Reuse the real pristine fixture for comparison, independently of the
+    # potentially re-signed candidate; direct identity mutation tests stay live.
+    expected_worker = _fixture_primary_execution_config_binding()["qrf"][
+        "worker_execution"
+    ]
+    with pytest.MonkeyPatch.context() as identity_fixture:
+        identity_fixture.setattr(
+            stacked_spine_module,
+            "_late_primary_qrf_worker_execution_binding",
+            lambda: deepcopy(expected_worker),
+        )
+        stacked_spine_module._validate_late_resource_binding(
+            binding,
+            producer=stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
+            entity="tax_unit",
+            column=stacked_spine_module.US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
+            boundary="portable worker identity fixture",
+        )
 
 
 def test_late_primary_worker_authentication_ignores_audit_alias_relocation() -> None:
