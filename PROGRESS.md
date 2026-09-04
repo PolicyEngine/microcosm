@@ -71,11 +71,11 @@ fixes are implemented and focused green. Pin proof and full verification remain.
 - Restricted the optional QRF child-environment seam: arbitrary import/startup
   controls are refused, bound fit controls must equal the authenticated parent
   values, and only the forced Torch key may be supplied with an ignored value.
-- Added a bound-environment-keyed, deep-copied cache only to the stacked-spine
-  test fixture so its semantic-tamper matrix does not rebuild one identical
-  production identity per parameter; production identity generation remains
-  uncached. The interrupted pre-cache final run had 9 passes before exit 130
-  and is not treated as final evidence.
+- Added bound-environment-keyed, deep-copied caches only to the stacked-spine
+  and H5 canonical test fixtures so parameterized/tiny-pool cases do not rebuild
+  one identical production identity apiece; production identity generation
+  remains uncached. The interrupted pre-cache final run had 9 passes before
+  exit 130 and is not treated as final evidence.
 
 ## Next
 

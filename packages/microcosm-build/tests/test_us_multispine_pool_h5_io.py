@@ -4,7 +4,9 @@ import hashlib
 import json
 import sys
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import replace
+from functools import cache
 from pathlib import Path
 
 import numpy as np
@@ -974,7 +976,12 @@ def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
     }
 
 
-def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
+@cache
+def _cached_canonical_stacked_late_dag_receipt(
+    _fit_jobs: str | None,
+    _predict_workers: str | None,
+    _cpu_count: int | None,
+) -> dict[str, object]:
     """Build a signed fixture receipt over the live canonical contracts."""
 
     schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
@@ -1290,6 +1297,16 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         boundary="canonical stacked H5 fixture",
     )
     return receipt
+
+
+def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
+    return deepcopy(
+        _cached_canonical_stacked_late_dag_receipt(
+            worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
+            worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+            worker_identity_module.os.cpu_count(),
+        )
+    )
 
 
 def _rewrite_as_legacy_relocated_worker_pool(
