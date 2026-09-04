@@ -1,3 +1,37 @@
+# F1 portable worker identity — Astra gate round 1
+
+## State
+
+In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
+`32ce6f518e8847647f23b3f6f11e4a8dc060ed01`. Reproduce both peer findings
+before fixing them; commit each coherent step. No GitHub network or push.
+
+## Done
+
+- Read `CLAUDE.md`, the prior Sol journal, the worker identity/bootstrap,
+  pinned QRF launcher, stacked launch/binding, and relevant test sections.
+- Confirmed the assigned branch and clean starting tree.
+- Read the GitNexus debugging workflow; its tools are unavailable, so trace
+  execution directly from source and offline tests.
+- Preserve the full `worker_execution` digest exclusion and all hard-boundary
+  files, including the seed-attested `puf_qrf_chain.py` launcher.
+- The prompt provides no concrete `-o` path; asked asynchronously and will
+  write the report outside the repository at
+  `/private/tmp/microcosm-pr871-astra-round1/out.md` unless steered otherwise.
+
+## Next
+
+- Add and run fail-before fresh-interpreter autoload and valid-header stale
+  bytecode regressions; record exact commands and observed failures externally.
+- Fix both findings, verify focused regressions, and commit each step.
+- Run the full required verification with direct exit codes; report counts,
+  pin proof, commit SHAs, and deliberate scope exclusions.
+
+# Historical: Sol gate round 1 journal
+
+> The section below is the prior round's handoff at `32ce6f51`. Its pending
+> state and verification claims are preserved as historical evidence.
+
 # F1 portable worker identity — Sol gate round 1
 
 ## State
