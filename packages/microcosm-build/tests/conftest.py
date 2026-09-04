@@ -1,5 +1,7 @@
-"""Shared fixtures: a small person+household frame, and an ODS writer."""
+"""Shared fixtures: a small person+household frame, an ODS writer, and the
+autouse guard that keeps every test in this shard away from a live Logbook."""
 
+import sys
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
@@ -104,3 +106,111 @@ class ODSBuilder:
 def ods() -> ODSBuilder:
     """Helpers for writing a small ODS file to a temporary path."""
     return ODSBuilder()
+
+
+# --- Logbook isolation --------------------------------------------------
+#
+# The Logbook live store is append-only: a row that reaches it cannot be
+# taken back. These tests must never be able to reach it, and "must never"
+# has to hold in a shell that already has an operator's credentials
+# exported — a developer who has just run an export, or a runner where the
+# variables are set for a later job. Per-module ``delenv`` lists did not
+# hold: they were written before the ``LOGBOOK_*`` spelling existed, so a
+# shell carrying the new names walked straight past them into
+# ``_remote_config()`` and out to Supabase.
+#
+# Two independent guards, because either one alone is a single point of
+# failure: the environment is cleared for every test, and the Logbook
+# network call is replaced with one that raises. A test that means to
+# exercise the remote path stubs ``urlopen`` itself, as several already do;
+# a test that means to reach the real network asks for
+# ``allow_logbook_network`` and says so in its own body.
+
+
+def _logbook_environment_names() -> tuple[str, ...]:
+    """Every environment variable that can point tests at a live Logbook.
+
+    Both generations of the dual-read window, taken from the window itself
+    rather than restated, so adding a variable there cannot leave a hole
+    here. ``POPULACE_LOGBOOK_PREV_ROW_DIGEST`` is not in the window (it has
+    only ever had one spelling) but it is read from the environment and it
+    changes which chain a row claims to extend, so it is cleared too.
+    """
+    from microcosm.build.logbook_env import LOGBOOK_ENV_LEGACY_NAMES
+
+    names = {"POPULACE_LOGBOOK_PREV_ROW_DIGEST"}
+    for preferred, legacy_names in LOGBOOK_ENV_LEGACY_NAMES.items():
+        names.add(preferred)
+        names.update(legacy_names)
+    return tuple(sorted(names))
+
+
+class UnstubbedLogbookNetworkError(AssertionError):
+    """Raised when a test reaches the Logbook live store for real."""
+
+
+def _refuse_logbook_network(*_args: object, **_kwargs: object) -> None:
+    raise UnstubbedLogbookNetworkError(
+        "A test tried to open a real Logbook HTTP request. The live store is "
+        "append-only, so this is never a harmless mistake. Stub the module's "
+        "'urlopen' (see test_logbook.py) to exercise the remote path, or "
+        "request the 'allow_logbook_network' fixture if the network is "
+        "genuinely the thing under test."
+    )
+
+
+def _logbook_urlopen_holders(real_urlopen: object) -> list[object]:
+    """Every imported module whose ``urlopen`` is the Logbook one.
+
+    ``tools/logbook.py`` binds the function at import
+    (``from microcosm.build.logbook import urlopen``), so patching the
+    defining module alone leaves the CLI's copy live. Rather than name the
+    importers — the next one would be missed — this finds every module
+    currently holding the same object.
+    """
+    return [
+        module
+        for module in list(sys.modules.values())
+        if getattr(module, "urlopen", None) is real_urlopen
+    ]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_logbook(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Detach every test from any live Logbook the shell may point at.
+
+    Returns the callables it displaced, so the opt-in fixture below can put
+    the real ones back without having to guess what they were.
+    """
+    from microcosm.build import logbook
+
+    for name in _logbook_environment_names():
+        monkeypatch.delenv(name, raising=False)
+
+    displaced = {
+        "urlopen": logbook.urlopen,
+        "open": logbook._NO_REDIRECT_OPENER.open,
+    }
+    for module in _logbook_urlopen_holders(displaced["urlopen"]):
+        monkeypatch.setattr(module, "urlopen", _refuse_logbook_network)
+    # The opener is what a surviving reference to the real ``urlopen`` would
+    # ultimately call, so guarding it closes the path even for a caller this
+    # fixture did not find.
+    monkeypatch.setattr(logbook._NO_REDIRECT_OPENER, "open", _refuse_logbook_network)
+    return displaced
+
+
+@pytest.fixture
+def allow_logbook_network(
+    monkeypatch: pytest.MonkeyPatch, _isolate_logbook: dict[str, object]
+) -> None:
+    """Opt back in to real Logbook HTTP. Nothing in this suite should need it.
+
+    It exists so the guard above is a policy with a documented exception
+    rather than a wall, and so the guard itself can be tested.
+    """
+    from microcosm.build import logbook
+
+    for module in _logbook_urlopen_holders(_refuse_logbook_network):
+        monkeypatch.setattr(module, "urlopen", _isolate_logbook["urlopen"])
+    monkeypatch.setattr(logbook._NO_REDIRECT_OPENER, "open", _isolate_logbook["open"])

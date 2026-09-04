@@ -1,5 +1,7 @@
 """US congressional-district geography-vintage translation tests."""
 
+import json
+
 import pytest
 
 from microcosm.build.us_runtime import (
@@ -732,3 +734,161 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
             "url": "https://example.org/reference",
         },
     }
+
+
+def _re_epoch_to_chronicle(fact: dict[str, object]) -> dict[str, object]:
+    """The same source fact as Chronicle emits it after the rename cutover.
+
+    Identical canonical payload; ``ledger.<family>.v2`` domains replaced by
+    their ``chronicle.<family>.v3`` siblings (PolicyEngine/chronicle#143).
+    """
+    chronicle = dict(fact)
+    for field, domain in (
+        ("aggregate_fact_key", "chronicle.aggregate_fact.v3"),
+        ("semantic_fact_key", "chronicle.semantic_fact.v3"),
+    ):
+        value = chronicle.get(field)
+        if isinstance(value, str):
+            chronicle[field] = f"{domain}:{value.split(':', 1)[1]}"
+    chronicle.pop("legacy_fact_key", None)
+    return chronicle
+
+
+def test__given_chronicle_era_source_rows__then_derived_cd_keys_are_unchanged() -> None:
+    """The Chronicle rename must not re-identify Microcosm-derived facts.
+
+    Translated and proxy facts are minted into Microcosm's own
+    ``microcosm.derived_fact.*`` / ``microcosm.semantic_fact.*`` namespaces,
+    which sit outside both Chronicle eras and are frozen at v1
+    (microcosm#639). Their digests are computed from the source row's
+    *semantic* identity, never from its key, so a feed that crosses the
+    cutover must mint byte-identical derived keys — otherwise every target
+    pinned to one would silently stop resolving on cutover day.
+    """
+    ledger_era_facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            60.0,
+            geography_id="5001700US0653",
+            source_row_id="ca_53",
+        ),
+    ]
+    chronicle_era_facts = [_re_epoch_to_chronicle(fact) for fact in ledger_era_facts]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US0653",
+            "target_geography_id": "5001900US0602",
+            "weight": 1.0,
+        },
+    ]
+
+    def _translate(facts):
+        return translate_congressional_district_facts_to_current_vintage(
+            facts, crosswalk, crosswalk_basis="block_population"
+        )
+
+    from_ledger = _translate(ledger_era_facts)
+    from_chronicle = _translate(chronicle_era_facts)
+
+    def _keys(translated):
+        return sorted(
+            (
+                fact["geography"]["id"],
+                fact["aggregate_fact_key"],
+                fact["semantic_fact_key"],
+            )
+            for fact in translated
+        )
+
+    assert _keys(from_chronicle) == _keys(from_ledger)
+    for fact in from_chronicle:
+        assert fact["aggregate_fact_key"].startswith(
+            "microcosm.derived_fact.congressional_district_vintage.v1:"
+        )
+        assert fact["semantic_fact_key"].startswith(
+            "microcosm.semantic_fact.congressional_district_vintage.v1:"
+        )
+        # The derived row carries neither epoch: it is Microcosm's fact now.
+        assert "legacy_fact_key" not in fact
+
+
+def test__given_chronicle_era_state_rows__then_proxy_cd_keys_are_unchanged() -> None:
+    """The state-total-proxy mint is epoch-independent for the same reason.
+
+    Its digest covers the source record id, the proxy district, and the
+    value — never the source row's Chronicle key — so a chronicle-era state
+    fact produces the same proxy identity a ledger-era one does.
+    """
+    ledger_era_facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_state_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="0400000US30",
+            source_row_id="mt_total",
+        ),
+    ]
+    chronicle_era_facts = [_re_epoch_to_chronicle(fact) for fact in ledger_era_facts]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 2.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3002",
+            "weight": 3.0,
+        },
+    ]
+
+    def _translate(facts):
+        return translate_congressional_district_facts_to_current_vintage(
+            facts, crosswalk, crosswalk_basis="block_population"
+        )
+
+    def _derived_identity(translated):
+        # Passthrough rows keep their own Chronicle keys verbatim — that is the
+        # opaque-carriage rule. Only the Microcosm-minted rows are compared.
+        return sorted(
+            (
+                fact["geography"]["id"],
+                fact["aggregate_fact_key"],
+                fact["semantic_fact_key"],
+                json.dumps(fact["lineage"], sort_keys=True),
+            )
+            for fact in translated
+            if str(fact.get("aggregate_fact_key", "")).startswith("microcosm.")
+        )
+
+    from_chronicle = _derived_identity(_translate(chronicle_era_facts))
+
+    assert from_chronicle == _derived_identity(_translate(ledger_era_facts))
+    # The proxy digest reaches the compared identity through the lineage: the
+    # proxy fact is minted, then translated, so its source_record_id (digest
+    # included) is what the derived row records.
+    assert any(
+        "congressional_district_state_total_proxy_source_record_id" in lineage
+        for _, _, _, lineage in from_chronicle
+    )

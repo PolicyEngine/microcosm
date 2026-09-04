@@ -885,6 +885,7 @@ from microcosm.build.us_runtime.snap_take_up import (
     with_us_snap_take_up_inputs,
 )
 from microcosm.build.us_runtime.source_coverage import (
+    CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     US_SOURCE_COVERAGE,
     hard_target_package_aliases,
@@ -1107,6 +1108,7 @@ __all__ = [
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
+    "CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
     "LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
     "AgeBand",
     "AGE_BANDS",

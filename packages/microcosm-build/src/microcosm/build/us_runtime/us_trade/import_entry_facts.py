@@ -1,12 +1,25 @@
-"""Ledger consumer-artifact emission for US import-entry margins.
+"""Chronicle consumer-artifact emission for US import-entry margins.
 
-Microcosm's ledger leg consumes sha-pinned consumer artifacts
+Microcosm's Chronicle leg consumes sha-pinned consumer artifacts
 (``manifest.json`` + ``consumer_facts.jsonl``,
 :mod:`microcosm.build.ledger_artifact`) whose rows follow the
 ``ledger.consumer_fact.v1`` shape that :mod:`microcosm.build.ledger_targets`
 compiles into calibration targets. This module mints the import-entry
 margin series to that exact contract from the Census ingest and archived
 CBP statistics.
+
+The contract has a chronicle-era spelling too (``chronicle.consumer_fact.v2``
+under ``policyengine_chronicle.consumer_artifact.v3``, chronicle#143), and the
+loader accepts every declared spelling. What this module *emits* stays
+ledger-era, and specifically stays at
+``policyengine_ledger.consumer_artifact.v1`` — the id Microcosm's own minted
+artifacts have always declared, which is a generation behind the
+``...consumer_artifact.v2`` Chronicle itself publishes. The rows are
+byte-pinned goldens, and they are minted from official source bytes rather
+than derived from a Chronicle row whose epoch they would have to inherit.
+:func:`write_consumer_artifact` takes the declared id as an argument, checked
+for membership in the declared set, so flipping the declaration later is a
+caller change rather than a code change.
 
 Producer identity is explicit: these rows are **microcosm-minted** from
 official source bytes — not an export of a PolicyEngine/ledger build — and
@@ -39,6 +52,13 @@ from typing import Any
 
 import pandas as pd
 
+from microcosm.build.chronicle_epoch import (
+    ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
+    LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+    MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+    describe_accepted_consumer_artifact_schema_versions,
+    is_accepted_consumer_artifact_schema_version,
+)
 from microcosm.build.us_runtime.us_trade.cbp_entry_stats import (
     CBP_TRADE_STATS_URL,
     CbpEntryStats,
@@ -50,6 +70,7 @@ from microcosm.build.us_runtime.us_trade.census_imports import (
 from microcosm.build.us_runtime.us_trade.imdb_bulk import IMDB_URL_TEMPLATE
 
 __all__ = [
+    "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",
     "ALL_IMPORT_ENTRY_FACT_GRAINS",
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "DISTRICT_ENTRY_FACT_GRAIN",
@@ -138,8 +159,17 @@ CENSUS_API_SOURCE_LEG = FactSourceLeg(
     ),
 )
 
-CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v1"
-_FACT_SCHEMA_VERSION = "ledger.consumer_fact.v1"
+#: The schema ids these microcosm-minted rows *declare*. Both stay ledger-era:
+#: the emitted bytes are golden-pinned (microcosm#639) and these facts are
+#: minted from Census/CBP source bytes, so there is no chronicle-era source row
+#: whose epoch they could inherit. Chronicle's own cutover moves what Chronicle
+#: emits, not what Microcosm mints. Acceptance is the separate, dual-era
+#: question, and it lives in :mod:`microcosm.build.chronicle_epoch`.
+CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
+_FACT_SCHEMA_VERSION = LEDGER_CONSUMER_FACT_SCHEMA_VERSION
+#: Microcosm's own key namespace: outside both Chronicle eras by construction,
+#: so these keys can never collide with or impersonate Chronicle-built keys —
+#: and a Chronicle-era cutover cannot silently re-identify them.
 _KEY_NAMESPACE = "populace_us_trade"
 
 #: Margins-feed grains (the aggregations of the HTS10 × country margins
@@ -583,15 +613,26 @@ def write_consumer_artifact(
     *,
     retrieval_manifest: Iterable[Mapping[str, Any]],
     generator: Mapping[str, Any],
+    schema_version: str = CONSUMER_ARTIFACT_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     """Write ``consumer_facts.jsonl`` + ``manifest.json`` and return the manifest.
 
     The directory loads through
     :func:`microcosm.build.ledger_artifact.load_ledger_consumer_artifact`,
     which re-hashes the fact file against ``manifest.facts_sha256``.
+
+    ``schema_version`` defaults to the ledger-era id these artifacts have
+    always declared and is validated for membership in the declared set, so
+    the chronicle-era cutover is a caller decision rather than an edit here.
     """
     if not fact_rows:
         raise ValueError("Refusing to write an empty consumer artifact.")
+    if not is_accepted_consumer_artifact_schema_version(schema_version):
+        raise ValueError(
+            f"Refusing to write a consumer artifact declaring schema_version "
+            f"{schema_version!r}; expected one of "
+            f"{describe_accepted_consumer_artifact_schema_versions()}."
+        )
     retrieval_entries = [dict(entry) for entry in retrieval_manifest]
     if not retrieval_entries:
         raise ValueError(
@@ -621,7 +662,7 @@ def write_consumer_artifact(
     facts_path.write_bytes(payload)
     retrievals = retrieval_entries
     manifest = {
-        "schema_version": CONSUMER_ARTIFACT_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "facts_sha256": hashlib.sha256(payload).hexdigest(),
         "fact_row_count": len(fact_rows),
         "profiles": {},
