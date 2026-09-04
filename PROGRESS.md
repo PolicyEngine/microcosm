@@ -1,4 +1,35 @@
-# ACS predictor release join
+# F1 portable worker identity — Sol gate round 1
+
+## State
+
+In progress on 2026-09-04 on `f1-portable-worker-identity` at `b26708a1`.
+The four Sol findings are being reproduced before implementation changes:
+schema-9 envelope bypass, unbound Python runtime/stdlib, unbound Torch backend
+entry points, and incomplete import-time package-resource coverage.
+
+## Done
+
+- Read `CLAUDE.md` and the F1 PR body/progress brief.
+- Confirmed the requested branch and clean starting tree at `b26708a1`.
+- Read the GitNexus debugging workflow. This workspace exposes no GitNexus
+  query/resource tools, so call-path analysis is being performed directly from
+  source and tests.
+- Recorded the hard boundaries: keep the complete `worker_execution` subtree
+  out of spec-engine digests; do not edit graph interface/acceptance lock files;
+  refuse before side effects; keep tests offline; commit each coherent step.
+- Recorded the required focused and final verification suites and the
+  requirement to report only commands actually run in `out.md`.
+
+## Next
+
+- Read the worker identity, authenticated H5, QRF worker, inventory projection,
+  and named regression suites.
+- Add and run fail-before regressions for each finding, recording the exact
+  reproduction results in `out.md`.
+- Implement and commit the four fixes independently, repin only identities that
+  legitimately move, then run the complete requested verification block.
+
+# Historical: ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
 > `acs-predictor-release-join` lane as of 2026-08-27. The branch has since
