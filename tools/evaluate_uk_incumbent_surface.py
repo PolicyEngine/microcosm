@@ -26,7 +26,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-from microcosm.build.uk_runtime import load_uk_national_frame
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     classify_local_rows,
@@ -47,6 +46,7 @@ from microcosm.build.uk_runtime.local_targets import metric_names
 from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
+from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
 from microcosm.calibrate.matrix import build_constraint_matrix
 
 
@@ -100,7 +100,7 @@ def main(argv=None) -> int:
     exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
 
     print("loading the candidate frame ...", file=sys.stderr, flush=True)
-    frame, _ = load_uk_national_frame(args.candidate_h5)
+    frame, _ = load_uk_rowwise_dataset(args.candidate_h5)
     weights = np.asarray(frame.resolve_weights("household").values, dtype=np.float64)
 
     print("resolving the engine over the frame ...", file=sys.stderr, flush=True)

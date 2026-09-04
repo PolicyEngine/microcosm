@@ -1172,6 +1172,28 @@ def test_joint_candidate_f100_and_f001_end_to_end(
     )
     f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
     assert f100["schema_version"] == 2
+    # The written rowwise artifact carries the shared ``clone_index`` name on
+    # every table: the compact national loader must refuse it (flattening
+    # rule) and the rowwise reader must undo the export rename.
+    from microcosm.build.uk_runtime.rowwise_dataset import (
+        ladder_clone_index_column,
+        load_uk_rowwise_dataset,
+    )
+
+    dataset_path = Path(f100["outputs"]["dataset"]["path"])
+    with pytest.raises(ValueError, match="globally unique"):
+        builder.load_uk_national_frame(dataset_path)
+    reloaded, provenance = load_uk_rowwise_dataset(dataset_path)
+    assert provenance.source_h5 == dataset_path.resolve() or str(
+        provenance.source_h5
+    ).endswith(dataset_path.name)
+    for entity in ("person", "benunit", "household"):
+        assert ladder_clone_index_column(entity) in reloaded.table(entity).columns
+        assert "clone_index" not in reloaded.table(entity).columns
+    assert len(reloaded.table("household")) == f100["solve"]["n_households"]
+    assert reloaded.weights_for("household").total == pytest.approx(
+        f100["weights"]["calibration_mass_change"]["new_total"]
+    )
     assert f100["solve"]["n_targets_by_kind"] == {
         "local": 1,
         "ladder": 12,
