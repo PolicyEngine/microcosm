@@ -87,6 +87,22 @@ def describe(
             f"Implementation hash: {implementation}",
         ]
     )
+    if node.artifact_inputs:
+        lines.append(
+            "Artifact inputs: "
+            + "; ".join(
+                f"{item.name} <- {item.producer}.{item.artifact} ({item.type.name}@{item.type.schema_version})"
+                for item in node.artifact_inputs
+            )
+        )
+    if node.artifact_outputs:
+        lines.append(
+            "Artifact outputs: "
+            + "; ".join(
+                f"{item.name} ({item.type.name}@{item.type.schema_version})"
+                for item in node.artifact_outputs
+            )
+        )
     if run_receipt is None:
         lines.append(
             'Seed: int.from_bytes(sha256(b"seed\\0" + node_key)[:8], "little")'

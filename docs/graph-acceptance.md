@@ -292,6 +292,29 @@ Amendments so far (each re-locked):
     `hit` forced to false) and `load_certified` refuses it. Raised by the
     #847 gate review; adopted 2026-09-03.
 
+19. **Typed artifacts and stable draw coordinates.** Nodes may declare
+    `artifact_outputs` (named nominal type/version contracts) and
+    `artifact_inputs` (consumer aliases referencing a producer output). Edges
+    may cross population versions and participate in compilation, identity,
+    cache validation and gate ancestry. The executor supplies immutable
+    `ArtifactValue` bytes and producer numeric scopes; consumers validate
+    decoded payloads. Legacy opaque diagnostics remain legal. Only the two
+    newly added empty artifact fields are omitted from old declarations and
+    keys; the base-96faa5d acceptance graph is pinned in
+    `tests/fixtures/legacy-graph-key-baseline.json`. Typed cache records use
+    schema 2 and typed manifests schema 3; legacy runs retain their formats.
+    Numeric scope weakening is refused: platform-bitwise requires a
+    platform-bitwise consumer, tolerance-bound requires a tolerance-bound
+    consumer with its own output tolerance, and mixed platform/tolerance
+    inputs are unsupported. `SeedSource.KEYED` opts into the versioned
+    `keyed_uniform` helper over normative stream params and stable coordinates;
+    the default executor RNG remains unchanged. Tests in
+    `test_artifact_edges.py` and `test_keyed_randomness.py` cover these additions.
+    The existing B2/context shape assertions include the appended immutable
+    artifact field. Implemented after the 2026-09-04 Fable plan gate; this
+    records the interface amendment for owner review, not a claim of code
+    approval or release certification.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

@@ -16,6 +16,9 @@ from .decl import (
     PARTITION_DTYPES,
     ROWS_ALL,
     WEIGHT_KINDS,
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     CompiledGraph,
     Graph,
     GraphError,
@@ -37,6 +40,7 @@ from .errors import (
     StoreUnavailableError,
 )
 from .kernel import (
+    ArtifactValue,
     Capabilities,
     Determinism,
     Kernel,
@@ -52,8 +56,14 @@ from .kernel import (
     source_hash,
 )
 from .keys import platform_fingerprint
+from .randomness import keyed_uniform
 
 __all__ = [
+    "ArtifactInput",
+    "ArtifactOutput",
+    "ArtifactType",
+    "ArtifactValue",
+    "keyed_uniform",
     "platform_fingerprint",
     "DESCRIPTIVE_FIELDS",
     "DTYPES",

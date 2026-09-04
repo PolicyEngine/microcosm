@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, ClassVar, Self
 
 from microcosm.frame import Frame
 
+from .artifact_edges import require_compatible_scope, value_from_descriptor
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 __all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
 _SCHEMA_VERSION = 2
+_TYPED_SCHEMA_VERSION = 3
 _LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
@@ -220,6 +222,7 @@ class NodeReceipt:
     weight_key: str | None = None
     opaque_artifacts: Mapping[str, str] = field(default_factory=dict)
     legacy_capabilities: bool = field(default=False, kw_only=True)
+    typed_artifacts: Mapping[str, object] = field(default_factory=dict, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, str):
@@ -244,6 +247,26 @@ class NodeReceipt:
             object.__setattr__(self, "hit", False)
         elif not isinstance(self.capabilities, Capabilities):
             raise TypeError("NodeReceipt.capabilities must be Capabilities")
+        typed = _freeze_json(self.typed_artifacts)
+        if not isinstance(typed, Mapping):
+            raise TypeError("NodeReceipt.typed_artifacts must be a mapping.")
+        if typed:
+            if set(typed) != {"inputs", "outputs"} or any(
+                not isinstance(typed[name], Mapping) for name in typed
+            ):
+                raise ValueError(
+                    "Typed artifact provenance requires input/output mappings."
+                )
+            for bindings in typed.values():
+                for alias, descriptor in bindings.items():
+                    if not isinstance(alias, str) or not alias:
+                        raise ValueError(
+                            "Typed artifact aliases must be nonempty strings."
+                        )
+                    value_from_descriptor(b"", descriptor)
+            if self.legacy_capabilities:
+                raise ValueError("Legacy capabilities cannot describe typed artifacts.")
+        object.__setattr__(self, "typed_artifacts", typed)
         frozen_receipt = _freeze_json(self.receipt)
         if not isinstance(frozen_receipt, Mapping):
             raise TypeError("NodeReceipt.receipt must be a mapping")
@@ -347,6 +370,11 @@ class NodeReceipt:
             "frame_key": self.frame_key,
             "weight_key": self.weight_key,
             "opaque_artifacts": self.opaque_artifacts,
+            **(
+                {"typed_artifacts": self.typed_artifacts}
+                if self.typed_artifacts
+                else {}
+            ),
             "wall_time": self.wall_time,
         }
 
@@ -419,6 +447,7 @@ class RunManifest:
                 raise TypeError("RunManifest.nodes values must be NodeReceipt")
             nodes[node_id] = receipt
         object.__setattr__(self, "nodes", MappingProxyType(nodes))
+        _validate_typed_ancestry(nodes)
 
         decisions = tuple(
             decision
@@ -592,7 +621,9 @@ class RunManifest:
         """Serialize the complete portable provenance as canonical JSON."""
 
         payload = {
-            "schema_version": _SCHEMA_VERSION,
+            "schema_version": _TYPED_SCHEMA_VERSION
+            if any(node.typed_artifacts for node in self.nodes.values())
+            else _SCHEMA_VERSION,
             "key": self.key,
             "tier": self.tier,
             "known_failures": self.known_failures,
@@ -633,6 +664,7 @@ class RunManifest:
         if type(schema_version) is not int or schema_version not in {
             _LEGACY_SCHEMA_VERSION,
             _SCHEMA_VERSION,
+            _TYPED_SCHEMA_VERSION,
         }:
             raise ValueError(f"unsupported manifest schema version {schema_version!r}")
 
@@ -657,6 +689,10 @@ class RunManifest:
             finished_at=_string_field(raw, "finished_at"),
             host=_string_field(raw, "host"),
         )
+        if schema_version == _TYPED_SCHEMA_VERSION and not any(
+            node.typed_artifacts for node in nodes.values()
+        ):
+            raise ValueError("Schema-v3 manifest must carry typed artifact provenance.")
         body = raw.get("content_addressed")
         if not isinstance(body, Mapping):
             raise ValueError("manifest content-addressed body must be an object")
@@ -678,7 +714,7 @@ class RunManifest:
             raise ValueError(
                 "manifest content key mismatch: serialized provenance was altered"
             )
-        if schema_version == _SCHEMA_VERSION and serialized_key != manifest.key:
+        if schema_version != _LEGACY_SCHEMA_VERSION and serialized_key != manifest.key:
             raise ValueError(
                 "manifest content key mismatch: serialized key differs from "
                 "reconstructed portable provenance"
@@ -1090,6 +1126,9 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
     frame_key = value.get("frame_key")
     weight_key = value.get("weight_key")
     opaque_artifacts = value.get("opaque_artifacts", {})
+    typed_artifacts = value.get("typed_artifacts", {})
+    if "typed_artifacts" in value and schema_version != _TYPED_SCHEMA_VERSION:
+        raise ValueError("Typed artifact provenance requires manifest schema 3.")
     capabilities_payload = value.get("capabilities")
     if schema_version == _LEGACY_SCHEMA_VERSION:
         # Every schema-v1 receipt is legacy: v1 never recorded a tolerance, so
@@ -1163,4 +1202,71 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
         weight_key=weight_key,
         opaque_artifacts=opaque_artifacts,
         legacy_capabilities=legacy_capabilities,
+        typed_artifacts=typed_artifacts,
     )
+
+
+def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
+    edges: dict[str, set[str]] = {node_id: set() for node_id in nodes}
+    for node_id, node in nodes.items():
+        if not node.typed_artifacts:
+            continue
+        for name, entry in node.typed_artifacts["outputs"].items():
+            value = value_from_descriptor(b"", entry)
+            if (
+                entry["producer"] != node_id
+                or entry["artifact"] != name
+                or value.producer_key != node.key
+                or node.opaque_artifacts.get(name) != value.key
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact output provenance mismatch."
+                )
+            if (
+                value.numerics.numeric is not node.capabilities.numeric
+                or value.numerics.tolerance != node.capabilities.tolerance
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact numeric contract mismatch."
+                )
+        for entry in node.typed_artifacts["inputs"].values():
+            value = value_from_descriptor(b"", entry)
+            producer_id = entry["producer"]
+            producer = nodes.get(producer_id)
+            if producer is None or producer.key != value.producer_key:
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact producer is missing or inconsistent."
+                )
+            if (
+                producer.typed_artifacts.get("outputs", {}).get(entry["artifact"])
+                != entry
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact does not match its producer output."
+                )
+            require_compatible_scope(value.numerics, node.capabilities)
+            edges[node_id].add(producer_id)
+
+    memo: dict[str, frozenset[str]] = {}
+
+    def visit(node_id: str, trail: frozenset[str]) -> frozenset[str]:
+        if node_id in trail:
+            raise ValueError("Typed artifact ancestry contains a cycle.")
+        if node_id in memo:
+            return memo[node_id]
+        ancestors = set(edges[node_id])
+        for parent in edges[node_id]:
+            ancestors.update(visit(parent, trail | {node_id}))
+        memo[node_id] = frozenset(ancestors)
+        return memo[node_id]
+
+    for node_id, node in nodes.items():
+        ancestors = visit(node_id, frozenset())
+        if _capability_role(node) is KernelRole.RELEASE:
+            artifact_gates = {
+                parent
+                for parent in ancestors
+                if _capability_role(nodes[parent]) is KernelRole.GATE
+            }
+            if not artifact_gates.issubset(set(node.receipt.get("gate_ancestry", ()))):
+                raise ValueError("Release omitted a typed artifact gate ancestor.")

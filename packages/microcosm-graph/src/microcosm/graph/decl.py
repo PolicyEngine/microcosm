@@ -48,6 +48,9 @@ from enum import StrEnum
 from types import MappingProxyType
 
 __all__ = [
+    "ArtifactType",
+    "ArtifactInput",
+    "ArtifactOutput",
     "DESCRIPTIVE_FIELDS",
     "DTYPES",
     "GATE_OUTCOMES",
@@ -176,6 +179,48 @@ class SourceRef:
 
 
 @dataclass(frozen=True)
+class ArtifactType:
+    """Nominal, versioned byte-payload contract; consumers validate the payload."""
+
+    name: str
+    schema_version: int
+
+    def __post_init__(self) -> None:
+        _nonempty("ArtifactType.name", self.name)
+        if type(self.schema_version) is not int or self.schema_version < 1:
+            raise GraphError("ArtifactType.schema_version must be a positive integer.")
+
+
+@dataclass(frozen=True)
+class ArtifactOutput:
+    """A named, typed subset of a kernel's existing opaque byte outputs."""
+
+    name: str
+    type: ArtifactType
+
+    def __post_init__(self) -> None:
+        _nonempty("ArtifactOutput.name", self.name)
+        if not isinstance(self.type, ArtifactType):
+            raise GraphError("ArtifactOutput.type must be an ArtifactType.")
+
+
+@dataclass(frozen=True)
+class ArtifactInput:
+    """A declared artifact edge, with a consumer-local alias and exact type."""
+
+    name: str
+    producer: str
+    artifact: str
+    type: ArtifactType
+
+    def __post_init__(self) -> None:
+        for field_name in ("name", "producer", "artifact"):
+            _nonempty(f"ArtifactInput.{field_name}", getattr(self, field_name))
+        if not isinstance(self.type, ArtifactType):
+            raise GraphError("ArtifactInput.type must be an ArtifactType.")
+
+
+@dataclass(frozen=True)
 class Slice:
     """What a node reads: columns of one entity, optionally under a row mask.
 
@@ -279,6 +324,11 @@ class Node:
     Attributes:
         id: Unique within the graph.
         kernel: Kernel reference, e.g. ``"fit.qrf@1"``.
+        artifact_inputs: Typed byte dependencies, including other populations.
+            Each local alias names a declared producer output of exactly the
+            expected nominal type/version.
+        artifact_outputs: Required typed outputs within KernelResult.artifacts;
+            other untyped diagnostic bytes remain legal.
         inputs: Slices the kernel receives. Their owners are this node's
             predecessors.
         outputs: Cells this node owns. A ``CREATE`` node declares every
@@ -318,10 +368,25 @@ class Node:
     description: str = ""
     citation: str = ""
     entrants: bool = False
+    artifact_inputs: tuple[ArtifactInput, ...] = ()
+    artifact_outputs: tuple[ArtifactOutput, ...] = ()
 
     def __post_init__(self) -> None:
         _nonempty("Node.id", self.id)
         _nonempty("Node.kernel", self.kernel)
+        for name, kind in (
+            ("artifact_inputs", ArtifactInput),
+            ("artifact_outputs", ArtifactOutput),
+        ):
+            declarations = getattr(self, name)
+            if not isinstance(declarations, tuple) or any(
+                not isinstance(item, kind) for item in declarations
+            ):
+                raise GraphError(
+                    f"Node {self.id!r}: {name} must be a tuple of {kind.__name__}."
+                )
+            if len({item.name for item in declarations}) != len(declarations):
+                raise GraphError(f"Node {self.id!r}: duplicate names in {name}.")
         if not isinstance(self.structural, StructuralDelta):
             raise GraphError(f"Node {self.id!r}: structural must be a StructuralDelta.")
         if self.mass not in MASS_POLICIES:
@@ -417,6 +482,10 @@ class Node:
             f.name: getattr(self, f.name)
             for f in fields(self)
             if f.name not in DESCRIPTIVE_FIELDS
+            and not (
+                f.name in {"artifact_inputs", "artifact_outputs"}
+                and not getattr(self, f.name)
+            )
         }
 
 
@@ -677,6 +746,30 @@ def compile_graph(graph: Graph) -> CompiledGraph:
                     f"Node {node.id!r} rewrites {o.entity}.{o.column} as {o.dtype!r} "
                     f"but the incumbent is declared {base_dtype!r}."
                 )
+
+    # Artifact edges cross population versions, without changing cell ownership.
+    for node in graph.nodes:
+        for binding in node.artifact_inputs:
+            if binding.producer == node.id:
+                raise GraphError(
+                    f"Node {node.id!r} depends on itself through an artifact."
+                )
+            producer = by_id.get(binding.producer)
+            if producer is None:
+                raise GraphError(
+                    f"Node {node.id!r}: unknown artifact producer {binding.producer!r}."
+                )
+            outputs = {output.name: output for output in producer.artifact_outputs}
+            output = outputs.get(binding.artifact)
+            if output is None:
+                raise GraphError(
+                    f"Node {node.id!r}: producer {producer.id!r} has no declared artifact {binding.artifact!r}."
+                )
+            if output.type != binding.type:
+                raise GraphError(
+                    f"Node {node.id!r}: artifact {binding.artifact!r} type does not match its producer."
+                )
+            predecessors[node.id].add(producer.id)
 
     depth: dict[str, int] = {}
 

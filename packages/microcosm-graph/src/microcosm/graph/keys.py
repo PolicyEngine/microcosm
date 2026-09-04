@@ -13,6 +13,7 @@ from .decl import CompiledGraph, StructuralDelta
 from .kernel import Capabilities, Numeric
 
 __all__ = [
+    "opaque_artifact_key",
     "platform_fingerprint",
     "artifact_key",
     "frame_key",
@@ -86,6 +87,11 @@ def artifact_key(node_key: str, entity: str, column: str) -> str:
     """Derive one column artifact identity from its producing node."""
 
     return _hash_parts("artifact", node_key, entity, column)
+
+
+def opaque_artifact_key(node_key: str, name: str) -> str:
+    """Identity of an opaque or typed byte output (legacy domain preserved)."""
+    return _hash_parts("node-artifact", node_key, name)
 
 
 def frame_key(node_key: str) -> str:
@@ -240,6 +246,27 @@ def node_key(
         if kernel_capabilities.numeric is Numeric.PLATFORM_BITWISE
         else ()
     )
+    typed_inputs = (
+        (
+            {
+                "typed_artifacts": tuple(
+                    (
+                        item.name,
+                        opaque_artifact_key(
+                            _required_key(input_keys, item.producer, node_id),
+                            item.artifact,
+                        ),
+                        normative(item.type),
+                    )
+                    for item in sorted(
+                        node.artifact_inputs, key=lambda value: value.name
+                    )
+                )
+            },
+        )
+        if node.artifact_inputs
+        else ()
+    )
     return _hash_parts(
         "node",
         normative(node),
@@ -250,6 +277,7 @@ def node_key(
         graph_facts,
         capabilities,
         *platform_scope,
+        *typed_inputs,
     )
 
 

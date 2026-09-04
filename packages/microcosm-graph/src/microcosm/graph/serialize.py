@@ -7,6 +7,9 @@ from collections.abc import Mapping
 
 from .canonical import canonical_json
 from .decl import (
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     Graph,
     Node,
     Owned,
@@ -90,6 +93,40 @@ def _partition_from_payload(value: object, label: str) -> tuple[str, str] | None
 
 def _node_payload(node: Node) -> dict[str, object]:
     return {
+        **(
+            {
+                "artifact_inputs": [
+                    {
+                        "name": item.name,
+                        "producer": item.producer,
+                        "artifact": item.artifact,
+                        "type": {
+                            "name": item.type.name,
+                            "schema_version": item.type.schema_version,
+                        },
+                    }
+                    for item in node.artifact_inputs
+                ]
+            }
+            if node.artifact_inputs
+            else {}
+        ),
+        **(
+            {
+                "artifact_outputs": [
+                    {
+                        "name": item.name,
+                        "type": {
+                            "name": item.type.name,
+                            "schema_version": item.type.schema_version,
+                        },
+                    }
+                    for item in node.artifact_outputs
+                ]
+            }
+            if node.artifact_outputs
+            else {}
+        ),
         "id": node.id,
         "kernel": node.kernel,
         "inputs": [
@@ -161,6 +198,9 @@ def _node_from_payload(value: object, index: int) -> Node:
         "description",
         "citation",
     }
+    fields.update(
+        name for name in ("artifact_inputs", "artifact_outputs") if name in payload
+    )
     if "entrants" in payload:
         fields.add("entrants")
     _exact_fields(payload, fields, label)
@@ -174,6 +214,18 @@ def _node_from_payload(value: object, index: int) -> Node:
     population = _optional_string(payload["population"], f"{label}.population")
     base = _optional_string(payload["base"], f"{label}.base")
     return Node(
+        artifact_inputs=tuple(
+            _artifact_from_payload(value, input_=True)
+            for value in _array(
+                payload.get("artifact_inputs", []), f"{label}.artifact_inputs"
+            )
+        ),
+        artifact_outputs=tuple(
+            _artifact_from_payload(value, input_=False)
+            for value in _array(
+                payload.get("artifact_outputs", []), f"{label}.artifact_outputs"
+            )
+        ),
         id=_string(payload["id"], f"{label}.id"),
         kernel=_string(payload["kernel"], f"{label}.kernel"),
         inputs=tuple(
@@ -302,3 +354,25 @@ def _exact_fields(
 
 def _reject_json_constant(value: str) -> object:
     raise ValueError(f"graph JSON contains non-finite constant {value}")
+
+
+def _artifact_from_payload(
+    value: object, *, input_: bool
+) -> ArtifactInput | ArtifactOutput:
+    raw = _mapping(value, "artifact declaration")
+    fields = {"name", "type"} | ({"producer", "artifact"} if input_ else set())
+    _exact_fields(raw, fields, "artifact declaration")
+    type_raw = _mapping(raw["type"], "artifact type")
+    _exact_fields(type_raw, {"name", "schema_version"}, "artifact type")
+    type_ = ArtifactType(
+        _string(type_raw["name"], "artifact type.name"), type_raw["schema_version"]
+    )
+    name = _string(raw["name"], "artifact name")
+    if input_:
+        return ArtifactInput(
+            name,
+            _string(raw["producer"], "artifact producer"),
+            _string(raw["artifact"], "artifact output"),
+            type_,
+        )
+    return ArtifactOutput(name, type_)

@@ -1,0 +1,1 @@
+Add typed graph artifact dependencies across populations, verified cold/warm model inputs, preserved numeric scope, and stable coordinate-keyed random draws. Preserve legacy node identities and serialization when the new declarations are empty.
