@@ -1281,6 +1281,13 @@ def solve_uk_rowwise_weights_under_doctrine(
     # lost (both trivially equal today; the guard is the boundary marker
     # for the day they are not).
     clean_result = result.frame if restore is None else restore(result.frame)
+    restored_ids = tuple(clean_result.table("household")["household_id"].tolist())
+    if restored_ids != problem.household_ids:
+        raise ValueError(
+            "restore returned households that do not match the problem's rows "
+            "(same ids, same order); weights are written back by position, so a "
+            "reordering restore would misattribute them silently."
+        )
     slash_columns = {
         entity: [
             str(column)
@@ -1457,6 +1464,10 @@ def rotated_uk_local_holdout(
         # measured under the same cap it is being reported beside, rather
         # than assuming it across the module boundary.
         "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
+        # The held rows are re-weighted over the held local grains only, so
+        # under ``grain_equal`` this loss is not on the training scale (which
+        # spans the national rows as a third grain). Report-only either way.
+        "loss_weight_scale": "held_local_grains_only",
         "n_folds": summary.n_folds,
         "seed": UK_LOCAL_HOLDOUT_SEED,
         "solve_seed": solve_seed,

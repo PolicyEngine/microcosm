@@ -958,6 +958,7 @@ def _run_candidate(
                 diagnostics=local_diagnostics,
                 report_path=output_paths["local_gates"],
                 release_id=state.build_id,
+                evaluated_on=started_ts.date(),
                 enforce_only=(
                     None
                     if args.sample_fraction == 1.0
@@ -1705,6 +1706,7 @@ def _run_local_gate_battery(
     diagnostics: pd.DataFrame,
     report_path: Path,
     release_id: str,
+    evaluated_on: date,
     enforce_only: tuple[str, ...] | None = None,
 ) -> tuple[dict[str, object], GateResult]:
     manifest = uk_scoped_gate_manifest(
@@ -1726,7 +1728,9 @@ def _run_local_gate_battery(
             artifacts={
                 "uk_area_support_summary": support,
                 "local_target_diagnostics": diagnostics,
-                "exclusions_evaluated_on": date.today(),
+                # The run's own clock, not the wall clock: the same artifact
+                # must reproduce the same exclusion verdicts.
+                "exclusions_evaluated_on": evaluated_on,
             },
         ),
     )
@@ -1813,11 +1817,46 @@ def _gate_failures_by_criticality(
         lines = [f"[{gate_id}] {line}" for line in payload.get("failures") or ()]
         if not lines:
             lines = [f"[{gate_id}] {payload.get('reason') or status}"]
-        bucket = (
-            blocking if payload.get("criticality") == "release_blocking" else diagnostic
-        )
+        bucket = blocking if _is_release_blocking(payload) else diagnostic
         bucket.extend(lines)
     return blocking, diagnostic
+
+
+def _is_release_blocking(payload: Mapping[str, Any]) -> bool:
+    """Fail-closed criticality read.
+
+    Only an entry that explicitly declares ``criticality: diagnostic`` is
+    exempt from vetoing the release; a missing or unknown criticality is
+    treated as release-blocking, so partial schema drift on one persisted
+    entry cannot drop a failed gate out of both the blocking list and
+    ``all_gates_passed``.
+    """
+
+    return payload.get("criticality") != "diagnostic"
+
+
+def _release_verdict(
+    *,
+    sample_fraction: float,
+    engine_blocks: int,
+    release_blocking_gates_passed: bool,
+) -> tuple[bool, dict[str, bool]]:
+    """``releasable`` needs the full rung, a single-block engine resolution and
+    every release-blocking gate passed.
+
+    Per-block engine resolution mis-measures population-normalised formulas
+    (each block reproduces a national aggregate: the ×K land-value artefact
+    behind the #736 erratum), so a run resolved in more than one block is
+    diagnostic-only whatever its gates say. The posture is written beside the
+    verdict so a reader sees which leg failed.
+    """
+
+    posture = {
+        "full_rung": float(sample_fraction) == 1.0,
+        "single_block_engine": int(engine_blocks) == 1,
+        "release_blocking_gates_passed": bool(release_blocking_gates_passed),
+    }
+    return all(posture.values()), posture
 
 
 def _apply_gate_verdicts(
@@ -1878,7 +1917,7 @@ def _dry_run_plan(
             "fraction": args.sample_fraction,
             "unreachable_check": "completed",
         },
-        "releasable": args.sample_fraction == 1.0,
+        "releasable": args.sample_fraction == 1.0 and args.engine_blocks == 1,
         "parameters": _parameters(args, source_year=source_year),
         "shapes": {
             "person": list(clone.frame.table("person").shape),
@@ -2046,11 +2085,15 @@ def _manifest(
     release_gate_rows = {
         gate_id: payload
         for gate_id, payload in gate_rows.items()
-        if isinstance(payload, Mapping)
-        and payload.get("criticality") == "release_blocking"
+        if isinstance(payload, Mapping) and _is_release_blocking(payload)
     }
     all_gates_passed = bool(release_gate_rows) and all(
         payload.get("status") == "passed" for payload in release_gate_rows.values()
+    )
+    releasable, release_posture = _release_verdict(
+        sample_fraction=args.sample_fraction,
+        engine_blocks=args.engine_blocks,
+        release_blocking_gates_passed=all_gates_passed,
     )
     area_gate = gate_rows.get("uk_local_area_support", {})
     area_exclusion_details = (
@@ -2268,7 +2311,8 @@ def _manifest(
             for gate_id, payload in gate_rows.items()
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
-        "releasable": args.sample_fraction == 1.0 and all_gates_passed,
+        "releasable": releasable,
+        "release_posture": release_posture,
         "blocked_at_f100": bool(getattr(args, "_blocked_failures", [])),
         "blocking_failures": list(getattr(args, "_blocked_failures", [])),
         "diagnostic_failures": list(getattr(args, "_diagnostic_failures", [])),

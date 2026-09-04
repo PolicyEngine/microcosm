@@ -1606,3 +1606,59 @@ def test_candidate_block_partitions_failures_by_criticality(
     ]
     assert manifest["releasable"] is False
     assert _spool_rows(output_dir)[0].disposition == "failed"
+
+
+def test_release_verdict_requires_single_block_engine() -> None:
+    builder = _load_builder_module()
+    releasable, posture = builder._release_verdict(
+        sample_fraction=1.0, engine_blocks=1, release_blocking_gates_passed=True
+    )
+    assert releasable is True and all(posture.values())
+    # A per-block engine resolution never writes a releasable artifact, even
+    # with every release-blocking gate passed on the full rung (#736 erratum).
+    releasable, posture = builder._release_verdict(
+        sample_fraction=1.0, engine_blocks=15, release_blocking_gates_passed=True
+    )
+    assert releasable is False
+    assert posture == {
+        "full_rung": True,
+        "single_block_engine": False,
+        "release_blocking_gates_passed": True,
+    }
+    assert (
+        builder._release_verdict(
+            sample_fraction=0.1, engine_blocks=1, release_blocking_gates_passed=True
+        )[0]
+        is False
+    )
+
+
+def test_gate_criticality_reads_fail_closed() -> None:
+    builder = _load_builder_module()
+    assert builder._is_release_blocking({"criticality": "release_blocking"}) is True
+    assert builder._is_release_blocking({"criticality": "diagnostic"}) is False
+    # Missing or unknown criticality vetoes: schema drift on one entry cannot
+    # drop a failed gate out of both the blocking list and all_gates_passed.
+    assert builder._is_release_blocking({}) is True
+    assert builder._is_release_blocking({"criticality": "advisory"}) is True
+    blocking, diagnostic = builder._gate_failures_by_criticality(
+        {
+            "gates": {
+                "uk_local_area_support": {
+                    "status": "failed",
+                    "failures": ["ESS 42.3 < 50"],
+                },
+                "uk_local_weight_ratio": {
+                    "status": "failed",
+                    "criticality": "diagnostic",
+                    "failures": ["ratio 578 > 100"],
+                },
+                "uk_local_target_fit": {
+                    "status": "passed",
+                    "criticality": "diagnostic",
+                },
+            }
+        }
+    )
+    assert blocking == ["[uk_local_area_support] ESS 42.3 < 50"]
+    assert diagnostic == ["[uk_local_weight_ratio] ratio 578 > 100"]

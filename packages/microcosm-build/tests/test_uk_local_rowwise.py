@@ -12,7 +12,9 @@ one area).
 
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -373,7 +375,7 @@ def test_bound_family_derivation_accepts_multiple_families_per_grain() -> None:
     ]
 
 
-def test_dense_builder_delegates_without_changing_legacy_result() -> None:
+def test_dense_wrapper_and_long_format_builder_agree() -> None:
     dense = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
     surface_rows = []
     for _, row in _targets().iterrows():
@@ -1138,4 +1140,73 @@ def test_doctrine_solve_refuses_reordered_diagnostics(monkeypatch) -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+        )
+
+
+def test_dense_builder_result_equals_frozen_pre_pr_fixture() -> None:
+    """Exact equality against the result main's builder produced on this fixture.
+
+    The golden was generated from ``origin/main``'s ``local_rowwise.py`` before
+    the long-format assembler landed, so this pins the bit-for-bit claim rather
+    than restating the delegation.
+    """
+
+    golden = json.loads(
+        (
+            Path(__file__).parent / "golden" / "uk_local_rowwise_dense_fixture.json"
+        ).read_text(encoding="utf-8")
+    )
+    dense = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    matrix = dense.matrix.tocsr()
+    assert matrix.indptr.tolist() == golden["indptr"]
+    assert matrix.indices.tolist() == golden["indices"]
+    assert matrix.data.tolist() == golden["data"]
+    assert list(dense.targets) == golden["targets"]
+    assert list(dense.area_codes) == golden["area_codes"]
+    assert list(dense.assigned_areas) == golden["assigned_areas"]
+    assert list(dense.household_ids) == golden["household_ids"]
+    assert list(dense.metric_names) == golden["metric_names"]
+    assert np.asarray(dense.metric_values).tolist() == golden["metric_values"]
+    frozen = pd.DataFrame(golden["target_frame"])
+    common = [column for column in frozen.columns if column in dense.target_frame]
+    assert common == list(frozen.columns)
+    pd.testing.assert_frame_equal(
+        dense.target_frame[common].reset_index(drop=True),
+        frozen[common].reset_index(drop=True),
+        check_dtype=False,
+    )
+
+
+def test_doctrine_solve_refuses_a_reordering_restore() -> None:
+    from types import SimpleNamespace
+
+    base = _clone_frame()
+    household = base.table("household").copy()
+    household["national/ones"] = 1.0
+    prepared = uk_national_frame(
+        person=base.table("person"),
+        benunit=base.table("benunit"),
+        household=household,
+        household_weights=base.weights_for("household").values,
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+
+    def reordering_restore(frame):
+        # uk_national_frame refuses an unsorted id column, so a reordered
+        # frame cannot be built through it; the guard must catch the stand-in
+        # before anything else reads the restored result.
+        reversed_household = frame.table("household").iloc[::-1].reset_index(drop=True)
+        return SimpleNamespace(
+            table=lambda entity: reversed_household,
+            entities=("household",),
+        )
+
+    with pytest.raises(ValueError, match="same ids, same order"):
+        solve_uk_rowwise_weights_under_doctrine(
+            prepared,
+            build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets()),
+            bound_families=["census_households/constituency", "tenure/constituency"],
+            restore=reordering_restore,
+            epochs=2,
         )

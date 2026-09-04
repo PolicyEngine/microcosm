@@ -1307,3 +1307,47 @@ def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
     )
     _require_uniform_target_surface(problem)
     assert problem.targets.tolist() == [60.0, 40.0]
+
+
+def test_uk_local_target_surface_refuses_bridge_control_fanout() -> None:
+    # dwp.uc.households is a cross-grain bridge control: two cells at one
+    # geography would ride through as duplicate reconciliation rows.
+    specs = [
+        _national_control_spec(
+            f"uc-households-cell-{index}", value=value, target_id="dwp.uc.households"
+        )
+        for index, value in enumerate((40.0, 5.0))
+    ]
+    with pytest.raises(ValueError, match="bridge control"):
+        uk_local_target_surface(
+            TargetRegistry(specs, country="uk"),
+            _minimal_target_surface_ladder(),
+            bound_national_target_ids=("dwp.uc.households",),
+            period=2025,
+        )
+
+
+def test_uk_local_target_surface_receipts_a_single_cell_dropped_by_the_fanout_rule() -> (
+    None
+):
+    specs = [
+        _national_control_spec(f"payment-band-{index}", value=value)
+        for index, value in enumerate((10.0, 20.0))
+    ]
+    specs.append(
+        _national_control_spec(
+            "single-cell-elsewhere", value=7.0, geography_id="K02000001"
+        )
+    )
+    _, receipt = uk_local_target_surface(
+        TargetRegistry(specs, country="uk"),
+        _minimal_target_surface_ladder(),
+        bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+        period=2025,
+    )
+    entries = {
+        (entry["geography_id"], entry["cells"]): entry["reason"]
+        for entry in receipt["fanout_targets_not_controls"]
+    }
+    assert ("K03000001", 2) in entries
+    assert entries[("K02000001", 1)].startswith("Single cell at this geography")

@@ -397,9 +397,7 @@ def _evaluate_column_implication(
     # is exact (#833): every producer writes the -1.0 literal or a
     # nonnegative amount, and a tolerance band would silently reclassify a
     # corrupted near-sentinel value as a declared absence.
-    out_of_domain = np.isfinite(capital) & ~(
-        (capital == sentinel) | (capital >= 0.0)
-    )
+    out_of_domain = np.isfinite(capital) & ~((capital == sentinel) | (capital >= 0.0))
     carrier_out_of_domain = np.isfinite(carrier) & ~(
         (carrier == sentinel) | (carrier >= 0.0)
     )

@@ -989,7 +989,31 @@ def uk_local_target_surface(
                 f"UK national target {target_id!r} at {geography_id!r} has "
                 f"fan-out cells {cell_names} with a non-finite summed total."
             )
+        if target_id in bridge_control_ids and len(cells) > 1:
+            raise ValueError(
+                f"UK national target {target_id!r} is a cross-grain bridge control "
+                f"but fans out into {len(cells)} cells {cell_names} at "
+                f"{geography_id!r}; a bridge control must be one cell per geography."
+            )
         if target_id in fanout_target_ids:
+            if len(cells) == 1:
+                # The target-id rule drops the target as a control at every
+                # geography once it fans out at any; say so where it is a
+                # single cell rather than dropping it silently.
+                fanout_targets_not_controls.append(
+                    {
+                        "target_id": target_id,
+                        "geography_id": geography_id,
+                        "cells": 1,
+                        "cell_names": cell_names,
+                        "activated_sum": activated_sum,
+                        "reason": (
+                            "Single cell at this geography, but the target fans "
+                            "out at another geography, so the target-id rule "
+                            "drops it as a control everywhere."
+                        ),
+                    }
+                )
             if len(cells) > 1:
                 fanout_targets_not_controls.append(
                     {
