@@ -3,8 +3,8 @@
 ## State
 
 In progress on 2026-09-04 on `f1-portable-worker-identity`, starting from
-`b26708a1`. All four Sol findings now have fail-before reproductions; no
-implementation fix has landed yet.
+`b26708a1`. All four Sol findings have fail-before reproductions. The schema-9
+envelope fix is focused green; the three worker-identity fixes remain.
 
 ## Done
 
@@ -33,12 +33,14 @@ implementation fix has landed yet.
   node failed as intended, exit 1.
 - Replaced the prior unrelated `out.md` with the current round's reproduction
   report; fix/pin/final-verification sections remain explicitly pending.
+- Fixed the schema-9 bypass: schema 9 now has an explicit complete stacked
+  field set, traverses the same envelope classifier as schema 10, and does so
+  before any compatibility attestation is read or authenticated.
+- The valid schema-9 metadata-restoration case and the seven-case malformed
+  envelope regression pass together (2 passed, exit 0).
 
 ## Next
 
-- Commit the fail-before regressions and reproduction report.
-- Make schema 9 traverse the complete common stacked-envelope validator before
-  any compatibility attestation is read or honored.
 - Bind and force the Torch autoload policy, authenticate its entry-point group,
   replace the manual resource list with a clean-import trace, and bind the
   loaded runtime plus traced stdlib bytes.

@@ -164,7 +164,7 @@ _STACKED_ONLY_MANIFEST_FIELDS = frozenset(
         "worker_execution_authentication",
     }
 )
-_REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
+_REQUIRED_SCHEMA_NINE_STACKED_MANIFEST_FIELDS = frozenset(
     {
         "pipeline",
         "operator_order",
@@ -172,8 +172,10 @@ _REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
         "stack_manifest",
         "geography_assignment",
         "stage_receipts",
-        "worker_execution_authentication",
     }
+)
+_REQUIRED_CURRENT_STACKED_MANIFEST_FIELDS = (
+    _REQUIRED_SCHEMA_NINE_STACKED_MANIFEST_FIELDS | {"worker_execution_authentication"}
 )
 
 
@@ -264,8 +266,16 @@ def _validated_pool_manifest_envelope(
 
     schema_version = manifest.get("schema_version")
     markers = _stacked_manifest_markers(manifest)
-    if schema_version == US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION:
-        missing = _REQUIRED_STACKED_MANIFEST_FIELDS - set(manifest)
+    if schema_version in {
+        _LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION,
+        US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    }:
+        required = (
+            _REQUIRED_SCHEMA_NINE_STACKED_MANIFEST_FIELDS
+            if schema_version == _LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION
+            else _REQUIRED_CURRENT_STACKED_MANIFEST_FIELDS
+        )
+        missing = required - set(manifest)
         if manifest.get("pipeline") != _STACKED_PIPELINE or missing:
             raise ValueError(
                 f"US multispine pool manifest {manifest_path} has an "
@@ -1114,6 +1124,10 @@ def _load_authenticated_us_multispine_pool_manifest(
         manifest.get("schema_version")
         == _LEGACY_PORTABLE_WORKER_MANIFEST_SCHEMA_VERSION
     ):
+        envelope = _validated_pool_manifest_envelope(
+            manifest,
+            manifest_path=manifest_path,
+        )
         if not scoring_only or not is_terminal_gate_failure:
             raise ValueError(
                 f"US multispine pool manifest {manifest_path} has an "
@@ -1153,7 +1167,6 @@ def _load_authenticated_us_multispine_pool_manifest(
                 ),
             )
         )
-        envelope = "stacked"
     else:
         if worker_identity_attestation is not None:
             raise ValueError(
