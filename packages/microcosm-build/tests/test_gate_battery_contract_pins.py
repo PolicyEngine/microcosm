@@ -88,16 +88,15 @@ class TestMirrorConstants:
         }
 
     def test_entry_metadata_mirrors_the_committed_spec(self) -> None:
-        # The verifier pins each entry's gate and phase, refuses any
-        # non-release_blocking criticality, and refuses not_applicable
-        # outright; all three must restate the spec exactly.
+        # The verifier pins each entry's gate, phase, and criticality, and
+        # refuses not_applicable outright; all three restate the spec exactly.
         spec = load_country_spec("uk")
         assert data_contract._UK_GATE_BATTERY_ENTRY_GATES == {
             entry.id: (entry.gate, entry.phase) for entry in spec.gates.gates
         }
-        assert all(
-            entry.criticality == "release_blocking" for entry in spec.gates.gates
-        )
+        assert data_contract._UK_GATE_BATTERY_DIAGNOSTIC_IDS == {
+            entry.id for entry in spec.gates.gates if entry.criticality == "diagnostic"
+        }
         assert all(entry.not_applicable is None for entry in spec.gates.gates)
 
     def test_outcome_envelope_mirrors_the_producer_construction_invariants(
@@ -319,6 +318,7 @@ class TestCertificationMirrors:
     def test_part_scopes_mirror_the_ownership_partition(self) -> None:
         from microcosm.build.uk_runtime.calibration_run import (
             UK_CALIBRATION_GATE_SCOPE,
+            UK_LOCAL_GATE_SCOPE,
             UK_NATIONAL_GATE_SCOPE,
             UK_SHARED_GATE_IDS,
             UK_SPINE_GATE_SCOPE,
@@ -330,11 +330,14 @@ class TestCertificationMirrors:
         assert data_contract._UK_CERTIFICATION_PART_SCOPES[
             "calibration_seam"
         ] == frozenset(UK_CALIBRATION_GATE_SCOPE)
-        assert data_contract._UK_CERTIFICATION_PART_SCOPES[
-            "release_cut"
-        ] == frozenset(UK_NATIONAL_GATE_SCOPE)
+        assert data_contract._UK_CERTIFICATION_PART_SCOPES["release_cut"] == frozenset(
+            UK_NATIONAL_GATE_SCOPE
+        )
         assert data_contract._UK_CERTIFICATION_SHARED_GATE_IDS == frozenset(
             UK_SHARED_GATE_IDS
+        )
+        assert data_contract._UK_CERTIFICATION_EXCLUDED_GATE_IDS == frozenset(
+            UK_LOCAL_GATE_SCOPE
         )
 
     def test_part_digests_mirror_the_live_scoped_manifests(self) -> None:
@@ -350,13 +353,13 @@ class TestCertificationMirrors:
                 policy_suffix=str(spec["policy_suffix"]),
             )
             mirrored = data_contract._UK_CERTIFICATION_PART_DIGESTS[part_name]
-            assert mirrored["gates_manifest_sha256"] == (
-                live["gates_manifest_sha256"]
+            assert (
+                mirrored["gates_manifest_sha256"] == (live["gates_manifest_sha256"])
             ), part_name
             assert mirrored["policy_sha256"] == live["policy_sha256"], part_name
-            assert list(
-                data_contract._UK_CERTIFICATION_PART_PHASES[part_name]
-            ) == list(spec["phases"])
+            assert list(data_contract._UK_CERTIFICATION_PART_PHASES[part_name]) == list(
+                spec["phases"]
+            )
 
     def test_certification_identity_mirrors(self) -> None:
         from microcosm.build.uk_runtime import release_certification

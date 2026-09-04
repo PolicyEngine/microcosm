@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +31,10 @@ def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    monkeypatch.setenv(
+        "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY",
+        base64.b64encode(b"\x07" * 32).decode("ascii"),
+    )
 
 
 def _spool_rows(output_dir: Path):
@@ -164,27 +170,40 @@ def _write_ladder(
     return load_uk_oa_ladder(path)
 
 
-def _write_staging_h5(path: Path) -> None:
+def _write_staging_h5(path: Path, *, households_per_region: int = 1) -> None:
+    region_names = (
+        "LONDON",
+        "WALES",
+        "SCOTLAND",
+        "NORTHERN_IRELAND",
+    )
+    region_masses = (3.0, 10.0, 10.0, 10.0)
+    household_ids = list(range(1, 4 * households_per_region + 1))
     household = pd.DataFrame(
         {
-            "household_id": [1, 2, 3, 4],
-            "household_weight": [3.0, 10.0, 10.0, 10.0],
-            "region": [
-                "LONDON",
-                "WALES",
-                "SCOTLAND",
-                "NORTHERN_IRELAND",
+            "household_id": household_ids,
+            "household_weight": [
+                mass / households_per_region
+                for mass in region_masses
+                for _ in range(households_per_region)
             ],
+            "region": [
+                region for region in region_names for _ in range(households_per_region)
+            ],
+            "household_is_spi_synthetic": [False] * len(household_ids),
+            "household_is_capital_gains_clone": [False] * len(household_ids),
         }
     )
+    person_ids = [10_000 + household_id for household_id in household_ids]
+    benunit_ids = [20_000 + household_id for household_id in household_ids]
     person = pd.DataFrame(
         {
-            "person_id": [11, 21, 31, 41],
-            "person_household_id": [1, 2, 3, 4],
-            "person_benunit_id": [101, 201, 301, 401],
+            "person_id": person_ids,
+            "person_household_id": household_ids,
+            "person_benunit_id": benunit_ids,
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [101, 201, 301, 401]})
+    benunit = pd.DataFrame({"benunit_id": benunit_ids})
     dataset = uk_national_frame(
         person=person,
         benunit=benunit,
@@ -204,15 +223,43 @@ def _write_staging_h5(path: Path) -> None:
     write_uk_national_frame(dataset, path)
 
 
-def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
+def test_candidate_build_writes_calibrated_h5_and_evidence(
+    monkeypatch, tmp_path
+) -> None:
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
     builder = _load_builder_module()
     input_h5 = tmp_path / "staging.h5"
     ladder_path = tmp_path / "ladder.npz"
     output_dir = tmp_path / "candidate"
-    _write_staging_h5(input_h5)
+    _write_staging_h5(input_h5, households_per_region=50)
     ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    holdout = {
+        "report_only": True,
+        "method": "rotated_folds",
+        "n_folds": 5,
+        "seed": 20260529,
+        "solve_seed": 7,
+        "mean_holdout_loss": 0.1,
+        "worst_holdout_loss": 0.2,
+        "fold_losses": [0.1, 0.1, 0.2, 0.05, 0.05],
+        "folds": [],
+    }
+    monkeypatch.setattr(
+        builder,
+        "rotated_uk_local_holdout",
+        lambda *_args, **_kwargs: holdout,
+    )
 
     assert (
         builder.main(
@@ -242,6 +289,8 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
         builder.SOLVE_DIAGNOSTICS_FILENAME,
         builder.AREA_SUPPORT_FILENAME,
         builder.PAST_CAP_FILENAME,
+        builder.CALIBRATION_DIAGNOSTICS_FILENAME,
+        builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(source_year=2023),
     }
     assert candidate_h5.exists()
     assert expected_sidecars <= {path.name for path in output_dir.iterdir()}
@@ -253,12 +302,8 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
         candidate_household = store["household"]
     assert candidate_kind is WeightKind.CALIBRATED
     assert candidate_household["source_year"].unique().tolist() == [2023]
-    assert set(candidate_household["source_household_key"]) == {
-        "2023:1",
-        "2023:2",
-        "2023:3",
-        "2023:4",
-    }
+    assert len(set(candidate_household["source_household_key"])) == 200
+    assert {"2023:1", "2023:200"} <= set(candidate_household["source_household_key"])
     assert len(candidate_mass_log) == 3
     calibration_records = [
         record
@@ -277,17 +322,22 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     assert manifest["bound_target_families"] == ["census_households/constituency"]
     adjudications = manifest["binding_adjudications"]
     assert adjudications["register_resource"] == "local_binding_adjudications.json"
-    assert adjudications["bound_families"] == [
-        "census_households/constituency"
-    ]
+    assert adjudications["bound_families"] == ["census_households/constituency"]
     assert adjudications["evaluated_on"]
     seed = adjudications["stood_on"]["census_households/constituency"][
         "census_disclosure_control_noise"
     ]
     assert seed["approved_by"] == "juaristi22"
-    assert seed["approved_on"] == "2026-08-27"
-    assert seed["expires_on"] == "2026-11-27"
+    assert seed["adjudication"] == "microcosm#802"
+    assert seed["approved_on"] == "2026-08-31"
+    assert seed["expires_on"] == "2026-11-30"
     assert adjudications["dormant"] == []
+    cross_grain = manifest["cross_grain"]
+    assert cross_grain["bound_national_targets"] == []
+    assert cross_grain["bound_higher_targets"] == []
+    assert cross_grain["inconsistencies_in_force"] == []
+    assert cross_grain["groups"] == []
+    assert cross_grain["absence"]
     assert manifest["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert manifest["gate"]["passed"] is True
     assert manifest["gate"]["phase"] == "post_calibration"
@@ -329,48 +379,60 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
         "target_weight_rule": "uniform",
     }
     assert manifest["solve"]["n_targets"] == 4
-    assert manifest["solve"]["n_households"] == 8
+    assert manifest["solve"]["n_households"] == 400
     assert np.isfinite(manifest["solve"]["initial_loss"])
     assert np.isfinite(manifest["solve"]["final_loss"])
     assert np.isfinite(manifest["solve"]["max_abs_relative_error"])
     assert np.isfinite(manifest["solve"]["median_abs_relative_error"])
     assert manifest["solve"]["past_cap"]["n_targets"] == 4
-    assert manifest["support"]["min_assigned_households"] == 2
-    assert manifest["support"]["min_nonzero_households"] == 2
-    assert manifest["support"]["min_effective_sample_size"] == pytest.approx(2.0)
+    assert manifest["support"]["min_assigned_households"] == 100
+    assert manifest["support"]["min_nonzero_households"] == 100
+    assert manifest["support"]["min_effective_sample_size"] == pytest.approx(100.0)
 
     diagnostics = pd.read_csv(output_dir / builder.SOLVE_DIAGNOSTICS_FILENAME)
     support = pd.read_csv(output_dir / builder.AREA_SUPPORT_FILENAME)
     past_cap = json.loads((output_dir / builder.PAST_CAP_FILENAME).read_text())
+    calibration_diagnostics = json.loads(
+        (output_dir / builder.CALIBRATION_DIAGNOSTICS_FILENAME).read_text()
+    )
     assert len(diagnostics) == 4
     assert diagnostics["metric"].unique().tolist() == ["households"]
-    assert len(support) == 4
+    assert len(support) == 8
     assert past_cap["n_targets"] == 4
+    assert calibration_diagnostics["schema_version"] == 6
+    uk_diagnostics = calibration_diagnostics["uk_diagnostics"]
+    assert len(uk_diagnostics["weakest_families"]) == 1
+    assert len(uk_diagnostics["weakest_areas_by_fit"]["bottom_by_fit"]) == 4
+    assert uk_diagnostics["weakest_areas_by_fit"]["n_areas_scored"] == 4
+    assert {
+        row["country"] for row in uk_diagnostics["weakest_areas_by_fit"]["countries"]
+    } == {
+        "England",
+        "Northern Ireland",
+        "Scotland",
+        "Wales",
+    }
+    assert (
+        manifest["diagnostics"]["weakest_families"]
+        == uk_diagnostics["weakest_families"]
+    )
+    assert uk_diagnostics["rotated_holdout"] == holdout
+    assert manifest["diagnostics"]["rotated_holdout"] == holdout
+    assert "calibration_diagnostics" in manifest["outputs"]
     rows = _spool_rows(output_dir)
     assert len(rows) == 1
     row = rows[0]
-    assert row.pipeline == "uk-locals-candidate"
+    assert row.pipeline == "uk-local-candidate"
     assert row.rung == "f100"
     assert row.seed == 7
     assert row.disposition == "iterating"
     assert row.artifact_location == _local_ref(candidate_h5)
-    assert row.gate_verdicts == {
-        "uk_geography_ladder_post_calibration": {
-            "verdict": "passed",
-            "receipt": f"{_local_ref(output_dir / builder.MANIFEST_FILENAME)}#/gate",
-        },
-        "uk_target_fit": {
-            "verdict": "passed",
-            "receipt": (
-                f"{_local_ref(output_dir / builder.MANIFEST_FILENAME)}"
-                "#/solve/max_abs_relative_error"
-            ),
-        },
-        "uk_area_support": {
-            "verdict": "passed",
-            "receipt": f"{_local_ref(output_dir / builder.MANIFEST_FILENAME)}#/support",
-        },
-    }
+    assert set(row.gate_verdicts) == set(builder.UK_LOCAL_GATE_SCOPE)
+    assert {item["verdict"] for item in row.gate_verdicts.values()} == {"passed"}
+    assert all(
+        ".local_gates.json#/gates/" in item["receipt"]
+        for item in row.gate_verdicts.values()
+    )
 
 
 def test_candidate_dry_run_plans_without_solve_or_write(
@@ -421,15 +483,19 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert plan["bound_target_families"] == ["census_households/constituency"]
     adjudications = plan["binding_adjudications"]
     assert adjudications["register_resource"] == "local_binding_adjudications.json"
-    assert adjudications["bound_families"] == [
-        "census_households/constituency"
-    ]
+    assert adjudications["bound_families"] == ["census_households/constituency"]
     assert adjudications["evaluated_on"]
     assert (
         "census_disclosure_control_noise"
         in adjudications["stood_on"]["census_households/constituency"]
     )
     assert adjudications["dormant"] == []
+    cross_grain = plan["cross_grain"]
+    assert cross_grain["bound_national_targets"] == []
+    assert cross_grain["bound_higher_targets"] == []
+    assert cross_grain["inconsistencies_in_force"] == []
+    assert cross_grain["groups"] == []
+    assert cross_grain["absence"]
     assert plan["ladder_target_provenance"] == ladder_target_provenance(ladder)
     assert plan["shapes"]["person"][0] == 8
     assert plan["shapes"]["benunit"][0] == 8
@@ -455,15 +521,25 @@ def test_candidate_refusal_records_receipt_and_reraises(
 
     def failing_gate(*_args, **_kwargs):
         return builder.GateResult(
-            name="uk_geography_ladder",
+            name="spine_agreement",
             passed=False,
             failures=("post-calibration coverage failed",),
             details={"minimum": 0},
         )
 
-    monkeypatch.setattr(builder, "uk_geography_ladder_gate", failing_gate)
+    original = builder.UK_GATE_REGISTRY["spine_agreement"]
+    monkeypatch.setattr(
+        builder,
+        "UK_GATE_REGISTRY",
+        {
+            **builder.UK_GATE_REGISTRY,
+            "spine_agreement": replace(original, evaluator=failing_gate),
+        },
+    )
 
-    with pytest.raises(ValueError, match="post-calibration coverage failed"):
+    with pytest.raises(
+        builder.GateBatteryBlockedError, match="post-calibration coverage failed"
+    ):
         builder.main(
             [
                 "--input-h5",
@@ -485,16 +561,16 @@ def test_candidate_refusal_records_receipt_and_reraises(
     assert len(rows) == 1
     row = rows[0]
     assert row.disposition == "failed"
-    refusal_path = (
-        output_dir / "logbook-receipts" / row.build_id / "candidate-refusal.json"
+    gate_report_path = output_dir / builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(
+        source_year=2023
     )
-    assert refusal_path.exists()
-    refusal = json.loads(refusal_path.read_text())
-    assert refusal["gate"]["phase"] == "post_calibration"
-    assert refusal["gate"]["passed"] is False
-    assert row.gate_verdicts["uk_geography_ladder_post_calibration"] == {
+    assert gate_report_path.exists()
+    assert row.gate_verdicts["uk_local_geography_ladder_post_calibration"] == {
         "verdict": "failed",
-        "receipt": f"{_local_ref(refusal_path)}#/gate",
+        "receipt": (
+            f"{_local_ref(gate_report_path)}"
+            "#/gates/uk_local_geography_ladder_post_calibration"
+        ),
     }
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")

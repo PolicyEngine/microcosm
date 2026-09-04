@@ -81,6 +81,8 @@ from microcosm.build.gates import (  # noqa: E402 - after the compat gate
     TargetCoverageRequirement,
     TargetFitRequirement,
     aggregate_admin_gate,
+    area_support_gate,
+    column_implication_gate,
     default_valued_columns_gate,
     enum_domain_gate,
     export_surface_gate,
@@ -123,6 +125,16 @@ from microcosm.build.ledger_targets import (  # noqa: E402 - after the compat ga
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_fact,
+)
+from microcosm.build.monetary_profile import (  # noqa: E402 - after compat gate
+    MonetaryTargetContract,
+    MonetaryTargetProfile,
+)
+from microcosm.build.monetary_targets import (  # noqa: E402 - after compat gate
+    MonetaryBasis,
+    PreparedMonetaryMeasure,
+    bind_monetary_target,
+    prepare_monetary_measure,
 )
 from microcosm.build.plan import (  # noqa: E402 - after the compat gate
     DonorSpec,
@@ -187,9 +199,16 @@ __all__ = [
     "LedgerConsumerArtifact",
     "LedgerTargetMapping",
     "LedgerTargetSelection",
+    "MonetaryBasis",
+    "MonetaryTargetContract",
+    "MonetaryTargetProfile",
+    "PreparedMonetaryMeasure",
     "add_ledger_artifact_args",
     "aggregate_admin_gate",
+    "area_support_gate",
+    "column_implication_gate",
     "apply_ledger_target_profile",
+    "bind_monetary_target",
     "default_valued_columns_gate",
     "enum_domain_gate",
     "export_surface_gate",
@@ -204,6 +223,7 @@ __all__ = [
     "nonconstant_columns_gate",
     "nonnegative_columns_gate",
     "parity_gate",
+    "prepare_monetary_measure",
     "per_family_fit_gate",
     "relative_error_loss",
     "resolve_ledger_artifact",

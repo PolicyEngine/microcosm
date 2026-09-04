@@ -93,11 +93,13 @@ class UKETBServicesResult:
 
     frame: Frame
     support_clip: UKSupportClipReceipt
+    nhs_cells: dict[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
             "stage": UK_ETB_SERVICES_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
+            "nhs_cells": dict(self.nhs_cells),
         }
 
 
@@ -149,12 +151,13 @@ class UKETBServicesStageTransform:
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
         person = frame.table("person").copy()
-        nhs = allocate_nhs_by_age_gender(
+        nhs, nhs_cells = allocate_nhs_by_age_gender(
             person,
             household_weights=frame.weights_for("household").values,
             household=household,
             nhs_table=self.nhs_table,
             nhs_budget=config["nhs_budget"],
+            with_receipt=True,
         )
         for column in UK_NHS_OUTPUT_COLUMNS:
             person[column] = nhs[column].to_numpy()
@@ -172,6 +175,7 @@ class UKETBServicesStageTransform:
         self.last_result = UKETBServicesResult(
             frame=result,
             support_clip=clip_result.receipt,
+            nhs_cells=nhs_cells,
         )
         return result
 
@@ -402,27 +406,50 @@ def build_nhs_cell_table(
         values="Total",
         aggfunc="sum",
     ).reset_index()
-    top = (
-        pivot[pivot["Lower age"] >= 85]
-        .groupby(["Gender", "Service"], as_index=False)[
-            ["Activity Count", "Total Cost"]
-        ]
-        .sum()
-    )
-    top["Lower age"] = 85
-    top["Upper age"] = 120
-    pivot = pd.concat([pivot[pivot["Lower age"] < 85], top], ignore_index=True)
     counts = _weighted_person_counts(person, household)
     pivot["Total people"] = [
         counts((row["Lower age"], row["Upper age"]), row["Gender"])
         for _, row in pivot.iterrows()
     ]
-    pivot["Per-person average units"] = pivot["Activity Count"] / pivot["Total people"]
+    # An empty cell reaches nobody whatever its per-person value; keep the
+    # count honest (0, not a 1.0 placeholder) so nhs_cell_receipt can name it,
+    # and give it a zero rate rather than dividing by zero.
+    people = pivot["Total people"].where(pivot["Total people"] > 0, np.nan)
+    pivot["Per-person average units"] = (pivot["Activity Count"] / people).fillna(0.0)
     factor = nhs_budget / pivot["Total Cost"].sum()
     pivot["Per-person average spending"] = (
-        pivot["Total Cost"] / pivot["Total people"] * factor
-    )
+        pivot["Total Cost"] / people * factor
+    ).fillna(0.0)
     return pivot
+
+
+def nhs_cell_receipt(cells: pd.DataFrame) -> dict[str, object]:
+    """Name the donor cells no recipient occupies and the cost they drop.
+
+    The budget factor normalizes the donor cost table, not the realized
+    allocation, so an empty (gender, age band) cell silently loses its share
+    of the budget. Under the FRS 80 top-code the 85+ cells were empty by
+    construction; with age_tail ahead of this stage every band should be
+    occupied, and this receipt is how a thinly populated one stays visible.
+    """
+
+    total_cost = float(cells["Total Cost"].sum())
+    empty = cells[cells["Total people"] <= 0]
+    dropped = float(empty["Total Cost"].sum())
+    grouped = empty.groupby(["Gender", "Lower age", "Upper age"], sort=True)
+    return {
+        "empty_cells": [
+            {
+                "gender": str(gender),
+                "lower_age": int(lower),
+                "upper_age": int(upper),
+                "services": sorted(str(service) for service in rows["Service"]),
+            }
+            for (gender, lower, upper), rows in grouped
+        ],
+        "empty_cell_count": int(len(empty)),
+        "unallocated_cost_share": (dropped / total_cost) if total_cost > 0 else 0.0,
+    }
 
 
 def allocate_nhs_by_age_gender(
@@ -432,7 +459,8 @@ def allocate_nhs_by_age_gender(
     household: pd.DataFrame,
     nhs_table: pd.DataFrame | None,
     nhs_budget: float | None = None,
-) -> pd.DataFrame:
+    with_receipt: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, dict[str, object]]:
     if nhs_table is None:
         path = (
             Path(__file__).resolve().parents[1]
@@ -474,6 +502,8 @@ def allocate_nhs_by_age_gender(
         )
         output.loc[mask, visit_col] = row["Per-person average units"]
         output.loc[mask, spending_col] = row["Per-person average spending"]
+    if with_receipt:
+        return output, nhs_cell_receipt(cells)
     return output
 
 
@@ -486,8 +516,7 @@ def _weighted_person_counts(person: pd.DataFrame, household: pd.DataFrame):
     def count(age_bounds: tuple[int, int], gender: str) -> float:
         lo, hi = age_bounds
         mask = (ages >= lo) & (ages < hi) & (genders == gender)
-        total = float(person_weights[mask].sum())
-        return total if total > 0 else 1.0
+        return float(person_weights[mask].sum())
 
     return count
 

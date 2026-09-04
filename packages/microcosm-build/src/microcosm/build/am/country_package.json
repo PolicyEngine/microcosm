@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "country": "am",
+  "resources": [
+    {
+      "path": "spec/bundle.yaml",
+      "kind": "bundle",
+      "schema_id": "bundle.schema.json"
+    },
+    {
+      "path": "spec/catalogs.yaml",
+      "kind": "catalogs",
+      "schema_id": "catalogs.schema.json"
+    },
+    {
+      "path": "spec/geography.yaml",
+      "kind": "geography",
+      "schema_id": "geography.schema.json"
+    },
+    {
+      "path": "spec/sources.yaml",
+      "kind": "sources",
+      "schema_id": "sources.schema.json"
+    },
+    {
+      "path": "spec/spine.yaml",
+      "kind": "spine",
+      "schema_id": "spine.schema.json"
+    },
+    {
+      "path": "spec/vintages.yaml",
+      "kind": "vintages",
+      "schema_id": "vintages.schema.json"
+    },
+    {
+      "path": "gates.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "geography_spine.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "release_contract.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    }
+  ]
+}

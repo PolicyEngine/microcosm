@@ -6025,6 +6025,122 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "draw",
+      "draw_dtype",
+      "resource",
+      "distribution",
+      "incidence_modifier",
+      "none_value"
+     ],
+     "properties": {
+      "kind": {
+       "const": "map_uniform_to_banded_rate"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "draw_dtype": {
+       "type": "string",
+       "enum": [
+        "float32"
+       ]
+      },
+      "resource": {
+       "type": "string"
+      },
+      "distribution": {
+       "type": "string"
+      },
+      "incidence_modifier": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "column",
+        "entity",
+        "table"
+       ],
+       "properties": {
+        "column": {
+         "type": "string"
+        },
+        "entity": {
+         "type": "string"
+        },
+        "table": {
+         "type": "string"
+        }
+       }
+      },
+      "none_value": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "draw_dtype",
+      "resource",
+      "distribution",
+      "gate",
+      "none_value"
+     ],
+     "properties": {
+      "kind": {
+       "const": "map_uniform_to_categorical"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "draw_dtype": {
+       "type": "string",
+       "enum": [
+        "float32"
+       ]
+      },
+      "resource": {
+       "type": "string"
+      },
+      "distribution": {
+       "type": "string"
+      },
+      "gate": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "column",
+        "positive"
+       ],
+       "properties": {
+        "column": {
+         "type": "string"
+        },
+        "positive": {
+         "type": "boolean"
+        }
+       }
+      },
+      "none_value": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "method",
       "aggregates"
      ],
@@ -6960,6 +7076,131 @@
      "required": [
       "kind",
       "output",
+      "training_rows",
+      "rows",
+      "rewrite_rows",
+      "screen",
+      "predictors",
+      "categorical_predictors",
+      "target",
+      "weight_mapping",
+      "fit",
+      "landing",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_spi_reported_uc"
+      },
+      "output": {
+       "type": "string"
+      },
+      "training_rows": {
+       "type": "string"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "rewrite_rows": {
+       "type": "string"
+      },
+      "screen": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "target": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "fit": {
+       "type": "string"
+      },
+      "landing": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "rows",
+      "donor_rows",
+      "dependent_children_bands",
+      "couple_status",
+      "weight_mapping",
+      "draw",
+      "identity",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_spi_reporter_capital"
+      },
+      "output": {
+       "type": "string"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "donor_rows": {
+       "type": "string"
+      },
+      "dependent_children_bands": {
+       "type": "array",
+       "minItems": 4,
+       "maxItems": 4,
+       "items": {
+        "type": "string"
+       }
+      },
+      "couple_status": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
       "inputs"
      ],
      "properties": {
@@ -7046,6 +7287,12 @@
        }
       },
       "integer_outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "debt_segment_predictors": {
        "type": "array",
        "items": {
         "type": "string"

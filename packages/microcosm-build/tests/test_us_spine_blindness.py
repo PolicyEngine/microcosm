@@ -97,6 +97,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
+        # Declares the provenance columns the CREATE node loads so the unchanged
+        # stage validators can inspect them; no graph kernel reads or mutates
+        # them, and the stage kernels stay under the operator guard below.
+        "graph.py",
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
         "puf_qrf_chain.py",  # Carries provenance into resumable checkpoints.
@@ -298,6 +302,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "us_late_producer_registry.py",
         "validation_input_coverage.py",
         "warm_start_selection.py",
+        # The node-graph adapter: declares the post-transfer subgraph and wraps
+        # the unchanged stage functions as kernels (charter H3). It registers
+        # nothing with the source registry and treats no population itself.
+        "graph.py",
+        "graph_kernels.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(

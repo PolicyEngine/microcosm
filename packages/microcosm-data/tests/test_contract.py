@@ -31,6 +31,8 @@ from microcosm.data import (
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
+UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -135,13 +137,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12c8a7fd526932decf19954881f43a123451f0454ac2603ff5ab08b0d246e37a"
+    "f7e2cf43fc2dd18a3d1add2965bb67e4faf21299678838ee0ac43694bb498a34"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2a7cb1441d9c9bab3afde33ad1a2957484c7bde46f93c65386b98dd7a665b812"
+    "a787221b57af1c0d8c653ee652597fe3f79d5ff3ba8c58f6c16ee7a3ce755ea8"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "65a2c85db2abd8edd935fda79e5c5ef8e15f89ba59ec4e2763d485c5170fd550"
+    "b7fa1a0e7d242f474ac5746de0f0115a96b935dbbcce57f4cdbbc955d0f9a0b9"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -168,6 +170,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
+    "uk_stage_uc_deduction_attributes": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
@@ -211,7 +218,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
-    "uk_stage_age_tail_targets": ("stage_health", "transferred", None),
+    "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -241,11 +248,21 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         "nonnegative_columns",
     ),
+    "uk_uc_capital_coherence": (
+        "column_implication",
+        "terminal",
+        "column_implication",
+    ),
     "uk_support": ("support", "terminal", "support"),
     "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_uc_deduction_combination_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
     "uk_student_loan_plan_enum_domain": (
         "enum_domain",
         "terminal",
@@ -264,6 +281,16 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         "qrf_tail_concentration",
     ),
+    "uk_local_geography_ladder_post_calibration": (
+        "spine_agreement",
+        "terminal",
+        None,
+    ),
+    "uk_local_area_support": ("area_support", "terminal", None),
+    "uk_local_target_fit": ("target_fit", "terminal", None),
+    "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
+    "uk_local_weight_ratio": ("weight_ratio", "terminal", None),
+    "uk_local_weight_ess": ("weight_ess", "terminal", None),
 }
 
 
@@ -312,7 +339,7 @@ DEDUCTION_CRITICAL_TARGETS = (
 
 
 def _model_package(release_id: str) -> tuple[str, str]:
-    if release_id.startswith("populace-uk-"):
+    if release_id.startswith("populace-uk-") or release_id == UK_NATIONAL_RELEASE_ID:
         return ("policyengine-uk", "2.89.0")
     return ("policyengine-us", "1.729.0")
 
@@ -924,6 +951,27 @@ def _terminal_gate_details(name: str) -> dict:
             "invalid_examples": {},
             "allowed_values": {"brma": ["CENTRAL_LONDON"]},
         }
+    if name == "column_implication":
+        # Mirrors _evaluate_column_implication's composite detail block.
+        return {
+            "numeric_column": (
+                "person.universal_credit_reported aggregated to benunit"
+            ),
+            "boolean_column": "benunit.would_claim_uc",
+            "threshold": 0.0,
+            "rows_checked": 1,
+            "implicated_rows": 1,
+            "violation_count": 0,
+            "nonfinite_count": 0,
+            "capital_column": "benunit.uc_reported_capital",
+            "carrier_column": "benunit.frs_benunit_capital",
+            "sentinel": -1.0,
+            "capital_domain_violation_count": 0,
+            "carrier_domain_violation_count": 0,
+            "sentinel_mismatch_count": 0,
+            "same_source_mismatch_count": 0,
+            "nonfinite_capital_count": 0,
+        }
     raise AssertionError(f"No terminal fixture details for {name!r}")
 
 
@@ -1112,6 +1160,8 @@ def _gate_battery_payload(
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "uc_capital_coherence",
+        "uc_deduction_attributes",
         "cgt_incidence_clone",
         "cgt_band_donors",
         "hmrc_cgt_gains_spine",
@@ -1121,6 +1171,7 @@ def _gate_battery_payload(
     ]
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
+        "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
@@ -1174,6 +1225,11 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif entry_id.startswith("uk_local_"):
+            # Local candidate gates are explicitly excluded from national
+            # certification; this full-report fixture needs only their
+            # authenticated envelope, not candidate-only evidence details.
+            details = {}
         elif gate == "stage_health":
             details = {
                 "stage": stage_health_stages[entry_id],
@@ -1184,7 +1240,17 @@ def _gate_battery_payload(
         gates[entry_id] = {
             "gate": gate,
             "phase": phase,
-            "criticality": "release_blocking",
+            "criticality": (
+                "diagnostic"
+                if entry_id
+                in {
+                    "uk_local_target_fit",
+                    "uk_local_per_family_fit",
+                    "uk_local_weight_ratio",
+                    "uk_local_weight_ess",
+                }
+                else "release_blocking"
+            ),
             "status": "passed",
             "failures": [],
             "details": details,
@@ -1413,6 +1479,59 @@ def _copy_real_uk_june_release(tmp_path: Path) -> Path:
     directory = tmp_path / "releases" / UK_RELEASE_ID
     shutil.copytree(UK_JUNE_FIXTURE_DIR, directory)
     return directory
+
+
+def _write_uk_national_release_dir(tmp_path: Path) -> Path:
+    """Build the constant-id national fixture from the green exact-k shape."""
+
+    directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID, tier="frs")
+    national = directory.with_name(UK_NATIONAL_RELEASE_ID)
+    directory.replace(national)
+
+    build_path = national / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["build_id"] = UK_NATIONAL_RELEASE_ID
+    build_path.write_text(json.dumps(build))
+
+    release_path = national / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = UK_NATIONAL_CUT_TAG
+
+    # The certification signs the evidence copies' actual bytes: the seam
+    # report already sits in the directory (terminal_gates.json from the
+    # exact-k shape); the other three are written here so every signed digest
+    # binds to a real local file.
+    (national / "spine_gates.json").write_text(json.dumps({"fixture": "spine"}))
+    (national / "release_cut_gates.json").write_text(
+        json.dumps({"fixture": "release_cut"})
+    )
+    (national / "score_vs_enhanced_frs.json").write_text(
+        json.dumps({"fixture": "score"})
+    )
+    certification = _green_uk_certification(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        release_id=UK_NATIONAL_RELEASE_ID,
+        diagnostics_sha256=_sha256(national / "calibration_diagnostics.json"),
+        part_shas={
+            "spine": _sha256(national / "spine_gates.json"),
+            "calibration_seam": _sha256(national / "terminal_gates.json"),
+            "release_cut": _sha256(national / "release_cut_gates.json"),
+        },
+        score_receipt_sha256=_sha256(national / "score_vs_enhanced_frs.json"),
+    )
+    certification_path = national / "release_certification.json"
+    certification_path.write_text(json.dumps(certification))
+    release["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": "release_certification.json",
+        "repo_id": "policyengine/populace-uk-private",
+        "revision": UK_NATIONAL_CUT_TAG,
+        "sha256": _sha256(certification_path),
+    }
+    release_path.write_text(json.dumps(release))
+    return national
 
 
 def _rewrite_exact_k_fixture_to_two_records(directory: Path) -> None:
@@ -2033,6 +2152,161 @@ def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+def test_uk_national_release_dir_validates(tmp_path: Path) -> None:
+    validate_release_dir(_write_uk_national_release_dir(tmp_path))
+
+
+def test_uk_national_release_requires_uk_diagnostics(tmp_path: Path) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    diagnostics_path = directory / "calibration_diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    diagnostics.pop("uk_diagnostics")
+    diagnostics_path.write_text(json.dumps(diagnostics))
+
+    with pytest.raises(ReleaseContractError, match="require a 'uk_diagnostics'"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_policyengine_uk_runtime(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["runtime"].pop("policyengine-uk")
+    build_path.write_text(json.dumps(build))
+
+    with pytest.raises(ReleaseContractError, match="runtime.policyengine-uk"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_policyengine_uk_model_pin(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["build"]["built_with_model_package"]["name"] = "policyengine-us"
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="built_with_model_package.name.*policyengine-uk",
+    ):
+        validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "main",
+        UK_NATIONAL_RELEASE_ID + "-",
+        # Prefixed but outside the attempt-derived cut-tag grammar: the
+        # contract validates the same <YYYYMMDDTHHMMSSZ>-<uuid8> shape the
+        # assembler mints, so a hand-edited suffix cannot claim a cut.
+        UK_NATIONAL_RELEASE_ID + "-hotfix",
+        UK_NATIONAL_RELEASE_ID + "-20260828t101112Z-1a2b3c4d",
+        UK_NATIONAL_RELEASE_ID + "-20260828T101112Z-1A2B3C4D",
+        # Present but non-string: must fail loudly rather than vanish from
+        # the publish layer's string-only revision collection.
+        123,
+    ],
+)
+def test_uk_national_release_rejects_invalid_artifact_revisions(
+    tmp_path: Path,
+    revision: str,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = revision
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_rejects_mixed_cut_revisions(tmp_path: Path) -> None:
+    # Two individually grammar-valid cut tags are still two cuts: the
+    # contract refuses the mixture, not just publish.
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    first_key = next(iter(release["artifacts"]))
+    release["artifacts"][first_key]["revision"] = (
+        UK_NATIONAL_RELEASE_ID + "-20260901T000000Z-deadbeef"
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="more than one revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_binds_signed_evidence_bytes(tmp_path: Path) -> None:
+    # Rewriting a copied part report must refuse: the certification signs the
+    # evidence bytes, not just the digest fields' shapes.
+    directory = _write_uk_national_release_dir(tmp_path)
+    (directory / "release_cut_gates.json").write_text(
+        json.dumps({"fixture": "tampered"})
+    )
+
+    with pytest.raises(
+        ReleaseContractError, match="does not match the certification's signed"
+    ):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_requires_signed_evidence_files(tmp_path: Path) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    (directory / "terminal_gates.json").unlink()
+
+    with pytest.raises(ReleaseContractError, match="missing 'terminal_gates.json'"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_refuses_unbindable_score_digest(
+    tmp_path: Path,
+) -> None:
+    # score_receipt.sha256 is the one signed digest outside the shape-checked
+    # parts block: a malformed value must refuse the binding, never skip it.
+    directory = _write_uk_national_release_dir(tmp_path)
+    certification = _green_uk_certification(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        release_id=UK_NATIONAL_RELEASE_ID,
+        diagnostics_sha256=_sha256(directory / "calibration_diagnostics.json"),
+        part_shas={
+            "spine": _sha256(directory / "spine_gates.json"),
+            "calibration_seam": _sha256(directory / "terminal_gates.json"),
+            "release_cut": _sha256(directory / "release_cut_gates.json"),
+        },
+        score_receipt_sha256="not-a-digest",
+    )
+    certification_path = directory / "release_certification.json"
+    certification_path.write_text(json.dumps(certification))
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["release_certification"]["sha256"] = _sha256(
+        certification_path
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match=r"score_receipt\.sha256 is not a"):
+        validate_release_dir(directory)
+
+
+def test_us_release_rejects_dash_suffixed_artifact_revision(
+    release_dir: Path,
+) -> None:
+    release_path = release_dir / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    release["artifacts"]["populace_us_2024"]["revision"] = RELEASE_ID + "-cut"
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(release_dir)
 
 
 @pytest.mark.parametrize(
@@ -4054,6 +4328,36 @@ def test_exact_k_uk_gate_battery_recomputes_shippability(tmp_path: Path) -> None
     assert "release-blocking with status 'failed'" in failures
 
 
+def test_exact_k_uk_gate_battery_status_checks_cover_diagnostic_entries(
+    tmp_path: Path,
+) -> None:
+    # The diagnostic label exempts an entry from the shippability recompute
+    # and nothing else: a diagnostic gate that compared nothing, or that
+    # carries a status outside the taxonomy, is still refused.
+    for status, expected in (
+        ("not_applicable", "claims not_applicable"),
+        ("unreached", "is unreached"),
+        ("error", "outside the taxonomy"),
+    ):
+        directory, payload = _write_battery_release(tmp_path / status)
+        payload["gates"]["uk_local_target_fit"]["status"] = status
+        _rewrite_battery_report(directory, payload)
+
+        assert expected in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_relabelled_diagnostic_criticality(
+    tmp_path: Path,
+) -> None:
+    # Criticality is pinned per entry, so a blocking gate cannot be relabelled
+    # diagnostic to dodge the recompute, nor the reverse.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["gates"]["uk_local_area_support"]["criticality"] = "diagnostic"
+    _rewrite_battery_report(directory, payload)
+
+    assert "criticality must be 'release_blocking'" in _battery_failures(directory)
+
+
 def test_exact_k_uk_gate_battery_rejects_passed_entry_with_failures(
     tmp_path: Path,
 ) -> None:
@@ -4950,13 +5254,20 @@ def test_breach_acknowledgment_matching_is_name_delimited() -> None:
 # --- UK release certification (microcosm#757 B5) ---------------------------
 
 
-def _green_uk_certification(key: bytes) -> dict:
+def _green_uk_certification(
+    key: bytes,
+    *,
+    release_id: str = "uk-757-first-certified-cut",
+    diagnostics_sha256: str = "c" * 64,
+    part_shas: dict[str, str] | None = None,
+    score_receipt_sha256: str = "d" * 64,
+) -> dict:
     parts = {}
     for part_name, scope in contract._UK_CERTIFICATION_PART_SCOPES.items():
         parts[part_name] = {
             "path": f"{part_name}.json",
-            "sha256": "a" * 64,
-            "release_id": "uk-757-first-certified-cut",
+            "sha256": (part_shas or {}).get(part_name, "a" * 64),
+            "release_id": release_id,
             "phases": list(contract._UK_CERTIFICATION_PART_PHASES[part_name]),
             "entry_ids": sorted(scope),
             "gates_manifest_sha256": contract._UK_CERTIFICATION_PART_DIGESTS[part_name][
@@ -4971,7 +5282,7 @@ def _green_uk_certification(key: bytes) -> dict:
         "schema_version": 1,
         "kind": "uk_release_certification",
         "country": "uk",
-        "release_id": "uk-757-first-certified-cut",
+        "release_id": release_id,
         "candidate": {
             "name": "microcosm_uk_2024",
             "filename": "microcosm_uk_2024.h5",
@@ -4986,10 +5297,16 @@ def _green_uk_certification(key: bytes) -> dict:
             "declared_entry_count": len(contract._UK_GATE_BATTERY_ENTRY_IDS),
             "declared_phases": list(contract._UK_GATE_BATTERY_PHASES),
             "shared_gate_ids": sorted(contract._UK_CERTIFICATION_SHARED_GATE_IDS),
+            "certification_excluded_gate_ids": sorted(
+                contract._UK_CERTIFICATION_EXCLUDED_GATE_IDS
+            ),
         },
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
-        "diagnostics_sha256": "c" * 64,
-        "score_receipt": {"filename": "score_vs_enhanced_frs.json", "sha256": "d" * 64},
+        "diagnostics_sha256": diagnostics_sha256,
+        "score_receipt": {
+            "filename": "score_vs_enhanced_frs.json",
+            "sha256": score_receipt_sha256,
+        },
         "exclusions_evaluated_on": "2026-08-27",
         "shippable": True,
     }
@@ -5133,3 +5450,37 @@ def test_national_release_id_requires_the_certification() -> None:
     assert "release_certification.json" not in required_release_files(
         "dev-757-rebind-proof"
     )
+
+
+def test_a_release_built_from_a_denied_pool_cannot_be_published(monkeypatch) -> None:
+    """The publisher never loads an H5, so it must consult the deny-list itself."""
+    from microcosm.data import contract as contract_module
+    from microcosm.data import denied_pools
+
+    denied = denied_pools.DeniedPoolPublication(
+        manifest_sha256="0" * 64,
+        pool_h5_sha256="1" * 64,
+        content_identity_sha256="2" * 64,
+        release_id="fixture-release",
+        reason="fixture pool is excluded",
+        reference="microcosm#856; fixture-plan-gate",
+    )
+    monkeypatch.setattr(
+        denied_pools, "DENIED_POOL_PUBLICATIONS", {"denied-run": denied}, raising=False
+    )
+    for identity in (
+        {"publication_run_id": "denied-run"},
+        {"publication_run_id": "other", "manifest_sha256": "0" * 64},
+        {"publication_run_id": "other", "pool_h5_sha256": "1" * 64},
+        {"publication_run_id": "other", "content_identity_sha256": "2" * 64},
+    ):
+        manifest = _build_manifest()
+        manifest["base_pool"] = {"status": "gate_failed", **identity}
+        failures: list[str] = []
+        contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
+        assert any("denied publication 'denied-run'" in f for f in failures), identity
+    manifest = _build_manifest()
+    manifest["base_pool"] = {"status": "simulation_ready", "publication_run_id": "fine"}
+    failures = []
+    contract_module._check_build_manifest(manifest, RELEASE_ID, failures)
+    assert not any("denied" in f for f in failures)

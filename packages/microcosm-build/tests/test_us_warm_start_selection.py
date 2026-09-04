@@ -319,10 +319,18 @@ def test__given_manifest_roundtrip__then_identities_match_and_integrity_holds(
 ) -> None:
     # Given a selection source distilled from a frame
     source_frame = _frame_from_records(_pool_records())
+    from microcosm.build.us_runtime.h5_io import frame_content_identity
+
+    # A schema-2 manifest records canonical byte and content provenance.
     source = load_selection_source_from_h5(
         source_frame,
         join_key=DEFAULT_SELECTION_JOIN_KEY,
-        provenance={"kind": "h5", "path": "source.h5", "sha256": "deadbeef"},
+        provenance={
+            "kind": "h5",
+            "path": "source.h5",
+            "sha256": "d" * 64,
+            "content_identity_sha256": frame_content_identity(source_frame),
+        },
     )
     path = tmp_path / "selection.json"
     write_selection_source_manifest(source, path)

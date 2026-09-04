@@ -2,21 +2,23 @@
 
 microcosm#771: the previous acceptance evidence quietly described a 24-stage
 build after the plan had grown to 25. This binder makes that class of drift a
-CI failure: the receipt's stage roster must equal the roster the spine driver
-actually executes, its verdicts must be the accepted ones, and its identity
-bases must name the stage-time contract the instruments verify.
+CI failure. The #828/#832/#685 insertions and #785 reorder are deliberately pending
+their licensed re-mints, so the historical receipt stays truthful while the
+test composes only those reviewed transformations. Each transformation pins
+the receipt state it expects and must be deleted when that re-mint lands.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from importlib.resources import files
-from pathlib import Path
 
-_DRIVER_PATH = (
-    Path(__file__).resolve().parents[3] / "tools" / "build_uk_frs_spine.py"
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_EXCLUSIONS,
+    uk_spine_graph,
 )
+from microcosm.graph import compile_graph
 
 
 def _receipt() -> dict:
@@ -27,18 +29,51 @@ def _receipt() -> dict:
     )
 
 
-def _driver_stage_names() -> tuple[str, ...]:
-    spec = importlib.util.spec_from_file_location("build_uk_frs_spine", _DRIVER_PATH)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return tuple(module._STAGE_NAMES)
+def _production_graph_stage_names() -> tuple[str, ...]:
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    declared = {
+        stage.stage
+        for stage in spec.sources.stages
+        if stage.stage not in UK_SPINE_EXCLUSIONS
+    }
+    compiled = compile_graph(uk_spine_graph(spec))
+    return tuple(node_id for node_id in compiled.order if node_id in declared)
+
+
+def _apply_pending_roster_transformations(
+    accepted_roster: tuple[str, ...],
+) -> tuple[str, ...]:
+    roster = list(accepted_roster)
+
+    # #832 I5: both UC insertions are one pending receipt transformation.
+    assert "uc_reporter_redraw" not in roster
+    assert "uc_capital_coherence" not in roster
+    cgt_index = roster.index("cgt_incidence_clone")
+    roster[cgt_index:cgt_index] = [
+        "uc_reporter_redraw",
+        "uc_capital_coherence",
+    ]
+
+    # #685 (E9) re-mint pending: the UC deduction attributes stage runs
+    # directly after the capital-coherence stage.
+    assert "uc_deduction_attributes" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_deduction_attributes")
+
+    # #785 L3: the historical receipt still has age_tail at the spine tail.
+    assert roster[-1] == "age_tail"
+    roster.remove("age_tail")
+    roster.insert(1, "age_tail")
+    return tuple(roster)
 
 
 def test_receipt_roster_is_the_production_plan():
     receipt = _receipt()
-    roster = tuple(receipt["candidate"]["stage_roster"])
-    assert roster == _driver_stage_names()
-    assert receipt["candidate"]["stage_count"] == len(roster)
+    accepted_roster = tuple(receipt["candidate"]["stage_roster"])
+    production_roster = _production_graph_stage_names()
+
+    assert _apply_pending_roster_transformations(accepted_roster) == production_roster
+    assert receipt["candidate"]["stage_count"] == len(accepted_roster)
 
 
 def test_receipt_identity_and_verdicts_are_the_accepted_ones():
@@ -51,6 +86,9 @@ def test_receipt_identity_and_verdicts_are_the_accepted_ones():
     for check, row in ladder.items():
         assert row["identical_under_permutation"] is True, check
         assert row["matches_stored_columns"] is True, check
+    # The historical spine-i receipt remains truthful. The #785 L3 re-mint
+    # flips both fields to stage_time_disaggregated and deletes the matching
+    # pending roster transformation above.
     assert ladder["e6"]["nhs_age_basis"] == "stage_time_top_coded"
     assert ladder["e8"]["donor_age_basis"] == "stage_time_top_coded"
     parity = receipt["strict_parity"]

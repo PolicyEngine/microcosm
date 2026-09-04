@@ -40,6 +40,7 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
+COUNCIL_TAX_BANDS = tuple("ABCDEFGH")
 COUNTRY_TO_REGION = {
     "England": "SOUTH_EAST",
     "Scotland": "SCOTLAND",
@@ -86,9 +87,13 @@ def metric_names(
         names.extend(CONSTITUENCY_UC_CHILDREN_METRICS)
     else:
         names.extend(LA_EXTRA_METRICS)
-    # Appended last deliberately: adding a metric must never renumber the
-    # incumbent within-area metric indices for positional consumers.
+    # This list is append-only: adding a metric must never renumber the
+    # metric indices already in the surface, because consumers address them
+    # positionally. "households" was appended under that rule and keeps its
+    # index; later families land after it rather than displacing it.
     names.append("households")
+    if area_type == "la":
+        names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
     return tuple(names)
 
 
@@ -275,6 +280,12 @@ def compute_household_metrics(
         benunit_rent = _values(_calculate(sim, "benunit_rent", period))
         household_rent = _map_result(sim, benunit_rent, "benunit", "household")
         matrix["rent/private_rent"] = household_rent * is_private_renter
+
+        council_tax_band = _values(_calculate(sim, "council_tax_band", period))
+        for band in COUNCIL_TAX_BANDS:
+            matrix[f"council_tax/band_{band.lower()}"] = (
+                council_tax_band == band
+            ).astype(float)
 
     expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]

@@ -1,0 +1,3010 @@
+{
+  "cgt_parameters": {
+    "annual_exempt_amount": 3000.0,
+    "instant": "2024-06-01",
+    "personal_allowance": 12570.0,
+    "personal_allowance_taper_rate": 0.5,
+    "personal_allowance_taper_threshold": 100000.0,
+    "source": "policyengine-uk parameters unknown"
+  },
+  "config": {
+    "qrf_estimators": 4,
+    "spi_donor_sample_size": 64,
+    "spi_sample_fraction": 0.0135,
+    "student_loans_calibration_year": 2025
+  },
+  "description": "Data-only inputs for reconstructing the same 28 current UK stage transform classes used by the legacy StagePlan oracle.",
+  "inputs": {
+    "cgt_distribution": "cgt_distribution.json",
+    "etb": "etb.csv",
+    "frs_raw": "frs_raw",
+    "hmrc_income_targets": "hmrc_income_targets.json",
+    "lcfs_household": "lcfs_household.csv",
+    "lcfs_person": "lcfs_person.csv",
+    "spi_donor": "spi_donor.csv",
+    "was": "was.csv"
+  },
+  "schema_version": "uk-spine-parity-fixture.v1",
+  "stages": {
+    "age_tail": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "ons_age_tail_band_populations.json",
+          "role": "age_tail_band_populations",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled base person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_id. Runs immediately after frs_spine, before every stage that conditions on age, so all age-conditioned imputations derive from the disaggregated surface. The stage precedes person_source_id provenance; later support and capital-gains clones copy the donor's rewritten age, preserving the #623 final-age identity invariant. Ages are assigned toward the ONS distribution; calibration still owns the totals.",
+      "operations": [
+        {
+          "bands": [
+            {
+              "low": 80,
+              "name": "80_84",
+              "width": 5
+            },
+            {
+              "low": 85,
+              "name": "85_89",
+              "width": 5
+            },
+            {
+              "low": 90,
+              "name": "90_plus",
+              "width": 8
+            }
+          ],
+          "draw_key": "person_id",
+          "kind": "disaggregate_top_coded_ages",
+          "output": "age",
+          "reason": "Age disaggregation rewrites an existing person column in place; no rows move, no weights change, and total household mass is conserved.",
+          "resource": "ons_age_tail_band_populations.json",
+          "salt_streams": [
+            "band",
+            "within"
+          ],
+          "seed": 0,
+          "top_code": 80
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "age"
+      ],
+      "source": "Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).",
+      "stage": "age_tail",
+      "survey": "Family Resources Survey 2024-25 and ONS mid-year population estimates"
+    },
+    "cgt_band_donors": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_cgt_size_bands.json",
+          "role": "hmrc_cgt_size_bands",
+          "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "role": "capital_gains_incidence",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Adds 270 positive-weight band donors. Rows below GBP 12,300 are excluded because they mix annual-exempt-amount regimes and the spline body already supplies that support.",
+      "operations": [
+        {
+          "candidate_order": "household_id ascending",
+          "carrier": "oldest adult; person_id ascending breaks age ties",
+          "donors_per_band": 30,
+          "draw": "weighted_without_replacement",
+          "expected_band_count": 9,
+          "expected_donor_count": 270,
+          "flag_column": "household_is_cgt_band_donor",
+          "incidence_resource": "advani_summers_capital_gains_distribution.json",
+          "initial_weight": "published band taxpayers / donors_per_band",
+          "kind": "stack_band_donor_households",
+          "minimum_band_lower": 12300,
+          "never_zero_weight": true,
+          "propensity": "Advani-Summers percent_with_gains at oldest-adult component-sum income",
+          "reason": "Stack 30 positive-weight HMRC Table 2.1a support households per retained gain band; published donor mass is added explicitly.",
+          "seed": 1,
+          "size_band_resource": "hmrc_cgt_size_bands.json",
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [
+        "household_is_cgt_band_donor",
+        "capital_gains"
+      ],
+      "rewrites": [
+        "capital_gains"
+      ],
+      "source": "HMRC Capital Gains Tax statistics, July 2025, Table 2.1a",
+      "stage": "cgt_band_donors",
+      "survey": "HMRC Capital Gains Tax statistics Table 2.1a and Advani-Summers capital-gains incidence"
+    },
+    "cgt_incidence_clone": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "role": "capital_gains_incidence_and_quantiles",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Spine-only equal-mass incidence clone. The A&S prior fixes the gainer set and order for the following HMRC Table 3 redraw; negative extrapolated draws remain loss-makers.",
+      "operations": [
+        {
+          "clone_flag": true,
+          "conservation": "exact_total",
+          "copies": 2,
+          "declared_factor": 1,
+          "entity": "household",
+          "flag_column": "household_is_capital_gains_clone",
+          "id_remapping": "id_multiplier_for_values",
+          "kind": "clone_records",
+          "mass_split": 0.5,
+          "original_flag": false,
+          "reason": "Capital-gains incidence clone splits every household's mass equally across original and clone records; total household mass is conserved.",
+          "weight_kind_out": "importance"
+        },
+        {
+          "adult_minimum_age": 16,
+          "allowance_subtraction": false,
+          "carrier": "oldest adult; person_id ascending breaks age ties",
+          "extrapolation": "ext=0",
+          "income_proxy_components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension_reported",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "miscellaneous_income"
+          ],
+          "keep_negative_draws": true,
+          "kind": "draw_capital_gains_prior_from_banded_quantiles",
+          "quantile_points": [
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            0.9,
+            0.95
+          ],
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "salt": "cgt_prior_amount",
+          "seed": 0,
+          "spline_degree": 1
+        }
+      ],
+      "outputs": [
+        "household_is_capital_gains_clone",
+        "capital_gains"
+      ],
+      "rewrites": [
+        "capital_gains"
+      ],
+      "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+      "stage": "cgt_incidence_clone",
+      "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence"
+    },
+    "etb_services": {
+      "artifacts": [
+        {
+          "filename": "householdv2_1977-2024.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "householdv2_1977-2024.tab",
+          "role": "etb_household_tab",
+          "runtime_sha256_required": true,
+          "sha256": "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8",
+          "size_bytes": 216967663,
+          "vintage": "1977_24"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "nhs_consumption_by_age_gender.json",
+          "role": "nhs_consumption_by_age_gender"
+        },
+        {
+          "format": "json",
+          "kind": "public_parameter_reference",
+          "resource": "etb_services_anchors.json",
+          "role": "etb_services_anchors"
+        }
+      ],
+      "grain": "household+person",
+      "nonnegative_outputs": [
+        "dfe_education_spending",
+        "rail_subsidy_spending",
+        "bus_subsidy_spending",
+        "rail_usage",
+        "a_and_e_visits",
+        "admitted_patient_visits",
+        "outpatient_visits",
+        "nhs_a_and_e_spending",
+        "nhs_admitted_patient_spending",
+        "nhs_outpatient_spending"
+      ],
+      "notes": "Ports ETB public-services QRF at household grain, computes rail_usage from the 2023 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.",
+      "operations": [
+        {
+          "annualization_weeks": 52,
+          "kind": "derive",
+          "year": "max"
+        },
+        {
+          "derived_predictors": {
+            "count_further_education": "current_education in (UPPER_SECONDARY, TERTIARY)",
+            "count_primary_education": "current_education == PRIMARY",
+            "count_secondary_education": "current_education == LOWER_SECONDARY"
+          },
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "is_SP_age",
+            "dla",
+            "pip",
+            "hbai_household_net_income",
+            "current_education"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf_chain",
+          "n_estimators": 100,
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "is_SP_age",
+            "count_primary_education",
+            "count_secondary_education",
+            "count_further_education",
+            "dla",
+            "pip",
+            "hbai_household_net_income"
+          ],
+          "seed": 0,
+          "targets": [
+            "dfe_education_spending",
+            "rail_subsidy_spending",
+            "bus_subsidy_spending"
+          ],
+          "weights": "explicit"
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        },
+        {
+          "denominator_key": "rail_fare_index_2023",
+          "denominator_resource": "etb_services_anchors.json",
+          "kind": "compute_ratio",
+          "numerator": "rail_subsidy_spending",
+          "output": "rail_usage"
+        },
+        {
+          "age_bands": "half_open",
+          "budget_resource": "etb_services_anchors.json",
+          "kind": "allocate_per_capita_from_cell_table",
+          "resource": "nhs_consumption_by_age_gender.json",
+          "top_band_fold_in": "none"
+        }
+      ],
+      "outputs": [
+        "dfe_education_spending",
+        "rail_subsidy_spending",
+        "bus_subsidy_spending",
+        "rail_usage",
+        "a_and_e_visits",
+        "admitted_patient_visits",
+        "outpatient_visits",
+        "nhs_a_and_e_spending",
+        "nhs_admitted_patient_spending",
+        "nhs_outpatient_spending"
+      ],
+      "rewrites": [],
+      "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.",
+      "stage": "etb_services",
+      "survey": "Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table"
+    },
+    "etb_vat": {
+      "artifacts": [
+        {
+          "filename": "householdv2_1977-2024.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "householdv2_1977-2024.tab",
+          "role": "etb_household_tab",
+          "runtime_sha256_required": true,
+          "sha256": "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8",
+          "size_bytes": 216967663,
+          "vintage": "1977_24"
+        },
+        {
+          "format": "json",
+          "kind": "public_parameter_reference",
+          "resource": "etb_policy_anchors.json",
+          "role": "etb_policy_anchors"
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth.",
+      "operations": [
+        {
+          "annualization_weeks": 52,
+          "fail_loud_on_missing_rate": true,
+          "kind": "derive",
+          "reduced_rate_share": 0.025,
+          "standard_rate": 0.2,
+          "year": 2023
+        },
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "is_SP_age",
+            "household_net_income"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "n_estimators": 100,
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "is_SP_age",
+            "household_net_income"
+          ],
+          "seed": 0,
+          "targets": [
+            "full_rate_vat_expenditure_rate"
+          ],
+          "weights": "explicit"
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "full_rate_vat_expenditure_rate"
+      ],
+      "rewrites": [],
+      "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.",
+      "stage": "etb_vat",
+      "survey": "Effects of Taxes and Benefits 1977-2024"
+    },
+    "frs_brma": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregated_counts",
+          "resource": "brma_rent_counts.json",
+          "role": "count_resource"
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick.",
+      "operations": [
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "LHA_category"
+          ]
+        },
+        {
+          "assignment_grain": "benunit",
+          "cell_columns": [
+            "region",
+            "LHA_category"
+          ],
+          "collapse_method": "uniform_member_pick",
+          "collapse_to": "household",
+          "count_resource": "brma_rent_counts.json",
+          "kind": "sample_categorical_from_count_table",
+          "output": "brma",
+          "seed": 0
+        }
+      ],
+      "outputs": [
+        "brma"
+      ],
+      "rewrites": [],
+      "source": "Valuation Office Agency LHA list-of-rents count table and policyengine-uk LHA_category predictor.",
+      "stage": "frs_brma",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_council_tax": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "househol.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "5dce5c323681a5dd77b366fc52da49326d7626b6bbe99c34aee0808e21a81829",
+          "size_bytes": 14896,
+          "table": "househol",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "council_tax"
+      ],
+      "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. Scottish Water charges are netted before cell means; no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped.",
+      "operations": [
+        {
+          "delimiter": "\t",
+          "format": "tab",
+          "kind": "read_tables",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "cells": [
+            "gvtregno",
+            "ctband",
+            "adulth == 1"
+          ],
+          "donor_filter": "raw ctannual > 0",
+          "kind": "impute_cell_means",
+          "missing": "raw ctannual < 0 or NaN",
+          "value": "Scottish-water-netted CTANNUAL"
+        }
+      ],
+      "outputs": [
+        "council_tax"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
+      "stage": "frs_council_tax",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_disability": {
+      "artifacts": [],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed.",
+      "operations": [
+        {
+          "kind": "derive",
+          "parameters": "disability category thresholds from baseline.gov.dwp at Jan-1"
+        },
+        {
+          "kind": "derive",
+          "parameters": "disability flags from gov.dwp at Jan-1"
+        }
+      ],
+      "outputs": [
+        "aa_category",
+        "dla_sc_category",
+        "dla_m_category",
+        "pip_m_category",
+        "pip_dl_category",
+        "is_disabled_for_benefits",
+        "is_enhanced_disabled_for_benefits",
+        "is_severely_disabled_for_benefits"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.",
+      "stage": "frs_disability",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_education": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "adult.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
+          "size_bytes": 22851,
+          "table": "adult",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "child.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "30f9fcabb0c54673e14c368e46627010b0b239c4305b2c4e4c46803d089c6fac",
+          "size_bytes": 1601,
+          "table": "child",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "adult_ema",
+        "child_ema",
+        "age_started_or_accepted_current_education_or_training"
+      ],
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant.",
+      "operations": [
+        {
+          "delimiter": "\t",
+          "format": "tab",
+          "kind": "read_tables",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "derive",
+          "scope": "current/highest education, QYP inputs, EMA cell-mean degenerate fills, and benefits-in-own-right flag"
+        },
+        {
+          "cells": [
+            "single cell: EMA participants (code == 1; adema/ademaamt pair, eduma/edumaamt when adema is absent; chema/chemaamt for children)"
+          ],
+          "donor_filter": "participants with non-negative reported amounts",
+          "kind": "impute_cell_means",
+          "missing": "participants with sentinel negative reported amounts",
+          "value": "donor-mean fill, floored at zero, annualized with 365.25 / 7"
+        }
+      ],
+      "outputs": [
+        "current_education",
+        "highest_education",
+        "is_in_non_advanced_education",
+        "is_in_approved_training",
+        "age_started_or_accepted_current_education_or_training",
+        "is_before_universal_credit_qualifying_young_person_terminal_date",
+        "adult_ema",
+        "child_ema",
+        "receives_benefits_in_own_right"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
+      "stage": "frs_education",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_education_grant_split": {
+      "artifacts": [],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "disabled_students_allowance_eligible_expenses"
+      ],
+      "notes": "Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted.",
+      "operations": [
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "childcare_grant",
+            "parents_learning_allowance",
+            "adult_dependants_grant"
+          ]
+        },
+        {
+          "kind": "derive",
+          "scope": "proportional split of aggregate education_grants and DSA residual capacity"
+        }
+      ],
+      "outputs": [
+        "disabled_students_allowance_eligible_expenses"
+      ],
+      "rewrites": [
+        "education_grants"
+      ],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DfE grant parameters.",
+      "stage": "frs_education_grant_split",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_employment": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "adult.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
+          "size_bytes": 22851,
+          "table": "adult",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "sic_industry_division"
+      ],
+      "notes": "Ports FRS employment derivations. empstati code 11 preserves the incumbent truncated-map artifact as LONG_TERM_DISABLED, so OTHER_INACTIVE is not emitted; mjobsect and sic are direct-indexed and fail loudly if absent.",
+      "operations": [
+        {
+          "delimiter": "\t",
+          "format": "tab",
+          "kind": "read_tables",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "map_coded_amounts",
+          "scope": "empstati employment status, mjobsect sector, and raw SIC division"
+        }
+      ],
+      "outputs": [
+        "employment_status",
+        "employment_sector",
+        "sic_industry_division"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
+      "stage": "frs_employment",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_hmrc_spine_leaves": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "adult.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
+          "size_bytes": 22851,
+          "table": "adult",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "benefits.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "64b7e7c5b7d42a72444bf26d1b9d4127e9dca4f262be3e2ea3d93b8f6841d482",
+          "size_bytes": 12894,
+          "table": "benefits",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "hmrc_spi_pay",
+        "hmrc_spi_unemployment_benefit_income",
+        "hmrc_spi_incapacity_benefit_income",
+        "ossben_identifiable_subset",
+        "srp_regular_code5",
+        "employer_pension_contributions"
+      ],
+      "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then ports the incumbent employer-pension-contributions estimate.",
+      "operations": [
+        {
+          "annualization": "weekly raw FRS amounts * (365.25 / 7)",
+          "fail_on_full_concept_alias": true,
+          "fail_on_missing_retained_constituent": true,
+          "forbid_proxy_substitution": [
+            "employment_income",
+            "miscellaneous_income"
+          ],
+          "full_concepts_forbidden_on_frs": [
+            "hmrc_spi_employment_benefits",
+            "hmrc_spi_employment_expenses",
+            "hmrc_spi_taxable_termination_pay",
+            "hmrc_spi_miscellaneous_employment_income",
+            "hmrc_spi_other_income",
+            "hmrc_spi_other_social_security_income",
+            "hmrc_spi_state_pension_income"
+          ],
+          "kind": "retain_adjudicated_frs_hmrc_leaves",
+          "mapped_build_period": 2024,
+          "population": "uk_frs_raw_spine",
+          "retained_full_constituents": {
+            "hmrc_spi_incapacity_benefit_income": {
+              "formula": "sum(BENAMT where BENEFIT == 17) * (365.25 / 7)",
+              "observed_support": "structural zero in the audited 2023-24 FRS; retained so future vintages flow",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=17:BENAMT"
+              ],
+              "scope": "full",
+              "spi_concept": "INCPBEN"
+            },
+            "hmrc_spi_pay": {
+              "formula": "max(0, ADULT.INEARNS) * (365.25 / 7)",
+              "raw_sources": [
+                "ADULT.INEARNS"
+              ],
+              "scope": "full",
+              "spi_concept": "PAY"
+            },
+            "hmrc_spi_unemployment_benefit_income": {
+              "formula": "sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=14:BENAMT",
+                "BENEFITS.BENEFIT=19:BENAMT"
+              ],
+              "scope": "full",
+              "spi_concept": "UBISJA"
+            }
+          },
+          "retained_named_subsets": {
+            "ossben_identifiable_subset": {
+              "formula": "sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=13:BENAMT",
+                "BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT"
+              ],
+              "scope": "identifiable_subset",
+              "spi_concept": "OSSBEN"
+            },
+            "srp_regular_code5": {
+              "formula": "sum(BENAMT where BENEFIT == 5) * (365.25 / 7)",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=5:BENAMT"
+              ],
+              "scope": "regular_code5_subset",
+              "spi_concept": "SRP"
+            }
+          },
+          "source_absent_full_constituents": [
+            "EPB",
+            "EXPS",
+            "TAXTERM",
+            "MOTHINC",
+            "OTHERINC"
+          ],
+          "source_vintage": "2024-25",
+          "status": "adjudicated_partial_replay"
+        },
+        {
+          "formula": "3 * employee_pension_contributions",
+          "kind": "derive",
+          "output": "employer_pension_contributions",
+          "source": "incumbent enhanced-FRS frs.py employer-pension contribution estimate"
+        }
+      ],
+      "outputs": [
+        "hmrc_spi_pay",
+        "hmrc_spi_unemployment_benefit_income",
+        "hmrc_spi_incapacity_benefit_income",
+        "ossben_identifiable_subset",
+        "srp_regular_code5",
+        "employer_pension_contributions"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
+      "stage": "frs_hmrc_spine_leaves",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_household_draws": {
+      "artifacts": [],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100. TV evasion remains an independent draw, matching the incumbent reference share.",
+      "operations": [
+        {
+          "draw": "household_owns_tv",
+          "kind": "assign_binary_from_rate",
+          "output": "household_owns_tv",
+          "rate_key": "tv_ownership_rate",
+          "seed": 0
+        },
+        {
+          "draw": "would_evade_tv_licence_fee",
+          "kind": "assign_binary_from_rate",
+          "output": "would_evade_tv_licence_fee",
+          "rate_key": "tv_licence_evasion_rate",
+          "seed": 0
+        },
+        {
+          "draw": "main_residential_property_purchased_is_first_home",
+          "kind": "assign_binary_from_rate",
+          "output": "main_residential_property_purchased_is_first_home",
+          "rate_key": "first_time_buyer_rate",
+          "seed": 0
+        },
+        {
+          "draw": "property_purchased",
+          "kind": "assign_binary_from_rate",
+          "output": "property_purchased",
+          "rate_key": "property_purchase_rate",
+          "seed": 0
+        }
+      ],
+      "outputs": [
+        "household_owns_tv",
+        "would_evade_tv_licence_fee",
+        "main_residential_property_purchased_is_first_home",
+        "property_purchased"
+      ],
+      "rewrites": [],
+      "source": "Sourced UK stochastic contract rates and identity-keyed deterministic draws.",
+      "stage": "frs_household_draws",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_legacy_proxies": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "adult.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
+          "size_bytes": 22851,
+          "table": "adult",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "The proxies are labels, not entitlement determinations. JSA hours compare against 16 * (365.25 / 7) on the E2 spine hours scale; state_pension_age is consumed but not persisted.",
+      "operations": [
+        {
+          "delimiter": "\t",
+          "format": "tab",
+          "kind": "read_tables",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "state_pension_age"
+          ]
+        },
+        {
+          "kind": "derive",
+          "scope": "legacy JSA and ESA claimant-state proxies"
+        }
+      ],
+      "outputs": [
+        "legacy_jobseeker_proxy",
+        "esa_health_condition_proxy",
+        "esa_support_group_proxy"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.",
+      "stage": "frs_legacy_proxies",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_person_draws": {
+      "artifacts": [],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "attends_private_school_random_draw"
+      ],
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced.",
+      "operations": [
+        {
+          "draw": "would_claim_marriage_allowance",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_marriage_allowance",
+          "rate_key": "marriage_allowance",
+          "seed": 0
+        },
+        {
+          "band_column": "age",
+          "bands": [
+            {
+              "rate_key": "scp_under_6",
+              "upper_exclusive": 6
+            },
+            {
+              "rate_key": "scp_6_plus"
+            }
+          ],
+          "draw": "would_claim_scp",
+          "kind": "assign_binary_from_banded_rates",
+          "output": "would_claim_scp",
+          "seed": 0
+        },
+        {
+          "kind": "assign_uniform_draw",
+          "output": "attends_private_school_random_draw",
+          "seed": 0
+        }
+      ],
+      "outputs": [
+        "would_claim_marriage_allowance",
+        "would_claim_scp",
+        "attends_private_school_random_draw"
+      ],
+      "rewrites": [],
+      "source": "Sourced UK take-up contract rates and identity-keyed deterministic draws.",
+      "stage": "frs_person_draws",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_spine": {
+      "artifacts": [
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "accounts.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "77d51f6e33ac21ce809949069da88849f5bbddf57f2ab7f767fb6e993addae5e",
+          "size_bytes": 4830,
+          "table": "accounts",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "adult.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "2738aa2d7357f8bc560de607f9c3a5add38856e96015b7b1e9f85d3ab80d73ba",
+          "size_bytes": 22851,
+          "table": "adult",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "benefits.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "64b7e7c5b7d42a72444bf26d1b9d4127e9dca4f262be3e2ea3d93b8f6841d482",
+          "size_bytes": 12894,
+          "table": "benefits",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "benunit.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "2a1dacb6dcdb3c498fc9297f566e1367b7ae5191da5970b0300e3e873ce48f86",
+          "size_bytes": 2094,
+          "table": "benunit",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "child.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "30f9fcabb0c54673e14c368e46627010b0b239c4305b2c4e4c46803d089c6fac",
+          "size_bytes": 1601,
+          "table": "child",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "chldcare.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "46258252ab81de3402c5a88fa10c67df94f7311552e168c289f669025fc3b9a0",
+          "size_bytes": 2094,
+          "table": "chldcare",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "extchild.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "29cb7e640cb6dd336489a607b4b15a76ced99c51f33b211daec8ce135b9fb0c5",
+          "size_bytes": 1264,
+          "table": "extchild",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "househol.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "5dce5c323681a5dd77b366fc52da49326d7626b6bbe99c34aee0808e21a81829",
+          "size_bytes": 14896,
+          "table": "househol",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "job.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "c382b8db75d9a3d6d2ab2c7ccb8c45b72e6c6fc2473255530f5103c478f47985",
+          "size_bytes": 2365,
+          "table": "job",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "maint.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "3eb7f0781e2012ba19845e5a3513ba566b2f4a57eee0001e3445aff496acbf34",
+          "size_bytes": 2362,
+          "table": "maint",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "mortgage.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "3d24b7f50018c0501fb00c01b695bbb81a2a73b0e4ef921d10c958d0f8a28415",
+          "size_bytes": 3032,
+          "table": "mortgage",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "oddjob.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "7f2b76b5f7538593d7ca55485d312c2fbfddbb9a6227c0d160204742c05dac1d",
+          "size_bytes": 1816,
+          "table": "oddjob",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "penprov.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "6110ac0e369795baf6d3ffd221fd6ac4d6fe7731da22d535f5ad144d2b031830",
+          "size_bytes": 1820,
+          "table": "penprov",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "pension.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "7090be19cac198c6fc4545266764d267f9e39073b83c5411d0615eda2ac47e9c",
+          "size_bytes": 3597,
+          "table": "pension",
+          "vintage": "synthetic-h2"
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "age",
+        "hours_worked",
+        "employment_income",
+        "self_employment_income",
+        "private_pension_income",
+        "tax_free_savings_income",
+        "savings_interest_income",
+        "dividend_income",
+        "maintenance_income",
+        "miscellaneous_income",
+        "student_loan_repayments",
+        "statutory_sick_pay",
+        "statutory_maternity_pay",
+        "childcare_expenses",
+        "personal_pension_contributions",
+        "employee_pension_contributions",
+        "pension_contributions_via_salary_sacrifice",
+        "rent",
+        "mortgage_interest_repayment",
+        "mortgage_capital_repayment",
+        "structural_insurance_payments",
+        "housing_service_charges",
+        "external_child_payments"
+      ],
+      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity.",
+      "operations": [
+        {
+          "delimiter": "\t",
+          "format": "tab",
+          "kind": "read_tables",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "replace_sentinels",
+          "sentinel_policy": "raw numeric blanks and nonnumeric sentinels are coerced to NaN, then produced E2 columns are filled to the Frame no-NaN contract. Clamping is deliberately per-column, mirroring the incumbent base build: redamt stays unclamped, tuborr clamps at zero, and the property/royalties components clamp only in their aggregate."
+        },
+        {
+          "benunit_id": "sernum * 100 + benunit",
+          "household_id": "sernum",
+          "household_sort": "set_index('household_id').sort_index() before positional household reads",
+          "kind": "assemble_group_entities",
+          "person_id": "sernum * 1000 + person",
+          "person_table": "adult union child"
+        },
+        {
+          "kind": "map_columns",
+          "scope": "direct raw-to-column E2 mappings only; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)"
+        },
+        {
+          "kind": "map_coded_amounts",
+          "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings"
+        },
+        {
+          "kind": "annualize_periodic_amounts",
+          "weeks_in_year": 52.17857142857143
+        }
+      ],
+      "outputs": [
+        "person_id",
+        "person_benunit_id",
+        "person_household_id",
+        "age",
+        "gender",
+        "marital_status",
+        "hours_worked",
+        "is_household_head",
+        "is_benunit_head",
+        "is_parent",
+        "employment_income",
+        "self_employment_income",
+        "private_pension_income",
+        "tax_free_savings_income",
+        "savings_interest_income",
+        "dividend_income",
+        "property_income",
+        "maintenance_income",
+        "miscellaneous_income",
+        "private_transfer_income",
+        "lump_sum_income",
+        "student_loan_repayments",
+        "statutory_sick_pay",
+        "statutory_maternity_pay",
+        "student_loans",
+        "access_fund",
+        "education_grants",
+        "healthy_start_vouchers",
+        "free_school_breakfasts",
+        "free_school_fruit_veg",
+        "free_school_meals",
+        "council_tax_benefit_reported",
+        "maintenance_expenses",
+        "childcare_expenses",
+        "personal_pension_contributions",
+        "employee_pension_contributions",
+        "pension_contributions_via_salary_sacrifice",
+        "salary_sacrifice_reported",
+        "salary_sacrifice_asked",
+        "child_benefit_reported",
+        "income_support_reported",
+        "housing_benefit_reported",
+        "attendance_allowance_reported",
+        "dla_sc_reported",
+        "dla_m_reported",
+        "iidb_reported",
+        "carers_allowance_reported",
+        "sda_reported",
+        "afcs_reported",
+        "ssmg_reported",
+        "pension_credit_reported",
+        "child_tax_credit_reported",
+        "working_tax_credit_reported",
+        "state_pension_reported",
+        "winter_fuel_allowance_reported",
+        "incapacity_benefit_reported",
+        "universal_credit_reported",
+        "pip_m_reported",
+        "pip_dl_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_contrib_reported",
+        "esa_income_reported",
+        "bsp_reported",
+        "benunit_id",
+        "frs_benunit_capital",
+        "is_married",
+        "dependent_children",
+        "household_id",
+        "region",
+        "tenure_type",
+        "accommodation_type",
+        "num_bedrooms",
+        "council_tax_reported",
+        "council_tax_band",
+        "council_tax_rebate",
+        "council_tax_single_adult_raw",
+        "water_and_sewerage_charges",
+        "domestic_rates",
+        "rent",
+        "subrent",
+        "mortgage_interest_repayment",
+        "mortgage_capital_repayment",
+        "structural_insurance_payments",
+        "housing_service_charges",
+        "external_child_payments"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
+      "stage": "frs_spine",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "frs_take_up": {
+      "artifacts": [],
+      "grain": "benunit",
+      "nonnegative_outputs": [
+        "maximum_extended_childcare_hours_usage"
+      ],
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only.",
+      "operations": [
+        {
+          "aggregates": {
+            "child_benefit_reported_anchor": "child_benefit_reported",
+            "pension_credit_reported_anchor": "pension_credit_reported",
+            "universal_credit_reported_anchor": "universal_credit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_positive"
+        },
+        {
+          "anchor": "child_benefit_reported_anchor",
+          "draw": "would_claim_child_benefit",
+          "kind": "assign_binary_with_anchored_residual",
+          "output": "would_claim_child_benefit",
+          "rate_key": "child_benefit",
+          "seed": 0
+        },
+        {
+          "draw": "child_benefit_opts_out",
+          "kind": "assign_binary_from_rate",
+          "output": "child_benefit_opts_out",
+          "rate_key": "child_benefit_opts_out_rate",
+          "seed": 0
+        },
+        {
+          "anchor": "pension_credit_reported_anchor",
+          "draw": "would_claim_pc",
+          "kind": "assign_binary_with_anchored_residual",
+          "output": "would_claim_pc",
+          "rate_key": "pension_credit",
+          "seed": 0
+        },
+        {
+          "anchor": "universal_credit_reported_anchor",
+          "draw": "would_claim_uc",
+          "kind": "assign_binary_with_anchored_residual",
+          "output": "would_claim_uc",
+          "rate_key": "universal_credit",
+          "seed": 0
+        },
+        {
+          "draw": "would_claim_tfc",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_tfc",
+          "rate_key": "tax_free_childcare",
+          "seed": 0
+        },
+        {
+          "draw": "would_claim_extended_childcare",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_extended_childcare",
+          "rate_key": "extended_childcare",
+          "seed": 0
+        },
+        {
+          "draw": "would_claim_universal_childcare",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_universal_childcare",
+          "rate_key": "universal_childcare",
+          "seed": 0
+        },
+        {
+          "draw": "would_claim_targeted_childcare",
+          "kind": "assign_binary_from_rate",
+          "output": "would_claim_targeted_childcare",
+          "rate_key": "targeted_childcare",
+          "seed": 0
+        },
+        {
+          "distribution_key": "maximum_extended_childcare_hours_usage",
+          "draw": "maximum_extended_childcare_hours_usage",
+          "kind": "assign_clipped_normal",
+          "output": "maximum_extended_childcare_hours_usage",
+          "seed": 0
+        }
+      ],
+      "outputs": [
+        "would_claim_child_benefit",
+        "child_benefit_opts_out",
+        "would_claim_pc",
+        "would_claim_uc",
+        "would_claim_tfc",
+        "would_claim_extended_childcare",
+        "would_claim_universal_childcare",
+        "would_claim_targeted_childcare",
+        "maximum_extended_childcare_hours_usage"
+      ],
+      "rewrites": [],
+      "source": "Family Resources Survey 2024-25 reported receipt anchors plus sourced UK take-up contract rates.",
+      "stage": "frs_take_up",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "hmrc_cgt_gains_spine": {
+      "artifacts": [
+        {
+          "format": "ods",
+          "kind": "administrative_table",
+          "locator": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
+          "mapped_build_period": 2024,
+          "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+          "period_mapping": "latest_published_tax_year",
+          "publication": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+          "role": "cgt_published_fact_surface",
+          "runtime_sha256_required": true,
+          "sha256": "8e75c00bab949348a7238fea6d995f626c85e5d02813b46606dd7fea85e9d0c3",
+          "sheets": [
+            "3_1_2023-24",
+            "3_2_2022-23",
+            "3_3_2021-22",
+            "3_4_2020-21"
+          ],
+          "size_bytes": 11996,
+          "survey": "HMRC Capital Gains Tax statistics table 3",
+          "tax_year_start": 2023,
+          "vintage": "2023-24"
+        },
+        {
+          "dependency": "policyengine-uk>=2.88 via microcosm-build[uk]",
+          "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
+          "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+          "kind": "versioned_parameter_tree",
+          "parameters": [
+            "gov.hmrc.income_tax.allowances.personal_allowance.amount",
+            "gov.hmrc.income_tax.allowances.personal_allowance.maximum_ANI",
+            "gov.hmrc.income_tax.allowances.personal_allowance.reduction_rate",
+            "gov.hmrc.cgt.annual_exempt_amount"
+          ],
+          "role": "policy_parameters",
+          "runtime_sha256_required": false
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "Spine manifest projection of the merged HMRC Table 3 amounts stage. It deliberately omits base_candidate and verify_certified_candidate, which belong only to the certified-H5 path.",
+      "operations": [
+        {
+          "artifact_role": "cgt_published_fact_surface",
+          "fail_on_mismatch": true,
+          "kind": "verify_pinned_cgt_ods",
+          "require_before_source_read": true,
+          "runtime_sha256_required": true
+        },
+        {
+          "allowance": "tapered Personal Allowance from the policy_parameters artifact",
+          "components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension_reported",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "miscellaneous_income"
+          ],
+          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted.",
+          "fail_on_missing_component": true,
+          "kind": "taxable_income_proxy"
+        },
+        {
+          "band_order": "highest gain band first",
+          "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
+          "kind": "rank_preserving_allocation",
+          "minimum_allocation_people": 1,
+          "ordering": "existing gains descending, person_id ascending on ties",
+          "shortfall_policy": "proportional scale-down when the population holds less gainer mass than published taxpayers",
+          "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
+          "weights": "household_weight mapped to persons; no person splits across bands",
+          "within": "income band"
+        },
+        {
+          "bottom_band_floor": "annual exempt amount plus one pound",
+          "bounded_band_family": "truncated exponential matched to the cell's published mean",
+          "deterministic": true,
+          "kind": "within_band_draws",
+          "mean_repair_margin": 0.02,
+          "mean_repair_reason": "Published counts round to the nearest thousand and amounts to the nearest million; four cells of the 2023-24 table imply a mean outside their own band, and repaired means clamp just inside the violated boundary.",
+          "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
+          "seed_base": 552,
+          "seed_mixing": "seed combined with the build period; draws ordered by allocation rank"
+        },
+        {
+          "kind": "sub_aea_remainder",
+          "policy": "gainers beyond the published taxpayer mass keep their existing amounts capped at the annual exempt amount",
+          "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this spine-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "Amounts-only capital gains redraw on the source spine: household weights pass through unchanged and total household mass is conserved."
+        },
+        {
+          "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552",
+          "calibrated_facts_unchanged": "The two aggregate facts in UK_CGT_TARGET_SPECS remain the only calibrated CGT facts.",
+          "calibration_permitted": false,
+          "classification_rationale": "The taxpayer count is endogenous to policy, the income conditioning is an arithmetic proxy, and the published surface needs rounding and suppression reconciliation before any per-band fact is exact.",
+          "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+          "fenced_fact_composition": "60 joint cells, 10 gain-band row totals, 6 income-column totals",
+          "fenced_fact_count": 76,
+          "kind": "classify_cgt_band_facts_with_reviewed_fence",
+          "promotion_path": "A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated."
+        }
+      ],
+      "outputs": [
+        "capital_gains"
+      ],
+      "rewrites": [
+        "capital_gains"
+      ],
+      "source": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
+      "stage": "hmrc_cgt_gains_spine",
+      "survey": "HMRC Capital Gains Tax statistics table 3 (size of gain by taxable income), 2020-21 to 2023-24"
+    },
+    "hmrc_spi_income_spine": {
+      "artifacts": [
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-9422-1",
+          "filename": "put2223uk.tab",
+          "format": "tab_delimited",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "reviewed_source": "PolicyEngine licensed UKDS mirror (private Hugging Face repository), spi_2022_23.zip",
+          "role": "qrf_donor",
+          "runtime_sha256_required": true,
+          "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+          "size_bytes": 141323762,
+          "survey": "Survey of Personal Incomes Public Use Tape 2022-23",
+          "tax_year_start": 2022,
+          "ukds_study_number": "SN 9422",
+          "vintage": "2022-23"
+        },
+        {
+          "format": "ods",
+          "kind": "administrative_table",
+          "locator": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
+          "mapped_build_period": 2024,
+          "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+          "period_mapping": "latest_published_tax_year",
+          "publication": "https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024",
+          "role": "published_fact_surface",
+          "runtime_sha256_required": true,
+          "sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+          "sheets": [
+            "Table_3_6",
+            "Table_3_7"
+          ],
+          "size_bytes": 166693,
+          "survey": "HMRC Personal Incomes Tables 3.6 and 3.7",
+          "tax_year_start": 2023,
+          "vintage": "2023-24"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "other_investment_income",
+        "gift_aid",
+        "charitable_investment_gifts",
+        "hmrc_spi_employment_benefits",
+        "hmrc_spi_employment_expenses",
+        "hmrc_spi_other_social_security_income",
+        "hmrc_spi_taxable_termination_pay",
+        "hmrc_spi_other_income",
+        "hmrc_spi_state_pension_income",
+        "hmrc_spi_employed_income",
+        "hmrc_spi_total_earned_income",
+        "hmrc_spi_total_investment_income",
+        "hmrc_spi_assessable_income"
+      ],
+      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.",
+      "operations": [
+        {
+          "artifact_roles": [
+            "qrf_donor",
+            "published_fact_surface"
+          ],
+          "fail_on_mismatch": true,
+          "kind": "verify_pinned_hmrc_source_pair",
+          "require_before_source_read": true,
+          "runtime_sha256_required": true
+        },
+        {
+          "artifact_role": "qrf_donor",
+          "delimiter": "\t",
+          "fail_on_invalid_weight": true,
+          "fail_on_missing_columns": true,
+          "fail_on_missing_file": true,
+          "filename": "put2223uk.tab",
+          "kind": "strict_read_private_table",
+          "required_columns": [
+            "AGERANGE",
+            "GORCODE",
+            "SEX",
+            "FACT",
+            "PAY",
+            "EPB",
+            "EXPS",
+            "TAXTERM",
+            "INCPBEN",
+            "OSSBEN",
+            "UBISJA",
+            "MOTHINC",
+            "OTHERINC",
+            "PROFITS",
+            "CAPALL",
+            "LOSSBF",
+            "SRP",
+            "INCBBS",
+            "DIVIDENDS",
+            "PENSION",
+            "INCPROP",
+            "OTHERINV",
+            "GIFTAID",
+            "GIFTINV",
+            "TEI",
+            "TII",
+            "TI"
+          ],
+          "runtime_sha256_required": true,
+          "seed": 42,
+          "weight": "FACT"
+        },
+        {
+          "assessable_income_source_semantics": "QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly",
+          "categorical_predictors": [
+            "gender",
+            "region"
+          ],
+          "derived_policyengine_outputs": {
+            "employment_income": {
+              "derive_after_draw": true,
+              "formula": "hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay",
+              "source_columns": [
+                "PAY",
+                "EPB",
+                "TAXTERM"
+              ]
+            }
+          },
+          "double_apply_source_weight": false,
+          "employment_income_source_semantics": "PolicyEngine input = PAY + EPB + TAXTERM, matching the pinned enhanced-FRS pipeline; it is not the Table 3.6 measure",
+          "fit_weight_kind": "design",
+          "hmrc_employed_income_source_semantics": "Derived after each draw as max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC, using normalized leaves identically on FRS and SPI channels",
+          "initialize_frs_channel_columns": {
+            "charitable_investment_gifts": 0,
+            "gift_aid": 0
+          },
+          "joint_draw": true,
+          "kind": "fit_weighted_qrf_stage1",
+          "n_estimators": 4,
+          "outputs": [
+            "self_employment_income",
+            "savings_interest_income",
+            "dividend_income",
+            "private_pension_income",
+            "property_income",
+            "other_investment_income",
+            "gift_aid",
+            "charitable_investment_gifts",
+            "hmrc_spi_pay",
+            "hmrc_spi_employment_benefits",
+            "hmrc_spi_employment_expenses",
+            "hmrc_spi_incapacity_benefit_income",
+            "hmrc_spi_other_social_security_income",
+            "hmrc_spi_taxable_termination_pay",
+            "hmrc_spi_unemployment_benefit_income",
+            "hmrc_spi_miscellaneous_employment_income",
+            "hmrc_spi_other_income",
+            "hmrc_spi_state_pension_income"
+          ],
+          "post_sample_fit_weight": "uniform",
+          "predictors": [
+            "age",
+            "gender",
+            "region"
+          ],
+          "require_all_outputs": true,
+          "require_all_predictors": true,
+          "sample_size": 64,
+          "sample_with_replacement": true,
+          "savings_interest_source_semantics": "INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input",
+          "seed": 42,
+          "self_employment_income_source_semantics": "max(0, PROFITS - CAPALL - LOSSBF)",
+          "source_columns": {
+            "charitable_investment_gifts": [
+              "GIFTINV"
+            ],
+            "dividend_income": [
+              "DIVIDENDS"
+            ],
+            "gift_aid": [
+              "GIFTAID"
+            ],
+            "hmrc_spi_employment_benefits": [
+              "EPB"
+            ],
+            "hmrc_spi_employment_expenses": [
+              "EXPS"
+            ],
+            "hmrc_spi_incapacity_benefit_income": [
+              "INCPBEN"
+            ],
+            "hmrc_spi_miscellaneous_employment_income": [
+              "MOTHINC"
+            ],
+            "hmrc_spi_other_income": [
+              "OTHERINC"
+            ],
+            "hmrc_spi_other_social_security_income": [
+              "OSSBEN"
+            ],
+            "hmrc_spi_pay": [
+              "PAY"
+            ],
+            "hmrc_spi_state_pension_income": [
+              "SRP"
+            ],
+            "hmrc_spi_taxable_termination_pay": [
+              "TAXTERM"
+            ],
+            "hmrc_spi_unemployment_benefit_income": [
+              "UBISJA"
+            ],
+            "other_investment_income": [
+              "OTHERINV"
+            ],
+            "private_pension_income": [
+              "PENSION"
+            ],
+            "property_income": [
+              "INCPROP"
+            ],
+            "savings_interest_income": [
+              "INCBBS"
+            ],
+            "self_employment_income": [
+              "PROFITS",
+              "CAPALL",
+              "LOSSBF"
+            ]
+          },
+          "source_leaf_reconciliation": {
+            "composite_indicator": "AGERANGE == -1",
+            "documentation_url": "https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf",
+            "formulas": {
+              "TEI": "max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC + OTHERINC + SRP + PENSION + max(0, PROFITS - CAPALL - LOSSBF)",
+              "TI": "TEI + TII",
+              "TII": "OTHERINV + DIVIDENDS + INCPROP + INCBBS"
+            },
+            "maximum_absolute_difference_gbp": {
+              "composite": {
+                "TEI": 180,
+                "TI": 180,
+                "TII": 10
+              },
+              "ordinary": {
+                "TEI": 15,
+                "TI": 20,
+                "TII": 10
+              }
+            },
+            "rationale": "The official PUT rounds source fields, averages documented composite records, then rounds remaining income fields to GBP 5. These are the observed envelopes in the exact sha-pinned donor; post-draw synthetic identities remain exact."
+          },
+          "source_sampling_weight": "FACT",
+          "source_ti_identity_fields": [
+            "TI",
+            "TEI",
+            "TII"
+          ],
+          "stochastic_aggregates_forbidden": [
+            "hmrc_spi_employed_income",
+            "hmrc_spi_total_earned_income",
+            "hmrc_spi_total_investment_income",
+            "hmrc_spi_assessable_income"
+          ],
+          "ti_identity_absolute_tolerance_gbp": 5,
+          "training_artifact_role": "qrf_donor"
+        },
+        {
+          "categorical_predictors": [
+            "gender",
+            "region"
+          ],
+          "joint_draw": true,
+          "kind": "fit_weighted_qrf_stage2",
+          "n_estimators": 4,
+          "outputs": [
+            "employee_pension_contributions",
+            "employer_pension_contributions",
+            "personal_pension_contributions",
+            "pension_contributions_via_salary_sacrifice",
+            "tax_free_savings_income",
+            "universal_credit_reported",
+            "pension_credit_reported",
+            "child_benefit_reported",
+            "housing_benefit_reported",
+            "income_support_reported",
+            "working_tax_credit_reported",
+            "child_tax_credit_reported",
+            "attendance_allowance_reported",
+            "state_pension_reported",
+            "dla_sc_reported",
+            "dla_m_reported",
+            "pip_m_reported",
+            "pip_dl_reported",
+            "sda_reported",
+            "carers_allowance_reported",
+            "iidb_reported",
+            "afcs_reported",
+            "bsp_reported",
+            "winter_fuel_allowance_reported",
+            "council_tax_benefit_reported",
+            "jsa_contrib_reported",
+            "jsa_income_reported",
+            "esa_contrib_reported",
+            "esa_income_reported"
+          ],
+          "postprocess": {
+            "gross_savings_interest_income": "stage1 INCBBS draw + stage2 tax_free_savings_income",
+            "refresh_disability_categories": [
+              "aa_category",
+              "dla_sc_category",
+              "dla_m_category",
+              "pip_m_category",
+              "pip_dl_category"
+            ],
+            "refresh_disability_flags": [
+              "is_disabled_for_benefits",
+              "is_enhanced_disabled_for_benefits",
+              "is_severely_disabled_for_benefits"
+            ]
+          },
+          "predictors": [
+            "age",
+            "gender",
+            "region",
+            "employment_income",
+            "self_employment_income",
+            "savings_interest_income",
+            "dividend_income",
+            "private_pension_income",
+            "property_income"
+          ],
+          "require_all_materializable_outputs": true,
+          "require_all_outputs": false,
+          "require_all_predictors": true,
+          "reviewed_absent_outputs": {
+            "incapacity_benefit_reported": "Absent/all-default on the pinned enhanced-FRS export and certified Microcosm UK base; not a populated loader layer.",
+            "maternity_allowance_reported": "Absent from the pinned enhanced-FRS export and certified Microcosm UK base; no training source can be materialized for this stage."
+          },
+          "reviewed_absent_predictors": {
+            "other_investment_income": "This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build's frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column."
+          },
+          "seed": 43,
+          "target_population": "spi_synthetic_support_channel",
+          "training_population": "uk_frs_raw_spine_base_support_channel",
+          "weight": "household_weight",
+          "weight_mapping": "household_to_person"
+        },
+        {
+          "columns": [
+            "dividend_income"
+          ],
+          "fit": "stage1",
+          "kind": "redraw_columns_from_fitted_qrf",
+          "rows": "base_support_channel"
+        },
+        {
+          "amount_unit_multiplier": 1000000,
+          "artifact_role": "published_fact_surface",
+          "column_index_base": 0,
+          "component_columns": {
+            "dividend_income": {
+              "amount_column_index": 8,
+              "count_column_index": 7,
+              "sheet": "Table_3_7"
+            },
+            "employment_income": {
+              "amount_column_index": 5,
+              "count_column_index": 4,
+              "sheet": "Table_3_6"
+            },
+            "other_investment_income": {
+              "amount_column_index": 11,
+              "count_column_index": 10,
+              "sheet": "Table_3_7"
+            },
+            "private_pension_income": {
+              "amount_column_index": 11,
+              "count_column_index": 10,
+              "sheet": "Table_3_6"
+            },
+            "property_income": {
+              "amount_column_index": 2,
+              "count_column_index": 1,
+              "sheet": "Table_3_7"
+            },
+            "savings_interest_income": {
+              "amount_column_index": 5,
+              "count_column_index": 4,
+              "sheet": "Table_3_7"
+            },
+            "self_employment_income": {
+              "amount_column_index": 2,
+              "count_column_index": 1,
+              "sheet": "Table_3_6"
+            },
+            "state_pension": {
+              "amount_column_index": 8,
+              "count_column_index": 7,
+              "sheet": "Table_3_6"
+            }
+          },
+          "count_unit_multiplier": 1000,
+          "data_row_start_index": 5,
+          "fail_on_missing_band": true,
+          "fail_on_missing_component": true,
+          "fail_on_missing_sheet": true,
+          "fail_on_non_numeric_value": true,
+          "kind": "materialize_hmrc_income_bands_fail_closed",
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
+          "required_band_lower_bounds_gbp": [
+            12570,
+            15000,
+            20000,
+            30000,
+            40000,
+            50000,
+            70000,
+            100000,
+            150000,
+            200000,
+            300000,
+            500000,
+            1000000
+          ],
+          "required_measures": [
+            "count",
+            "amount"
+          ],
+          "stop_label": "All ranges"
+        },
+        {
+          "blocked_dependency": "hmrc_spi_assessable_income",
+          "breakdown_dependency": "hmrc_spi_assessable_income",
+          "calibration_permitted": false,
+          "classification_rationale": "Every published fact uses non-overlapping total-income bands. The FRS channel cannot materialize full TEI, and omitted income can move a person between bands, so neither an exact fact nor a per-band directional bound is valid.",
+          "components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "other_investment_income"
+          ],
+          "fact_fence_id": "full_frs_tei_band_unavailable",
+          "fail_on_fact_count_mismatch": true,
+          "fail_on_unfenced_exclusion": true,
+          "forbid_biased_estimate_or_delta": true,
+          "frs_breakdown_status": "unavailable_full_measure",
+          "input_weight_kind": "importance",
+          "kind": "classify_hmrc_income_facts_with_reviewed_fences",
+          "outcome_counts": {
+            "directional_fail": 0,
+            "directional_pass": 0,
+            "exact_fail": 0,
+            "exact_pass": 0,
+            "excluded_with_fence": 208
+          },
+          "output_weight_kind": "importance",
+          "required_fact_count": 208,
+          "reviewed_fences": [
+            {
+              "constituents": [
+                "EPB"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_epb_source_absent",
+              "finding": "Missing. EXPBEN* are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits.",
+              "mass_implication": "12.9485464% of certified-candidate FRS effective person mass has at least one receipt flag, but this is not monetary support.",
+              "rationale": "Receipt flags and selected benefit amounts cannot be promoted to the SPI EPB monetary concept without an imputation or proxy.",
+              "raw_sources_searched": [
+                "JOB.EXPBEN01-EXPBEN13",
+                "JOB.CARVAL",
+                "JOB.CARAMT",
+                "JOB.FUELAMT",
+                "JOB.VCHAMT",
+                "JOB.CHVAMT"
+              ]
+            },
+            {
+              "constituents": [
+                "EXPS"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_exps_source_absent",
+              "finding": "Missing. These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI.",
+              "mass_implication": "5.1302528% of certified-candidate FRS effective person mass has an adjacent reimbursement flag; the true EXPS mass is not estimable.",
+              "rationale": "The nearby fields do not measure the required deductible amount, and EXPS enters the employed-income identity with a negative sign.",
+              "raw_sources_searched": [
+                "JOB.EXPBEN04/EXPBEN05",
+                "JOB.MILEAMT/JOB.MOTAMT",
+                "JOB.UMILEAMT/JOB.UMOTAMT",
+                "JOB.DEDUC1-DEDUC9",
+                "JOB.UDEDUC1-UDEDUC9"
+              ]
+            },
+            {
+              "constituents": [
+                "TAXTERM"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_taxterm_source_absent",
+              "finding": "Missing. REDAMT is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay.",
+              "mass_implication": "0.3746084% of certified-candidate FRS effective person mass has positive gross redundancy pay; taxable mass is unknown.",
+              "rationale": "Gross redundancy pay cannot be relabeled as taxable termination pay.",
+              "raw_sources_searched": [
+                "ADULT.REDAMT",
+                "ADULT and JOB taxable-termination split search"
+              ]
+            },
+            {
+              "constituents": [
+                "MOTHINC"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_mothinc_source_absent",
+              "finding": "Missing. The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy.",
+              "mass_implication": "Odd-job-only effective person mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%.",
+              "rationale": "The FRS instrument cannot separate the SPI miscellaneous-employment concept source-faithfully.",
+              "raw_sources_searched": [
+                "ODDJOB.OJAMT/ODDJOB.OJNOW",
+                "ADULT.ALLPAY2",
+                "ADULT.ROYYR2-ROYYR4",
+                "JOB.OWNOTHER"
+              ]
+            },
+            {
+              "constituents": [
+                "OTHERINC"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_otherinc_source_absent",
+              "finding": "Missing. No person-level raw FRS variable has SPI OTHERINC semantics, and the miscellaneous pool cannot be split between MOTHINC and OTHERINC from source evidence.",
+              "mass_implication": "No separable mass estimate exists; the unresolved miscellaneous pool is 1.4650566% of certified-candidate FRS effective person mass.",
+              "rationale": "A union of heterogeneous residual fields would be a new proxy, not a retained source constituent.",
+              "raw_sources_searched": [
+                "ADULT, ODDJOB, and JOB miscellaneous fields",
+                "PENSION",
+                "ACCOUNTS",
+                "ASSETS",
+                "BENEFITS"
+              ]
+            },
+            {
+              "constituents": [
+                "OSSBEN",
+                "ossben_identifiable_subset"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_ossben_identifiable_subset",
+              "finding": "Incomplete. Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted.",
+              "mass_implication": "1.8045088% of certified-candidate FRS effective person mass carries the identifiable lower-bound subset; it is not full OSSBEN support.",
+              "rationale": "The retained column must remain explicitly named as a subset and cannot satisfy the full SPI concept.",
+              "raw_sources_searched": [
+                "BENEFITS.BENAMT",
+                "BENEFITS.BENEFIT",
+                "BENEFITS.VAR2",
+                "BENEFITS codes 13, 16, 6, and 30"
+              ]
+            },
+            {
+              "constituents": [
+                "SRP",
+                "srp_regular_code5"
+              ],
+              "dependent_fence_ids": [],
+              "fence_id": "frs_srp_regular_code5_subset",
+              "finding": "Incomplete. Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension.",
+              "mass_implication": "18.1567916% of certified-candidate FRS effective person mass carries regular code-5 State Pension; it is not complete SRP support.",
+              "rationale": "The retained column must remain explicitly named as a subset and cannot be reported as the full published state-pension measure.",
+              "raw_sources_searched": [
+                "BENEFITS.BENAMT where BENEFIT == 5",
+                "BENEFITS codes 6 and 9"
+              ]
+            },
+            {
+              "constituents": [
+                "EPB",
+                "EXPS",
+                "TAXTERM",
+                "MOTHINC",
+                "OTHERINC",
+                "OSSBEN",
+                "SRP"
+              ],
+              "dependent_fence_ids": [
+                "frs_epb_source_absent",
+                "frs_exps_source_absent",
+                "frs_taxterm_source_absent",
+                "frs_mothinc_source_absent",
+                "frs_otherinc_source_absent",
+                "frs_ossben_identifiable_subset",
+                "frs_srp_regular_code5_subset"
+              ],
+              "fence_id": "full_frs_tei_band_unavailable",
+              "finding": "The complete FRS TEI measure cannot be materialized from retained source constituents, so exact HMRC total-income band assignment is unavailable on the FRS channel.",
+              "mass_implication": "Every one of the 208 published facts is banded by total income and therefore depends on this unavailable like-for-like measure.",
+              "rationale": "A component-level subset does not imply a per-band lower bound: omitted income can move a taxpayer into or out of any non-overlapping published band. Biased partial bands are not emitted as estimates.",
+              "raw_sources_searched": []
+            }
+          ],
+          "target_operation": "materialize_hmrc_income_bands_fail_closed"
+        },
+        {
+          "columns": [
+            "gift_aid",
+            "charitable_investment_gifts"
+          ],
+          "fail_below_floor": true,
+          "kind": "gate_distributional_effective_mass",
+          "mass_share_denominator": "all_person_effective_mass",
+          "minimum_nondefault_mass_share": 1e-06,
+          "required_support_channel": "spi",
+          "support_channel_column": "person_support_channel",
+          "weight": "household_weight",
+          "weight_mapping": "household_to_person"
+        }
+      ],
+      "outputs": [
+        "other_investment_income",
+        "gift_aid",
+        "charitable_investment_gifts",
+        "hmrc_spi_employment_benefits",
+        "hmrc_spi_employment_expenses",
+        "hmrc_spi_other_social_security_income",
+        "hmrc_spi_taxable_termination_pay",
+        "hmrc_spi_miscellaneous_employment_income",
+        "hmrc_spi_other_income",
+        "hmrc_spi_state_pension_income",
+        "hmrc_spi_employed_income",
+        "hmrc_spi_total_earned_income",
+        "hmrc_spi_total_investment_income",
+        "hmrc_spi_assessable_income"
+      ],
+      "rewrites": [
+        "employment_income",
+        "self_employment_income",
+        "savings_interest_income",
+        "dividend_income",
+        "private_pension_income",
+        "property_income",
+        "employee_pension_contributions",
+        "employer_pension_contributions",
+        "personal_pension_contributions",
+        "pension_contributions_via_salary_sacrifice",
+        "tax_free_savings_income",
+        "universal_credit_reported",
+        "pension_credit_reported",
+        "child_benefit_reported",
+        "housing_benefit_reported",
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "attendance_allowance_reported",
+        "state_pension_reported",
+        "dla_sc_reported",
+        "dla_m_reported",
+        "pip_m_reported",
+        "pip_dl_reported",
+        "sda_reported",
+        "carers_allowance_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "winter_fuel_allowance_reported",
+        "council_tax_benefit_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_contrib_reported",
+        "esa_income_reported",
+        "hmrc_spi_pay",
+        "hmrc_spi_unemployment_benefit_income",
+        "hmrc_spi_incapacity_benefit_income"
+      ],
+      "source": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
+      "stage": "hmrc_spi_income_spine",
+      "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24"
+    },
+    "lcfs_consumption": {
+      "artifacts": [
+        {
+          "filename": "dvhh_ukanon_v2_2023.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "dvhh_ukanon_v2_2023.tab",
+          "role": "lcfs_household_tab",
+          "runtime_sha256_required": true,
+          "sha256": "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72",
+          "size_bytes": 22812887,
+          "vintage": "2023_24"
+        },
+        {
+          "filename": "dvper_ukanon_202324_2023.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "dvper_ukanon_202324_2023.tab",
+          "role": "lcfs_person_tab",
+          "runtime_sha256_required": true,
+          "sha256": "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50",
+          "size_bytes": 6545146,
+          "vintage": "2023_24"
+        },
+        {
+          "filename": "was_round_8_hhold_eul_may_2025_230525.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "role": "was_bridge_donor",
+          "runtime_sha256_required": true,
+          "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
+          "size_bytes": 39073613,
+          "vintage": "2018_20"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "need_energy_targets.json",
+          "role": "need_energy_targets"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "lcfs_consumption_anchors.json",
+          "role": "lcfs_consumption_anchors"
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "food_and_non_alcoholic_beverages_consumption",
+        "alcohol_and_tobacco_consumption",
+        "clothing_and_footwear_consumption",
+        "housing_water_and_electricity_consumption",
+        "household_furnishings_consumption",
+        "health_consumption",
+        "transport_consumption",
+        "communication_consumption",
+        "recreation_consumption",
+        "education_consumption",
+        "restaurants_and_hotels_consumption",
+        "miscellaneous_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "bus_fare_spending",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption",
+        "has_fuel_consumption"
+      ],
+      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and identity-keyed seed-0 fuel flags. Energy support clipping is exempt because NEED raking governs those columns. Donor uprating is identity at this vintage (LCFS survey year equals the 2023 build year), so the incumbent's CPI and fuel litre-proxy donor uprating is deliberately not declared here; the machinery lands with the FRS 2024-25 refresh (microcosm#687), where a donor/build year gap first exists. The DESNZ pump-price anchors stay committed as the cited litre-proxy denominators for that refresh.",
+      "operations": [
+        {
+          "annualization_weeks": 52.17857142857143,
+          "donor_weight": "weighta * 1000",
+          "kind": "derive",
+          "logged_dropna_row_count": true,
+          "lossy_mappings": [
+            "LCFS tenure 4 and 8 -> RENT_PRIVATELY",
+            "LCFS accommodation 4 and 5 -> FLAT"
+          ],
+          "lowercase_columns": true
+        },
+        {
+          "columns": [
+            "electricity_consumption",
+            "gas_consumption"
+          ],
+          "iterations": 1,
+          "kind": "iterative_proportional_fit",
+          "margins": [
+            "gross_income_band"
+          ],
+          "weighted": false
+        },
+        {
+          "kind": "bridge_donor_column_via_qrf",
+          "n_estimators": 4,
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "region"
+          ],
+          "seed": 0,
+          "source": "was_wealth",
+          "target": "has_fuel_consumption",
+          "weights": "explicit"
+        },
+        {
+          "condition": "num_vehicles > 0",
+          "kind": "assign_binary_from_rate",
+          "rate_key": "nts_ice_share",
+          "seed": 0,
+          "target": "has_fuel_consumption"
+        },
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "employment_income",
+            "self_employment_income",
+            "private_pension_income",
+            "hbai_household_net_income"
+          ]
+        },
+        {
+          "categorical_predictors": [
+            "region",
+            "tenure_type",
+            "accommodation_type"
+          ],
+          "kind": "fit_weighted_qrf_chain",
+          "n_estimators": 4,
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "region",
+            "employment_income",
+            "self_employment_income",
+            "private_pension_income",
+            "hbai_household_net_income",
+            "tenure_type",
+            "accommodation_type",
+            "has_fuel_consumption"
+          ],
+          "seed": 0,
+          "targets": [
+            "food_and_non_alcoholic_beverages_consumption",
+            "alcohol_and_tobacco_consumption",
+            "clothing_and_footwear_consumption",
+            "housing_water_and_electricity_consumption",
+            "household_furnishings_consumption",
+            "health_consumption",
+            "transport_consumption",
+            "communication_consumption",
+            "recreation_consumption",
+            "education_consumption",
+            "restaurants_and_hotels_consumption",
+            "miscellaneous_consumption",
+            "petrol_spending",
+            "diesel_spending",
+            "bus_fare_spending",
+            "domestic_energy_consumption",
+            "electricity_consumption",
+            "gas_consumption"
+          ],
+          "weights": "explicit"
+        },
+        {
+          "exempt": [
+            "electricity_consumption",
+            "gas_consumption",
+            "domestic_energy_consumption"
+          ],
+          "kind": "support_clip",
+          "range": "donor_realized"
+        },
+        {
+          "columns": [
+            "electricity_consumption",
+            "gas_consumption"
+          ],
+          "iterations": 50,
+          "kind": "iterative_proportional_fit",
+          "margins": [
+            "income",
+            "tenure",
+            "accommodation",
+            "region"
+          ],
+          "weighted": true
+        },
+        {
+          "drop_inputs": false,
+          "inputs": [
+            "electricity_consumption",
+            "gas_consumption"
+          ],
+          "kind": "fold_into",
+          "output": "domestic_energy_consumption"
+        },
+        {
+          "columns": [
+            "petrol_spending",
+            "diesel_spending"
+          ],
+          "condition": "has_fuel_consumption == false",
+          "kind": "zero_when_false"
+        }
+      ],
+      "outputs": [
+        "food_and_non_alcoholic_beverages_consumption",
+        "alcohol_and_tobacco_consumption",
+        "clothing_and_footwear_consumption",
+        "housing_water_and_electricity_consumption",
+        "household_furnishings_consumption",
+        "health_consumption",
+        "transport_consumption",
+        "communication_consumption",
+        "recreation_consumption",
+        "education_consumption",
+        "restaurants_and_hotels_consumption",
+        "miscellaneous_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "bus_fare_spending",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption",
+        "has_fuel_consumption"
+      ],
+      "rewrites": [],
+      "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.",
+      "stage": "lcfs_consumption",
+      "survey": "Living Costs and Food Survey 2023-24"
+    },
+    "regional_property_uprating": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "regional_land_values.json",
+          "role": "regional_reference"
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior.",
+      "operations": [
+        {
+          "factor": "avg_house_price / unweighted_mean(main_residence_value | region, >0)",
+          "kind": "uprate_to_regional_reference",
+          "owner_rows": "main_residence_value > 0",
+          "resource": "regional_land_values.json",
+          "skip_empty_or_nonpositive_regions": true
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "main_residence_value",
+        "property_wealth"
+      ],
+      "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
+      "stage": "regional_property_uprating",
+      "survey": "Public regional property reference"
+    },
+    "salary_sacrifice": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "salary_sacrifice_anchor.json",
+          "role": "salary_sacrifice_anchor",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts.",
+      "operations": [
+        {
+          "cache": false,
+          "clamp_minimum": 0,
+          "kind": "fit_weighted_qrf",
+          "n_estimators": 100,
+          "predictors": [
+            "age",
+            "employment_income"
+          ],
+          "preserve_asked_rows": true,
+          "seed": 42,
+          "target_population": "salary_sacrifice_asked != 1 frame-wide",
+          "targets": [
+            "pension_contributions_via_salary_sacrifice"
+          ],
+          "training_population": "support_channel == frs and not capital-gains clone and not CGT band donor and salary_sacrifice_asked == 1",
+          "weight_mapping": "household_to_person",
+          "weights": "household_weight"
+        },
+        {
+          "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
+          "kind": "convert_donors_to_target_stock",
+          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed",
+          "rate_cap": 0.5,
+          "reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved.",
+          "receipt": "weighted_headcount",
+          "resource": "salary_sacrifice_anchor.json",
+          "salt": "salary_sacrifice_conversion",
+          "seed": 2024,
+          "target": 5400000
+        }
+      ],
+      "outputs": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "rewrites": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
+      "stage": "salary_sacrifice",
+      "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
+    },
+    "spi_support_channel": {
+      "artifacts": [],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "person_support_clone_index",
+        "person_source_id",
+        "benunit_support_clone_index",
+        "benunit_source_id",
+        "household_support_clone_index",
+        "household_source_id",
+        "source_household_id",
+        "source_year"
+      ],
+      "notes": "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates 50 percent of each region stratum prior mass to the SPI channel with exact national conservation.",
+      "operations": [
+        {
+          "channels": {
+            "base": "frs",
+            "synthetic": "spi"
+          },
+          "count": 10000,
+          "draw": "uniform_without_replacement",
+          "flag_column": "household_is_spi_synthetic",
+          "kind": "stack_zero_weight_donors",
+          "seed": 42
+        },
+        {
+          "declarations": [
+            {
+              "maximum_zero_weight_rows": 10000,
+              "name": "e7_spi_synthetic_preclone",
+              "reason": "E7 stacks exactly 10,000 zero-weight SPI-synthetic households on the raw pre-clone UK FRS spine.",
+              "selector": {
+                "household_is_spi_synthetic": true
+              }
+            }
+          ],
+          "gate": "uk_zero_weight_strata_gate",
+          "kind": "gate_zero_weight_strata"
+        },
+        {
+          "conservation": "exact_total",
+          "kind": "allocate_zero_weight_prior_mass",
+          "share": 0.5,
+          "strata": [
+            "region"
+          ],
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [
+        "household_is_spi_synthetic",
+        "person_support_channel",
+        "person_support_clone_index",
+        "person_source_id",
+        "benunit_support_channel",
+        "benunit_support_clone_index",
+        "benunit_source_id",
+        "household_support_channel",
+        "household_support_clone_index",
+        "household_source_id",
+        "source_household_id",
+        "source_year",
+        "source_household_key"
+      ],
+      "rewrites": [],
+      "source": "Synthetic SPI support channel sampled uniformly without replacement from the raw FRS spine before cloning.",
+      "stage": "spi_support_channel",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "student_loans": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "frs_release.json",
+          "role": "frs_release",
+          "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "slc_liable_stocks.json",
+          "role": "slc_liable_stocks",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "Reported PAYE repayers are classified without a country gate. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year; PLAN_4 is never imputed.",
+      "operations": [
+        {
+          "enum_domain": [
+            "NONE",
+            "PLAN_1",
+            "PLAN_2",
+            "PLAN_5"
+          ],
+          "kind": "assign_student_loan_plan_cohorts",
+          "plan_1_before": 2012,
+          "plan_4_imputation": false,
+          "plan_5_from": 2023,
+          "reported_country_gate": false,
+          "reported_repayment_test": "student_loan_repayments > 0",
+          "start_year_formula": "year - age + 18",
+          "year_rule": "calibration_year"
+        },
+        {
+          "age_max": 25,
+          "age_min": 18,
+          "cohort_start_min": 2023,
+          "eligible_region_exclusions": [
+            "SCOTLAND",
+            "WALES",
+            "NORTHERN_IRELAND"
+          ],
+          "highest_education": "TERTIARY",
+          "kind": "top_up_to_stock",
+          "plan": "PLAN_5",
+          "priority": 1,
+          "resource": "slc_liable_stocks.json",
+          "salt": "student_loan_plan_5",
+          "seed": 42,
+          "stock_series": "plan_5.liable",
+          "year_rule": "calibration_year"
+        },
+        {
+          "age_max": 55,
+          "age_min": 21,
+          "cohort_start_max_exclusive": 2023,
+          "cohort_start_min": 2012,
+          "eligible_region_exclusions": [
+            "SCOTLAND",
+            "WALES",
+            "NORTHERN_IRELAND"
+          ],
+          "highest_education": "TERTIARY",
+          "kind": "top_up_to_stock",
+          "plan": "PLAN_2",
+          "priority": 2,
+          "reason": "Student-loan plan assignment writes an enum column only; household rows and typed household weights pass through and total household mass is conserved.",
+          "resource": "slc_liable_stocks.json",
+          "salt": "student_loan_plan_2",
+          "seed": 42,
+          "stock_series": "plan_2.liable",
+          "year_rule": "calibration_year"
+        }
+      ],
+      "outputs": [
+        "student_loan_plan"
+      ],
+      "rewrites": [
+        "student_loan_plan"
+      ],
+      "source": "Explore Education Statistics Table 6a, Higher education total",
+      "stage": "student_loans",
+      "survey": "Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England"
+    },
+    "uc_capital_coherence": {
+      "artifacts": [],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by couple-status cells, then applies the monotone reported-UC OR refresh.",
+      "operations": [
+        {
+          "aggregates": {
+            "universal_credit_reported_anchor": "universal_credit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_positive"
+        },
+        {
+          "couple_status": "is_married",
+          "dependent_children_bands": [
+            "0",
+            "1",
+            "2",
+            "3+"
+          ],
+          "donor_rows": "base_frs_reporters_with_available_capital",
+          "draw": "weighted_empirical",
+          "identity": "benunit_id",
+          "kind": "redraw_spi_reporter_capital",
+          "output": "frs_benunit_capital",
+          "rows": "spi_channel_post_fill_reporters",
+          "salt": "frs_benunit_capital",
+          "seed": 0,
+          "weight_mapping": "household_to_benunit"
+        },
+        {
+          "derived": {
+            "uc_reported_capital": "frs_benunit_capital",
+            "would_claim_uc": "would_claim_uc OR universal_credit_reported_anchor"
+          },
+          "kind": "derive"
+        }
+      ],
+      "outputs": [
+        "uc_reported_capital"
+      ],
+      "rewrites": [
+        "frs_benunit_capital",
+        "would_claim_uc"
+      ],
+      "source": "Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.",
+      "stage": "uc_capital_coherence",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "uc_deduction_attributes": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "dwp_uc_deduction_distributions.json",
+          "role": "deduction_distribution"
+        }
+      ],
+      "grain": "benunit",
+      "nonnegative_outputs": [
+        "uc_deduction_random_draw",
+        "uc_deduction_type_random_draw",
+        "uc_latent_deduction_rate"
+      ],
+      "notes": "Assigns region-conditioned latent deduction demand to every benefit unit from identity-keyed seed-0 draws, rounded and clamped to the PolicyEngine-UK float32 input contract before applying the engine's exact band and normalized-combination mappings. The attributes are award-independent; law and claimant gating remain in the engine. Clone and donor-stack stages copy the completed attributes byte-for-byte. The persisted draws are microcosm's identity-keyed blake2b uniforms, not PolicyEngine-UK's splitmix64 fallback hash; the engine reads the persisted columns and derives the same flag, rate and combination from them, so the two draw columns must stay on the export surface (allow-listed and test-pinned).",
+      "operations": [
+        {
+          "kind": "assign_uniform_draw",
+          "output": "uc_deduction_random_draw",
+          "seed": 0
+        },
+        {
+          "kind": "assign_uniform_draw",
+          "output": "uc_deduction_type_random_draw",
+          "seed": 0
+        },
+        {
+          "distribution": "latent_rate_distribution",
+          "draw": "uc_deduction_random_draw",
+          "draw_dtype": "float32",
+          "incidence_modifier": {
+            "column": "region",
+            "entity": "household",
+            "table": "region_incidence_factor"
+          },
+          "kind": "map_uniform_to_banded_rate",
+          "none_value": 0,
+          "output": "uc_latent_deduction_rate",
+          "resource": "dwp_uc_deduction_distributions.json"
+        },
+        {
+          "distribution": "type_combination",
+          "draw": "uc_deduction_type_random_draw",
+          "draw_dtype": "float32",
+          "gate": {
+            "column": "uc_latent_deduction_rate",
+            "positive": true
+          },
+          "kind": "map_uniform_to_categorical",
+          "none_value": "NONE",
+          "output": "uc_deduction_combination",
+          "resource": "dwp_uc_deduction_distributions.json"
+        }
+      ],
+      "outputs": [
+        "uc_deduction_random_draw",
+        "uc_deduction_type_random_draw",
+        "uc_latent_deduction_rate",
+        "uc_deduction_combination"
+      ],
+      "rewrites": [],
+      "source": "Department for Work and Pensions supplementary Tables 2, 5 and 6, sha-pinned by Chronicle package dwp-uc-deductions-march-2025-february-2026.",
+      "stage": "uc_deduction_attributes",
+      "survey": "DWP Universal Credit deductions statistics, March 2025 to February 2026"
+    },
+    "uc_reporter_redraw": {
+      "artifacts": [],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses.",
+      "operations": [
+        {
+          "derived": {
+            "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member",
+            "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
+            "positive_pre_takeup_uc_award": "max(0, uc_maximum_amount - uc_income_reduction) > 0",
+            "uc_reported_capital": "frs_benunit_capital"
+          },
+          "kind": "derive"
+        },
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "uc_maximum_amount",
+            "uc_income_reduction",
+            "is_child_or_qualifying_young_person_for_universal_credit",
+            "is_SP_age"
+          ]
+        },
+        {
+          "aggregates": {
+            "uc_child_count": "is_child_or_qualifying_young_person_for_universal_credit",
+            "universal_credit_reported_amount": "universal_credit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "sum"
+        },
+        {
+          "categorical_predictors": [
+            "region"
+          ],
+          "fit": "regime_gated_qrf",
+          "kind": "redraw_spi_reported_uc",
+          "landing": "eldest_working_age_adult_lowest_person_id",
+          "output": "universal_credit_reported",
+          "predictors": [
+            "is_married",
+            "uc_child_band",
+            "benunit_employment_income",
+            "benunit_self_employment_income",
+            "claimant_earnings",
+            "partner_earnings",
+            "benunit_investment_income",
+            "claimant_age",
+            "region"
+          ],
+          "rewrite_rows": "spi_channel",
+          "rows": "spi_channel_screened",
+          "screen": "claimable_screen",
+          "seed": 44,
+          "target": "universal_credit_reported_amount",
+          "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
+          "weight_mapping": "household_to_benunit"
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "universal_credit_reported"
+      ],
+      "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
+      "stage": "uc_reporter_redraw",
+      "survey": "Family Resources Survey 2024-25"
+    },
+    "was_wealth": {
+      "artifacts": [
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-7215-20",
+          "filename": "was_round_8_hhold_eul_may_2025_230525.tab",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "role": "was_qrf_donor",
+          "runtime_sha256_required": true,
+          "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
+          "size_bytes": 39073613,
+          "ukds_study_number": 7215
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "owned_land",
+        "property_wealth",
+        "corporate_wealth",
+        "private_pension_wealth",
+        "gross_financial_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "savings",
+        "num_vehicles",
+        "cash_isa",
+        "stocks_and_shares_isa",
+        "student_loan_balance",
+        "mortgage_debt",
+        "consumer_debt"
+      ],
+      "notes": "Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. The debt segment (fourth chain segment, fourth child seed) reads WAS round-8 derived variables HMortGR8 (total outstanding mortgage debt), HFINWNTR8_exSLC_Sum (net financial wealth excluding student loans; gross less it is the non-student-loan financial liabilities) and Ten1R8 (tenure; codes 2 and 3 are buying with a mortgage and part own/part rent, confirmed by the I1 audit of the pinned tab); UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent's dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8's -9 is structural not-applicable so the is_renting mapping is unchanged; genuinely negative domains are never recoded.",
+      "operations": [
+        {
+          "derived": {
+            "cash_isa": "DVCISAVR8_aggr",
+            "consumer_debt": "max(HFINWR8_SUM - HFINWNTR8_exSLC_Sum, 0)",
+            "corporate_wealth_excl_isa": "DVFESHARESR8_aggr + DVFShUKVR8_aggr + DVFCollVR8_aggr",
+            "has_mortgage_tenure": "Ten1R8 in {2, 3}",
+            "is_renting": "DVPriRntR8 == 1",
+            "private_pension_wealth": "totalpenr8_aggr - dvvaldbt_scaper8_aggr",
+            "region": "GORR8 via incumbent REGIONS map",
+            "stocks_and_shares_isa": "DVIISAVR8_aggr",
+            "student_loan_balance": "Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr"
+          },
+          "direct_maps": {
+            "gross_financial_wealth": "HFINWR8_SUM",
+            "main_residence_value": "DVhvalueR8",
+            "mortgage_debt": "HMortGR8",
+            "net_financial_wealth": "HFINWNTR8_Sum",
+            "net_financial_wealth_exsl": "HFINWNTR8_exSLC_Sum",
+            "non_residential_property_value": "DVBlDValR8_sum",
+            "num_vehicles": "vcarnr8",
+            "other_residential_property_value": "DVHseValR8_sum",
+            "owned_land": "DVLUKValR8_sum",
+            "property_wealth": "DVPropertyR8",
+            "savings": "DVSaValR8_aggr",
+            "tenure_code": "Ten1R8",
+            "weight": "R8xshhwgt"
+          },
+          "fillna": 0,
+          "kind": "derive",
+          "scope": "strict WAS donor cleaning with lower-case exact column matching and no fuzzy r/w fallback"
+        },
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "capital_income",
+            "is_renting"
+          ]
+        },
+        {
+          "categorical_predictors": [
+            "region",
+            "is_renting"
+          ],
+          "chain_order": [
+            "owned_land",
+            "property_wealth",
+            "private_pension_wealth",
+            "corporate_wealth_excl_isa",
+            "stocks_and_shares_isa",
+            "corporate_wealth",
+            "gross_financial_wealth",
+            "net_financial_wealth",
+            "main_residence_value",
+            "other_residential_property_value",
+            "non_residential_property_value",
+            "savings",
+            "num_vehicles",
+            "student_loan_balance",
+            "cash_isa",
+            "mortgage_debt",
+            "consumer_debt"
+          ],
+          "debt_segment_predictors": [
+            "has_mortgage_tenure"
+          ],
+          "integer_outputs": [
+            "num_vehicles"
+          ],
+          "kind": "fit_weighted_qrf_chain",
+          "n_estimators": 4,
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "capital_income",
+            "num_bedrooms",
+            "council_tax",
+            "is_renting",
+            "region"
+          ],
+          "region_remap": {
+            "NORTHERN_IRELAND": "WALES"
+          },
+          "seed": 0,
+          "weights": "explicit"
+        },
+        {
+          "drop_inputs": [
+            "corporate_wealth_excl_isa"
+          ],
+          "inputs": [
+            "corporate_wealth_excl_isa",
+            "stocks_and_shares_isa"
+          ],
+          "kind": "fold_into",
+          "output": "corporate_wealth"
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        },
+        {
+          "keyed_by": "entity_id",
+          "kind": "allocate_within_group_waterfall",
+          "source": "household.student_loan_balance",
+          "target": "person.student_loan_balance",
+          "tiers": [
+            "student_loan_repayments > 0",
+            "student_loans > 0",
+            "highest_education == TERTIARY",
+            "current_education == TERTIARY",
+            "18 <= age <= 55",
+            "everyone"
+          ]
+        }
+      ],
+      "outputs": [
+        "owned_land",
+        "property_wealth",
+        "corporate_wealth",
+        "private_pension_wealth",
+        "gross_financial_wealth",
+        "net_financial_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "savings",
+        "num_vehicles",
+        "cash_isa",
+        "stocks_and_shares_isa",
+        "student_loan_balance",
+        "mortgage_debt",
+        "consumer_debt"
+      ],
+      "rewrites": [],
+      "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
+      "stage": "was_wealth",
+      "survey": "Wealth and Assets Survey round 8"
+    }
+  }
+}

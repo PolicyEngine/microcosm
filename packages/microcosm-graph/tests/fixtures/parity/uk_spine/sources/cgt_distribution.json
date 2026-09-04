@@ -1,0 +1,458 @@
+{
+  "band_totals": [
+    {
+      "gain_lower_bound": 0,
+      "gains": 2400000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 9600000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 21000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 42000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 96000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 210000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 420000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 840000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 1920000000.0,
+      "individuals": 600.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 6000000000.0,
+      "individuals": 600.0
+    }
+  ],
+  "cells": [
+    {
+      "gain_lower_bound": 0,
+      "gains": 400000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 0,
+      "gains": 400000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 0,
+      "gains": 400000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 0,
+      "gains": 400000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 0,
+      "gains": 400000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 0,
+      "gains": 400000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 1600000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 1600000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 1600000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 1600000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 1600000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 10000,
+      "gains": 1600000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 3500000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 3500000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 3500000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 3500000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 3500000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 25000,
+      "gains": 3500000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 7000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 7000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 7000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 7000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 7000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 50000,
+      "gains": 7000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 16000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 16000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 16000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 16000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 16000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 100000,
+      "gains": 16000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 35000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 35000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 35000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 35000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 35000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 250000,
+      "gains": 35000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 70000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 70000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 70000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 70000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 70000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 500000,
+      "gains": 70000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 140000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 140000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 140000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 140000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 140000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 1000000,
+      "gains": 140000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 320000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 320000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 320000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 320000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 320000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 2000000,
+      "gains": 320000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 1000000000.0,
+      "income_lower_bound": 0,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 1000000000.0,
+      "income_lower_bound": 37700,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 1000000000.0,
+      "income_lower_bound": 50000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 1000000000.0,
+      "income_lower_bound": 100000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 1000000000.0,
+      "income_lower_bound": 150000,
+      "individuals": 100.0
+    },
+    {
+      "gain_lower_bound": 5000000,
+      "gains": 1000000000.0,
+      "income_lower_bound": 200000,
+      "individuals": 100.0
+    }
+  ],
+  "income_totals": [
+    {
+      "gains": 1593500000.0,
+      "income_lower_bound": 0,
+      "individuals": 1000.0
+    },
+    {
+      "gains": 1593500000.0,
+      "income_lower_bound": 37700,
+      "individuals": 1000.0
+    },
+    {
+      "gains": 1593500000.0,
+      "income_lower_bound": 50000,
+      "individuals": 1000.0
+    },
+    {
+      "gains": 1593500000.0,
+      "income_lower_bound": 100000,
+      "individuals": 1000.0
+    },
+    {
+      "gains": 1593500000.0,
+      "income_lower_bound": 150000,
+      "individuals": 1000.0
+    },
+    {
+      "gains": 1593500000.0,
+      "income_lower_bound": 200000,
+      "individuals": 1000.0
+    }
+  ],
+  "source": {
+    "build_period": "2024",
+    "local_path": "synthetic-cgt.ods",
+    "sha256": "synthetic",
+    "sheet_name": "synthetic",
+    "size_bytes": 0,
+    "source_vintage": "2023-24"
+  },
+  "total_gains": 9561000000.0,
+  "total_individuals": 6000.0
+}

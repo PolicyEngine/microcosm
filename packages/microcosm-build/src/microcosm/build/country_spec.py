@@ -33,6 +33,7 @@ JSON/YAML spec-engine domains; their interpretation belongs to the compiler.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -41,7 +42,11 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
 
-from microcosm.build.ledger_targets import LedgerTargetReference
+from microcosm.build.ledger_targets import (
+    LedgerTargetReference,
+    period_type_hint,
+    period_values_semantically_equal,
+)
 from microcosm.build.plan import DonorSpec, Stage, StagePlan
 from microcosm.build.source_manifest import (
     SourceManifest,
@@ -106,7 +111,9 @@ _GENERATED_LOCK_FILENAMES = frozenset(
 ALLOWED_GATE_FUNCTIONS = frozenset(
     {
         "aggregate_admin",
+        "area_support",
         "calibration_reference_coverage",
+        "column_implication",
         "degenerate_release_surface",
         "enum_domain",
         "export_surface",
@@ -819,6 +826,449 @@ def _validate_target_references(
     return tuple(references)
 
 
+def _typed_geography_vintage_aliases(
+    resolved_spec: object | None,
+    *,
+    country: str,
+) -> Mapping[str, frozenset[str]]:
+    """Resolve each typed geography layer to its closed authority aliases.
+
+    The geography domain owns the layer-to-vintage-reference binding, and the
+    resolved vintage registry owns that reference's content-pinned value.  A
+    consumer selector may use only the full typed id, its country-shortened id,
+    or that resolved authority value; no year-shaped alias is inferred.
+    """
+
+    if resolved_spec is None:
+        return MappingProxyType({})
+    try:
+        geography_domain = resolved_spec.domain("geography")  # type: ignore[attr-defined]
+    except KeyError:
+        return MappingProxyType({})
+    geography = _require_mapping(
+        geography_domain.to_wire(), context="typed geography domain"
+    )
+    assignment = _require_mapping(
+        geography.get("assignment"), context="typed geography assignment"
+    )
+    layer_vintages = _require_mapping(
+        assignment.get("layer_vintages", {}),
+        context="typed geography assignment.layer_vintages",
+    )
+    authorities = _require_mapping(
+        getattr(resolved_spec, "vintage_authorities", {}),
+        context="resolved vintage authorities",
+    )
+    records = _require_mapping(
+        authorities.get("records", {}),
+        context="resolved vintage authorities.records",
+    )
+    aliases_by_layer: dict[str, frozenset[str]] = {}
+    for raw_layer, raw_reference in layer_vintages.items():
+        layer = _require_non_empty_string(
+            raw_layer,
+            field_name="geography layer",
+            context="typed geography assignment.layer_vintages",
+        )
+        reference = _require_non_empty_string(
+            raw_reference,
+            field_name=f"{layer} vintage reference",
+            context="typed geography assignment.layer_vintages",
+        )
+        if not reference.startswith("vintage:"):
+            raise ValueError(
+                f"typed geography layer {layer!r} must bind a vintage: reference, "
+                f"got {reference!r}."
+            )
+        record_id = reference.removeprefix("vintage:")
+        record = records.get(record_id.casefold())
+        if not isinstance(record, Mapping):
+            raise ValueError(
+                f"typed geography layer {layer!r} has dangling vintage "
+                f"reference {reference!r}."
+            )
+        if record.get("kind") != "geography_vintage_ref":
+            raise ValueError(
+                f"typed geography layer {layer!r} reference {reference!r} "
+                "does not resolve to a geography_vintage_ref."
+            )
+        authority_value = record.get("value")
+        if not isinstance(authority_value, (str, int)) or isinstance(
+            authority_value, bool
+        ):
+            raise ValueError(
+                f"typed geography layer {layer!r} reference {reference!r} has "
+                "no string/integer authority value."
+            )
+        aliases = {record_id, str(authority_value)}
+        country_prefix = f"{country}_"
+        if record_id.startswith(country_prefix):
+            aliases.add(record_id.removeprefix(country_prefix))
+        aliases_by_layer[layer] = frozenset(aliases)
+    return MappingProxyType(aliases_by_layer)
+
+
+def _validate_target_profile(
+    raw: Mapping[str, Any],
+    references: tuple[LedgerTargetReference, ...],
+    *,
+    country: str,
+    geography_spine: GeographySpineManifest | None,
+    resolved_spec: object | None,
+) -> Mapping[str, Any]:
+    """Validate the versioned consumer-side calibration selection contract.
+
+    Schema 1 remains the historical hierarchy-only profile. Schema 2 adds the
+    declaration fields needed to make a future target surface auditable
+    without carrying target values: named criticality/tolerance tiers, named
+    basis periods, an exact-period posture, and explicit geography vintages on
+    every subnational selector. This validates schema policy only; it does not
+    apply tier tolerances or ``target_role`` to runtime calibration or gates.
+    """
+
+    profile = raw.get("target_profile", {})
+    if not isinstance(profile, Mapping):
+        raise ValueError("target_references.json: target_profile must be an object.")
+    schema_version = profile.get("schema_version", 1)
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise ValueError(
+            "target_references.json: target_profile.schema_version must be an "
+            f"integer 1 or 2, got {schema_version!r}."
+        )
+    if schema_version == 1:
+        return _freeze_gate_parameter(profile, path="target_profile")
+    if schema_version != 2:
+        raise ValueError(
+            "target_references.json: target_profile.schema_version must be 1 "
+            f"or 2, got {schema_version!r}."
+        )
+
+    allowed_profile_keys = {
+        "schema_version",
+        "required_families",
+        "criticality_tiers",
+        "basis_periods",
+        "hierarchy_reconciliations",
+    }
+    unknown_profile_keys = sorted(set(profile) - allowed_profile_keys)
+    if unknown_profile_keys:
+        raise ValueError(
+            "target_references.json: target_profile has unknown key(s) "
+            f"{unknown_profile_keys}."
+        )
+
+    raw_families = profile.get("required_families")
+    if not isinstance(raw_families, list) or not raw_families:
+        raise ValueError(
+            "target_references.json: target_profile.required_families must be "
+            "a non-empty list."
+        )
+    required_families = tuple(
+        _require_non_empty_string(
+            family,
+            field_name="required_families entry",
+            context="target_references.json",
+        )
+        for family in raw_families
+    )
+    if len(set(required_families)) != len(required_families):
+        raise ValueError(
+            "target_references.json: target_profile.required_families must be unique."
+        )
+
+    tiers = profile.get("criticality_tiers")
+    if not isinstance(tiers, Mapping) or not tiers:
+        raise ValueError(
+            "target_references.json: target_profile.criticality_tiers must be "
+            "a non-empty object."
+        )
+    normalized_tiers: dict[str, tuple[str, float | None]] = {}
+    for raw_tier_id, raw_tier in tiers.items():
+        tier_id = _require_non_empty_string(
+            raw_tier_id,
+            field_name="criticality tier id",
+            context="target_references.json",
+        )
+        if not isinstance(raw_tier, Mapping):
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} must be "
+                "an object."
+            )
+        unknown_tier_keys = sorted(
+            set(raw_tier) - {"criticality", "relative_tolerance", "description"}
+        )
+        if unknown_tier_keys:
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} has "
+                f"unknown key(s) {unknown_tier_keys}."
+            )
+        criticality = _require_non_empty_string(
+            raw_tier.get("criticality"),
+            field_name="criticality",
+            context=f"criticality tier {tier_id!r}",
+        )
+        if criticality not in ALLOWED_GATE_CRITICALITIES:
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} uses "
+                f"unknown criticality {criticality!r}."
+            )
+        raw_tolerance = raw_tier.get("relative_tolerance")
+        if raw_tolerance is None:
+            tolerance = None
+        elif (
+            isinstance(raw_tolerance, bool)
+            or not isinstance(raw_tolerance, (int, float))
+            or not math.isfinite(float(raw_tolerance))
+            or not 0.0 < float(raw_tolerance) <= 1.0
+        ):
+            raise ValueError(
+                f"target_references.json: criticality tier {tier_id!r} "
+                "relative_tolerance must be null or a finite number in (0, 1]."
+            )
+        else:
+            tolerance = float(raw_tolerance)
+        normalized_tiers[tier_id] = (criticality, tolerance)
+
+    basis_periods = profile.get("basis_periods")
+    if not isinstance(basis_periods, Mapping) or not basis_periods:
+        raise ValueError(
+            "target_references.json: target_profile.basis_periods must be a "
+            "non-empty object."
+        )
+    normalized_periods: dict[str, tuple[object, str]] = {}
+    for raw_basis_id, raw_basis in basis_periods.items():
+        basis_id = _require_non_empty_string(
+            raw_basis_id,
+            field_name="basis period id",
+            context="target_references.json",
+        )
+        if not isinstance(raw_basis, Mapping):
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must be an object."
+            )
+        unknown_basis_keys = sorted(
+            set(raw_basis)
+            - {
+                "period",
+                "basis",
+                "fact_period_type",
+                "mismatch_policy",
+                "survey_year",
+                "income_reference_offset_years",
+                "description",
+            }
+        )
+        if unknown_basis_keys:
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} has unknown "
+                f"key(s) {unknown_basis_keys}."
+            )
+        period = raw_basis.get("period")
+        if (
+            period is None
+            or isinstance(period, bool)
+            or not isinstance(period, (int, str))
+        ):
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must declare "
+                "period as an integer or non-empty string."
+            )
+        if isinstance(period, str) and not period.strip():
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must declare "
+                "period as an integer or non-empty string."
+            )
+        _require_non_empty_string(
+            raw_basis.get("basis"),
+            field_name="basis",
+            context=f"basis period {basis_id!r}",
+        )
+        fact_period_type = _require_non_empty_string(
+            raw_basis.get("fact_period_type"),
+            field_name="fact_period_type",
+            context=f"basis period {basis_id!r}",
+        )
+        if raw_basis.get("mismatch_policy") != "requires_source_projection":
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} must set "
+                "mismatch_policy='requires_source_projection'."
+            )
+        survey_year = raw_basis.get("survey_year")
+        income_offset = raw_basis.get("income_reference_offset_years")
+        if survey_year is not None or income_offset is not None:
+            if (
+                isinstance(survey_year, bool)
+                or not isinstance(survey_year, int)
+                or isinstance(income_offset, bool)
+                or not isinstance(income_offset, int)
+            ):
+                raise ValueError(
+                    f"target_references.json: basis period {basis_id!r} must "
+                    "declare integer survey_year and "
+                    "income_reference_offset_years together."
+                )
+            try:
+                numeric_period = int(period)
+            except ValueError as error:
+                raise ValueError(
+                    f"target_references.json: basis period {basis_id!r} with "
+                    "an income-reference offset must use a numeric period."
+                ) from error
+            if numeric_period != survey_year + income_offset:
+                raise ValueError(
+                    f"target_references.json: basis period {basis_id!r} period "
+                    f"{period!r} does not equal survey_year {survey_year!r} plus "
+                    f"income_reference_offset_years {income_offset!r}."
+                )
+        normalized_periods[basis_id] = (period, fact_period_type)
+
+    geography_vintage_aliases = _typed_geography_vintage_aliases(
+        resolved_spec,
+        country=country,
+    )
+
+    names = [reference.name for reference in references]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            f"target_references.json: duplicate reference name(s) {duplicates}."
+        )
+
+    for reference in references:
+        context = f"target reference {reference.name!r}"
+        role = reference.metadata.get("target_role")
+        if role not in {"calibration", "validation"}:
+            raise ValueError(
+                f"target_references.json: {context} metadata.target_role must be "
+                "'calibration' or 'validation'."
+            )
+        tier_id = reference.metadata.get("criticality_tier", "")
+        if tier_id not in normalized_tiers:
+            raise ValueError(
+                f"target_references.json: {context} names unknown "
+                f"criticality_tier {tier_id!r}."
+            )
+        tier_criticality, tier_tolerance = normalized_tiers[tier_id]
+        if reference.metadata.get("criticality") != tier_criticality:
+            raise ValueError(
+                f"target_references.json: {context} criticality does not match "
+                f"tier {tier_id!r}."
+            )
+        if role == "calibration" and tier_tolerance is None:
+            raise ValueError(
+                f"target_references.json: calibration {context} uses tier "
+                f"{tier_id!r} without a relative tolerance."
+            )
+        if role == "validation" and (
+            tier_criticality != "diagnostic" or tier_tolerance is not None
+        ):
+            raise ValueError(
+                f"target_references.json: validation {context} must use a "
+                "diagnostic tier with no calibration tolerance."
+            )
+
+        basis_id = reference.metadata.get("basis_period", "")
+        if basis_id not in normalized_periods:
+            raise ValueError(
+                f"target_references.json: {context} names unknown basis_period "
+                f"{basis_id!r}."
+            )
+        basis_period, fact_period_type = normalized_periods[basis_id]
+        if not period_values_semantically_equal(
+            reference.period, basis_period, declared_type=fact_period_type
+        ):
+            raise ValueError(
+                f"target_references.json: {context} period {reference.period!r} "
+                f"does not match basis period {basis_id!r}."
+            )
+        basis_type_hint = period_type_hint(basis_period)
+        if basis_type_hint and basis_type_hint != fact_period_type:
+            raise ValueError(
+                f"target_references.json: basis period {basis_id!r} value "
+                f"{basis_period!r} implies period type {basis_type_hint!r}, not "
+                f"declared fact_period_type {fact_period_type!r}."
+            )
+        reference_type_hint = period_type_hint(reference.period)
+        if reference_type_hint and reference_type_hint != fact_period_type:
+            raise ValueError(
+                f"target_references.json: {context} period {reference.period!r} "
+                f"implies period type {reference_type_hint!r}, not basis "
+                f"fact_period_type {fact_period_type!r}."
+            )
+        selector_period_type = str(reference.ledger_selector.get("period_type", ""))
+        if selector_period_type != fact_period_type:
+            raise ValueError(
+                f"target_references.json: {context} selector period_type "
+                f"{selector_period_type!r} does not match basis period "
+                f"{basis_id!r} fact_period_type {fact_period_type!r}."
+            )
+        if reference.period_match_policy != "exact":
+            raise ValueError(
+                f"target_references.json: {context} must set "
+                "period_match_policy='exact'; stale observations require an "
+                "explicit Chronicle source_projection."
+            )
+        if reference.assertion_policy != "allow_source_projection":
+            raise ValueError(
+                f"target_references.json: {context} must set "
+                "assertion_policy='allow_source_projection' so an explicitly "
+                "projected fact can satisfy the declared basis period."
+            )
+
+        geography_level = str(reference.ledger_selector.get("geography_level", ""))
+        if geography_level and geography_level not in {"country", "national"}:
+            selector_vintage = str(
+                reference.ledger_selector.get("geography_vintage", "")
+            )
+            metadata_vintage = reference.metadata.get("geography_vintage", "")
+            if not selector_vintage or selector_vintage != metadata_vintage:
+                raise ValueError(
+                    f"target_references.json: subnational {context} must bind the "
+                    "same non-empty geography_vintage in its selector and metadata."
+                )
+            accepted_typed_aliases = geography_vintage_aliases.get(geography_level)
+            if accepted_typed_aliases is None:
+                raise ValueError(
+                    f"target_references.json: subnational {context} uses geography "
+                    f"layer {geography_level!r}, but the authoritative typed "
+                    "geography layer-vintage registry does not declare it."
+                )
+            if selector_vintage not in accepted_typed_aliases:
+                raise ValueError(
+                    f"target_references.json: {context} geography vintage "
+                    f"{selector_vintage!r} is not an exact typed authority alias "
+                    f"for layer {geography_level!r}; expected one of "
+                    f"{sorted(accepted_typed_aliases)!r}."
+                )
+            if geography_spine is not None and (
+                geography_level == geography_spine.geography_spine.geography_level
+            ):
+                spine = geography_spine.geography_spine
+                legacy_nis_vintage = reference.metadata.get("nis_vintage")
+                if legacy_nis_vintage is not None and legacy_nis_vintage not in {
+                    spine.vintage,
+                    *accepted_typed_aliases,
+                }:
+                    raise ValueError(
+                        f"target_references.json: {context} legacy "
+                        f"nis_vintage {legacy_nis_vintage!r} does not identify "
+                        f"the declared spine vintage {spine.vintage!r}."
+                    )
+
+    calibrated_families = {
+        reference.family
+        for reference in references
+        if reference.metadata.get("target_role") == "calibration"
+    }
+    missing_families = sorted(set(required_families) - calibrated_families)
+    if missing_families:
+        raise ValueError(
+            "target_references.json: target_profile.required_families has no "
+            f"calibration reference for {missing_families}."
+        )
+    return _freeze_gate_parameter(profile, path="target_profile")
+
+
 def _validate_local_target_references(
     raw: Mapping[str, Any],
     *,
@@ -1023,6 +1473,9 @@ class ResolvedCountrySpec:
         support_spine: The support-spine manifest, when declared.
         geography_spine: The geography-spine manifest, when declared.
         target_references: Ledger target references, when declared.
+        target_profile: The validated value-free target declaration carried by
+            ``target_references.json``. Tier tolerances and target roles remain
+            metadata until a separate runtime integration consumes them.
         gates: The gate selection, when declared.
         release_contract: The release contract, when declared.
         take_up_contract: The constants-era take-up compatibility view. For a
@@ -1043,6 +1496,7 @@ class ResolvedCountrySpec:
     support_spine: SupportSpineManifest | None
     geography_spine: GeographySpineManifest | None
     target_references: tuple[LedgerTargetReference, ...]
+    target_profile: Mapping[str, Any]
     local_target_references: tuple[LedgerTargetReference, ...]
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
@@ -1662,6 +2116,17 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         if "target_references.json" in payloads
         else ()
     )
+    target_profile = (
+        _validate_target_profile(
+            payloads["target_references.json"],
+            target_references,
+            country=declared_country,
+            geography_spine=geography_spine,
+            resolved_spec=resolved_spec,
+        )
+        if "target_references.json" in payloads
+        else MappingProxyType({})
+    )
     local_target_references = (
         _validate_local_target_references(
             payloads["local_target_references.json"],
@@ -1697,6 +2162,7 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         support_spine=support_spine,
         geography_spine=geography_spine,
         target_references=target_references,
+        target_profile=target_profile,
         local_target_references=local_target_references,
         gates=gates,
         release_contract=release_contract,

@@ -46,6 +46,7 @@ from pathlib import Path
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
@@ -375,13 +376,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12c8a7fd526932decf19954881f43a123451f0454ac2603ff5ab08b0d246e37a"
+    "f7e2cf43fc2dd18a3d1add2965bb67e4faf21299678838ee0ac43694bb498a34"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2a7cb1441d9c9bab3afde33ad1a2957484c7bde46f93c65386b98dd7a665b812"
+    "a787221b57af1c0d8c653ee652597fe3f79d5ff3ba8c58f6c16ee7a3ce755ea8"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "65a2c85db2abd8edd935fda79e5c5ef8e15f89ba59ec4e2763d485c5170fd550"
+    "b7fa1a0e7d242f474ac5746de0f0115a96b935dbbcce57f4cdbbc955d0f9a0b9"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -394,11 +395,13 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weight_ratio": "weight_ratio",
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
+    "uk_uc_capital_coherence": "column_implication",
     "uk_support": "support",
     "uk_aggregate_admin": "aggregate_vs_admin",
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
@@ -406,9 +409,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_qrf_tail_concentration": "qrf_tail_concentration",
 }
 #: Spec entry id -> (gate, phase), mirrored per entry so a report cannot
-#: relabel an entry's identity. Every entry in this vintage is
-#: release_blocking with no declared excuse, so criticality and
-#: not_applicable are enforced globally rather than per entry.
+#: relabel an entry's identity.
 _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_release_input_coverage_manifest_current": (
         "release_input_coverage",
@@ -424,6 +425,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
+    "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
@@ -447,7 +449,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
-    "uk_stage_age_tail_targets": ("stage_health", "transferred"),
+    "uk_stage_age_tail_targets": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -460,11 +462,13 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weight_ratio": ("weight_ratio", "terminal"),
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
+    "uk_uc_capital_coherence": ("column_implication", "terminal"),
     "uk_support": ("support", "terminal"),
     "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
+    "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -474,8 +478,25 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_target_fit": ("target_fit", "terminal"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
     "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
+    "uk_local_geography_ladder_post_calibration": (
+        "spine_agreement",
+        "terminal",
+    ),
+    "uk_local_area_support": ("area_support", "terminal"),
+    "uk_local_target_fit": ("target_fit", "terminal"),
+    "uk_local_per_family_fit": ("per_family_fit", "terminal"),
+    "uk_local_weight_ratio": ("weight_ratio", "terminal"),
+    "uk_local_weight_ess": ("weight_ess", "terminal"),
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
+_UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
+    {
+        "uk_local_target_fit",
+        "uk_local_per_family_fit",
+        "uk_local_weight_ratio",
+        "uk_local_weight_ess",
+    }
+)
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
@@ -489,6 +510,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
+        "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
@@ -537,9 +559,34 @@ _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 # microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
 # data shard cannot import the build shard); lockstep-tested.
 _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+# The per-cut tag grammar the assembler mints from the calibration attempt id
+# (tools/assemble_uk_release_dir.py). The contract validates the same shape so
+# a hand-edited or stale revision cannot claim a cut the attempt chain never
+# produced.
+_UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+# The canonical release-dir filenames of the evidence the certification signs
+# (tools/assemble_uk_release_dir.py copies each byte-for-byte). Validation
+# binds every local file to its signed digest: a certification whose evidence
+# was removed or rewritten must refuse, not validate around the gap.
+_UK_CERTIFICATION_PART_EVIDENCE_FILES: Mapping[str, str] = {
+    "spine": "spine_gates.json",
+    "calibration_seam": "terminal_gates.json",
+    "release_cut": "release_cut_gates.json",
+}
+_UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_enhanced_frs.json"
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
+_UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
+    {
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_area_support",
+        "uk_local_target_fit",
+        "uk_local_per_family_fit",
+        "uk_local_weight_ratio",
+        "uk_local_weight_ess",
+    }
+)
 _UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
     "spine": ("assembled", "transferred"),
     "calibration_seam": ("terminal",),
@@ -561,6 +608,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
+            "uk_stage_uc_deduction_attributes",
             "uk_stage_was_wealth_support",
         }
     ),
@@ -585,6 +633,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_target_surface_local_default_2025",
             "uk_ledger_compile_parity_production_2023",
             "uk_nonnegative_columns",
+            "uk_uc_capital_coherence",
+            "uk_uc_deduction_combination_enum_domain",
             "uk_qrf_tail_concentration",
             "uk_release_family_build_stages",
             "uk_release_input_coverage",
@@ -600,10 +650,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "1605cf3fe1be4983cfb4ed806a34d69375cdc3e4e0c8883cc49481ac5870399a"
+            "70a47a57039a236ae67df7d019fc7f8d43cbffab14a47d00a1e3e28dbc83a5a3"
         ),
         "policy_sha256": (
-            "3d14ad24eff7f5afd343164560db24095d27fafb36c619ddf725c32e00b35a69"
+            "21e6b68e013cfc33a5bf96e141c42fd6fb23a34a237ae71a9e5f806a958552c8"
         ),
     },
     "calibration_seam": {
@@ -616,10 +666,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "cb480ea8735648bd089322bb434ce87f48fb71b7ad62f55f091d7e7356049c55"
+            "57311d9aedbf7ba9ebcbe9721a386002f5d27ed77b10a589e3466f2265c3f1ef"
         ),
         "policy_sha256": (
-            "775d7a91fa1fc4aebb312bd45f18e5d9a077bb38d936fc408a2f812c341ecc95"
+            "6d6638d38e999e8a8aec8fd72083a31a369dc5be1a1af57569c41e8b423ad39c"
         ),
     },
 }
@@ -805,9 +855,32 @@ def _check_target_registry_ref(
         failures.append(f"{filename} {owner}.target_registry.n_specs must be > 0.")
 
 
+def _check_base_pool_not_denied(manifest: Mapping, failures: list[str]) -> None:
+    """A release assembled from a denied pool may not be published, however it
+    reached the release directory (microcosm#856)."""
+
+    base_pool = manifest.get("base_pool")
+    if not isinstance(base_pool, Mapping):
+        return
+    match = denied_pool_publication_for(
+        publication_run_id=base_pool.get("publication_run_id"),
+        manifest_sha256=base_pool.get("manifest_sha256"),
+        pool_h5_sha256=base_pool.get("pool_h5_sha256"),
+        content_identity_sha256=base_pool.get("content_identity_sha256"),
+    )
+    if match is not None:
+        run_id, denied, how = match
+        failures.append(
+            f"build_manifest.json base_pool is denied publication {run_id!r} "
+            f"(matched by {how}; release_id {denied.release_id!r}) and cannot be "
+            f"published. Reason: {denied.reason}. Reference: {denied.reference}."
+        )
+
+
 def _check_build_manifest(
     manifest: Mapping, release_id: str, failures: list[str]
 ) -> None:
+    _check_base_pool_not_denied(manifest, failures)
     build_id = manifest.get("build_id")
     if not build_id:
         failures.append("build_manifest.json is missing 'build_id'.")
@@ -1097,10 +1170,31 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            if isinstance(revision, str) and revision != release_id:
+            revision_matches_release = revision == release_id or (
+                release_id == _UK_NATIONAL_RELEASE_ID
+                and isinstance(revision, str)
+                and revision.startswith(release_id + "-")
+                and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
+                    revision[len(release_id) + 1 :]
+                )
+                is not None
+            )
+            # A present-but-non-string revision must fail here rather than
+            # slide past the isinstance guard: publish collects only string
+            # revisions, so a numeric revision would otherwise vanish into an
+            # empty pin set and publish under a dangling tag.
+            if revision and (
+                not isinstance(revision, str) or not revision_matches_release
+            ):
+                expected = (
+                    f"the release id {release_id!r} or a "
+                    f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
+                    if release_id == _UK_NATIONAL_RELEASE_ID
+                    else f"the release id {release_id!r}"
+                )
                 failures.append(
                     f"release_manifest.json artifact {key!r} revision is "
-                    f"{revision!r}, expected the release id {release_id!r}."
+                    f"{revision!r}, expected {expected}."
                 )
             if isinstance(entry, Mapping):
                 _check_sha256_field(
@@ -1109,6 +1203,23 @@ def _check_release_manifest(
                     value=entry.get("sha256"),
                     failures=failures,
                 )
+        # One release pins one revision: individually grammar-valid revisions
+        # from two different cuts must refuse here, not later at publish.
+        distinct_revisions = sorted(
+            {
+                entry.get("revision")
+                for entry in artifacts.values()
+                if isinstance(entry, Mapping)
+                and isinstance(entry.get("revision"), str)
+                and entry.get("revision")
+            }
+        )
+        if len(distinct_revisions) > 1:
+            failures.append(
+                "release_manifest.json artifacts pin more than one revision "
+                f"({distinct_revisions}); every artifact must pin the same "
+                "release revision."
+            )
         if release_id.startswith("populace-us-"):
             _check_us_release_has_no_split_microdata_artifacts(
                 artifacts,
@@ -1425,6 +1536,8 @@ def _check_compatible_package_entries(
 def _expected_model_package(release_id: str) -> str | None:
     if release_id.startswith("populace-us-"):
         return "policyengine-us"
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        return "policyengine-uk"
     if release_id.startswith("populace-uk-"):
         return "policyengine-uk"
     return None
@@ -2504,15 +2617,29 @@ def _check_uk_gate_battery_report(
                     f"{owner}.phase must be {pinned_phase!r} per the committed "
                     f"spec, got {outcome.get('phase')!r}."
                 )
+        # Criticality is pinned per entry against the committed spec, so a
+        # relabel in either direction is a failure and cannot dodge the
+        # shippability recompute below.  `unreached`, `not_applicable` and
+        # any status outside the taxonomy are already refused above for every
+        # entry, diagnostic ones included; what the diagnostic label buys is
+        # only that `failed`/`evidence_absent` do not block, which is the
+        # declared posture for the four local fit gates until microcosm#762
+        # arms them.
+        expected_criticality = (
+            "diagnostic"
+            if entry_id in _UK_GATE_BATTERY_DIAGNOSTIC_IDS
+            else "release_blocking"
+        )
         criticality = outcome.get("criticality")
-        if criticality != "release_blocking":
-            # Every entry in this vintage blocks; a relabel to diagnostic
-            # would dodge the shippability recompute below.
+        if criticality != expected_criticality:
             failures.append(
-                f"{owner}.criticality must be 'release_blocking' per the "
+                f"{owner}.criticality must be {expected_criticality!r} per the "
                 f"committed spec, got {criticality!r}."
             )
-        elif status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES:
+        elif (
+            criticality == "release_blocking"
+            and status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES
+        ):
             # Shippability is recomputed here, per entry, instead of
             # trusting the report's own shippable flag.
             failures.append(
@@ -2889,9 +3016,12 @@ def _check_uk_release_certification(
     for scope in _UK_CERTIFICATION_PART_SCOPES.values():
         for gate_id in scope:
             union[gate_id] = union.get(gate_id, 0) + 1
-    if set(union) != _UK_GATE_BATTERY_ENTRY_IDS:
+    if set(union) | set(_UK_CERTIFICATION_EXCLUDED_GATE_IDS) != (
+        _UK_GATE_BATTERY_ENTRY_IDS
+    ):
         failures.append(
-            f"{file} mirrored part scopes do not union to the declared gate-entry set."
+            f"{file} mirrored part scopes plus certification exclusions do not "
+            "cover the declared gate-entry set."
         )
     overlap = sorted(
         gate_id
@@ -2933,6 +3063,13 @@ def _check_uk_release_certification(
             failures.append(
                 f"{file} spec.shared_gate_ids must be "
                 f"{sorted(_UK_CERTIFICATION_SHARED_GATE_IDS)}."
+            )
+        if list(spec.get("certification_excluded_gate_ids", ())) != sorted(
+            _UK_CERTIFICATION_EXCLUDED_GATE_IDS
+        ):
+            failures.append(
+                f"{file} spec.certification_excluded_gate_ids must be "
+                f"{sorted(_UK_CERTIFICATION_EXCLUDED_GATE_IDS)}."
             )
 
     if (
@@ -2981,6 +3118,58 @@ def _check_uk_release_certification(
             f"{file} attestation.signature does not authenticate the "
             "complete certification with the trusted release key."
         )
+
+
+def _check_uk_certification_evidence_binding(
+    certification: Mapping,
+    release_dir: Path,
+    failures: list[str],
+) -> None:
+    """Bind every signed evidence digest to the local file's actual bytes.
+
+    The certification signs the part-report and score-receipt digests; a
+    release directory whose copies were removed or rewritten must refuse
+    here, not validate on the digest fields alone.
+    """
+
+    parts = certification.get("parts")
+    parts = parts if isinstance(parts, Mapping) else {}
+    bindings: list[tuple[str, str, object]] = []
+    for part, filename in _UK_CERTIFICATION_PART_EVIDENCE_FILES.items():
+        part_payload = parts.get(part)
+        signed_sha = (
+            part_payload.get("sha256") if isinstance(part_payload, Mapping) else None
+        )
+        bindings.append((f"parts.{part}", filename, signed_sha))
+    score_receipt = certification.get("score_receipt")
+    bindings.append(
+        (
+            "score_receipt",
+            _UK_CERTIFICATION_SCORE_RECEIPT_FILE,
+            score_receipt.get("sha256") if isinstance(score_receipt, Mapping) else None,
+        )
+    )
+    for owner, filename, signed_sha in bindings:
+        path = release_dir / filename
+        if not path.is_file():
+            failures.append(
+                f"{_UK_RELEASE_CERTIFICATION_FILE} signs {owner} but the "
+                f"release directory is missing {filename!r}."
+            )
+            continue
+        if not isinstance(signed_sha, str) or not _SHA256_RE.fullmatch(signed_sha):
+            # Refuse, never skip: the parts block is shape-checked elsewhere
+            # but score_receipt.sha256 is not, and a malformed digest must
+            # not leave its evidence file unbound.
+            failures.append(
+                f"{_UK_RELEASE_CERTIFICATION_FILE} {owner}.sha256 is not a "
+                f"sha256 digest; {filename!r} cannot be bound."
+            )
+            continue
+        if _sha256(path) != signed_sha:
+            failures.append(
+                f"{filename} does not match the certification's signed {owner}.sha256."
+            )
 
 
 def _check_calibration_diagnostics(
@@ -4322,8 +4511,12 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 failures,
                 grandfathered_uk_june=release_id == _UK_JUNE_RELEASE_ID,
             )
-            if _is_uk_exact_k_release_id(release_id):
+            if (
+                _is_uk_exact_k_release_id(release_id)
+                or release_id == _UK_NATIONAL_RELEASE_ID
+            ):
                 _check_uk_calibration_diagnostics(diagnostics, failures)
+            if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
                 )
@@ -4410,6 +4603,11 @@ def validate_release_dir(release_dir: Path | str) -> None:
                 release_id=release_id,
                 calibration_diagnostics_sha256=calibration_diagnostics_sha256,
                 failures=failures,
+            )
+            _check_uk_certification_evidence_binding(
+                certification,
+                release_dir,
+                failures,
             )
 
     _check_cross_manifest_consistency(

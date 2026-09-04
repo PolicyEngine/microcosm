@@ -296,19 +296,6 @@ EXPECTED_SEED_GROUPS: Mapping[str, tuple[str, ...]] = {
         "pregnancy_assignment",
         "wic_claim_assignment",
         "snap_discretionary_exemption_assignment",
-        "immigration_humanitarian_paroled_one_year_afghanistan_assignment",
-        "immigration_humanitarian_paroled_one_year_ukraine_assignment",
-        "immigration_humanitarian_paroled_one_year_nicaragua_assignment",
-        "immigration_humanitarian_paroled_one_year_venezuela_assignment",
-        "immigration_humanitarian_refugee_assignment",
-        "immigration_humanitarian_asylee_assignment",
-        "immigration_humanitarian_deportation_withheld_assignment",
-        "immigration_humanitarian_tps_venezuela_assignment",
-        "immigration_humanitarian_tps_el_salvador_assignment",
-        "immigration_humanitarian_tps_honduras_assignment",
-        "immigration_humanitarian_tps_nicaragua_assignment",
-        "immigration_humanitarian_tps_nepal_assignment",
-        "immigration_humanitarian_tps_other_designated_assignment",
         "immigration_ead_workers_assignment",
         "immigration_ead_students_assignment",
         "ssi_take_up_assignment",
@@ -361,20 +348,20 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "406b2cf93a7fb94dc63f1a24a52cfb20362ab83195eb8ebf61d4ef43072280ec",
+    "authority": "e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "a53da3c26dfaf8f400fb74ef92f79555dd0c152319aa50317b52c5603d0af7b4",
+    "full_checkpoint": "b88f2d9c0f6f92c6cd81eb14d6b126afe59577b8bb392b394b2c6fbbafd195c5",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "014f90315324f72f45ece928bccc44f34b4d1e95c0582f1d7d73620f482da15f",
+    "graph_nodes": "271a7bb8d0b3f97ff344e0b7e68184fa74738a6585c24fc8781793db669f388b",
     "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "db175a952340b3ff2774215f320c4d19592c06b9959442639a6c561055f2442d",
-    "late_schedule": "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10",
+    "late_resource_semantics": "afebb6725373abf5b8dd4fdb77bf2814cb6fcc569cb606c0c30963a8f65c0bab",
+    "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
-    "seed_map": "f5301b13c672bd21cb33e357f0c25c762acab3ef44ca15ed88895ff2ffebc0af",
-    "seed_protocol": "61db02328d1844c9cb9c490599e33a25aea86eafadc7b940147585340f948d92",
-    "source_manifest": "b82d911a0263ebc1b6d5d8f82bb1076fd8d779bea49072ec42f02a8fe027cbe3",
+    "seed_map": "6b4902d9a640dd459942e588ae2cc7fb937f1c42ad814365c7c1616c98ce1b68",
+    "seed_protocol": "e63bbfa0f05302a672acd9914e3652c151cc7ee690182d8823dfb85329b1e911",
+    "source_manifest": "cd5ba8924d64da5425ee14cca82a774e3f4b2bb5aabe06df291cc3cc457287a9",
     "take_up": "fa186daea0f8dd641cc470e41d1a2953f887d45282ec990201298f47bedf8d4d",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }
@@ -442,14 +429,14 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "primary_targets": 65,
     "producer_authored_outputs": 92,
     "producer_compiled_outputs": 227,
-    "producer_inputs": 2_750,
+    "producer_inputs": 2_744,
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
     "resolved_references": 334,
-    "seed_owner_bindings": 125,
+    "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
-    "seed_sites": 66,
+    "seed_sites": 53,
     "seed_streams": 14,
     "source_operators": 16,
     "source_stages": 37,
@@ -1018,7 +1005,7 @@ def build_inventory_coverage(
         "producer_inputs_exact",
         clauses={
             "producer input rows differ": inputs_exact,
-            "input row count differs": input_count == 2750,
+            "input row count differs": input_count == 2744,
         },
         homes=("/imputation/producer_graph/nodes/*/inputs",),
         consumers=(
@@ -1026,7 +1013,7 @@ def build_inventory_coverage(
             "compiler_ir.node_slices",
         ),
         observed={"rows": input_count},
-        expected={"rows": 2750, "relation": "source rows preserved exactly"},
+        expected={"rows": 2744, "relation": "source rows preserved exactly"},
     )
     outputs_exact = set(expected_outputs) == set(compiled_by_id) and all(
         _json_equal(
@@ -1708,7 +1695,9 @@ def build_inventory_coverage(
             "sha256": _operational_free_sha256(geography_assignment),
             "authority_roles": sorted(geography_authorities),
             "target_vintage": _mapping(
-                geography_authorities.get("congressional_district_vintage_crosswalk"),
+                geography_authorities.get(
+                    "congressional_district_vintage_crosswalk"
+                ),
                 "checkpoint geography crosswalk authority",
             ).get("target_vintage"),
         },
@@ -1784,7 +1773,7 @@ def build_inventory_coverage(
         "seed_site_definitions_exact",
         clauses={
             "seed site definitions differ": site_definitions_exact,
-            "seed site count differs": len(protocol_sites) == 66,
+            "seed site count differs": len(protocol_sites) == 53,
         },
         homes=("/bundle/seed_protocol",),
         consumers=("compiler_ir.seed_stream_map.sites", "compiler_ir.node_slices"),
@@ -1792,7 +1781,7 @@ def build_inventory_coverage(
             "sites": len(protocol_sites),
             "sha256": sha256_json([site.to_wire() for site in protocol.sites]),
         },
-        expected={"sites": 66, "relation": "all site fields preserved exactly"},
+        expected={"sites": 53, "relation": "all site fields preserved exactly"},
     )
     binding_by_site = {binding.site: binding for binding in spec.seed_site_bindings}
     binding_exact = set(binding_by_site) == set(compiled_sites) and all(
@@ -1807,7 +1796,7 @@ def build_inventory_coverage(
             "owner binding count differs": sum(
                 len(site.owners) for site in compiled_sites.values()
             )
-            == 125,
+            == 112,
             "one or more sites have no owner": all(
                 site.owners for site in compiled_sites.values()
             ),
@@ -1817,7 +1806,7 @@ def build_inventory_coverage(
         observed={
             "bindings": sum(len(site.owners) for site in compiled_sites.values())
         },
-        expected={"bindings": 125, "coverage": "all 66 sites"},
+        expected={"bindings": 112, "coverage": "all 53 sites"},
     )
     expected_owner_sites: dict[tuple[str, str], list[str]] = {}
     for site in protocol.sites:
@@ -1861,7 +1850,7 @@ def build_inventory_coverage(
             "seed groups overlap": groups_disjoint,
             "seed groups do not cover the protocol exactly": set(grouped_ids)
             == set(protocol_sites),
-            "seed group cardinality differs": len(grouped_ids) == 66,
+            "seed group cardinality differs": len(grouped_ids) == 53,
         },
         homes=("/bundle/seed_protocol", "/spine/seed_site_bindings"),
         consumers=("compiler_ir.seed_stream_map",),
@@ -1871,7 +1860,7 @@ def build_inventory_coverage(
         },
         expected={
             "groups": len(EXPECTED_SEED_GROUPS),
-            "sites": 66,
+            "sites": 53,
             "partition": "disjoint and exhaustive",
         },
     )

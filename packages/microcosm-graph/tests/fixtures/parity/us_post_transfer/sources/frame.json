@@ -1,0 +1,257 @@
+{
+  "columns": {
+    "family": [
+      "family_id",
+      "family_spine_source_id",
+      "family_source_id",
+      "family_support_channel",
+      "family_support_clone_index"
+    ],
+    "household": [
+      "household_id",
+      "TYPEHUGQ",
+      "household_spine_source_id",
+      "household_source_id",
+      "household_support_channel",
+      "household_support_clone_index"
+    ],
+    "marital_unit": [
+      "marital_unit_id",
+      "marital_unit_spine_source_id",
+      "marital_unit_source_id",
+      "marital_unit_support_channel",
+      "marital_unit_support_clone_index"
+    ],
+    "person": [
+      "person_id",
+      "person_household_id",
+      "person_tax_unit_id",
+      "person_spm_unit_id",
+      "person_family_id",
+      "person_marital_unit_id",
+      "A_AGE",
+      "A_SEX",
+      "source_year",
+      "measured",
+      "person_spine_source_id",
+      "person_source_id",
+      "person_support_channel",
+      "person_support_clone_index",
+      "age",
+      "SEMP",
+      "long_term_capital_gains_before_response",
+      "non_sch_d_capital_gains",
+      "schedule_d_capital_gain_distributions",
+      "self_employment_income_before_lsr",
+      "non_qualified_dividend_income",
+      "estate_income_would_be_qualified",
+      "farm_operations_income_would_be_qualified",
+      "farm_rent_income_would_be_qualified",
+      "partnership_s_corp_income_would_be_qualified",
+      "rental_income_would_be_qualified",
+      "self_employment_income_would_be_qualified",
+      "sstb_self_employment_income_would_be_qualified",
+      "business_is_sstb",
+      "qualified_bdc_income",
+      "qualified_reit_and_ptp_income",
+      "sstb_self_employment_income_before_lsr",
+      "sstb_unadjusted_basis_qualified_property",
+      "sstb_w2_wages_from_qualified_business",
+      "unadjusted_basis_qualified_property",
+      "w2_wages_from_qualified_business",
+      "takes_up_medicaid_if_eligible",
+      "takes_up_chip_if_eligible",
+      "takes_up_basic_health_program_if_eligible",
+      "takes_up_medicare_if_eligible",
+      "takes_up_ssi_if_eligible",
+      "takes_up_head_start_if_eligible",
+      "takes_up_early_head_start_if_eligible",
+      "takes_up_wic_if_eligible",
+      "short_term_capital_gains",
+      "long_term_capital_gains_on_collectibles"
+    ],
+    "spm_unit": [
+      "spm_unit_id",
+      "spm_unit_spine_source_id",
+      "spm_unit_source_id",
+      "spm_unit_support_channel",
+      "spm_unit_support_clone_index",
+      "takes_up_snap_if_eligible",
+      "takes_up_tanf_if_eligible",
+      "takes_up_housing_assistance_if_eligible"
+    ],
+    "tax_unit": [
+      "tax_unit_id",
+      "tax_unit_spine_source_id",
+      "tax_unit_source_id",
+      "tax_unit_support_channel",
+      "tax_unit_support_clone_index",
+      "takes_up_dc_ptc",
+      "takes_up_aca_if_eligible",
+      "takes_up_ca_premium_subsidy_if_eligible",
+      "takes_up_co_premium_assistance_if_eligible",
+      "takes_up_nm_premium_assistance_if_eligible",
+      "puf_capital_gains_tail_transfer_applied",
+      "puf_capital_gains_tail_donor_source_id",
+      "puf_capital_gains_tail_donor_is_synthetic",
+      "puf_capital_gains_tail_donor_filing_status_code",
+      "puf_capital_gains_tail_donor_agi_band_index",
+      "puf_capital_gains_tail_transfer_weight",
+      "unrecaptured_section_1250_gain"
+    ]
+  },
+  "mass_log": [
+    {
+      "declared_factor": 100.0,
+      "entity": "household",
+      "new_total": 200.0,
+      "old_total": 2.0,
+      "reason": "composition-preserving ASEC survey sampling normalization to full-source household mass"
+    },
+    {
+      "declared_factor": 0.5,
+      "entity": "household",
+      "new_total": 100.0,
+      "old_total": 200.0,
+      "reason": "allocated 'asec' source mass in pre-operator spine assembly"
+    },
+    {
+      "declared_factor": 100.0,
+      "entity": "household",
+      "new_total": 200.0,
+      "old_total": 2.0,
+      "reason": "composition-preserving ACS survey sampling normalization to full-source household mass"
+    },
+    {
+      "declared_factor": 0.5,
+      "entity": "household",
+      "new_total": 100.0,
+      "old_total": 200.0,
+      "reason": "allocated 'acs' source mass in pre-operator spine assembly"
+    }
+  ],
+  "metadata": {
+    "us_puf_clone_attachment_manifest": {
+      "authority_form": "full_clone_identity_no_manifest",
+      "clone_attachment_fraction": 1.0,
+      "clone_attachment_seed": 0,
+      "eligible_household_count": 2,
+      "exact_count_rule": "floor(fraction * eligible)",
+      "post_attachment_transform": {
+        "stage": "h3_fixture_tail",
+        "tail_clone_index": 2,
+        "tail_household_count": 1,
+        "tail_household_source_ids_sha256": "8e4e01a0ad408a616a33dd47445ca5c5eba49bef77a380c5f36317e5cf2b2c59",
+        "tail_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "realized_household_count": 2,
+      "requested_household_count": 2,
+      "selected_household_source_ids_sha256": "d931b7221739c41a0e26e44011f03d4439db9e6647bbeef3e6a3817d23ea0eb5",
+      "version": 2
+    },
+    "us_spine_assembly_manifest": {
+      "channels": [
+        "asec",
+        "acs"
+      ],
+      "native_row_counts": {
+        "family": {
+          "acs": 1,
+          "asec": 1
+        },
+        "household": {
+          "acs": 1,
+          "asec": 1
+        },
+        "marital_unit": {
+          "acs": 1,
+          "asec": 1
+        },
+        "person": {
+          "acs": 1,
+          "asec": 1
+        },
+        "spm_unit": {
+          "acs": 1,
+          "asec": 1
+        },
+        "tax_unit": {
+          "acs": 1,
+          "asec": 1
+        }
+      },
+      "version": 1
+    },
+    "us_stacked_spine_manifest": {
+      "acs_native_group_quarters": {
+        "household_count": 0,
+        "household_spine_source_ids_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "native_household_count": 1,
+        "native_household_mapping_sha256": "a1741bb66604dbe5567707a95e15b6d5a89161863e938faad0d853a7890e260b",
+        "native_household_order_sha256": "a1741bb66604dbe5567707a95e15b6d5a89161863e938faad0d853a7890e260b",
+        "native_person_count": 1,
+        "native_person_mapping_sha256": "21c03b6eb5e41751b6c824996d83df2ccb50a7183997d61f445a2986f6d2e826",
+        "native_person_order_sha256": "21c03b6eb5e41751b6c824996d83df2ccb50a7183997d61f445a2986f6d2e826",
+        "one_person_per_household": true,
+        "person_count": 0,
+        "person_spine_lineages_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "selection": "TYPEHUGQ in {2,3} on sampled native ACS rows",
+        "source_channel": "acs",
+        "version": 1
+      },
+      "household_mass_shares": {
+        "acs": 0.5,
+        "asec": 0.5
+      },
+      "mass_anchor_channel": "asec",
+      "sample_fraction": 0.01,
+      "sample_seed": 578,
+      "survey_samples": {
+        "acs": {
+          "eligible_household_count": 100,
+          "exact_count_rule": "floor(fraction * eligible)",
+          "fraction": 0.01,
+          "incoming_household_mass": 200.0,
+          "normalization_factor": 100.0,
+          "normalized_household_mass": 200.0,
+          "realized_household_count": 1,
+          "requested_household_count": 1,
+          "sampled_household_mass": 2.0,
+          "seed": 578,
+          "selected_household_ids_sha256": "8e4e01a0ad408a616a33dd47445ca5c5eba49bef77a380c5f36317e5cf2b2c59"
+        },
+        "asec": {
+          "eligible_household_count": 100,
+          "exact_count_rule": "floor(fraction * eligible)",
+          "fraction": 0.01,
+          "incoming_household_mass": 200.0,
+          "normalization_factor": 100.0,
+          "normalized_household_mass": 200.0,
+          "realized_household_count": 1,
+          "requested_household_count": 1,
+          "sampled_household_mass": 2.0,
+          "seed": 578,
+          "selected_household_ids_sha256": "8e4e01a0ad408a616a33dd47445ca5c5eba49bef77a380c5f36317e5cf2b2c59"
+        }
+      },
+      "version": 4,
+      "weight_harmonization": {
+        "acs": {
+          "allocated_mass": 100.0,
+          "declared_allocation": 100.0,
+          "incoming_mass": 200.0,
+          "scale_factor": 0.5,
+          "share": 0.5
+        },
+        "asec": {
+          "allocated_mass": 100.0,
+          "declared_allocation": 100.0,
+          "incoming_mass": 200.0,
+          "scale_factor": 0.5,
+          "share": 0.5
+        }
+      }
+    }
+  },
+  "schema_version": 1
+}

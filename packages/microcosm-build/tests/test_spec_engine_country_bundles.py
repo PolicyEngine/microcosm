@@ -1,4 +1,4 @@
-"""UK and Belgian shared-core compile proofs for the F0 CountrySpec seam."""
+"""Shared-core country compile proofs for the F0 CountrySpec seam."""
 
 from __future__ import annotations
 
@@ -25,14 +25,27 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
+AM_SPEC_SHA256 = "b128d14f8e6351d745a16ef4537d5c1b8d71d11b9d96cb8a65f1a4fb953f13ed"
 
 
 @pytest.mark.parametrize(
     ("country", "expected_spec_sha256", "expected_columns", "expected_entities"),
     [
         (
+            "am",
+            AM_SPEC_SHA256,
+            {
+                "household.household_id",
+                "person.age",
+                "person.marz_code",
+                "person.person_id",
+                "person.sex",
+            },
+            {"household", "person"},
+        ),
+        (
             "be",
-            "16118de0f95b7821a7ede20104d1466235d6900c665d5220b2a68a0a52007515",
+            "8c6018eaf518b239a5625f8df8bf783ce4723a03704d100f3dbf4c2bb7765772",
             {
                 "household.household_id",
                 "person.person_id",
@@ -42,7 +55,7 @@ EXPECTED_RESOURCES = {
         ),
         (
             "uk",
-            "c4e77decba4be76d920af1c61c1244c365132bea0e77324c1a1f8f868475b990",
+            "d732d3aa599a5c911f1900419142ddff6a1771b6b95c38e06b4c0e513619ead6",
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -81,9 +94,13 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
 
 
 def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None:
+    am = compile_spec(load_bundle("am"))
     be = compile_spec(load_bundle("be"))
     uk = compile_spec(load_bundle("uk"))
 
+    assert am.resource("spine")["support_roles"] == [
+        {"id": "populace_us_donor_base", "kind": "none"}
+    ]
     assert be.resource("spine")["support_roles"] == [
         {"id": "silc_base", "kind": "none"}
     ]
@@ -94,6 +111,10 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
             "clone_index": 1,
         }
     ]
+    assert am.resource("geography")["assignment"]["kernels"] == {
+        "assign": "kernel:clone_assign_communities",
+        "validate": "kernel:am_community_geography_gate",
+    }
     assert be.resource("geography")["assignment"]["kernels"] == {
         "assign": "kernel:clone_assign_communes",
         "validate": "kernel:be_commune_geography_gate",
@@ -106,6 +127,10 @@ def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None
 
 def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> None:
     country_contract_ids = {
+        "am_community_geography_gate",
+        "assign_am_marz",
+        "clone_assign_communities",
+        "load_populace_us_support_pool",
         "silc_load",
         "clone_assign_communes",
         "be_commune_geography_gate",
@@ -130,6 +155,28 @@ def test_country_contract_ids_do_not_change_the_implementation_digest() -> None:
         F0_KERNEL_REGISTRY.implementation_sha256
         == implemented_only.implementation_sha256
     )
+
+
+def test_am_generation_zero_views_come_from_the_country_spec_seam() -> None:
+    spec = load_country_spec("am")
+
+    assert spec.sources is not None
+    assert tuple(spec.sources.stage_map()) == (
+        "load_populace_us_support_pool",
+        "assign_am_marz",
+    )
+    assert spec.geography_spine is not None
+    assert spec.geography_spine.geography_spine.stage == "clone_assign_communities"
+    assert spec.gates is not None
+    assert spec.release_contract is not None
+    assert not spec.release_contract.artifact_repo_private
+    assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
+        "gates.json",
+        "geography_spine.json",
+        "release_contract.json",
+        "source_stages.json",
+        "target_references.json",
+    }
 
 
 def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> None:
@@ -227,6 +274,34 @@ def test_be_smoke_build_refuses_without_gated_inputs_and_stage_bindings() -> Non
         match=(
             r"missing \['silc_load', 'clone_assign_communes'\].*"
             r"There are no stubs or fallbacks"
+        ),
+    ):
+        country_stage_plan(spec, {})
+
+
+def test_am_smoke_build_refuses_without_harvests_and_stage_bindings() -> None:
+    """Compile succeeds, but engine-free v1 has no runnable AM stage map."""
+
+    spec = load_country_spec("am")
+    compiled = compile_spec(spec.resolved_spec)
+    assert compiled.spec_binding.country == "am"
+
+    stages = spec.sources.stage_map()
+    assert {
+        artifact["kind"]
+        for artifact in stages["load_populace_us_support_pool"].artifacts
+    } == {"public_microdata"}
+    assert {artifact["kind"] for artifact in stages["assign_am_marz"].artifacts} == {
+        "public_aggregated_counts"
+    }
+    build_package = Path(__file__).parents[1] / "src/microcosm/build"
+    assert not (build_package / "am_runtime").exists()
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"missing \['load_populace_us_support_pool', 'assign_am_marz', "
+            r"'clone_assign_communities'\].*There are no stubs or fallbacks"
         ),
     ):
         country_stage_plan(spec, {})

@@ -38,6 +38,7 @@ from types import MappingProxyType
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
@@ -47,14 +48,18 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_gate,
+    column_implication_gate,
     enum_domain_gate,
     ledger_compile_parity_gate,
     nonnegative_columns_gate,
+    per_family_fit_gate,
     support_gate,
     target_surface_gate,
     weights_audit_gate,
 )
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
+from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -310,6 +315,146 @@ def _evaluate_nonnegative_columns(
     )
 
 
+def _evaluate_column_implication(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    """Bind a person signal to a benunit flag and its same-source carrier.
+
+    The capital checks (sentinel floor, sentinel parity, same-source
+    equality, nonfinite) are deliberately re-derived at the terminal frame
+    even though ``cohere_uc_capital`` establishes them at stage time: they
+    guard the pipeline BETWEEN that stage and the terminal boundary — CGT
+    cloning and donor stacking, salary sacrifice, student loans, age tail,
+    and assembly — any of which could rebuild an entity table and corrupt
+    one column without the other. Against the producer itself they cannot
+    fail; that is not their job (adversarial-review finding 3).
+    """
+
+    frame = context.frame
+    assert frame is not None  # GateBinding enforces frame evidence first.
+    source_entity = str(parameters["numeric_entity"])
+    target_entity = str(parameters["boolean_entity"])
+    source = frame.table(source_entity)
+    target = frame.table(target_entity)
+    numeric_column = str(parameters["numeric_column"])
+    source_group_column = str(parameters["numeric_group_column"])
+    target_id_column = str(parameters["boolean_id_column"])
+    boolean_column = str(parameters["boolean_column"])
+    threshold = float(parameters.get("threshold", 0.0))
+
+    required_source = {numeric_column, source_group_column}
+    missing_source = sorted(required_source - set(source.columns))
+    required_target = {target_id_column, boolean_column}
+    missing_target = sorted(required_target - set(target.columns))
+    if missing_source or missing_target:
+        raise ValueError(
+            "column_implication evidence is missing columns: "
+            f"{source_entity}={missing_source}, {target_entity}={missing_target}."
+        )
+    if target[target_id_column].duplicated().any():
+        raise ValueError(f"{target_entity}.{target_id_column} must be unique.")
+
+    if threshold < 0:
+        raise ValueError(
+            f"column_implication amount threshold must be nonnegative, got {threshold!r}."
+        )
+    numeric = pd.to_numeric(source[numeric_column], errors="coerce")
+    positive_ids = set(source.loc[numeric > threshold, source_group_column].tolist())
+    aggregated = target[target_id_column].isin(positive_ids).to_numpy(dtype=np.int8)
+    # The configured threshold applies to the person-level amounts above; the
+    # aggregated evidence is a 0/1 indicator, so the primitive's threshold is
+    # pinned at 0.0 regardless — reusing the amount threshold there would make
+    # any configuration >= 1 vacuously green (adversarial-review finding 2).
+    result = column_implication_gate(
+        aggregated,
+        target[boolean_column],
+        numeric_column=f"{source_entity}.{numeric_column} aggregated to {target_entity}",
+        boolean_column=f"{target_entity}.{boolean_column}",
+        threshold=0.0,
+    )
+
+    capital_column = str(parameters["capital_column"])
+    carrier_column = str(parameters["carrier_column"])
+    sentinel = float(parameters.get("sentinel", -1.0))
+    missing_capital = sorted({capital_column, carrier_column} - set(target.columns))
+    if missing_capital:
+        raise ValueError(
+            f"column_implication {target_entity} capital evidence is missing "
+            f"columns {missing_capital}."
+        )
+    capital = pd.to_numeric(target[capital_column], errors="coerce").to_numpy(
+        dtype=float
+    )
+    carrier = pd.to_numeric(target[carrier_column], errors="coerce").to_numpy(
+        dtype=float
+    )
+    nonfinite = ~np.isfinite(capital) | ~np.isfinite(carrier)
+    # The -1 contract reserves exactly one negative: a value is either the
+    # sentinel or nonnegative. A bare floor (`< sentinel`) would admit the
+    # open interval between them — the one region the contract does not
+    # define (adversarial-review verification residual 1). Sentinel equality
+    # is exact (#833): every producer writes the -1.0 literal or a
+    # nonnegative amount, and a tolerance band would silently reclassify a
+    # corrupted near-sentinel value as a declared absence.
+    out_of_domain = np.isfinite(capital) & ~(
+        (capital == sentinel) | (capital >= 0.0)
+    )
+    carrier_out_of_domain = np.isfinite(carrier) & ~(
+        (carrier == sentinel) | (carrier >= 0.0)
+    )
+    sentinel_mismatch = (capital == sentinel) != (carrier == sentinel)
+    same_source_mismatch = (
+        np.isfinite(capital) & np.isfinite(carrier) & (capital != carrier)
+    )
+
+    failures = list(result.failures)
+    if nonfinite.any():
+        failures.append(
+            f"{target_entity}.{capital_column}/{carrier_column}: "
+            f"{int(nonfinite.sum())} row(s) have non-finite carrier evidence."
+        )
+    if out_of_domain.any():
+        failures.append(
+            f"{target_entity}.{capital_column}: {int(out_of_domain.sum())} "
+            f"value(s) outside the declared domain (exactly the {sentinel:g} "
+            "sentinel or >= 0)."
+        )
+    if carrier_out_of_domain.any():
+        failures.append(
+            f"{target_entity}.{carrier_column}: "
+            f"{int(carrier_out_of_domain.sum())} value(s) outside the declared "
+            f"domain (exactly the {sentinel:g} sentinel or >= 0)."
+        )
+    if sentinel_mismatch.any():
+        failures.append(
+            f"{target_entity}.{capital_column}: sentinel {sentinel:g} is allowed "
+            f"only where {carrier_column} has the same sentinel; "
+            f"{int(sentinel_mismatch.sum())} mismatch(es)."
+        )
+    if same_source_mismatch.any():
+        failures.append(
+            f"{target_entity}.{capital_column} must equal {carrier_column}; "
+            f"{int(same_source_mismatch.sum())} mismatch(es)."
+        )
+    return GateResult(
+        name="column_implication",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            **dict(result.details),
+            "amount_threshold": threshold,
+            "capital_column": f"{target_entity}.{capital_column}",
+            "carrier_column": f"{target_entity}.{carrier_column}",
+            "sentinel": sentinel,
+            "capital_domain_violation_count": int(out_of_domain.sum()),
+            "carrier_domain_violation_count": int(carrier_out_of_domain.sum()),
+            "sentinel_mismatch_count": int(sentinel_mismatch.sum()),
+            "same_source_mismatch_count": int(same_source_mismatch.sum()),
+            "nonfinite_capital_count": int(nonfinite.sum()),
+        },
+    )
+
+
 def _evaluate_take_up_signal(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -361,6 +506,7 @@ def _evaluate_support(
         "lcfs_consumption_support_bounds.json",
         "etb_vat_support_bounds.json",
         "etb_services_support_bounds.json",
+        "uc_deduction_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -633,6 +779,90 @@ def _evaluate_weight_ratio(
     return uk_weight_ratio_gate(weights, **dict(parameters))
 
 
+def _evaluate_geography_ladder(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    household = _uk_gate_surface(context.frame).household
+    weights = _household_weights(household)
+    return uk_geography_ladder_gate(household, weights, **dict(parameters))
+
+
+def _local_area_roster(
+    resource: str, levels: tuple[str, ...]
+) -> dict[str, tuple[str, ...]]:
+    payload = json.loads(files("microcosm.build.uk").joinpath(resource).read_text())
+    declared = payload.get("levels")
+    if not isinstance(declared, Mapping):
+        raise ValueError(f"{resource} must expose a levels object.")
+    roster: dict[str, tuple[str, ...]] = {}
+    for level in levels:
+        row = declared.get(level)
+        if not isinstance(row, Mapping):
+            raise ValueError(f"{resource} must expose level {level!r}.")
+        area_ids = row.get("area_ids")
+        if not isinstance(area_ids, (list, tuple)):
+            raise ValueError(f"{resource} level {level!r} must expose area_ids.")
+        roster[level] = tuple(str(area_id) for area_id in area_ids)
+    return roster
+
+
+def _evaluate_area_support(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    kwargs = dict(parameters)
+    resource = str(kwargs.pop("crosswalk_resource"))
+    levels = tuple(str(level) for level in kwargs["geography_levels"])
+    return area_support_gate(
+        context.artifacts["uk_area_support_summary"],
+        area_roster=_local_area_roster(resource, levels),
+        **kwargs,
+    )
+
+
+def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:
+    if hasattr(evidence, "to_dict"):
+        rows = evidence.to_dict(orient="records")
+    elif isinstance(evidence, (list, tuple)):
+        rows = evidence
+    else:
+        raise TypeError(
+            "local_target_diagnostics must be a DataFrame or a sequence of rows."
+        )
+    items: list[tuple[str, float]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            raise TypeError(f"local target diagnostic row {index} must be a mapping.")
+        family = str(row.get("family", "")).strip()
+        area_code = str(row.get("area_code", "")).strip()
+        metric = str(row.get("metric", "")).strip()
+        if not family or not area_code or not metric:
+            raise ValueError(
+                f"local target diagnostic row {index} must name family, "
+                "area_code, and metric."
+            )
+        error = float(row["relative_error"])
+        if not np.isfinite(error):
+            raise ValueError(
+                f"local target diagnostic {family}/{area_code}/{metric} has "
+                "a non-finite relative_error."
+            )
+        items.append((f"{family}/{area_code}/{metric}", error))
+    if not items:
+        raise ValueError("local_target_diagnostics must not be empty.")
+    return tuple(items)
+
+
+def _evaluate_per_family_fit(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    items = _local_target_error_items(context.artifacts["local_target_diagnostics"])
+    return per_family_fit_gate(
+        (name for name, _ in items),
+        (error for _, error in items),
+        **dict(parameters),
+    )
+
+
 def _evaluate_weights_audit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -861,8 +1091,22 @@ def _local_metric_by_target_id() -> dict[str, str]:
 def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    kwargs = dict(parameters)
+    if kwargs.pop("surface", None) == "local_candidate":
+        errors = dict(
+            _local_target_error_items(context.artifacts["local_target_diagnostics"])
+        )
+        return uk_target_fit_gate(errors, **kwargs)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(parity.target_relative_errors, **dict(parameters))
+    return uk_target_fit_gate(parity.target_relative_errors, **kwargs)
+
+
+def _target_fit_required_artifacts(
+    parameters: Mapping[str, Any],
+) -> frozenset[str]:
+    if parameters.get("surface") == "local_candidate":
+        return frozenset({"local_target_diagnostics"})
+    return frozenset({"parity_evidence"})
 
 
 def _evaluate_input_mass_parity(
@@ -1143,6 +1387,24 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_nonnegative_columns,
         artifact_keys=frozenset({"build_stage_names"}),
     ),
+    "column_implication": UKGateBinding(
+        name="column_implication",
+        evaluator=_evaluate_column_implication,
+        parameter_keys=frozenset(
+            {
+                "numeric_entity",
+                "numeric_column",
+                "numeric_group_column",
+                "boolean_entity",
+                "boolean_id_column",
+                "boolean_column",
+                "threshold",
+                "capital_column",
+                "carrier_column",
+                "sentinel",
+            }
+        ),
+    ),
     "take_up_signal": UKGateBinding(
         name="take_up_signal",
         evaluator=_evaluate_take_up_signal,
@@ -1190,6 +1452,41 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_weight_ratio,
         parameter_keys=frozenset({"maximum_max_to_median_ratio"}),
     ),
+    "spine_agreement": UKGateBinding(
+        name="spine_agreement",
+        evaluator=_evaluate_geography_ladder,
+        legacy_name="uk_geography_ladder",
+    ),
+    "area_support": UKGateBinding(
+        name="area_support",
+        evaluator=_evaluate_area_support,
+        parameter_keys=frozenset(
+            {
+                "crosswalk_resource",
+                "geography_levels",
+                "minimum_rows",
+                "minimum_effective_sample_size",
+                "minimum_distinct_sources",
+            }
+        ),
+        artifact_keys=frozenset({"uk_area_support_summary"}),
+        needs_frame=False,
+    ),
+    "per_family_fit": UKGateBinding(
+        name="per_family_fit",
+        evaluator=_evaluate_per_family_fit,
+        parameter_keys=frozenset(
+            {
+                "within",
+                "min_family_share",
+                "hard_within",
+                "min_hard_family_share",
+                "min_family_size",
+            }
+        ),
+        artifact_keys=frozenset({"local_target_diagnostics"}),
+        needs_frame=False,
+    ),
     "export_surface": UKGateBinding(
         name="export_surface",
         evaluator=_evaluate_export_surface,
@@ -1216,8 +1513,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "target_fit": UKGateBinding(
         name="target_fit",
         evaluator=_evaluate_target_fit,
-        parameter_keys=frozenset({"max_abs_relative_error", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        parameter_keys=frozenset(
+            {"max_abs_relative_error", "reviewed_exclusions", "surface"}
+        ),
+        artifact_selector=_target_fit_required_artifacts,
         needs_frame=False,
     ),
     "input_mass_parity": UKGateBinding(

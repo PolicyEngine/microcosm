@@ -150,6 +150,11 @@ from microcosm.build.us_runtime import (
     with_us_workers_compensation,
     write_puf_capital_gains_tail_manifest,
 )
+from microcosm.build.us_runtime.h5_io import (
+    assert_h5_unchanged,
+    refuse_denied_frame,
+    refuse_denied_pool_h5,
+)
 from microcosm.build.us_runtime.puf_qrf_chain import (
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
@@ -3238,6 +3243,9 @@ def _parse_asec_source_paths(values: list[str]) -> dict[int, Path]:
 
 
 def _load_frame(path: Path) -> Frame:
+    consumer = "PUF support base --base-h5 loader (_load_frame)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
+
     from policyengine_us.data import USSingleYearDataset
 
     dataset = USSingleYearDataset(file_path=str(path))
@@ -3250,11 +3258,14 @@ def _load_frame(path: Path) -> Frame:
         "marital_unit": dataset.marital_unit.copy(),
     }
     weights = tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
-    return Frame(
+    assert_h5_unchanged(path, sha256, consumer=consumer)
+    frame = Frame(
         tables,
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+    refuse_denied_frame(frame, consumer=consumer)
+    return frame
 
 
 def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:

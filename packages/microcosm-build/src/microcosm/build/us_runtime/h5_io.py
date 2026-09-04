@@ -39,6 +39,10 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.data.denied_pools import (
+    DENIED_POOL_PUBLICATIONS,
+    DeniedPoolPublication,
+)
 from microcosm.frame import (
     Frame,
     WeightKind,
@@ -52,6 +56,17 @@ from microcosm.frame.units import US_SCHEMA
 __all__ = [
     "AuthenticatedPoolH5",
     "AuthenticatedPoolH5MismatchError",
+    "DENIED_POOL_PUBLICATIONS",
+    "DeniedPoolPublication",
+    "POOL_CONTENT_IDENTITY_VERSION",
+    "content_identity_of_household_weights",
+    "frame_content_identity",
+    "refuse_denied_content_identity",
+    "refuse_denied_frame",
+    "assert_h5_unchanged",
+    "pool_h5_content_identity",
+    "refuse_denied_pool_h5",
+    "refuse_denied_pool_h5_digest",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
@@ -419,6 +434,136 @@ class AuthenticatedPoolH5MismatchError(RuntimeError):
     """A pool H5 no longer matches the bytes authenticated by its manifest."""
 
 
+def _file_sha256_stream(path: str | Path) -> str:
+    """Stream a file's SHA-256 (a pool H5 is gigabytes)."""
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+#: Version of the packaging-independent content identity. Version 2 hashes the
+#: sorted multiset of household weights with the household count: no ids, no
+#: optional columns, no row order, so relabelling ids or dropping provenance
+#: columns leaves it unchanged while any change to the weights changes it.
+POOL_CONTENT_IDENTITY_VERSION = 2
+
+
+def content_identity_of_household_weights(weights: np.ndarray) -> str:
+    """Version-2 content identity of a household weight vector."""
+
+    values = np.sort(np.asarray(weights, dtype=np.float64))
+    canonical = (
+        f"v{POOL_CONTENT_IDENTITY_VERSION}\n{len(values)}\n"
+        + "\n".join(f"{value:.17g}" for value in values)
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def pool_h5_content_identity(path: str | Path) -> str | None:
+    """Content identity of an H5's household weights, or ``None`` if it has none.
+
+    A whole-file digest changes when the artifact-metadata table is dropped
+    or the file is re-serialized; the household weights do not.
+    """
+
+    try:
+        with pd.HDFStore(path, mode="r") as store:
+            if "/household" not in store.keys():
+                return None
+            table = store.get("household")
+    except Exception:  # noqa: BLE001 - unreadable or not an HDF file
+        return None
+    if not isinstance(table, pd.DataFrame) or "household_weight" not in table.columns:
+        return None
+    return content_identity_of_household_weights(
+        table["household_weight"].to_numpy(dtype=np.float64)
+    )
+
+
+def frame_content_identity(frame: Frame) -> str:
+    """Content identity of a loaded frame's household weights (in memory)."""
+
+    return content_identity_of_household_weights(frame.weights_for("household").values)
+
+
+def _refuse_denied_content_identity(identity: str, *, consumer: str, how: str) -> None:
+    for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+        if identity == denied_publication.content_identity_sha256:
+            raise ValueError(
+                f"{consumer}: content identity {identity} ({how}) is the pool of "
+                f"denied publication {denied_run_id!r} (release_id="
+                f"{denied_publication.release_id!r}) and is refused even after "
+                "repackaging, metadata stripping, or relabelling. Reason: "
+                f"{denied_publication.reason}. Reference: "
+                f"{denied_publication.reference}."
+            )
+
+
+def refuse_denied_content_identity(identity: str, *, consumer: str, how: str) -> None:
+    """Refuse a content identity on the sealed deny-list (public wrapper)."""
+
+    _refuse_denied_content_identity(identity, consumer=consumer, how=how)
+
+
+def refuse_denied_frame(frame: Frame, *, consumer: str) -> str:
+    """Refuse a loaded frame whose household weights are a denied pool's.
+
+    Computed from memory, after the read, so a file swapped between the
+    on-disk checks and the read is still caught by what was actually loaded.
+    Returns the identity for receipts.
+    """
+
+    identity = frame_content_identity(frame)
+    _refuse_denied_content_identity(identity, consumer=consumer, how="loaded frame")
+    return identity
+
+
+def refuse_denied_pool_h5_digest(sha256: str, *, consumer: str) -> None:
+    """Refuse an H5 whose bytes are a denied publication's pool, however presented."""
+
+    for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+        if sha256 == denied_publication.pool_h5_sha256:
+            raise ValueError(
+                f"{consumer}: H5 bytes (SHA-256 {sha256}) are the pool of denied "
+                f"publication {denied_run_id!r} (release_id="
+                f"{denied_publication.release_id!r}) and are refused even without "
+                f"pool identity metadata. Reason: {denied_publication.reason}. "
+                f"Reference: {denied_publication.reference}."
+            )
+
+
+def refuse_denied_pool_h5(path: str | Path, *, consumer: str) -> str:
+    """The central refusal boundary for every generic H5 ingress.
+
+    Checks the file's byte digest and its packaging-independent content
+    identity against the sealed deny-list, and returns the byte digest so the
+    caller can verify with :func:`assert_h5_unchanged` after it has read the
+    file (a pathname can be replaced between hashing and reading).
+    """
+
+    sha256 = _file_sha256_stream(path)
+    refuse_denied_pool_h5_digest(sha256, consumer=consumer)
+    identity = pool_h5_content_identity(path)
+    if identity is not None:
+        _refuse_denied_content_identity(identity, consumer=consumer, how="on disk")
+    return sha256
+
+
+def assert_h5_unchanged(path: str | Path, sha256: str, *, consumer: str) -> None:
+    """Refuse a read whose file changed between the refusal check and the read."""
+
+    observed = _file_sha256_stream(path)
+    if observed != sha256:
+        raise ValueError(
+            f"{consumer}: {path} changed while being read (SHA-256 {sha256} before, "
+            f"{observed} after); the read is refused."
+        )
+
+
 @dataclass(frozen=True)
 class AuthenticatedPoolH5:
     """Immutable identity of the pool H5 authorized by one manifest buffer."""
@@ -428,6 +573,7 @@ class AuthenticatedPoolH5:
     size_bytes: int
     publication_run_id: str
     manifest_sha256: str
+    content_identity_sha256: str | None = None
 
     def verified_digest(self, *, consumer: str) -> str:
         """Re-verify the pathname and return only the authenticated digest."""
@@ -567,6 +713,28 @@ def us_multispine_pool_release_receipt(
 ) -> dict[str, object]:
     """Build self-contained release evidence from an authenticated pool."""
 
+    # The scoring-only loader may authenticate a denied publication; nothing
+    # it returns may become release evidence.
+    for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+        if (
+            authenticated_pool_h5.publication_run_id == denied_run_id
+            or authenticated_pool_h5.manifest_sha256
+            == denied_publication.manifest_sha256
+            or authenticated_pool_h5.sha256 == denied_publication.pool_h5_sha256
+            or (
+                authenticated_pool_h5.content_identity_sha256 is not None
+                and authenticated_pool_h5.content_identity_sha256
+                == denied_publication.content_identity_sha256
+            )
+        ):
+            raise ValueError(
+                f"US multispine pool publication {denied_run_id!r} is on the "
+                "sealed deny-list and cannot become a release receipt, even "
+                "from scoring-only evidence. Reason: "
+                f"{denied_publication.reason}. Reference: "
+                f"{denied_publication.reference}."
+            )
+
     status = manifest.get("status")
     simulation_ready = manifest.get("simulation_ready")
     is_ready = status == "simulation_ready" and simulation_ready is True
@@ -667,6 +835,7 @@ def us_multispine_pool_release_receipt(
         "publication_run_id": authenticated_pool_h5.publication_run_id,
         "pool_h5_sha256": authenticated_pool_h5.sha256,
         "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
+        "content_identity_sha256": authenticated_pool_h5.content_identity_sha256,
         "allow_gate_failed_base_pool": bool(allow_gate_failed_base_pool),
         "agreement_gate_reference": {
             "battery_status": "green" if is_ready else "red",
@@ -688,6 +857,10 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     ``CALIBRATED``.  It is not the loader for the new pre-calibration
     multispine pool, whose importance-weight receipt lives in its manifest.
     """
+    # The legacy calibrated loader is a generic entity-table ingress; a denied
+    # pool is refused here, by bytes or by content, before any table is read.
+    consumer = "legacy calibrated US H5 loader (load_legacy_calibrated_us_h5)"
+    sha256 = refuse_denied_pool_h5(path, consumer=consumer)
 
     with pd.HDFStore(Path(path), mode="r") as store:
         tables = {
@@ -707,6 +880,8 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
             )
         },
     )
+    assert_h5_unchanged(path, sha256, consumer=consumer)
+    refuse_denied_frame(frame, consumer=consumer)
     return canonicalize_frame_string_dtypes(
         frame,
         boundary="legacy calibrated US H5 load",
@@ -741,6 +916,7 @@ def _load_authenticated_us_multispine_pool_manifest(
     *,
     expected_manifest_sha256: str | None = None,
     allow_terminal_gate_failure: bool = False,
+    scoring_only: bool = False,
 ) -> tuple[dict[str, object], AuthenticatedPoolH5]:
     """Return a validated manifest and its authenticated pool-H5 identity.
 
@@ -756,6 +932,32 @@ def _load_authenticated_us_multispine_pool_manifest(
         label="pool manifest",
         expected_sha256=expected_manifest_sha256,
     )
+    if not scoring_only:
+        manifest_run_id = manifest.get("publication_run_id")
+        pool_h5_block = manifest.get("pool_h5")
+        manifest_pool_h5_sha256 = (
+            pool_h5_block.get("sha256") if isinstance(pool_h5_block, Mapping) else None
+        )
+        for denied_run_id, denied_publication in DENIED_POOL_PUBLICATIONS.items():
+            # Three independent identities, so a re-serialized manifest, a
+            # renamed publication, or a repackaged H5 is still refused.
+            match = None
+            if manifest_run_id == denied_run_id:
+                match = "publication_run_id"
+            elif manifest_sha256 == denied_publication.manifest_sha256:
+                match = "manifest SHA-256"
+            elif manifest_pool_h5_sha256 == denied_publication.pool_h5_sha256:
+                match = "pool H5 SHA-256"
+            if match is not None:
+                raise ValueError(
+                    f"US multispine pool publication {denied_run_id!r} matched "
+                    f"the sealed deny-list by {match} and is refused for "
+                    "readiness and release; manifest presented "
+                    f"publication_run_id={manifest_run_id!r}, release_id="
+                    f"{denied_publication.release_id!r}. Reason: "
+                    f"{denied_publication.reason}. Reference: "
+                    f"{denied_publication.reference}."
+                )
     if manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND:
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
@@ -953,12 +1155,20 @@ def _load_authenticated_us_multispine_pool_manifest(
             f"US multispine pool diagnostics {diagnostics_path} agreement-gate "
             "verdict does not match the authenticated manifest."
         )
+    content_identity = pool_h5_content_identity(pool_path)
+    if not scoring_only and content_identity is not None:
+        _refuse_denied_content_identity(
+            content_identity,
+            consumer="authenticated US multispine pool manifest",
+            how="authenticated H5",
+        )
     return manifest, AuthenticatedPoolH5(
         path=pool_path.resolve(),
         sha256=pool_sha256,
         size_bytes=pool_size_bytes,
         publication_run_id=publication_run_id,
         manifest_sha256=manifest_sha256,
+        content_identity_sha256=content_identity,
     )
 
 
@@ -1637,6 +1847,7 @@ def load_authenticated_us_multispine_pool_for_scoring(
         path,
         expected_manifest_sha256=expected_manifest_sha256,
         require_simulation_ready=False,
+        scoring_only=True,
     )
 
 
@@ -1672,6 +1883,7 @@ def _load_us_multispine_pool(
     *,
     expected_manifest_sha256: str | None,
     require_simulation_ready: bool,
+    scoring_only: bool = False,
 ) -> tuple[Frame, dict[str, object], AuthenticatedPoolH5]:
     """Shared authenticated H5 reconstruction for readiness and scoring."""
 
@@ -1680,6 +1892,7 @@ def _load_us_multispine_pool(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
         allow_terminal_gate_failure=not require_simulation_ready,
+        scoring_only=scoring_only,
     )
     agreement_gate = _mapping(
         manifest.get("agreement_gate"),
@@ -1819,6 +2032,10 @@ def _load_us_multispine_pool(
     authenticated_pool_h5.verified_digest(
         consumer="pool loader post-HDF read",
     )
+    if not scoring_only:
+        refuse_denied_frame(
+            frame, consumer="authenticated US multispine pool loader (loaded frame)"
+        )
     return frame, manifest, authenticated_pool_h5
 
 

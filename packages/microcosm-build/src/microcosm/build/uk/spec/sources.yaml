@@ -204,7 +204,7 @@ stages:
     person_table: adult union child
     household_sort: set_index('household_id').sort_index() before positional household reads
   - kind: map_columns
-    scope: direct raw-to-column E2 mappings only
+    scope: 'direct raw-to-column E2 mappings only; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)'
   - kind: map_coded_amounts
     scope: region, tenure, accommodation, council tax band, benefit-code amount mappings
   - kind: annualize_periodic_amounts
@@ -275,6 +275,7 @@ stages:
   - esa_income_reported
   - bsp_reported
   - benunit_id
+  - frs_benunit_capital
   - is_married
   - dependent_children
   - household_id
@@ -320,6 +321,42 @@ stages:
   - housing_service_charges
   - external_child_payments
   notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity.
+- stage: age_tail
+  survey: Family Resources Survey 2024-25 and ONS mid-year population estimates
+  source: Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).
+  grain: person
+  artifacts:
+  - role: age_tail_band_populations
+    kind: public_aggregate_reference
+    resource: ons_age_tail_band_populations.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: disaggregate_top_coded_ages
+    output: age
+    resource: ons_age_tail_band_populations.json
+    top_code: 80
+    bands:
+    - name: '80_84'
+      low: 80
+      width: 5
+    - name: '85_89'
+      low: 85
+      width: 5
+    - name: '90_plus'
+      low: 90
+      width: 8
+    seed: 0
+    draw_key: person_id
+    salt_streams:
+    - band
+    - within
+    reason: Age disaggregation rewrites an existing person column in place; no rows
+      move, no weights change, and total household mass is conserved.
+  outputs: []
+  rewrites:
+  - age
+  notes: "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled base person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_id. Runs immediately after frs_spine, before every stage that conditions on age, so all age-conditioned imputations derive from the disaggregated surface. The stage precedes person_source_id provenance; later support and capital-gains clones copy the donor's rewritten age, preserving the #623 final-age identity invariant. Ages are assigned toward the ONS distribution; calibration still owns the totals."
 - stage: frs_employment
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.
@@ -717,6 +754,9 @@ stages:
       property_wealth: DVPropertyR8
       gross_financial_wealth: HFINWR8_SUM
       net_financial_wealth: HFINWNTR8_Sum
+      net_financial_wealth_exsl: HFINWNTR8_exSLC_Sum
+      mortgage_debt: HMortGR8
+      tenure_code: Ten1R8
       main_residence_value: DVhvalueR8
       other_residential_property_value: DVHseValR8_sum
       non_residential_property_value: DVBlDValR8_sum
@@ -729,6 +769,8 @@ stages:
       stocks_and_shares_isa: DVIISAVR8_aggr
       cash_isa: DVCISAVR8_aggr
       student_loan_balance: Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr
+      consumer_debt: max(HFINWR8_SUM - HFINWNTR8_exSLC_Sum, 0)
+      has_mortgage_tenure: Ten1R8 in {2, 3}
       is_renting: DVPriRntR8 == 1
       region: GORR8 via incumbent REGIONS map
   - kind: materialize_rules_engine_predictors
@@ -765,6 +807,8 @@ stages:
       NORTHERN_IRELAND: WALES
     integer_outputs:
     - num_vehicles
+    debt_segment_predictors:
+    - has_mortgage_tenure
     chain_order:
     - owned_land
     - property_wealth
@@ -781,6 +825,8 @@ stages:
     - num_vehicles
     - student_loan_balance
     - cash_isa
+    - mortgage_debt
+    - consumer_debt
   - kind: fold_into
     output: corporate_wealth
     inputs:
@@ -816,6 +862,8 @@ stages:
   - cash_isa
   - stocks_and_shares_isa
   - student_loan_balance
+  - mortgage_debt
+  - consumer_debt
   nonnegative_outputs:
   - owned_land
   - property_wealth
@@ -830,7 +878,9 @@ stages:
   - cash_isa
   - stocks_and_shares_isa
   - student_loan_balance
-  notes: 'Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent''s dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero
+  - mortgage_debt
+  - consumer_debt
+  notes: 'Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. The debt segment (fourth chain segment, fourth child seed) reads WAS round-8 derived variables HMortGR8 (total outstanding mortgage debt), HFINWNTR8_exSLC_Sum (net financial wealth excluding student loans; gross less it is the non-student-loan financial liabilities) and Ten1R8 (tenure; codes 2 and 3 are buying with a mortgage and part own/part rent, confirmed by the I1 audit of the pinned tab); UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent''s dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero
     for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8''s -9 is structural not-applicable so the is_renting mapping is unchanged; genuinely negative domains are never recoded.'
 - stage: regional_property_uprating
   survey: Public regional property reference
@@ -1179,7 +1229,7 @@ stages:
     resource: nhs_consumption_by_age_gender.json
     budget_resource: etb_services_anchors.json
     age_bands: half_open
-    top_band_fold_in: 85+
+    top_band_fold_in: none
   outputs:
   - dfe_education_spending
   - rail_subsidy_spending
@@ -1202,7 +1252,7 @@ stages:
   - nhs_a_and_e_spending
   - nhs_admitted_patient_spending
   - nhs_outpatient_spending
-  notes: Ports ETB public-services QRF at household grain, computes rail_usage from the 2023 fare index, and allocates NHS visits/spending to persons using the signed half-open age-band and 85+ fold-in fixes. The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
+  notes: Ports ETB public-services QRF at household grain, computes rail_usage from the 2023 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
 - stage: frs_hmrc_spine_leaves
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input
@@ -1924,6 +1974,141 @@ stages:
   - hmrc_spi_unemployment_benefit_income
   - hmrc_spi_incapacity_benefit_income
   notes: Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.
+- stage: uc_reporter_redraw
+  survey: Family Resources Survey 2024-25
+  source: Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: derive
+    derived:
+      uc_reported_capital: frs_benunit_capital
+      positive_pre_takeup_uc_award: max(0, uc_maximum_amount - uc_income_reduction) > 0
+      has_non_child_member: any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members
+      claimable_screen: positive_pre_takeup_uc_award AND has_non_child_member
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - uc_maximum_amount
+    - uc_income_reduction
+    - is_child_or_qualifying_young_person_for_universal_credit
+    - is_SP_age
+    consumed_only: true
+  - kind: aggregate_person_to_benunit
+    method: sum
+    consumed_only: true
+    aggregates:
+      uc_child_count: is_child_or_qualifying_young_person_for_universal_credit
+      universal_credit_reported_amount: universal_credit_reported
+  - kind: redraw_spi_reported_uc
+    output: universal_credit_reported
+    training_rows: base_frs_channel_not_capital_gains_clone_support_clone_0_screened
+    rows: spi_channel_screened
+    rewrite_rows: spi_channel
+    screen: claimable_screen
+    predictors:
+    - is_married
+    - uc_child_band
+    - benunit_employment_income
+    - benunit_self_employment_income
+    - claimant_earnings
+    - partner_earnings
+    - benunit_investment_income
+    - claimant_age
+    - region
+    categorical_predictors:
+    - region
+    target: universal_credit_reported_amount
+    weight_mapping: household_to_benunit
+    fit: regime_gated_qrf
+    landing: eldest_working_age_adult_lowest_person_id
+    seed: 44
+  outputs: []
+  rewrites:
+  - universal_credit_reported
+  notes: Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses.
+- stage: uc_capital_coherence
+  survey: Family Resources Survey 2024-25
+  source: Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: aggregate_person_to_benunit
+    method: any_positive
+    consumed_only: true
+    aggregates:
+      universal_credit_reported_anchor: universal_credit_reported
+  - kind: redraw_spi_reporter_capital
+    output: frs_benunit_capital
+    rows: spi_channel_post_fill_reporters
+    donor_rows: base_frs_reporters_with_available_capital
+    dependent_children_bands:
+    - '0'
+    - '1'
+    - '2'
+    - 3+
+    couple_status: is_married
+    weight_mapping: household_to_benunit
+    draw: weighted_empirical
+    identity: benunit_id
+    seed: 0
+    salt: frs_benunit_capital
+  - kind: derive
+    derived:
+      uc_reported_capital: frs_benunit_capital
+      would_claim_uc: would_claim_uc OR universal_credit_reported_anchor
+  outputs:
+  - uc_reported_capital
+  rewrites:
+  - frs_benunit_capital
+  - would_claim_uc
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by couple-status cells, then applies the monotone reported-UC OR refresh.
+- stage: uc_deduction_attributes
+  survey: DWP Universal Credit deductions statistics, March 2025 to February 2026
+  source: Department for Work and Pensions supplementary Tables 2, 5 and 6, sha-pinned by Chronicle package dwp-uc-deductions-march-2025-february-2026.
+  grain: benunit
+  artifacts:
+  - role: deduction_distribution
+    resource: dwp_uc_deduction_distributions.json
+    kind: public_aggregate_reference
+    format: json
+  operations:
+  - kind: assign_uniform_draw
+    output: uc_deduction_random_draw
+    seed: 0
+  - kind: assign_uniform_draw
+    output: uc_deduction_type_random_draw
+    seed: 0
+  - kind: map_uniform_to_banded_rate
+    output: uc_latent_deduction_rate
+    draw: uc_deduction_random_draw
+    draw_dtype: float32
+    resource: dwp_uc_deduction_distributions.json
+    distribution: latent_rate_distribution
+    incidence_modifier:
+      column: region
+      entity: household
+      table: region_incidence_factor
+    none_value: 0.0
+  - kind: map_uniform_to_categorical
+    output: uc_deduction_combination
+    draw: uc_deduction_type_random_draw
+    draw_dtype: float32
+    resource: dwp_uc_deduction_distributions.json
+    distribution: type_combination
+    gate:
+      column: uc_latent_deduction_rate
+      positive: true
+    none_value: NONE
+  outputs:
+  - uc_deduction_random_draw
+  - uc_deduction_type_random_draw
+  - uc_latent_deduction_rate
+  - uc_deduction_combination
+  nonnegative_outputs:
+  - uc_deduction_random_draw
+  - uc_deduction_type_random_draw
+  - uc_latent_deduction_rate
+  notes: Assigns region-conditioned latent deduction demand to every benefit unit from identity-keyed seed-0 draws, rounded and clamped to the PolicyEngine-UK float32 input contract before applying the engine's exact band and normalized-combination mappings. The attributes are award-independent; law and claimant gating remain in the engine. Clone and donor-stack stages copy the completed attributes byte-for-byte. The persisted draws are microcosm's identity-keyed blake2b uniforms, not PolicyEngine-UK's splitmix64 fallback hash; the engine reads the persisted columns and derives the same flag, rate and combination from them, so the two draw columns must stay on the export surface (allow-listed and test-pinned).
 - stage: cgt_incidence_clone
   survey: Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465
@@ -2229,42 +2414,6 @@ stages:
   rewrites:
   - student_loan_plan
   notes: Reported PAYE repayers are classified without a country gate. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year; PLAN_4 is never imputed.
-- stage: age_tail
-  survey: Family Resources Survey 2024-25 and ONS mid-year population estimates
-  source: Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).
-  grain: person
-  artifacts:
-  - role: age_tail_band_populations
-    kind: public_aggregate_reference
-    resource: ons_age_tail_band_populations.json
-    format: json
-    runtime_sha256_required: true
-  operations:
-  - kind: disaggregate_top_coded_ages
-    output: age
-    resource: ons_age_tail_band_populations.json
-    top_code: 80
-    bands:
-    - name: '80_84'
-      low: 80
-      width: 5
-    - name: '85_89'
-      low: 85
-      width: 5
-    - name: '90_plus'
-      low: 90
-      width: 8
-    seed: 0
-    draw_key: person_source_id
-    salt_streams:
-    - band
-    - within
-    reason: Age disaggregation rewrites an existing person column in place; no rows
-      move, no weights change, and total household mass is conserved.
-  outputs: []
-  rewrites:
-  - age
-  notes: The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_source_id so a household and its capital-gains clone twin receive the same age. Runs after student_loans — downstream of every stage that conditions on age, the position the #623 calibration campaign proved — so imputation conditioning is unchanged. Ages are assigned toward the ONS distribution; calibration still owns the totals.
 - stage: frs_hmrc_retained_leaves
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input

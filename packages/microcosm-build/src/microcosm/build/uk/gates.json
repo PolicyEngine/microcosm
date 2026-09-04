@@ -89,9 +89,11 @@
         "check": "support_clip",
         "columns": [
           "cash_isa",
+          "consumer_debt",
           "corporate_wealth",
           "gross_financial_wealth",
           "main_residence_value",
+          "mortgage_debt",
           "net_financial_wealth",
           "non_residential_property_value",
           "num_vehicles",
@@ -104,9 +106,11 @@
         ],
         "max_clipped_low_rows_by_column": {
           "cash_isa": 0,
+          "consumer_debt": 0,
           "corporate_wealth": 0,
           "gross_financial_wealth": 0,
           "main_residence_value": 0,
+          "mortgage_debt": 0,
           "net_financial_wealth": 0,
           "non_residential_property_value": 0,
           "num_vehicles": 0,
@@ -119,9 +123,11 @@
         },
         "max_clipped_high_rows_by_column": {
           "cash_isa": 0,
+          "consumer_debt": 0,
           "corporate_wealth": 0,
           "gross_financial_wealth": 0,
           "main_residence_value": 0,
+          "mortgage_debt": 0,
           "net_financial_wealth": 0,
           "non_residential_property_value": 0,
           "num_vehicles": 0,
@@ -134,6 +140,18 @@
         }
       },
       "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+    },
+    {
+      "id": "uk_stage_uc_deduction_attributes",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "uc_deduction_attributes",
+        "check": "latent_attribute_realization"
+      },
+      "notes": "Stage-time realization check over region incidence, latent-rate bands, normalized deduction-type combinations, and the exact latent/type/incidence coherence identity. Tolerances are derived from each receipt cell's realized row count; missing evidence blocks."
     },
     {
       "id": "uk_stage_lcfs_consumption_support",
@@ -376,7 +394,7 @@
     {
       "id": "uk_stage_age_tail_targets",
       "gate": "stage_health",
-      "phase": "transferred",
+      "phase": "assembled",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
       "parameters": {
@@ -384,7 +402,7 @@
         "check": "age_tail_targets",
         "maximum_relative_deviation": 1.0
       },
-      "notes": "Stage-time achieved-versus-target gate over the age-tail disaggregation receipt."
+      "notes": "Stage-time achieved-versus-target gate over the age-tail disaggregation receipt. At its post-frs_spine position, achieved_weighted measures raw FRS-grossed 80+ mass before clone or zero-weight support channels exist."
     },
     {
       "id": "uk_release_input_coverage",
@@ -471,6 +489,25 @@
       "notes": "Every UK source-stage column declared in source_stages.json nonnegative_outputs must be finite and non-negative on the terminal frame; this makes the shared nonnegative column gate live for UK."
     },
     {
+      "id": "uk_uc_capital_coherence",
+      "gate": "column_implication",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "numeric_entity": "person",
+        "numeric_column": "universal_credit_reported",
+        "numeric_group_column": "person_benunit_id",
+        "boolean_entity": "benunit",
+        "boolean_id_column": "benunit_id",
+        "boolean_column": "would_claim_uc",
+        "threshold": 0.0,
+        "capital_column": "uc_reported_capital",
+        "carrier_column": "frs_benunit_capital",
+        "sentinel": -1.0
+      },
+      "notes": "Benunit-aggregated reported Universal Credit must imply would_claim_uc. The reported-capital engine carrier is bounded below by its named -1 unavailable sentinel, may use that sentinel only where the FRS carrier is unavailable, and otherwise remains the exact same source value."
+    },
+    {
       "id": "uk_support",
       "gate": "support",
       "phase": "terminal",
@@ -480,7 +517,8 @@
           "was_wealth_support_bounds.json",
           "lcfs_consumption_support_bounds.json",
           "etb_vat_support_bounds.json",
-          "etb_services_support_bounds.json"
+          "etb_services_support_bounds.json",
+          "uc_deduction_support_bounds.json"
         ]
       },
       "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed."
@@ -535,6 +573,12 @@
       "parameters": {
         "allowed_extra_columns": [
           "benunit.child_benefit_opts_out",
+          "benunit.frs_benunit_capital",
+          "benunit.uc_deduction_combination",
+          "benunit.uc_deduction_random_draw",
+          "benunit.uc_deduction_type_random_draw",
+          "benunit.uc_latent_deduction_rate",
+          "benunit.uc_reported_capital",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
           "household.cash_isa",
@@ -617,6 +661,18 @@
       "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain. Evaluated at the assembled boundary, right after frs_brma writes the column: enum membership is a property of the values themselves, so checking it there is identical to checking it at the end and refuses fourteen stages earlier. Take-up signal stays terminal by contrast, because its weighted shares are not the same statistic before and after calibration."
     },
     {
+      "id": "uk_uc_deduction_combination_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "uc_deduction_combination"
+        ]
+      },
+      "notes": "The benefit-unit UC deduction combination must remain inside PolicyEngine-UK's UCDeductionCombination enum domain."
+    },
+    {
       "id": "uk_student_loan_plan_enum_domain",
       "gate": "enum_domain",
       "phase": "terminal",
@@ -691,6 +747,75 @@
         "min_nonzero_records": 104
       },
       "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Armed from the #686 L3 baselines per #757 B4, each threshold recording the run that measured it: the 47-column qrf_tail grids of uk_weighted_integrity_baselines_686.json (sha256 8b3f6c4e9c522445bf3e05d3451ee8557f4e14d25524ceac3af8bfe05401a146, licensed acceptance dir 686-spine-swap), measured on spine-a.h5 (sha256 a65f2132736d1dcecb91709a513a0d54a5887635ea03760629cc888d188ee306, 113,649 person rows, design weights) for the #609/#578 threshold adjudication. top_k 100 is the measurement grid anchor [10, 100, 500, 1000]; max_top_share is the exact measured maximum over the checked surface (hmrc_spi_other_social_security_income, 104 carriers), no headroom; min_nonzero_records is the thinnest measured column above the grid anchor (the same column) - the policy domain requires min_nonzero_records > top_k, so the three saturated sub-anchor columns (hmrc_spi_taxable_termination_pay 12, charitable_investment_gifts 22, sda_reported 24 carriers, each top-100 share 1.0) sit below it and go thin visibly in the signed details on every run, never a silent pass. The baselines are design-weight measurements and the terminal gate runs on the calibrated release frame; a calibrated-weight breach names its column and is a finding, not noise. The 12 household_qrf_tail grids (was_wealth surface) are measured in the same baselines file and not yet armed - a household-surface gate entry is a declared follow-up. Reviewed exclusions live in the named register resource of this package."
+    },
+    {
+      "id": "uk_local_geography_ladder_post_calibration",
+      "gate": "spine_agreement",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "The existing UK geography-ladder evaluator is rerun on the locally calibrated candidate weights and adapted through UKGateBinding; no second ladder verdict implementation is introduced."
+    },
+    {
+      "id": "uk_local_area_support",
+      "gate": "area_support",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "crosswalk_resource": "local_area_crosswalk.json",
+        "geography_levels": [
+          "constituency",
+          "local_authority"
+        ],
+        "minimum_rows": 50,
+        "minimum_effective_sample_size": 50.0,
+        "minimum_distinct_sources": 50
+      },
+      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
+    },
+    {
+      "id": "uk_local_target_fit",
+      "gate": "target_fit",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "surface": "local_candidate",
+        "max_abs_relative_error": 0.25
+      },
+      "notes": "Report every bound local target outside 25% absolute relative error. Diagnostic until the first #762 measured-fit receipt arms it."
+    },
+    {
+      "id": "uk_local_per_family_fit",
+      "gate": "per_family_fit",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "within": 0.1,
+        "min_family_share": 0.5,
+        "hard_within": 0.25,
+        "min_hard_family_share": 0.5
+      },
+      "notes": "Report 10% fit shares per bound family and the 25% broad-fit share, so a weak family cannot hide in the aggregate. Diagnostic until the first #762 measured-fit receipt arms it."
+    },
+    {
+      "id": "uk_local_weight_ratio",
+      "gate": "weight_ratio",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "maximum_max_to_median_ratio": 100.0
+      },
+      "notes": "The reviewed local doctrine ratio is 100.0. It ships diagnostic until #762 records the first measured candidate and arms the threshold."
+    },
+    {
+      "id": "uk_local_weight_ess",
+      "gate": "weight_ess",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "minimum_ess_fraction": 0.01
+      },
+      "notes": "The local ESS-fraction diagnostic uses the national analogue's 0.01 floor and remains diagnostic until #762's measured arming review."
     }
   ]
 }

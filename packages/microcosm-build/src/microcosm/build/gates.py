@@ -57,6 +57,7 @@ __all__ = [
     "GateResult",
     "GateReport",
     "FitWeightRecord",
+    "area_support_gate",
     "default_valued_columns_gate",
     "enum_domain_gate",
     "export_surface_gate",
@@ -72,6 +73,7 @@ __all__ = [
     "parity_gate",
     "support_gate",
     "aggregate_admin_gate",
+    "column_implication_gate",
     "per_family_fit_gate",
     "source_coverage_gate",
     "source_stage_input_coverage_gate",
@@ -215,9 +217,7 @@ def ledger_compile_parity_gate(
         actual = _drop_registry_keys(actual, signed_keys)
         expected = _drop_registry_keys(expected, signed_keys)
     report = ledger_target_registry_parity_report(expected, actual)
-    failures = (
-        signed_failures + _calibration_effective_parity_failures(report.failures)
-    )
+    failures = signed_failures + _calibration_effective_parity_failures(report.failures)
     return GateResult(
         name=name,
         passed=not failures,
@@ -478,9 +478,7 @@ def _signed_difference_check_failures(
         signed_kind = signed.get("kind")
         live_kind = live.get("kind")
         if not signed_kind:
-            failures.append(
-                f"signed ledger parity difference {label} is missing kind."
-            )
+            failures.append(f"signed ledger parity difference {label} is missing kind.")
             continue
         if signed_kind != live_kind:
             failures.append(
@@ -491,8 +489,7 @@ def _signed_difference_check_failures(
         for value_field in _signed_difference_required_value_fields(str(signed_kind)):
             if value_field not in signed:
                 failures.append(
-                    "signed ledger parity difference "
-                    f"{label} is missing {value_field}."
+                    f"signed ledger parity difference {label} is missing {value_field}."
                 )
                 continue
             if not _signed_difference_value_matches(
@@ -1411,6 +1408,78 @@ def nonnegative_columns_gate(
             "unused_reviewed_exclusions": unused_exclusions,
             "atol": float(atol),
             "chunk_size": int(chunk_size),
+        },
+    )
+
+
+def column_implication_gate(
+    numeric_values: Iterable[float],
+    boolean_values: Iterable[bool],
+    *,
+    numeric_column: str,
+    boolean_column: str,
+    threshold: float = 0.0,
+) -> GateResult:
+    """Require ``numeric_column > threshold`` to imply ``boolean_column``.
+
+    This row-wise primitive is country agnostic. Country bindings may derive
+    the aligned evidence at another entity grain before calling it (for
+    example, aggregating person-level benefit reports to benunits).
+    """
+
+    if not numeric_column:
+        raise ValueError("numeric_column must be non-empty.")
+    if not boolean_column:
+        raise ValueError("boolean_column must be non-empty.")
+    if not math.isfinite(float(threshold)):
+        raise ValueError(f"threshold must be finite, got {threshold!r}.")
+
+    try:
+        numeric = np.asarray(numeric_values, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{numeric_column} must be numeric.") from exc
+    raw_boolean = np.asarray(boolean_values).reshape(-1)
+    if numeric.shape != raw_boolean.shape:
+        raise ValueError(
+            f"{numeric_column} and {boolean_column} must have the same shape; "
+            f"got {numeric.shape} and {raw_boolean.shape}."
+        )
+    if raw_boolean.dtype.kind == "b":
+        boolean = raw_boolean.astype(bool, copy=False)
+    elif raw_boolean.dtype.kind in "iu" and np.isin(raw_boolean, (0, 1)).all():
+        boolean = raw_boolean.astype(bool)
+    else:
+        raise ValueError(
+            f"{boolean_column} must contain only boolean or integer 0/1 values."
+        )
+
+    nonfinite = ~np.isfinite(numeric)
+    implicated = numeric > float(threshold)
+    violations = implicated & ~boolean
+    failures: list[str] = []
+    if nonfinite.any():
+        failures.append(
+            f"{numeric_column}: {int(nonfinite.sum())} non-finite value(s); "
+            "the implication evidence must be finite."
+        )
+    if violations.any():
+        failures.append(
+            f"{numeric_column} > {float(threshold):g} must imply "
+            f"{boolean_column} is true; {int(violations.sum())} violation(s)."
+        )
+
+    return GateResult(
+        name="column_implication",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "numeric_column": numeric_column,
+            "boolean_column": boolean_column,
+            "threshold": float(threshold),
+            "rows_checked": int(numeric.size),
+            "implicated_rows": int(implicated.sum()),
+            "violation_count": int(violations.sum()),
+            "nonfinite_count": int(nonfinite.sum()),
         },
     )
 
@@ -2349,6 +2418,160 @@ def support_gate(
         passed=not failures,
         failures=tuple(failures),
         details={"columns_checked": checked},
+    )
+
+
+def area_support_gate(
+    area_support: pd.DataFrame,
+    *,
+    area_roster: Mapping[str, Iterable[str]],
+    geography_levels: Iterable[str],
+    minimum_rows: int,
+    minimum_effective_sample_size: float,
+    minimum_distinct_sources: int,
+) -> GateResult:
+    """Require adequate positive-weight support in every declared local area.
+
+    ``area_support`` is the long-form candidate receipt.  The independently
+    declared ``area_roster`` is load-bearing: a missing weak area cannot make
+    the minima look better by disappearing from the evidence table.
+    """
+
+    levels = tuple(str(level) for level in geography_levels)
+    if not levels or len(set(levels)) != len(levels):
+        raise ValueError("geography_levels must be non-empty and unique.")
+    if (
+        isinstance(minimum_rows, bool)
+        or not isinstance(minimum_rows, int)
+        or minimum_rows < 1
+    ):
+        raise ValueError("minimum_rows must be a positive integer.")
+    if (
+        isinstance(minimum_distinct_sources, bool)
+        or not isinstance(minimum_distinct_sources, int)
+        or minimum_distinct_sources < 1
+    ):
+        raise ValueError("minimum_distinct_sources must be a positive integer.")
+    if (
+        not math.isfinite(float(minimum_effective_sample_size))
+        or minimum_effective_sample_size <= 0
+    ):
+        raise ValueError("minimum_effective_sample_size must be positive and finite.")
+    if not isinstance(area_support, pd.DataFrame):
+        raise TypeError("area_support must be a pandas DataFrame.")
+    required_columns = {
+        "geography_level",
+        "area_code",
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
+    }
+    missing_columns = sorted(required_columns - set(area_support.columns))
+    if missing_columns:
+        raise ValueError(
+            f"area_support is missing required column(s): {missing_columns}."
+        )
+    unexpected_levels = sorted(
+        set(area_support["geography_level"].astype(str)) - set(levels)
+    )
+    if unexpected_levels:
+        raise ValueError(
+            "area_support contains geography level(s) outside the declared "
+            f"scope: {unexpected_levels}."
+        )
+
+    rows = area_support.copy()
+    rows["geography_level"] = rows["geography_level"].astype(str)
+    rows["area_code"] = rows["area_code"].astype(str)
+    duplicate_mask = rows.duplicated(["geography_level", "area_code"], keep=False)
+    if duplicate_mask.any():
+        duplicates = sorted(
+            {
+                f"{row.geography_level}/{row.area_code}"
+                for row in rows.loc[
+                    duplicate_mask, ["geography_level", "area_code"]
+                ].itertuples(index=False)
+            }
+        )
+        raise ValueError(f"area_support contains duplicate area rows: {duplicates}.")
+
+    expected_pairs: set[tuple[str, str]] = set()
+    for level in levels:
+        if level not in area_roster:
+            raise ValueError(f"area_roster is missing geography level {level!r}.")
+        codes = tuple(str(code) for code in area_roster[level])
+        if not codes or len(set(codes)) != len(codes):
+            raise ValueError(f"area_roster[{level!r}] must be non-empty and unique.")
+        expected_pairs.update((level, code) for code in codes)
+    actual_pairs = set(zip(rows["geography_level"], rows["area_code"], strict=True))
+    missing_areas = sorted(expected_pairs - actual_pairs)
+    extra_areas = sorted(actual_pairs - expected_pairs)
+    if missing_areas or extra_areas:
+        raise ValueError(
+            "area_support must exactly cover the declared roster; "
+            f"missing={missing_areas[:10]}, extra={extra_areas[:10]}."
+        )
+
+    numeric_columns = (
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
+    )
+    values = rows.loc[:, list(numeric_columns)].to_numpy(dtype=np.float64)
+    if not np.isfinite(values).all() or (values < 0).any():
+        raise ValueError("area_support contains invalid support values.")
+
+    failures: list[str] = []
+    for row in rows.sort_values(["geography_level", "area_code"]).itertuples(
+        index=False
+    ):
+        shortfalls = []
+        if row.nonzero_households < minimum_rows:
+            shortfalls.append(f"rows {int(row.nonzero_households)} < {minimum_rows}")
+        if row.effective_sample_size < minimum_effective_sample_size:
+            shortfalls.append(
+                "ESS "
+                f"{float(row.effective_sample_size):.6g} < "
+                f"{float(minimum_effective_sample_size):.6g}"
+            )
+        if row.nonzero_source_households < minimum_distinct_sources:
+            shortfalls.append(
+                "distinct sources "
+                f"{int(row.nonzero_source_households)} < "
+                f"{minimum_distinct_sources}"
+            )
+        if shortfalls:
+            failures.append(
+                f"{row.geography_level}/{row.area_code}: " + ", ".join(shortfalls)
+            )
+
+    by_level: dict[str, dict[str, object]] = {}
+    for level in levels:
+        level_rows = rows.loc[rows["geography_level"] == level]
+        by_level[level] = {
+            "areas_checked": int(len(level_rows)),
+            "minimum_rows": int(level_rows["nonzero_households"].min()),
+            "minimum_effective_sample_size": float(
+                level_rows["effective_sample_size"].min()
+            ),
+            "minimum_distinct_sources": int(
+                level_rows["nonzero_source_households"].min()
+            ),
+        }
+    return GateResult(
+        name="area_support",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "floors": {
+                "minimum_rows": minimum_rows,
+                "minimum_effective_sample_size": float(minimum_effective_sample_size),
+                "minimum_distinct_sources": minimum_distinct_sources,
+            },
+            "by_geography_level": by_level,
+            "areas_checked": len(expected_pairs),
+            "areas_failed": len(failures),
+        },
     )
 
 

@@ -97,6 +97,66 @@ class TestCommittedRegister:
         assert register.differences
         assert register.scope_note
 
+    def test_uc_capital_entries_pin_new_exports_and_retired_claim_lift(self) -> None:
+        register = load_uk_spine_swap_signed_differences()
+
+        for column, identifier in {
+            "frs_benunit_capital": "frs-benunit-capital-net-new-column",
+            "uc_reported_capital": "uc-reported-capital-net-new-column",
+        }.items():
+            entry = register.matching(
+                surface="nonzero_shares",
+                column=column,
+                expectation="column_missing_in_reference",
+                entity="benunit",
+            )
+            assert entry is not None
+            assert entry.id == identifier
+
+        # Retired 2026-09-02 on the spine-m actuals (Part F of the #832
+        # receipts): the reporter redraw's demotions outweigh #828's OR-refresh
+        # lift, leaving would_claim_uc 0.001951 below the incumbent — inside the
+        # whole-spine acceptance band, where the register's doctrine signs
+        # nothing. An unsigned would_claim_uc divergence is a defect again.
+        assert (
+            register.matching(
+                surface="nonzero_shares",
+                column="would_claim_uc",
+                expectation="column_differs",
+                entity="benunit",
+            )
+            is None
+        )
+
+        reporter = register.matching(
+            surface="nonzero_shares",
+            column="universal_credit_reported",
+            expectation="column_differs",
+            entity="person",
+        )
+        assert reporter is not None
+        assert reporter.id == "uc-reporter-benefit-unit-redraw-incidence"
+        assert reporter.quantitative == {
+            "shares": {
+                "universal_credit_reported": {
+                    "incumbent_share": 0.057359,
+                    "direction": "candidate_below",
+                    "max_abs_delta": 0.0184,
+                }
+            },
+            "magnitude_provenance": (
+                "I1 dry-run bound from "
+                "experiments/832-uc-reporter-receipts.md Part C: 4,428 "
+                "unchanged base-channel reporter persons plus between zero "
+                "and 3,299 one-person SPI reporter landings among 113,649 "
+                "people implies share in [0.038962, 0.067990]. I5 actual "
+                "(Part F, spine-m): 5,730 nonzero reporter records, share "
+                "0.050418, delta 0.006941 below the incumbent, inside the "
+                "signed 0.0184 floor-distance; the above side of the structural "
+                "range is unreached by the built artifact."
+            ),
+        }
+
     def test_committed_entries_are_precisely_scoped(self) -> None:
         # A surface-wide entry (empty columns) signs every column on that
         # surface. That is a real capability for entity_counts, but on a

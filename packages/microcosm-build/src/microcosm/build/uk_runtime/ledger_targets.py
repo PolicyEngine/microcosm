@@ -12,6 +12,11 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.cross_grain import (
+    CrossGrainBridge,
+    CrossGrainRule,
+    apply_cross_grain_reconciliation,
+)
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     _fact_matches_selector,
@@ -22,7 +27,10 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
-from microcosm.build.uk_runtime.local_targets import load_uk_local_geography_contract
+from microcosm.build.uk_runtime.local_targets import (
+    area_groups_from_codes,
+    load_uk_local_geography_contract,
+)
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame
 
@@ -38,6 +46,66 @@ class UKLedgerTargetCompilation:
 LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE = "local_registry_parity_fixture_2025.json"
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
 UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
+_UK_LOCAL_FIXTURE_METRIC_ALIASES = {
+    f"voa/council_tax/{band}": f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"
+}
+
+
+def _uk_cross_grain_leg_of_area(area_code: str) -> str:
+    # area_groups_from_codes maps code -> country group, so the single value is
+    # this code's leg. It refuses an unknown prefix itself; the explicit miss
+    # below keeps the refusal fail-closed rather than a bare StopIteration if
+    # that mapping ever returns nothing for a code.
+    leg = next(iter(area_groups_from_codes((area_code,)).values()), "")
+    if not leg:
+        raise ValueError(
+            f"UK cross-grain area code {area_code!r} maps to no country leg."
+        )
+    return leg
+
+
+UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "constituency", "la")
+UK_CROSS_GRAIN_BRIDGES = (
+    CrossGrainBridge(
+        bridge_id="national_household_composition_partition_vs_census_households",
+        concept="uk.household.count",
+        higher_target_ids=(
+            "ons.household_composition.lone_households_under_65",
+            "ons.household_composition.lone_households_over_65",
+            "ons.household_composition.unrelated_adult_households",
+            "ons.household_composition.couple_no_children_households",
+            "ons.household_composition.couple_under_3_children_households",
+            "ons.household_composition.couple_3_plus_children_households",
+            "ons.household_composition.couple_non_dependent_children_only_households",
+            "ons.household_composition.lone_parent_dependent_children_households",
+            "ons.household_composition.lone_parent_non_dependent_children_households",
+            "ons.household_composition.multi_family_households",
+        ),
+        lower_side="external:census_households/households",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_uc_caseload_vs_uc_households_by_area",
+        concept="uk.benefit_unit.count",
+        higher_target_ids=("dwp.uc.households",),
+        lower_side="contract:dwp.uc.households_by_area",
+    ),
+)
+# A future move of these declarations into country-package spec JSON follows
+# the country-owned specification direction established in microcosm#159.
+UK_CROSS_GRAIN_RULE = CrossGrainRule(
+    grain_precedence=UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
+    signature_fields=("concept", "entity", "map_to", "filters"),
+    bridges=UK_CROSS_GRAIN_BRIDGES,
+    leg_of_area=_uk_cross_grain_leg_of_area,
+    parent_geography_legs={
+        "K02000001": ("England", "Wales", "Scotland", "Northern Ireland"),
+        "K03000001": ("England", "Wales", "Scotland"),
+        "E92000001": ("England",),
+        "W92000004": ("Wales",),
+        "S92000003": ("Scotland",),
+        "N92000002": ("Northern Ireland",),
+    },
+)
 
 
 def align_uk_local_registry_parity_fixture(
@@ -63,7 +131,8 @@ def align_uk_local_registry_parity_fixture(
         metric = str(
             updated.get("metric") or str(updated.get("name", "")).split("@")[0]
         )
-        target_id = metric_target_ids.get(metric)
+        contract_metric = _UK_LOCAL_FIXTURE_METRIC_ALIASES.get(metric, metric)
+        target_id = metric_target_ids.get(contract_metric)
         if target_id is not None:
             geography_id = str(
                 updated.get("geography_id")
@@ -554,7 +623,10 @@ class UKFrameTargetAdapter:
         )
 
 
-def _uk_contract_targets() -> dict[str, Mapping[str, Any]]:
+def _uk_contract_targets(
+    *,
+    national_only: bool = True,
+) -> dict[str, Mapping[str, Any]]:
     payload = (
         importlib_resources.files("microcosm.build.uk")
         .joinpath(UK_POPULATION_TARGETS_RESOURCE)
@@ -565,9 +637,59 @@ def _uk_contract_targets() -> dict[str, Mapping[str, Any]]:
     return {
         target["target_id"]: target
         for target in contract["targets"]
-        if set(target.get("geography_levels") or ())
+        if not national_only
+        or set(target.get("geography_levels") or ())
         <= UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS
     }
+
+
+def apply_uk_cross_grain_reconciliation(
+    local_frame: pd.DataFrame,
+    bound_higher_targets: Iterable[str],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Apply the standing UK rule to a bound mixed-grain target surface.
+
+    Increment #762 may extend the grains in the UK rowwise solve only through
+    this front door, so detection, reconciliation, and the manifest receipt
+    cannot be bypassed.
+    """
+
+    return apply_cross_grain_reconciliation(
+        local_frame,
+        bound_higher_targets,
+        _uk_contract_targets(national_only=False),
+        UK_CROSS_GRAIN_RULE,
+    )
+
+
+def _validate_uk_cross_grain_declarations() -> None:
+    contract = _uk_contract_targets(national_only=False)
+    matched_sides: dict[str, str] = {}
+    unknown: list[str] = []
+    for bridge in UK_CROSS_GRAIN_BRIDGES:
+        for target_id in bridge.higher_target_ids:
+            if target_id not in contract:
+                unknown.append(target_id)
+        lower_target_id = bridge.lower_side.removeprefix("contract:")
+        if (
+            bridge.lower_side.startswith("contract:")
+            and lower_target_id not in contract
+        ):
+            unknown.append(lower_target_id)
+        for side in (*bridge.higher_target_ids, bridge.lower_side):
+            canonical = side.removeprefix("contract:")
+            existing = matched_sides.get(canonical)
+            if existing is not None:
+                raise ValueError(
+                    f"UK cross-grain target {canonical!r} is covered by both "
+                    f"{existing!r} and {bridge.bridge_id!r}."
+                )
+            matched_sides[canonical] = bridge.bridge_id
+    if unknown:
+        raise ValueError(
+            "UK cross-grain bridge target id(s) are absent from the committed "
+            f"contract: {sorted(set(unknown))}."
+        )
 
 
 def _warn_on_undeclared_geography(targets) -> None:
@@ -643,3 +765,6 @@ def _compare_series(
     if operator not in operations:
         raise ValueError(f"Unsupported UK target condition operator {operator!r}.")
     return operations[operator](expected)
+
+
+_validate_uk_cross_grain_declarations()

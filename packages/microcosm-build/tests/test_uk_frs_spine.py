@@ -20,9 +20,11 @@ from microcosm.build.uk_runtime import (
     frs_education_grants,
     frs_legacy_proxies,
 )
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
+    UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
     build_uk_frs_spine_frame,
@@ -184,8 +186,20 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "adult": [adult_2, adult_1],
         "child": [child_1],
         "benunit": [
-            {"SERNUM": 2, "BENUNIT": 1, "FAMTYPB2": 5, "DEPCHLDB": 0},
-            {"SERNUM": 1, "BENUNIT": 1, "FAMTYPB2": 7, "DEPCHLDB": 1},
+            {
+                "SERNUM": 2,
+                "BENUNIT": 1,
+                "FAMTYPB2": 5,
+                "DEPCHLDB": 0,
+                "TOTCAPB4": 222.0,
+            },
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "FAMTYPB2": 7,
+                "DEPCHLDB": 1,
+                "TOTCAPB4": 111.0,
+            },
         ],
         "househol": [household_2, household_1],
         "pension": [
@@ -821,6 +835,41 @@ def test_root_stage_ignores_seed_frame_content(tmp_path: Path) -> None:
     assert records[0].stage == "frs_spine"
 
 
+def test_root_stage_reports_capital_sentinel_mapping_count(tmp_path: Path) -> None:
+    stage = _write_fixture(tmp_path)
+    transform = UKFRSSpineStageTransform(tmp_path, stage=stage)
+
+    transform(uk_frs_spine_seed_frame())
+
+    assert transform.checkpoint_metadata()["evidence"]["frs_benunit_capital"] == {
+        "unavailable_sentinel": UC_CAPITAL_UNAVAILABLE,
+        "mapped_rows": 0,
+    }
+
+
+def test_benunit_capital_maps_unavailable_raw_values_to_named_sentinel(
+    tmp_path: Path,
+) -> None:
+    tables = _fixture_tables()
+    tables["benunit"][0]["TOTCAPB4"] = ""
+    tables["benunit"][1]["TOTCAPB4"] = -7
+    stage = _write_fixture(tmp_path, tables)
+    transform = UKFRSSpineStageTransform(tmp_path, stage=stage)
+
+    frame = transform(uk_frs_spine_seed_frame())
+
+    assert frame.table("benunit")["frs_benunit_capital"].tolist() == [
+        UC_CAPITAL_UNAVAILABLE,
+        UC_CAPITAL_UNAVAILABLE,
+    ]
+    assert (
+        transform.checkpoint_metadata()["evidence"]["frs_benunit_capital"][
+            "mapped_rows"
+        ]
+        == 2
+    )
+
+
 def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path)
 
@@ -924,6 +973,8 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     )
     assert benunit.loc[101, "is_married"]
     assert benunit.loc[101, "dependent_children"] == 1
+    assert benunit.loc[101, "frs_benunit_capital"] == 111.0
+    assert benunit.loc[201, "frs_benunit_capital"] == 222.0
 
 
 def test_region_code_map_covers_all_twelve_regions() -> None:
@@ -1062,7 +1113,11 @@ def _patch_spi_spine_driver_runtime(
                 benunit=benunit,
                 household=household,
                 time_period=uk_time_period(frame),
-                weight_kind=uk_household_weight_kind(frame),
+                weight_kind=(
+                    WeightKind.IMPORTANCE
+                    if self.stage.stage == "spi_support_channel"
+                    else uk_household_weight_kind(frame)
+                ),
                 household_weights=frame.weights_for("household").values,
                 mass_log=frame.mass_log,
             )
@@ -1171,11 +1226,8 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
     assert sidecar["schema_version"] == 2
-    assert sidecar["stages"] == [
-        name
-        for name in tool._STAGE_NAMES
-        if name in _synthetic_spec(stage).sources.stage_map()
-    ]
+    assert sidecar["stages"] == list(tool._uk_spine_stage_names(_synthetic_spec(stage)))
+    assert sidecar["uk_frame_content_identity"] == uk_frame_content_identity(frame)
     assert sidecar["entity_row_counts"] == {
         "person": 3,
         "benunit": 2,
@@ -1589,7 +1641,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
     stage_map = spec.sources.stage_map()
-    stages = [stage_map[name] for name in tool._STAGE_NAMES]
+    stages = [stage_map[name] for name in tool._uk_spine_stage_names(spec)]
 
     pins = tool._input_artifact_pins(stages)
 
@@ -1631,9 +1683,16 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     assert spec.sources is not None
     stages = spec.sources.stage_map()
 
-    declared = tool._declared_seeds([stages[name] for name in tool._STAGE_NAMES])
+    declared = tool._declared_seeds(
+        [stages[name] for name in tool._uk_spine_stage_names(spec)]
+    )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
+    assert declared["uc_deduction_attributes"] == {
+        "uc_deduction_random_draw": 0,
+        "uc_deduction_type_random_draw": 0,
+    }
     assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
     assert declared["salary_sacrifice"] == {
@@ -1694,9 +1753,7 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
         "hmrc_spi_income_spine": _CheckpointStage(
             spi_payloads["hmrc_spi_income_spine"]
         ),
-        "cgt_incidence_clone": _CheckpointStage(
-            e8_payloads["cgt_incidence_clone"]
-        ),
+        "cgt_incidence_clone": _CheckpointStage(e8_payloads["cgt_incidence_clone"]),
         "cgt_band_donors": _CheckpointStage(e8_payloads["cgt_band_donors"]),
         "salary_sacrifice": _CheckpointStage(e8_payloads["salary_sacrifice"]),
         "student_loans": SimpleNamespace(
@@ -1879,7 +1936,7 @@ def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:
 
 def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
     """The first licensed battery run failed at the assembled boundary because
-    the evidence provider consulted all 25 implementations, and an un-run
+    the evidence provider consulted all 27 implementations, and an un-run
     stage's checkpoint hook (correctly) refuses. Each boundary must offer only
     its executed prefix — an un-run stage being consulted is the regression.
     """

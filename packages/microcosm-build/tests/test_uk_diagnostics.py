@@ -13,6 +13,8 @@ from microcosm.build.uk_runtime.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_TARGET_GEOGRAPHY_LEVELS,
     uk_calibration_diagnostics_payload,
+    uk_weakest_areas_by_fit,
+    uk_weakest_families,
     uk_weight_summary,
     uk_zero_weight_strata,
     write_uk_calibration_diagnostics,
@@ -28,6 +30,117 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 _SPI_COLUMN = "household_is_spi_synthetic"
 _CG_COLUMN = "household_is_capital_gains_clone"
+
+
+def _local_target_row(
+    name: str,
+    *,
+    family: str,
+    area_type: str,
+    area_code: str,
+    relative_error: float,
+    loss_contribution: float,
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "relative_error": relative_error,
+        "final_loss_contribution": loss_contribution,
+        "registry": {"family": family},
+        "metadata": {"area_type": area_type, "area_code": area_code},
+    }
+
+
+def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
+    rows = [
+        _local_target_row(
+            "wales-a",
+            family="income",
+            area_type="constituency",
+            area_code="W07000041",
+            relative_error=0.30,
+            loss_contribution=0.20,
+        ),
+        _local_target_row(
+            "wales-b",
+            family="households",
+            area_type="constituency",
+            area_code="W07000041",
+            relative_error=0.05,
+            loss_contribution=0.01,
+        ),
+        _local_target_row(
+            "england-a",
+            family="income",
+            area_type="local_authority",
+            area_code="E09000001",
+            relative_error=0.15,
+            loss_contribution=0.09,
+        ),
+    ]
+    support = pd.DataFrame(
+        {
+            "geography_level": ["constituency", "local_authority"],
+            "area_code": ["W07000041", "E09000001"],
+            "nonzero_households": [80, 90],
+            "nonzero_source_households": [70, 75],
+            "effective_sample_size": [65.0, 72.0],
+        }
+    )
+
+    families = uk_weakest_families(rows)
+    assert [row["family"] for row in families] == ["income", "households"]
+    assert set(families[0]) == {
+        "family",
+        "n_targets",
+        "n_within_10pct",
+        "pass_rate",
+        "worst_target",
+        "worst_abs_relative_error",
+        "loss_contribution",
+        "loss_share",
+    }
+    assert families[0]["n_targets"] == 2
+    assert families[0]["loss_contribution"] == pytest.approx(0.29)
+
+    areas = uk_weakest_areas_by_fit(rows, support)
+    assert set(areas) == {"limit", "n_areas_scored", "bottom_by_fit", "countries"}
+    # The reported list is keyed by role and carries its own limit, so the key
+    # never asserts a count the list does not have.
+    assert areas["limit"] == 15
+    assert areas["n_areas_scored"] == 2
+    assert [row["area_code"] for row in areas["bottom_by_fit"]] == [
+        "W07000041",
+        "E09000001",
+    ]
+    assert set(areas["bottom_by_fit"][0]) == {
+        "geography_level",
+        "area_code",
+        "country",
+        "n_targets",
+        "n_within_10pct",
+        "pass_rate",
+        "worst_target",
+        "worst_abs_relative_error",
+        "loss_contribution",
+        "nonzero_households",
+        "nonzero_source_households",
+        "effective_sample_size",
+    }
+    assert [row["country"] for row in areas["countries"]] == [
+        "England",
+        "Wales",
+    ]
+    wales = areas["countries"][1]
+    assert wales["geography_level"] == "constituency"
+    assert wales["n_targets"] == 2
+    assert wales["pass_rate"] == pytest.approx(0.5)
+
+    # A caller-supplied limit is reported alongside the list it produced,
+    # rather than being contradicted by a fixed key name.
+    trimmed = uk_weakest_areas_by_fit(rows, support, limit=1)
+    assert trimmed["limit"] == 1
+    assert trimmed["n_areas_scored"] == 2
+    assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
 
 
 def _diagnostics_case(*, with_skipped: bool = False):

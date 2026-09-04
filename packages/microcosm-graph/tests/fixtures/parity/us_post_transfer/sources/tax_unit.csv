@@ -1,0 +1,6 @@
+tax_unit_id,tax_unit_spine_source_id,tax_unit_source_id,tax_unit_support_channel,tax_unit_support_clone_index,takes_up_dc_ptc,takes_up_aca_if_eligible,takes_up_ca_premium_subsidy_if_eligible,takes_up_co_premium_assistance_if_eligible,takes_up_nm_premium_assistance_if_eligible,puf_capital_gains_tail_transfer_applied,puf_capital_gains_tail_donor_source_id,puf_capital_gains_tail_donor_is_synthetic,puf_capital_gains_tail_donor_filing_status_code,puf_capital_gains_tail_donor_agi_band_index,puf_capital_gains_tail_transfer_weight,unrecaptured_section_1250_gain
+83,83,83,asec,0,True,True,True,True,True,False,-1,False,0,-1,0.0_0000000000000000e+00,
+84,83,84,acs,0,False,False,False,False,False,False,-1,False,0,-1,0.0_0000000000000000e+00,
+183,83,83,asec,1,True,True,True,True,True,False,-1,False,0,-1,0.0_0000000000000000e+00,
+184,83,84,acs,1,False,False,False,False,False,False,-1,False,0,-1,0.0_0000000000000000e+00,
+283,83,83,asec,2,True,True,True,True,True,True,999,False,1,0,2.5_0000000000000000e+01,4.0_0000000000000000e+00

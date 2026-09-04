@@ -27,6 +27,11 @@ ENGINE_ONLY = (
     "packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py",
 )
 
+# Shared-engine behavioral contracts that deliberately do not carry a country
+# prefix or the spec-engine ``test_spec_*`` prefix. Listing them makes their
+# shared-lane placement reviewed rather than a silent classifier default.
+EXPLICIT_SHARED_SPEC = ("packages/microcosm-build/tests/test_cross_grain.py",)
+
 PROCESSES = {
     "trade": ("main",),
     "spine-uk": ("main",),
@@ -104,10 +109,14 @@ def is_frame(path: str) -> bool:
 
 
 def is_calibrate_data_fit(path: str) -> bool:
+    # The engine-free operator shards. microcosm-graph joins them: its suite
+    # never needs a country engine, so it runs in the fast tier and in the
+    # engine tier's other-shards process rather than defaulting to shared-spec.
     return package(path) in {
         "microcosm-calibrate",
         "microcosm-data",
         "microcosm-fit",
+        "microcosm-graph",
     }
 
 
@@ -135,7 +144,9 @@ def fast_group(path: str) -> str:
         return "engine-only"
     if is_build(path) and name.startswith("test_us_trade_"):
         return "trade"
-    if is_build(path) and (name == "test_us_stacked_spine.py" or name.startswith("test_uk_")):
+    if is_build(path) and (
+        name == "test_us_stacked_spine.py" or name.startswith("test_uk_")
+    ):
         return "spine-uk"
     if path == "packages/microcosm-frame/tests/test_policyengine_uk_adapter.py":
         return "spine-uk"
@@ -151,6 +162,9 @@ def engine_group(path: str) -> str:
     if is_frame(path) and (
         name.startswith("test_policyengine_us_")
         or name == "test_rules_engine_contract.py"
+        # The graph kernel wrapping RulesEngine carries a requires_us parity
+        # test against PolicyEngine-US, so it belongs with the US adapter tests.
+        or name == "test_kernels.py"
     ):
         return "us-qs"
     if is_calibrate_data_fit(path):
@@ -241,7 +255,9 @@ def defaulted_engine_files(grouped: dict[str, list[str]]) -> list[str]:
     defaulted = []
     for path in grouped["shared-spec"]:
         name = basename(path)
-        if not (is_build(path) and name.startswith("test_spec_")):
+        if path not in EXPLICIT_SHARED_SPEC and not (
+            is_build(path) and name.startswith("test_spec_")
+        ):
             defaulted.append(path)
     return defaulted
 

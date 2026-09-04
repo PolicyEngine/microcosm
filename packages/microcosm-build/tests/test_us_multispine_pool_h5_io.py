@@ -8,9 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import microcosm.build.us_runtime.acs_transfer as acs_transfer_runtime
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.h5_io as h5_io
-import microcosm.build.us_runtime.immigration as immigration_runtime
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
@@ -46,10 +45,6 @@ from microcosm.build.us_runtime.h5_io import (
     write_nullable_us_h5,
 )
 from microcosm.build.us_runtime.support_provenance import (
-    BASE_ASEC_SUPPORT_CHANNEL,
-    spine_assembly_manifest,
-    spine_provenance_counts,
-    support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
@@ -102,7 +97,10 @@ def _pool_frame() -> Frame:
     )
 
 
-def _pool_frame_with_object_strings_on_every_entity() -> Frame:
+def _pool_frame_with_object_strings_on_every_entity(
+    *,
+    stacked: bool = False,
+) -> Frame:
     """Match the assembled pool's object-backed source-string shape."""
 
     frame = _pool_frame()
@@ -120,6 +118,21 @@ def _pool_frame_with_object_strings_on_every_entity() -> Frame:
             ),
         )
         tables[entity] = table
+    if stacked:
+        household = tables["household"].copy()
+        household["puma"] = ["0600101", "0600102", "0600102"]
+        household["congressional_district_geoid"] = np.asarray(
+            [601, 601, 601],
+            dtype=np.int64,
+        )
+        household["county_fips"] = ["06001", "06001", "06001"]
+        household[support_source_id_column("household")] = np.asarray(
+            [10, 20, 20], dtype=np.int64
+        )
+        household[support_clone_index_column("household")] = np.asarray(
+            [0, 0, 1], dtype=np.int64
+        )
+        tables["household"] = household
     return Frame(
         tables,
         frame.schema,
@@ -128,181 +141,6 @@ def _pool_frame_with_object_strings_on_every_entity() -> Frame:
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
-
-
-def _stacked_pool_frame_with_live_immigration(
-    *,
-    include_zero_weight_clone: bool = False,
-) -> tuple[Frame, dict[str, object]]:
-    """Build a persisted-shape final stack and its real immigration receipt."""
-
-    controls = immigration_runtime.us_immigration_controls()
-    positive_draws = tuple(draw for draw in controls.humanitarian if draw.target > 0)
-    acs_evidence = {
-        "paroled_one_year:afghanistan": (200, 2021, "NONE", "UNDOCUMENTED"),
-        "paroled_one_year:ukraine": (164, 2022, "NONE", "UNDOCUMENTED"),
-        "paroled_one_year:nicaragua": (315, 2023, "NONE", "UNDOCUMENTED"),
-        "paroled_one_year:venezuela": (373, 2022, "NONE", "UNDOCUMENTED"),
-        "refugee": (
-            412,
-            2022,
-            "OTHER_NON_CITIZEN",
-            "LEGAL_PERMANENT_RESIDENT",
-        ),
-        "asylee": (
-            207,
-            2020,
-            "OTHER_NON_CITIZEN",
-            "LEGAL_PERMANENT_RESIDENT",
-        ),
-        "tps:venezuela": (373, 2015, "NONE", "UNDOCUMENTED"),
-        "tps:el_salvador": (312, 2001, "NONE", "UNDOCUMENTED"),
-        "tps:honduras": (314, 1998, "NONE", "UNDOCUMENTED"),
-        "tps:nicaragua": (315, 1998, "NONE", "UNDOCUMENTED"),
-        "tps:nepal": (229, 2015, "NONE", "UNDOCUMENTED"),
-        "tps:other_designated": (248, 2020, "NONE", "UNDOCUMENTED"),
-    }
-    expected_labels = {draw.label for draw in positive_draws}
-    if set(acs_evidence) != expected_labels:
-        raise AssertionError(
-            "Stacked H5 immigration evidence must exactly cover the positive "
-            "canonical humanitarian draws."
-        )
-
-    row_count = 1 + len(positive_draws) + int(include_zero_weight_clone)
-    ids = np.arange(1, row_count + 1, dtype=np.int64)
-    channels = np.asarray(
-        [BASE_ASEC_SUPPORT_CHANNEL]
-        + [stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL] * len(positive_draws)
-        + ([BASE_ASEC_SUPPORT_CHANNEL] if include_zero_weight_clone else []),
-        dtype=object,
-    )
-    clone_indices = np.zeros(row_count, dtype=np.int64)
-    source_ids = ids.copy()
-    if include_zero_weight_clone:
-        clone_indices[-1] = 1
-        source_ids[-1] = ids[0]
-
-    person_rows: list[dict[str, object]] = [
-        {
-            "PRCITSHP": 1,
-            "PENATVTY": 57,
-            "PEINUSYR": 0,
-            "CIT": np.nan,
-            "POBP": np.nan,
-            "YOEP": np.nan,
-            "A_AGE": 50,
-            "age": 50,
-            "ssn_card_type": "CITIZEN",
-            "immigration_status_str": "CITIZEN",
-        }
-    ]
-    for draw in positive_draws:
-        birth_country, arrival_year, ssn_card_type, immigration_status = acs_evidence[
-            draw.label
-        ]
-        person_rows.append(
-            {
-                "PRCITSHP": np.nan,
-                "PENATVTY": np.nan,
-                "PEINUSYR": np.nan,
-                "CIT": 5,
-                "POBP": birth_country,
-                "YOEP": arrival_year,
-                "A_AGE": np.nan,
-                "age": 50,
-                "ssn_card_type": ssn_card_type,
-                "immigration_status_str": immigration_status,
-            }
-        )
-    if include_zero_weight_clone:
-        person_rows.append(dict(person_rows[0]))
-
-    person = pd.DataFrame(person_rows)
-    person.insert(0, "PERIDNUM", pd.Series([f"person-{value}" for value in ids]))
-    person.insert(1, "person_id", ids)
-    for entity in US_SCHEMA.group_entities:
-        person[US_SCHEMA.membership_column(entity)] = ids
-    person["nullable_input"] = np.resize(
-        np.asarray([True, None, False], dtype=object),
-        row_count,
-    )
-    person["is_incapable_of_self_care"] = True
-    person["tax_unit_role_input"] = "DEPENDENT"
-    person[support_channel_column("person")] = channels
-    person[support_source_id_column("person")] = source_ids
-    person[support_clone_index_column("person")] = clone_indices
-
-    household_weights = np.asarray(
-        [1.0]
-        + [float(draw.target) for draw in positive_draws]
-        + ([0.0] if include_zero_weight_clone else []),
-        dtype=np.float64,
-    )
-    mutable = channels == stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL
-    reconciled_person, reconciliation = (
-        immigration_runtime.reconcile_us_immigration_humanitarian_transfer(
-            person,
-            weights=household_weights,
-            mutable_rows=mutable,
-            seed=0,
-            time_period=2024,
-            controls=controls,
-        )
-    )
-
-    tables = {"person": reconciled_person}
-    for entity in US_SCHEMA.group_entities:
-        table = pd.DataFrame({US_SCHEMA.id_column(entity): ids})
-        table.insert(
-            0,
-            f"{entity}_source_label",
-            pd.Series([f"{entity}-{value}" for value in ids], dtype=object),
-        )
-        table[support_channel_column(entity)] = channels
-        table[support_source_id_column(entity)] = source_ids
-        table[support_clone_index_column(entity)] = clone_indices
-        tables[entity] = table
-
-    household = tables["household"]
-    household["puma"] = "0600101"
-    household["congressional_district_geoid"] = np.full(
-        row_count,
-        601,
-        dtype=np.int64,
-    )
-    household["county_fips"] = "06001"
-
-    for index, spec in enumerate(
-        post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
-    ):
-        tables[spec.entity][spec.target] = (
-            10.0 + index + np.arange(row_count, dtype=np.float64)
-        )
-
-    assembly_tables = {
-        entity: table.loc[table[support_clone_index_column(entity)].eq(0)]
-        for entity, table in tables.items()
-    }
-    metadata = spine_assembly_manifest(
-        assembly_tables,
-        channels=(
-            BASE_ASEC_SUPPORT_CHANNEL,
-            stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL,
-        ),
-    )
-    frame = Frame(
-        tables,
-        US_SCHEMA,
-        {
-            "household": Weights(
-                household_weights,
-                WeightKind.IMPORTANCE,
-            )
-        },
-        metadata=metadata,
-    )
-    return frame, reconciliation
 
 
 def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
@@ -792,54 +630,24 @@ def _write_ready_pool(
     tmp_path: Path,
     *,
     stacked: bool = False,
-    include_zero_weight_clone: bool = False,
     sample_fraction: float = 1.0,
 ) -> Path:
     run_id = "fixture-publication"
     pool_path = tmp_path / "pool.h5"
     diagnostics_path = tmp_path / "pool.agreement.json"
     manifest_path = tmp_path / "pool.manifest.json"
-    gate_names = (
-        (
-            "us_stacked_completeness",
-            "us_by_origin_battery",
-            "immigration_composition",
-        )
-        if stacked
-        else ("us_spine_agreement",)
-    )
     agreement_gate = {
         "passed": True,
         "gates": {
-            name: {
+            "us_spine_agreement": {
                 "passed": True,
                 "failures": [],
                 "details": {"fixture": True},
             }
-            for name in gate_names
         },
     }
-    if include_zero_weight_clone and not stacked:
-        raise ValueError("Only the stacked H5 fixture may include a clone row.")
     schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 4
-    if stacked:
-        pool_frame, immigration_reconciliation = (
-            _stacked_pool_frame_with_live_immigration(
-                include_zero_weight_clone=include_zero_weight_clone,
-            )
-        )
-        dag = _canonical_stacked_late_dag_receipt(
-            pool_frame,
-            immigration_reconciliation=immigration_reconciliation,
-        )
-        provenance_counts = spine_provenance_counts(
-            pool_frame,
-            boundary="stacked H5 fixture provenance counts",
-        )
-    else:
-        pool_frame = _pool_frame_with_object_strings_on_every_entity()
-        dag = None
-        provenance_counts = {"household": {"rows": pool_frame.n("household")}}
+    pool_frame = _pool_frame_with_object_strings_on_every_entity(stacked=stacked)
     geography_assignment = (
         _fixture_geography_assignment(pool_frame.table("household"))
         if stacked
@@ -917,7 +725,7 @@ def _write_ready_pool(
             },
         },
         "agreement_gate": agreement_gate,
-        "provenance_counts": provenance_counts,
+        "provenance_counts": {"household": {"rows": 3}},
         "pool_h5": {
             "path": str(pool_path.resolve()),
             "sha256": _sha256(pool_path),
@@ -932,7 +740,7 @@ def _write_ready_pool(
         },
     }
     if stacked:
-        assert dag is not None
+        dag = _canonical_stacked_late_dag_receipt()
         assert geography_assignment is not None
         sampling, stack_manifest = _fixture_stacked_sampling(sample_fraction)
         transition_authority = (
@@ -983,45 +791,65 @@ def _write_ready_pool(
     return manifest_path
 
 
+def _write_gate_failed_pool(tmp_path: Path) -> Path:
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    failed_gate = {
+        "passed": False,
+        "gates": {
+            "us_spine_agreement": {
+                "passed": False,
+                "failures": ["fixture terminal failure"],
+                "details": {"fixture": False},
+            }
+        },
+    }
+    manifest.update(
+        {
+            "status": "gate_failed",
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics.update(
+        {
+            "simulation_ready": False,
+            "agreement_gate": failed_gate,
+            "terminal_gates": failed_gate,
+        }
+    )
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest_path
+
+
 def _canonical_late_calibration_owner_receipt(
-    frame: Frame,
     spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
 ) -> dict[str, object]:
-    table = frame.table(spec.entity)
-    channel = table[support_channel_column(spec.entity)].astype(str)
-    clone_index = pd.to_numeric(
-        table[support_clone_index_column(spec.entity)],
-        errors="raise",
+    values = np.asarray(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 300.0, 400.0, 500.0]
     )
-    reference = (channel.eq(BASE_ASEC_SUPPORT_CHANNEL) & clone_index.eq(0)).to_numpy(
-        dtype=bool
-    )
-    recipient = (
-        channel.eq(stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL) & clone_index.eq(0)
-    ).to_numpy(dtype=bool)
-    weights = np.asarray(
-        frame.resolve_weights(spec.entity).values,
-        dtype=np.float64,
-    )
-    entity_ids = table[frame.schema.entity_id_column(spec.entity)].to_numpy(copy=False)
+    weights = np.asarray([2.0, 3.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+    entity_ids = np.arange(1, len(values) + 1)
+    reference = np.asarray([True] * 5 + [False] * 5)
+    recipient = ~reference
     constrained = spec.special_constraint != "none"
-    application = post_transfer_calibration_runtime.apply_post_transfer_calibration(
-        frame,
-        entity=spec.entity,
-        family=spec.family,
-        target=spec.target,
+    result = post_transfer_calibration_runtime.calibrate_post_transfer_values(
+        values,
+        weights,
+        entity_ids,
+        spec=spec,
         reference_rows=reference,
         recipient_rows=recipient,
         mutable_rows=recipient,
         allowed_carrier_rows=recipient if constrained else None,
         addition_candidate_rows=recipient if constrained else None,
     )
-    result_values = application.frame.table(spec.entity)[spec.target].to_numpy(
-        dtype=np.float64,
-        copy=True,
-    )
-    table[spec.target] = result_values
-    calibration = application.receipt
+    calibration = result.receipt
     scope = calibration["scope"]
     constraint: dict[str, object] = {"constraint": spec.special_constraint}
     if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
@@ -1062,13 +890,13 @@ def _canonical_late_calibration_owner_receipt(
                 ),
                 "reference_output_values_sha256": (
                     stacked_spine_module._post_transfer_float64_sha256(
-                        result_values[reference],
+                        result.values[reference],
                         boundary="synthetic reference calibration output",
                     )
                 ),
                 "recipient_output_values_sha256": (
                     stacked_spine_module._post_transfer_float64_sha256(
-                        result_values[recipient],
+                        result.values[recipient],
                         boundary="synthetic recipient calibration output",
                     )
                 ),
@@ -1094,7 +922,7 @@ def _canonical_late_calibration_owner_receipt(
 
 
 def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
-    policy = acs_transfer_runtime.acs_transfer_execution_contract_identity(
+    policy = acs_transfer_module.acs_transfer_execution_contract_identity(
         targets=("is_pregnant",),
         derive_schedule_d=False,
     )["structural_target_policies"]["is_pregnant"]
@@ -1122,11 +950,7 @@ def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
     }
 
 
-def _canonical_stacked_late_dag_receipt(
-    frame: Frame,
-    *,
-    immigration_reconciliation: dict[str, object],
-) -> dict[str, object]:
+def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
     """Build a signed fixture receipt over the live canonical contracts."""
 
     schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
@@ -1176,80 +1000,17 @@ def _canonical_stacked_late_dag_receipt(
             "sha256"
         ]
     )
-    immigration_reconciliation = stacked_spine_module._json_ready(
-        immigration_reconciliation
-    )
-    immigration_recipient_rows = int(immigration_reconciliation["mutable_rows"])
-    immigration_producer_rows = int(immigration_reconciliation["immutable_rows"])
     group_receipts: dict[str, object] = {}
     for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
-        is_immigration_group = (
-            group.entity == "person" and group.family == "source_operator_immigration"
-        )
         group_targets = {
             f"{group.entity}/{group.family}/{target}": {
-                **(
-                    {
-                        "producer_roles": ["asec_source"],
-                        "producer_rows": immigration_producer_rows,
-                    }
-                    if is_immigration_group
-                    else {}
-                ),
-                "authorized_null_rows": (
-                    immigration_recipient_rows if is_immigration_group else 0
-                ),
-                "imputed_rows": (
-                    immigration_recipient_rows if is_immigration_group else 0
-                ),
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
             for target in group.targets
         }
-        if is_immigration_group:
-            required_predictors, _optional_predictors = (
-                stacked_spine_module._acs_pattern_predictor_authority(
-                    entity=group.entity,
-                    family_targets=group.targets,
-                )
-            )
-            pattern = acs_transfer_runtime.AcsTransferPattern(
-                name=acs_transfer_runtime._pattern_name(0, ()),
-                observed_optional_predictors=(),
-                predictors=required_predictors,
-                seed=0,
-                weight_kind="design",
-                donor_rows=immigration_producer_rows,
-                recipient_rows=immigration_recipient_rows,
-                target_regimes=tuple(
-                    (model_target, "positive_only")
-                    for model_target in acs_transfer_runtime._model_target_names(
-                        group.targets
-                    )
-                ),
-            )
-            for target in group.targets:
-                key = f"{group.entity}/{group.family}/{target}"
-                record = acs_transfer_runtime.AcsImputedInput(
-                    column=target,
-                    entity=group.entity,
-                    family=group.family,
-                    donor_spine="synthetic_stacked_h5_fixture",
-                    donor_channel="asec",
-                    predictors=pattern.predictors,
-                    seed=pattern.seed,
-                    weight_kind=pattern.weight_kind,
-                    patterns=(pattern,),
-                    imputed_recipient_rows=immigration_recipient_rows,
-                    reconciliation=immigration_reconciliation,
-                )
-                group_targets[key]["qrf_pattern_evidence"] = (
-                    stacked_spine_module._acs_imputed_pattern_evidence(record)
-                )
-                group_targets[key]["post_transfer_reconciliation"] = dict(
-                    immigration_reconciliation
-                )
         pregnancy_key = f"{group.entity}/{group.family}/is_pregnant"
         if pregnancy_key in group_targets:
             group_targets[pregnancy_key]["structural_policy"] = (
@@ -1258,7 +1019,7 @@ def _canonical_stacked_late_dag_receipt(
         calibrated_keys = sorted(set(group_targets) & set(late_specs))
         for key in calibrated_keys:
             group_targets[key]["post_transfer_calibration"] = (
-                _canonical_late_calibration_owner_receipt(frame, late_specs[key])
+                _canonical_late_calibration_owner_receipt(late_specs[key])
             )
         group_receipts[group.name] = {
             "producer": group.name,
@@ -1702,58 +1463,8 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
 
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
-    positive_draws = tuple(
-        draw
-        for draw in immigration_runtime.us_immigration_controls().humanitarian
-        if draw.target > 0
-    )
-    expected_rows = 1 + len(positive_draws)
-    expected_weights = np.asarray(
-        [1.0, *(float(draw.target) for draw in positive_draws)],
-        dtype=np.float64,
-    )
-    assert all(frame.n(entity) == expected_rows for entity in US_SCHEMA.entities)
-    np.testing.assert_array_equal(
-        frame.weights_for("household").values,
-        expected_weights,
-    )
-    person = frame.table("person")
-    assert person.loc[0, "PRCITSHP"] == 1
-    assert pd.isna(person.loc[0, "CIT"])
-    assert person.loc[0, "immigration_status_str"] == "CITIZEN"
-    assert person.loc[1:, "CIT"].eq(5).all()
-    assert person.loc[1:, ["POBP", "YOEP"]].notna().all().all()
-    for entity in US_SCHEMA.group_entities:
-        np.testing.assert_array_equal(
-            person[US_SCHEMA.membership_column(entity)],
-            frame.table(entity)[US_SCHEMA.id_column(entity)],
-        )
-    for draw in positive_draws:
-        emitted = immigration_runtime.us_immigration_humanitarian_draw_mask(
-            frame,
-            draw,
-        )
-        assert int(emitted.sum()) == 1
-        assert float(frame.resolve_weights("person").values[emitted].sum()) == float(
-            draw.target
-        )
-    for entity in US_SCHEMA.entities:
-        assert manifest["provenance_counts"][entity] == {
-            "rows": expected_rows,
-            "by_source_channel": {
-                BASE_ASEC_SUPPORT_CHANNEL: 1,
-                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: len(positive_draws),
-            },
-            "by_clone_index": {"0": expected_rows},
-            "by_source_channel_and_clone_index": {
-                BASE_ASEC_SUPPORT_CHANNEL: {"0": 1},
-                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: {
-                    "0": len(positive_draws)
-                },
-            },
-        }
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
-    assert manifest["schema_version"] == 10
+    assert manifest["schema_version"] == 9
     assert (
         manifest["pool_h5"]["materializer_version"]
         == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
@@ -1899,61 +1610,6 @@ def test_ready_stacked_pool_loader_rejects_boolean_sampling_aliases(
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
-def test_ready_stacked_pool_loader_replays_immigration_status_against_h5(
-    tmp_path: Path,
-) -> None:
-    """An ordinary H5 re-hash cannot forge the sealed live immigration proof."""
-
-    pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    pool_path = Path(manifest["pool_h5"]["path"])
-    with pd.HDFStore(pool_path, mode="a") as store:
-        person = h5_io.read_frame_table(store, "person")
-        parole_rows = person["immigration_status_str"].eq("PAROLED_ONE_YEAR")
-        assert parole_rows.any()
-        person.loc[parole_rows.idxmax(), "immigration_status_str"] = (
-            "LEGAL_PERMANENT_RESIDENT"
-        )
-        h5_io.put_frame_table(
-            store,
-            "person",
-            person,
-            preferred_format="fixed",
-        )
-
-    # Re-sign only the ordinary byte-level artifact envelope. The immutable
-    # late-transition receipt still describes the untampered live population.
-    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
-    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    with pytest.raises(
-        ValueError,
-        match="differs from the live ASEC/ACS weighted population",
-    ):
-        load_simulation_ready_us_multispine_pool(manifest_path)
-
-
-def test_ready_stacked_pool_loader_requires_immigration_terminal_gate(
-    tmp_path: Path,
-) -> None:
-    pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
-    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    for payload in (manifest, diagnostics):
-        payload["terminal_gates"]["gates"].pop("immigration_composition")
-        payload["agreement_gate"]["gates"].pop("immigration_composition")
-    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
-    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="canonical terminal gate set"):
-        load_simulation_ready_us_multispine_pool(manifest_path)
-
-
 def test_ready_stacked_pool_loader_binds_h5_cd_vintage_attrs(
     tmp_path: Path,
 ) -> None:
@@ -2022,11 +1678,7 @@ def test_ready_stacked_pool_loader_rejects_divergent_clone_geography(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(
-        tmp_path,
-        stacked=True,
-        include_zero_weight_clone=True,
-    )
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     pool_path = Path(manifest["pool_h5"]["path"])
     clone_column = support_clone_index_column("household")
@@ -2048,35 +1700,7 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
-    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    failed_gate = json.loads(json.dumps(manifest["terminal_gates"]))
-    failed_gate["passed"] = False
-    failed_gate["gates"]["us_stacked_completeness"] = {
-        "passed": False,
-        "failures": ["fixture terminal failure"],
-        "details": {"fixture": False},
-    }
-    manifest.update(
-        {
-            "status": "gate_failed",
-            "simulation_ready": False,
-            "agreement_gate": failed_gate,
-            "terminal_gates": failed_gate,
-        }
-    )
-    diagnostics.update(
-        {
-            "simulation_ready": False,
-            "agreement_gate": failed_gate,
-            "terminal_gates": failed_gate,
-        }
-    )
-    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
-    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path = _write_gate_failed_pool(tmp_path)
 
     with pytest.raises(ValueError, match="not simulation-ready"):
         load_simulation_ready_us_multispine_pool(manifest_path)
@@ -2096,11 +1720,7 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         )
     )
 
-    expected_rows = 1 + sum(
-        draw.target > 0
-        for draw in immigration_runtime.us_immigration_controls().humanitarian
-    )
-    assert frame.n("household") == expected_rows
+    assert frame.n("household") == 3
     assert loaded_manifest["status"] == "gate_failed"
     assert loaded_manifest["simulation_ready"] is False
     assert loaded_manifest["terminal_gates"]["passed"] is False
@@ -2114,6 +1734,9 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         authenticated_h5,
         allow_gate_failed_base_pool=True,
     )
+    assert (
+        receipt["content_identity_sha256"] == authenticated_h5.content_identity_sha256
+    )
     assert receipt["status"] == "gate_failed"
     assert receipt["simulation_ready"] is False
     assert receipt["allow_gate_failed_base_pool"] is True
@@ -2124,12 +1747,553 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         "failure_count": 1,
         "failures": [
             {
-                "gate": "us_stacked_completeness",
+                "gate": "us_spine_agreement",
                 "message": "fixture terminal failure",
             }
         ],
-        "verdict": failed_gate,
+        "verdict": loaded_manifest["agreement_gate"],
     }
+
+
+def test_denied_gate_failed_pool_is_available_only_for_scoring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["publication_run_id"]
+    reason = "fixture pool is excluded from the certifiable line"
+    reference = "microcosm#856; fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+
+    frame, loaded_manifest, _ = load_authenticated_us_multispine_pool_for_scoring(
+        manifest_path
+    )
+    assert frame.n("household") == 3
+    assert loaded_manifest["status"] == "gate_failed"
+
+    refused_loaders = (
+        (
+            "manifest-only",
+            lambda: h5_io.load_simulation_ready_us_multispine_pool_manifest(
+                manifest_path
+            ),
+        ),
+        (
+            "simulation-ready",
+            lambda: load_simulation_ready_us_multispine_pool(manifest_path),
+        ),
+        (
+            "release-strict",
+            lambda: load_authenticated_us_multispine_pool_for_release(
+                manifest_path,
+                allow_terminal_gate_failure=False,
+            ),
+        ),
+        (
+            "release-opt-in",
+            lambda: load_authenticated_us_multispine_pool_for_release(
+                manifest_path,
+                allow_terminal_gate_failure=True,
+            ),
+        ),
+    )
+    for loader_name, loader in refused_loaders:
+        with pytest.raises(ValueError) as error:
+            loader()
+        message = str(error.value)
+        assert run_id in message, loader_name
+        assert reason in message, loader_name
+        assert reference in message, loader_name
+
+
+def test_pool_deny_list_matches_manifest_sha256_without_matching_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "sha-only.manifest.json"
+    observed_run_id = "different-observed-publication"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "publication_run_id": observed_run_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+    denied_run_id = "sha-matched-denied-publication"
+    reason = "fixture manifest digest is excluded"
+    reference = "microcosm#856; sha-fixture-plan-gate"
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            denied_run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256=_sha256(manifest_path),
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-sha-release",
+                reason=reason,
+                reference=reference,
+            )
+        },
+        raising=False,
+    )
+    assert observed_run_id != denied_run_id
+
+    with pytest.raises(ValueError) as error:
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+    message = str(error.value)
+    assert observed_run_id in message
+    assert denied_run_id in message
+    assert reason in message
+    assert reference in message
+
+
+def test_pool_deny_list_contains_candidate_26_identity() -> None:
+    denied = h5_io.DENIED_POOL_PUBLICATIONS["2ab3f5a136bf4033be876bf150a6fbb4"]
+    assert denied.manifest_sha256 == (
+        "2a06fc2b1b73b006bb1bae7d13daeef813a4645c989374408eceaed0ef321cbd"
+    )
+    assert denied.release_id == (
+        "populace-us-2024-stacked-f025-s578-asec42213-acs382903-"
+        "20260831T162338Z-e14b24e8"
+    )
+    assert denied.pool_h5_sha256 == (
+        "45f401735d7c5dc75da78be01bec4db7bf49ef074f69cecf39a1d5b1d77d7b9b"
+    )
+    assert denied.content_identity_sha256 == (
+        "f5a5023bb9a74003d433abf04c796c96da0a34c6a7caff78b70fee421c4a7b2c"
+    )
+    assert "\n" not in denied.reason
+    assert denied.reference == (
+        "microcosm#856; plan gate 20260902-220844-plan-532dab66"
+    )
+
+
+def test_pool_deny_list_matches_pool_h5_sha256_without_other_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A repackaged manifest around the same H5 bytes is still refused."""
+    manifest_path = tmp_path / "h5-only.manifest.json"
+    denied_h5 = "a" * 64
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
+                "publication_run_id": "repackaged-publication",
+                "pool_h5": {"sha256": denied_h5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "h5-matched-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-h5-release",
+                reason="fixture H5 bytes are excluded",
+                reference="microcosm#856; h5-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="pool H5 SHA-256"):
+        h5_io.load_simulation_ready_us_multispine_pool_manifest(manifest_path)
+
+
+def test_denied_pool_h5_digest_is_refused_on_generic_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripping the sidecar and metadata row must not reopen a generic path."""
+    denied_h5 = "b" * 64
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded",
+                reference="microcosm#856; stripped-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    h5_io.refuse_denied_pool_h5_digest("c" * 64, consumer="fixture consumer")
+    with pytest.raises(ValueError) as error:
+        h5_io.refuse_denied_pool_h5_digest(denied_h5, consumer="fixture consumer")
+    message = str(error.value)
+    assert "fixture consumer" in message
+    assert "stripped-denied-publication" in message
+    assert "even without pool identity metadata" in message
+
+
+def test_scoring_evidence_of_a_denied_pool_cannot_become_a_release_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scoring exception must not launder a denied pool into release evidence."""
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["publication_run_id"]
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            run_id: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    _frame, loaded_manifest, authenticated_h5 = (
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+    )
+    with pytest.raises(ValueError, match="cannot become a release receipt"):
+        us_multispine_pool_release_receipt(
+            loaded_manifest,
+            authenticated_h5,
+            allow_gate_failed_base_pool=True,
+        )
+
+
+def test_denied_pool_bytes_are_refused_by_every_generic_ingress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripped of sidecar and metadata, a denied pool must fail at each ingress."""
+    from microcosm.build.us_runtime import l0_refit_export
+
+    stripped = tmp_path / "stripped.h5"
+    stripped.write_bytes(b"denied pool bytes with no identity metadata")
+    denied_h5 = hashlib.sha256(stripped.read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "stripped-denied-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-stripped-release",
+                reason="fixture bytes are excluded",
+                reference="microcosm#856; stripped-fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        l0_refit_export.load_us_frame(stripped)
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        h5_io.load_legacy_calibrated_us_h5(stripped)
+    # The L0/refit export reads the base through load_us_frame first, so the
+    # refusal precedes any use of the weights file, which need not exist.
+    with pytest.raises(ValueError, match="even without pool identity metadata"):
+        l0_refit_export.export_us_l0_refit_h5(
+            base_h5=stripped,
+            weights_npz=tmp_path / "absent.npz",
+            output_h5=tmp_path / "out.h5",
+        )
+
+
+def test_h5_read_is_refused_when_the_file_changes_under_it(tmp_path: Path) -> None:
+    """The refusal check and the read are bound by a post-read digest."""
+    path = tmp_path / "base.h5"
+    path.write_bytes(b"benign bytes")
+    sha256 = h5_io.refuse_denied_pool_h5(path, consumer="fixture consumer")
+    h5_io.assert_h5_unchanged(path, sha256, consumer="fixture consumer")
+    path.write_bytes(b"replaced bytes")
+    with pytest.raises(ValueError, match="changed while being read"):
+        h5_io.assert_h5_unchanged(path, sha256, consumer="fixture consumer")
+
+
+def _tool_module(relative: str, name: str):
+    import importlib.util
+
+    root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location(name, root / relative)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_repackaged_denied_pool_is_refused_by_every_generic_ingress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dropping the metadata table and re-serializing changes the byte digest
+    and removes every pool marker; the content identity survives and every
+    generic ingress still refuses the file."""
+    pytest.importorskip("tables")
+    from microcosm.build.us_runtime import l0_refit_export
+
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    original_h5 = Path(manifest["pool_h5"]["path"])
+    repackaged_dir = tmp_path / "repackaged"
+    repackaged_dir.mkdir()
+    repackaged = repackaged_dir / "plain.h5"  # no sidecar manifest beside it
+    with pd.HDFStore(original_h5, mode="r") as source:
+        with pd.HDFStore(repackaged, mode="w") as target:
+            for key in source.keys():
+                if key.lstrip("/") == "_populace_staging_metadata":
+                    continue
+                table = source.get(key)
+                if key.lstrip("/") == "household" and isinstance(table, pd.DataFrame):
+                    # Launder harder: drop optional provenance columns and
+                    # relabel the household ids consistently.
+                    table = table.drop(
+                        columns=[
+                            c
+                            for c in (
+                                "household_support_channel",
+                                "household_support_clone_index",
+                            )
+                            if c in table.columns
+                        ]
+                    )
+                    table = table.assign(household_id=table["household_id"] + 1000)
+                target.put(key.lstrip("/"), table)
+
+    assert h5_io.identify_us_multispine_pool_manifest(repackaged) is None
+    assert _sha256(repackaged) != _sha256(original_h5)
+    identity = h5_io.pool_h5_content_identity(repackaged)
+    assert identity == h5_io.pool_h5_content_identity(original_h5)
+
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            manifest["publication_run_id"]: h5_io.DeniedPoolPublication(
+                manifest_sha256=_sha256(manifest_path),
+                pool_h5_sha256=_sha256(original_h5),
+                content_identity_sha256=identity,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    fiscal = _tool_module("tools/build_us_fiscal_refresh_release.py", "fiscal_tool")
+    puf_base = _tool_module("tools/build_us_puf_support_base.py", "puf_base_tool")
+    acs_base = _tool_module(
+        "tools/_legacy/build_us_acs_multispine_base.py", "acs_base_tool"
+    )
+    ingresses = (
+        ("load_us_frame", lambda: l0_refit_export.load_us_frame(repackaged)),
+        ("legacy loader", lambda: h5_io.load_legacy_calibrated_us_h5(repackaged)),
+        ("fiscal builder", lambda: fiscal._load_frame(repackaged)),
+        ("puf support base", lambda: puf_base._load_frame(repackaged)),
+        ("legacy acs base", lambda: acs_base._load_base_frame(repackaged)),
+    )
+    for label, ingress in ingresses:
+        with pytest.raises(ValueError, match="repackaging") as error:
+            ingress()
+        assert manifest["publication_run_id"] in str(error.value), label
+
+
+def test_content_identity_ignores_ids_columns_and_order() -> None:
+    """Version 2 hashes the sorted weight multiset with the count, nothing else."""
+    weights = np.asarray([3.0, 1.5, 2.25], dtype=np.float64)
+    identity = h5_io.content_identity_of_household_weights(weights)
+    assert identity == h5_io.content_identity_of_household_weights(weights[::-1])
+    assert identity != h5_io.content_identity_of_household_weights(weights[:2])
+    assert identity != h5_io.content_identity_of_household_weights(weights + 1e-9)
+
+
+def test_loaded_frame_of_a_denied_pool_is_refused_even_if_the_disk_file_changed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ABA: benign bytes on disk for both hashes, denied tables actually read."""
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    denied_h5 = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(denied_h5, mode="r") as store:
+        denied_tables = {
+            key.lstrip("/"): store.get(key)
+            for key in store.keys()
+            if key.lstrip("/") != "_populace_staging_metadata"
+        }
+    identity = h5_io.content_identity_of_household_weights(
+        denied_tables["household"]["household_weight"].to_numpy(dtype=np.float64)
+    )
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            manifest["publication_run_id"]: h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256="1" * 64,
+                content_identity_sha256=identity,
+                release_id="fixture-release",
+                reason="fixture pool is excluded from the certifiable line",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    benign = tmp_path / "benign.h5"
+    with pd.HDFStore(benign, mode="w") as store:
+        for key, table in denied_tables.items():
+            if key == "household":
+                table = table.assign(household_weight=table["household_weight"] * 0.5)
+            store.put(key, table)
+    # Both on-disk checks see the benign file; the read is swapped to the
+    # denied tables, as a pathname replacement between check and read would do.
+    monkeypatch.setattr(
+        h5_io, "read_frame_table", lambda store, entity: denied_tables[entity].copy()
+    )
+    with pytest.raises(ValueError, match="loaded frame"):
+        h5_io.load_legacy_calibrated_us_h5(benign)
+
+
+def test_selection_manifest_provenance_is_required_for_v2_and_denied_for_any(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from microcosm.build.us_runtime import warm_start_selection as wss
+
+    def write(version: int, source: dict) -> Path:
+        path = tmp_path / f"selection-v{version}-{len(list(tmp_path.iterdir()))}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": version,
+                    "join_key": list(wss.DEFAULT_SELECTION_JOIN_KEY),
+                    "source": source,
+                    "n_selected": 0,
+                    "identities_sha256": wss._identities_digest(
+                        tuple(wss.DEFAULT_SELECTION_JOIN_KEY), []
+                    ),
+                    "identities": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    # A legacy v1 manifest with loose provenance still loads.
+    assert (
+        wss.load_selection_source_from_manifest(write(1, {"kind": "h5"})).n_identities
+        == 0
+    )
+    # A v2 manifest must carry canonical byte and content provenance.
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.load_selection_source_from_manifest(write(2, {"kind": "h5"}))
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.load_selection_source_from_manifest(
+            write(
+                2,
+                {"kind": "h5", "sha256": "A" * 64, "content_identity_sha256": "b" * 64},
+            )
+        )
+    # The public writer cannot emit an unloadable v2 manifest.
+    with pytest.raises(ValueError, match="must record source.sha256"):
+        wss.write_selection_source_manifest(
+            wss.SelectionSource(
+                join_key=tuple(wss.DEFAULT_SELECTION_JOIN_KEY),
+                identities=[],
+                provenance={"kind": "h5"},
+            ),
+            tmp_path / "unwritable.json",
+        )
+
+    denied_h5 = "d" * 64
+    monkeypatch.setattr(
+        h5_io,
+        "DENIED_POOL_PUBLICATIONS",
+        {
+            "denied-selection-publication": h5_io.DeniedPoolPublication(
+                manifest_sha256="0" * 64,
+                pool_h5_sha256=denied_h5,
+                content_identity_sha256="2" * 64,
+                release_id="fixture-release",
+                reason="fixture pool is excluded",
+                reference="microcosm#856; fixture-plan-gate",
+            )
+        },
+        raising=False,
+    )
+    # Denied provenance is refused on either schema, byte or content, any case.
+    with pytest.raises(ValueError, match="denied publication"):
+        wss.load_selection_source_from_manifest(
+            write(1, {"kind": "h5", "sha256": denied_h5.upper()})
+        )
+    with pytest.raises(ValueError, match="content identity"):
+        wss.load_selection_source_from_manifest(
+            write(
+                2,
+                {"kind": "h5", "sha256": "e" * 64, "content_identity_sha256": "2" * 64},
+            )
+        )
+
+
+def test_fiscal_builder_binds_its_late_base_load_to_the_recorded_digest(
+    tmp_path: Path,
+) -> None:
+    fiscal = _tool_module(
+        "tools/build_us_fiscal_refresh_release.py", "fiscal_tool_bind"
+    )
+    base = tmp_path / "base.h5"
+    base.write_bytes(b"benign base bytes")
+    with pytest.raises(ValueError, match="not the base dataset whose identity"):
+        fiscal._load_frame(base, expected_sha256="f" * 64)
+
+
+def test_scoring_only_loader_is_not_reachable_from_release_paths() -> None:
+    """The deny-list's only exception must stay a scoring-only ingress.
+
+    Every non-test source file that names the scoring loader is listed here;
+    a release builder, preflight, or pool tool that started calling it would
+    reopen the release ingress the deny-list closes.
+    """
+    root = Path(__file__).resolve().parents[3]
+    name = "load_authenticated_us_multispine_pool_for_scoring"
+    allowed = {
+        "packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py",
+        "tools/score_us_release_head_to_head.py",
+    }
+    found = set()
+    for folder in ("tools", "packages/microcosm-build/src"):
+        for path in sorted((root / folder).rglob("*.py")):
+            if name in path.read_text(encoding="utf-8"):
+                found.add(path.relative_to(root).as_posix())
+    assert found == allowed
 
 
 def test_gate_failed_release_opt_in_is_rejected_for_a_ready_pool(

@@ -28,7 +28,9 @@ from microcosm.build.uk_runtime import (
     rowwise_area_support_summary,
     rowwise_calibration_mass_reason,
     solve_uk_rowwise_weights_under_doctrine,
+    uk_area_support_summary,
     uk_household_weight_kind,
+    uk_ladder_area_support_summary,
     uk_national_frame,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
@@ -210,8 +212,9 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     stood_on = receipt["stood_on"]["census_households/constituency"]
     seed = stood_on["census_disclosure_control_noise"]
     assert seed["approved_by"] == "juaristi22"
-    assert seed["approved_on"] == "2026-08-27"
-    assert seed["expires_on"] == "2026-11-27"
+    assert seed["adjudication"] == "microcosm#802"
+    assert seed["approved_on"] == "2026-08-31"
+    assert seed["expires_on"] == "2026-11-30"
     assert receipt["stood_on"]["tenure/constituency"] == {}
 
 
@@ -405,6 +408,79 @@ def test_rowwise_area_support_summary_reports_all_target_areas() -> None:
     assert rows["S001"].nonzero_households == 1
     assert rows["S001"].weight_sum == pytest.approx(5.0)
     assert rows["E001"].effective_sample_size == pytest.approx(1.0)
+
+
+def test_rowwise_area_support_wrapper_equals_frame_agnostic_core() -> None:
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    weights = np.array([2.0, 0.0, 5.0])
+    source_household_ids = [(2023, 1), (2023, 1), (2023, 2)]
+
+    wrapped = rowwise_area_support_summary(
+        problem,
+        weights,
+        source_household_ids=source_household_ids,
+    )
+    core = uk_area_support_summary(
+        problem.assigned_areas,
+        weights,
+        area_codes=problem.area_codes,
+        source_household_ids=source_household_ids,
+    )
+
+    pd.testing.assert_frame_equal(wrapped, core)
+
+
+def test_ladder_area_support_includes_zeros_and_distinct_cloned_sources() -> None:
+    ladder = type(
+        "Ladder",
+        (),
+        {
+            "constituency_code": np.asarray(["C1", "C2", "C3"]),
+            "local_authority_code": np.asarray(["L1", "L2", "L3"]),
+        },
+    )()
+    household = pd.DataFrame(
+        {
+            "household_id": [101, 102, 201, 202],
+            "source_household_id": [10, 10, 20, 20],
+            "household_weight": [2.0, 3.0, 4.0, 0.0],
+            "constituency_code": ["C1", "C1", "C2", "C2"],
+            "local_authority_code": ["L1", "L1", "L2", "L2"],
+        }
+    )
+
+    summaries = uk_ladder_area_support_summary(household, ladder)
+
+    constituency = summaries["constituency"].set_index("area_code")
+    assert constituency.loc["C1", "assigned_households"] == 2
+    assert constituency.loc["C1", "nonzero_households"] == 2
+    assert constituency.loc["C1", "nonzero_source_households"] == 1
+    assert constituency.loc["C2", "nonzero_source_households"] == 1
+    assert constituency.loc["C3", "assigned_households"] == 0
+    assert constituency.loc["C3", "effective_sample_size"] == 0.0
+    assert summaries["la"]["area_code"].tolist() == ["L1", "L2", "L3"]
+
+
+def test_ladder_area_support_refuses_missing_source_column() -> None:
+    ladder = type(
+        "Ladder",
+        (),
+        {
+            "constituency_code": np.asarray(["C1"]),
+            "local_authority_code": np.asarray(["L1"]),
+        },
+    )()
+    household = pd.DataFrame(
+        {
+            "household_id": [1],
+            "household_weight": [1.0],
+            "constituency_code": ["C1"],
+            "local_authority_code": ["L1"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="distinct-source honesty requires it"):
+        uk_ladder_area_support_summary(household, ladder)
 
 
 def test_matrix_builder_fails_closed_on_unreachable_nonzero_targets() -> None:

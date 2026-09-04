@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "country": "am",
+  "policy": "Armenia's engine-free pool-reweight demonstrator requires a public populace-US support artifact whose exact identity must still be authenticated. Its records remain US donor support records and are never represented as Armenian microdata. Only direct columns, deterministic direct-column indicators, and the target-derived marz assignment may enter v1; no rules engine is required or permitted.",
+  "stages": [
+    {
+      "stage": "load_populace_us_support_pool",
+      "survey": "Populace US support pool (US donor support records)",
+      "source": "https://huggingface.co/datasets/policyengine/populace-us",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "hdf5",
+          "vintage": "HARVEST_REQUIRED",
+          "locator": "policyengine/populace-us",
+          "source": "https://huggingface.co/datasets/policyengine/populace-us",
+          "repository": {
+            "provider": "huggingface",
+            "owner": "policyengine",
+            "name_parts": ["populace-us"],
+            "repo_type": "dataset"
+          },
+          "integrity_note": "Execution must receive an exact certified revision, filename, SHA-256, and byte size. Those artifact coordinates are a harvest item; no latest-revision fallback is allowed."
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": ["person", "household"],
+          "weight": "household_weight"
+        },
+        {
+          "kind": "derive",
+          "scope": "Direct-column identities and deterministic prepared indicators only. The authenticated pool inventory must prove every declared output or compilation refuses it; no engine-owned or simulated Armenian measure may be created."
+        }
+      ],
+      "outputs": [
+        "person_id",
+        "household_id",
+        "person_household_id",
+        "household_weight",
+        "support_stratum",
+        "donor_country_code",
+        "age",
+        "sex",
+        "people",
+        "households",
+        "household_size",
+        "household_consumption",
+        "household_consumption_band_indicator",
+        "is_employed",
+        "is_employee",
+        "is_payroll_employee",
+        "receives_pension",
+        "receives_family_benefit"
+      ],
+      "nonnegative_outputs": [
+        "household_weight",
+        "people",
+        "households",
+        "household_size",
+        "household_consumption",
+        "household_consumption_band_indicator",
+        "is_employed",
+        "is_employee",
+        "is_payroll_employee",
+        "receives_pension",
+        "receives_family_benefit"
+      ],
+      "notes": "This posture is derived from the New Zealand epic #343 plan because NZ has no committed country package. The stage preserves and publishes US support-stratum provenance. HARVEST_REQUIRED is an explicit refusal marker, not a claimed donor vintage: the exact artifact vintage, column inventory, indicator recipes, target-profile bands, and authenticated artifact coordinates must land before any runtime binding."
+    },
+    {
+      "stage": "assign_am_marz",
+      "survey": "ArmStat 2022 census population margins",
+      "source": "https://statbank.armstat.am",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "marz_assignment_counts",
+          "kind": "public_aggregated_counts",
+          "resource": "ledger-am:armstat_population_by_age_sex_marz",
+          "format": "ledger_fact_package"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "sample_categorical_from_count_table",
+          "output": "marz_code",
+          "count_resource": "ledger-am:armstat_population_by_age_sex_marz",
+          "cell_columns": ["age", "sex"],
+          "assignment_grain": "household",
+          "collapse_to": "household",
+          "collapse_method": "identity_keyed_member_profile",
+          "seed": 0
+        }
+      ],
+      "outputs": ["marz_code"],
+      "nonnegative_outputs": [],
+      "notes": "The assignment preserves household co-location and covers the 2022-census roster of 10 marzes plus Yerevan (11 top-level units). Marz is generated from public Armenian margins on US donor support records; it is not observed Armenian microdata. The exact Statbank table and complete code roster are Chronicle harvest items."
+    }
+  ]
+}

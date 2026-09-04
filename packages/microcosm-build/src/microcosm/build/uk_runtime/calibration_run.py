@@ -8,11 +8,13 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -94,8 +96,18 @@ UK_CALIBRATION_GATE_SCOPE = (
     "uk_calibration_reference_coverage",
 )
 
+UK_LOCAL_GATE_SCOPE = (
+    "uk_local_geography_ladder_post_calibration",
+    "uk_local_area_support",
+    "uk_local_target_fit",
+    "uk_local_per_family_fit",
+    "uk_local_weight_ratio",
+    "uk_local_weight_ess",
+)
+
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
+    "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
@@ -127,6 +139,8 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_release_input_coverage",
     "uk_degenerate_release_surface",
     "uk_nonnegative_columns",
+    "uk_uc_capital_coherence",
+    "uk_uc_deduction_combination_enum_domain",
     "uk_support",
     "uk_aggregate_admin",
     "uk_export_surface",
@@ -156,6 +170,7 @@ def _scope_exclusions() -> dict[str, str]:
     spine = set(UK_SPINE_GATE_SCOPE)
     national = set(UK_NATIONAL_GATE_SCOPE)
     calibration = set(UK_CALIBRATION_GATE_SCOPE)
+    local = set(UK_LOCAL_GATE_SCOPE)
     # Closed-world means both halves: every gate owned by someone (below), and
     # no gate owned twice without saying so. Coverage alone would let an
     # accidental overlap through, and the certification union is exactly where
@@ -163,7 +178,10 @@ def _scope_exclusions() -> dict[str, str]:
     for left_name, left, right_name, right in (
         ("calibration", calibration, "spine", spine),
         ("calibration", calibration, "national", national),
+        ("calibration", calibration, "local", local),
         ("spine", spine, "national", national),
+        ("spine", spine, "local", local),
+        ("national", national, "local", local),
     ):
         undeclared = (left & right) - UK_SHARED_GATE_IDS
         if undeclared:
@@ -172,7 +190,7 @@ def _scope_exclusions() -> dict[str, str]:
                 f"{sorted(undeclared)} without declaring them in "
                 "UK_SHARED_GATE_IDS."
             )
-    classified = calibration | spine | national
+    classified = calibration | spine | national | local
     rationales: dict[str, str] = {}
     for gate_id in sorted(full - set(UK_CALIBRATION_GATE_SCOPE)):
         if gate_id in spine:
@@ -183,6 +201,12 @@ def _scope_exclusions() -> dict[str, str]:
             reason = (
                 "owned by the release-cut certification producer; runner lands "
                 "with the certification, June runner retired"
+            )
+        elif gate_id in local:
+            reason = (
+                "local-candidate gate; owned by the rowwise candidate's "
+                "scoped battery and excluded from national certification "
+                "until microcosm#146."
             )
         elif "parity" in gate_id or gate_id in _SWAP_ACCEPTANCE_GATE_IDS:
             reason = "swap-acceptance evidence; produced by the swap lane, not the calibration seam."
@@ -195,6 +219,27 @@ def _scope_exclusions() -> dict[str, str]:
 
 
 UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS = _scope_exclusions()
+
+
+def uk_local_gate_scope_exclusions() -> dict[str, str]:
+    """Classify every declared entry the local-candidate battery does not run."""
+
+    full = {entry.id for entry in load_country_spec("uk").gates.gates}
+    local = set(UK_LOCAL_GATE_SCOPE)
+    exclusions: dict[str, str] = {}
+    for gate_id in sorted(full - local):
+        if gate_id in UK_SPINE_GATE_SCOPE:
+            reason = "spine-construction gate; owned by the spine build."
+        elif gate_id in UK_CALIBRATION_GATE_SCOPE:
+            reason = "national calibration-seam gate; outside the local candidate."
+        elif gate_id in UK_NATIONAL_GATE_SCOPE:
+            reason = "national release-cut gate; outside the local candidate."
+        else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
+            raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
+        exclusions[gate_id] = reason
+    if local | set(exclusions) != full:
+        raise RuntimeError("UK local gate scope does not classify every gate id.")
+    return exclusions
 
 
 def run_uk_calibration(
@@ -438,6 +483,10 @@ def _run_uk_calibration_attempt(
     build_block = {
         "build_id": state.build_id,
         "code_pin": code_pin,
+        # Captured at solve time and signed with the diagnostics bytes, so a
+        # release assembler can only ever pin the environment that actually
+        # calibrated the candidate — never an invented one.
+        "runtime": _runtime_provenance(),
         "source_pins": dict(source_pins),
         "ledger": run_config["ledger"],
         "input_posture": {
@@ -892,6 +941,31 @@ def _ledger_provenance(artifact: Any) -> dict[str, object]:
             if manifest.get(key) is not None
         }
     return provenance
+
+
+#: Packages whose versions the seam pins into the signed diagnostics build
+#: block. The release assembler treats these as the only legitimate source
+#: for manifest runtime/compatibility pins.
+_RUNTIME_PROVENANCE_PACKAGES = (
+    "policyengine-core",
+    "policyengine-uk",
+    "microcosm-frame",
+    "microcosm-calibrate",
+    "microcosm-build",
+    "microcosm-data",
+)
+
+
+def _runtime_provenance() -> dict[str, str]:
+    """The calibrating environment's package versions, for the build block."""
+
+    runtime = {"python": platform.python_version()}
+    for package in _RUNTIME_PROVENANCE_PACKAGES:
+        try:
+            runtime[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            runtime[package] = "unavailable"
+    return runtime
 
 
 def _register_census(

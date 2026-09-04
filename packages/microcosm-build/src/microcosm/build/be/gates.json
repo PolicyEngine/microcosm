@@ -1,7 +1,7 @@
 {
   "version": 2,
   "country": "be",
-  "policy": "Belgium has no incumbent dataset, so the incumbent-comparison gates (parity, export_surface, target_surface) are deliberately not selected: external oracles replace self-parity (EUROMOD-BE baselines and Federal Planning Bureau reform scores, populace#264). National and NUTS1 targets hard-gate; commune-grain rows are diagnostic until the spine demonstrably supports them.",
+  "policy": "Declaration-only intended Belgian gate posture. Belgium has no incumbent dataset, so incumbent-comparison gates (parity, export_surface, target_surface) are not selected. National and NUTS1 references are declared release-blocking and commune-grain references diagnostic, but this schema change does not wire target-profile tiers or roles into runtime gates. External-oracle implementation (EUROMOD-BE baselines and Federal Planning Bureau reform scores) remains separate work in #264 and is not implemented here.",
   "phases": [
     "terminal"
   ],
@@ -29,7 +29,7 @@
         ],
         "default_rtol": 0.05
       },
-      "notes": "Weighted aggregates against admin anchors on the hard surface. Criticality tiers per target arrive with the Ledger profile (PolicyEngine/ledger#70): e.g. PIT total tighter than caseloads."
+      "notes": "Intended weighted aggregates against admin anchors on the future hard surface. The tier metadata in target_references.json is declaration-only in this change; a later runner integration must explicitly bridge it into gate tolerances."
     },
     {
       "id": "commune_fiscal_income_fit",
@@ -58,7 +58,7 @@
           "caseloads"
         ]
       },
-      "notes": "The active target profile must cover every named family; a build that silently dropped a family must not release."
+      "notes": "The eventual active target profile must cover every named family; the schema declarations and placeholders in this change do not themselves activate that surface."
     },
     {
       "id": "demographics_vs_statbel",

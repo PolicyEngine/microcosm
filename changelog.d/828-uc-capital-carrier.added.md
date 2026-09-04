@@ -1,0 +1,1 @@
+Add FRS benunit capital and the PolicyEngine-UK Universal Credit reported-capital carrier to the UK spine, with a named unavailable sentinel, deterministic SPI-reporter redraw, and same-source engine regression coverage (#828).

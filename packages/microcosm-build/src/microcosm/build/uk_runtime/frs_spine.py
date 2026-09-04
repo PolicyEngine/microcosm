@@ -22,6 +22,7 @@ __all__ = [
     "OUTPUT_COLUMNS",
     "REGION_MAP",
     "TIME_PERIOD",
+    "UC_CAPITAL_UNAVAILABLE",
     "WEEKS_IN_YEAR",
     "UKFRSSpineStageTransform",
     "artifact_by_table",
@@ -56,6 +57,11 @@ FRS_SPINE_TABLES = (
 
 WEEKS_IN_YEAR = 365.25 / 7
 TIME_PERIOD = "2024"
+
+# Raw TOTCAPB4 blanks, nonnumeric values, and negative codes mean that the
+# benefit-unit capital observation is unavailable. They map to this engine
+# sentinel; observed zero remains a valid capital value.
+UC_CAPITAL_UNAVAILABLE = -1.0
 
 # FRS GVTREGNO uses skip-3 coding: code 3 (the retired Merseyside code) is
 # absent from the domain, so the real codes are [1, 2, 4..13] with
@@ -210,6 +216,7 @@ OUTPUT_COLUMNS = (
     "esa_income_reported",
     "bsp_reported",
     "benunit_id",
+    "frs_benunit_capital",
     "is_married",
     "dependent_children",
     "household_id",
@@ -239,13 +246,32 @@ class UKFRSSpineStageTransform:
     def __init__(self, raw_dir: str | Path, *, stage: SourceStageSpec) -> None:
         self.raw_dir = Path(raw_dir)
         self.stage = stage
+        self._sentinel_mapped_rows: int | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        return build_uk_frs_spine_frame(self.raw_dir, stage=self.stage)
+        result = build_uk_frs_spine_frame(self.raw_dir, stage=self.stage)
+        capital = result.table("benunit")["frs_benunit_capital"]
+        self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return OUTPUT_COLUMNS
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        """Report how loudly the FRS capital availability rule fired."""
+
+        if self._sentinel_mapped_rows is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {
+            "evidence": {
+                "stage": "frs_spine",
+                "frs_benunit_capital": {
+                    "unavailable_sentinel": UC_CAPITAL_UNAVAILABLE,
+                    "mapped_rows": self._sentinel_mapped_rows,
+                },
+            }
+        }
 
 
 def uk_frs_spine_seed_frame() -> Frame:
@@ -366,6 +392,7 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
         }
     )
     pe_benunit = pd.DataFrame({"benunit_id": benunit_raw["benunit_id"].astype("int64")})
+    pe_benunit["frs_benunit_capital"] = _frs_benunit_capital(benunit_raw)
     pe_household = pd.DataFrame(
         {"household_id": household_ids.astype("int64")},
         index=household.index,
@@ -373,7 +400,12 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_household["household_weight"] = _raw_number(household, "gross4").to_numpy()
 
     age = _number(person, "age80") + _number(person, "age")
-    pe_person["age"] = age
+    # The graph declares person.age int64 from the root (#845); the raw
+    # AGE80/AGE columns are integer codes, and blanks coerce to 0 above, so
+    # a non-integral value here is a vintage defect rather than data.
+    if not np.array_equal(age.to_numpy(), np.floor(age.to_numpy())):
+        raise ValueError("FRS age80/age columns must be integral to build person.age.")
+    pe_person["age"] = age.astype("int64")
     pe_person["gender"] = np.where(_number(person, "sex") == 1, "MALE", "FEMALE")
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
@@ -811,6 +843,18 @@ def _raw_number(frame: pd.DataFrame, column: str) -> pd.Series:
     if column not in frame.columns:
         return pd.Series(np.full(len(frame), np.nan), index=frame.index)
     return pd.to_numeric(frame[column], errors="coerce")
+
+
+def _frs_benunit_capital(benunit: pd.DataFrame) -> pd.Series:
+    """Map TOTCAPB4 to capital, using the sentinel only for unavailable values.
+
+    The I1 FRS 2024-25 audit found all 18,850 rows populated and nonnegative.
+    Future raw blanks, nonnumeric values, or negative codes map to
+    ``UC_CAPITAL_UNAVAILABLE``; observed zero is preserved.
+    """
+
+    raw = _raw_number(benunit, "totcapb4")
+    return raw.where(raw.notna() & raw.ge(0), UC_CAPITAL_UNAVAILABLE).astype(float)
 
 
 def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
